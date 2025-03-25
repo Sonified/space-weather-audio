@@ -1,4 +1,0 @@
-Marker file version: 1
-Time format: Samples
-Example beginning marker	0		
-Example End Marker	30240000		
