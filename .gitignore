@@ -1,3 +1,9 @@
 *.mov
 *.mseed
 *.wav
+Final_Cut_Export/
+Logic_Pro/
+Plot_Files/*
+Video_Renders/
+mseed_files/*
+Audio_Files/*
