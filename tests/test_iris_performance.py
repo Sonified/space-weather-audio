@@ -67,7 +67,7 @@ def run_benchmark():
     # Test configurations
     durations = [5, 10, 15, 30, 60, 120, 360]  # minutes
     station = {'network': 'HV', 'station': 'HLPD', 'channel': 'HHZ'}
-    location = "01"  # Common location for Kilauea
+    location = ""  # Empty location for HLPD (Kilauea - 0.2 min latency)
     num_runs = 3
     
     print(f"\nStation: {station['network']}.{station['station']}.{location}.{station['channel']}")

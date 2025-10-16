@@ -10,8 +10,8 @@ app = Flask(__name__)
 CORS(app)
 
 VOLCANOES = {
-    'kilauea': {'network': 'HV', 'station': 'HLPD', 'channel': 'HHZ'},
-    'spurr': {'network': 'AV', 'station': 'BGL', 'channel': 'HHZ'},
+    'kilauea': {'network': 'HV', 'station': 'HLPD', 'channel': 'HHZ'},  # 0.2 min latency
+    'spurr': {'network': 'AV', 'station': 'SPCN', 'channel': 'BHZ'},     # -0.2 min latency  
     'shishaldin': {'network': 'AV', 'station': 'SSLS', 'channel': 'HHZ'}
 }
 
