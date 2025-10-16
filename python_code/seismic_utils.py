@@ -4,13 +4,20 @@ from obspy import read
 import os
 import numpy as np
 from python_code.print_manager import print_manager
+try:
+    from timezonefinder import TimezoneFinder
+    import pytz
+    TIMEZONE_DETECTION_AVAILABLE = True
+except ImportError:
+    TIMEZONE_DETECTION_AVAILABLE = False
 
-def compute_time_window(days):
+def compute_time_window(days, station_timezone=None):
     """
     Compute time window based on number of days
     
     Args:
         days (int): Number of days to look back from current time
+        station_timezone (str): Timezone for display (e.g., 'Pacific/Honolulu', 'America/Anchorage')
         
     Returns:
         tuple: (start_str, end_str, alaska_time) for API requests and display
@@ -29,18 +36,12 @@ def compute_time_window(days):
     end_str = end_time_utc.strftime("%Y-%m-%dT%H:%M:%S")
     start_str = start_time_utc.strftime("%Y-%m-%dT%H:%M:%S")
     
-    # 5. For display purposes, convert to Alaska time
-    # Alaska is UTC-9 standard or UTC-8 during daylight savings
-    ak_offset = timedelta(hours=-8)  # Currently in daylight saving
-    alaska_time = utc_now + ak_offset
-    
-    print_manager.print_time(f"Current Alaska time: {alaska_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print_manager.print_api(f"Requesting data from {start_time_utc.strftime('%Y-%m-%d %H:%M:%S')} to {end_time_utc.strftime('%Y-%m-%d %H:%M:%S')} UTC")
     
-    # 6. Return the UTC time strings for API and Alaska time for display
-    return start_str, end_str, alaska_time
+    # Return the UTC time strings and current UTC time for display
+    return start_str, end_str, utc_now
 
-def fetch_seismic_data(start_str, end_str, filename, network="AV", station="SPCN", channel="BHZ"):
+def fetch_seismic_data(start_str, end_str, filename, network="AV", station="SPCN", channel="BHZ", location=""):
     """
     Fetches seismic data from IRIS FDSN web service or loads from existing file
     
@@ -62,10 +63,12 @@ def fetch_seismic_data(start_str, end_str, filename, network="AV", station="SPCN
     
     # Fetch data from IRIS
     url = "https://service.iris.edu/fdsnws/dataselect/1/query"
+    # IRIS uses two-character location codes; empty location should be "--"
+    loc_param = location if (location and location != "") else "--"
     params = {
         "net": network,
         "sta": station,
-        "loc": "--",
+        "loc": loc_param,
         "cha": channel,
         "start": start_str,
         "end": end_str,
@@ -160,5 +163,76 @@ def fetch_seismic_data(start_str, end_str, filename, network="AV", station="SPCN
                         os.remove(temp_filename)
                 
         return stream
+
+def get_station_timezone(network, station):
+    """
+    Get the timezone for a station by fetching its coordinates and detecting timezone
+    
+    Args:
+        network (str): Network code (e.g., 'AV', 'HV')
+        station (str): Station code (e.g., 'SPCN', 'OBL')
+        
+    Returns:
+        str: Timezone string (e.g., 'America/Anchorage', 'Pacific/Honolulu') or None if detection fails
+    """
+    if not TIMEZONE_DETECTION_AVAILABLE:
+        print_manager.print_status("⚠️ Timezone detection not available. Install: pip install timezonefinder")
+        return None
+        
+    try:
+        # Fetch station metadata from IRIS
+        url = "https://service.iris.edu/fdsnws/station/1/query"
+        params = {
+            "net": network,
+            "sta": station,
+            "level": "station",
+            "format": "text"
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        
+        # Parse the response to get coordinates
+        lines = response.text.strip().split('\n')
+        if len(lines) < 2:  # Header + at least one data line
+            print_manager.print_status(f"⚠️ No station data found for {network}.{station}")
+            return None
+            
+        # Skip header line, get station data
+        data_line = lines[1].split('|')
+        if len(data_line) < 5:
+            print_manager.print_status(f"⚠️ Invalid station data format for {network}.{station}")
+            return None
+            
+        # Extract coordinates (format: Network|Station|Latitude|Longitude|Elevation|...)
+        latitude = float(data_line[2])
+        longitude = float(data_line[3])
+        
+        # Use TimezoneFinder to get timezone
+        tf = TimezoneFinder()
+        detected_timezone = tf.timezone_at(lat=latitude, lng=longitude)
+        
+        if detected_timezone:
+            # Validate timezone with pytz
+            try:
+                pytz.timezone(detected_timezone)
+                print_manager.print_status(f"✅ Detected timezone for {network}.{station}: {detected_timezone}")
+                return detected_timezone
+            except pytz.exceptions.UnknownTimeZoneError:
+                print_manager.print_status(f"⚠️ Invalid timezone detected: {detected_timezone}")
+                return None
+        else:
+            print_manager.print_status(f"⚠️ Could not detect timezone for coordinates {latitude}, {longitude}")
+            return None
+            
+    except requests.exceptions.RequestException as e:
+        print_manager.print_status(f"⚠️ Error fetching station metadata: {e}")
+        return None
+    except (ValueError, IndexError) as e:
+        print_manager.print_status(f"⚠️ Error parsing station coordinates: {e}")
+        return None
+    except Exception as e:
+        print_manager.print_status(f"⚠️ Unexpected error in timezone detection: {e}")
+        return None
     else:
         raise Exception(f"❌ Error {response.status_code}: No data found or request failed.") 

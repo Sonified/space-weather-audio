@@ -114,7 +114,7 @@ def create_audio_file(st, sampling_rate, audio_filename, fill_method='zeros'):
     
     return audio_filename
 
-def generate_marker_file(stream, marker_interval_hours, marker_filename, use_am_pm=True, markers_in_AKST=True):
+def generate_marker_file(stream, marker_interval_hours, marker_filename, use_am_pm=True, markers_timezone="UTC"):
     """
     Generate a marker file for audio editors
     
@@ -123,7 +123,7 @@ def generate_marker_file(stream, marker_interval_hours, marker_filename, use_am_
         marker_interval_hours (float): Interval between markers in hours
         marker_filename (str): Output marker file path
         use_am_pm (bool): Whether to use AM/PM format instead of 24h
-        markers_in_AKST (bool): Whether to use Alaska time instead of UTC
+        markers_timezone (str): Timezone for markers ("UTC", "America/Anchorage", "Pacific/Honolulu", etc.)
         
     Returns:
         str: Path to the created marker file

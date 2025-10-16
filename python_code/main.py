@@ -13,7 +13,7 @@ import ipywidgets as widgets
 from IPython.display import display
 import subprocess
 
-from python_code.seismic_utils import compute_time_window, fetch_seismic_data
+from python_code.seismic_utils import compute_time_window, fetch_seismic_data, TIMEZONE_DETECTION_AVAILABLE
 from python_code.audio_utils import create_audio_file
 from python_code.plot_utils import create_seismic_plot, show_stream_info
 from python_code.marker_utils import generate_marker_file
@@ -51,7 +51,7 @@ def parse_arguments():
 
 def main(days=1, sampling_rate=7500, marker_interval_hours=1, tick_interval_hours=1, 
          use_am_pm=True, quiet=False, auto_open=True, interpolate_missing_data=False,
-         markers_in_AKST=True):
+         markers_timezone="station", network="AV", station="SPCN", channel="BHZ", station_name="Spurr"):
     """
     Main function to process seismic data, create visualization and audification
     
@@ -64,7 +64,11 @@ def main(days=1, sampling_rate=7500, marker_interval_hours=1, tick_interval_hour
         quiet (bool): Reduce output verbosity
         auto_open (bool): Automatically open the created audio file
         interpolate_missing_data (bool): Interpolate missing data instead of filling with zeros
-        markers_in_AKST (bool): Use Alaska time for markers instead of UTC
+        markers_timezone (str): Timezone for markers ("station", "UTC", "America/Anchorage", "Pacific/Honolulu", "America/New_York", etc.)
+        network (str): Network code (e.g., 'AV', 'HV')
+        station (str): Station code (e.g., 'SPCN', 'OBL')
+        channel (str): Channel code (e.g., 'BHZ', 'HHZ', 'HDF')
+        station_name (str): Human-readable station name for filenames
 
     Returns:
         dict: Dictionary containing file paths and processing results
@@ -89,13 +93,13 @@ def main(days=1, sampling_rate=7500, marker_interval_hours=1, tick_interval_hour
     
     # Create filenames with the format
     formatted_time = end_time.strftime('%Y-%m-%d_T_%H%M%S')
-    mseed_file = os.path.join(mseed_dir, f"Spurr_Last_{days}d_{formatted_time}.mseed")
-    audio_file = os.path.join(audio_marker_dir, f"Spurr_Last_{days}d_{formatted_time}.wav")
-    marker_file = os.path.join(audio_marker_dir, f"Spurr_Last_{days}d_{formatted_time}_Marker_File.txt")
-    plot_file = os.path.join(plot_dir, f"Spurr_Last_{days}d_{formatted_time}.png")
+    mseed_file = os.path.join(mseed_dir, f"{station_name}_Last_{days}d_{formatted_time}.mseed")
+    audio_file = os.path.join(audio_marker_dir, f"{station_name}_Last_{days}d_{formatted_time}.wav")
+    marker_file = os.path.join(audio_marker_dir, f"{station_name}_Last_{days}d_{formatted_time}_Marker_File.txt")
+    plot_file = os.path.join(plot_dir, f"{station_name}_Last_{days}d_{formatted_time}.png")
     
     # Step 2: Fetch seismic data
-    st = fetch_seismic_data(start_str, end_str, mseed_file)
+    st = fetch_seismic_data(start_str, end_str, mseed_file, network=network, station=station, channel=channel)
     if st is None:
         return {
             "success": False,
@@ -108,15 +112,66 @@ def main(days=1, sampling_rate=7500, marker_interval_hours=1, tick_interval_hour
     # Step 3: Show stream information
     show_stream_info(st)
     
+    # Show actual data timestamp range for analysis
+    if print_manager.show_data_info and st:
+        data_start = st[0].stats.starttime
+        data_end = st[0].stats.endtime
+        print_manager.print_data(f"📅 Actual data range:")
+        print_manager.print_data(f"   Earliest sample: {data_start.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        print_manager.print_data(f"   Latest sample:   {data_end.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        
+        # Calculate how far behind real-time the latest data is
+        from datetime import datetime
+        utc_now = datetime.utcnow()
+        data_end_py = datetime(data_end.year, data_end.month, data_end.day, 
+                              data_end.hour, data_end.minute, data_end.second)
+        lag_seconds = (utc_now - data_end_py).total_seconds()
+        lag_minutes = lag_seconds / 60
+        
+        print_manager.print_data(f"   Data lag:        {lag_minutes:.1f} minutes behind real-time")
+    
     # Step 4: Create plot
     create_seismic_plot(st, plot_file, days, end_time, tick_interval_hours)
     
-    # Step 5: Create audio file
+    # Step 5: Resolve timezone for markers
+    if markers_timezone == "station":
+        from python_code.seismic_utils import get_station_timezone
+        detected_timezone = get_station_timezone(network, station)
+        if detected_timezone:
+            final_timezone = detected_timezone
+        else:
+            print_manager.print_status("⚠️ Timezone detection failed, falling back to UTC")
+            final_timezone = "UTC"
+    else:
+        final_timezone = markers_timezone
+    
+    if print_manager.show_status:
+        print(f"🕐 Using timezone for markers: {final_timezone}")
+        
+    # Display current time in both UTC and station timezone
+    if TIMEZONE_DETECTION_AVAILABLE:
+        try:
+            import pytz
+            from datetime import datetime
+            utc_now = datetime.utcnow()
+            
+            # Always show UTC time first
+            print_manager.print_time(f"Current UTC time: {utc_now.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # Show station time if different from UTC
+            if final_timezone != "UTC":
+                tz = pytz.timezone(final_timezone)
+                local_time = utc_now.replace(tzinfo=pytz.UTC).astimezone(tz)
+                print_manager.print_time(f"Current {final_timezone} time: {local_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        except Exception as e:
+            pass  # Silently fail if timezone conversion fails
+    
+    # Step 6: Create audio file
     fill_method = 'interpolate' if interpolate_missing_data else 'zeros'
     create_audio_file(st, sampling_rate, audio_file, fill_method=fill_method)
     
-    # Step 6: Generate marker file
-    generate_marker_file(st, marker_interval_hours, marker_file, use_am_pm=use_am_pm, markers_in_AKST=markers_in_AKST)
+    # Step 7: Generate marker file
+    generate_marker_file(st, marker_interval_hours, marker_file, use_am_pm=use_am_pm, markers_timezone=final_timezone)
     
     # Store results in dictionary
     result = {
@@ -154,8 +209,10 @@ def main(days=1, sampling_rate=7500, marker_interval_hours=1, tick_interval_hour
     return result
 
 if __name__ == "__main__":
-    from python_code import __version__
+    from python_code import __version__, __commit_message__
     print(f"🌋 Spurr Audification System v{__version__} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    # Also print the commit message for traceability as requested
+    print(f"🧭 Commit: {__commit_message__}")
     
     args = parse_arguments()
     main(days=args.days, 
@@ -166,4 +223,8 @@ if __name__ == "__main__":
          quiet=args.quiet,
          auto_open=not args.no_open,
          interpolate_missing_data=args.interpolate_missing_data,
-         markers_in_AKST=args.markers_in_AKST) 
+         markers_timezone="station" if args.markers_in_AKST else "UTC",
+         network=args.network,
+         station=args.station,
+         channel=args.channel,
+         station_name=args.station)  # Use station code as default name 

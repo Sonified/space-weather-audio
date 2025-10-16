@@ -1,5 +1,8 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.00"
+__version__ = "1.03"
+__commit_message__ = (
+    "v1.03 Add active-station filtering, full audit outputs, and interactive audify UI"
+)
 
 # Import key modules to make them available when importing the package
 from python_code.main import main

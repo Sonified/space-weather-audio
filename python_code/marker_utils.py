@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from python_code.print_manager import print_manager
 
-def generate_marker_file(stream, marker_interval_hours, marker_filename, use_am_pm=True, markers_in_AKST=True):
+def generate_marker_file(stream, marker_interval_hours, marker_filename, use_am_pm=True, markers_timezone="UTC"):
     """
     Generate a marker file for audio editors with timestamps aligned to intervals
     
@@ -11,7 +11,7 @@ def generate_marker_file(stream, marker_interval_hours, marker_filename, use_am_
         marker_interval_hours (float): Interval between markers in hours
         marker_filename (str): Output marker file path
         use_am_pm (bool): Whether to use AM/PM format instead of 24h
-        markers_in_AKST (bool): Whether to use Alaska time instead of UTC
+        markers_timezone (str): Timezone for markers ("UTC", "America/Anchorage", "Pacific/Honolulu", etc.)
         
     Returns:
         str: Path to the created marker file
@@ -26,34 +26,49 @@ def generate_marker_file(stream, marker_interval_hours, marker_filename, use_am_
     # Calculate the sampling rate
     sampling_rate = stream[0].stats.sampling_rate
     
-    # Convert to Python datetime objects
+    # Convert to Python datetime objects (timezone-naive for calculations)
     start_time_py = datetime(
         start_time_utc.year, start_time_utc.month, start_time_utc.day,
-        start_time_utc.hour, start_time_utc.minute, start_time_utc.second,
-        tzinfo=timezone.utc
+        start_time_utc.hour, start_time_utc.minute, start_time_utc.second
     )
     
     end_time_py = datetime(
         end_time_utc.year, end_time_utc.month, end_time_utc.day,
-        end_time_utc.hour, end_time_utc.minute, end_time_utc.second,
-        tzinfo=timezone.utc
+        end_time_utc.hour, end_time_utc.minute, end_time_utc.second
     )
     
-    # Convert to Alaska time if requested
-    ak_offset = timedelta(hours=-8)  # Use -9 for standard time, -8 for daylight saving
+    # Import pytz for timezone handling
+    try:
+        import pytz
+    except ImportError:
+        print_manager.print_status("⚠️ pytz not available, falling back to UTC")
+        markers_timezone = "UTC"
     
-    if markers_in_AKST:
-        start_time = start_time_py + ak_offset
-        end_time = end_time_py + ak_offset
-        
-        # Print the time range in Alaska time
-        print_manager.print_marker(f"Marker file time range: {start_time.strftime('%Y-%m-%d %H:%M:%S')} to {end_time.strftime('%Y-%m-%d %H:%M:%S')} Alaska time")
-    else:
+    # Convert to specified timezone
+    if markers_timezone == "UTC":
         start_time = start_time_py
         end_time = end_time_py
-        
-        # Print the time range in UTC
-        print_manager.print_marker(f"Marker file time range: {start_time.strftime('%Y-%m-%d %H:%M:%S')} to {end_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        timezone_obj = pytz.UTC
+        timezone_name = "UTC"
+    else:
+        try:
+            # Get timezone object
+            timezone_obj = pytz.timezone(markers_timezone)
+            
+            # Convert UTC times to target timezone
+            start_time = start_time_py.replace(tzinfo=pytz.UTC).astimezone(timezone_obj).replace(tzinfo=None)
+            end_time = end_time_py.replace(tzinfo=pytz.UTC).astimezone(timezone_obj).replace(tzinfo=None)
+            timezone_name = markers_timezone
+        except pytz.exceptions.UnknownTimeZoneError:
+            print_manager.print_status(f"⚠️ Unknown timezone '{markers_timezone}', falling back to UTC")
+            start_time = start_time_py
+            end_time = end_time_py
+            timezone_obj = pytz.UTC
+            timezone_name = "UTC"
+            markers_timezone = "UTC"
+    
+    # Print the time range
+    print_manager.print_marker(f"Marker file time range: {start_time.strftime('%Y-%m-%d %H:%M:%S')} to {end_time.strftime('%Y-%m-%d %H:%M:%S')} {timezone_name}")
     
     # Write the marker file
     with open(marker_filename, 'w') as f:
@@ -99,18 +114,39 @@ def generate_marker_file(stream, marker_interval_hours, marker_filename, use_am_
         marker_count = 0
         while current_time <= end_time:
             hour = current_time.hour
-            if use_am_pm:
-                formatted_time = current_time.strftime(f'%m/%d %I:%M %p')
+            
+            # Get timezone abbreviation for display
+            if markers_timezone == "UTC":
+                tz_abbrev = "UTC"
             else:
-                formatted_time = current_time.strftime(f'%m/%d %H:%M')
+                try:
+                    # Get timezone abbreviation (e.g., "HST", "AKDT")
+                    tz_obj = pytz.timezone(markers_timezone)
+                    tz_abbrev = current_time.replace(tzinfo=tz_obj).strftime('%Z')
+                except:
+                    tz_abbrev = markers_timezone.split('/')[-1].upper()  # Fallback
+            
+            if use_am_pm:
+                formatted_time = current_time.strftime(f'%m/%d %I:%M %p') + f" {tz_abbrev}"
+            else:
+                formatted_time = current_time.strftime(f'%m/%d %H:%M') + f" {tz_abbrev}"
             
             # Calculate sample position
-            # If using Alaska time, convert back to UTC for comparison
-            if markers_in_AKST:
-                current_time_utc = current_time - ak_offset
-            else:
+            # Convert marker time back to UTC for sample calculation
+            if markers_timezone == "UTC":
                 current_time_utc = current_time
+            else:
+                # Convert local time back to UTC - ensure timezone-naive result
+                try:
+                    # Localize the naive datetime to the target timezone
+                    current_time_with_tz = timezone_obj.localize(current_time)
+                    # Convert to UTC and remove timezone info for calculation
+                    current_time_utc = current_time_with_tz.astimezone(pytz.UTC).replace(tzinfo=None)
+                except (AttributeError, ValueError) as e:
+                    # Fallback: assume current_time is already UTC
+                    current_time_utc = current_time
                 
+            
             seconds_from_start = (current_time_utc - start_time_py).total_seconds()
             current_sample = int(seconds_from_start * sampling_rate)
             
@@ -142,10 +178,7 @@ def generate_marker_file(stream, marker_interval_hours, marker_filename, use_am_
             f.write(f"{formatted_end_time}\t{end_sample}\n")
             marker_count += 1
     
-    if markers_in_AKST:
-        timezone_str = "Alaska time"
-    else:
-        timezone_str = "UTC"
+    timezone_str = timezone_name
         
     print_manager.print_file(f"✅ Generated marker file: {marker_filename} with {timezone_str} markers")
     print_manager.print_marker(f"Created {marker_count} markers from {start_time.strftime('%I:%M %p')} to {end_time.strftime('%I:%M %p')}")
