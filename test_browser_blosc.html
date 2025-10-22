@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volcano Audio - Blosc vs Gzip Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        select, input {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        button.secondary {
+            background: #6c757d;
+        }
+        button.loop-active {
+            background: #28a745;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .status.info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .status.success {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+        }
+        .status.error {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+        }
+        .profiling {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .profiling h3 {
+            margin-top: 0;
+            color: #856404;
+        }
+        canvas {
+            width: 100%;
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #f8f9fa;
+        }
+        #waveform {
+            height: 150px;
+        }
+        #spectrogram {
+            height: 300px;
+            background: #000;
+        }
+        .log-container {
+            margin-top: 30px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+        .log-entry {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            font-family: 'Courier New', monospace;
+            font-size: 15px;
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        .log-entry.success {
+            background: #e8f5e9;
+        }
+        .log-entry.error {
+            background: #ffebee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌋 Volcano Audio - Browser Streaming Test</h1>
+        <p class="subtitle">Server stores Blosc, delivers Gzip to browser (optimal architecture)</p>
+        
+        <div class="profiling" id="profiling">
+            <h3>📊 Library Profiling</h3>
+            <div id="profilingResults">Loading libraries...</div>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="volcano">Volcano:</label>
+                <select id="volcano">
+                    <option value="kilauea">Kīlauea (Hawaii)</option>
+                    <option value="spurr">Mt. Spurr (Alaska)</option>
+                    <option value="shishaldin">Shishaldin (Alaska)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="duration">Duration:</label>
+                <select id="duration">
+                    <option value="1">1 hour</option>
+                    <option value="2">2 hours</option>
+                    <option value="6">6 hours</option>
+                    <option value="12">12 hours</option>
+                    <option value="24">24 hours</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="format">Compression:</label>
+                <select id="format">
+                    <option value="gzip">Gzip</option>
+                    <option value="blosc">Blosc-zstd</option>
+                    <option value="zstd">Zstd</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="level">Level:</label>
+                <select id="level">
+                    <option value="1">1 (Fast)</option>
+                    <option value="3">3</option>
+                    <option value="5" selected>5 (Balanced)</option>
+                    <option value="6">6</option>
+                    <option value="9">9 (Max)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="speedup">Speedup:</label>
+                <select id="speedup">
+                    <option value="100">100x</option>
+                    <option value="200" selected>200x</option>
+                    <option value="400">400x</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="button-group">
+            <button onclick="fetchAndPlay()" id="fetchBtn">🎵 Fetch & Play</button>
+            <button onclick="togglePlayPause()" id="playPauseBtn" class="secondary" disabled>⏸️ Pause</button>
+            <button onclick="toggleLoop()" id="loopBtn" class="secondary" disabled>🔁 Loop</button>
+            <span id="chunkIndicator" style="display: none; margin-left: 20px; color: red; font-weight: bold; font-size: 20px;">● CHUNK</span>
+            <div style="display: inline-block; margin-left: 20px; vertical-align: middle;">
+                <label for="playbackSpeed" style="font-weight: 600; margin-right: 5px;">Speed: <span id="speedValue">1.0</span>x</label>
+                <input type="range" id="playbackSpeed" min="0.1" max="10" step="0.1" value="1.0" oninput="changePlaybackSpeed()" style="width: 150px; vertical-align: middle;">
+            </div>
+        </div>
+        
+        <div id="status" class="status info">
+            Ready to fetch data. Select your parameters and click "Fetch & Play".
+        </div>
+        
+        <canvas id="waveform"></canvas>
+        <canvas id="spectrogram"></canvas>
+        
+        <div class="log-container">
+            <h3 style="padding: 12px; margin: 0; background: #f8f9fa; border-bottom: 2px solid #ddd;">Test Results Log</h3>
+            <div id="logEntries"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako_inflate.min.js"></script>
+    <!-- Zarrita has built-in Blosc support! -->
+    <script type="module">
+        import * as zarr from 'https://cdn.jsdelivr.net/npm/zarrita@latest/+esm';
+        window.zarrita = zarr;
+        console.log('Zarrita loaded with Blosc support!');
+        
+        // Preload numcodecs in the background so it's ready when user needs it
+        (async () => {
+            try {
+                const start = performance.now();
+                console.log('Preloading numcodecs (Blosc codec) in background...');
+                const numcodecs = await import('https://cdn.jsdelivr.net/npm/numcodecs@0.3.1/+esm');
+                window.numcodecsPreloaded = numcodecs;
+                const elapsed = performance.now() - start;
+                console.log(`✅ Numcodecs preloaded in ${elapsed.toFixed(0)}ms (${(1.3).toFixed(1)} MB)`);
+            } catch (err) {
+                console.warn('Failed to preload numcodecs:', err);
+            }
+        })();
+    </script>
+    
+    <script>
+        // Profile library load times
+        const profilingStart = performance.now();
+        let bloscLoadTime = 0;
+        let jsZipLoadTime = 0;
+        let pakoLoadTime = 0;
+        
+        // Check if libraries loaded
+        window.addEventListener('load', () => {
+            const updateProfiling = () => {
+                const totalLoadTime = performance.now() - profilingStart;
+                
+                const hasJSZip = typeof JSZip !== 'undefined';
+                const hasPako = typeof pako !== 'undefined';
+                const hasZarrita = typeof window.zarrita !== 'undefined';
+                const hasNumcodecs = typeof window.numcodecsPreloaded !== 'undefined';
+                
+                let profilingHTML = `
+                    <strong>Library Load Times:</strong><br>
+                    • JSZip: ${hasJSZip ? '✅ Loaded' : '❌ Failed'}<br>
+                    • Pako (Gzip): ${hasPako ? '✅ Loaded' : '❌ Failed'}<br>
+                    • Zarrita: ${hasZarrita ? '✅ Loaded (26 KB)' : '⏳ Loading...'}<br>
+                    • Numcodecs (Blosc): ${hasNumcodecs ? '✅ Preloaded (1.3 MB)' : '⏳ Preloading in background...'}<br>
+                    <br>
+                    <strong>Total page load: ${totalLoadTime.toFixed(0)}ms</strong><br>
+                    <br>
+                    <em>${hasNumcodecs ? '🚀 Ready for Blosc decompression!' : '⏳ Blosc codec loading in background...'}</em>
+                `;
+                
+                document.getElementById('profilingResults').innerHTML = profilingHTML;
+                
+                // Check again in 500ms if numcodecs isn't loaded yet
+                if (!hasNumcodecs) {
+                    setTimeout(updateProfiling, 500);
+                }
+            };
+            
+            setTimeout(updateProfiling, 500);  // Give ES modules time to load
+        });
+        
+        // Audio playback state
+        let audioContext = null;
+        let currentSource = null;
+        let currentGainNode = null;
+        let isPaused = false;
+        let isLooping = false;
+        let pauseTime = 0;
+        let startTime = 0;
+        let audioDuration = 0;
+        let audioData = null;
+        let audioRate = 0;
+        
+        // Progressive chunk playback
+        let nextStartTime = 0;
+        let scheduledSources = [];
+        let currentPlaybackRate = 1.0;  // User-controllable playback speed
+        let currentChunkIndex = 0;
+        let allChunksData = [];  // Store all chunks for dynamic scheduling
+        
+        // Spectrogram
+        let spectrogramAnalyser = null;
+        let spectrogramAnimationId = null;
+        
+        function togglePlayPause() {
+            if (!audioData) return;
+            
+            const btn = document.getElementById('playPauseBtn');
+            
+            if (isPaused) {
+                // Resume
+                playAudio(pauseTime);
+                btn.textContent = '⏸️ Pause';
+                isPaused = false;
+            } else {
+                // Pause - stop all audio
+                stopAllAudio();
+                pauseTime = audioContext.currentTime - startTime;
+                btn.textContent = '▶️ Play';
+                isPaused = true;
+            }
+        }
+        
+        function stopAllAudio() {
+            // Stop all scheduled chunk sources
+            for (const source of scheduledSources) {
+                try {
+                    source.stop();
+                } catch (e) {
+                    // Already stopped or not started yet
+                }
+            }
+            scheduledSources = [];
+            
+            // Stop current source if any
+            if (currentSource) {
+                try {
+                    currentSource.stop();
+                } catch (e) {
+                    // Already stopped
+                }
+                currentSource = null;
+            }
+            
+            // Stop spectrogram animation
+            if (spectrogramAnimationId) {
+                cancelAnimationFrame(spectrogramAnimationId);
+                spectrogramAnimationId = null;
+            }
+        }
+        
+        function toggleLoop() {
+            isLooping = !isLooping;
+            const btn = document.getElementById('loopBtn');
+            if (isLooping) {
+                btn.classList.add('loop-active');
+                btn.textContent = '🔁 Loop ON';
+            } else {
+                btn.classList.remove('loop-active');
+                btn.textContent = '🔁 Loop';
+            }
+        }
+        
+        function changePlaybackSpeed() {
+            const newRate = parseFloat(document.getElementById('playbackSpeed').value);
+            currentPlaybackRate = newRate;
+            
+            // Update display
+            document.getElementById('speedValue').textContent = newRate.toFixed(1);
+            
+            console.log(`🎚️ Playback speed changed to ${newRate}x`);
+            console.log(`   Next chunk will use new speed (dynamic scheduling adapts automatically!)`);
+            
+            // Note: Already-playing chunks keep their speed, but future chunks use the new rate
+            // This is intentional - changing speed mid-chunk would cause audio glitches
+        }
+        
+        async function playProgressiveChunks(data, originalSampleRate, audioSampleRate) {
+            console.log('🎵 Starting ADAPTIVE progressive chunk playback...');
+            
+            // Progressive chunk sizes (in seconds of ORIGINAL data)
+            // Progressive loading for instant playback
+            const chunkSizes = [
+                60,   // 1 minute    (instant playback)
+                120,  // 2 minutes   (ramp up)
+                300,  // 5 minutes   (ramp up)
+                600,  // 10 minutes  (steady state)
+            ];
+            
+            // Split data into progressive chunks
+            allChunksData = [];
+            let offset = 0;
+            let chunkSizeIndex = 0;
+            
+            while (offset < data.length) {
+                // Use progressive sizes for first few chunks, then stick with largest
+                const chunkSizeSeconds = chunkSizes[Math.min(chunkSizeIndex, chunkSizes.length - 1)];
+                const samplesInChunk = Math.floor(originalSampleRate * chunkSizeSeconds);
+                const endIdx = Math.min(offset + samplesInChunk, data.length);
+                
+                allChunksData.push({
+                    data: data.slice(offset, endIdx),
+                    sizeSeconds: chunkSizeSeconds,
+                    index: allChunksData.length
+                });
+                
+                offset = endIdx;
+                chunkSizeIndex++;
+            }
+            
+            console.log(`📦 Split into ${allChunksData.length} adaptive chunks:`);
+            allChunksData.forEach((chunk, i) => {
+                const playbackTime = chunk.data.length / audioSampleRate;
+                console.log(`   Chunk ${i + 1}: ${chunk.sizeSeconds}s data = ${playbackTime.toFixed(2)}s playback @ ${audioSampleRate} Hz`);
+                
+                // Debug: Check for discontinuities at chunk boundaries
+                if (i > 0) {
+                    const prevChunk = allChunksData[i - 1];
+                    const lastSample = prevChunk.data[prevChunk.data.length - 1];
+                    const firstSample = chunk.data[0];
+                    const jump = Math.abs(firstSample - lastSample);
+                    if (jump > 0.1) {
+                        console.warn(`   ⚠️ Large discontinuity at chunk ${i} boundary: ${lastSample.toFixed(4)} → ${firstSample.toFixed(4)} (jump: ${jump.toFixed(4)})`);
+                    }
+                }
+            });
+            
+            // Reset state
+            currentChunkIndex = 0;
+            nextStartTime = 0;
+            scheduledSources = [];
+            
+            // Create/reuse gain node
+            if (!currentGainNode) {
+                currentGainNode = audioContext.createGain();
+                currentGainNode.gain.value = 1.0;
+                currentGainNode.connect(audioContext.destination);
+            }
+            
+            // Start spectrogram animation
+            if (spectrogramAnalyser && !spectrogramAnimationId) {
+                spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+            }
+            
+            // Schedule first chunk immediately
+            scheduleNextChunk(audioSampleRate);
+        }
+        
+        function scheduleNextChunk(audioSampleRate) {
+            if (currentChunkIndex >= allChunksData.length) {
+                console.log('🎵 All chunks scheduled!');
+                return;
+            }
+            
+            const chunk = allChunksData[currentChunkIndex];
+            const chunkIndicator = document.getElementById('chunkIndicator');
+            
+            console.log(`🔄 Scheduling chunk ${currentChunkIndex + 1}/${allChunksData.length}...`);
+            
+            // Create audio buffer with tiny fade-in/out to prevent clicks
+            const buffer = audioContext.createBuffer(1, chunk.data.length, audioSampleRate);
+            const channelData = new Float32Array(chunk.data);
+            
+            // Apply 5ms crossfade at boundaries (except first chunk start and last chunk end)
+            const fadeLength = Math.min(Math.floor(audioSampleRate * 0.005), chunk.data.length / 4); // 5ms or 25% of chunk
+            
+            // Fade in (except first chunk)
+            if (currentChunkIndex > 0) {
+                for (let i = 0; i < fadeLength; i++) {
+                    const fade = i / fadeLength;
+                    channelData[i] *= fade;
+                }
+            }
+            
+            // Fade out (except last chunk)
+            if (currentChunkIndex < allChunksData.length - 1) {
+                for (let i = 0; i < fadeLength; i++) {
+                    const fade = i / fadeLength;
+                    channelData[channelData.length - 1 - i] *= fade;
+                }
+            }
+            
+            buffer.copyToChannel(channelData, 0);
+            
+            // Create source
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.playbackRate.value = currentPlaybackRate;  // ✅ Uses dynamic playback rate!
+            source.loop = false;
+            
+            // Connect to gain and spectrogram
+            source.connect(currentGainNode);
+            if (spectrogramAnalyser) {
+                source.connect(spectrogramAnalyser);
+            }
+            
+            // Calculate when this chunk should start
+            if (nextStartTime === 0 || nextStartTime < audioContext.currentTime) {
+                nextStartTime = audioContext.currentTime + 0.05; // Small buffer
+            }
+            
+            // 🔴 RED BLINK when chunk starts!
+            const blinkDelay = Math.max(0, (nextStartTime - audioContext.currentTime) * 1000);
+            setTimeout(() => {
+                chunkIndicator.style.display = 'inline';
+                setTimeout(() => {
+                    chunkIndicator.style.display = 'none';
+                }, 200);
+            }, blinkDelay);
+            
+            // Schedule this chunk
+            source.start(nextStartTime);
+            scheduledSources.push(source);
+            
+            // Calculate duration WITH current playback rate
+            const duration = buffer.length / buffer.sampleRate / source.playbackRate.value;
+            
+            console.log(`✅ Chunk ${currentChunkIndex + 1}: ${chunk.data.length.toLocaleString()} samples, ${duration.toFixed(2)}s playback, starts at ${nextStartTime.toFixed(3)}s (rate: ${currentPlaybackRate.toFixed(2)}x)`);
+            
+            // Update next start time
+            nextStartTime += duration;
+            
+            // Store the chunk index for this specific source
+            const thisChunkIndex = currentChunkIndex;
+            
+            // ✅ DYNAMIC SCHEDULING: Chain to next chunk when this one ends
+            source.onended = () => {
+                console.log(`🎵 Chunk ${thisChunkIndex + 1} finished`);
+                
+                // Check if this is the last chunk
+                if (thisChunkIndex >= allChunksData.length - 1) {
+                    if (!isLooping && !isPaused) {
+                        console.log('🎵 All chunks finished playing');
+                        if (spectrogramAnimationId) {
+                            cancelAnimationFrame(spectrogramAnimationId);
+                            spectrogramAnimationId = null;
+                        }
+                        const btn = document.getElementById('playPauseBtn');
+                        btn.textContent = '▶️ Play';
+                        isPaused = true;
+                        pauseTime = 0;
+                    }
+                }
+                // Note: We don't schedule here anymore - all chunks are pre-scheduled
+            };
+            
+            currentChunkIndex++;
+            
+            // Always pre-schedule the next chunk for gapless playback
+            if (currentChunkIndex < allChunksData.length) {
+                scheduleNextChunk(audioSampleRate);
+            }
+        }
+        
+        function playAudio(offset = 0) {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            // Stop any existing audio
+            if (currentSource) {
+                currentSource.stop();
+            }
+            
+            // Create buffer
+            const buffer = audioContext.createBuffer(1, audioData.length, audioRate);
+            buffer.getChannelData(0).set(audioData);
+            
+            // Create source
+            currentSource = audioContext.createBufferSource();
+            currentSource.buffer = buffer;
+            
+            // Create gain node
+            if (!currentGainNode) {
+                currentGainNode = audioContext.createGain();
+                currentGainNode.gain.value = 1.0;
+                currentGainNode.connect(audioContext.destination);
+            }
+            
+            currentSource.connect(currentGainNode);
+            
+            // Connect to spectrogram analyser
+            if (spectrogramAnalyser) {
+                currentSource.connect(spectrogramAnalyser);
+            }
+            
+            // Handle end
+            currentSource.onended = () => {
+                if (isLooping && !isPaused) {
+                    playAudio(0);
+                } else {
+                    document.getElementById('playPauseBtn').textContent = '▶️ Play';
+                    isPaused = true;
+                    pauseTime = 0;
+                }
+            };
+            
+            // Start playback
+            startTime = audioContext.currentTime - offset;
+            currentSource.start(0, offset);
+            
+            // Start spectrogram
+            if (spectrogramAnalyser && !spectrogramAnimationId) {
+                drawSpectrogramFrame();
+            }
+        }
+        
+        // Spectrogram visualization
+        function drawSpectrogramFrame() {
+            if (!spectrogramAnalyser) return;
+            
+            const canvas = document.getElementById('spectrogram');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Get frequency data
+            const bufferLength = spectrogramAnalyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            spectrogramAnalyser.getByteFrequencyData(dataArray);
+            
+            // Scroll left
+            const imageData = ctx.getImageData(1, 0, width - 1, height);
+            ctx.putImageData(imageData, 0, 0);
+            
+            // Draw new column on right
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const percent = value / 255;
+                const y = height - (i / bufferLength) * height;
+                const barHeight = height / bufferLength;
+                
+                // Inferno colormap
+                const r = Math.min(255, percent * 255 * 1.5);
+                const g = Math.min(255, Math.max(0, (percent - 0.3) * 255 * 2));
+                const b = Math.min(255, Math.max(0, (percent - 0.7) * 255 * 3));
+                
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fillRect(width - 1, y - barHeight, 1, barHeight);
+            }
+            
+            spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+        }
+        
+        async function fetchAndPlay() {
+            const volcano = document.getElementById('volcano').value;
+            const hours = parseInt(document.getElementById('duration').value);
+            const format = document.getElementById('format').value;
+            const level = parseInt(document.getElementById('level').value);
+            const speedup = parseInt(document.getElementById('speedup').value);
+            
+            const status = document.getElementById('status');
+            const fetchBtn = document.getElementById('fetchBtn');
+            
+            // Stop any existing audio (all sources and spectrogram)
+            stopAllAudio();
+            isPaused = false;
+            pauseTime = 0;
+            
+            fetchBtn.disabled = true;
+            status.className = 'status info';
+            status.textContent = `Fetching ${hours}h of ${volcano} data with ${format} compression (level ${level})...`;
+            
+            const timings = {};
+            const overallStart = performance.now();
+            
+            try {
+                // Fetch data
+                const fetchStart = performance.now();
+                let param;
+                if (format === 'blosc') {
+                    param = `format=blosc&blosc_level=${level}`;
+                } else if (format === 'zstd') {
+                    param = `format=zstd&zstd_level=${level}`;
+                } else {
+                    param = `gzip_level=${level}`;
+                }
+                const response = await fetch(`http://localhost:5001/api/zarr/${volcano}/${hours}?${param}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const blob = await response.blob();
+                timings.download = performance.now() - fetchStart;
+                timings.fileSize = blob.size;
+                
+                // Unzip
+                const unzipStart = performance.now();
+                const zip = await JSZip.loadAsync(blob);
+                timings.unzip = performance.now() - unzipStart;
+                
+                // Parse Zarr metadata
+                const metadataStart = performance.now();
+                const zarrFiles = Object.keys(zip.files);
+                console.log('Zarr files:', zarrFiles);
+                
+                const metadataText = await zip.file('data.zarr/amplitude/.zarray').async('text');
+                const metadata = JSON.parse(metadataText);
+                console.log('Zarr metadata:', metadata);
+                
+                const attrsText = await zip.file('data.zarr/amplitude/.zattrs').async('text');
+                const attrs = JSON.parse(attrsText);
+                console.log('Zarr amplitude attributes:', attrs);
+                
+                // Get dataset-level attributes (where sampling_rate is stored)
+                const datasetAttrsText = await zip.file('data.zarr/.zattrs').async('text');
+                const datasetAttrs = JSON.parse(datasetAttrsText);
+                console.log('Zarr dataset attributes:', datasetAttrs);
+                
+                const originalSamplingRate = datasetAttrs.sampling_rate;
+                const compressionFormat = datasetAttrs.compression_format;
+                const compressionLevel = datasetAttrs.compression_level;
+                
+                console.log('Sampling rate:', originalSamplingRate);
+                console.log('Compression:', compressionFormat, 'level', compressionLevel);
+                
+                if (!originalSamplingRate || !isFinite(originalSamplingRate)) {
+                    throw new Error(`Invalid sampling rate: ${originalSamplingRate}`);
+                }
+                
+                timings.metadata = performance.now() - metadataStart;
+                
+                // Find and decompress amplitude chunks
+                const decompressStart = performance.now();
+                const chunkFiles = zarrFiles.filter(f => f.startsWith('data.zarr/amplitude/') && f.match(/\/\d+$/));
+                console.log(`Found ${chunkFiles.length} chunks:`, chunkFiles);
+                
+                const chunks = [];
+                let totalLength = 0;
+                
+                for (const chunkPath of chunkFiles) {
+                    const compressedData = await zip.file(chunkPath).async('uint8array');
+                    
+                    let decompressedData;
+                    if (compressionFormat === 'blosc') {
+                        // Blosc decompression using numcodecs
+                        console.log('Decompressing with Blosc...');
+                        
+                        // Import numcodecs Blosc codec
+                        const numcodecs = await import('https://cdn.jsdelivr.net/npm/numcodecs@0.3.1/+esm');
+                        
+                        // Create Blosc codec instance
+                        const bloscCodec = numcodecs.Blosc.fromConfig({
+                            cname: 'zstd',
+                            clevel: compressionLevel,
+                            shuffle: numcodecs.Blosc.SHUFFLE
+                        });
+                        
+                        console.log('Compressed:', compressedData.length, 'bytes');
+                        
+                        // Decode
+                        decompressedData = await bloscCodec.decode(compressedData);
+                        console.log('Decompressed:', decompressedData.length, 'bytes');
+                    } else if (compressionFormat === 'zstd') {
+                        // Zstd decompression using numcodecs
+                        console.log('Decompressing with Zstd...');
+                        
+                        // Import numcodecs Zstd codec
+                        const numcodecs = await import('https://cdn.jsdelivr.net/npm/numcodecs@0.3.1/+esm');
+                        
+                        // Create Zstd codec instance
+                        const zstdCodec = numcodecs.Zstd.fromConfig({
+                            level: compressionLevel
+                        });
+                        
+                        console.log('Compressed:', compressedData.length, 'bytes');
+                        
+                        // Decode
+                        decompressedData = await zstdCodec.decode(compressedData);
+                        console.log('Decompressed:', decompressedData.length, 'bytes');
+                    } else {
+                        // Gzip decompression
+                        decompressedData = pako.inflate(compressedData);
+                    }
+                    
+                    // Convert to int16 array
+                    const int16Array = new Int16Array(decompressedData.buffer);
+                    chunks.push(int16Array);
+                    totalLength += int16Array.length;
+                }
+                
+                // Concatenate all chunks efficiently
+                const allData = new Int16Array(totalLength);
+                let offset = 0;
+                for (const chunk of chunks) {
+                    allData.set(chunk, offset);
+                    offset += chunk.length;
+                }
+                
+                timings.decompress = performance.now() - decompressStart;
+                console.log(`Total data points: ${allData.length}`);
+                
+                // Process data (detrend, taper, normalize)
+                const processStart = performance.now();
+                
+                console.log('Processing data...');
+                console.log('Sample values (first 10):', allData.slice(0, 10));
+                console.log('Data type:', allData[0], 'Min:', Math.min(...allData.slice(0, 1000)), 'Max:', Math.max(...allData.slice(0, 1000)));
+                
+                // Convert int16 to float32 first (normalize from int16 range to -1.0 to 1.0)
+                const float32Data = new Float32Array(allData.length);
+                for (let i = 0; i < allData.length; i++) {
+                    float32Data[i] = allData[i] / 32768.0;  // Normalize int16 to float
+                }
+                
+                // Detrend
+                let sum = 0;
+                let validCount = 0;
+                for (let i = 0; i < float32Data.length; i++) {
+                    if (isFinite(float32Data[i])) {
+                        sum += float32Data[i];
+                        validCount++;
+                    }
+                }
+                const mean = validCount > 0 ? sum / validCount : 0;
+                console.log('Mean:', mean);
+                
+                const detrendedData = new Float32Array(float32Data.length);
+                for (let i = 0; i < float32Data.length; i++) {
+                    detrendedData[i] = float32Data[i] - mean;
+                }
+                
+                // NO TAPERING! (Will cause clicks at chunk boundaries)
+                // We'll only fade-in the first chunk during playback
+                
+                // Normalize
+                let maxAbs = 0;
+                for (let i = 0; i < detrendedData.length; i++) {
+                    if (isFinite(detrendedData[i])) {
+                        const abs = Math.abs(detrendedData[i]);
+                        if (abs > maxAbs) maxAbs = abs;
+                    }
+                }
+                
+                console.log('Max absolute value:', maxAbs);
+                
+                if (maxAbs === 0) {
+                    throw new Error('All data is zero after processing');
+                }
+                
+                const normalizedData = new Float32Array(detrendedData.length);
+                for (let i = 0; i < detrendedData.length; i++) {
+                    const val = detrendedData[i] / maxAbs;
+                    normalizedData[i] = isFinite(val) ? val : 0;
+                }
+                
+                console.log('Normalized data sample (first 10):', normalizedData.slice(0, 10));
+                
+                timings.process = performance.now() - processStart;
+                
+                // Store for playback
+                audioData = normalizedData;
+                audioRate = Math.round(originalSamplingRate * speedup);
+                audioDuration = audioData.length / audioRate;
+                
+                // Draw waveform
+                const waveformStart = performance.now();
+                drawWaveform(normalizedData);
+                timings.waveform = performance.now() - waveformStart;
+                
+                // Setup spectrogram
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (!spectrogramAnalyser) {
+                    spectrogramAnalyser = audioContext.createAnalyser();
+                    spectrogramAnalyser.fftSize = 2048;
+                    spectrogramAnalyser.smoothingTimeConstant = 0.8;
+                }
+                
+                // Start progressive chunk playback with RED BLINK indicators
+                const playbackStart = performance.now();
+                await playProgressiveChunks(normalizedData, originalSamplingRate, audioRate);
+                timings.firstChunk = performance.now() - playbackStart;
+                
+                // Enable controls
+                document.getElementById('playPauseBtn').disabled = false;
+                document.getElementById('loopBtn').disabled = false;
+                document.getElementById('playPauseBtn').textContent = '⏸️ Pause';
+                
+                timings.total = performance.now() - overallStart;
+                
+                // Update status
+                status.className = 'status success';
+                status.innerHTML = `
+                    ✅ Success! Playing ${hours}h of ${volcano} data (${speedup}x speedup, ${compressionFormat}-${compressionLevel})<br>
+                    Download: ${timings.download.toFixed(0)}ms | 
+                    Unzip: ${timings.unzip.toFixed(0)}ms | 
+                    Decompress: ${timings.decompress.toFixed(0)}ms | 
+                    Process: ${timings.process.toFixed(0)}ms | 
+                    First Chunk: ${timings.firstChunk.toFixed(0)}ms | 
+                    Total: ${timings.total.toFixed(0)}ms<br>
+                    File Size: ${(timings.fileSize / 1024).toFixed(1)} KB | 
+                    Data Points: ${allData.length.toLocaleString()}
+                `;
+                
+                // Add to log
+                addLogEntry(true, volcano, hours, compressionFormat, compressionLevel, timings, allData.length);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                status.className = 'status error';
+                status.textContent = `❌ Error: ${error.message}`;
+                addLogEntry(false, volcano, hours, format, level, timings, 0, error.message);
+            } finally {
+                fetchBtn.disabled = false;
+            }
+        }
+        
+        function drawWaveform(data) {
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.strokeStyle = '#667eea';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            
+            const step = Math.max(1, Math.floor(data.length / width));
+            
+            for (let i = 0; i < width; i++) {
+                const index = Math.floor(i * step);
+                const value = data[index] || 0;
+                const y = (height / 2) - (value * height / 2);
+                
+                if (i === 0) {
+                    ctx.moveTo(i, y);
+                } else {
+                    ctx.lineTo(i, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+        
+        function addLogEntry(success, volcano, hours, format, level, timings, dataPoints, error = null) {
+            const logEntries = document.getElementById('logEntries');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${success ? 'success' : 'error'}`;
+            
+            if (success) {
+                entry.innerHTML = `
+                    <strong>${timings.total.toFixed(2)}s</strong> | 
+                    ${volcano} ${hours}h | 
+                    ${format}-${level} | 
+                    Size: ${(timings.fileSize / 1024).toFixed(1)} KB | 
+                    DL: ${(timings.download / 1000).toFixed(2)}s | 
+                    Unzip: ${(timings.unzip / 1000).toFixed(2)}s | 
+                    Decomp: ${(timings.decompress / 1000).toFixed(2)}s | 
+                    Proc: ${(timings.process / 1000).toFixed(2)}s | 
+                    Points: ${dataPoints.toLocaleString()}
+                `;
+            } else {
+                entry.innerHTML = `
+                    <strong>FAILED</strong> | 
+                    ${volcano} ${hours}h | 
+                    ${format}-${level} | 
+                    Error: ${error}
+                `;
+            }
+            
+            logEntries.insertBefore(entry, logEntries.firstChild);
+        }
+        
+        // Initialize canvas sizes
+        window.addEventListener('load', () => {
+            const waveform = document.getElementById('waveform');
+            const spectrogram = document.getElementById('spectrogram');
+            
+            waveform.width = waveform.offsetWidth;
+            waveform.height = waveform.offsetHeight;
+            
+            spectrogram.width = spectrogram.offsetWidth;
+            spectrogram.height = spectrogram.offsetHeight;
+        });
+    </script>
+</body>
+</html>
+

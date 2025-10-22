@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <button id="play">Play Mock Zarr Data</button>
+    <script type="module">
+    //   import * as zarr from "https://cdn.jsdelivr.net/npm/zarr@0.7.0/+esm";
+
+      async function fetchAndPlay() {
+        // Example: replace with your actual Zarr store URL
+        // const store = await zarr.openGroup("https://your-zarr-endpoint");
+        // const dataset = await store.getItem("your-dataset-name");
+        // const data = await dataset.get(); // Float32Array
+        // For now, mock some data:
+        const len = 48000 * 5; // 5 seconds @ 48kHz
+        const data = new Float32Array(len).map((_, i) =>
+          Math.sin(2 * Math.PI * 440 * (i / 48000))
+        );
+
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const buffer = ctx.createBuffer(1, data.length, 48000);
+        buffer.copyToChannel(data, 0);
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(ctx.destination);
+        src.start();
+
+        console.log("Playing mock audified data...");
+      }
+
+      document.getElementById("play").addEventListener("click", fetchAndPlay);
+    </script>
+  </body>
+</html>

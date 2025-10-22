@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volcano Audio - True Streaming</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌋</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <script type="module">
+        import * as numcodecs from 'https://cdn.jsdelivr.net/npm/numcodecs@0.3.1/+esm';
+        window.numcodecs = numcodecs;
+        console.log('✅ Numcodecs loaded!');
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #555;
+        }
+        
+        select, input[type="range"] {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        select:focus, input[type="range"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            align-items: center;
+        }
+        
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.pause-active {
+            background: linear-gradient(135deg, #ee6766 0%, #c44ba2 100%);
+        }
+        
+        button.pause-active:hover:not(:disabled) {
+            box-shadow: 0 5px 15px rgba(238, 103, 102, 0.4);
+        }
+        
+        button.play-active {
+            background: linear-gradient(135deg, #66ee9a 0%, #4ba27c 100%);
+        }
+        
+        button.play-active:hover:not(:disabled) {
+            box-shadow: 0 5px 15px rgba(102, 238, 154, 0.4);
+        }
+        
+        button.loop-active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        button.loop-active:hover:not(:disabled) {
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        #playPauseBtn {
+            min-width: 150px;
+        }
+        
+        #loopBtn {
+            min-width: 150px;
+        }
+        
+        .status {
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .status.info {
+            background: #e7f3ff;
+            color: #004085;
+            border-left: 4px solid #004085;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #155724;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #721c24;
+        }
+        
+        canvas {
+            width: 100%;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            background: #f8f9fa;
+        }
+        
+        #waveform {
+            height: 150px;
+        }
+        
+        #spectrogram {
+            height: 300px;
+            background: #000;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .metric {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌋 Volcano Audio Streaming</h1>
+        <p class="subtitle">True progressive streaming - hear audio as it arrives!</p>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="volcano">Volcano:</label>
+                <select id="volcano" onchange="loadStations()">
+                    <option value="kilauea">Kīlauea (HI)</option>
+                    <option value="maunaloa">Mauna Loa (HI)</option>
+                    <option value="greatsitkin">Great Sitkin (AK)</option>
+                    <option value="shishaldin">Shishaldin (AK)</option>
+                    <option value="spurr">Mount Spurr (AK)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="dataType">Data Type:</label>
+                <select id="dataType" onchange="updateStationList()">
+                    <option value="seismic">Seismic (Z-component)</option>
+                    <option value="infrasound">Infrasound</option>
+                </select>
+            </div>
+            
+            <div class="control-group" style="grid-column: span 2;">
+                <label for="station">Station (sorted by distance):</label>
+                <select id="station">
+                    <option value="">Loading stations...</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="duration">Duration:</label>
+                <select id="duration">
+                    <option value="1">1 hour</option>
+                    <option value="2">2 hours</option>
+                    <option value="6">6 hours</option>
+                    <option value="12">12 hours</option>
+                    <option value="24">24 hours</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="format">Compression:</label>
+                <select id="format">
+                    <option value="gzip">Gzip</option>
+                    <option value="blosc">Blosc</option>
+                    <option value="zstd">Zstd</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="level">Level:</label>
+                <select id="level">
+                    <option value="1">1 (fast)</option>
+                    <option value="3">3</option>
+                    <option value="5" selected>5 (balanced)</option>
+                    <option value="7">7</option>
+                    <option value="9">9 (best)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="speedup">Speedup:</label>
+                <select id="speedup">
+                    <option value="50">50x</option>
+                    <option value="100">100x</option>
+                    <option value="200" selected>200x</option>
+                    <option value="400">400x</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="button-group">
+            <button onclick="startStreaming()" id="streamBtn">🎵 Start Streaming</button>
+            <button onclick="togglePlayPause()" id="playPauseBtn" class="secondary" disabled>⏸️ Pause</button>
+            <button onclick="toggleLoop()" id="loopBtn" class="secondary" disabled>🔁 Loop</button>
+            <div style="display: inline-block; margin-left: 20px; vertical-align: middle;">
+                <label for="playbackSpeed" style="font-weight: 600; margin-right: 5px;">Speed: <span id="speedValue">1.0</span>x</label>
+                <input type="range" id="playbackSpeed" min="0.1" max="10" step="0.1" value="1.0" oninput="changePlaybackSpeed()" style="width: 150px; vertical-align: middle;">
+            </div>
+            <span id="chunkIndicator" style="display: none; margin-left: 20px; color: red; font-weight: bold; font-size: 20px;">● CHUNK</span>
+        </div>
+        
+        <div id="status" class="status info">
+            Ready to stream. Select your parameters and click "Start Streaming".
+        </div>
+        
+        <canvas id="waveform" width="1200" height="150"></canvas>
+        <canvas id="spectrogram" width="1200" height="300"></canvas>
+        
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-label">Time to First Audio</div>
+                <div class="metric-value" id="ttfa">--</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Chunks Received</div>
+                <div class="metric-value" id="chunksReceived">0</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Total Downloaded</div>
+                <div class="metric-value" id="totalDownloaded">0 KB</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Playback Progress</div>
+                <div class="metric-value" id="playbackProgress">0%</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global state
+        let audioContext = null;
+        let spectrogramAnalyser = null;
+        let spectrogramAnimationId = null;
+        let spectrogramCanvas = null; // ✅ OPTIMIZATION: Cache canvas element
+        let spectrogramCtx = null; // ✅ OPTIMIZATION: Cache canvas context
+        let currentGainNode = null;
+        let scheduledSources = [];
+        let currentPlaybackRate = 1.0;
+        let isPaused = false;
+        let isLooping = false;
+        
+        // Streaming state
+        let allChunksData = [];
+        let metadata = null;
+        let audioRate = 0;
+        let streamStartTime = 0;
+        let firstAudioTime = 0;
+        let totalBytesReceived = 0;
+        let chunksReceived = 0;
+        
+        // Station data
+        let availableStations = null;
+        
+        // Playback queue
+        let chunkQueue = [];
+        let isPlaying = false;
+        let currentSource = null;
+        
+        // Load stations on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadStations();
+        });
+        
+        async function loadStations() {
+            const volcano = document.getElementById('volcano').value;
+            const stationSelect = document.getElementById('station');
+            stationSelect.innerHTML = '<option value="">Loading stations...</option>';
+            
+            try {
+                const response = await fetch(`http://localhost:5001/api/stations/${volcano}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                availableStations = await response.json();
+                updateStationList();
+            } catch (error) {
+                console.error('Failed to load stations:', error);
+                stationSelect.innerHTML = '<option value="">Error loading stations</option>';
+            }
+        }
+        
+        function updateStationList() {
+            if (!availableStations) return;
+            
+            const dataType = document.getElementById('dataType').value;
+            const stationSelect = document.getElementById('station');
+            const stations = availableStations[dataType] || [];
+            
+            if (stations.length === 0) {
+                stationSelect.innerHTML = '<option value="">No stations available</option>';
+                return;
+            }
+            
+            stationSelect.innerHTML = '';
+            stations.forEach(station => {
+                const option = document.createElement('option');
+                option.value = JSON.stringify({
+                    network: station.network,
+                    station: station.station,
+                    location: station.location,
+                    channel: station.channel
+                });
+                option.textContent = station.label;
+                stationSelect.appendChild(option);
+            });
+        }
+        
+        function stopAllAudio() {
+            // Stop current source
+            if (currentSource) {
+                try { currentSource.stop(); } catch (e) {}
+                currentSource = null;
+            }
+            
+            // Stop all scheduled sources
+            for (const source of scheduledSources) {
+                try { source.stop(); } catch (e) {}
+            }
+            scheduledSources = [];
+            
+            // Clear the queue
+            chunkQueue = [];
+            isPlaying = false;
+            
+            // Stop spectrogram animation
+            if (spectrogramAnimationId) {
+                cancelAnimationFrame(spectrogramAnimationId);
+                spectrogramAnimationId = null;
+            }
+        }
+        
+        function togglePlayPause() {
+            if (!audioContext) return;
+            
+            console.log(`⏯️ togglePlayPause BEFORE: isPlaying=${isPlaying}, isPaused=${isPaused}, queue=${chunkQueue.length}`);
+            
+            const btn = document.getElementById('playPauseBtn');
+            
+            // ✅ If audio has finished, clicking play button should restart from beginning
+            if (!isPlaying && isPaused && chunkQueue.length === 0 && allChunksData.length > 0) {
+                console.log('🔄 Restarting playback from beginning...');
+                
+                // Re-populate the queue from stored chunk data
+                chunkQueue = [];
+                allChunksData.forEach((chunkData, index) => {
+                    chunkQueue.push({ data: chunkData, index: index });
+                });
+                
+                // Reset state
+                isPaused = false;
+                isPlaying = false;
+                btn.textContent = '⏸️ Pause';
+                btn.classList.remove('play-active', 'secondary');
+                btn.classList.add('pause-active');
+                
+                // Resume audio context
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                
+                // Start spectrogram
+                if (!spectrogramAnimationId && spectrogramAnalyser) {
+                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                }
+                
+                // Start playing from the beginning
+                playNextChunk();
+                return;
+            }
+            
+            isPaused = !isPaused;
+            
+            if (isPaused) {
+                // Pause
+                audioContext.suspend();
+                btn.textContent = '▶️ Resume';
+                btn.classList.remove('pause-active');
+                btn.classList.add('play-active');
+                
+                // ✅ OPTIMIZATION: Stop spectrogram animation when paused to save CPU
+                if (spectrogramAnimationId) {
+                    cancelAnimationFrame(spectrogramAnimationId);
+                    spectrogramAnimationId = null;
+                }
+                
+                console.log('⏸️ Audio paused');
+            } else {
+                // Resume
+                audioContext.resume();
+                btn.textContent = '⏸️ Pause';
+                btn.classList.remove('play-active');
+                btn.classList.add('pause-active');
+                
+                // ✅ OPTIMIZATION: Restart spectrogram animation when resumed
+                if (!spectrogramAnimationId && spectrogramAnalyser && isPlaying) {
+                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                }
+                
+                console.log('▶️ Audio resumed');
+            }
+        }
+        
+        function toggleLoop() {
+            isLooping = !isLooping;
+            const btn = document.getElementById('loopBtn');
+            
+            if (isLooping) {
+                btn.classList.remove('secondary');
+                btn.classList.add('loop-active');
+                btn.textContent = '🔁 Loop ON';
+            } else {
+                btn.classList.remove('loop-active');
+                btn.classList.add('secondary');
+                btn.textContent = '🔁 Loop';
+            }
+        }
+        
+        function changePlaybackSpeed() {
+            const newRate = parseFloat(document.getElementById('playbackSpeed').value);
+            currentPlaybackRate = newRate;
+            document.getElementById('speedValue').textContent = newRate.toFixed(1);
+            
+            // Update currently playing source immediately
+            if (currentSource) {
+                currentSource.playbackRate.value = newRate;
+            }
+            
+            // Update all scheduled sources
+            for (const source of scheduledSources) {
+                try {
+                    source.playbackRate.value = newRate;
+                } catch (e) {}
+            }
+            
+            console.log(`🎚️ Playback speed changed to ${newRate}x (real-time update)`);
+        }
+        
+        async function startStreaming() {
+            const volcano = document.getElementById('volcano').value;
+            const hours = parseInt(document.getElementById('duration').value);
+            const format = document.getElementById('format').value;
+            const level = parseInt(document.getElementById('level').value);
+            const speedup = parseInt(document.getElementById('speedup').value);
+            
+            const stationSelect = document.getElementById('station');
+            if (!stationSelect.value) {
+                alert('Please select a station');
+                return;
+            }
+            
+            const stationData = JSON.parse(stationSelect.value);
+            const stationLabel = stationSelect.options[stationSelect.selectedIndex].text;
+            
+            const status = document.getElementById('status');
+            const streamBtn = document.getElementById('streamBtn');
+            
+            console.log(`🎬 START STREAMING CLICKED: isPlaying=${isPlaying}, isPaused=${isPaused}, queue=${chunkQueue.length}`);
+            
+            stopAllAudio();
+            console.log(`🛑 After stopAllAudio: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+            allChunksData = [];
+            metadata = null;
+            totalBytesReceived = 0;
+            chunksReceived = 0;
+            streamStartTime = performance.now();
+            firstAudioTime = 0;
+            chunkQueue = [];
+            isPlaying = false;
+            isPaused = false; // ✅ Reset pause state for new stream
+            currentSource = null;
+            
+            // ✅ Clear spectrogram canvas for new stream
+            if (spectrogramCanvas && spectrogramCtx) {
+                spectrogramCtx.clearRect(0, 0, spectrogramCanvas.width, spectrogramCanvas.height);
+            }
+            
+            // ✅ Just disable buttons in their current state (don't change appearance)
+            document.getElementById('playPauseBtn').disabled = true;
+            document.getElementById('loopBtn').disabled = true;
+            
+            streamBtn.disabled = true;
+            status.className = 'status info';
+            status.textContent = `Connecting to ${stationLabel}...`;
+            
+            try {
+                // Initialize audio context
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                await audioContext.resume();
+                
+                if (!spectrogramAnalyser) {
+                    spectrogramAnalyser = audioContext.createAnalyser();
+                    spectrogramAnalyser.fftSize = 2048;
+                    spectrogramAnalyser.smoothingTimeConstant = 0.8;
+                }
+                
+                if (!currentGainNode) {
+                    currentGainNode = audioContext.createGain();
+                    currentGainNode.gain.value = 1.0;
+                    currentGainNode.connect(audioContext.destination);
+                }
+                
+                // Start streaming with selected station parameters
+                const url = `http://localhost:5001/api/stream/${volcano}/${hours}?` + 
+                    `format=${format}&level=${level}&` +
+                    `network=${stationData.network}&station=${stationData.station}&` +
+                    `location=${stationData.location}&channel=${stationData.channel}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let byteBuffer = new Uint8Array(0);
+                let expectingBinary = false;
+                let nextChunkSize = 0;
+                
+                while (true) {
+                    const {done, value} = await reader.read();
+                    
+                    if (done) {
+                        console.log('🎵 Stream complete!');
+                        break;
+                    }
+                    
+                    totalBytesReceived += value.length;
+                    document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                    
+                    // Append to byte buffer
+                    const newBuffer = new Uint8Array(byteBuffer.length + value.length);
+                    newBuffer.set(byteBuffer);
+                    newBuffer.set(value, byteBuffer.length);
+                    byteBuffer = newBuffer;
+                    
+                    // Process buffer
+                    while (byteBuffer.length > 0) {
+                        if (expectingBinary) {
+                            // Waiting for binary chunk data
+                            if (byteBuffer.length < nextChunkSize + 1) {
+                                // Not enough data yet (need chunk + newline)
+                                break;
+                            }
+                            
+                            // Extract binary chunk
+                            const chunkData = byteBuffer.slice(0, nextChunkSize);
+                            await processChunk(chunkData, format);
+                            
+                            // Remove chunk + newline from buffer
+                            byteBuffer = byteBuffer.slice(nextChunkSize + 1);
+                            expectingBinary = false;
+                            nextChunkSize = 0;
+                        } else {
+                            // Looking for JSON line - find newline in raw bytes
+                            let newlineIndex = -1;
+                            for (let i = 0; i < byteBuffer.length; i++) {
+                                if (byteBuffer[i] === 10) { // '\n' is byte 10
+                                    newlineIndex = i;
+                                    break;
+                                }
+                            }
+                            
+                            if (newlineIndex === -1) {
+                                // No complete line yet
+                                break;
+                            }
+                            
+                            // Extract and decode only the JSON line
+                            const lineBytes = byteBuffer.slice(0, newlineIndex);
+                            const line = decoder.decode(lineBytes).trim();
+                            byteBuffer = byteBuffer.slice(newlineIndex + 1); // Skip the newline
+                            
+                            if (!line) continue;
+                            
+                            try {
+                                const message = JSON.parse(line);
+                                
+                                if (message.type === 'metadata') {
+                                    metadata = message;
+                                    audioRate = Math.round(message.sampling_rate * speedup);
+                                    console.log('📊 Metadata received:', metadata);
+                                    status.textContent = `Streaming ${hours}h from ${stationLabel} (${message.sampling_rate} Hz, ${speedup}x speedup)...`;
+                                } else if (message.type === 'chunk') {
+                                    console.log(`📦 Chunk ${message.index} header: ${message.samples} samples, ${message.compressed_size} bytes`);
+                                    expectingBinary = true;
+                                    nextChunkSize = message.compressed_size;
+                                } else if (message.type === 'complete') {
+                                    console.log(`✅ Stream complete! ${message.total_chunks} chunks received`);
+                                    status.className = 'status success';
+                                    status.textContent = `✅ Stream complete! ${message.total_chunks} chunks, ${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                                }
+                            } catch (e) {
+                                console.error('Failed to parse JSON:', e, line);
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Streaming error:', error);
+                status.className = 'status error';
+                status.textContent = `❌ Error: ${error.message}`;
+            } finally {
+                streamBtn.disabled = false;
+            }
+        }
+        
+        async function processChunk(compressedData, format) {
+            const t0 = performance.now();
+            
+            // Decompress
+            let decompressed;
+            if (format === 'blosc') {
+                const codec = window.numcodecs.Blosc.fromConfig({cname: 'zstd', clevel: 5, shuffle: 1});
+                decompressed = await codec.decode(compressedData);
+            } else if (format === 'zstd') {
+                const codec = window.numcodecs.Zstd.fromConfig({level: 5});
+                decompressed = await codec.decode(compressedData);
+            } else {
+                decompressed = pako.inflate(compressedData);
+            }
+            const t1 = performance.now();
+            
+            // Convert to int16 array
+            const int16Data = new Int16Array(decompressed.buffer);
+            
+            // Convert to float32 for Web Audio
+            const float32Data = new Float32Array(int16Data.length);
+            for (let i = 0; i < int16Data.length; i++) {
+                float32Data[i] = int16Data[i] / 32768.0;
+            }
+            const t2 = performance.now();
+            
+            // Store chunk
+            allChunksData.push(float32Data);
+            chunksReceived++;
+            document.getElementById('chunksReceived').textContent = chunksReceived;
+            
+            // Add to queue
+            chunkQueue.push({data: float32Data, index: chunksReceived - 1});
+            
+            // Play first chunk immediately!
+            if (chunksReceived === 1) {
+                firstAudioTime = performance.now() - streamStartTime;
+                document.getElementById('ttfa').textContent = `${firstAudioTime.toFixed(0)}ms`;
+                
+                const t3 = performance.now();
+                console.log(`⚡ CHUNK 1 BREAKDOWN: Decompress=${(t1-t0).toFixed(1)}ms | Convert=${(t2-t1).toFixed(1)}ms | TOTAL=${(t3-t0).toFixed(1)}ms`);
+                
+                // Enable controls
+                const playPauseBtn = document.getElementById('playPauseBtn');
+                playPauseBtn.disabled = false;
+                playPauseBtn.textContent = '⏸️ Pause';
+                playPauseBtn.classList.remove('secondary', 'play-active');
+                playPauseBtn.classList.add('pause-active');
+                
+                document.getElementById('loopBtn').disabled = false;
+                
+                // ✅ Set playing state BEFORE starting spectrogram so it doesn't immediately stop
+                isPlaying = true;
+                isPaused = false; // ✅ CRITICAL: Reset pause state in case old audio set it to true
+                console.log(`🎬 Starting first chunk playback: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                
+                // ✅ ALWAYS restart spectrogram for new stream (force restart even if already running)
+                if (spectrogramAnimationId) {
+                    console.log('🎨 Canceling existing spectrogram animation');
+                    cancelAnimationFrame(spectrogramAnimationId);
+                }
+                spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                console.log(`🎨 Spectrogram started: animId=${spectrogramAnimationId}`);
+                
+                // Start playing from queue
+                playNextChunk();
+            }
+        }
+        
+        function playNextChunk() {
+            console.log(`▶️ playNextChunk: queue=${chunkQueue.length}, isPlaying=${isPlaying}, isPaused=${isPaused}`);
+            
+            if (chunkQueue.length === 0) {
+                currentSource = null;
+                
+                // ✅ Handle looping or stopping
+                if (isLooping && allChunksData.length > 0) {
+                    console.log('🔁 Looping - restarting from beginning...');
+                    
+                    // Re-populate the queue from stored chunk data
+                    allChunksData.forEach((chunkData, index) => {
+                        chunkQueue.push({ data: chunkData, index: index });
+                    });
+                    
+                    // Keep playing (don't set isPlaying = false)
+                    // Immediately play the next chunk (which is now the first chunk again)
+                    playNextChunk();
+                    return;
+                } else {
+                    // Not looping - stop playback
+                    isPlaying = false;
+                    const btn = document.getElementById('playPauseBtn');
+                    
+                    // ✅ Only update button if it's enabled (don't interfere with new stream loading)
+                    if (!btn.disabled) {
+                        btn.textContent = '▶️ Play';
+                        btn.classList.remove('pause-active');
+                        btn.classList.add('play-active');
+                    }
+                    isPaused = true;
+                    console.log(`🏁 Audio finished playing: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                    return;
+                }
+            }
+            
+            const {data, index} = chunkQueue.shift();
+            isPlaying = true;
+            console.log(`▶️ Playing chunk ${index + 1}: isPlaying=${isPlaying}`);
+            
+            // Create audio buffer with crossfade
+            const buffer = audioContext.createBuffer(1, data.length, audioRate);
+            const channelData = new Float32Array(data);
+            
+            // Apply 5ms crossfade
+            const fadeLength = Math.min(Math.floor(audioRate * 0.005), data.length / 4);
+            
+            if (index > 0) {
+                for (let i = 0; i < fadeLength; i++) {
+                    channelData[i] *= i / fadeLength;
+                }
+            }
+            
+            for (let i = 0; i < fadeLength; i++) {
+                channelData[channelData.length - 1 - i] *= i / fadeLength;
+            }
+            
+            buffer.copyToChannel(channelData, 0);
+            
+            // Create and play source
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.playbackRate.value = currentPlaybackRate;
+            source.connect(currentGainNode);
+            source.connect(spectrogramAnalyser);
+            
+            currentSource = source;
+            scheduledSources.push(source);
+            
+            // Chain to next chunk when this one ends
+            source.onended = () => {
+                playNextChunk();
+            };
+            
+            // Start immediately
+            source.start(0);
+            
+            // Blink indicator
+            const indicator = document.getElementById('chunkIndicator');
+            indicator.style.display = 'inline';
+            setTimeout(() => indicator.style.display = 'none', 200);
+            
+            const duration = buffer.length / buffer.sampleRate / source.playbackRate.value;
+            console.log(`🎵 Chunk ${index + 1} playing: duration ${duration.toFixed(2)}s, rate ${source.playbackRate.value}x`);
+        }
+        
+        
+        function drawSpectrogramFrame() {
+            // ✅ OPTIMIZATION: Stop animation if no audio is playing or paused
+            if (!spectrogramAnimationId || !spectrogramAnalyser || !isPlaying || isPaused) {
+                console.log(`🎨 Spectrogram stopped: animId=${!!spectrogramAnimationId}, analyser=${!!spectrogramAnalyser}, isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                spectrogramAnimationId = null;
+                return;
+            }
+            
+            // ✅ OPTIMIZATION: Cache canvas element and context (avoid repeated DOM lookups)
+            if (!spectrogramCanvas) {
+                spectrogramCanvas = document.getElementById('spectrogram');
+            }
+            if (!spectrogramCtx) {
+                spectrogramCtx = spectrogramCanvas.getContext('2d', { willReadFrequently: true });
+            }
+            const ctx = spectrogramCtx;
+            const width = spectrogramCanvas.width;
+            const height = spectrogramCanvas.height;
+            
+            const bufferLength = spectrogramAnalyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            spectrogramAnalyser.getByteFrequencyData(dataArray);
+            
+            // Scroll left
+            const imageData = ctx.getImageData(1, 0, width - 1, height);
+            ctx.putImageData(imageData, 0, 0);
+            
+            // Draw new column
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const percent = value / 255;
+                const y = height - (i / bufferLength) * height;
+                const barHeight = height / bufferLength;
+                
+                const r = Math.min(255, percent * 255 * 1.5);
+                const g = Math.min(255, Math.max(0, (percent - 0.3) * 255 * 2));
+                const b = Math.min(255, Math.max(0, (percent - 0.7) * 255 * 3));
+                
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fillRect(width - 1, y - barHeight, 1, barHeight);
+            }
+            
+            // ✅ OPTIMIZATION: Only continue if still playing
+            if (isPlaying) {
+                spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+            } else {
+                spectrogramAnimationId = null;
+            }
+        }
+    </script>
+</body>
+</html>
+
