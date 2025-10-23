@@ -14,6 +14,9 @@ import json
 import zarr
 from numcodecs import Blosc, Zstd, Zlib
 from pathlib import Path
+import time
+import gzip
+import boto3
 
 app = Flask(__name__)
 CORS(app)
@@ -21,6 +24,272 @@ CORS(app)
 # Configuration
 MAX_RADIUS_KM = 13.0 * 1.60934  # 13 miles converted to km
 REQUIRED_COMPONENT = 'Z'  # Z-component only (vertical)
+
+# Cloudflare R2 configuration (S3-compatible)
+R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
+R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+
+s3_client = boto3.client(
+    's3',
+    endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+    aws_access_key_id=R2_ACCESS_KEY_ID,
+    aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+    region_name='auto'
+)
+
+PROGRESSIVE_CHUNK_SIZES_KB = [8, 16, 32, 64, 128, 256]
+REMAINING_CHUNK_KB = 512
+
+def generate_cache_key(volcano: str, hours_ago: int, duration_hours: int) -> str:
+    import hashlib
+    key_string = f"{volcano}_{hours_ago}h_ago_{duration_hours}h_duration"
+    return hashlib.md5(key_string.encode()).hexdigest()[:16]
+
+def r2_key(cache_key: str, compression: str, storage: str, ext: str = '') -> str:
+    return f"cache/{compression}/{storage}/{cache_key}{ext}"
+
+def list_zarr_chunk_keys(prefix: str) -> list:
+    keys = []
+    continuation = None
+    while True:
+        kwargs = {
+            'Bucket': R2_BUCKET_NAME,
+            'Prefix': prefix,
+            'MaxKeys': 1000
+        }
+        if continuation:
+            kwargs['ContinuationToken'] = continuation
+        resp = s3_client.list_objects_v2(**kwargs)
+        for obj in resp.get('Contents', []):
+            key = obj['Key']
+            base = key.split('/')[-1]
+            if base in ['.zarray', '.zattrs', '.zgroup']:
+                continue
+            keys.append(key)
+        if resp.get('IsTruncated'):
+            continuation = resp.get('NextContinuationToken')
+        else:
+            break
+    def sort_key(k: str):
+        tail = k.split('/')[-1]
+        try:
+            return int(tail)
+        except Exception:
+            return tail
+    keys.sort(key=sort_key)
+    return keys
+
+def ensure_cached_in_r2(volcano: str, hours_ago: int, duration_hours: int):
+    """Ensure all variants are cached in R2. Returns (cache_key, profiles, metadata)."""
+    cache_key = generate_cache_key(volcano, hours_ago, duration_hours)
+    # Quick existence check
+    try:
+        s3_client.head_object(Bucket=R2_BUCKET_NAME, Key=r2_key(cache_key, 'int16', 'raw', '.bin'))
+        try:
+            prof = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=f"cache/metadata/{cache_key}_profiles.json")
+            profiles = json.loads(prof['Body'].read())
+        except Exception:
+            profiles = {}
+        try:
+            meta = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=f"cache/metadata/{cache_key}.json")
+            metadata = json.loads(meta['Body'].read())
+        except Exception:
+            metadata = {}
+        return cache_key, profiles, metadata
+    except Exception:
+        pass
+
+    config = VOLCANOES[volcano.lower()]
+    client = Client("IRIS")
+    end_time = UTCDateTime() - (hours_ago * 3600)
+    start_time = end_time - (duration_hours * 3600)
+
+    iris_t0 = time.time()
+    try:
+        stream = client.get_waveforms(
+            network=config['network'],
+            station=config['station'],
+            location=config.get('location', '*'),
+            channel=config['channel'],
+            starttime=start_time,
+            endtime=end_time
+        )
+    except Exception:
+        end_time = UTCDateTime() - (24 * 3600)
+        start_time = end_time - (duration_hours * 3600)
+        stream = client.get_waveforms(
+            network=config['network'],
+            station=config['station'],
+            location=config.get('location', '*'),
+            channel=config['channel'],
+            starttime=start_time,
+            endtime=end_time
+        )
+    iris_fetch_ms = (time.time() - iris_t0) * 1000.0
+
+    stream.merge(method=1, fill_value='interpolate')
+    tr = stream[0]
+
+    # Save mseed to R2 (best effort)
+    try:
+        import io as _io
+        mseed_buf = _io.BytesIO()
+        stream.write(mseed_buf, format='MSEED')
+        mseed_buf.seek(0)
+        s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=f"cache/mseed/{cache_key}.mseed", Body=mseed_buf.read())
+    except Exception:
+        pass
+
+    prep_t0 = time.time()
+    data = tr.data.astype(np.float64)
+    data = data - np.mean(data)
+    max_abs = np.max(np.abs(data))
+    if max_abs > 0:
+        data = data / max_abs
+    data_int16 = (data * 32767.0).astype(np.int16)
+    sample_rate = float(tr.stats.sampling_rate)
+    total_samples = int(data_int16.size)
+    preprocess_ms = (time.time() - prep_t0) * 1000.0
+
+    profiles = {
+        'iris_fetch_ms': iris_fetch_ms,
+        'preprocess_ms': preprocess_ms,
+        'variants': {}
+    }
+
+    # 1) int16/raw
+    raw_bytes = data_int16.tobytes()
+    s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=r2_key(cache_key, 'int16', 'raw', '.bin'), Body=raw_bytes)
+    profiles['variants']['int16/raw'] = {
+        'compress_ms': 0.0,
+        'original_size_bytes': len(raw_bytes),
+        'compressed_size_bytes': len(raw_bytes)
+    }
+
+    def build_and_upload_zarr(arr, compressor, comp_label):
+        t0 = time.time()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zarr_path = os.path.join(tmpdir, 'data.zarr')
+            chunk_len = min(524288, arr.size)  # ~1MB per chunk
+            z = zarr.open(zarr_path, mode='w', shape=arr.shape, chunks=(chunk_len,), dtype='i2', compressor=compressor)
+            z[:] = arr
+            total = 0
+            for root, _, files in os.walk(zarr_path):
+                for fn in files:
+                    lp = os.path.join(root, fn)
+                    rel = os.path.relpath(lp, tmpdir)
+                    key = r2_key(cache_key, comp_label, 'zarr', f'/{rel}')
+                    with open(lp, 'rb') as fh:
+                        b = fh.read()
+                        total += len(b)
+                        s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=key, Body=b)
+        return (time.time() - t0) * 1000.0, total
+
+    # 2) int16/zarr
+    ms, size_b = build_and_upload_zarr(data_int16, None, 'int16')
+    profiles['variants']['int16/zarr'] = {
+        'compress_ms': ms,
+        'original_size_bytes': len(raw_bytes),
+        'compressed_size_bytes': size_b
+    }
+
+    # 3) gzip/raw (level 1)
+    t0 = time.time()
+    gzip_bytes = gzip.compress(raw_bytes, compresslevel=1)
+    s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=r2_key(cache_key, 'gzip', 'raw', '.bin.gz'), Body=gzip_bytes)
+    profiles['variants']['gzip/raw'] = {
+        'compress_ms': (time.time() - t0) * 1000.0,
+        'original_size_bytes': len(raw_bytes),
+        'compressed_size_bytes': len(gzip_bytes)
+    }
+
+    # 4) gzip/zarr (level 1)
+    ms, size_b = build_and_upload_zarr(data_int16, Zlib(level=1), 'gzip')
+    profiles['variants']['gzip/zarr'] = {
+        'compress_ms': ms,
+        'original_size_bytes': len(raw_bytes),
+        'compressed_size_bytes': size_b
+    }
+
+    # 5) blosc/raw (zstd level 5)
+    t0 = time.time()
+    blosc_codec = Blosc(cname='zstd', clevel=5, shuffle=Blosc.SHUFFLE)
+    blosc_bytes = blosc_codec.encode(data_int16)
+    s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=r2_key(cache_key, 'blosc', 'raw', '.blosc'), Body=blosc_bytes)
+    profiles['variants']['blosc/raw'] = {
+        'compress_ms': (time.time() - t0) * 1000.0,
+        'original_size_bytes': len(raw_bytes),
+        'compressed_size_bytes': len(blosc_bytes)
+    }
+
+    # 6) blosc/zarr
+    ms, size_b = build_and_upload_zarr(data_int16, blosc_codec, 'blosc')
+    profiles['variants']['blosc/zarr'] = {
+        'compress_ms': ms,
+        'original_size_bytes': len(raw_bytes),
+        'compressed_size_bytes': size_b
+    }
+
+    metadata = {
+        'volcano': volcano,
+        'sample_rate': sample_rate,
+        'total_samples': total_samples,
+        'duration_hours': duration_hours,
+        'hours_ago': hours_ago
+    }
+    s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=f"cache/metadata/{cache_key}.json", Body=json.dumps(metadata))
+    s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=f"cache/metadata/{cache_key}_profiles.json", Body=json.dumps(profiles))
+
+    return cache_key, profiles, metadata
+
+def stream_variant_from_r2(cache_key: str, storage: str, compression: str):
+    # Raw variants stream as a single object progressively
+    if storage == 'raw':
+        if compression == 'int16':
+            ext = '.bin'
+        elif compression == 'gzip':
+            ext = '.bin.gz'
+        elif compression == 'blosc':
+            ext = '.blosc'
+        else:
+            raise ValueError('Unsupported compression')
+        key = r2_key(cache_key, compression, storage, ext)
+        obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=key)
+        data = obj['Body'].read()
+        total = len(data)
+        offset = 0
+        for kb in PROGRESSIVE_CHUNK_SIZES_KB:
+            if offset >= total:
+                break
+            sz = kb * 1024
+            yield data[offset:offset + sz]
+            offset += sz
+        rem = REMAINING_CHUNK_KB * 1024
+        while offset < total:
+            yield data[offset:offset + rem]
+            offset += rem
+    elif storage == 'zarr':
+        prefix = r2_key(cache_key, compression, storage, '/data.zarr/')
+        keys = list_zarr_chunk_keys(prefix)
+        for key in keys:
+            obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=key)
+            data = obj['Body'].read()
+            total = len(data)
+            offset = 0
+            for kb in PROGRESSIVE_CHUNK_SIZES_KB:
+                if offset >= total:
+                    break
+                sz = kb * 1024
+                yield data[offset:offset + sz]
+                offset += sz
+            rem = REMAINING_CHUNK_KB * 1024
+            while offset < total:
+                yield data[offset:offset + rem]
+                offset += rem
+    else:
+        raise ValueError('Unsupported storage')
 
 def load_volcano_stations():
     """
@@ -458,202 +727,97 @@ def get_zarr(volcano, hours):
 
 @app.route('/api/stream/<volcano>/<int:hours>')
 def stream_zarr(volcano, hours):
-    """Stream progressive chunks of seismic data
-    
+    """Stream progressive chunks from R2 cache; populate cache from IRIS if missing.
     Query params:
-    - format: gzip/blosc/zstd (default: gzip)
-    - level: compression level 1-9 (default: 5)
-    - zarr: wrap in zarr format (default: false)
-    - network: network code (optional, uses default if not specified)
-    - station: station code (optional, uses default if not specified)
-    - location: location code (optional, uses default if not specified)
-    - channel: channel code (optional, uses default if not specified)
+    - storage: raw|zarr (default: raw)
+    - compression: int16|gzip|blosc|none (default: gzip; none->int16)
+    - hours_ago: int (default: 12)
     """
     try:
         if volcano.lower() not in VOLCANOES:
             return jsonify({'error': f'Unknown volcano: {volcano}'}), 404
-        
-        # Get compression settings
-        compression_format = request.args.get('format', 'gzip')
-        compression_level = int(request.args.get('level', 5))
-        use_zarr = request.args.get('zarr', 'false').lower() == 'true'
-        
-        # Get station parameters (use config defaults if not specified)
-        config = VOLCANOES[volcano.lower()]
-        network = request.args.get('network', config['network'])
-        station = request.args.get('station', config['station'])
-        location = request.args.get('location', config.get('location', ''))
-        channel = request.args.get('channel', config['channel'])
-        
-        # Progressive chunk sizes (in seconds)
-        chunk_sizes = [60, 120, 300, 600]  # 1min, 2min, 5min, 10min
-        
-        def generate():
-            end = UTCDateTime.now() - 300  # 5 min lag
-            start = end - (hours * 3600)
-            
-            client = Client("IRIS")
-            
-            # Fetch full data once
-            stream = None
-            locations_to_try = [location] + LOCATION_FALLBACKS
-            for loc in locations_to_try:
-                try:
-                    stream = client.get_waveforms(
-                        network=network,
-                        station=station,
-                        location=loc,
-                        channel=channel,
-                        starttime=start,
-                        endtime=end
-                    )
-                    if stream:
-                        break
-                except:
-                    continue
-            
-            if not stream:
-                yield json.dumps({'error': 'No data available'}).encode() + b'\n'
-                return
-            
-            # Merge and process
-            stream.merge(fill_value='interpolate')
-            trace = stream[0]
-            
-            # Handle NaN/Inf
-            data = trace.data.astype(np.float64)
-            if np.any(~np.isfinite(data)):
-                mask = ~np.isfinite(data)
-                indices = np.arange(len(data))
-                data[mask] = np.interp(indices[mask], indices[~mask], data[~mask])
-                if np.any(~np.isfinite(data)):
-                    data[~np.isfinite(data)] = 0
-            
-            # Detrend the FULL dataset (critical for continuity)
-            data = data - np.mean(data)
-            
-            # Normalize to int16 range
-            max_abs = np.max(np.abs(data))
-            if max_abs > 0:
-                data = data / max_abs * 32767.0
-            
-            # Convert to int16
-            data_int16 = data.astype(np.int16)
-            sampling_rate = int(trace.stats.sampling_rate)
-            
-            # Send metadata first
-            metadata = {
-                'type': 'metadata',
-                'sampling_rate': sampling_rate,
-                'total_samples': len(data_int16),
-                'channel': channel,
-                'network': network,
-                'station': station,
-                'location': location,
-                'start_time': str(trace.stats.starttime),
-                'end_time': str(trace.stats.endtime)
-            }
-            yield json.dumps(metadata).encode() + b'\n'
-            
-            # Stream progressive chunks
-            import time
-            offset = 0
-            chunk_index = 0
-            processing_complete_time = time.time()
-            
-            while offset < len(data_int16):
-                # Determine chunk size
-                chunk_size_seconds = chunk_sizes[min(chunk_index, len(chunk_sizes) - 1)]
-                samples_in_chunk = chunk_size_seconds * sampling_rate
-                end_idx = min(offset + samples_in_chunk, len(data_int16))
-                
-                chunk_data = data_int16[offset:end_idx]
-                
-                # Compress chunk
-                compress_start = time.time()
-                
-                if use_zarr:
-                    # Wrap in Zarr format
-                    import xarray as xr
-                    import tempfile
-                    import shutil
-                    
-                    # Create xarray Dataset
-                    ds = xr.Dataset({
-                        'amplitude': (['time'], chunk_data)
-                    })
-                    
-                    # Save to temp Zarr store
-                    temp_dir = tempfile.mkdtemp()
-                    zarr_path = f"{temp_dir}/chunk.zarr"
-                    
-                    if compression_format == 'blosc':
-                        compressor = Blosc(cname='zstd', clevel=compression_level, shuffle=Blosc.SHUFFLE)
-                    elif compression_format == 'zstd':
-                        compressor = Zstd(level=compression_level)
-                    else:  # gzip
-                        compressor = Zlib(level=compression_level)
-                    
-                    ds.to_zarr(zarr_path, mode='w', compressor=compressor)
-                    
-                    # Read back as bytes
-                    import os
-                    compressed_parts = []
-                    for root, dirs, files in os.walk(zarr_path):
-                        for file in files:
-                            with open(os.path.join(root, file), 'rb') as f:
-                                compressed_parts.append(f.read())
-                    compressed = b''.join(compressed_parts)
-                    
-                    shutil.rmtree(temp_dir)
+
+        storage = request.args.get('storage', 'raw')
+        compression = request.args.get('compression', 'gzip')
+        if compression == 'none':
+            compression = 'int16'
+        hours_ago = int(request.args.get('hours_ago', 12))
+
+        cache_key, profiles, metadata = ensure_cached_in_r2(volcano.lower(), hours_ago, hours)
+
+        # Determine total file size for headers
+        if storage == 'raw':
+            if compression == 'int16':
+                ext = '.bin'
+            elif compression == 'gzip':
+                ext = '.bin.gz'
+            elif compression == 'blosc':
+                ext = '.blosc'
+            else:
+                return jsonify({'error': 'Unsupported compression'}), 400
+            key = r2_key(cache_key, compression, storage, ext)
+            head = s3_client.head_object(Bucket=R2_BUCKET_NAME, Key=key)
+            total_size = int(head['ContentLength'])
+        elif storage == 'zarr':
+            # Sum all zarr chunk sizes for content-length
+            prefix = r2_key(cache_key, compression, storage, '/data.zarr/')
+            size_sum = 0
+            cont = None
+            while True:
+                kwargs = {'Bucket': R2_BUCKET_NAME, 'Prefix': prefix, 'MaxKeys': 1000}
+                if cont:
+                    kwargs['ContinuationToken'] = cont
+                resp = s3_client.list_objects_v2(**kwargs)
+                for obj in resp.get('Contents', []):
+                    base = obj['Key'].split('/')[-1]
+                    if base in ['.zarray', '.zattrs', '.zgroup']:
+                        continue
+                    size_sum += int(obj['Size'])
+                if resp.get('IsTruncated'):
+                    cont = resp.get('NextContinuationToken')
                 else:
-                    # Raw compression
-                    if compression_format == 'blosc':
-                        compressor = Blosc(cname='zstd', clevel=compression_level, shuffle=Blosc.SHUFFLE)
-                    elif compression_format == 'zstd':
-                        compressor = Zstd(level=compression_level)
-                    else:  # gzip
-                        compressor = Zlib(level=compression_level)
-                    
-                    compressed = compressor.encode(chunk_data.tobytes())
-                
-                compress_time = (time.time() - compress_start) * 1000
-                
-                # Send chunk header
-                chunk_header = {
-                    'type': 'chunk',
-                    'index': chunk_index,
-                    'samples': len(chunk_data),
-                    'compressed_size': len(compressed),
-                    'compression': compression_format
-                }
-                yield json.dumps(chunk_header).encode() + b'\n'
-                
-                # Send compressed data
-                send_start = time.time()
-                yield compressed + b'\n'
-                send_time = (time.time() - send_start) * 1000
-                
-                if chunk_index == 0:
-                    time_to_first_send = (send_start - processing_complete_time) * 1000
-                    print(f"⚡ FIRST CHUNK: Compress={compress_time:.1f}ms | Send={send_time:.1f}ms | Time from processing complete={time_to_first_send:.1f}ms")
-                
-                offset = end_idx
-                chunk_index += 1
-            
-            # Send completion message
-            completion = {'type': 'complete', 'total_chunks': chunk_index}
-            yield json.dumps(completion).encode() + b'\n'
-        
-        return Response(stream_with_context(generate()), 
-                       mimetype='application/octet-stream',
-                       headers={
-                           'X-Compression-Format': compression_format,
-                           'X-Compression-Level': str(compression_level)
-                       })
-    
+                    break
+            total_size = size_sum
+        else:
+            return jsonify({'error': 'Unsupported storage'}), 400
+
+        # Build profiling headers
+        variant_key = f"{compression}/{storage}"
+        variant_profile = profiles.get('variants', {}).get(variant_key, {})
+        headers = {
+            'X-Cache-Key': cache_key,
+            'X-Storage': storage,
+            'X-Compression': compression,
+            'X-Original-Bytes': str(variant_profile.get('original_size_bytes', 0)),
+            'X-Compressed-Bytes': str(variant_profile.get('compressed_size_bytes', total_size)),
+            'X-Compress-MS': str(round(variant_profile.get('compress_ms', 0.0), 1)),
+            'X-IRIS-Fetch-MS': str(round(profiles.get('iris_fetch_ms', 0.0), 1)),
+            'X-Preprocess-MS': str(round(profiles.get('preprocess_ms', 0.0), 1)),
+            'Content-Length': str(total_size),
+            'Cache-Control': 'no-cache',
+            'Access-Control-Allow-Origin': '*'
+        }
+
+        def generator():
+            t0 = time.time()
+            first_sent = None
+            for chunk in stream_variant_from_r2(cache_key, storage, compression):
+                if first_sent is None:
+                    first_sent = time.time()
+                yield chunk
+            total_ms = (time.time() - t0) * 1000.0
+            if first_sent is not None:
+                headers['X-TTFA-MS'] = str(round((first_sent - t0) * 1000.0, 1))
+            headers['X-Transfer-MS'] = str(round(total_ms, 1))
+
+        return Response(stream_with_context(generator()), mimetype='application/octet-stream', headers=headers)
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# Register progressive chunk test endpoint
+from progressive_test_endpoint import create_progressive_test_endpoint
+app = create_progressive_test_endpoint(app)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))

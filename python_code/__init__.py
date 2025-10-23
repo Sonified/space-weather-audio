@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.03"
+__version__ = "1.04"
 __commit_message__ = (
-    "v1.03 Add active-station filtering, full audit outputs, and interactive audify UI"
+    "v1.04 R2 cache: /api/stream now uses R2 with progressive streaming + profiling; zarr progressive chunking; gzip-1 & blosc-5"
 )
 
 # Import key modules to make them available when importing the package

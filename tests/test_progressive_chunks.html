@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Progressive Chunk Size Optimization Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako_inflate.min.js"></script>
+    <script type="module">
+        import * as numcodecs from 'https://cdn.jsdelivr.net/npm/numcodecs@0.3.1/+esm';
+        window.numcodecs = numcodecs;
+        console.log('✅ Numcodecs loaded');
+    </script>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        h1 {
+            color: #00ff00;
+            text-align: center;
+            border-bottom: 2px solid #00ff00;
+            padding-bottom: 10px;
+        }
+        .config {
+            background: #2a2a2a;
+            padding: 20px;
+            border: 1px solid #00ff00;
+            margin-bottom: 20px;
+        }
+        .config h3 {
+            margin-top: 0;
+            color: #00ff00;
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .results {
+            background: #2a2a2a;
+            padding: 20px;
+            border: 1px solid #00ff00;
+            margin-top: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .test-result {
+            border: 1px solid #444;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #1a1a1a;
+        }
+        .test-result h4 {
+            margin-top: 0;
+            color: #00ffff;
+        }
+        .metric {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .metric-label {
+            color: #888;
+        }
+        .metric-value {
+            color: #00ff00;
+            font-weight: bold;
+        }
+        .chunk-times {
+            margin-top: 10px;
+            padding: 10px;
+            background: #333;
+            font-size: 12px;
+        }
+        .summary {
+            background: #003300;
+            border: 2px solid #00ff00;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .summary h3 {
+            margin-top: 0;
+            color: #00ff00;
+        }
+        .winner {
+            background: #004400;
+            border: 2px solid #00ff00;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .progress {
+            background: #333;
+            padding: 15px;
+            border: 1px solid #00ff00;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            background: #00ff00;
+            height: 20px;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌋 PROGRESSIVE CHUNK SIZE OPTIMIZATION TEST</h1>
+    
+    <div class="config">
+        <h3>Test Configuration</h3>
+        <div class="metric">
+            <div class="metric-label">Data Source:</div>
+            <div class="metric-value">Kilauea, 4 hours, 12 hours ago</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Chunk Progression:</div>
+            <div class="metric-value">8 KB → 16 KB → 32 KB → 64 KB → 128 KB → 256 KB → 512 KB (remaining)</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Storage Formats:</div>
+            <div class="metric-value">Raw int16, Zarr</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Compression Methods:</div>
+            <div class="metric-value">None, Blosc, Gzip</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Total Combinations:</div>
+            <div class="metric-value">2 × 3 = 6 tests</div>
+        </div>
+    </div>
+    
+    <div class="test-grid">
+        <button onclick="runAllTests()">▶ RUN ALL TESTS</button>
+        <button onclick="clearResults()">🗑️ CLEAR RESULTS</button>
+    </div>
+    
+    <div class="progress" id="progress" style="display:none;">
+        <div id="progressText">Initializing...</div>
+        <div style="background: #222; height: 20px; margin-top: 10px;">
+            <div class="progress-bar" id="progressBar" style="width: 0%;"></div>
+        </div>
+    </div>
+    
+    <div class="results" id="results"></div>
+    
+    <div class="summary" id="summary" style="display:none;"></div>
+    
+    <script>
+        const CHUNK_SIZES_KB = [8, 16, 32, 64, 128, 256]; // Progressive sizes
+        const REMAINING_CHUNK_KB = 512; // Final chunk size
+        
+        const TEST_CONFIGURATIONS = [
+            { storage: 'raw', compression: 'none', label: 'Raw int16 + No Compression' },
+            { storage: 'raw', compression: 'blosc', label: 'Raw int16 + Blosc' },
+            { storage: 'raw', compression: 'gzip', label: 'Raw int16 + Gzip' },
+            { storage: 'zarr', compression: 'none', label: 'Zarr + No Compression' },
+            { storage: 'zarr', compression: 'blosc', label: 'Zarr + Blosc' },
+            { storage: 'zarr', compression: 'gzip', label: 'Zarr + Gzip' },
+        ];
+        
+        let allResults = [];
+        
+        async function runAllTests() {
+            document.getElementById('progress').style.display = 'block';
+            document.getElementById('summary').style.display = 'none';
+            allResults = [];
+            
+            for (let i = 0; i < TEST_CONFIGURATIONS.length; i++) {
+                const config = TEST_CONFIGURATIONS[i];
+                updateProgress(`Test ${i + 1}/${TEST_CONFIGURATIONS.length}: ${config.label}`, 
+                              (i / TEST_CONFIGURATIONS.length) * 100);
+                
+                const result = await runSingleTest(config);
+                allResults.push(result);
+                displayResult(result);
+                
+                // Wait 2 seconds between tests
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            
+            updateProgress('All tests complete!', 100);
+            displaySummary();
+        }
+        
+        async function runSingleTest(config) {
+            const testStart = performance.now();
+            const result = {
+                config: config,
+                fileSize: 0,
+                ttfa: 0, // Time to first audio
+                chunks: [],
+                totalTransferTime: 0,
+                totalDecompressTime: 0,
+                avgDecompressTime: 0,
+                totalTime: 0,
+                error: null
+            };
+            
+            try {
+                // Request data preparation
+                const prepareStart = performance.now();
+                const response = await fetch(`http://localhost:5001/api/progressive-test?` +
+                    `storage=${config.storage}&compression=${config.compression}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const metadata = JSON.parse(response.headers.get('X-Metadata') || '{}');
+                result.fileSize = parseInt(response.headers.get('Content-Length') || '0');
+                
+                const reader = response.body.getReader();
+                let bytesReceived = 0;
+                let chunkIndex = 0;
+                let buffer = new Uint8Array();
+                let firstAudioPlayed = false;
+                
+                // Determine chunk sizes to use
+                const chunkSizes = [...CHUNK_SIZES_KB.map(kb => kb * 1024)];
+                
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    
+                    // Append to buffer
+                    const newBuffer = new Uint8Array(buffer.length + value.length);
+                    newBuffer.set(buffer);
+                    newBuffer.set(value, buffer.length);
+                    buffer = newBuffer;
+                    
+                    bytesReceived += value.length;
+                    
+                    // Check if we have enough for next chunk
+                    const expectedSize = chunkIndex < chunkSizes.length ? 
+                        chunkSizes[chunkIndex] : REMAINING_CHUNK_KB * 1024;
+                    
+                    if (buffer.length >= expectedSize || done) {
+                        const chunkStart = performance.now();
+                        const chunkData = buffer.slice(0, expectedSize);
+                        buffer = buffer.slice(expectedSize);
+                        
+                        // Decompress and convert
+                        const decompressStart = performance.now();
+                        const audioData = await decompressChunk(chunkData, config.compression);
+                        const decompressTime = performance.now() - decompressStart;
+                        
+                        const chunkTime = performance.now() - chunkStart;
+                        
+                        result.chunks.push({
+                            index: chunkIndex,
+                            size: chunkData.length,
+                            sizeKB: (chunkData.length / 1024).toFixed(1),
+                            decompressTime: decompressTime,
+                            totalTime: chunkTime,
+                            samples: audioData.length
+                        });
+                        
+                        // TTFA = time to first chunk ready
+                        if (!firstAudioPlayed) {
+                            result.ttfa = performance.now() - testStart;
+                            firstAudioPlayed = true;
+                        }
+                        
+                        chunkIndex++;
+                    }
+                }
+                
+                // Calculate statistics
+                result.totalDecompressTime = result.chunks.reduce((sum, c) => sum + c.decompressTime, 0);
+                result.avgDecompressTime = result.totalDecompressTime / result.chunks.length;
+                result.totalTransferTime = performance.now() - testStart;
+                result.totalTime = result.totalTransferTime;
+                
+            } catch (error) {
+                result.error = error.message;
+                console.error('Test error:', error);
+            }
+            
+            return result;
+        }
+        
+        async function decompressChunk(data, compression) {
+            if (compression === 'none') {
+                // Raw int16 data
+                const int16Array = new Int16Array(data.buffer, data.byteOffset, data.byteLength / 2);
+                const float32Array = new Float32Array(int16Array.length);
+                for (let i = 0; i < int16Array.length; i++) {
+                    float32Array[i] = int16Array[i] / 32768.0;
+                }
+                return float32Array;
+            } else if (compression === 'gzip') {
+                const decompressed = pako.inflate(data);
+                const int16Array = new Int16Array(decompressed.buffer);
+                const float32Array = new Float32Array(int16Array.length);
+                for (let i = 0; i < int16Array.length; i++) {
+                    float32Array[i] = int16Array[i] / 32768.0;
+                }
+                return float32Array;
+            } else if (compression === 'blosc') {
+                const codec = window.numcodecs.Blosc.fromConfig({
+                    cname: 'zstd',
+                    clevel: 5,
+                    shuffle: window.numcodecs.Blosc.SHUFFLE
+                });
+                const decompressed = await codec.decode(data);
+                const int16Array = new Int16Array(decompressed.buffer);
+                const float32Array = new Float32Array(int16Array.length);
+                for (let i = 0; i < int16Array.length; i++) {
+                    float32Array[i] = int16Array[i] / 32768.0;
+                }
+                return float32Array;
+            }
+        }
+        
+        function displayResult(result) {
+            const div = document.createElement('div');
+            div.className = 'test-result';
+            
+            let html = `<h4>${result.config.label}</h4>`;
+            
+            if (result.error) {
+                html += `<div style="color: #ff0000;">❌ ERROR: ${result.error}</div>`;
+            } else {
+                html += `
+                    <div class="metric">
+                        <div class="metric-label">File Size:</div>
+                        <div class="metric-value">${(result.fileSize / (1024 * 1024)).toFixed(2)} MB</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Time to First Audio (TTFA):</div>
+                        <div class="metric-value">${result.ttfa.toFixed(0)} ms</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Total Chunks:</div>
+                        <div class="metric-value">${result.chunks.length}</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Total Decompress Time:</div>
+                        <div class="metric-value">${result.totalDecompressTime.toFixed(0)} ms</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Average Decompress Time:</div>
+                        <div class="metric-value">${result.avgDecompressTime.toFixed(1)} ms/chunk</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Total Time (Complete):</div>
+                        <div class="metric-value">${(result.totalTime / 1000).toFixed(2)} s</div>
+                    </div>
+                    
+                    <div class="chunk-times">
+                        <strong>Per-Chunk Breakdown:</strong><br>
+                        ${result.chunks.map(c => 
+                            `Chunk ${c.index + 1}: ${c.sizeKB} KB, decompress ${c.decompressTime.toFixed(1)}ms, ${c.samples.toLocaleString()} samples`
+                        ).join('<br>')}
+                    </div>
+                `;
+            }
+            
+            div.innerHTML = html;
+            document.getElementById('results').appendChild(div);
+        }
+        
+        function displaySummary() {
+            const summaryDiv = document.getElementById('summary');
+            summaryDiv.style.display = 'block';
+            
+            // Find best in each category
+            const validResults = allResults.filter(r => !r.error);
+            
+            const bestTTFA = validResults.reduce((best, r) => r.ttfa < best.ttfa ? r : best, validResults[0]);
+            const bestSize = validResults.reduce((best, r) => r.fileSize < best.fileSize ? r : best, validResults[0]);
+            const bestDecompress = validResults.reduce((best, r) => r.avgDecompressTime < best.avgDecompressTime ? r : best, validResults[0]);
+            const bestTotal = validResults.reduce((best, r) => r.totalTime < best.totalTime ? r : best, validResults[0]);
+            
+            summaryDiv.innerHTML = `
+                <h3>📊 TEST SUMMARY</h3>
+                
+                <div class="winner">
+                    <strong>🏆 BEST TIME TO FIRST AUDIO:</strong><br>
+                    ${bestTTFA.config.label}: ${bestTTFA.ttfa.toFixed(0)} ms
+                </div>
+                
+                <div class="winner">
+                    <strong>🏆 SMALLEST FILE SIZE:</strong><br>
+                    ${bestSize.config.label}: ${(bestSize.fileSize / (1024 * 1024)).toFixed(2)} MB
+                </div>
+                
+                <div class="winner">
+                    <strong>🏆 FASTEST DECOMPRESSION:</strong><br>
+                    ${bestDecompress.config.label}: ${bestDecompress.avgDecompressTime.toFixed(1)} ms/chunk
+                </div>
+                
+                <div class="winner">
+                    <strong>🏆 BEST TOTAL TIME:</strong><br>
+                    ${bestTotal.config.label}: ${(bestTotal.totalTime / 1000).toFixed(2)} s
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <strong>Full Comparison Table:</strong><br>
+                    <table style="width: 100%; margin-top: 10px; border-collapse: collapse;">
+                        <tr style="border-bottom: 1px solid #00ff00;">
+                            <th style="text-align: left; padding: 5px;">Configuration</th>
+                            <th style="text-align: right; padding: 5px;">Size (MB)</th>
+                            <th style="text-align: right; padding: 5px;">TTFA (ms)</th>
+                            <th style="text-align: right; padding: 5px;">Avg Decomp (ms)</th>
+                            <th style="text-align: right; padding: 5px;">Total (s)</th>
+                        </tr>
+                        ${validResults.map(r => `
+                            <tr style="border-bottom: 1px solid #333;">
+                                <td style="padding: 5px;">${r.config.label}</td>
+                                <td style="text-align: right; padding: 5px;">${(r.fileSize / (1024 * 1024)).toFixed(2)}</td>
+                                <td style="text-align: right; padding: 5px;">${r.ttfa.toFixed(0)}</td>
+                                <td style="text-align: right; padding: 5px;">${r.avgDecompressTime.toFixed(1)}</td>
+                                <td style="text-align: right; padding: 5px;">${(r.totalTime / 1000).toFixed(2)}</td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                </div>
+            `;
+        }
+        
+        function updateProgress(text, percent) {
+            document.getElementById('progressText').textContent = text;
+            document.getElementById('progressBar').style.width = percent + '%';
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('summary').style.display = 'none';
+            document.getElementById('progress').style.display = 'none';
+            allResults = [];
+        }
+    </script>
+</body>
+</html>
+
+

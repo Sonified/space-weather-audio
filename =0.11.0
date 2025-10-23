@@ -1,0 +1,4 @@
+Requirement already satisfied: numcodecs in /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages (0.15.1)
+Requirement already satisfied: numpy>=1.24 in /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages (from numcodecs) (2.2.4)
+Requirement already satisfied: deprecated in /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages (from numcodecs) (1.2.18)
+Requirement already satisfied: wrapt<2,>=1.10 in /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages (from deprecated->numcodecs) (1.17.3)
