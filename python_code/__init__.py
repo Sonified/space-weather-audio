@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.05"
+__version__ = "1.06"
 __commit_message__ = (
-    "v1.05 Fix: R2 streaming now streams chunks directly instead of download-all-first (700ms → 20ms TTFA)"
+    "v1.06 Fix: Add missing R2/zarr dependencies to root requirements.txt"
 )
 
 # Import key modules to make them available when importing the package
