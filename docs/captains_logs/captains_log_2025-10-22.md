@@ -201,3 +201,62 @@ All testing successful. Ready for production integration into Flask backend.
 **Bugs Fixed**: 7 critical race conditions and state management issues  
 **Performance Improvements**: ~60x reduction in DOM operations  
 **Cloud Storage**: Successfully integrated ✨
+
+---
+
+## 🧪 Progressive Chunk Streaming Test (Evening Session)
+
+### Test Infrastructure Created ✅
+
+#### 1. **Test Plan Documentation** 
+- Created `docs/progressive_chunk_test_plan.md`
+- Documents test objective: Compare 6 storage/compression variants
+- Progressive chunk sizes: 8→16→32→64→128→256→512 KB
+- Test data: 4 hours Kilauea, 12 hours ago
+- Storage variants: raw vs zarr
+- Compression: int16 (none), gzip (level 1), blosc (zstd-5)
+
+#### 2. **Backend Endpoint: `progressive_test_endpoint.py`** ✅
+- Fetches from IRIS → Saves all 6 formats to R2
+- Streams with progressive chunk sizes
+- **CRITICAL BUG FIX**: Changed from download-all-then-stream to true streaming
+  - **Before**: `data = response['Body'].read()` (downloads 2.75 MB, THEN streams)
+  - **After**: `r2_stream.read(chunk_size)` (streams chunks as they arrive from R2)
+  - **Impact**: TTFA should drop from ~700ms to ~20ms
+
+#### 3. **Test Scripts Created**
+- `tests/test_progressive_chunks.py`: Tests all 6 variants, measures TTFA, decompress time
+- `tests/test_http_compression.py`: Tests HTTP-level compression vs no compression
+
+### Test Results (Localhost)
+
+**First Test Run** (with download-all bug):
+- **Raw int16 + No Compression**: 2.75 MB, TTFA 15,575ms (IRIS fetch), 0.0ms avg decompress
+- **Zarr + No Compression**: 2.75 MB, TTFA 702ms (R2 cached), 0.0ms avg decompress
+- **Compressed variants FAILED**: Can't progressively decompress pre-compressed files!
+
+**Key Findings**:
+1. ✅ First request fetches from IRIS (~15s) and caches to R2 in all 6 formats
+2. ✅ Subsequent requests use R2 cache (fast!)
+3. ❌ Pre-compressed data can't be split into progressive chunks (blosc/gzip failed)
+4. ❌ Backend downloads entire file from R2 before streaming (700ms delay)
+
+**Solution**:
+- Store raw int16 in R2
+- Use HTTP-level compression (Flask-Compress) for bandwidth savings
+- Stream directly from R2 (fixed in this commit)
+
+### Files Modified
+- `backend/progressive_test_endpoint.py` - Fixed streaming bug (lines 207-258)
+- `docs/progressive_chunk_test_plan.md` - NEW: Test documentation
+- `tests/test_progressive_chunks.py` - NEW: Progressive chunk test script
+- `tests/test_http_compression.py` - NEW: HTTP compression test script
+- `python_code/__init__.py` - Version bumped to v1.05
+
+---
+
+## v1.05 Commit Summary
+
+**Fixed critical R2 streaming bug**: Backend now streams chunks directly from R2 instead of downloading entire file first. Expected TTFA improvement: 700ms → 20ms.
+
+Next: Deploy to Render and test real-world performance.

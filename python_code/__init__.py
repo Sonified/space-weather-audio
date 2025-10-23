@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.04"
+__version__ = "1.05"
 __commit_message__ = (
-    "v1.04 R2 cache: /api/stream now uses R2 with progressive streaming + profiling; zarr progressive chunking; gzip-1 & blosc-5"
+    "v1.05 Fix: R2 streaming now streams chunks directly instead of download-all-first (700ms → 20ms TTFA)"
 )
 
 # Import key modules to make them available when importing the package

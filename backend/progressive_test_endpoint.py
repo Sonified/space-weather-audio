@@ -207,6 +207,7 @@ def fetch_from_iris_and_save_all_formats(volcano, hours_ago=12, duration_hours=4
 def stream_from_r2_progressive(cache_key, storage, compression):
     """
     Stream data from R2 with progressive chunk sizes
+    STREAMS DIRECTLY - does NOT download entire file first!
     """
     # Determine file extension and R2 key
     if storage == 'raw':
@@ -217,47 +218,42 @@ def stream_from_r2_progressive(cache_key, storage, compression):
         elif compression == 'blosc':
             ext = '.blosc'
         r2_key = get_r2_key(cache_key, compression, storage, ext)
-        
-        # Download entire file from R2
-        print(f"📥 Downloading from R2: {r2_key}")
-        response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=r2_key)
-        data = response['Body'].read()
-        total_size = len(data)
-        
     elif storage == 'zarr':
-        # For zarr, download the main data chunk
+        # For zarr, stream the main data chunk
         r2_key = get_r2_key(cache_key, compression, storage, '/data.zarr/0')
-        print(f"📥 Downloading from R2: {r2_key}")
-        response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=r2_key)
-        data = response['Body'].read()
-        total_size = len(data)
     
+    print(f"📥 STREAMING from R2: {r2_key}")
+    
+    # Get the R2 object - DON'T read() it yet!
+    response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=r2_key)
+    total_size = response['ContentLength']
     print(f"📊 Total size: {total_size/(1024*1024):.2f} MB")
     
     # Progressive chunk sizes
     chunk_sizes_kb = [8, 16, 32, 64, 128, 256]
     remaining_chunk_kb = 512
     
-    offset = 0
+    # Stream from R2's Body
+    r2_stream = response['Body']
     chunk_index = 0
     
-    # Yield progressive chunks
+    # Send progressive chunks directly from R2 stream
     for chunk_kb in chunk_sizes_kb:
-        if offset >= total_size:
-            break
         chunk_size = chunk_kb * 1024
-        chunk_data = data[offset:offset + chunk_size]
+        chunk_data = r2_stream.read(chunk_size)
+        if not chunk_data:
+            break
         yield chunk_data
-        offset += chunk_size
         chunk_index += 1
         print(f"   📤 Sent chunk {chunk_index}: {len(chunk_data)/1024:.1f} KB")
     
     # Yield remaining in 512KB chunks
-    while offset < total_size:
+    while True:
         chunk_size = remaining_chunk_kb * 1024
-        chunk_data = data[offset:offset + chunk_size]
+        chunk_data = r2_stream.read(chunk_size)
+        if not chunk_data:
+            break
         yield chunk_data
-        offset += chunk_size
         chunk_index += 1
         print(f"   📤 Sent chunk {chunk_index}: {len(chunk_data)/1024:.1f} KB")
 
