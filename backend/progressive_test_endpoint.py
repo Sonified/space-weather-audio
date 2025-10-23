@@ -35,7 +35,7 @@ def generate_cache_key(volcano, hours_ago, duration_hours):
     """Generate unique cache key"""
     import hashlib
     key_string = f"{volcano}_{hours_ago}h_ago_{duration_hours}h_duration"
-    return hashlib.md5(key_string.encode()).hexdigest()[:16]
+    return hashlib.sha256(key_string.encode()).hexdigest()[:16]
 
 def get_r2_key(cache_key, compression, storage, ext=''):
     """Generate R2 key: cache/{compression}/{storage}/{cache_key}{ext}"""

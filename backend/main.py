@@ -45,7 +45,7 @@ REMAINING_CHUNK_KB = 512
 def generate_cache_key(volcano: str, hours_ago: int, duration_hours: int) -> str:
     import hashlib
     key_string = f"{volcano}_{hours_ago}h_ago_{duration_hours}h_duration"
-    return hashlib.md5(key_string.encode()).hexdigest()[:16]
+    return hashlib.sha256(key_string.encode()).hexdigest()[:16]
 
 def r2_key(cache_key: str, compression: str, storage: str, ext: str = '') -> str:
     return f"cache/{compression}/{storage}/{cache_key}{ext}"

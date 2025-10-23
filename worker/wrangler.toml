@@ -1,0 +1,16 @@
+# Cloudflare Worker Configuration
+name = "volcano-audio-worker"
+main = "src/index.js"
+compatibility_date = "2025-10-22"
+workers_dev = true
+
+# R2 Bucket Binding
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "hearts-data-cache"
+
+# Worker limits (Free tier)
+# - 100k requests/day free
+# - 10ms CPU time per request
+# - 128 MB memory
+

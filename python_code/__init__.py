@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.07"
+__version__ = "1.08"
 __commit_message__ = (
-    "v1.07 Config: Add render.yaml + split requirements (backend/requirements.txt for production, root for local dev)"
+    "v1.08 Feature: Deploy Cloudflare Worker for streaming + switch to SHA-256 hashing (MD5 not supported in Web Crypto API)"
 )
 
 # Import key modules to make them available when importing the package
