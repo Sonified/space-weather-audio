@@ -260,3 +260,47 @@ All testing successful. Ready for production integration into Flask backend.
 **Fixed critical R2 streaming bug**: Backend now streams chunks directly from R2 instead of downloading entire file first. Expected TTFA improvement: 700ms → 20ms.
 
 Next: Deploy to Render and test real-world performance.
+
+---
+
+## v1.06 Deployment Fix
+
+**Problem**: Render deploy failed with `ModuleNotFoundError: No module named 'xarray'`
+
+**Root Cause**: R2/zarr dependencies were added to `backend/requirements.txt` but Render uses root `requirements.txt`
+
+**Fix**: Added missing dependencies to root requirements.txt:
+- boto3>=1.28.0
+- s3fs>=2023.10.0
+- xarray>=2023.10.0
+- zarr>=2.16.0
+- numcodecs>=0.11.0
+
+**Lesson**: Always test local server startup AND check which requirements.txt Render uses before pushing!
+
+---
+
+## v1.07 Configuration Cleanup
+
+**Problem**: Confusion about which requirements.txt to use, bloated production deps
+
+**Solution**: Created clear separation with render.yaml
+
+**Changes**:
+1. **Created `render.yaml`**: Explicitly tells Render to use `backend/requirements.txt`
+2. **Split requirements**:
+   - `backend/requirements.txt` - Production only (Flask + R2, no matplotlib/jupyter)
+   - `requirements.txt` - Local dev (includes matplotlib, jupyter, ipywidgets for notebooks)
+3. **Added clear comments** in both files explaining the split
+
+**Benefits**:
+- ✅ Faster Render builds (no matplotlib, jupyter)
+- ✅ Clear documentation (render.yaml is self-documenting)
+- ✅ Future AI agents can read render.yaml to understand deployment
+- ✅ Local dev still has all tools needed for notebooks
+
+**Files**:
+- NEW: `render.yaml` - Render deployment config
+- MODIFIED: `requirements.txt` - Now local dev deps (matplotlib, jupyter, etc.)
+- MODIFIED: `backend/requirements.txt` - Production lean deps only
+- MODIFIED: `python_code/__init__.py` - v1.07

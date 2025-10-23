@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.06"
+__version__ = "1.07"
 __commit_message__ = (
-    "v1.06 Fix: Add missing R2/zarr dependencies to root requirements.txt"
+    "v1.07 Config: Add render.yaml + split requirements (backend/requirements.txt for production, root for local dev)"
 )
 
 # Import key modules to make them available when importing the package

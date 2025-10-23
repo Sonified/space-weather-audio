@@ -1,3 +1,9 @@
+# Production dependencies for Render deployment
+# Used via render.yaml buildCommand: pip install -r backend/requirements.txt
+#
+# These are ONLY what the Flask backend needs to run
+# Local dev uses: ../requirements.txt (includes matplotlib, jupyter, etc.)
+
 flask==3.0.0
 flask-cors==4.0.0
 numpy>=1.20.0
