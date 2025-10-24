@@ -819,6 +819,120 @@ def stream_zarr(volcano, hours):
 from progressive_test_endpoint import create_progressive_test_endpoint
 app = create_progressive_test_endpoint(app)
 
+@app.route('/test_iris_to_r2', methods=['GET'])
+def test_iris_to_r2():
+    """Test endpoint: IRIS → Render → R2 pipeline"""
+    import requests
+    from datetime import datetime, timedelta
+    
+    try:
+        results = {
+            'test': 'IRIS → Render → R2 Pipeline',
+            'timestamp': datetime.utcnow().isoformat(),
+            'steps': []
+        }
+        
+        # Step 1: Fetch from IRIS (1 hour, 48 hours ago)
+        now = datetime.utcnow()
+        start_time = now - timedelta(hours=48)
+        end_time = start_time + timedelta(hours=1)
+        
+        start_str = start_time.strftime("%Y-%m-%dT%H:%M:%S")
+        end_str = end_time.strftime("%Y-%m-%dT%H:%M:%S")
+        
+        iris_url = (
+            "https://service.iris.edu/fdsnws/dataselect/1/query?"
+            "net=HV&sta=OBL&loc=--&cha=HHZ"
+            f"&start={start_str}&end={end_str}"
+            "&format=miniseed"
+        )
+        
+        fetch_start = time.time()
+        response = requests.get(iris_url, timeout=120)
+        fetch_time = time.time() - fetch_start
+        
+        if response.status_code != 200:
+            return jsonify({
+                'success': False,
+                'error': f'IRIS returned {response.status_code}',
+                'url': iris_url
+            }), 500
+        
+        data = response.content
+        data_size_mb = len(data) / (1024 * 1024)
+        
+        results['steps'].append({
+            'step': 'IRIS Fetch',
+            'success': True,
+            'size_mb': round(data_size_mb, 2),
+            'time_sec': round(fetch_time, 2),
+            'speed_mbps': round(data_size_mb / fetch_time, 2)
+        })
+        
+        # Step 2: Upload to R2
+        r2_key = f"test/render-iris-test-{int(time.time())}.mseed"
+        
+        upload_start = time.time()
+        s3_client.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=r2_key,
+            Body=data,
+            ContentType='application/vnd.fdsn.mseed',
+            Metadata={
+                'source': 'IRIS',
+                'network': 'HV',
+                'station': 'OBL',
+                'channel': 'HHZ',
+                'start_time': start_str,
+                'end_time': end_str,
+                'duration_hours': '1',
+                'test': 'render-to-r2'
+            }
+        )
+        upload_time = time.time() - upload_start
+        
+        results['steps'].append({
+            'step': 'R2 Upload',
+            'success': True,
+            'key': r2_key,
+            'time_sec': round(upload_time, 2)
+        })
+        
+        # Step 3: Verify
+        verify_start = time.time()
+        obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=r2_key)
+        stored_data = obj['Body'].read()
+        verify_time = time.time() - verify_start
+        
+        matches = len(stored_data) == len(data)
+        
+        results['steps'].append({
+            'step': 'R2 Verify',
+            'success': matches,
+            'original_size': len(data),
+            'stored_size': len(stored_data),
+            'time_sec': round(verify_time, 2)
+        })
+        
+        # Summary
+        results['success'] = True
+        results['total_time_sec'] = round(fetch_time + upload_time + verify_time, 2)
+        results['summary'] = {
+            'iris_fetch': '✅ PASS',
+            'r2_upload': '✅ PASS',
+            'r2_verify': '✅ PASS' if matches else '❌ FAIL',
+            'data_integrity': '✅ INTACT' if matches else '❌ CORRUPTED'
+        }
+        
+        return jsonify(results)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'test': 'IRIS → Render → R2 Pipeline'
+        }), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port, debug=True)
