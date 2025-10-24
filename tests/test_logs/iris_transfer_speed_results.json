@@ -1,0 +1,56 @@
+[
+  {
+    "duration_hours": 2,
+    "size_bytes": 937984,
+    "size_mb": 0.89453125,
+    "ttfb_sec": 0.751,
+    "total_sec": 2.294,
+    "speed_mbps": 0.38994387532693986,
+    "success": true
+  },
+  {
+    "duration_hours": 4,
+    "size_bytes": 1795072,
+    "size_mb": 1.7119140625,
+    "ttfb_sec": 0.642,
+    "total_sec": 3.456,
+    "speed_mbps": 0.49534550419560186,
+    "success": true
+  },
+  {
+    "duration_hours": 6,
+    "size_bytes": 2629120,
+    "size_mb": 2.50732421875,
+    "ttfb_sec": 0.527,
+    "total_sec": 4.747,
+    "speed_mbps": 0.5281913247840742,
+    "success": true
+  },
+  {
+    "duration_hours": 8,
+    "size_bytes": 3465728,
+    "size_mb": 3.30517578125,
+    "ttfb_sec": 0.65,
+    "total_sec": 6.049,
+    "speed_mbps": 0.5464003605967929,
+    "success": true
+  },
+  {
+    "duration_hours": 12,
+    "size_bytes": 5211136,
+    "size_mb": 4.9697265625,
+    "ttfb_sec": 0.575,
+    "total_sec": 8.817,
+    "speed_mbps": 0.5636527801406374,
+    "success": true
+  },
+  {
+    "duration_hours": 24,
+    "size_bytes": 10776064,
+    "size_mb": 10.27685546875,
+    "ttfb_sec": 0.632,
+    "total_sec": 17.275,
+    "speed_mbps": 0.5948975669319827,
+    "success": true
+  }
+]

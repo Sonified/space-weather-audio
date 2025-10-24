@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.09"
+__version__ = "1.10"
 __commit_message__ = (
-    "v1.09 Feature: Enhanced frontend UI with pipeline selector, improved metrics, log scale speed control, and visual feedback"
+    "v1.10 UI Polish: Added color-coded panels with gradients, moved title outside panels, reduced corner radius"
 )
 
 # Import key modules to make them available when importing the package

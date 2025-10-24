@@ -51,7 +51,7 @@ def run_single_test(config):
     print(f"🧪 Testing: {config['label']}")
     print('='*70)
     
-    url = f"http://localhost:5001/api/progressive-test?storage={config['storage']}&compression={config['compression']}"
+    url = f"https://volcano-audio.onrender.com/api/progressive-test?storage={config['storage']}&compression={config['compression']}"
     
     test_start = time.time()
     

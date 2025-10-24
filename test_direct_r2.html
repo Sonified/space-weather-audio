@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct R2 Speed Test</title>
+</head>
+<body>
+    <h1>Direct R2 Access Speed Test</h1>
+    <button onclick="testDirectR2()">Test Direct R2 Fetch</button>
+    <pre id="results"></pre>
+
+    <script>
+        function playDing() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Nice bell-like ding (800 Hz)
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+            
+            // Quick fade out
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.3);
+        }
+        
+        async function testDirectR2() {
+            const results = document.getElementById('results');
+            results.textContent = '🚀 Testing direct R2 access...\n';
+            
+            // Presigned R2 URL (valid for 1 hour)
+            const r2Url = 'https://66f906f29f28b08ae9c80d4f36e25c7a.r2.cloudflarestorage.com/hearts-data-cache/cache/int16/raw/a3a4bd3499c23245.bin?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=9e1cf6c395172f108c2150c52878859f%2F20251024%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20251024T051819Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=2e7fb4a9da52d481dd9efca4f90026bf1a26ab78c4afa35da8f5ad97b73c3d28';
+            
+            const startTime = performance.now();
+            
+            try {
+                results.textContent += '⏱️ Starting fetch...\n';
+                
+                const response = await fetch(r2Url);
+                const metadataTime = performance.now() - startTime;
+                results.textContent += `📊 Response received: ${metadataTime.toFixed(0)}ms\n`;
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                // Read first chunk
+                const reader = response.body.getReader();
+                const { done, value } = await reader.read();
+                const firstChunkTime = performance.now() - startTime;
+                
+                results.textContent += `📦 First chunk (${value.length} bytes): ${firstChunkTime.toFixed(0)}ms\n`;
+                results.textContent += `\n✅ TOTAL TIME TO FIRST BYTE: ${firstChunkTime.toFixed(0)}ms\n`;
+                results.textContent += `\n🎯 Compare this to your 561ms via Render!\n`;
+                
+                // 🔔 DING!
+                playDing();
+                
+                // Clean up
+                reader.cancel();
+                
+            } catch (error) {
+                results.textContent += `\n❌ Error: ${error.message}\n`;
+                results.textContent += `\nNOTE: You need to:\n`;
+                results.textContent += `1. Make your R2 bucket public OR\n`;
+                results.textContent += `2. Set up a custom domain for R2 OR\n`;
+                results.textContent += `3. Use presigned URLs\n`;
+            }
+        }
+    </script>
+</body>
+</html>
+

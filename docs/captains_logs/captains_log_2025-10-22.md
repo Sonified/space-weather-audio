@@ -390,4 +390,352 @@ Testing revealed Render streaming works but has scaling issues:
 - ✅ **R2 Binding**: hearts-data-cache (connected)
 - ✅ **Error handling**: Returns proper JSON errors when data not cached
 
-**Next**: Push backend updates to Render, populate cache, test full Worker→R2 streaming!
+### Git Push
+- **Commit**: `4872b5e`
+- **Message**: v1.08 Feature: Deploy Cloudflare Worker for streaming + switch to SHA-256 hashing (MD5 not supported in Web Crypto API)
+- **Files**:
+  - `worker/` directory (new Cloudflare Worker)
+  - `backend/main.py` (MD5 → SHA-256)
+  - `backend/progressive_test_endpoint.py` (MD5 → SHA-256)
+  - `python_code/__init__.py` (v1.08)
+  - `docs/captains_logs/captains_log_2025-10-22.md` (this log)
+
+**Next**: Wait for Render to deploy, then test full Worker→R2→Client streaming!
+
+---
+
+## 📚 Summary: What We Learned Today
+
+### The Scaling Problem
+We discovered that while Render streaming works technically, it has serious cost/performance issues at scale:
+- **Performance**: 355ms TTFA due to Render→R2→Client round-trips
+- **Cost**: At 1M requests/month = $200-400 in Render bandwidth
+- **Data Storage**: Only ~3.6 GB/month for 5 volcanoes (was initially overestimated at 100GB!)
+
+### The Breakthrough Insight
+**Processing for streaming doesn't require Python!** 
+- Detrend = subtract mean (just arithmetic)
+- Normalize = scale by max absolute value (just arithmetic)
+- JavaScript can do this in ~2ms!
+
+### Architecture Decision
+**Split responsibilities:**
+1. **Render (Python/ObsPy)**: Fetch from IRIS, save raw int16 to R2 (runs once/day)
+2. **Cloudflare Worker (JavaScript)**: Stream from R2 with on-demand processing (serves all users)
+
+**Why this is brilliant:**
+- Worker co-located with R2 (1-5ms latency vs 100-150ms)
+- FREE R2 egress when accessed from Workers
+- Global edge network (fast everywhere)
+- Dirt cheap: ~$6/month even at 1M requests
+
+### Technical Challenges Solved
+
+**1. Node.js Installation**
+- Homebrew failed due to custom installation path
+- Solution: Used `nvm` (Node Version Manager) instead
+
+**2. Wrangler CLI Hanging**
+- Initial `wrangler deploy` commands hung indefinitely
+- Root cause: Needed to register workers.dev subdomain first
+- Solution: Registered `robertalexander-music.workers.dev` via dashboard
+
+**3. MD5 Not Supported in Web Crypto API**
+- **Critical bug**: `crypto.subtle.digest('MD5', ...)` hung worker requests
+- Web Crypto API only supports: SHA-1, SHA-256, SHA-384, SHA-512
+- **Solution**: Switched entire stack to SHA-256
+  - Updated `worker/src/index.js`
+  - Updated `backend/main.py`
+  - Updated `backend/progressive_test_endpoint.py`
+
+**4. Cache Key Consistency**
+- Both Python backend and Worker must generate identical cache keys
+- Format: `SHA-256("{volcano}_{hours_ago}h_ago_{duration_hours}h_duration")[:16]`
+- Example: `kilauea_12h_ago_4h_duration` → `3da6c4e7f8b29a15`
+
+### Performance Expectations
+
+**Current (Render only):**
+- TTFA: 355ms
+- Cost at 1M req: $200-400/month
+- Bottleneck: Render→R2 latency (100-150ms each way)
+
+**With Worker:**
+- TTFA: 50-80ms (7x faster!)
+- Cost at 1M req: ~$6/month (40x cheaper!)
+- Breakdown: R2 fetch (50ms) + processing (2ms) + streaming start
+
+### Cost Breakdown at Scale (1M requests/month)
+
+| Component | Render Architecture | Worker Architecture |
+|-----------|---------------------|---------------------|
+| Compute | $5 (Render) | $5 (Render + Worker) |
+| Bandwidth | $200-400 (Render egress) | $0 (R2 egress FREE from Workers!) |
+| Storage (43GB historical) | $1 (R2) | $1 (R2) |
+| Worker requests | N/A | $0.50 (100k free, then $0.50/1M) |
+| **TOTAL** | **$206-406** | **~$6** |
+
+### Files Created
+```
+worker/
+├── src/
+│   └── index.js          # Worker code (186 lines)
+├── wrangler.toml          # Cloudflare config
+├── README.md              # Deployment guide
+└── .gitignore             # Node/Wrangler ignores
+```
+
+### Key Learnings
+
+1. **Not all processing needs Python**: Simple arithmetic (detrend/normalize) can be done in JavaScript at the edge
+2. **Co-location matters**: 1-5ms (Worker→R2) vs 100-150ms (Render→R2) is the difference
+3. **Web Crypto limitations**: No MD5 support, must use SHA-256 or higher
+4. **R2 is incredibly cheap**: $0.015/GB storage, FREE egress from Workers
+5. **Edge computing scales**: Same cost at 100 requests or 1M requests (within free tier)
+6. **Render for heavy lifting, Worker for serving**: Perfect division of labor
+
+### Open Questions / Next Steps
+
+1. **Test real-world Worker performance**: Once Render deploys, populate cache and measure actual TTFA
+2. **Browser integration**: Update frontend to use Worker endpoint instead of Render
+3. **Monitor costs**: Track actual Worker invocations and R2 requests
+4. **Historical data strategy**: Should we pre-populate popular time ranges?
+5. **Error handling**: What happens if R2 is down? Fallback to Render?
+
+### Why This Matters for the Project
+
+**For the AGU presentation:**
+- ✅ Sub-100ms response time = professional UX
+- ✅ Viral-proof architecture = can handle conference demos
+- ✅ Cost-effective = sustainable for grant funding
+
+**For the grant:**
+- ✅ Demonstrates technical sophistication
+- ✅ Shows understanding of scale/cost trade-offs
+- ✅ Real-world production architecture
+
+---
+
+**Session Status**: Render deploying v1.08, Worker live and tested, waiting to test end-to-end flow.
+
+---
+
+## 🔬 Anderson's MCMC vs Bilinear Transform Investigation (Evening Session 2)
+
+### Background: The IIR Filter Question
+
+**The Problem**: When streaming seismic audio, we need to remove instrument response. Two main approaches:
+1. **FFT/IFFT method** (`obspy.remove_response()`) - Accurate but requires full waveform, can't stream
+2. **IIR filters** (bilinear transform) - Can stream chunk-by-chunk in real-time
+
+**The Question**: Is scipy's simple bilinear transform "good enough" for volcanic monitoring (0.5-10 Hz), or do we need Anderson's expensive MCMC optimization?
+
+### Phase 1: Installing Anderson's TDD R Package ✅
+
+**Challenge**: Anderson's TDD package is archived (from 2013), not on current CRAN.
+
+**Steps Taken**:
+1. Installed Python packages: `obspy, scipy, numpy, matplotlib, pandas, rpy2`
+2. Installed R via conda: `conda install -c conda-forge r-base r-signal`
+3. Downloaded TDD package from CRAN archive: `TDD_0.4.tar.gz` (174 KB)
+4. Extracted package: Found `DPZLIST.RData` with pre-calculated MCMC-optimized poles/zeros/gain
+
+**Key Discovery**: Anderson's package contains **pre-computed coefficients** for:
+- 14 seismometer models (CMG-3T, CMG-40T, STS-2, Trillium-120, etc.)
+- 6 sample rates each (1, 10, 20, 40, 50, 100 Hz)
+- = 84 total coefficient sets
+
+### Phase 2: Extracting Anderson's Coefficients ✅
+
+**Created Scripts**:
+- `extract_anderson_coefficients.R` - Extracts poles/zeros/gain from DPZLIST.RData
+- `convert_zpg_to_sos.py` - Converts to SOS format using scipy
+
+**Results**:
+- Successfully extracted **37 out of 84** coefficient sets
+- **47 failed** with "complex value with no matching conjugate" errors
+- Saved to: `data/anderson_coefficients.json` and `data/anderson_zpg/*.csv`
+
+**Seismometers Successfully Extracted**:
+- CMG-3ESP: 5 sample rates (10-100 Hz)
+- CMG-3T: 6 sample rates (1-100 Hz)
+- CMG-40T_1s: 5 sample rates (1-100 Hz)
+- CMG-40T_30s: 3 sample rates (20-50 Hz)
+- Compact-Trillium: 4 sample rates (10-100 Hz)
+- STS-1_20s: 6 sample rates (1-100 Hz)
+- STS-1_360s: 3 sample rates (10-40 Hz)
+- STS-2_gen1: 2 sample rates (10-100 Hz)
+- STS-2_gen3: 1 sample rate (1 Hz)
+- Trillium-40: 2 sample rates (10-100 Hz)
+
+### Phase 3: Finding Matching IRIS Stations ✅
+
+**Challenge**: Anderson's coefficients are for generic seismometer models. Need to find actual IRIS stations that use these specific instruments.
+
+**Created Script**: `find_anderson_stations.py`
+
+**Search Strategy**:
+- Searched IU network (global seismic network)
+- 2015 time period (good metadata availability)
+- BHZ channels (broadband high gain, vertical)
+
+**Results**:
+- Found **75 stations** with Anderson's seismometer models:
+  - **71 STS-2 stations** (IU.COLA, IU.POHA, IU.BBSR, IU.KMBO, etc.)
+  - **4 Trillium-120 stations** (IU.ANMO, IU.BBSR, IU.GRFO, IU.KMBO)
+- Saved to: `data/anderson_test_stations.json`
+
+### Phase 4: Running Comparison Test ⚠️
+
+**Created Script**: `test_bilinear_vs_anderson.py`
+
+**Test Stations**:
+1. IU.COLA.10.BHZ (STS-2, 2015)
+2. IU.POHA.10.BHZ (STS-2, 2015)
+3. IU.ANMO.10.BHZ (Trillium-120, 2015)
+
+**Results**:
+```
+IU.COLA: 99.94% error in volcanic range (0.5-10 Hz)
+IU.POHA: 99.94% error in volcanic range
+IU.ANMO: 99.95% error in volcanic range
+```
+
+### Phase 5: The Fundamental Flaw Discovery! 🚨
+
+**CRITICAL REALIZATION**: We were comparing **two completely different things**:
+
+1. **Anderson's coefficients**: Pre-computed generic "STS-2 gen1" from 2013 TDD package
+2. **IRIS instrument response**: Specific IU.COLA's actual STS-2 (different poles/zeros!)
+
+**The Problem**:
+- Anderson's generic "STS-2" has: 4 poles, 2 zeros, gain=2371
+- IU.COLA's actual STS-2 has: 9 poles, 5 zeros, gain=5.85e+12
+
+**These are DIFFERENT INSTRUMENTS!** Like comparing a Honda Civic to a Honda Accord and being shocked they're different! The 99.9% "error" is not an error - they're just different devices.
+
+### What We Learned
+
+**✅ Successfully Extracted Anderson's Data**: We have his pre-computed MCMC coefficients for 37 instrument configurations.
+
+**❌ Comparison Doesn't Make Sense**: You can't compare:
+- Anderson's generic pre-computed STS-2 coefficients
+- vs Bilinear transform of a specific IRIS station's STS-2
+
+**The Real Question**: Not "how does bilinear compare to Anderson's pre-computed coefficients?" but rather:
+- **"Is bilinear transform good enough for streaming volcanic audio?"**
+- Does it produce clean frequency responses in 0.5-10 Hz?
+- Is it stable and causal for chunk-by-chunk streaming?
+- Is it better than FFT/IFFT for real-time applications?
+
+### Technical Learnings
+
+**R Package Management**:
+- TDD package is archived, must download from CRAN archive
+- `jsonlite` R package has compilation issues on macOS
+- Workaround: Export as RData and CSV, process in Python
+
+**ObsPy Response Objects**:
+- No `get_pazs()` method - use `response.response_stages[0]`
+- Sensor info is in `channel.sensor.description`, not `response.instrument_description`
+- Poles/zeros are in first response stage
+
+**scipy.zpk2sos Issues**:
+- ~56% of Anderson's coefficients fail with "no matching conjugate" errors
+- This suggests numerical precision issues in his MCMC optimization
+- Or possibly that some configurations are edge cases
+
+### Files Created
+
+**Scripts**:
+- `coefficient_comparison/extract_anderson_coefficients.R` - Extract from TDD package
+- `coefficient_comparison/convert_zpg_to_sos.py` - ZPG → SOS conversion
+- `coefficient_comparison/find_anderson_stations.py` - Find matching IRIS stations
+- `coefficient_comparison/test_bilinear_vs_anderson.py` - Comparison test (flawed approach)
+
+**Data**:
+- `coefficient_comparison/data/anderson_coefficients.json` - 37 SOS coefficient sets
+- `coefficient_comparison/data/anderson_zpg/*.csv` - 84 ZPG files (poles, zeros, gain)
+- `coefficient_comparison/data/anderson_test_stations.json` - 75 matching IRIS stations
+- `coefficient_comparison/TDD_0.4.tar.gz` - Anderson's R package (174 KB)
+
+**Results**:
+- `coefficient_comparison/results/bilinear_vs_anderson_comparison.csv` - Comparison results (invalid)
+- `coefficient_comparison/plots/*.png` - Frequency response plots
+
+### Next Steps (Not Pursued)
+
+**Option 1: Proper Bilinear Validation**
+- Test bilinear on Hawaiian volcano instruments directly
+- Verify frequency responses look good in 0.5-10 Hz
+- Test streaming stability on real data chunks
+- Compare to FFT/IFFT approach (latency, artifacts)
+
+**Option 2: Use ObsPy's Built-in Methods**
+- ObsPy has built-in response removal
+- Already validated by seismology community
+- May use FFT (bad for streaming) or IIR (good for streaming)
+- Need to investigate which method ObsPy uses
+
+**Option 3: Implement Anderson's MCMC**
+- Would require translating his R MCMC algorithm to Python
+- Very computationally expensive (5-10 minutes per station)
+- Unclear if benefits outweigh costs for our use case
+
+### Conclusion
+
+**What We Accomplished**:
+- ✅ Successfully extracted Anderson's pre-computed MCMC coefficients
+- ✅ Found 75 real IRIS stations with matching instruments
+- ✅ Built infrastructure for coefficient comparison testing
+- ✅ Discovered fundamental flaw in comparison approach
+
+**What We Learned**:
+- Anderson's coefficients are for generic seismometer models, not specific instruments
+- Comparing them to IRIS-specific responses is invalid (apples to oranges)
+- The real question is whether bilinear is "good enough" for streaming, not how it compares to pre-computed values
+
+**Status**: Paused for direction - need to decide if bilinear validation is worth pursuing or if we should just use ObsPy's built-in response removal methods.
+
+### Update: Proper Test Plan Created
+
+After discussion, realized the fundamental flaw in our approach:
+- **FFT/IFFT is analysis-resynthesis** (reconstruction, not filtering!)
+- **IIR filters work on actual samples** (direct, no reconstruction)
+- Need to compare: Bilinear IIR vs Anderson's MCMC IIR vs FFT/IFFT
+
+**Created comprehensive test plan**: `docs/planning/iir_filter_comparison_test_plan.md`
+
+**Next Steps**: Implement Anderson's MCMC from R code, run 3-way comparison on same data, determine if bilinear is "good enough" for streaming volcanic audio (0.5-10 Hz).
+
+---
+
+## 🔧 Render Service Recreation
+
+### The Missing Credentials Problem
+After deploying v1.08 (SHA-256 fix), Render was returning 404 errors:
+```json
+{"error": "An error occurred (404) when calling the HeadObject operation: Not Found"}
+```
+
+**Root Cause**: Render never had R2 credentials configured! The backend couldn't upload to R2, so cache remained empty.
+
+### The Oregon "Crisis" 
+Brief panic about service being "locked" to Oregon region. Turns out:
+- Oregon was already selected when service was originally created
+- Render only offers 5 regions: Oregon, Frankfurt, Ohio, Singapore, Virginia
+- **Oregon (US West) is actually ideal** for Cloudflare R2 access
+
+### Service Recreated
+Recreated `volcano-audio` web service with:
+- ✅ Build: `pip install -r backend/requirements.txt`
+- ✅ Start: `python backend/main.py`
+- ✅ Region: Oregon (US West)
+- ✅ Branch: `main`
+- ✅ R2 Environment Variables added:
+  - `R2_ACCOUNT_ID` = `66f906f29f28b08ae9c80d4f36e25c7a`
+  - `R2_ACCESS_KEY_ID` = `9e1cf6c395172f108c2150c52878859f`
+  - `R2_SECRET_ACCESS_KEY` = `93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec`
+  - `R2_BUCKET_NAME` = `hearts-data-cache`
+
+**Next**: Wait for Render to deploy, test full end-to-end flow (Render populate cache → Worker stream from R2).

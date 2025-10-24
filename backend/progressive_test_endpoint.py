@@ -31,10 +31,11 @@ s3_client = boto3.client(
     region_name='auto'
 )
 
-def generate_cache_key(volcano, hours_ago, duration_hours):
-    """Generate unique cache key"""
+def generate_cache_key(volcano, hours_ago, duration_hours, network=None, station=None, location=None, channel=None):
+    """Generate unique cache key including station info"""
     import hashlib
-    key_string = f"{volcano}_{hours_ago}h_ago_{duration_hours}h_duration"
+    station_str = f"{network}.{station}.{location}.{channel}" if network else "default"
+    key_string = f"{volcano}_{station_str}_{hours_ago}h_ago_{duration_hours}h_duration"
     return hashlib.sha256(key_string.encode()).hexdigest()[:16]
 
 def get_r2_key(cache_key, compression, storage, ext=''):
@@ -43,12 +44,12 @@ def get_r2_key(cache_key, compression, storage, ext=''):
     # storage: raw, zarr
     return f"cache/{compression}/{storage}/{cache_key}{ext}"
 
-def fetch_from_iris_and_save_all_formats(volcano, hours_ago=12, duration_hours=4):
+def fetch_from_iris_and_save_all_formats(volcano, hours_ago=12, duration_hours=4, network=None, station=None, location=None, channel=None):
     """
     Fetch data from IRIS, process to int16, save all 6 format combinations to R2
-    Returns: (cache_key, sample_rate, total_samples)
+    Returns: (cache_key, sample_rate, total_samples, was_cached)
     """
-    cache_key = generate_cache_key(volcano, hours_ago, duration_hours)
+    cache_key = generate_cache_key(volcano, hours_ago, duration_hours, network, station, location, channel)
     
     # Check if data already exists in R2
     test_key = get_r2_key(cache_key, 'int16', 'raw', '.bin')
@@ -58,7 +59,7 @@ def fetch_from_iris_and_save_all_formats(volcano, hours_ago=12, duration_hours=4
         # Get metadata
         response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=f"cache/metadata/{cache_key}.json")
         metadata = json.loads(response['Body'].read())
-        return cache_key, metadata['sample_rate'], metadata['total_samples']
+        return cache_key, metadata['sample_rate'], metadata['total_samples'], True
     except:
         pass
     
@@ -75,7 +76,14 @@ def fetch_from_iris_and_save_all_formats(volcano, hours_ago=12, duration_hours=4
         raise ValueError(f"Unknown volcano: {volcano}")
     
     config = VOLCANOES[volcano]
-    print(f"   {config['network']}.{config['station']}.{config['channel']}")
+    
+    # Use provided station params or fall back to config defaults
+    network = network or config['network']
+    station = station or config['station']
+    location = location or config.get('location', '*')
+    channel = channel or config['channel']
+    
+    print(f"   {network}.{station}.{location}.{channel}")
     
     client = Client("IRIS")
     end_time = UTCDateTime() - (hours_ago * 3600)
@@ -83,10 +91,10 @@ def fetch_from_iris_and_save_all_formats(volcano, hours_ago=12, duration_hours=4
     
     try:
         st = client.get_waveforms(
-            network=config['network'],
-            station=config['station'],
-            location=config.get('location', '*'),
-            channel=config['channel'],
+            network=network,
+            station=station,
+            location=location,
+            channel=channel,
             starttime=start_time,
             endtime=end_time
         )
@@ -202,7 +210,7 @@ def fetch_from_iris_and_save_all_formats(volcano, hours_ago=12, duration_hours=4
     )
     
     print(f"✅ All formats saved to R2")
-    return cache_key, sample_rate, total_samples
+    return cache_key, sample_rate, total_samples, False
 
 def stream_from_r2_progressive(cache_key, storage, compression):
     """
@@ -280,16 +288,31 @@ def create_progressive_test_endpoint(app):
         hours_ago = int(request.args.get('hours_ago', 12))
         duration = int(request.args.get('duration', 4))
         
+        # Optional station selection
+        network = request.args.get('network')
+        station = request.args.get('station')
+        location = request.args.get('location')
+        channel = request.args.get('channel')
+        
+        import time as time_module
+        request_start = time_module.time()
+        
         print(f"\n{'='*70}")
         print(f"🧪 PROGRESSIVE TEST: {storage}/{compression}")
         print(f"   Volcano: {volcano}, {duration}h, {hours_ago}h ago")
+        if network:
+            print(f"   Station: {network}.{station}.{location}.{channel}")
         print(f"{'='*70}")
         
         try:
             # Fetch from IRIS and save all formats to R2
-            cache_key, sample_rate, total_samples = fetch_from_iris_and_save_all_formats(
-                volcano, hours_ago, duration
+            cache_key, sample_rate, total_samples, was_cached = fetch_from_iris_and_save_all_formats(
+                volcano, hours_ago, duration, network, station, location, channel
             )
+            
+            data_ready_time = time_module.time() - request_start
+            cache_status = "CACHE HIT" if was_cached else "CACHE MISS (fetched from IRIS)"
+            print(f"⏱️ Data ready in {data_ready_time*1000:.0f}ms ({cache_status})")
             
             # Get file size from R2
             if storage == 'raw':
@@ -319,14 +342,18 @@ def create_progressive_test_endpoint(app):
             print(f"📤 Streaming {file_size/(1024*1024):.2f} MB with progressive chunks...")
             
             # Stream with progressive chunks
+            stream_start_time = time_module.time()
             return Response(
                 stream_from_r2_progressive(cache_key, storage, compression),
                 mimetype='application/octet-stream',
                 headers={
                     'X-Metadata': json.dumps(metadata),
+                    'X-Cache-Hit': 'true' if was_cached else 'false',
+                    'X-Data-Ready-Ms': str(int(data_ready_time * 1000)),
                     'Content-Length': str(file_size),
                     'Cache-Control': 'no-cache',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Expose-Headers': 'X-Metadata, X-Cache-Hit, X-Data-Ready-Ms'
                 }
             )
             

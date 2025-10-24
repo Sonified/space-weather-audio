@@ -1,0 +1,4 @@
+station,seismometer,sample_rate,anderson_key,bilinear_sections,anderson_sections,max_volcanic_error_pct,mean_volcanic_error_pct,max_full_error_pct
+IU.POHA.10.BHZ,STS-2,40.0,STS-2_gen1_100Hz,6,5,99.93838936391022,99.93475048812577,inf
+IU.COLA.10.BHZ,STS-2,40.0,STS-2_gen1_100Hz,5,5,99.93858259344012,99.93491365820907,inf
+IU.ANMO.10.BHZ,Trillium-120,40.0,Trillium-40_100Hz,6,4,99.94693624170789,99.9422731873688,1.7078777948248915e+29
