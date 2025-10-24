@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.08"
+__version__ = "1.09"
 __commit_message__ = (
-    "v1.08 Feature: Deploy Cloudflare Worker for streaming + switch to SHA-256 hashing (MD5 not supported in Web Crypto API)"
+    "v1.09 Feature: Enhanced frontend UI with pipeline selector, improved metrics, log scale speed control, and visual feedback"
 )
 
 # Import key modules to make them available when importing the package

@@ -81,7 +81,7 @@ def list_zarr_chunk_keys(prefix: str) -> list:
     keys.sort(key=sort_key)
     return keys
 
-def ensure_cached_in_r2(volcano: str, hours_ago: int, duration_hours: int):
+def ensure_cached_in_r2(volcano: str, hours_ago: int, duration_hours: int, network=None, station=None, location=None, channel=None):
     """Ensure all variants are cached in R2. Returns (cache_key, profiles, metadata)."""
     cache_key = generate_cache_key(volcano, hours_ago, duration_hours)
     # Quick existence check
@@ -102,6 +102,12 @@ def ensure_cached_in_r2(volcano: str, hours_ago: int, duration_hours: int):
         pass
 
     config = VOLCANOES[volcano.lower()]
+    # Use provided station params or fall back to config defaults
+    network = network or config['network']
+    station = station or config['station']
+    location = location or config.get('location', '*')
+    channel = channel or config['channel']
+    
     client = Client("IRIS")
     end_time = UTCDateTime() - (hours_ago * 3600)
     start_time = end_time - (duration_hours * 3600)
@@ -109,10 +115,10 @@ def ensure_cached_in_r2(volcano: str, hours_ago: int, duration_hours: int):
     iris_t0 = time.time()
     try:
         stream = client.get_waveforms(
-            network=config['network'],
-            station=config['station'],
-            location=config.get('location', '*'),
-            channel=config['channel'],
+            network=network,
+            station=station,
+            location=location,
+            channel=channel,
             starttime=start_time,
             endtime=end_time
         )
@@ -423,7 +429,7 @@ def get_stations(volcano):
                     'channel': ch['channel'],
                     'distance_km': ch.get('distance_km'),
                     'sample_rate': ch.get('sample_rate'),
-                    'label': f"{ch['network']}.{ch['station']}.{ch.get('location') or '--'}.{ch['channel']} ({int(ch.get('sample_rate', 0))} Hz, {ch.get('distance_km', 0):.1f}km)"
+                    'label': f"{ch['network']}.{ch['station']}.{ch.get('location') or '--'}.{ch['channel']} ({ch.get('distance_km', 0):.1f}km, {int(ch.get('sample_rate', 0))} Hz)"
                 })
         
         # Filter infrasound channels (active, within radius)
@@ -437,7 +443,7 @@ def get_stations(volcano):
                     'channel': ch['channel'],
                     'distance_km': ch.get('distance_km'),
                     'sample_rate': ch.get('sample_rate'),
-                    'label': f"{ch['network']}.{ch['station']}.{ch.get('location') or '--'}.{ch['channel']} ({int(ch.get('sample_rate', 0))} Hz, {ch.get('distance_km', 0):.1f}km)"
+                    'label': f"{ch['network']}.{ch['station']}.{ch.get('location') or '--'}.{ch['channel']} ({ch.get('distance_km', 0):.1f}km, {int(ch.get('sample_rate', 0))} Hz)"
                 })
         
         # Sort by distance (closest first)
@@ -732,6 +738,7 @@ def stream_zarr(volcano, hours):
     - storage: raw|zarr (default: raw)
     - compression: int16|gzip|blosc|none (default: gzip; none->int16)
     - hours_ago: int (default: 12)
+    - network, station, location, channel: Optional station selection
     """
     try:
         if volcano.lower() not in VOLCANOES:
@@ -742,8 +749,14 @@ def stream_zarr(volcano, hours):
         if compression == 'none':
             compression = 'int16'
         hours_ago = int(request.args.get('hours_ago', 12))
+        
+        # Optional station selection
+        network = request.args.get('network')
+        station = request.args.get('station')
+        location = request.args.get('location')
+        channel = request.args.get('channel')
 
-        cache_key, profiles, metadata = ensure_cached_in_r2(volcano.lower(), hours_ago, hours)
+        cache_key, profiles, metadata = ensure_cached_in_r2(volcano.lower(), hours_ago, hours, network, station, location, channel)
 
         # Determine total file size for headers
         if storage == 'raw':

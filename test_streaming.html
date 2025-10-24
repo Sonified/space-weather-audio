@@ -47,8 +47,8 @@
         }
         
         .controls {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 20px;
             margin-bottom: 30px;
         }
@@ -77,6 +77,11 @@
             border-color: #667eea;
         }
         
+        select option:disabled {
+            color: #555;
+            font-style: italic;
+        }
+        
         .button-group {
             display: flex;
             gap: 15px;
@@ -94,6 +99,19 @@
             transition: all 0.3s;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
+        }
+        
+        #streamBtn:not(:disabled) {
+            animation: pulseBrightness 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulseBrightness {
+            0%, 100% {
+                filter: brightness(1);
+            }
+            50% {
+                filter: brightness(1.3);
+            }
         }
         
         button:hover:not(:disabled) {
@@ -176,11 +194,11 @@
         }
         
         #waveform {
-            height: 150px;
+            height: 100px;
         }
         
         #spectrogram {
-            height: 300px;
+            height: 250px;
             background: #000;
         }
         
@@ -188,7 +206,7 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 15px;
-            margin-top: 20px;
+            margin-top: 0px;
         }
         
         .metric {
@@ -214,7 +232,15 @@
 <body>
     <div class="container">
         <h1>🌋 Volcano Audio Streaming</h1>
-        <p class="subtitle">True progressive streaming - hear audio as it arrives!</p>
+        
+        <div class="control-group" style="margin-bottom: 20px; border-bottom: 2px solid #667eea; padding-bottom: 15px;">
+            <label for="pipeline">🔬 Pipeline Architecture:</label>
+            <select id="pipeline" onchange="updatePipelineInfo()" style="font-weight: bold; border-color: #667eea;">
+                <option value="local">Local → Render → IRIS</option>
+                <option value="r2-render">Local → R2 → Render → IRIS</option>
+            </select>
+            <div id="pipelineInfo" style="margin-top: 8px; padding: 10px; background: #f0f4ff; border-radius: 5px; font-size: 13px; color: #555;"></div>
+        </div>
         
         <div class="controls">
             <div class="control-group">
@@ -236,41 +262,22 @@
                 </select>
             </div>
             
-            <div class="control-group" style="grid-column: span 2;">
-                <label for="station">Station (sorted by distance):</label>
-                <select id="station">
+            <div class="control-group">
+                <label for="station">Station (by distance):</label>
+                <select id="station" style="max-width: 310px;">
                     <option value="">Loading stations...</option>
                 </select>
             </div>
             
             <div class="control-group">
                 <label for="duration">Duration:</label>
-                <select id="duration">
+                <select id="duration" style="max-width: 100px;">
                     <option value="1">1 hour</option>
                     <option value="2">2 hours</option>
+                    <option value="4">4 hours</option>
                     <option value="6">6 hours</option>
                     <option value="12">12 hours</option>
                     <option value="24">24 hours</option>
-                </select>
-            </div>
-            
-            <div class="control-group">
-                <label for="format">Compression:</label>
-                <select id="format">
-                    <option value="gzip">Gzip</option>
-                    <option value="blosc">Blosc</option>
-                    <option value="zstd">Zstd</option>
-                </select>
-            </div>
-            
-            <div class="control-group">
-                <label for="level">Level:</label>
-                <select id="level">
-                    <option value="1">1 (fast)</option>
-                    <option value="3">3</option>
-                    <option value="5" selected>5 (balanced)</option>
-                    <option value="7">7</option>
-                    <option value="9">9 (best)</option>
                 </select>
             </div>
             
@@ -283,17 +290,25 @@
                     <option value="400">400x</option>
                 </select>
             </div>
+            
+            <div class="control-group">
+                <label for="format">File Format:</label>
+                <select id="format" style="max-width: 155px;">
+                    <option value="int16" selected>Int16</option>
+                    <option value="int32" disabled>Int32</option>
+                    <option value="mseed" disabled>MiniSEED</option>
+                </select>
+            </div>
         </div>
         
         <div class="button-group">
             <button onclick="startStreaming()" id="streamBtn">🎵 Start Streaming</button>
             <button onclick="togglePlayPause()" id="playPauseBtn" class="secondary" disabled>⏸️ Pause</button>
             <button onclick="toggleLoop()" id="loopBtn" class="secondary" disabled>🔁 Loop</button>
-            <div style="display: inline-block; margin-left: 20px; vertical-align: middle;">
+            <div style="display: flex; align-items: center; margin-left: 20px; flex: 1;">
                 <label for="playbackSpeed" style="font-weight: 600; margin-right: 5px;">Speed: <span id="speedValue">1.0</span>x</label>
-                <input type="range" id="playbackSpeed" min="0.1" max="10" step="0.1" value="1.0" oninput="changePlaybackSpeed()" style="width: 150px; vertical-align: middle;">
+                <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="500" oninput="changePlaybackSpeed()" style="flex: 1;">
             </div>
-            <span id="chunkIndicator" style="display: none; margin-left: 20px; color: red; font-weight: bold; font-size: 20px;">● CHUNK</span>
         </div>
         
         <div id="status" class="status info">
@@ -305,6 +320,10 @@
         
         <div class="metrics">
             <div class="metric">
+                <div class="metric-label">Total Downloaded</div>
+                <div class="metric-value" id="totalDownloaded">0 KB</div>
+            </div>
+            <div class="metric">
                 <div class="metric-label">Time to First Audio</div>
                 <div class="metric-value" id="ttfa">--</div>
             </div>
@@ -313,8 +332,8 @@
                 <div class="metric-value" id="chunksReceived">0</div>
             </div>
             <div class="metric">
-                <div class="metric-label">Total Downloaded</div>
-                <div class="metric-value" id="totalDownloaded">0 KB</div>
+                <div class="metric-label">Playing Chunk</div>
+                <div class="metric-value" id="playingChunk">--</div>
             </div>
             <div class="metric">
                 <div class="metric-label">Playback Progress</div>
@@ -339,11 +358,12 @@
         // Streaming state
         let allChunksData = [];
         let metadata = null;
-        let audioRate = 0;
+        let audioRate = 0; // Sample rate for audio playback (seismic rate * speedup)
         let streamStartTime = 0;
         let firstAudioTime = 0;
         let totalBytesReceived = 0;
         let chunksReceived = 0;
+        let cacheHitForMetrics = false; // Track if current stream was a cache hit
         
         // Station data
         let availableStations = null;
@@ -353,9 +373,63 @@
         let isPlaying = false;
         let currentSource = null;
         
+        // Pipeline configuration
+        const PIPELINE_CONFIGS = {
+            local: {
+                name: 'Local → Render → IRIS',
+                stationsUrl: 'http://localhost:8000/api/stations',
+                streamUrl: 'http://localhost:8000/api/progressive-test',
+                description: '🧪 Local testing: Your local Render backend fetches from IRIS',
+                color: '#667eea'
+            },
+            'r2-render': {
+                name: 'Local → R2 → Render → IRIS',
+                stationsUrl: 'https://volcano-audio.onrender.com/api/stations',
+                streamUrl: 'https://volcano-audio.onrender.com/api/progressive-test',
+                description: '🌐 Production Render: Data cached in R2, served by Render',
+                color: '#764ba2'
+            }
+        };
+        
+        function getPipelineConfig() {
+            const pipeline = document.getElementById('pipeline').value;
+            return PIPELINE_CONFIGS[pipeline];
+        }
+        
+        function updatePipelineInfo() {
+            const config = getPipelineConfig();
+            const info = document.getElementById('pipelineInfo');
+            info.innerHTML = `
+                ${config.description}<br>
+                <code style="background: white; padding: 2px 5px; border-radius: 3px; font-size: 11px;">
+                    Stations: ${config.stationsUrl}<br>
+                    Stream: ${config.streamUrl}
+                </code>
+            `;
+        }
+        
+        // Calculate slider value for 1.0x speed (reversing the log function)
+        function calculateSliderForSpeed(targetSpeed) {
+            const minSpeed = 0.01;
+            const maxSpeed = 10;
+            const minPos = 0;
+            const maxPos = 1000;
+            const minLog = Math.log(minSpeed);
+            const maxLog = Math.log(maxSpeed);
+            const logRange = maxLog - minLog;
+            const sliderValue = ((Math.log(targetSpeed) - minLog) / logRange) * (maxPos - minPos) + minPos;
+            return Math.round(sliderValue);
+        }
+        
         // Load stations on page load
         window.addEventListener('DOMContentLoaded', () => {
+            updatePipelineInfo();
             loadStations();
+            
+            // Set initial slider position for 1.0x speed
+            const sliderValueFor1x = calculateSliderForSpeed(1.0);
+            document.getElementById('playbackSpeed').value = sliderValueFor1x;
+            console.log(`Initialized slider at position ${sliderValueFor1x} for 1.0x speed`);
         });
         
         async function loadStations() {
@@ -363,14 +437,20 @@
             const stationSelect = document.getElementById('station');
             stationSelect.innerHTML = '<option value="">Loading stations...</option>';
             
+            const config = getPipelineConfig();
+            const url = `${config.stationsUrl}/${volcano}`;
+            
+            console.log(`📡 Loading stations from: ${url}`);
+            
             try {
-                const response = await fetch(`http://localhost:5001/api/stations/${volcano}`);
+                const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
                 
                 availableStations = await response.json();
                 updateStationList();
+                console.log(`✅ Loaded ${Object.values(availableStations).flat().length} stations`);
             } catch (error) {
                 console.error('Failed to load stations:', error);
                 stationSelect.innerHTML = '<option value="">Error loading stations</option>';
@@ -514,9 +594,20 @@
         }
         
         function changePlaybackSpeed() {
-            const newRate = parseFloat(document.getElementById('playbackSpeed').value);
+            // Map slider value (0-1000) to logarithmic speed (0.01-10)
+            const sliderValue = parseFloat(document.getElementById('playbackSpeed').value);
+            // Logarithmic mapping: slider 0-1000 -> speed 0.01-10
+            const minSpeed = 0.01;
+            const maxSpeed = 10;
+            const minPos = 0;
+            const maxPos = 1000;
+            const minLog = Math.log(minSpeed);
+            const maxLog = Math.log(maxSpeed);
+            const logRange = maxLog - minLog;
+            const newRate = Math.exp(minLog + (logRange * (sliderValue - minPos)) / (maxPos - minPos));
+            
             currentPlaybackRate = newRate;
-            document.getElementById('speedValue').textContent = newRate.toFixed(1);
+            document.getElementById('speedValue').textContent = newRate.toFixed(2);
             
             // Update currently playing source immediately
             if (currentSource) {
@@ -530,14 +621,13 @@
                 } catch (e) {}
             }
             
-            console.log(`🎚️ Playback speed changed to ${newRate}x (real-time update)`);
+            console.log(`🎚️ Playback speed changed to ${newRate.toFixed(2)}x (real-time update)`);
         }
         
         async function startStreaming() {
             const volcano = document.getElementById('volcano').value;
             const hours = parseInt(document.getElementById('duration').value);
-            const format = document.getElementById('format').value;
-            const level = parseInt(document.getElementById('level').value);
+            const format = document.getElementById('format').value; // int16, int32, or mseed
             const speedup = parseInt(document.getElementById('speedup').value);
             
             const stationSelect = document.getElementById('station');
@@ -562,10 +652,14 @@
             chunksReceived = 0;
             streamStartTime = performance.now();
             firstAudioTime = 0;
+            cacheHitForMetrics = false; // Reset cache hit status
             chunkQueue = [];
             isPlaying = false;
             isPaused = false; // ✅ Reset pause state for new stream
             currentSource = null;
+            
+            // Clear playing chunk indicator
+            document.getElementById('playingChunk').textContent = '--';
             
             // ✅ Clear spectrogram canvas for new stream
             if (spectrogramCanvas && spectrogramCtx) {
@@ -600,100 +694,70 @@
                 }
                 
                 // Start streaming with selected station parameters
-                const url = `http://localhost:5001/api/stream/${volcano}/${hours}?` + 
-                    `format=${format}&level=${level}&` +
+                const config = getPipelineConfig();
+                const url = `${config.streamUrl}?` + 
+                    `volcano=${volcano}&duration=${hours}&` +
+                    `format=${format}&` +
                     `network=${stationData.network}&station=${stationData.station}&` +
                     `location=${stationData.location}&channel=${stationData.channel}`;
+                
+                console.log(`📡 Streaming from: ${url}`);
+                console.log(`📦 Requesting format: ${format}`);
                 const response = await fetch(url);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
+                // Read metadata from HTTP header
+                const metadataHeader = response.headers.get('X-Metadata');
+                if (!metadataHeader) {
+                    throw new Error('Missing X-Metadata header');
+                }
+                
+                const metadata = JSON.parse(metadataHeader);
+                audioRate = Math.round(metadata.sample_rate * speedup); // Set global audioRate
+                const metadataTime = performance.now() - streamStartTime;
+                
+                // Read cache status headers
+                const cacheHit = response.headers.get('X-Cache-Hit') === 'true';
+                cacheHitForMetrics = cacheHit; // Store for TTFA metric
+                const dataReadyMs = parseInt(response.headers.get('X-Data-Ready-Ms') || '0');
+                
+                console.log('📊 Metadata received:', metadata);
+                console.log(`🎵 Audio rate: ${audioRate} Hz (${metadata.sample_rate} * ${speedup})`);
+                console.log(`⏱️ Time to metadata: ${metadataTime.toFixed(0)}ms`);
+                console.log(`💾 Cache status: ${cacheHit ? '✅ HIT (from R2)' : '❌ MISS (fetched from IRIS)'}`);
+                console.log(`⚡ Backend data ready: ${dataReadyMs}ms ${cacheHit ? '(pure R2 perf!)' : '(includes IRIS fetch)'}`);
+                status.textContent = `Streaming ${hours}h from ${stationLabel} (${metadata.sample_rate} Hz, ${speedup}x speedup)...`;
+                
+                // Read binary stream (no JSON wrappers - just raw data chunks)
                 const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let byteBuffer = new Uint8Array(0);
-                let expectingBinary = false;
-                let nextChunkSize = 0;
+                let chunkIndex = 0;
                 
                 while (true) {
                     const {done, value} = await reader.read();
                     
                     if (done) {
-                        console.log('🎵 Stream complete!');
+                        console.log('✅ Stream complete!');
+                        status.className = 'status success';
+                        status.textContent = `✅ Stream complete! ${chunksReceived} chunks, ${(totalBytesReceived / 1024).toFixed(1)} KB`;
                         break;
                     }
                     
                     totalBytesReceived += value.length;
+                    chunkIndex++;
                     document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
                     
-                    // Append to byte buffer
-                    const newBuffer = new Uint8Array(byteBuffer.length + value.length);
-                    newBuffer.set(byteBuffer);
-                    newBuffer.set(value, byteBuffer.length);
-                    byteBuffer = newBuffer;
-                    
-                    // Process buffer
-                    while (byteBuffer.length > 0) {
-                        if (expectingBinary) {
-                            // Waiting for binary chunk data
-                            if (byteBuffer.length < nextChunkSize + 1) {
-                                // Not enough data yet (need chunk + newline)
-                                break;
-                            }
-                            
-                            // Extract binary chunk
-                            const chunkData = byteBuffer.slice(0, nextChunkSize);
-                            await processChunk(chunkData, format);
-                            
-                            // Remove chunk + newline from buffer
-                            byteBuffer = byteBuffer.slice(nextChunkSize + 1);
-                            expectingBinary = false;
-                            nextChunkSize = 0;
-                        } else {
-                            // Looking for JSON line - find newline in raw bytes
-                            let newlineIndex = -1;
-                            for (let i = 0; i < byteBuffer.length; i++) {
-                                if (byteBuffer[i] === 10) { // '\n' is byte 10
-                                    newlineIndex = i;
-                                    break;
-                                }
-                            }
-                            
-                            if (newlineIndex === -1) {
-                                // No complete line yet
-                                break;
-                            }
-                            
-                            // Extract and decode only the JSON line
-                            const lineBytes = byteBuffer.slice(0, newlineIndex);
-                            const line = decoder.decode(lineBytes).trim();
-                            byteBuffer = byteBuffer.slice(newlineIndex + 1); // Skip the newline
-                            
-                            if (!line) continue;
-                            
-                            try {
-                                const message = JSON.parse(line);
-                                
-                                if (message.type === 'metadata') {
-                                    metadata = message;
-                                    audioRate = Math.round(message.sampling_rate * speedup);
-                                    console.log('📊 Metadata received:', metadata);
-                                    status.textContent = `Streaming ${hours}h from ${stationLabel} (${message.sampling_rate} Hz, ${speedup}x speedup)...`;
-                                } else if (message.type === 'chunk') {
-                                    console.log(`📦 Chunk ${message.index} header: ${message.samples} samples, ${message.compressed_size} bytes`);
-                                    expectingBinary = true;
-                                    nextChunkSize = message.compressed_size;
-                                } else if (message.type === 'complete') {
-                                    console.log(`✅ Stream complete! ${message.total_chunks} chunks received`);
-                                    status.className = 'status success';
-                                    status.textContent = `✅ Stream complete! ${message.total_chunks} chunks, ${(totalBytesReceived / 1024).toFixed(1)} KB`;
-                                }
-                            } catch (e) {
-                                console.error('Failed to parse JSON:', e, line);
-                            }
-                        }
+                    if (chunkIndex === 1) {
+                        const firstChunkTime = performance.now() - streamStartTime;
+                        console.log(`📦 Received chunk 1: ${value.length} bytes (${firstChunkTime.toFixed(0)}ms from click)`);
+                    } else {
+                        console.log(`📦 Received chunk ${chunkIndex}: ${value.length} bytes`);
                     }
+                    
+                    // Process chunk (decompress and convert to audio)
+                    await processChunk(value, format);
                 }
                 
             } catch (error) {
@@ -705,30 +769,37 @@
             }
         }
         
-        async function processChunk(compressedData, format) {
+        async function processChunk(rawData, format) {
             const t0 = performance.now();
             
-            // Decompress
-            let decompressed;
-            if (format === 'blosc') {
-                const codec = window.numcodecs.Blosc.fromConfig({cname: 'zstd', clevel: 5, shuffle: 1});
-                decompressed = await codec.decode(compressedData);
-            } else if (format === 'zstd') {
-                const codec = window.numcodecs.Zstd.fromConfig({level: 5});
-                decompressed = await codec.decode(compressedData);
+            // Process based on format
+            let float32Data;
+            
+            if (format === 'int16') {
+                // Data is raw int16 bytes
+                const int16Data = new Int16Array(rawData.buffer);
+                float32Data = new Float32Array(int16Data.length);
+                for (let i = 0; i < int16Data.length; i++) {
+                    float32Data[i] = int16Data[i] / 32768.0;
+                }
+            } else if (format === 'int32') {
+                // Data is raw int32 bytes
+                const int32Data = new Int32Array(rawData.buffer);
+                float32Data = new Float32Array(int32Data.length);
+                for (let i = 0; i < int32Data.length; i++) {
+                    // Normalize int32 to float32 [-1.0, 1.0]
+                    float32Data[i] = int32Data[i] / 2147483648.0;
+                }
+            } else if (format === 'mseed') {
+                // Data is miniSEED format - needs parsing (placeholder for now)
+                console.warn('⚠️ MiniSEED parsing not yet implemented - using placeholder');
+                // TODO: Implement miniSEED parsing with seisplotjs
+                float32Data = new Float32Array(0);
             } else {
-                decompressed = pako.inflate(compressedData);
+                throw new Error(`Unknown format: ${format}`);
             }
+            
             const t1 = performance.now();
-            
-            // Convert to int16 array
-            const int16Data = new Int16Array(decompressed.buffer);
-            
-            // Convert to float32 for Web Audio
-            const float32Data = new Float32Array(int16Data.length);
-            for (let i = 0; i < int16Data.length; i++) {
-                float32Data[i] = int16Data[i] / 32768.0;
-            }
             const t2 = performance.now();
             
             // Store chunk
@@ -745,7 +816,11 @@
                 document.getElementById('ttfa').textContent = `${firstAudioTime.toFixed(0)}ms`;
                 
                 const t3 = performance.now();
-                console.log(`⚡ CHUNK 1 BREAKDOWN: Decompress=${(t1-t0).toFixed(1)}ms | Convert=${(t2-t1).toFixed(1)}ms | TOTAL=${(t3-t0).toFixed(1)}ms`);
+                console.log(`⚡ CHUNK 1 PROCESSING: Format=${format} | Time=${(t1-t0).toFixed(1)}ms`);
+                
+                const ttfaLabel = cacheHitForMetrics ? '🚀 CACHE HIT' : '📡 CACHE MISS (includes IRIS)';
+                console.log(`⏱️ TIME TO FIRST AUDIO: ${firstAudioTime.toFixed(0)}ms ${ttfaLabel}`);
+                console.log(`   ${cacheHitForMetrics ? '✨ This is the <300ms production experience!' : '⏳ Would be <300ms with cron job pre-caching'}`);
                 
                 // Enable controls
                 const playPauseBtn = document.getElementById('playPauseBtn');
@@ -845,16 +920,25 @@
             
             // Chain to next chunk when this one ends
             source.onended = () => {
+                // Update playback progress when chunk finishes
+                if (allChunksData.length > 0) {
+                    const progress = Math.round(((index + 1) / allChunksData.length) * 100);
+                    document.getElementById('playbackProgress').textContent = `${progress}%`;
+                }
                 playNextChunk();
             };
             
             // Start immediately
             source.start(0);
             
-            // Blink indicator
-            const indicator = document.getElementById('chunkIndicator');
-            indicator.style.display = 'inline';
-            setTimeout(() => indicator.style.display = 'none', 200);
+            // Update playing chunk indicator with flash
+            const playingChunkElement = document.getElementById('playingChunk');
+            playingChunkElement.textContent = index + 1;
+            playingChunkElement.style.color = 'red';
+            playingChunkElement.style.transition = 'color 0.2s';
+            setTimeout(() => {
+                playingChunkElement.style.color = '';
+            }, 200);
             
             const duration = buffer.length / buffer.sampleRate / source.playbackRate.value;
             console.log(`🎵 Chunk ${index + 1} playing: duration ${duration.toFixed(2)}s, rate ${source.playbackRate.value}x`);
