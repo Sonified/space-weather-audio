@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.10"
+__version__ = "1.11"
 __commit_message__ = (
-    "v1.10 UI Polish: Added color-coded panels with gradients, moved title outside panels, reduced corner radius"
+    "v1.11 Fix: Increased spectrogram height to 350px, fixed playback indicator pause/resume/loop behavior"
 )
 
 # Import key modules to make them available when importing the package

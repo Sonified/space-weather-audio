@@ -70,7 +70,7 @@
             display: flex;
             flex-wrap: wrap;
             gap: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 0px;
         }
         
         .control-group {
@@ -221,15 +221,16 @@
         }
         
         canvas:first-of-type {
-            margin-top: 20px;
+            margin-top: 0px;
         }
         
         #waveform {
             height: 100px;
         }
         
+        /* NOTE: Canvas height in CSS must match canvas height attribute in HTML for crisp rendering */
         #spectrogram {
-            height: 250px;
+            height: 350px;
             background: #000;
         }
         
@@ -262,7 +263,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🌋 Volcano Audio Streaming</h1>
+        <h1>Volcano Audio Streaming</h1>
         
         <!-- Panel 1: Header, Pipeline, and All Data Selection -->
         <div class="panel panel-header">
@@ -348,7 +349,8 @@
             </div>
             
             <canvas id="waveform" width="1200" height="150"></canvas>
-            <canvas id="spectrogram" width="1200" height="300"></canvas>
+            <!-- NOTE: Canvas height must match CSS height for crisp rendering (see CSS #spectrogram) -->
+            <canvas id="spectrogram" width="1200" height="350"></canvas>
         </div>
         
         <!-- Panel 3: Metrics (Data Displays) -->
@@ -396,6 +398,7 @@
         let isPaused = false;
         let isLooping = false;
         let playbackStartTime = 0;
+        let pauseStartTime = 0;
         let totalAudioDuration = 0;
         
         // Streaming state
@@ -578,8 +581,14 @@
                     spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
                 }
                 
+                // Reset playback indicator
+                playbackStartTime = audioContext.currentTime;
+                
                 // Start playing from the beginning
                 playNextChunk();
+                
+                // Restart playback indicator
+                updatePlaybackIndicator();
                 return;
             }
             
@@ -587,6 +596,7 @@
             
             if (isPaused) {
                 // Pause
+                pauseStartTime = audioContext.currentTime;
                 audioContext.suspend();
                 btn.textContent = '▶️ Resume';
                 btn.classList.remove('pause-active');
@@ -601,6 +611,8 @@
                 console.log('⏸️ Audio paused');
             } else {
                 // Resume
+                const pauseDuration = audioContext.currentTime - pauseStartTime;
+                playbackStartTime += pauseDuration;
                 audioContext.resume();
                 btn.textContent = '⏸️ Pause';
                 btn.classList.remove('play-active');
@@ -609,6 +621,11 @@
                 // ✅ OPTIMIZATION: Restart spectrogram animation when resumed
                 if (!spectrogramAnimationId && spectrogramAnalyser && isPlaying) {
                     spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                }
+                
+                // ✅ Restart playback indicator
+                if (isPlaying) {
+                    requestAnimationFrame(updatePlaybackIndicator);
                 }
                 
                 console.log('▶️ Audio resumed');
@@ -788,6 +805,7 @@
             isPaused = false; // ✅ Reset pause state for new stream
             currentSource = null;
             playbackStartTime = 0;
+            pauseStartTime = 0;
             totalAudioDuration = 0;
             
             // Clear playing chunk indicator
@@ -1015,6 +1033,9 @@
                     allChunksData.forEach((chunkData, index) => {
                         chunkQueue.push({ data: chunkData, index: index });
                     });
+                    
+                    // Reset playback indicator for loop
+                    playbackStartTime = audioContext.currentTime;
                     
                     // Keep playing (don't set isPlaying = false)
                     // Immediately play the next chunk (which is now the first chunk again)

@@ -385,3 +385,99 @@ Enhanced visual design of `test_streaming.html` with color-coded panels and impr
 - Reduced corner radius for modern appearance
 - Improved pipeline info display formatting
 
+---
+
+## Session Update: Spectrogram Size & Playback Indicator Fixes
+
+### Version 1.11 Release
+
+Fixed critical bugs with the playback indicator and increased spectrogram visibility.
+
+#### Playback Indicator Fixes
+
+**Issues Fixed**:
+1. Playback indicator line didn't respect pause/resume state
+2. Indicator didn't reset when audio finished and restarted
+3. Indicator didn't reset when looping
+
+**Solution Implemented**:
+- Added `pauseStartTime` variable to track pause duration
+- When pausing: Record `audioContext.currentTime` in `pauseStartTime`
+- When resuming: Calculate pause duration and add to `playbackStartTime` to compensate
+- When resuming: Restart the `updatePlaybackIndicator()` animation loop
+- When restarting manually: Reset `playbackStartTime = audioContext.currentTime`
+- When looping: Reset `playbackStartTime = audioContext.currentTime`
+
+**Technical Details**:
+```javascript
+// Pause tracking
+let pauseStartTime = 0;
+
+// On pause
+pauseStartTime = audioContext.currentTime;
+
+// On resume
+const pauseDuration = audioContext.currentTime - pauseStartTime;
+playbackStartTime += pauseDuration;
+requestAnimationFrame(updatePlaybackIndicator);
+
+// On loop/restart
+playbackStartTime = audioContext.currentTime;
+```
+
+The indicator now correctly:
+- Stops when paused
+- Continues from correct position when resumed
+- Resets to beginning when looping or restarting
+
+#### Spectrogram Height Increase
+
+**Changes**:
+- Increased spectrogram height from 250px to 350px
+- Updated both CSS height and canvas element height
+- Added comments explaining that both values must match for crisp rendering
+
+**Why Both Heights Matter**:
+- Canvas `height` attribute: Sets internal drawing resolution (pixel buffer)
+- CSS `height`: Sets display size on page
+- When they match: Crisp 1:1 pixel rendering
+- When mismatched: Canvas gets stretched and looks blurry
+
+**Implementation**:
+```css
+/* NOTE: Canvas height in CSS must match canvas height attribute in HTML for crisp rendering */
+#spectrogram {
+    height: 350px;
+    background: #000;
+}
+```
+
+```html
+<!-- NOTE: Canvas height must match CSS height for crisp rendering (see CSS #spectrogram) -->
+<canvas id="spectrogram" width="1200" height="350"></canvas>
+```
+
+#### Minor Panel Spacing Fix
+
+**Issue**: Top panel had more bottom spacing than middle panel
+
+**Cause**: `.controls` element had `margin-bottom: 20px`, but since it was the last element in Panel 1, it added unnecessary spacing
+
+**Fix**: Changed `.controls` margin-bottom from 20px to 0px for consistent panel spacing
+
+#### Files Modified
+
+- `test_streaming.html`: Playback indicator fixes, spectrogram height increase, panel spacing
+- `python_code/__init__.py`: Version bumped to 1.11
+
+#### Commit Details
+
+**Version**: v1.11  
+**Commit Message**: "v1.11 Fix: Increased spectrogram height to 350px, fixed playback indicator pause/resume/loop behavior"
+
+**Key Fixes**:
+- Playback indicator respects pause/resume state
+- Playback indicator resets on loop/restart
+- Spectrogram increased to 350px with matching CSS/canvas heights
+- Panel spacing consistency fixed
+
