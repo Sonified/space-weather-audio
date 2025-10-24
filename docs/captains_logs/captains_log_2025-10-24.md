@@ -606,3 +606,205 @@ ctx.drawImage(spectrogramCanvas, -1, 0);
 - Audio: Professional-quality fade transitions
 - User Experience: Polished, professional feel
 
+---
+
+## Session Update: Interactive Seeking with DJ Deck Architecture
+
+### Version 1.13 Release
+
+Implemented sophisticated interactive seeking system with DJ-deck crossfading architecture for seamless audio navigation.
+
+#### DJ Deck Architecture
+
+**System Design**:
+- Two alternating audio decks (A and B) for crossfading
+- Each deck has its own `AudioBufferSourceNode` and `GainNode`
+- Crossfade between decks when seeking (25ms configurable)
+- Prevents clicks/pops during interactive scrubbing
+
+**State Management**:
+```javascript
+let isStreamComplete = false;  // All chunks received and combined
+let combinedAudioData = null;  // Float32Array of complete audio
+let deckA = { source, gain, stopTimeout, manualStop, fadeoutTimeout };
+let deckB = { source, gain, stopTimeout, manualStop, fadeoutTimeout };
+let activeDeck = null;  // 'A' or 'B'
+let isDeckMode = false; // Using decks vs chunks
+```
+
+**Transition Flow**:
+1. User streams audio progressively (chunk mode)
+2. When all chunks received, combine into single `Float32Array`
+3. Waveform turns from grey to colored (indicates seeking enabled)
+4. First seek: Transition from chunk mode to deck mode with fadeout
+5. Subsequent seeks: Crossfade between Deck A ↔ Deck B
+
+#### Interactive Waveform Scrubbing
+
+**Scrubbing Interaction**:
+- Click and drag on waveform to preview seek position
+- Orange preview line shows target position during drag
+- Release mouse to perform seek (crossfade to new position)
+- Cursor changes to "grabbing" during drag
+- Red playback indicator pauses during drag preview
+
+**Coordinate Transformation Fix**:
+- Fixed click position accuracy by using `rect.width` (rendered size) instead of `canvas.width` (internal resolution)
+- Handles window resizing correctly
+
+**Implementation**:
+```javascript
+setupWaveformInteraction() {
+  // mousedown → start drag
+  // mousemove → update preview line (orange)
+  // mouseup/leave → perform actual seek
+}
+```
+
+#### Smooth Playback Speed Changes
+
+**Problem Fixed**: Red playback indicator jumped when speed changed
+
+**Solution**: Independent position tracking
+```javascript
+let currentAudioPosition = 0;  // Actual audio position (seconds)
+let lastUpdateTime = 0;        // Last audioContext.currentTime
+```
+
+**Update Logic**:
+```javascript
+const elapsed = audioContext.currentTime - lastUpdateTime;
+currentAudioPosition += elapsed * currentPlaybackRate;
+lastUpdateTime = audioContext.currentTime;
+```
+
+Speed changes no longer affect position calculation—indicator moves smoothly at new rate.
+
+#### Auto-Fadeout at End of File
+
+**Configuration**:
+```javascript
+const AUDIO_FADE_TIME = 0.15;      // 150ms fade
+const AUDIO_FADE_BUFFER = 0.05;    // 50ms safety buffer
+```
+
+**Implementation**:
+- Schedules fadeout `AUDIO_FADE_TIME + AUDIO_FADE_BUFFER` before audio naturally ends
+- Prevents hard click at end of file
+- Uses `setTimeout` to schedule fadeout
+- Cancels timeout when seeking or pausing
+- Same fade time used for play/pause button
+
+**Edge Cases Handled**:
+- Pausing during scheduled fadeout → cancel timeout
+- Seeking during scheduled fadeout → cancel old timeout, schedule new one
+- Natural end vs manual stop → `manualStop` flag differentiates
+
+#### State Management Improvements
+
+**Critical Bug Fixes**:
+
+1. **Play/Pause After Seeking**:
+   - Problem: `togglePlayPause()` always used `currentGainNode` (chunk mode)
+   - Solution: Dynamically select correct gain node based on `isDeckMode`
+
+2. **Crossfade Cleanup**:
+   - Problem: Old deck `onended` firing after crossfade, incorrectly setting `isPaused=true`
+   - Solution: Set `oldDeck.manualStop = true` when starting crossfade
+   - Solution: Check `if (deck.source !== source)` in `onended` callback
+
+3. **Auto-Resume After Pause**:
+   - Problem: Seeking while paused didn't resume playback
+   - Solution: Check `if (isPaused)` in `seekToPosition()` and auto-resume
+
+4. **Restart Logic**:
+   - Problem: Clicking "Play" after natural end went back to chunk mode
+   - Solution: Use `seekToPosition(0)` if `isDeckMode` is active
+
+5. **Rapid Play/Pause**:
+   - Problem: 150ms pause fade conflicted with immediate resume
+   - Solution: Track `pauseFadeTimeout`, cancel on resume, use `cancelScheduledValues()`
+
+#### UI Enhancements
+
+**Visual Feedback**:
+- Waveform grey until complete (seeking disabled)
+- Waveform colored when complete (seeking enabled)
+- Scrubbing preview line: lighter grey (`#bbbbbb`)
+- Playback indicator pauses during drag
+- Black background for waveform canvas
+
+**Keyboard Control**:
+- Spacebar toggles play/pause
+- Speed slider auto-blurs on release (spacebar works immediately after)
+- Rapid spacebar presses handled correctly (no audio dropout)
+
+**Button Behavior**:
+- "Start Streaming" button disabled after click
+- Re-enabled only when data selection changes (volcano, station, duration, etc.)
+- Prevents accidental double-streaming
+
+#### Panel Spacing Refinements
+
+**Changes**:
+- Main title font size: `2.5em` → `2em`
+- Container gap: `20px` → `12px`
+- Local file dropdown bottom margin: `20px` → `0px` (consistent with Render mode)
+
+#### Files Modified
+
+- `test_streaming.html`:
+  - Added DJ deck architecture with crossfading
+  - Implemented interactive waveform scrubbing
+  - Fixed playback indicator speed change jumps
+  - Added auto-fadeout at end of file
+  - Implemented spacebar play/pause toggle
+  - Added auto-blur for speed slider
+  - Fixed coordinate transformation for click accuracy
+  - Improved state management with multiple flags
+  - Reduced font sizes and panel spacing
+
+- `python_code/__init__.py`: Version bumped to 1.13
+
+#### Technical Details
+
+**Crossfade Parameters**:
+- Seek crossfade: 25ms (configurable `SEEK_CROSSFADE_TIME`)
+- Pause/resume fade: 150ms (`AUDIO_FADE_TIME`)
+- End-of-file fade: 150ms + 50ms buffer
+
+**State Flags**:
+- `isPlaying`, `isPaused` - Playback state
+- `isDeckMode` - Using decks vs chunks
+- `isStreamComplete` - All chunks received
+- `isDragging` - User dragging on waveform
+- `manualStop` - Differentiate manual vs natural stop
+
+**Key Functions**:
+- `seekToPosition(targetSeconds)` - DJ deck crossfading logic
+- `combineChunksIntoSingleBuffer()` - Merge chunks when complete
+- `setupWaveformInteraction()` - Mouse event handlers for scrubbing
+- `enableStreamButton()` - Re-enable streaming after data selection change
+
+#### Commit Details
+
+**Version**: v1.13  
+**Commit Message**: "v1.13 Feature: Interactive DJ-deck seeking with crossfades, scrubbing preview, spacebar control, auto-fadeouts, black waveform background"
+
+**Key Features**:
+- DJ deck architecture for smooth seeking
+- Click-and-drag waveform scrubbing with preview
+- Spacebar play/pause toggle
+- Smooth playback indicator during speed changes
+- Auto-fadeout at end of file (no clicks)
+- Rapid play/pause support (no audio dropout)
+- Speed slider auto-blur for keyboard control
+- Professional-grade audio transitions
+
+**User Experience Impact**:
+- Intuitive waveform navigation
+- Professional audio behavior (no clicks/pops)
+- Responsive keyboard controls
+- Smooth visual feedback
+- DJ-quality crossfading
+

@@ -30,7 +30,7 @@
             margin: 0 auto;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 12px;
         }
         
         .panel {
@@ -60,7 +60,7 @@
         h1 {
             color: #fff;
             margin-bottom: 0px;
-            font-size: 2.5em;
+            font-size: 1.75em;
             text-align: center;
             text-shadow: 
                 2px 2px 0 rgba(0,0,0,0.15),
@@ -223,7 +223,7 @@
             display: block;
             border-radius: 10px;
             margin-bottom: 0;
-            background: #f8f9fa;
+            background: #000000;
         }
         
         canvas:not(:last-child) {
@@ -288,7 +288,7 @@
             </div>
             
             <!-- Local file dropdown for local mode -->
-            <div id="localFileDropdown" class="control-group" style="margin-bottom: 20px; display: none;">
+            <div id="localFileDropdown" class="control-group" style="margin-bottom: 0px; display: none;">
                 <label for="localFile">📁 Local MiniSEED File:</label>
                 <select id="localFile" style="max-width: 400px;">
                     <option value="">Loading files...</option>
@@ -363,7 +363,7 @@
                 <button onclick="toggleLoop()" id="loopBtn" class="secondary" disabled>🔁 Loop</button>
                 <div style="display: flex; align-items: center; margin-left: 20px; flex: 1;">
                     <label for="playbackSpeed" style="font-weight: 600; margin-right: 5px;">Speed: <span id="speedValue">1.0</span>x</label>
-                    <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="500" oninput="changePlaybackSpeed()" style="flex: 1;">
+                    <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="500" oninput="changePlaybackSpeed()" onmouseup="this.blur()" ontouchend="this.blur()" style="flex: 1;">
                 </div>
             </div>
             
@@ -406,7 +406,9 @@
     
     <script>
         // Configuration
-        const AUDIO_FADE_TIME = 0.25; // seconds - fade in/out time to prevent clicking
+        const AUDIO_FADE_TIME = 0.15; // seconds - fade in/out time to prevent clicking (150ms)
+        const AUDIO_FADE_BUFFER = 0.05; // seconds - extra buffer after fade (50ms safety margin)
+        const SEEK_CROSSFADE_TIME = 0.025; // seconds - crossfade time when seeking (25ms)
         
         // Global state
         let audioContext = null;
@@ -423,6 +425,17 @@
         let playbackStartTime = 0;
         let pauseStartTime = 0;
         let totalAudioDuration = 0;
+        let currentAudioPosition = 0; // Current position in audio (seconds)
+        let lastUpdateTime = 0; // Last time we updated position
+        let pauseFadeTimeout = null; // Timeout for pending pause fade completion
+        
+        // DJ Deck system for smooth seeking
+        let isStreamComplete = false; // Flag: all chunks received and combined
+        let combinedAudioData = null; // Float32Array of complete audio
+        let deckA = { source: null, gain: null, stopTimeout: null, manualStop: false, fadeoutTimeout: null }; // DJ Deck A
+        let deckB = { source: null, gain: null, stopTimeout: null, manualStop: false, fadeoutTimeout: null }; // DJ Deck B
+        let activeDeck = null; // 'A' or 'B' - which deck is currently playing
+        let isDeckMode = false; // Flag: switched from chunks to deck mode (prevents chunk callbacks)
         
         // Streaming state
         let allChunksData = [];
@@ -509,6 +522,129 @@
             return Math.round(sliderValue);
         }
         
+        // Enable stream button when data parameters change
+        function enableStreamButton() {
+            const streamBtn = document.getElementById('streamBtn');
+            streamBtn.disabled = false;
+            console.log('✅ Stream button re-enabled due to parameter change');
+        }
+        
+        // Interactive waveform scrubbing
+        let isDragging = false;
+        let scrubTargetPosition = null; // Position to seek to when user releases mouse
+        
+        function setupWaveformInteraction() {
+            const canvas = document.getElementById('waveform');
+            
+            // Calculate position from mouse event
+            function getPositionFromMouse(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const progress = Math.max(0, Math.min(1, x / rect.width));
+                const targetPosition = progress * totalAudioDuration;
+                return { targetPosition, progress, x, width: rect.width };
+            }
+            
+            // Update visual preview of scrub position
+            function updateScrubPreview(event) {
+                if (!isStreamComplete || !combinedAudioData || !totalAudioDuration) return;
+                
+                const { targetPosition, progress, x, width } = getPositionFromMouse(event);
+                scrubTargetPosition = targetPosition;
+                
+                // Draw preview line
+                const ctx = canvas.getContext('2d');
+                const canvasHeight = canvas.height;
+                
+                // Convert progress to canvas coordinate space (not rendered size)
+                const canvasX = progress * canvas.width;
+                
+                // Redraw waveform
+                if (cachedWaveformCanvas) {
+                    ctx.clearRect(0, 0, canvas.width, canvasHeight);
+                    ctx.drawImage(cachedWaveformCanvas, 0, 0);
+                }
+                
+                // Draw preview line (different color for scrubbing)
+                ctx.strokeStyle = isDragging ? '#bbbbbb' : '#ff0000'; // Light grey while scrubbing, red normally
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(canvasX, 0);
+                ctx.lineTo(canvasX, canvasHeight);
+                ctx.stroke();
+                
+                if (isDragging) {
+                    console.log(`🎯 Scrub preview: mouseX=${x.toFixed(0)}px, canvasX=${canvasX.toFixed(0)}px, renderedWidth=${width.toFixed(0)}px, canvasWidth=${canvas.width}, progress=${(progress*100).toFixed(1)}%, target=${targetPosition.toFixed(2)}s`);
+                }
+            }
+            
+            // Actually perform the seek
+            function performSeek() {
+                if (!isStreamComplete || !combinedAudioData) {
+                    console.log('⏸️ Seeking disabled - stream not complete yet');
+                    return;
+                }
+                
+                if (scrubTargetPosition !== null) {
+                    console.log(`🖱️ Mouse released - seeking to ${scrubTargetPosition.toFixed(2)}s`);
+                    seekToPosition(scrubTargetPosition);
+                    scrubTargetPosition = null;
+                }
+            }
+            
+            canvas.addEventListener('mousedown', (e) => {
+                if (!isStreamComplete) return;
+                isDragging = true;
+                canvas.style.cursor = 'grabbing';
+                updateScrubPreview(e);
+                console.log('🖱️ Scrub started (drag to preview, release to seek)');
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    updateScrubPreview(e); // Just preview, don't seek yet!
+                }
+            });
+            
+            canvas.addEventListener('mouseup', (e) => {
+                if (isDragging) {
+                    isDragging = false;
+                    canvas.style.cursor = 'pointer';
+                    updateScrubPreview(e); // Final preview position
+                    performSeek(); // NOW actually seek!
+                    
+                    // Restart playback indicator after scrubbing
+                    if (isPlaying && !isPaused) {
+                        requestAnimationFrame(updatePlaybackIndicator);
+                    }
+                    
+                    console.log('🖱️ Scrub ended');
+                }
+            });
+            
+            canvas.addEventListener('mouseleave', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    canvas.style.cursor = isStreamComplete ? 'pointer' : 'default';
+                    performSeek(); // Seek even if mouse leaves canvas
+                    
+                    // Restart playback indicator after scrubbing
+                    if (isPlaying && !isPaused) {
+                        requestAnimationFrame(updatePlaybackIndicator);
+                    }
+                    
+                    console.log('🖱️ Scrub ended (mouse left canvas)');
+                }
+            });
+            
+            // Add hover cursor to indicate interactivity (only when stream complete)
+            canvas.addEventListener('mouseenter', () => {
+                if (isStreamComplete && totalAudioDuration > 0) {
+                    canvas.style.cursor = 'pointer';
+                }
+            });
+        }
+        
         // Load stations on page load
         window.addEventListener('DOMContentLoaded', () => {
             // Set initial slider position for 1.0x speed
@@ -518,6 +654,34 @@
             
             // Initialize pipeline (will load files or stations as needed)
             updatePipelineInfo();
+            
+            // Setup interactive waveform scrubbing
+            setupWaveformInteraction();
+            
+            // Add event listeners to data selection controls to re-enable stream button
+            document.getElementById('pipeline').addEventListener('change', enableStreamButton);
+            document.getElementById('volcano').addEventListener('change', enableStreamButton);
+            document.getElementById('dataType').addEventListener('change', enableStreamButton);
+            document.getElementById('station').addEventListener('change', enableStreamButton);
+            document.getElementById('duration').addEventListener('change', enableStreamButton);
+            document.getElementById('speedup').addEventListener('change', enableStreamButton);
+            document.getElementById('format').addEventListener('change', enableStreamButton);
+            document.getElementById('localFile').addEventListener('change', enableStreamButton);
+            
+            // Add spacebar support for play/pause
+            document.addEventListener('keydown', (e) => {
+                // Only trigger if spacebar and not focused on an input/select element
+                if (e.code === 'Space' && !['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(e.target.tagName)) {
+                    e.preventDefault(); // Prevent page scroll
+                    const playPauseBtn = document.getElementById('playPauseBtn');
+                    if (!playPauseBtn.disabled && audioContext) {
+                        console.log('⌨️ Spacebar pressed - toggling play/pause');
+                        togglePlayPause();
+                    }
+                }
+            });
+            
+            console.log('⌨️ Spacebar control enabled for play/pause');
         });
         
         async function loadStations() {
@@ -632,12 +796,20 @@
             
             // Clear the queue
             chunkQueue = [];
-            isPlaying = false;
             
-            // Stop spectrogram animation
-            if (spectrogramAnimationId) {
-                cancelAnimationFrame(spectrogramAnimationId);
-                spectrogramAnimationId = null;
+            // Only change playing state if NOT in deck mode
+            if (!isDeckMode) {
+                isPlaying = false;
+                console.log('🛑 stopAllAudio: set isPlaying=false (chunk mode)');
+                
+                // Stop spectrogram animation (only in chunk mode)
+                if (spectrogramAnimationId) {
+                    cancelAnimationFrame(spectrogramAnimationId);
+                    spectrogramAnimationId = null;
+                    console.log('🛑 stopAllAudio: stopped spectrogram (chunk mode)');
+                }
+            } else {
+                console.log('🛑 stopAllAudio: preserving isPlaying state and spectrogram (deck mode)');
             }
         }
         
@@ -652,43 +824,74 @@
             if (!isPlaying && isPaused && chunkQueue.length === 0 && allChunksData.length > 0) {
                 console.log('🔄 Restarting playback from beginning...');
                 
-                // Re-populate the queue from stored chunk data
-                chunkQueue = [];
-                allChunksData.forEach((chunkData, index) => {
-                    chunkQueue.push({ data: chunkData, index: index });
-                });
-                
-                // Reset state
-                isPaused = false;
-                isPlaying = false;
-                btn.textContent = '⏸️ Pause';
-                btn.classList.remove('play-active', 'secondary');
-                btn.classList.add('pause-active');
-                
-                // Resume audio context
-                if (audioContext.state === 'suspended') {
-                    audioContext.resume();
+                // Check if we're in deck mode or chunk mode
+                if (isDeckMode && isStreamComplete && combinedAudioData) {
+                    // Deck mode: Use seek to restart
+                    console.log('🎚️ Restarting in deck mode (seeking to 0)');
+                    
+                    // Reset state
+                    isPaused = false;
+                    isPlaying = true;
+                    btn.textContent = '⏸️ Pause';
+                    btn.classList.remove('play-active', 'secondary');
+                    btn.classList.add('pause-active');
+                    
+                    // Resume audio context
+                    if (audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                    
+                    // Start spectrogram
+                    if (!spectrogramAnimationId && spectrogramAnalyser) {
+                        spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                    }
+                    
+                    // Seek to beginning using deck system
+                    seekToPosition(0);
+                } else {
+                    // Chunk mode: Re-populate queue
+                    console.log('🎵 Restarting in chunk mode (replaying chunks)');
+                    
+                    // Re-populate the queue from stored chunk data
+                    chunkQueue = [];
+                    allChunksData.forEach((chunkData, index) => {
+                        chunkQueue.push({ data: chunkData, index: index });
+                    });
+                    
+                    // Reset state
+                    isPaused = false;
+                    isPlaying = false;
+                    btn.textContent = '⏸️ Pause';
+                    btn.classList.remove('play-active', 'secondary');
+                    btn.classList.add('pause-active');
+                    
+                    // Resume audio context
+                    if (audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                    
+                    // Start spectrogram
+                    if (!spectrogramAnimationId && spectrogramAnalyser) {
+                        spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                    }
+                    
+                    // Reset playback indicator
+                    playbackStartTime = audioContext.currentTime;
+                    currentAudioPosition = 0; // Reset to beginning
+                    lastUpdateTime = audioContext.currentTime;
+                    
+                    // Fade in from restart
+                    if (currentGainNode) {
+                        currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                        currentGainNode.gain.linearRampToValueAtTime(1.0, audioContext.currentTime + AUDIO_FADE_TIME);
+                    }
+                    
+                    // Start playing from the beginning
+                    playNextChunk();
+                    
+                    // Restart playback indicator
+                    updatePlaybackIndicator();
                 }
-                
-                // Start spectrogram
-                if (!spectrogramAnimationId && spectrogramAnalyser) {
-                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
-                }
-                
-                // Reset playback indicator
-                playbackStartTime = audioContext.currentTime;
-                
-                // Fade in from restart
-                if (currentGainNode) {
-                    currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
-                    currentGainNode.gain.linearRampToValueAtTime(1.0, audioContext.currentTime + AUDIO_FADE_TIME);
-                }
-                
-                // Start playing from the beginning
-                playNextChunk();
-                
-                // Restart playback indicator
-                updatePlaybackIndicator();
                 return;
             }
             
@@ -696,14 +899,38 @@
             
             if (isPaused) {
                 // Pause - fade out first
-                if (currentGainNode) {
-                    currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, audioContext.currentTime);
-                    currentGainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                let gainNode = null;
+                
+                // Get the correct gain node (deck mode or chunk mode)
+                if (isDeckMode && activeDeck) {
+                    const deck = (activeDeck === 'A') ? deckA : deckB;
+                    gainNode = deck.gain;
+                    
+                    // Cancel scheduled fadeout since we're manually pausing/fading
+                    if (deck.fadeoutTimeout) {
+                        clearTimeout(deck.fadeoutTimeout);
+                        deck.fadeoutTimeout = null;
+                        console.log(`⏰ Cancelled scheduled fadeout for Deck ${activeDeck} (pausing)`);
+                    }
+                    
+                    console.log(`⏸️ Pausing Deck ${activeDeck}`);
+                } else {
+                    gainNode = currentGainNode;
+                    console.log('⏸️ Pausing chunk playback');
+                }
+                
+                if (gainNode) {
+                    // Cancel any pending fade
+                    gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
                     
                     // Wait for fade to complete before suspending
-                    setTimeout(() => {
+                    pauseFadeTimeout = setTimeout(() => {
                         pauseStartTime = audioContext.currentTime;
                         audioContext.suspend();
+                        pauseFadeTimeout = null;
+                        console.log('⏸️ AudioContext suspended after fade');
                     }, AUDIO_FADE_TIME * 1000);
                 } else {
                     pauseStartTime = audioContext.currentTime;
@@ -723,13 +950,55 @@
                 console.log('⏸️ Audio fading out to pause...');
             } else {
                 // Resume - fade in
-                const pauseDuration = audioContext.currentTime - pauseStartTime;
-                playbackStartTime += pauseDuration;
-                audioContext.resume();
                 
-                if (currentGainNode) {
-                    currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
-                    currentGainNode.gain.linearRampToValueAtTime(1.0, audioContext.currentTime + AUDIO_FADE_TIME);
+                // Cancel pending pause suspend if it hasn't fired yet
+                if (pauseFadeTimeout) {
+                    clearTimeout(pauseFadeTimeout);
+                    pauseFadeTimeout = null;
+                    console.log('⏰ Cancelled pending pause suspend (resuming before fade completed)');
+                }
+                
+                audioContext.resume();
+                lastUpdateTime = audioContext.currentTime; // Reset time tracking to prevent jump
+                
+                let gainNode = null;
+                
+                // Get the correct gain node (deck mode or chunk mode)
+                if (isDeckMode && activeDeck) {
+                    const deck = (activeDeck === 'A') ? deckA : deckB;
+                    gainNode = deck.gain;
+                    
+                    // Reschedule fadeout based on remaining time
+                    if (deck.source && totalAudioDuration > 0) {
+                        const remainingTime = totalAudioDuration - currentAudioPosition;
+                        const fadeoutStartTime = Math.max(0, remainingTime - AUDIO_FADE_TIME - AUDIO_FADE_BUFFER);
+                        
+                        if (fadeoutStartTime > 0) {
+                            deck.fadeoutTimeout = setTimeout(() => {
+                                if (deck.gain && !deck.manualStop) {
+                                    console.log(`🌅 Fading out Deck ${activeDeck} (${AUDIO_FADE_TIME}s before natural end)`);
+                                    deck.gain.gain.setValueAtTime(deck.gain.gain.value, audioContext.currentTime);
+                                    deck.gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                                }
+                                deck.fadeoutTimeout = null;
+                            }, fadeoutStartTime * 1000);
+                            console.log(`⏰ Rescheduled fadeout for Deck ${activeDeck} in ${fadeoutStartTime.toFixed(2)}s (remaining: ${remainingTime.toFixed(2)}s)`);
+                        }
+                    }
+                    
+                    console.log(`▶️ Resuming Deck ${activeDeck}`);
+                } else {
+                    gainNode = currentGainNode;
+                    console.log('▶️ Resuming chunk playback');
+                }
+                
+                if (gainNode) {
+                    // Cancel any scheduled ramps (like the pause fadeout)
+                    gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                    // Start from current value and ramp to full volume
+                    gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(1.0, audioContext.currentTime + AUDIO_FADE_TIME);
+                    console.log(`🎚️ Resuming from gain=${gainNode.gain.value.toFixed(3)}, ramping to 1.0`);
                 }
                 
                 btn.textContent = '⏸️ Pause';
@@ -765,6 +1034,306 @@
             }
         }
         
+        // Seek to a specific position using DJ deck crossfading
+        function seekToPosition(targetPosition) {
+            if (!audioContext || !combinedAudioData || !isStreamComplete) {
+                console.log('❌ Cannot seek: stream not complete');
+                return;
+            }
+            
+            // Clamp position to valid range
+            targetPosition = Math.max(0, Math.min(targetPosition, totalAudioDuration));
+            
+            const targetMinutes = Math.floor(targetPosition / 60);
+            const targetSeconds = (targetPosition % 60).toFixed(1);
+            console.log(`🎯 Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')} (${targetPosition.toFixed(2)}s / ${totalAudioDuration.toFixed(2)}s)`);
+            
+            // If we're paused (manually or audio finished), seeking should resume playback
+            if (isPaused) {
+                console.log(`▶️ Seeking while paused - auto-resuming playback (was: isPlaying=${isPlaying}, isPaused=${isPaused})`);
+                isPaused = false;
+                isPlaying = true;
+                
+                // Update button state
+                const btn = document.getElementById('playPauseBtn');
+                btn.textContent = '⏸️ Pause';
+                btn.classList.remove('play-active', 'secondary');
+                btn.classList.add('pause-active');
+                
+                // Resume audio context if suspended
+                if (audioContext.state === 'suspended') {
+                    console.log('▶️ Resuming suspended AudioContext');
+                    audioContext.resume();
+                }
+                
+                // Start spectrogram
+                if (!spectrogramAnimationId && spectrogramAnalyser) {
+                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                    console.log('🎨 Restarting spectrogram');
+                }
+                
+                console.log('✅ Auto-resume complete: isPlaying=true, isPaused=false');
+            }
+            
+            // Determine which deck to use (alternate between A and B)
+            const targetDeck = (activeDeck === 'A') ? 'B' : 'A';
+            const deck = (targetDeck === 'A') ? deckA : deckB;
+            console.log(`🎚️ Loading Deck ${targetDeck} (crossfading from ${activeDeck || 'chunk-mode'})`);
+            
+            // Update status message
+            const status = document.getElementById('status');
+            status.className = 'status info';
+            status.textContent = `🔀 Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')} (Source ${targetDeck})`;
+            
+            // Prepare crossfade timing
+            const now = audioContext.currentTime;
+            const fadeTime = SEEK_CROSSFADE_TIME;
+            
+            // Clear any pending timeouts for this deck
+            if (deck.stopTimeout) {
+                clearTimeout(deck.stopTimeout);
+                deck.stopTimeout = null;
+                console.log(`⏰ Cleared pending stop timeout for Deck ${targetDeck}`);
+            }
+            if (deck.fadeoutTimeout) {
+                clearTimeout(deck.fadeoutTimeout);
+                deck.fadeoutTimeout = null;
+                console.log(`⏰ Cleared pending fadeout timeout for Deck ${targetDeck}`);
+            }
+            
+            // Stop current deck source if exists
+            if (deck.source) {
+                deck.manualStop = true; // Mark as manual stop so onended doesn't change state
+                try { deck.source.stop(); } catch (e) {}
+                deck.source = null;
+                console.log(`🛑 Manually stopped Deck ${targetDeck} source`);
+            }
+            
+            // If this is the first seek, stop chunk-based playback with crossfade
+            if (!activeDeck) {
+                console.log('🛑 Stopping chunk-based playback, switching to deck mode');
+                isDeckMode = true; // Prevent chunk callbacks from changing state
+                
+                // Fade out chunk-based audio
+                if (currentGainNode) {
+                    currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, now);
+                    currentGainNode.gain.linearRampToValueAtTime(0, now + fadeTime);
+                    console.log(`📉 Chunk audio fading OUT (${(fadeTime*1000).toFixed(0)}ms)`);
+                    
+                    // Stop chunks after fade
+                    setTimeout(() => {
+                        stopAllAudio();
+                        console.log('🛑 Chunk playback stopped after fadeout');
+                    }, fadeTime * 1000 + 10);
+                } else {
+                    stopAllAudio(); // No gain node, just stop immediately
+                }
+                
+                isPlaying = true; // Keep playing flag true
+                isPaused = false; // Ensure we're not paused
+                console.log('✅ Deck mode activated: isDeckMode=true, isPlaying=true, isPaused=false');
+            }
+            
+            // Calculate sample position
+            const startSample = Math.floor(targetPosition * audioRate);
+            const remainingSamples = combinedAudioData.length - startSample;
+            
+            if (remainingSamples <= 0) {
+                console.log('❌ Target position beyond audio end');
+                return;
+            }
+            
+            console.log(`📊 Start sample: ${startSample.toLocaleString()} / ${combinedAudioData.length.toLocaleString()}`);
+            
+            // Create audio buffer from combined data
+            const buffer = audioContext.createBuffer(1, remainingSamples, audioRate);
+            const channelData = buffer.getChannelData(0);
+            channelData.set(combinedAudioData.subarray(startSample));
+            
+            // Create source
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.playbackRate.value = currentPlaybackRate;
+            
+            // Create or reuse gain node for this deck
+            if (!deck.gain) {
+                deck.gain = audioContext.createGain();
+                deck.gain.connect(audioContext.destination);
+                deck.gain.connect(spectrogramAnalyser);
+            }
+            
+            source.connect(deck.gain);
+            deck.source = source;
+            deck.manualStop = false; // Reset flag for this new source
+            
+            // Handle deck playback ending
+            source.onended = () => {
+                // Check if this source is still the active one for this deck
+                if (deck.source !== source) {
+                    console.log(`🚫 Old Deck ${targetDeck} source ended - ignoring (new source active)`);
+                    return;
+                }
+                
+                // Check if this was a manual stop (seeking to new position)
+                if (deck.manualStop) {
+                    console.log(`🚫 Deck ${targetDeck} ended but was manually stopped - ignoring`);
+                    deck.manualStop = false; // Reset flag
+                    return;
+                }
+                
+                console.log(`🏁 Deck ${targetDeck} finished playing naturally`);
+                
+                // Handle looping
+                if (isLooping && combinedAudioData) {
+                    console.log('🔁 Looping - restarting from beginning...');
+                    seekToPosition(0);
+                } else {
+                    // Stop playback
+                    isPlaying = false;
+                    isPaused = true;
+                    const btn = document.getElementById('playPauseBtn');
+                    if (!btn.disabled) {
+                        btn.textContent = '▶️ Play';
+                        btn.classList.remove('pause-active');
+                        btn.classList.add('play-active');
+                    }
+                    console.log(`🏁 Deck playback finished: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                }
+            };
+            
+            // Fade in new deck
+            deck.gain.gain.setValueAtTime(0, now);
+            deck.gain.gain.linearRampToValueAtTime(1.0, now + fadeTime);
+            console.log(`📈 Deck ${targetDeck} fading IN (${(fadeTime*1000).toFixed(0)}ms)`);
+            
+            // Fade out old deck
+            if (activeDeck) {
+                const oldDeck = (activeDeck === 'A') ? deckA : deckB;
+                if (oldDeck.gain) {
+                    // Mark as manual stop NOW (before natural end can occur)
+                    if (oldDeck.source) {
+                        oldDeck.manualStop = true;
+                        console.log(`🎚️ Marked Deck ${activeDeck} for manual stop (crossfading)`);
+                    }
+                    
+                    // Cancel scheduled fadeout since we're manually fading
+                    if (oldDeck.fadeoutTimeout) {
+                        clearTimeout(oldDeck.fadeoutTimeout);
+                        oldDeck.fadeoutTimeout = null;
+                        console.log(`⏰ Cancelled scheduled fadeout for Deck ${activeDeck} (crossfading manually)`);
+                    }
+                    
+                    oldDeck.gain.gain.setValueAtTime(oldDeck.gain.gain.value, now);
+                    oldDeck.gain.gain.linearRampToValueAtTime(0, now + fadeTime);
+                    console.log(`📉 Deck ${activeDeck} fading OUT (${(fadeTime*1000).toFixed(0)}ms)`);
+                    
+                    // Stop old source after fade completes
+                    if (oldDeck.source) {
+                        oldDeck.stopTimeout = setTimeout(() => {
+                            try { oldDeck.source.stop(); } catch (e) {}
+                            oldDeck.source = null;
+                            oldDeck.stopTimeout = null;
+                            console.log(`🛑 Deck ${activeDeck} stopped after fadeout`);
+                        }, fadeTime * 1000 + 50);
+                    }
+                }
+            }
+            
+            // Calculate duration and schedule fadeout before natural end
+            const bufferDuration = remainingSamples / audioRate / currentPlaybackRate;
+            const fadeoutStartTime = Math.max(0, bufferDuration - AUDIO_FADE_TIME - AUDIO_FADE_BUFFER);
+            
+            // Schedule fadeout before audio ends naturally
+            if (fadeoutStartTime > 0) {
+                deck.fadeoutTimeout = setTimeout(() => {
+                    if (deck.gain && !deck.manualStop) {
+                        console.log(`🌅 Fading out Deck ${targetDeck} (${AUDIO_FADE_TIME}s before natural end)`);
+                        deck.gain.gain.setValueAtTime(deck.gain.gain.value, audioContext.currentTime);
+                        deck.gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                    }
+                    deck.fadeoutTimeout = null;
+                }, fadeoutStartTime * 1000);
+                console.log(`⏰ Scheduled fadeout for Deck ${targetDeck} in ${fadeoutStartTime.toFixed(2)}s (buffer duration: ${bufferDuration.toFixed(2)}s)`);
+            }
+            
+            // Start playback
+            source.start(0);
+            activeDeck = targetDeck;
+            console.log(`▶️ Deck ${targetDeck} playing from ${targetPosition.toFixed(2)}s`);
+            
+            // Update position tracking
+            currentAudioPosition = targetPosition;
+            lastUpdateTime = audioContext.currentTime;
+            
+            // Update visual indicator immediately
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            const progress = targetPosition / totalAudioDuration;
+            const x = progress * width;
+            
+            // Redraw waveform with new indicator position
+            if (cachedWaveformCanvas) {
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(cachedWaveformCanvas, 0, 0);
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            
+            // Ensure spectrogram is running
+            if (!spectrogramAnimationId && !isPaused) {
+                console.log('🎨 Restarting spectrogram after seek');
+                spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+            }
+            
+            // Ensure playback indicator is running
+            if (!isPaused) {
+                console.log('🎬 Restarting playback indicator after seek');
+                requestAnimationFrame(updatePlaybackIndicator);
+            }
+        }
+        
+        // Combine all chunks into a single Float32Array when streaming completes
+        function combineChunksIntoSingleBuffer() {
+            console.log('🔗 Combining chunks into single audio buffer...');
+            const t0 = performance.now();
+            
+            // Calculate total samples
+            const totalSamples = allChunksData.reduce((sum, chunk) => sum + chunk.length, 0);
+            console.log(`📊 Total samples: ${totalSamples.toLocaleString()}`);
+            
+            // Create combined array
+            combinedAudioData = new Float32Array(totalSamples);
+            let offset = 0;
+            
+            for (let i = 0; i < allChunksData.length; i++) {
+                combinedAudioData.set(allChunksData[i], offset);
+                offset += allChunksData[i].length;
+            }
+            
+            const t1 = performance.now();
+            console.log(`✅ Combined ${allChunksData.length} chunks in ${(t1-t0).toFixed(1)}ms`);
+            console.log(`💾 Combined buffer size: ${(combinedAudioData.byteLength / 1024 / 1024).toFixed(2)} MB`);
+            
+            // Mark stream as complete
+            isStreamComplete = true;
+            
+            // Redraw waveform in color
+            drawWaveform();
+            
+            // Update status
+            const status = document.getElementById('status');
+            status.className = 'status success';
+            status.textContent = `✅ Stream complete! Click waveform to seek anywhere`;
+            
+            console.log('🎉 Stream complete - seeking now enabled!');
+        }
+        
         function drawWaveform() {
             const canvas = document.getElementById('waveform');
             const width = canvas.width;
@@ -794,7 +1363,8 @@
             }
             
             // Draw waveform to cached canvas
-            ctx.strokeStyle = '#667eea';
+            // Grey during streaming, colored when complete
+            ctx.strokeStyle = isStreamComplete ? '#667eea' : '#999999';
             ctx.lineWidth = 1;
             ctx.beginPath();
             
@@ -834,6 +1404,12 @@
         }
         
         function updatePlaybackIndicator() {
+            // Don't update during scrubbing - let the scrub preview show instead
+            if (isDragging) {
+                requestAnimationFrame(updatePlaybackIndicator); // Keep loop alive
+                return;
+            }
+            
             if (!isPlaying || isPaused || totalAudioDuration === 0) {
                 console.log(`⏸️ Playback indicator paused: isPlaying=${isPlaying}, isPaused=${isPaused}, duration=${totalAudioDuration}`);
                 return;
@@ -844,9 +1420,14 @@
             const width = canvas.width;
             const height = canvas.height;
             
-            // Calculate elapsed time
-            const elapsed = (audioContext.currentTime - playbackStartTime) * currentPlaybackRate;
-            const progress = Math.min(elapsed / totalAudioDuration, 1.0);
+            // Update current audio position based on elapsed real time and playback rate
+            const now = audioContext.currentTime;
+            const realTimeElapsed = now - lastUpdateTime;
+            currentAudioPosition += realTimeElapsed * currentPlaybackRate;
+            lastUpdateTime = now;
+            
+            // Calculate progress
+            const progress = Math.min(currentAudioPosition / totalAudioDuration, 1.0);
             
             // Calculate x position
             const x = progress * width;
@@ -887,16 +1468,24 @@
             currentPlaybackRate = newRate;
             document.getElementById('speedValue').textContent = newRate.toFixed(2);
             
-            // Update currently playing source immediately
+            // Update currently playing source immediately (chunk mode)
             if (currentSource) {
                 currentSource.playbackRate.value = newRate;
             }
             
-            // Update all scheduled sources
+            // Update all scheduled sources (chunk mode)
             for (const source of scheduledSources) {
                 try {
                     source.playbackRate.value = newRate;
                 } catch (e) {}
+            }
+            
+            // Update DJ deck sources (deck mode)
+            if (deckA.source) {
+                try { deckA.source.playbackRate.value = newRate; } catch (e) {}
+            }
+            if (deckB.source) {
+                try { deckB.source.playbackRate.value = newRate; } catch (e) {}
             }
             
             console.log(`🎚️ Playback speed changed to ${newRate.toFixed(2)}x (real-time update)`);
@@ -976,6 +1565,23 @@
             playbackStartTime = 0;
             pauseStartTime = 0;
             totalAudioDuration = 0;
+            currentAudioPosition = 0;
+            lastUpdateTime = 0;
+            
+            // Reset DJ deck state
+            isStreamComplete = false;
+            combinedAudioData = null;
+            activeDeck = null;
+            isDeckMode = false; // Back to chunk mode for new stream
+            if (deckA.source) { try { deckA.source.stop(); } catch(e) {} }
+            if (deckB.source) { try { deckB.source.stop(); } catch(e) {} }
+            if (deckA.stopTimeout) { clearTimeout(deckA.stopTimeout); }
+            if (deckB.stopTimeout) { clearTimeout(deckB.stopTimeout); }
+            if (deckA.fadeoutTimeout) { clearTimeout(deckA.fadeoutTimeout); }
+            if (deckB.fadeoutTimeout) { clearTimeout(deckB.fadeoutTimeout); }
+            deckA = { source: null, gain: null, stopTimeout: null, manualStop: false, fadeoutTimeout: null };
+            deckB = { source: null, gain: null, stopTimeout: null, manualStop: false, fadeoutTimeout: null };
+            console.log('🔄 DJ deck state reset (back to chunk mode)');
             
             // Clear playing chunk indicator
             document.getElementById('playingChunk').textContent = '--';
@@ -1051,9 +1657,9 @@
                 
                 if (isLocalFileMode) {
                     const durationMins = Math.round(metadata.duration_seconds / 60);
-                    status.textContent = `Playing ${stationLabel} (${durationMins} min, ${metadata.sample_rate} Hz, ${speedup}x speedup)...`;
+                    status.textContent = `Loading ${stationLabel} (${durationMins} min, ${metadata.sample_rate} Hz, ${speedup}x speedup) - seeking disabled until complete...`;
                 } else {
-                    status.textContent = `Streaming ${hours}h from ${stationLabel} (${metadata.sample_rate} Hz, ${speedup}x speedup)...`;
+                    status.textContent = `Streaming ${hours}h from ${stationLabel} (${metadata.sample_rate} Hz, ${speedup}x speedup) - seeking disabled until complete...`;
                 }
                 
                 if (isLocalFileMode) {
@@ -1069,11 +1675,9 @@
                     await processChunk(new Uint8Array(arrayBuffer), format);
                     
                     console.log('✅ File loaded!');
-                    status.className = 'status success';
-                    status.textContent = `✅ File loaded! ${(totalBytesReceived / 1024).toFixed(1)} KB`;
                     
-                    // Draw complete waveform
-                    drawWaveform();
+                    // Combine chunks into single buffer for seeking
+                    combineChunksIntoSingleBuffer();
                     
                     // Restart playback indicator now that we have total duration
                     if (isPlaying && !isPaused) {
@@ -1090,11 +1694,9 @@
                         
                         if (done) {
                             console.log('✅ Stream complete!');
-                            status.className = 'status success';
-                            status.textContent = `✅ Stream complete! ${chunksReceived} chunks, ${(totalBytesReceived / 1024).toFixed(1)} KB`;
                             
-                            // Draw complete waveform
-                            drawWaveform();
+                            // Combine chunks into single buffer for seeking
+                            combineChunksIntoSingleBuffer();
                             
                             // Restart playback indicator now that we have total duration
                             if (isPlaying && !isPaused) {
@@ -1125,7 +1727,7 @@
                 console.error('Streaming error:', error);
                 status.className = 'status error';
                 status.textContent = `❌ Error: ${error.message}`;
-            } finally {
+                // Re-enable button on error so user can try again
                 streamBtn.disabled = false;
             }
         }
@@ -1200,6 +1802,8 @@
                 
                 // Record playback start time for indicator
                 playbackStartTime = audioContext.currentTime;
+                currentAudioPosition = 0; // Reset audio position
+                lastUpdateTime = audioContext.currentTime; // Start tracking time
                 
                 // Fade in from start
                 if (currentGainNode) {
@@ -1232,6 +1836,8 @@
                     
                     // Reset playback indicator for loop
                     playbackStartTime = audioContext.currentTime;
+                    currentAudioPosition = 0; // Reset to beginning
+                    lastUpdateTime = audioContext.currentTime;
                     
                     // Keep playing (don't set isPlaying = false)
                     // Immediately play the next chunk (which is now the first chunk again)
@@ -1239,6 +1845,12 @@
                     return;
                 } else {
                     // Not looping - stop playback
+                    // BUT: Don't change state if we've switched to deck mode!
+                    if (isDeckMode) {
+                        console.log(`🚫 Chunk playback ended but we're in deck mode - ignoring state change`);
+                        return;
+                    }
+                    
                     isPlaying = false;
                     const btn = document.getElementById('playPauseBtn');
                     

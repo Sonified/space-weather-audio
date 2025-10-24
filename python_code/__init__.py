@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.12"
+__version__ = "1.13"
 __commit_message__ = (
-    "v1.12 Feature: Added local file playback mode, audio fade in/out transitions, optimized spectrogram GPU rendering"
+    "v1.13 Feature: Interactive DJ-deck seeking with crossfades, scrubbing preview, spacebar control, auto-fadeouts, black waveform background"
 )
 
 # Import key modules to make them available when importing the package
