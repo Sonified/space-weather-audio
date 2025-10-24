@@ -20,7 +20,7 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #5a3a4a 0%, #4a2a3a 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -37,7 +37,12 @@
             background: white;
             border-radius: 10px;
             padding: 20px 40px; /* 20px top/bottom, 30px left/right */
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            box-shadow: 
+                3px 3px 0 rgba(0,0,0,0.1),
+                6px 6px 0 rgba(0,0,0,0.08),
+                9px 9px 0 rgba(0,0,0,0.06),
+                12px 12px 0 rgba(0,0,0,0.04),
+                15px 15px 30px rgba(0,0,0,0.3);
         }
         
         .panel-header {
@@ -57,7 +62,12 @@
             margin-bottom: 0px;
             font-size: 2.5em;
             text-align: center;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            text-shadow: 
+                2px 2px 0 rgba(0,0,0,0.15),
+                4px 4px 0 rgba(0,0,0,0.12),
+                6px 6px 0 rgba(0,0,0,0.09),
+                8px 8px 0 rgba(0,0,0,0.06),
+                10px 10px 20px rgba(0,0,0,0.4);
         }
         
         .subtitle {
@@ -69,7 +79,7 @@
         .controls {
             display: flex;
             flex-wrap: wrap;
-            gap: 20px;
+            gap: 15px 20px; /* 15px vertical, 20px horizontal */
             margin-bottom: 0px;
         }
         
@@ -80,8 +90,8 @@
         
         label {
             font-weight: 600;
-            margin-bottom: 8px;
-            color: #555;
+            margin-bottom: 3px;
+            color: #222;
         }
         
         select, input[type="range"] {
@@ -270,10 +280,19 @@
             <div class="control-group" style="margin-bottom: 20px;">
                 <label for="pipeline">🔬 Pipeline Architecture:</label>
                 <select id="pipeline" onchange="updatePipelineInfo()" style="font-weight: bold; border-color: #667eea;">
-                    <option value="local">Local → Render → IRIS</option>
+                    <option value="local-file">Local (File)</option>
+                    <option value="local-backend">Local → Render → IRIS</option>
                     <option value="r2-render">Local → R2 → Render → IRIS</option>
                 </select>
                 <div id="pipelineInfo" style="margin-top: 8px; padding: 10px; background: #f0f4ff; border-radius: 5px; font-size: 13px; color: #555; white-space: pre-wrap;"></div>
+            </div>
+            
+            <!-- Local file dropdown for local mode -->
+            <div id="localFileDropdown" class="control-group" style="margin-bottom: 20px; display: none;">
+                <label for="localFile">📁 Local MiniSEED File:</label>
+                <select id="localFile" style="max-width: 400px;">
+                    <option value="">Loading files...</option>
+                </select>
             </div>
             
             <div class="controls">
@@ -386,12 +405,16 @@
     </div>
     
     <script>
+        // Configuration
+        const AUDIO_FADE_TIME = 0.25; // seconds - fade in/out time to prevent clicking
+        
         // Global state
         let audioContext = null;
         let spectrogramAnalyser = null;
         let spectrogramAnimationId = null;
         let spectrogramCanvas = null; // ✅ OPTIMIZATION: Cache canvas element
         let spectrogramCtx = null; // ✅ OPTIMIZATION: Cache canvas context
+        let cachedWaveformCanvas = null; // ✅ OPTIMIZATION: Offscreen canvas for waveform caching
         let currentGainNode = null;
         let scheduledSources = [];
         let currentPlaybackRate = 1.0;
@@ -421,7 +444,14 @@
         
         // Pipeline configuration
         const PIPELINE_CONFIGS = {
-            local: {
+            'local-file': {
+                name: 'Local (File)',
+                localFilesUrl: 'http://localhost:8000/api/local-files',
+                localStreamUrl: 'http://localhost:8000/api/local-file',
+                description: '💾 Local file: Load audio data from local mseed_files directory',
+                color: '#4caf50'
+            },
+            'local-backend': {
                 name: 'Local → Render → IRIS',
                 stationsUrl: 'http://localhost:8000/api/stations',
                 streamUrl: 'http://localhost:8000/api/progressive-test',
@@ -445,7 +475,25 @@
         function updatePipelineInfo() {
             const config = getPipelineConfig();
             const info = document.getElementById('pipelineInfo');
-            info.innerHTML = `${config.description}  |  🕋 Stations: ${config.stationsUrl}  |  ➡️ Stream: ${config.streamUrl}`;
+            const localFileDropdown = document.getElementById('localFileDropdown');
+            const controls = document.querySelector('.controls');
+            const streamBtn = document.getElementById('streamBtn');
+            
+            if (config.localFilesUrl) {
+                // Local file mode
+                info.innerHTML = `${config.description}`;
+                localFileDropdown.style.display = 'flex';
+                controls.style.display = 'none';
+                streamBtn.textContent = '🎵 Start';
+                loadLocalFiles();
+            } else if (config.stationsUrl && config.streamUrl) {
+                // Backend modes
+                info.innerHTML = `${config.description}  |  🕋 Stations: ${config.stationsUrl}  |  ➡️ Stream: ${config.streamUrl}`;
+                localFileDropdown.style.display = 'none';
+                controls.style.display = 'flex';
+                streamBtn.textContent = '🎵 Start Streaming';
+                loadStations();
+            }
         }
         
         // Calculate slider value for 1.0x speed (reversing the log function)
@@ -463,21 +511,26 @@
         
         // Load stations on page load
         window.addEventListener('DOMContentLoaded', () => {
-            updatePipelineInfo();
-            loadStations();
-            
             // Set initial slider position for 1.0x speed
             const sliderValueFor1x = calculateSliderForSpeed(1.0);
             document.getElementById('playbackSpeed').value = sliderValueFor1x;
             console.log(`Initialized slider at position ${sliderValueFor1x} for 1.0x speed`);
+            
+            // Initialize pipeline (will load files or stations as needed)
+            updatePipelineInfo();
         });
         
         async function loadStations() {
-            const volcano = document.getElementById('volcano').value;
+            const config = getPipelineConfig();
             const stationSelect = document.getElementById('station');
+            
+            if (!config.stationsUrl) {
+                return;
+            }
+            
+            const volcano = document.getElementById('volcano').value;
             stationSelect.innerHTML = '<option value="">Loading stations...</option>';
             
-            const config = getPipelineConfig();
             const url = `${config.stationsUrl}/${volcano}`;
             
             console.log(`📡 Loading stations from: ${url}`);
@@ -494,6 +547,47 @@
             } catch (error) {
                 console.error('Failed to load stations:', error);
                 stationSelect.innerHTML = '<option value="">Error loading stations</option>';
+            }
+        }
+        
+        async function loadLocalFiles() {
+            const config = getPipelineConfig();
+            const localFileSelect = document.getElementById('localFile');
+            
+            if (!config.localFilesUrl) {
+                return;
+            }
+            
+            localFileSelect.innerHTML = '<option value="">Loading files...</option>';
+            
+            console.log(`📁 Loading local files from: ${config.localFilesUrl}`);
+            
+            try {
+                const response = await fetch(config.localFilesUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const files = data.files || [];
+                
+                if (files.length === 0) {
+                    localFileSelect.innerHTML = '<option value="">No files found</option>';
+                    return;
+                }
+                
+                localFileSelect.innerHTML = '';
+                files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file;
+                    option.textContent = file;
+                    localFileSelect.appendChild(option);
+                });
+                
+                console.log(`✅ Loaded ${files.length} local files`);
+            } catch (error) {
+                console.error('Failed to load local files:', error);
+                localFileSelect.innerHTML = '<option value="">Error loading files</option>';
             }
         }
         
@@ -584,6 +678,12 @@
                 // Reset playback indicator
                 playbackStartTime = audioContext.currentTime;
                 
+                // Fade in from restart
+                if (currentGainNode) {
+                    currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                    currentGainNode.gain.linearRampToValueAtTime(1.0, audioContext.currentTime + AUDIO_FADE_TIME);
+                }
+                
                 // Start playing from the beginning
                 playNextChunk();
                 
@@ -595,9 +695,21 @@
             isPaused = !isPaused;
             
             if (isPaused) {
-                // Pause
-                pauseStartTime = audioContext.currentTime;
-                audioContext.suspend();
+                // Pause - fade out first
+                if (currentGainNode) {
+                    currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, audioContext.currentTime);
+                    currentGainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                    
+                    // Wait for fade to complete before suspending
+                    setTimeout(() => {
+                        pauseStartTime = audioContext.currentTime;
+                        audioContext.suspend();
+                    }, AUDIO_FADE_TIME * 1000);
+                } else {
+                    pauseStartTime = audioContext.currentTime;
+                    audioContext.suspend();
+                }
+                
                 btn.textContent = '▶️ Resume';
                 btn.classList.remove('pause-active');
                 btn.classList.add('play-active');
@@ -608,12 +720,18 @@
                     spectrogramAnimationId = null;
                 }
                 
-                console.log('⏸️ Audio paused');
+                console.log('⏸️ Audio fading out to pause...');
             } else {
-                // Resume
+                // Resume - fade in
                 const pauseDuration = audioContext.currentTime - pauseStartTime;
                 playbackStartTime += pauseDuration;
                 audioContext.resume();
+                
+                if (currentGainNode) {
+                    currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                    currentGainNode.gain.linearRampToValueAtTime(1.0, audioContext.currentTime + AUDIO_FADE_TIME);
+                }
+                
                 btn.textContent = '⏸️ Pause';
                 btn.classList.remove('play-active');
                 btn.classList.add('pause-active');
@@ -628,7 +746,7 @@
                     requestAnimationFrame(updatePlaybackIndicator);
                 }
                 
-                console.log('▶️ Audio resumed');
+                console.log('▶️ Audio fading in from resume...');
             }
         }
         
@@ -649,9 +767,17 @@
         
         function drawWaveform() {
             const canvas = document.getElementById('waveform');
-            const ctx = canvas.getContext('2d');
             const width = canvas.width;
             const height = canvas.height;
+            
+            // ✅ OPTIMIZATION: Create offscreen canvas for caching if not exists
+            if (!cachedWaveformCanvas) {
+                cachedWaveformCanvas = document.createElement('canvas');
+                cachedWaveformCanvas.width = width;
+                cachedWaveformCanvas.height = height;
+            }
+            
+            const ctx = cachedWaveformCanvas.getContext('2d', { alpha: false });
             
             // Clear canvas
             ctx.clearRect(0, 0, width, height);
@@ -667,7 +793,7 @@
                 offset += chunk.length;
             }
             
-            // Draw waveform
+            // Draw waveform to cached canvas
             ctx.strokeStyle = '#667eea';
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -698,6 +824,11 @@
             
             ctx.stroke();
             
+            // ✅ OPTIMIZATION: Copy cached waveform to visible canvas
+            const visibleCtx = canvas.getContext('2d');
+            visibleCtx.clearRect(0, 0, width, height);
+            visibleCtx.drawImage(cachedWaveformCanvas, 0, 0);
+            
             // Save total audio duration for playback indicator
             totalAudioDuration = combinedData.length / audioRate;
         }
@@ -720,8 +851,11 @@
             // Calculate x position
             const x = progress * width;
             
-            // Redraw waveform with indicator
-            drawWaveform();
+            // ✅ OPTIMIZATION: Use cached waveform instead of redrawing
+            if (cachedWaveformCanvas) {
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(cachedWaveformCanvas, 0, 0);
+            }
             
             // Draw playback indicator line
             ctx.strokeStyle = '#ff0000';
@@ -769,19 +903,44 @@
         }
         
         async function startStreaming() {
-            const volcano = document.getElementById('volcano').value;
-            const hours = parseInt(document.getElementById('duration').value);
-            const format = document.getElementById('format').value; // int16, int32, or mseed
+            const config = getPipelineConfig();
             const speedup = parseInt(document.getElementById('speedup').value);
+            const format = document.getElementById('format').value;
             
-            const stationSelect = document.getElementById('station');
-            if (!stationSelect.value) {
-                alert('Please select a station');
-                return;
+            // Check if we're in local file mode
+            const isLocalFileMode = !!config.localFilesUrl;
+            
+            let stationLabel, url, hours;
+            
+            if (isLocalFileMode) {
+                // Local file mode
+                const localFileSelect = document.getElementById('localFile');
+                if (!localFileSelect.value) {
+                    alert('Please select a local file');
+                    return;
+                }
+                const filename = localFileSelect.value;
+                stationLabel = filename;
+                url = `${config.localStreamUrl}?filename=${encodeURIComponent(filename)}&speedup=${speedup}`;
+            } else {
+                // Backend mode (IRIS or R2)
+                const volcano = document.getElementById('volcano').value;
+                hours = parseInt(document.getElementById('duration').value);
+                const stationSelect = document.getElementById('station');
+                
+                if (!stationSelect.value) {
+                    alert('Please select a station');
+                    return;
+                }
+                
+                const stationData = JSON.parse(stationSelect.value);
+                stationLabel = stationSelect.options[stationSelect.selectedIndex].text;
+                url = `${config.streamUrl}?` + 
+                    `volcano=${volcano}&duration=${hours}&` +
+                    `format=${format}&` +
+                    `network=${stationData.network}&station=${stationData.station}&` +
+                    `location=${stationData.location}&channel=${stationData.channel}`;
             }
-            
-            const stationData = JSON.parse(stationSelect.value);
-            const stationLabel = stationSelect.options[stationSelect.selectedIndex].text;
             
             const status = document.getElementById('status');
             const streamBtn = document.getElementById('streamBtn');
@@ -790,6 +949,16 @@
             
             // Stop pulsing animation
             streamBtn.classList.add('streaming');
+            
+            // Fade out existing audio before stopping
+            if (isPlaying && currentGainNode) {
+                console.log('🔊 Fading out current audio...');
+                currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, audioContext.currentTime);
+                currentGainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                
+                // Wait for fade to complete
+                await new Promise(resolve => setTimeout(resolve, AUDIO_FADE_TIME * 1000));
+            }
             
             stopAllAudio();
             console.log(`🛑 After stopAllAudio: isPlaying=${isPlaying}, isPaused=${isPaused}`);
@@ -814,6 +983,9 @@
             // Clear waveform canvas
             const waveformCanvas = document.getElementById('waveform');
             waveformCanvas.getContext('2d').clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+            
+            // ✅ OPTIMIZATION: Clear cached waveform for new stream
+            cachedWaveformCanvas = null;
             
             // ✅ Clear spectrogram canvas for new stream
             if (spectrogramCanvas && spectrogramCtx) {
@@ -847,14 +1019,7 @@
                     currentGainNode.connect(audioContext.destination);
                 }
                 
-                // Start streaming with selected station parameters
-                const config = getPipelineConfig();
-                const url = `${config.streamUrl}?` + 
-                    `volcano=${volcano}&duration=${hours}&` +
-                    `format=${format}&` +
-                    `network=${stationData.network}&station=${stationData.station}&` +
-                    `location=${stationData.location}&channel=${stationData.channel}`;
-                
+                // Start streaming
                 console.log(`📡 Streaming from: ${url}`);
                 console.log(`📦 Requesting format: ${format}`);
                 const response = await fetch(url);
@@ -883,45 +1048,77 @@
                 console.log(`⏱️ Time to metadata: ${metadataTime.toFixed(0)}ms`);
                 console.log(`💾 Cache status: ${cacheHit ? '✅ HIT (from R2)' : '❌ MISS (fetched from IRIS)'}`);
                 console.log(`⚡ Backend data ready: ${dataReadyMs}ms ${cacheHit ? '(pure R2 perf!)' : '(includes IRIS fetch)'}`);
-                status.textContent = `Streaming ${hours}h from ${stationLabel} (${metadata.sample_rate} Hz, ${speedup}x speedup)...`;
                 
-                // Read binary stream (no JSON wrappers - just raw data chunks)
-                const reader = response.body.getReader();
-                let chunkIndex = 0;
+                if (isLocalFileMode) {
+                    const durationMins = Math.round(metadata.duration_seconds / 60);
+                    status.textContent = `Playing ${stationLabel} (${durationMins} min, ${metadata.sample_rate} Hz, ${speedup}x speedup)...`;
+                } else {
+                    status.textContent = `Streaming ${hours}h from ${stationLabel} (${metadata.sample_rate} Hz, ${speedup}x speedup)...`;
+                }
                 
-                while (true) {
-                    const {done, value} = await reader.read();
-                    
-                    if (done) {
-                        console.log('✅ Stream complete!');
-                        status.className = 'status success';
-                        status.textContent = `✅ Stream complete! ${chunksReceived} chunks, ${(totalBytesReceived / 1024).toFixed(1)} KB`;
-                        
-                        // Draw complete waveform
-                        drawWaveform();
-                        
-                        // Restart playback indicator now that we have total duration
-                        if (isPlaying && !isPaused) {
-                            console.log('🎬 Restarting playback indicator with duration:', totalAudioDuration);
-                            updatePlaybackIndicator();
-                        }
-                        
-                        break;
-                    }
-                    
-                    totalBytesReceived += value.length;
-                    chunkIndex++;
+                if (isLocalFileMode) {
+                    // For local files, read entire response at once (no progressive streaming)
+                    const arrayBuffer = await response.arrayBuffer();
+                    totalBytesReceived = arrayBuffer.byteLength;
                     document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
                     
-                    if (chunkIndex === 1) {
-                        const firstChunkTime = performance.now() - streamStartTime;
-                        console.log(`📦 Received chunk 1: ${value.length} bytes (${firstChunkTime.toFixed(0)}ms from click)`);
-                    } else {
-                        console.log(`📦 Received chunk ${chunkIndex}: ${value.length} bytes`);
-                    }
+                    const loadTime = performance.now() - streamStartTime;
+                    console.log(`📦 Loaded entire file: ${arrayBuffer.byteLength} bytes (${loadTime.toFixed(0)}ms)`);
                     
-                    // Process chunk (decompress and convert to audio)
-                    await processChunk(value, format);
+                    // Process entire file
+                    await processChunk(new Uint8Array(arrayBuffer), format);
+                    
+                    console.log('✅ File loaded!');
+                    status.className = 'status success';
+                    status.textContent = `✅ File loaded! ${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                    
+                    // Draw complete waveform
+                    drawWaveform();
+                    
+                    // Restart playback indicator now that we have total duration
+                    if (isPlaying && !isPaused) {
+                        console.log('🎬 Restarting playback indicator with duration:', totalAudioDuration);
+                        updatePlaybackIndicator();
+                    }
+                } else {
+                    // Progressive streaming for IRIS/backend modes
+                    const reader = response.body.getReader();
+                    let chunkIndex = 0;
+                    
+                    while (true) {
+                        const {done, value} = await reader.read();
+                        
+                        if (done) {
+                            console.log('✅ Stream complete!');
+                            status.className = 'status success';
+                            status.textContent = `✅ Stream complete! ${chunksReceived} chunks, ${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                            
+                            // Draw complete waveform
+                            drawWaveform();
+                            
+                            // Restart playback indicator now that we have total duration
+                            if (isPlaying && !isPaused) {
+                                console.log('🎬 Restarting playback indicator with duration:', totalAudioDuration);
+                                updatePlaybackIndicator();
+                            }
+                            
+                            break;
+                        }
+                        
+                        totalBytesReceived += value.length;
+                        chunkIndex++;
+                        document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                        
+                        if (chunkIndex === 1) {
+                            const firstChunkTime = performance.now() - streamStartTime;
+                            console.log(`📦 Received chunk 1: ${value.length} bytes (${firstChunkTime.toFixed(0)}ms from click)`);
+                        } else {
+                            console.log(`📦 Received chunk ${chunkIndex}: ${value.length} bytes`);
+                        }
+                        
+                        // Process chunk (decompress and convert to audio)
+                        await processChunk(value, format);
+                    }
                 }
                 
             } catch (error) {
@@ -940,20 +1137,13 @@
             let float32Data;
             
             if (format === 'int16') {
-                // Data is raw int16 bytes
+                // Data is raw int16 bytes - vectorized conversion
                 const int16Data = new Int16Array(rawData.buffer);
-                float32Data = new Float32Array(int16Data.length);
-                for (let i = 0; i < int16Data.length; i++) {
-                    float32Data[i] = int16Data[i] / 32768.0;
-                }
+                float32Data = Float32Array.from(int16Data, v => v / 32768.0);
             } else if (format === 'int32') {
-                // Data is raw int32 bytes
+                // Data is raw int32 bytes - vectorized conversion
                 const int32Data = new Int32Array(rawData.buffer);
-                float32Data = new Float32Array(int32Data.length);
-                for (let i = 0; i < int32Data.length; i++) {
-                    // Normalize int32 to float32 [-1.0, 1.0]
-                    float32Data[i] = int32Data[i] / 2147483648.0;
-                }
+                float32Data = Float32Array.from(int32Data, v => v / 2147483648.0);
             } else if (format === 'mseed') {
                 // Data is miniSEED format - needs parsing (placeholder for now)
                 console.warn('⚠️ MiniSEED parsing not yet implemented - using placeholder');
@@ -1010,6 +1200,12 @@
                 
                 // Record playback start time for indicator
                 playbackStartTime = audioContext.currentTime;
+                
+                // Fade in from start
+                if (currentGainNode) {
+                    currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                    currentGainNode.gain.linearRampToValueAtTime(1.0, audioContext.currentTime + AUDIO_FADE_TIME);
+                }
                 
                 // Start playing from queue
                 playNextChunk();
@@ -1131,7 +1327,7 @@
                 spectrogramCanvas = document.getElementById('spectrogram');
             }
             if (!spectrogramCtx) {
-                spectrogramCtx = spectrogramCanvas.getContext('2d', { willReadFrequently: true });
+                spectrogramCtx = spectrogramCanvas.getContext('2d', { alpha: false });
             }
             const ctx = spectrogramCtx;
             const width = spectrogramCanvas.width;
@@ -1141,9 +1337,8 @@
             const dataArray = new Uint8Array(bufferLength);
             spectrogramAnalyser.getByteFrequencyData(dataArray);
             
-            // Scroll left
-            const imageData = ctx.getImageData(1, 0, width - 1, height);
-            ctx.putImageData(imageData, 0, 0);
+            // Scroll left (GPU-only operation - no CPU readback)
+            ctx.drawImage(spectrogramCanvas, -1, 0);
             
             // Draw new column
             for (let i = 0; i < bufferLength; i++) {

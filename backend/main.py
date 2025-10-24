@@ -19,7 +19,7 @@ import gzip
 import boto3
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, expose_headers=['X-Metadata', 'X-Cache-Hit', 'X-Data-Ready-Ms'])
 
 # Configuration
 MAX_RADIUS_KM = 13.0 * 1.60934  # 13 miles converted to km
@@ -945,6 +945,78 @@ def test_iris_to_r2():
             'error': str(e),
             'test': 'IRIS → Render → R2 Pipeline'
         }), 500
+
+@app.route('/api/local-files', methods=['GET'])
+def list_local_files():
+    """List all mseed files in the local mseed_files directory"""
+    try:
+        mseed_dir = Path('../mseed_files')
+        if not mseed_dir.exists():
+            return jsonify({'files': [], 'error': 'mseed_files directory not found'})
+        
+        # Get all .mseed files
+        mseed_files = sorted([f.name for f in mseed_dir.glob('*.mseed')])
+        
+        return jsonify({
+            'files': mseed_files,
+            'count': len(mseed_files)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e), 'files': []}), 500
+
+@app.route('/api/local-file', methods=['GET'])
+def serve_local_file():
+    """Serve a local mseed file as int16 raw binary, progressively chunked"""
+    try:
+        filename = request.args.get('filename')
+        speedup = int(request.args.get('speedup', 200))
+        
+        if not filename:
+            return jsonify({'error': 'filename parameter required'}), 400
+        
+        mseed_file = Path(f'../mseed_files/{filename}')
+        if not mseed_file.exists():
+            return jsonify({'error': f'File not found: {filename}'}), 404
+        
+        # Read the mseed file
+        from obspy import read
+        st = read(str(mseed_file))
+        
+        # Get the trace data
+        trace = st[0]
+        data = trace.data.astype(np.float64)
+        sample_rate = trace.stats.sampling_rate
+        
+        # Convert to int16
+        max_val = np.abs(data).max()
+        if max_val > 0:
+            normalized = data / max_val
+            int16_data = (normalized * 32767).astype(np.int16)
+        else:
+            int16_data = data.astype(np.int16)
+        
+        # Create metadata
+        metadata = {
+            'sample_rate': float(sample_rate),
+            'samples': len(int16_data),
+            'duration_seconds': len(int16_data) / sample_rate,
+            'filename': filename
+        }
+        
+        # Send entire file as one chunk (no progressive loading for local files)
+        return Response(
+            int16_data.tobytes(),
+            mimetype='application/octet-stream',
+            headers={
+                'X-Metadata': json.dumps(metadata),
+                'X-Cache-Hit': 'true',
+                'X-Data-Ready-Ms': '0',
+                'Cache-Control': 'no-cache'
+            }
+        )
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))

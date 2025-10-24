@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.11"
+__version__ = "1.12"
 __commit_message__ = (
-    "v1.11 Fix: Increased spectrogram height to 350px, fixed playback indicator pause/resume/loop behavior"
+    "v1.12 Feature: Added local file playback mode, audio fade in/out transitions, optimized spectrogram GPU rendering"
 )
 
 # Import key modules to make them available when importing the package

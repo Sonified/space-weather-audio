@@ -481,3 +481,128 @@ The indicator now correctly:
 - Spectrogram increased to 350px with matching CSS/canvas heights
 - Panel spacing consistency fixed
 
+---
+
+## Session Update: Local File Mode, Audio Fades, and GPU Spectrogram Optimization
+
+### Version 1.12 Release
+
+Added major new features and critical performance optimizations to `test_streaming.html`.
+
+#### Local File Playback Mode
+
+**New Pipeline Architecture Option**:
+- Added "Local (File)" option to pipeline selector at top of menu
+- Frontend loads list of `.mseed` files from backend's `mseed_files/` directory
+- New dropdown appears when in local file mode (hidden otherwise)
+- Auto-selects first file if user hits "Start" without selecting
+- Button text changes from "Start Streaming" to "Start" in local file mode
+
+**Backend Implementation** (`backend/main.py`):
+- **New Endpoint**: `/api/local-files` - Lists all `.mseed` files in `../mseed_files/` directory
+- **New Endpoint**: `/api/local-file` - Serves complete file (no chunking) with metadata
+- Added CORS header exposure: `expose_headers=['X-Metadata', 'X-Cache-Hit', 'X-Data-Ready-Ms']`
+- Reads `.mseed` file using obspy, normalizes to Int16, sends as single chunk
+- Returns metadata: sample_rate, samples, duration_seconds, filename
+
+**Frontend Changes** (`test_streaming.html`):
+- Added local file dropdown (dynamically shown/hidden based on pipeline)
+- `loadLocalFiles()` fetches file list from backend and populates dropdown
+- `startStreaming()` checks `isLocalFileMode` to construct correct URL
+- Local files use `arrayBuffer()` instead of streaming reader (ensures proper byte alignment)
+- Fixed scope issues: `hours` variable declared in outer scope to prevent undefined errors
+
+**Security Note**: Local file access routes through backend (not direct browser file:// access) to maintain security.
+
+#### Audio Fade In/Out Transitions
+
+**Configuration**:
+```javascript
+const AUDIO_FADE_TIME = 0.25; // seconds - easy to change in one place
+```
+
+**Fade Implementation**:
+1. **Start**: Fades in from 0 to 1.0 over 0.25s when first starting playback
+2. **Pause**: Fades out from current level to 0 over 0.25s, then suspends audio context
+3. **Resume**: Fades in from 0 to 1.0 over 0.25s when resuming
+4. **Restart**: Fades in from 0 to 1.0 over 0.25s when restarting from beginning
+5. **Switching Files**: Fades out current audio over 0.25s before stopping and starting new stream
+
+**Technical Details**:
+- Uses Web Audio API's `GainNode.gain.linearRampToValueAtTime()`
+- Prevents clicking/popping during audio start/stop
+- Smooth transitions between all playback states
+- Single configurable parameter for all fade durations
+
+#### GPU Spectrogram Rendering Optimization
+
+**Problem Identified**:
+- Original code used `getImageData()` → `putImageData()` for scrolling
+- This forced expensive GPU→CPU readback every frame
+- Caused "fast, slow, fast, slow" rhythmic hitching due to:
+  - Memory thrashing from pixel buffer copies
+  - GC spikes and GPU bandwidth spikes
+  - Inconsistent frame timing
+  - Audio/visual clock drift amplification
+
+**Solution Implemented**:
+```javascript
+// OLD (CPU-heavy):
+const imageData = ctx.getImageData(1, 0, width - 1, height);
+ctx.putImageData(imageData, 0, 0);
+
+// NEW (GPU-only):
+ctx.drawImage(spectrogramCanvas, -1, 0);
+```
+
+**Benefits**:
+- Everything stays on GPU (no CPU readback)
+- Consistent frame timing without GC spikes
+- Buttery smooth scrolling (no more hitching)
+- Removed `willReadFrequently: true` hint (no longer needed)
+
+**Result**: Spectrogram now scrolls perfectly smoothly with consistent frame rate.
+
+#### Additional Optimizations
+
+**Performance Improvements**:
+1. **Spectrogram Drawing**: GPU-only operations (no pixel thrashing)
+2. **Audio Chunk Conversion**: Already optimized with vectorized Float32Array.from()
+3. **Waveform Caching**: Already implemented with offscreen canvas
+
+#### Files Modified
+
+- `test_streaming.html`:
+  - Added local file mode with dropdown and file loading
+  - Added `AUDIO_FADE_TIME` configuration constant
+  - Implemented fade in/out for all playback transitions
+  - Optimized spectrogram rendering to use GPU-only operations
+  - Fixed variable scope issues (hours)
+  - Modified streaming logic to handle local files vs backend modes
+  
+- `backend/main.py`:
+  - Added `/api/local-files` endpoint
+  - Added `/api/local-file` endpoint
+  - Added CORS header exposure for custom headers
+  - Implemented complete file loading (no chunking for local files)
+
+- `python_code/__init__.py`: Version bumped to 1.12
+
+#### Commit Details
+
+**Version**: v1.12  
+**Commit Message**: "v1.12 Feature: Added local file playback mode, audio fade in/out transitions, optimized spectrogram GPU rendering"
+
+**Key Features**:
+- Local file playback mode with backend file listing
+- Smooth audio transitions with configurable fade time (0.25s)
+- Buttery smooth spectrogram scrolling (GPU-only rendering)
+- No more clicking/popping when starting, stopping, pausing, or resuming
+- Single file loading (no progressive chunks) for local files
+- Proper byte alignment for Int16Array processing
+
+**Performance Impact**:
+- Spectrogram: Eliminated frame hitching, consistent smooth scrolling
+- Audio: Professional-quality fade transitions
+- User Experience: Polished, professional feel
+
