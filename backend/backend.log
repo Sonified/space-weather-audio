@@ -1,0 +1,11 @@
+✅ Great Sitkin: AV.GSTD.BHZ (3.3km, 50.0Hz)
+✅ Shishaldin: AV.SSLS.BHZ (5.4km, 50.0Hz)
+✅ Spurr: AV.SPCP.BHZ (6.4km, 50.0Hz)
+✅ Kilauea: HV.UWE.HHZ (0.4km, 100.0Hz)
+✅ Mauna Loa: HV.MOKD.HHZ (1.6km, 100.0Hz)
+
+🌋 Loaded 5 volcano configurations
+ * Serving Flask app 'main'
+ * Debug mode: on
+Address already in use
+Port 5001 is in use by another program. Either identify and stop that program, or start the server with a different port.

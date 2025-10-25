@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gzip vs Zstd - REAL Data Comparison</title>
+    <style>
+        body {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            max-width: 1400px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        h1 { color: #00ff00; }
+        h2 { color: #00aaff; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .test-section {
+            border: 1px solid #333;
+            padding: 20px;
+            margin: 20px 0;
+            background: #0a0a0a;
+        }
+        .pass { color: #00ff00; }
+        .fail { color: #ff0000; }
+        .info { color: #00aaff; }
+        .warning { color: #ffaa00; }
+        pre {
+            background: #000;
+            padding: 10px;
+            overflow-x: auto;
+            border-left: 3px solid #00ff00;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-family: inherit;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 10px 5px;
+        }
+        button:hover { background: #00cc00; }
+        button:disabled {
+            background: #555;
+            color: #999;
+            cursor: not-allowed;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #333;
+        }
+        th {
+            background: #0a0a0a;
+            color: #00aaff;
+            font-weight: bold;
+        }
+        tr:hover {
+            background: #1a1a1a;
+        }
+        .metric { font-weight: bold; color: #ffaa00; }
+        .winner { color: #00ff00; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🏆 Gzip vs Zstd Decompression Benchmark</h1>
+    <p class="info">REAL seismic data from Kīlauea HV.UWE.HHZ (int32, native resolution)</p>
+
+    <div class="test-section">
+        <h2>Available Datasets</h2>
+        <div id="dataset-info">Loading dataset information...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Run Benchmarks</h2>
+        <button onclick="runBenchmark('small')" id="btn-small">Test Small (~1MB)</button>
+        <button onclick="runBenchmark('medium')" id="btn-medium">Test Medium (~5MB)</button>
+        <button onclick="runBenchmark('large')" id="btn-large">Test Large (~14MB)</button>
+        <button onclick="runAllBenchmarks()" id="btn-all">🚀 Run All Tests</button>
+    </div>
+
+    <div class="test-section" id="results-section" style="display: none;">
+        <h2>Results</h2>
+        <div id="results"></div>
+    </div>
+
+    <!-- Load libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
+    <script>
+        // Use fzstd from CDN (available as window.fzstd)
+        if (typeof fzstd !== 'undefined') {
+            window.zstdDecompress = (data) => fzstd.decompress(data);
+            console.log('✓ Zstd decompressor loaded (fzstd)');
+        } else {
+            console.error('✗ Failed to load zstd library');
+        }
+    </script>
+    
+    <script>
+        let datasets = {};
+        let results = [];
+
+        // Load dataset information
+        async function loadDatasetInfo() {
+            try {
+                const response = await fetch('http://localhost:8003/api/sizes');
+                datasets = await response.json();
+                
+                let html = '<table>';
+                html += '<tr><th>Size</th><th>Samples</th><th>Raw Size</th><th>Gzip (level 1)</th><th>Zstd (level 3)</th></tr>';
+                
+                for (const [key, info] of Object.entries(datasets)) {
+                    html += `<tr>
+                        <td><strong>${info.label}</strong> (${info.target})</td>
+                        <td>${info.samples.toLocaleString()}</td>
+                        <td>${info.raw_mb.toFixed(2)} MB</td>
+                        <td>${info.gzip_mb.toFixed(2)} MB (${info.gzip_ratio.toFixed(1)}%)</td>
+                        <td>${info.zstd_mb.toFixed(2)} MB (${info.zstd_ratio.toFixed(1)}%)</td>
+                    </tr>`;
+                }
+                
+                html += '</table>';
+                document.getElementById('dataset-info').innerHTML = html;
+            } catch (error) {
+                document.getElementById('dataset-info').innerHTML = 
+                    `<span class="fail">✗ Error loading datasets: ${error.message}</span><br>` +
+                    `<span class="info">Make sure the server is running: cd backend && python3 test_compression_server.py</span>`;
+            }
+        }
+
+        async function runBenchmark(size) {
+            const resultsDiv = document.getElementById('results');
+            const resultsSection = document.getElementById('results-section');
+            resultsSection.style.display = 'block';
+            
+            // Disable button
+            document.getElementById(`btn-${size}`).disabled = true;
+            
+            resultsDiv.innerHTML += `<p class="info">Testing ${size} dataset...</p>`;
+            
+            try {
+                const dataset = datasets[size];
+                if (!dataset) {
+                    throw new Error(`Dataset ${size} not available`);
+                }
+                
+                // Test Gzip
+                resultsDiv.innerHTML += `<p>  Fetching gzip-compressed data...</p>`;
+                const gzipT0 = performance.now();
+                const gzipResponse = await fetch(`http://localhost:8003/api/data/${size}/gzip`);
+                const gzipFetchTime = performance.now() - gzipT0;
+                const gzipCompressed = new Uint8Array(await gzipResponse.arrayBuffer());
+                
+                resultsDiv.innerHTML += `<p>  Decompressing with pako.ungzip()...</p>`;
+                const gzipDecompT0 = performance.now();
+                const gzipDecompressed = pako.ungzip(gzipCompressed);
+                const gzipDecompTime = performance.now() - gzipDecompT0;
+                
+                // Test Zstd
+                resultsDiv.innerHTML += `<p>  Fetching zstd-compressed data...</p>`;
+                const zstdT0 = performance.now();
+                const zstdResponse = await fetch(`http://localhost:8003/api/data/${size}/zstd`);
+                const zstdFetchTime = performance.now() - zstdT0;
+                const zstdCompressed = new Uint8Array(await zstdResponse.arrayBuffer());
+                
+                resultsDiv.innerHTML += `<p>  Decompressing with zstddec...</p>`;
+                const zstdDecompT0 = performance.now();
+                const zstdDecompressed = window.zstdDecompress(zstdCompressed);
+                const zstdDecompTime = performance.now() - zstdDecompT0;
+                
+                // Verify data matches
+                const gzipInt32 = new Int32Array(gzipDecompressed.buffer);
+                const zstdInt32 = new Int32Array(zstdDecompressed.buffer);
+                
+                const dataMatches = gzipInt32.length === zstdInt32.length &&
+                    gzipInt32.every((val, idx) => val === zstdInt32[idx]);
+                
+                // Store results
+                const result = {
+                    size: size,
+                    label: dataset.label,
+                    raw_mb: dataset.raw_mb,
+                    gzip: {
+                        compressed_mb: gzipCompressed.length / 1024 / 1024,
+                        ratio: (gzipCompressed.length / dataset.raw_bytes * 100),
+                        fetch_ms: gzipFetchTime,
+                        decompress_ms: gzipDecompTime,
+                        total_ms: gzipFetchTime + gzipDecompTime
+                    },
+                    zstd: {
+                        compressed_mb: zstdCompressed.length / 1024 / 1024,
+                        ratio: (zstdCompressed.length / dataset.raw_bytes * 100),
+                        fetch_ms: zstdFetchTime,
+                        decompress_ms: zstdDecompTime,
+                        total_ms: zstdFetchTime + zstdDecompTime
+                    },
+                    data_matches: dataMatches
+                };
+                
+                results.push(result);
+                displayResults();
+                
+                // Re-enable button
+                document.getElementById(`btn-${size}`).disabled = false;
+                
+            } catch (error) {
+                resultsDiv.innerHTML += `<span class="fail">✗ Error: ${error.message}</span><br>`;
+                document.getElementById(`btn-${size}`).disabled = false;
+            }
+        }
+
+        function displayResults() {
+            const resultsDiv = document.getElementById('results');
+            
+            let html = '<table>';
+            html += '<tr>';
+            html += '<th>Dataset</th>';
+            html += '<th>Raw Size</th>';
+            html += '<th colspan="3">Gzip (level 1)</th>';
+            html += '<th colspan="3">Zstd (level 3)</th>';
+            html += '<th>Winner</th>';
+            html += '</tr>';
+            
+            html += '<tr>';
+            html += '<th></th><th></th>';
+            html += '<th>Size</th><th>Decompress</th><th>Total</th>';
+            html += '<th>Size</th><th>Decompress</th><th>Total</th>';
+            html += '<th></th>';
+            html += '</tr>';
+            
+            for (const r of results) {
+                const gzipFaster = r.gzip.decompress_ms < r.zstd.decompress_ms;
+                const gzipSmaller = r.gzip.compressed_mb < r.zstd.compressed_mb;
+                
+                html += '<tr>';
+                html += `<td><strong>${r.label}</strong></td>`;
+                html += `<td>${r.raw_mb.toFixed(2)} MB</td>`;
+                
+                // Gzip columns
+                html += `<td>${r.gzip.compressed_mb.toFixed(2)} MB (${r.gzip.ratio.toFixed(1)}%)</td>`;
+                html += `<td ${gzipFaster ? 'class="winner"' : ''}>${r.gzip.decompress_ms.toFixed(1)} ms</td>`;
+                html += `<td>${r.gzip.total_ms.toFixed(1)} ms</td>`;
+                
+                // Zstd columns
+                html += `<td ${gzipSmaller ? '' : 'class="winner"'}>${r.zstd.compressed_mb.toFixed(2)} MB (${r.zstd.ratio.toFixed(1)}%)</td>`;
+                html += `<td ${gzipFaster ? '' : 'class="winner"'}>${r.zstd.decompress_ms.toFixed(1)} ms</td>`;
+                html += `<td>${r.zstd.total_ms.toFixed(1)} ms</td>`;
+                
+                // Winner
+                const decompDiff = ((r.gzip.decompress_ms - r.zstd.decompress_ms) / r.gzip.decompress_ms * 100);
+                const sizeDiff = ((r.gzip.compressed_mb - r.zstd.compressed_mb) / r.gzip.compressed_mb * 100);
+                
+                let winner = '';
+                if (Math.abs(decompDiff) < 5 && Math.abs(sizeDiff) < 5) {
+                    winner = '🤝 Tie';
+                } else if (gzipFaster && gzipSmaller) {
+                    winner = '🏆 Gzip (both)';
+                } else if (!gzipFaster && !gzipSmaller) {
+                    winner = '🏆 Zstd (both)';
+                } else {
+                    winner = gzipFaster ? '⚡ Gzip (speed)' : '📦 Zstd (size)';
+                }
+                
+                html += `<td>${winner}</td>`;
+                html += '</tr>';
+            }
+            
+            html += '</table>';
+            
+            // Summary
+            if (results.length > 0) {
+                html += '<h3>Summary</h3><pre>';
+                
+                const avgGzipDecomp = results.reduce((sum, r) => sum + r.gzip.decompress_ms, 0) / results.length;
+                const avgZstdDecomp = results.reduce((sum, r) => sum + r.zstd.decompress_ms, 0) / results.length;
+                const avgGzipRatio = results.reduce((sum, r) => sum + r.gzip.ratio, 0) / results.length;
+                const avgZstdRatio = results.reduce((sum, r) => sum + r.zstd.ratio, 0) / results.length;
+                
+                html += `<span class="metric">Average Decompression Time:</span>\n`;
+                html += `  Gzip:  ${avgGzipDecomp.toFixed(1)} ms\n`;
+                html += `  Zstd:  ${avgZstdDecomp.toFixed(1)} ms\n`;
+                html += `  ${avgGzipDecomp < avgZstdDecomp ? '✓ Gzip is faster' : '✓ Zstd is faster'} by ${Math.abs((avgGzipDecomp - avgZstdDecomp) / Math.max(avgGzipDecomp, avgZstdDecomp) * 100).toFixed(1)}%\n\n`;
+                
+                html += `<span class="metric">Average Compression Ratio:</span>\n`;
+                html += `  Gzip:  ${avgGzipRatio.toFixed(1)}%\n`;
+                html += `  Zstd:  ${avgZstdRatio.toFixed(1)}%\n`;
+                html += `  ${avgGzipRatio < avgZstdRatio ? '✓ Gzip is smaller' : '✓ Zstd is smaller'} by ${Math.abs((avgGzipRatio - avgZstdRatio) / Math.max(avgGzipRatio, avgZstdRatio) * 100).toFixed(1)}%\n\n`;
+                
+                html += `<span class="metric">Recommendation for Cloudflare Workers:</span>\n`;
+                if (avgGzipDecomp < avgZstdDecomp && avgGzipRatio <= avgZstdRatio * 1.05) {
+                    html += `  <span class="winner">🏆 Use Gzip</span> - Faster decompression, similar compression\n`;
+                } else if (avgZstdDecomp < avgGzipDecomp && avgZstdRatio <= avgGzipRatio * 0.95) {
+                    html += `  <span class="winner">🏆 Use Zstd</span> - Better compression, acceptable speed\n`;
+                } else {
+                    html += `  <span class="winner">🤝 Either works</span> - Performance is similar\n`;
+                }
+                
+                html += '</pre>';
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+
+        async function runAllBenchmarks() {
+            document.getElementById('btn-all').disabled = true;
+            results = [];
+            
+            for (const size of ['small', 'medium', 'large']) {
+                if (datasets[size]) {
+                    await runBenchmark(size);
+                }
+            }
+            
+            document.getElementById('btn-all').disabled = false;
+        }
+
+        // Initialize
+        loadDatasetInfo();
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gzip JS Test - Local</title>
+    <style>
+        body {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .test-section {
+            border: 1px solid #333;
+            padding: 20px;
+            margin: 20px 0;
+            background: #0a0a0a;
+        }
+        .pass { color: #00ff00; }
+        .fail { color: #ff0000; }
+        .info { color: #00aaff; }
+        pre {
+            background: #000;
+            padding: 10px;
+            overflow-x: auto;
+            border-left: 3px solid #00ff00;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-family: inherit;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Gzip JavaScript Decompression Test</h1>
+    <p class="info">Python backend uses gzip level 1, JavaScript uses pako.js to decompress</p>
+
+    <div class="test-section">
+        <h2>Test 1: Load pako.js (gzip library)</h2>
+        <div id="load-status">Loading...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Decompress Gzip Data</h2>
+        <button onclick="testGzipDecompression()">Run Test</button>
+        <div id="gzip-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Fetch & Decompress from Backend</h2>
+        <button onclick="testBackendGzip()">Run Test</button>
+        <div id="backend-results"></div>
+        <p class="info">Note: Gzip is native browser format - no complex header parsing needed!</p>
+    </div>
+
+    <!-- Load pako.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    
+    <script>
+        // Check if pako loaded
+        if (typeof pako !== 'undefined') {
+            document.getElementById('load-status').innerHTML = 
+                '<span class="pass">✓ pako.js loaded successfully</span><br>' +
+                '<span class="info">Ready to decompress gzip data!</span>';
+        } else {
+            document.getElementById('load-status').innerHTML = 
+                '<span class="fail">✗ Failed to load pako.js</span>';
+        }
+        
+        // Test 2: Simple gzip decompression test
+        window.testGzipDecompression = function() {
+            const results = document.getElementById('gzip-results');
+            results.innerHTML = '<p>Testing pako.js library...</p>';
+            
+            try {
+                // Create simple test data
+                const original = new Int32Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+                const originalBytes = new Uint8Array(original.buffer);
+                
+                // Compress
+                const compressed = pako.gzip(originalBytes);
+                
+                // Decompress
+                const decompressed = pako.ungzip(compressed);
+                
+                // Convert back to Int32Array
+                const result = new Int32Array(decompressed.buffer);
+                
+                // Verify
+                const match = original.every((val, idx) => val === result[idx]);
+                
+                results.innerHTML = `
+                    <pre><span class="pass">✓ pako.js compression/decompression works!</span>
+                    
+Original:      [${Array.from(original).join(', ')}]
+Compressed:    ${compressed.length} bytes
+Decompressed:  [${Array.from(result).join(', ')}]
+Match:         ${match ? '✓ PASS' : '✗ FAIL'}
+
+<span class="info">How it works:</span>
+1. Python backend compresses with gzip level 1
+2. JavaScript fetches the compressed bytes
+3. pako.ungzip() decompresses (native browser gzip)
+4. We get back the original int32 array!
+
+<span class="pass">Click "Test 3" to fetch real compressed data from backend</span>
+</pre>`;
+            } catch (error) {
+                results.innerHTML = `<span class="fail">✗ Error: ${error.message}</span>`;
+                console.error(error);
+            }
+        };
+        
+        // Test 3: Fetch and decompress gzip-compressed data from backend
+        window.testBackendGzip = async function() {
+            const results = document.getElementById('backend-results');
+            results.innerHTML = '<p>Fetching gzip-compressed data from backend...</p>';
+            
+            try {
+                // Request compressed data from Python test server (port 8002)
+                const t0 = performance.now();
+                const response = await fetch('http://localhost:8002/api/test-gzip-compress');
+                const fetchTime = performance.now() - t0;
+                
+                if (!response.ok) {
+                    throw new Error(`Backend returned ${response.status}`);
+                }
+                
+                const contentLength = response.headers.get('Content-Length');
+                const arrayBuffer = await response.arrayBuffer();
+                const compressed = new Uint8Array(arrayBuffer);
+                
+                console.log('Response headers:');
+                console.log(`  Content-Length: ${contentLength}`);
+                console.log(`  Received: ${compressed.length} bytes`);
+                console.log(`  Match: ${contentLength === String(compressed.length) ? '✓' : '✗ MISMATCH!'}`);
+                
+                console.log('First 32 bytes (hex):', Array.from(compressed.slice(0, 32))
+                    .map(b => b.toString(16).padStart(2, '0')).join(' '));
+                console.log('Last 32 bytes (hex):', Array.from(compressed.slice(-32))
+                    .map(b => b.toString(16).padStart(2, '0')).join(' '));
+                
+                // Decompress with pako
+                const t1 = performance.now();
+                const decompressed = pako.ungzip(compressed);
+                const decompressTime = performance.now() - t1;
+                
+                console.log(`✓ Decompressed in ${decompressTime.toFixed(2)}ms`);
+                
+                // Convert to Int32Array (our seismic data format)
+                const int32Data = new Int32Array(decompressed.buffer);
+                
+                // Verify it's sequential data (0, 1, 2, 3, ...)
+                const expectedStart = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+                const actualStart = Array.from(int32Data.slice(0, 10));
+                const matches = expectedStart.every((val, idx) => val === actualStart[idx]);
+                
+                results.innerHTML = `
+                    <pre><span class="pass">✓ Successfully decompressed Gzip data!</span>
+                    
+Fetch time:        ${fetchTime.toFixed(2)} ms
+Compressed size:   ${(compressed.length / 1024).toFixed(2)} KB
+Decompressed size: ${(decompressed.byteLength / 1024).toFixed(2)} KB
+Compression ratio: ${(compressed.length / decompressed.byteLength * 100).toFixed(1)}%
+Decompress time:   ${decompressTime.toFixed(2)} ms
+
+Data format:       Int32Array
+Sample count:      ${int32Data.length}
+Data range:        [${Math.min(...int32Data)}, ${Math.max(...int32Data)}]
+
+First 10 values:   [${actualStart.join(', ')}]
+Expected:          [${expectedStart.join(', ')}]
+Verification:      ${matches ? '✓ PASS' : '✗ FAIL'}
+
+<span class="pass">🎉 Gzip → JavaScript decompression WORKS!</span>
+<span class="info">Note: Gzip is simpler than Blosc - no header parsing needed!</span>
+</pre>`;
+                
+            } catch (error) {
+                results.innerHTML = `<span class="fail">✗ Error: ${error.message}</span>
+                <pre>${error.stack}</pre>
+                <p class="info">Make sure the test server is running: cd backend && python3 test_gzip_server.py</p>`;
+            }
+        };
+    </script>
+</body>
+</html>
+

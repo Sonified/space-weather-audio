@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare Worker Decompression Test</title>
+    <style>
+        body {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            max-width: 1400px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        h1 { color: #00ff00; }
+        h2 { color: #00aaff; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .config {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .config label {
+            display: block;
+            margin: 10px 0 5px;
+            color: #00aaff;
+        }
+        .config input {
+            width: 100%;
+            padding: 8px;
+            background: #000;
+            border: 1px solid #333;
+            color: #00ff00;
+            font-family: inherit;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            font-family: inherit;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 10px 5px;
+            border-radius: 5px;
+        }
+        button:hover { background: #00cc00; }
+        button:disabled {
+            background: #555;
+            color: #999;
+            cursor: not-allowed;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: #0a0a0a;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #333;
+        }
+        th {
+            background: #000;
+            color: #00aaff;
+            font-weight: bold;
+        }
+        tr:hover { background: #1a1a1a; }
+        .pass { color: #00ff00; }
+        .fail { color: #ff0000; }
+        .info { color: #00aaff; }
+        .warning { color: #ffaa00; }
+        .winner { color: #00ff00; font-weight: bold; }
+        pre {
+            background: #000;
+            padding: 10px;
+            overflow-x: auto;
+            border-left: 3px solid #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌩️ Cloudflare Worker Decompression Test</h1>
+    <p class="info">Testing Zstd vs Gzip decompression in production Cloudflare Workers</p>
+
+    <div class="config">
+        <h2>Worker Configuration</h2>
+        <label for="workerUrl">Worker URL:</label>
+        <input type="text" id="workerUrl" value="https://volcano-audio-test.robertalexander-music.workers.dev" placeholder="https://your-worker.workers.dev">
+        <p class="pass">✓ Worker deployed and ready to test!</p>
+    </div>
+
+    <div class="config">
+        <h2>Run Tests</h2>
+        <button onclick="runTest('small', 'zstd3')" id="btn-small-zstd">Small + Zstd</button>
+        <button onclick="runTest('small', 'gzip3')" id="btn-small-gzip">Small + Gzip</button>
+        <button onclick="runTest('medium', 'zstd3')" id="btn-medium-zstd">Medium + Zstd</button>
+        <button onclick="runTest('medium', 'gzip3')" id="btn-medium-gzip">Medium + Gzip</button>
+        <button onclick="runTest('large', 'zstd3')" id="btn-large-zstd">Large + Zstd</button>
+        <button onclick="runTest('large', 'gzip3')" id="btn-large-gzip">Large + Gzip</button>
+        <br><br>
+        <button onclick="runAllTests()" id="btn-all">🚀 Run All Tests</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div class="config" id="results-section" style="display: none;">
+        <h2>Results</h2>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        let results = [];
+
+        async function runTest(size, format) {
+            const workerUrl = document.getElementById('workerUrl').value;
+            if (!workerUrl || workerUrl.includes('YOUR-SUBDOMAIN')) {
+                alert('Please update the Worker URL first!');
+                return;
+            }
+
+            const resultsSection = document.getElementById('results-section');
+            const resultsDiv = document.getElementById('results');
+            resultsSection.style.display = 'block';
+
+            const btnId = `btn-${size}-${format.replace(/\d/, '')}`;
+            const btn = document.getElementById(btnId);
+            if (btn) btn.disabled = true;
+
+            resultsDiv.innerHTML += `<p class="info">Testing ${size} + ${format}...</p>`;
+
+            try {
+                const t0 = performance.now();
+                const response = await fetch(`${workerUrl}/test?size=${size}&format=${format}`);
+                const clientFetchTime = performance.now() - t0;
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const workerFetchTime = parseFloat(response.headers.get('X-Fetch-Time') || '0');
+                const workerDecompressTime = parseFloat(response.headers.get('X-Decompress-Time') || '0');
+                const workerTotalTime = parseFloat(response.headers.get('X-Total-Time') || '0');
+                const compressedSize = parseInt(response.headers.get('X-Compressed-Size') || '0');
+                const decompressedSize = parseInt(response.headers.get('X-Decompressed-Size') || '0');
+                const sampleCount = parseInt(response.headers.get('X-Sample-Count') || '0');
+                const dataMin = parseInt(response.headers.get('X-Data-Min') || '0');
+                const dataMax = parseInt(response.headers.get('X-Data-Max') || '0');
+                const dataFirst = parseInt(response.headers.get('X-Data-First') || '0');
+                const dataLast = parseInt(response.headers.get('X-Data-Last') || '0');
+                const formatsIdentical = response.headers.get('X-Formats-Identical') === 'true';
+                const firstDiffIndex = parseInt(response.headers.get('X-First-Diff-Index') || '-1');
+                const firstDiffPrimary = parseInt(response.headers.get('X-First-Diff-Primary') || '0');
+                const firstDiffAlt = parseInt(response.headers.get('X-First-Diff-Alt') || '0');
+
+                const data = await response.arrayBuffer();
+
+                results.push({
+                    size,
+                    format,
+                    workerFetchTime,
+                    workerDecompressTime,
+                    workerTotalTime,
+                    clientFetchTime: clientFetchTime.toFixed(1),
+                    compressedSize,
+                    decompressedSize,
+                    compressionRatio: (compressedSize / decompressedSize * 100).toFixed(1),
+                    sampleCount,
+                    dataMin,
+                    dataMax,
+                    dataFirst,
+                    dataLast,
+                    formatsIdentical,
+                    firstDiffIndex,
+                    firstDiffPrimary,
+                    firstDiffAlt,
+                });
+
+                displayResults();
+
+            } catch (error) {
+                resultsDiv.innerHTML += `<p class="fail">✗ Error: ${error.message}</p>`;
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function displayResults() {
+            const resultsDiv = document.getElementById('results');
+
+            let html = '<table>';
+            html += '<tr>';
+            html += '<th>Size</th><th>Format</th><th>Compressed</th><th>Ratio</th>';
+            html += '<th>Worker Decompress</th><th>Worker Total</th><th>Client Fetch</th><th>Data Verification</th><th>Format Comparison</th>';
+            html += '</tr>';
+
+            for (const r of results) {
+                html += '<tr>';
+                html += `<td><strong>${r.size}</strong></td>`;
+                html += `<td>${r.format}</td>`;
+                html += `<td>${(r.compressedSize / 1024).toFixed(1)} KB</td>`;
+                html += `<td>${r.compressionRatio}%</td>`;
+                html += `<td>${r.workerDecompressTime.toFixed(4)} ms</td>`;
+                html += `<td>${r.workerTotalTime.toFixed(4)} ms</td>`;
+                html += `<td>${r.clientFetchTime} ms</td>`;
+                html += `<td class="pass">${r.sampleCount} samples<br>[${r.dataMin}, ${r.dataMax}]</td>`;
+                
+                // Format comparison result
+                if (r.formatsIdentical) {
+                    html += `<td class="pass">✅ Identical</td>`;
+                } else {
+                    html += `<td class="fail">❌ Diff @ ${r.firstDiffIndex}<br>${r.format}=${r.firstDiffPrimary}<br>alt=${r.firstDiffAlt}</td>`;
+                }
+                
+                html += '</tr>';
+            }
+
+            html += '</table>';
+
+            // Compare Zstd vs Gzip for each size
+            const sizes = [...new Set(results.map(r => r.size))];
+            for (const size of sizes) {
+                const zstd = results.find(r => r.size === size && r.format.includes('zstd'));
+                const gzip = results.find(r => r.size === size && r.format.includes('gzip'));
+
+                if (zstd && gzip) {
+                    const decompressFaster = zstd.workerDecompressTime < gzip.workerDecompressTime;
+                    const smaller = zstd.compressedSize < gzip.compressedSize;
+                    const speedDiff = ((gzip.workerDecompressTime - zstd.workerDecompressTime) / gzip.workerDecompressTime * 100).toFixed(1);
+                    const sizeDiff = ((gzip.compressedSize - zstd.compressedSize) / gzip.compressedSize * 100).toFixed(1);
+
+                    html += `<h3>${size.toUpperCase()} - Comparison</h3>`;
+                    html += '<pre>';
+                    html += `Zstd vs Gzip:\n`;
+                    html += `  Size:       ${zstd.compressedSize / 1024} KB vs ${gzip.compressedSize / 1024} KB\n`;
+                    html += `              <span class="${smaller ? 'winner' : ''}">Zstd is ${sizeDiff}% ${smaller ? 'smaller' : 'larger'}</span>\n`;
+                    html += `  Decompress: ${zstd.workerDecompressTime.toFixed(4)}ms vs ${gzip.workerDecompressTime.toFixed(4)}ms\n`;
+                    html += `              <span class="${decompressFaster ? 'winner' : ''}">Zstd is ${speedDiff}% ${decompressFaster ? 'faster' : 'slower'}</span>\n`;
+                    html += '</pre>';
+                }
+            }
+
+            resultsDiv.innerHTML = html;
+        }
+
+        async function runAllTests() {
+            document.getElementById('btn-all').disabled = true;
+            results = [];
+
+            const tests = [
+                ['small', 'zstd3'],
+                ['small', 'gzip3'],
+                ['medium', 'zstd3'],
+                ['medium', 'gzip3'],
+                ['large', 'zstd3'],
+                ['large', 'gzip3'],
+            ];
+
+            for (const [size, format] of tests) {
+                await runTest(size, format);
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            document.getElementById('btn-all').disabled = false;
+        }
+
+        function clearResults() {
+            results = [];
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('results-section').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
+

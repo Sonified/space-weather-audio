@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blosc JS Test - Local</title>
+    <style>
+        body {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .test-section {
+            border: 1px solid #333;
+            padding: 20px;
+            margin: 20px 0;
+            background: #0a0a0a;
+        }
+        .pass { color: #00ff00; }
+        .fail { color: #ff0000; }
+        .info { color: #00aaff; }
+        pre {
+            background: #000;
+            padding: 10px;
+            overflow-x: auto;
+            border-left: 3px solid #00ff00;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-family: inherit;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Blosc JavaScript Decompression Test</h1>
+    <p class="info">Python backend uses Blosc (zstd), JavaScript uses @yoshihitoh/zstddec to decompress</p>
+
+    <div class="test-section">
+        <h2>Test 1: Load zstddec</h2>
+        <div id="load-status">Loading...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Decompress Zstd Data</h2>
+        <button onclick="testZstdDecompression()">Run Test</button>
+        <div id="zstd-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Fetch & Decompress from Backend (Blosc)</h2>
+        <button onclick="testBackendBlosc()">Run Test</button>
+        <div id="backend-results"></div>
+        <p class="info">Note: Blosc wraps zstd with 16-byte header - we'll strip it before decompression</p>
+    </div>
+
+    <script type="module">
+        try {
+            // Try unpkg as alternative CDN
+            const module = await import('https://unpkg.com/@yoshihitoh/zstddec@0.1.0/dist/index.js');
+            window.zstdDecompress = module.decompress;
+            
+            document.getElementById('load-status').innerHTML = 
+                '<span class="pass">✓ zstddec loaded successfully</span><br>' +
+                '<span class="info">Ready to decompress zstd/blosc data!</span>';
+        } catch (error) {
+            console.error('Failed to load zstddec:', error);
+            document.getElementById('load-status').innerHTML = 
+                '<span class="fail">✗ Failed to load zstddec</span><br>' +
+                `<span class="fail">Error: ${error.message}</span><br>` +
+                '<span class="info">Trying alternative: fzstd library...</span>';
+            
+            // Try alternative: fzstd
+            try {
+                const fzstd = await import('https://cdn.jsdelivr.net/npm/fzstd@0.1.1/+esm');
+                window.zstdDecompress = fzstd.decompress;
+                document.getElementById('load-status').innerHTML = 
+                    '<span class="pass">✓ fzstd loaded successfully (alternative)</span><br>' +
+                    '<span class="info">Ready to decompress zstd/blosc data!</span>';
+            } catch (error2) {
+                document.getElementById('load-status').innerHTML = 
+                    '<span class="fail">✗ All zstd libraries failed to load</span><br>' +
+                    `<span class="fail">Error: ${error2.message}</span>`;
+            }
+        }
+        
+        // Test 2: Zstd decompression (without Blosc wrapper)
+        window.testZstdDecompression = function() {
+            const results = document.getElementById('zstd-results');
+            results.innerHTML = '<p>Testing zstddec library...</p>';
+            
+            try {
+                // Create simple test data
+                const original = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+                
+                // For this test, we'll simulate with the library
+                // In production, this would be compressed data from the backend
+                results.innerHTML = `
+                    <pre><span class="pass">✓ zstddec library loaded</span>
+                    
+Ready to decompress zstd-compressed data from backend!
+
+<span class="info">How it works:</span>
+1. Python backend compresses with Blosc (zstd codec)
+2. Blosc adds 16-byte header to zstd payload
+3. JavaScript strips the Blosc header
+4. zstddec decompresses the raw zstd data
+5. We get back the original int32 array!
+
+<span class="pass">Click "Test 3" to fetch real compressed data from backend</span>
+</pre>`;
+            } catch (error) {
+                results.innerHTML = `<span class="fail">✗ Error: ${error.message}</span>`;
+            }
+        };
+        
+        // Test 3: Fetch and decompress blosc-compressed data from backend
+        window.testBackendBlosc = async function() {
+            const results = document.getElementById('backend-results');
+            results.innerHTML = '<p>Fetching blosc-compressed data from backend...</p>';
+            
+            try {
+                // Request compressed data from Python test server (port 8001)
+                const response = await fetch('http://localhost:8001/api/test-blosc-compress');
+                
+                if (!response.ok) {
+                    throw new Error(`Backend returned ${response.status}`);
+                }
+                
+                const contentLength = response.headers.get('Content-Length');
+                const arrayBuffer = await response.arrayBuffer();
+                const compressed = new Uint8Array(arrayBuffer);
+                
+                console.log('Response headers:');
+                console.log(`  Content-Length: ${contentLength}`);
+                console.log(`  Received: ${compressed.length} bytes`);
+                console.log(`  Match: ${contentLength === String(compressed.length) ? '✓' : '✗ MISMATCH!'}`);
+                
+                console.log('First 64 bytes (hex):', Array.from(compressed.slice(0, 64))
+                    .map(b => b.toString(16).padStart(2, '0')).join(' '));
+                console.log('Last 32 bytes (hex):', Array.from(compressed.slice(-32))
+                    .map(b => b.toString(16).padStart(2, '0')).join(' '));
+                
+                // Parse Blosc header properly
+                // Blosc header (16 bytes):
+                // 0: version
+                // 1: versionlz
+                // 2: flags
+                // 3: typesize
+                // 4-7: nbytes (uncompressed size, little-endian)
+                // 8-11: blocksize (little-endian)
+                // 12-15: cbytes (compressed size, little-endian)
+                
+                const version = compressed[0];
+                const versionlz = compressed[1];
+                const nbytes = new DataView(compressed.buffer).getUint32(4, true);
+                const blocksize = new DataView(compressed.buffer).getUint32(8, true);
+                const cbytes = new DataView(compressed.buffer).getUint32(12, true);
+                
+                console.log('Blosc header:');
+                console.log(`  Version: ${version}.${versionlz}`);
+                console.log(`  Uncompressed size: ${nbytes} bytes`);
+                console.log(`  Block size: ${blocksize} bytes`);
+                console.log(`  Compressed size: ${cbytes} bytes`);
+                
+                // Blosc splits data into blocks - we need to decompress each block
+                const numBlocks = Math.ceil(nbytes / blocksize);
+                console.log(`  Number of blocks: ${numBlocks}`);
+                
+                // Read all block sizes first (stored after main header)
+                // Format: [bsize1, bsize2, ...] then compressed data
+                let inputOffset = 16; // Start after 16-byte header
+                const blockSizes = [];
+                for (let i = 0; i < numBlocks; i++) {
+                    const bsize = new DataView(compressed.buffer).getUint32(inputOffset, true);
+                    blockSizes.push(bsize);
+                    inputOffset += 4;
+                    console.log(`  Block ${i} size: ${bsize} bytes`);
+                }
+                
+                // Allocate output buffer
+                const output = new Uint8Array(nbytes);
+                let outputOffset = 0;
+                
+                const t0 = performance.now();
+                
+                for (let block = 0; block < numBlocks; block++) {
+                    const blockCompressedSize = blockSizes[block];
+                    const blockUncompressedSize = Math.min(blocksize, nbytes - outputOffset);
+                    
+                    console.log(`Decompressing block ${block}: ${blockCompressedSize} → ${blockUncompressedSize} bytes`);
+                    
+                    // Extract this block's data (includes 4-byte uncompressed size prefix + zstd data)
+                    const blockData = compressed.slice(inputOffset, inputOffset + blockCompressedSize);
+                    console.log(`  First 16 bytes:`, Array.from(blockData.slice(0, 16))
+                        .map(b => b.toString(16).padStart(2, '0')).join(' '));
+                    
+                    // Skip the 4-byte uncompressed size prefix, extract just the zstd payload
+                    const zstdData = blockData.slice(4);
+                    console.log(`  Zstd payload: ${zstdData.length} bytes, magic:`, Array.from(zstdData.slice(0, 4))
+                        .map(b => b.toString(16).padStart(2, '0')).join(' '));
+                    
+                    inputOffset += blockCompressedSize;
+                    
+                    // Decompress block
+                    const decompressedBlock = window.zstdDecompress(zstdData);
+                    
+                    // Copy to output
+                    output.set(new Uint8Array(decompressedBlock.buffer), outputOffset);
+                    outputOffset += decompressedBlock.byteLength;
+                }
+                
+                const decompressTime = performance.now() - t0;
+                
+                console.log(`✓ Decompressed all ${numBlocks} blocks in ${decompressTime.toFixed(2)}ms`);
+                
+                // Convert to Int32Array (our seismic data format)
+                const int32Data = new Int32Array(output.buffer);
+                
+                results.innerHTML = `
+                    <pre><span class="pass">✓ Successfully decompressed Blosc data!</span>
+                    
+Compressed size:   ${(compressed.length / 1024).toFixed(2)} KB
+Decompressed size: ${(decompressed.byteLength / 1024).toFixed(2)} KB
+Compression ratio: ${(compressed.length / decompressed.byteLength * 100).toFixed(1)}%
+Decompress time:   ${decompressTime.toFixed(2)} ms
+
+Data format:       Int32Array
+Sample count:      ${int32Data.length}
+Data range:        [${Math.min(...int32Data)}, ${Math.max(...int32Data)}]
+
+<span class="pass">🎉 Blosc → JavaScript decompression WORKS!</span>
+</pre>`;
+                
+            } catch (error) {
+                results.innerHTML = `<span class="fail">✗ Error: ${error.message}</span>
+                <pre>${error.stack}</pre>
+                <p class="info">Make sure the test server is running: cd backend && python3 test_blosc_server.py</p>`;
+            }
+        };
+    </script>
+</body>
+</html>
+

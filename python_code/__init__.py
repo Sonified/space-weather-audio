@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.13"
+__version__ = "1.14"
 __commit_message__ = (
-    "v1.13 Feature: Interactive DJ-deck seeking with crossfades, scrubbing preview, spacebar control, auto-fadeouts, black waveform background"
+    "v1.14 Documentation: Comprehensive compression testing results - Zstd3 chosen for production (10-11% smaller, sub-ms decompression, verified identical)"
 )
 
 # Import key modules to make them available when importing the package

@@ -281,8 +281,9 @@
                 <label for="pipeline">🔬 Pipeline Architecture:</label>
                 <select id="pipeline" onchange="updatePipelineInfo()" style="font-weight: bold; border-color: #667eea;">
                     <option value="local-file">Local (File)</option>
-                    <option value="local-backend">Local → Render → IRIS</option>
-                    <option value="r2-render">Local → R2 → Render → IRIS</option>
+                    <option value="local-backend-r2">Local Backend → R2 "Cache" → IRIS</option>
+                    <option value="local-backend-local-cache">Local Backend → Local Cache → IRIS</option>
+                    <option value="r2-render">Production → R2 Cache → IRIS</option>
                 </select>
                 <div id="pipelineInfo" style="margin-top: 8px; padding: 10px; background: #f0f4ff; border-radius: 5px; font-size: 13px; color: #555; white-space: pre-wrap;"></div>
             </div>
@@ -464,18 +465,25 @@
                 description: '💾 Local file: Load audio data from local mseed_files directory',
                 color: '#4caf50'
             },
-            'local-backend': {
-                name: 'Local → Render → IRIS',
+            'local-backend-r2': {
+                name: 'Local Backend → R2 "Cache" → IRIS',
                 stationsUrl: 'http://localhost:8000/api/stations',
                 streamUrl: 'http://localhost:8000/api/progressive-test',
-                description: '🧪 Local testing: Your local Render backend fetches from IRIS',
+                description: '🧪 Local backend: R2 "cache" that only works within the same hour (broken timestamp logic)',
                 color: '#667eea'
             },
+            'local-backend-local-cache': {
+                name: 'Local Backend → Local Cache → IRIS',
+                stationsUrl: 'http://localhost:8000/api/stations',
+                streamUrl: 'http://localhost:8000/api/local-cache-test',
+                description: '🔧 Dev mode: Uses local file cache (backend/cache/) instead of R2',
+                color: '#9c27b0'
+            },
             'r2-render': {
-                name: 'Local → R2 → Render → IRIS',
+                name: 'Production → R2 Cache → IRIS',
                 stationsUrl: 'https://volcano-audio.onrender.com/api/stations',
                 streamUrl: 'https://volcano-audio.onrender.com/api/progressive-test',
-                description: '🌐 Production Render: Data cached in R2, served by Render',
+                description: '🌐 Production Render.com: Checks R2 cache first, fetches from IRIS if needed',
                 color: '#764ba2'
             }
         };

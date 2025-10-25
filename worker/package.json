@@ -1,0 +1,19 @@
+{
+  "name": "volcano-audio-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for seismic data decompression testing",
+  "main": "src/index.js",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "fzstd": "^0.1.1",
+    "pako": "^2.1.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
+
