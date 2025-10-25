@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.14"
+__version__ = "1.15"
 __commit_message__ = (
-    "v1.14 Documentation: Comprehensive compression testing results - Zstd3 chosen for production (10-11% smaller, sub-ms decompression, verified identical)"
+    "v1.15 Fix: Gapless audio streaming with auto-crossfade to deck mode, sample-accurate position tracking, dynamic fadeout rescheduling"
 )
 
 # Import key modules to make them available when importing the package

@@ -969,7 +969,7 @@ def serve_local_file():
     """Serve a local mseed file as int16 raw binary, progressively chunked"""
     try:
         filename = request.args.get('filename')
-        speedup = int(request.args.get('speedup', 200))
+        output_sample_rate = int(request.args.get('sample_rate', 44100))
         
         if not filename:
             return jsonify({'error': 'filename parameter required'}), 400

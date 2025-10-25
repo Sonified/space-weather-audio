@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "fzstd": "^0.1.1",
-    "pako": "^2.1.0"
+    "pako": "^2.1.0",
+    "@bokuweb/zstd-wasm": "^0.0.20"
   },
   "devDependencies": {
     "wrangler": "^3.0.0"
