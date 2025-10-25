@@ -6,7 +6,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         super();
         
         // Use Float32Array for efficient circular buffer
-        this.maxBufferSize = 44100 * 20; // 20 seconds max buffer (bigger for network jitter)
+        this.maxBufferSize = 44100 * 60; // 60 seconds max buffer (enough for most files, not too wasteful)
         this.buffer = new Float32Array(this.maxBufferSize);
         this.buffer.fill(0); // CRITICAL: Initialize to silence, not random memory
         this.writeIndex = 0;
@@ -18,6 +18,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.isPlaying = false; // Start paused until we have data
         this.minBufferBeforePlay = 44100 * 1; // Wait for 1 second of audio in worklet (main thread pre-loads more)
         this.hasStarted = false;
+        this.readIndexLocked = false; // 🔧 FIX: Track if readIndex has been set and should not be recalculated
         
         // Metrics
         this.underruns = 0; // Count of times buffer ran empty
@@ -54,16 +55,22 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 // Buffer full - overwrite oldest sample
                 this.buffer[this.writeIndex] = samples[i];
                 this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
-                this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
+                
+                // 🔧 FIX: Only advance readIndex if it's NOT locked
+                // This prevents readIndex drift when buffer overflows before playback starts
+                if (!this.readIndexLocked) {
+                    this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
+                }
             }
         }
         
         // Auto-start playback once we have enough buffer
+        // 🔧 FIX: Lock readIndex at start position - never recalculate!
         if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
-            // CRITICAL: Set read pointer to start of valid data, not zero!
-            // Without this, we read uninitialized memory = WHITE NOISE BLAST
+            // Calculate where to start reading from and lock it
             this.readIndex = (this.writeIndex - this.samplesInBuffer + this.maxBufferSize) % this.maxBufferSize;
-            console.log(`🎯 Starting playback: readIndex=${this.readIndex}, writeIndex=${this.writeIndex}, buffer=${this.samplesInBuffer} samples`);
+            this.readIndexLocked = true;
+            
             this.isPlaying = true;
             this.hasStarted = true;
             this.port.postMessage({ type: 'started' });
@@ -109,6 +116,14 @@ class SeismicProcessor extends AudioWorkletProcessor {
             
             this.underruns++;
             this.port.postMessage({ type: 'underrun', samplesInBuffer: this.samplesInBuffer });
+            
+            // ✅ STOP PLAYBACK when buffer is empty after stream complete
+            if (this.samplesInBuffer === 0) {
+                console.log(`🏁 Buffer empty - stopping playback`);
+                this.isPlaying = false;
+                this.port.postMessage({ type: 'finished' });
+                return false; // Stop processor
+            }
         } else {
             // Normal case: plenty of samples available
             // Simple playback rate by reading more/fewer samples
@@ -171,4 +186,3 @@ class SeismicProcessor extends AudioWorkletProcessor {
 
 // Register the processor
 registerProcessor('seismic-processor', SeismicProcessor);
-

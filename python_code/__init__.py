@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.17"
+__version__ = "1.18"
 __commit_message__ = (
-    "v1.17 Dynamic chunk scheduling with playback-rate-aware lead time (256 samples magic number), test_chunk_scheduling.html created"
+    "v1.18 Fix: AudioWorklet circular buffer readIndex lock prevents glitches from buffer overflow during pre-load"
 )
 
 # Import key modules to make them available when importing the package

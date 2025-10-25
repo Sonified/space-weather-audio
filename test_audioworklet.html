@@ -142,6 +142,13 @@
         <div class="panel">
             <h2 style="margin-bottom: 15px;">Controls</h2>
             <div style="margin-bottom: 15px;">
+                <label><strong>Data Type:</strong></label>
+                <select id="dataTypeSelect" style="margin-left: 10px; padding: 8px; border-radius: 4px; font-size: 14px;" onchange="onDataTypeChange()">
+                    <option value="linear-sweep" selected>🔬 Linear Sweep (Debug)</option>
+                    <option value="real-data">🌋 Real Seismic Data</option>
+                </select>
+            </div>
+            <div style="margin-bottom: 15px;">
                 <label><strong>Stream Size:</strong></label>
                 <select id="sizeSelect" style="margin-left: 10px; padding: 8px; border-radius: 4px; font-size: 14px;" onchange="onSizeChange()">
                     <option value="small">Small (1 minute)</option>
@@ -213,6 +220,10 @@
         let totalBytes = 0;
         let animationId = null;
         let streamComplete = false; // Track when stream download completes
+        let dataType = 'linear-sweep'; // Default to linear sweep for debugging
+        let firstReceivedSample = null; // Track first sample to verify it's -32768
+        let lastExpectedSample = null; // Track expected next sample for sweep detection
+        let glitchCount = 0; // Count detected glitches
         
         // Timing tracking
         let streamStartTime = 0;
@@ -353,16 +364,52 @@
                 const delta = lastDeframedChunkTime ? (now - lastDeframedChunkTime).toFixed(0) : '0';
                 lastDeframedChunkTime = now;
                 
-                // Check chunk transition continuity
-                const firstSample = float32Data[0];
-                const finalSample = float32Data[float32Data.length - 1];
-                let transitionInfo = '';
-                if (lastChunkFinalSample !== null) {
-                    const jumpSize = Math.abs(firstSample - lastChunkFinalSample);
-                    const jumpWarning = jumpSize > 0.1 ? ' ⚠️ BIG JUMP!' : '';
-                    transitionInfo = ` | Transition: ${lastChunkFinalSample.toFixed(3)} → ${firstSample.toFixed(3)} (Δ${jumpSize.toFixed(3)})${jumpWarning}`;
+                // 🧪 LINEAR SWEEP DETECTION: Check for glitches in perfect linear sweep
+                const finalSample = float32Data[float32Data.length - 1]; // Define for both branches
+                let transitionInfo = ''; // Define outside branches
+                
+                if (dataType === 'linear-sweep') {
+                    const elapsed = (performance.now() - streamStartTime).toFixed(0);
+                    
+                    // Check first sample (account for normalization rounding)
+                    if (firstReceivedSample === null) {
+                        firstReceivedSample = float32Data[0];
+                        const int16Value = Math.round(firstReceivedSample * 32768);
+                        if (int16Value === -32768 || int16Value === -32767) {
+                            console.log(`✅ [+${elapsed}ms] First sample correct: ${int16Value} (perfect start)`);
+                        } else {
+                            console.error(`❌ [+${elapsed}ms] First sample WRONG: ${int16Value} (expected -32768 or -32767)`);
+                        }
+                    }
+                    
+                    // Check for non-linear steps in the sweep (sample-accurate!)
+                    for (let i = 0; i < float32Data.length - 1; i++) {
+                        const current = float32Data[i];
+                        const next = float32Data[i + 1];
+                        const int16Current = Math.round(current * 32768);
+                        const int16Next = Math.round(next * 32768);
+                        const actualStep = int16Next - int16Current;
+                        
+                        // In a perfect linear sweep, each step should be +1
+                        if (actualStep !== 1 && actualStep !== 0) { // Allow occasional -32768 (rounds to same value)
+                            const timeMs = (performance.now() - streamStartTime).toFixed(0);
+                            console.error(`❌ [+${timeMs}ms] GLITCH at sample ${i}: ${int16Current} → ${int16Next} (expected +1, got ${actualStep})`);
+                            glitchCount++;
+                        }
+                    }
+                    
+                    // Store last sample for continuity check
+                    lastChunkFinalSample = finalSample;
+                } else {
+                    // Real data: just check chunk transitions
+                    const firstSample = float32Data[0];
+                    if (lastChunkFinalSample !== null) {
+                        const jumpSize = Math.abs(firstSample - lastChunkFinalSample);
+                        const jumpWarning = jumpSize > 0.1 ? ' ⚠️ BIG JUMP!' : '';
+                        transitionInfo = ` | Transition: ${lastChunkFinalSample.toFixed(3)} → ${firstSample.toFixed(3)} (Δ${jumpSize.toFixed(3)})${jumpWarning}`;
+                    }
+                    lastChunkFinalSample = finalSample;
                 }
-                lastChunkFinalSample = finalSample;
                 
                 if (isPreloading || chunksReceived < 5) {
                     console.log(`📦 [+${elapsed}ms Δ${delta}ms] Deframed chunk ${chunksReceived + 1}: ${frameLength} bytes (${(frameLength/1024).toFixed(1)}KB) → ${float32Data.length.toLocaleString()} samples, range [${stats.min.toFixed(3)}, ${stats.max.toFixed(3)}]${transitionInfo}`);
@@ -421,7 +468,7 @@
                     super();
                     
                     // Use Float32Array for efficient circular buffer
-                    this.maxBufferSize = 44100 * 20; // 20 seconds max buffer (bigger for network jitter)
+                    this.maxBufferSize = 44100 * 60; // 60 seconds max buffer (enough for most files, not too wasteful)
                     this.buffer = new Float32Array(this.maxBufferSize);
                     this.buffer.fill(0); // CRITICAL: Initialize to silence, not random memory
                     this.writeIndex = 0;
@@ -433,6 +480,7 @@
                     this.isPlaying = false; // Start paused until we have data
                     this.minBufferBeforePlay = 44100 * 1; // Wait for 1 second of audio in worklet (main thread pre-loads more)
                     this.hasStarted = false;
+                    this.readIndexLocked = false; // 🔧 FIX: Track if readIndex has been set and should not be recalculated
                     
                     // Metrics
                     this.underruns = 0; // Count of times buffer ran empty
@@ -469,16 +517,22 @@
                             // Buffer full - overwrite oldest sample
                             this.buffer[this.writeIndex] = samples[i];
                             this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
-                            this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
+                            
+                            // 🔧 FIX: Only advance readIndex if it's NOT locked
+                            // This prevents readIndex drift when buffer overflows before playback starts
+                            if (!this.readIndexLocked) {
+                                this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
+                            }
                         }
                     }
                     
                     // Auto-start playback once we have enough buffer
+                    // 🔧 FIX: Lock readIndex at start position - never recalculate!
                     if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
-                        // CRITICAL: Set read pointer to start of valid data, not zero!
-                        // Without this, we read uninitialized memory = WHITE NOISE BLAST
+                        // Calculate where to start reading from and lock it
                         this.readIndex = (this.writeIndex - this.samplesInBuffer + this.maxBufferSize) % this.maxBufferSize;
-                        console.log(\`🎯 Starting playback: readIndex=\${this.readIndex}, writeIndex=\${this.writeIndex}, buffer=\${this.samplesInBuffer} samples\`);
+                        this.readIndexLocked = true;
+                        
                         this.isPlaying = true;
                         this.hasStarted = true;
                         this.port.postMessage({ type: 'started' });
@@ -524,6 +578,14 @@
                         
                         this.underruns++;
                         this.port.postMessage({ type: 'underrun', samplesInBuffer: this.samplesInBuffer });
+                        
+                        // ✅ STOP PLAYBACK when buffer is empty after stream complete
+                        if (this.samplesInBuffer === 0) {
+                            console.log(\`🏁 Buffer empty - stopping playback\`);
+                            this.isPlaying = false;
+                            this.port.postMessage({ type: 'finished' });
+                            return false; // Stop processor
+                        }
                     } else {
                         // Normal case: plenty of samples available
                         // Simple playback rate by reading more/fewer samples
@@ -623,17 +685,16 @@
                     console.log(`🎵 Worklet metrics: buffer=${bufferSize} samples (${(bufferSize/44100).toFixed(2)}s), underruns=${underruns}`);
                     document.getElementById('bufferSize').textContent = bufferSize.toLocaleString();
                     document.getElementById('underruns').textContent = underruns;
-                    
-                    // Detect when all audio has finished playing
-                    if (streamComplete && bufferSize === 0 && !isPaused) {
-                        console.log('🎵 All audio finished playing');
-                        document.getElementById('status').className = 'status success';
-                        document.getElementById('status').textContent = 'All audio finished! Click Start to play again.';
-                        document.getElementById('startBtn').disabled = false;
-                        document.getElementById('pauseBtn').disabled = true;
-                    }
                 } else if (type === 'started') {
                     console.log('🎬 Worklet auto-started playback');
+                } else if (type === 'finished') {
+                    console.log('🏁 Worklet finished playing - buffer empty');
+                    isPlaying = false;
+                    isPaused = true;
+                    document.getElementById('status').className = 'status success';
+                    document.getElementById('status').textContent = '✅ Playback finished! Click Start to play again.';
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('pauseBtn').disabled = true;
                 }
             };
             
@@ -650,8 +711,11 @@
                 
                 await initAudioWorklet();
                 
-                document.getElementById('startBtn').disabled = true;
-                document.getElementById('pauseBtn').disabled = false;
+                // Only disable start button if we're not already in a paused/finished state
+                if (!isPaused) {
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('pauseBtn').disabled = false;
+                }
                 document.getElementById('sizeSelect').disabled = true; // Lock size during streaming
                 document.getElementById('status').className = 'status info';
                 document.getElementById('status').textContent = 'Streaming from Cloudflare Worker...';
@@ -669,6 +733,11 @@
                 totalPreloadedSamples = 0;
                 document.getElementById('downloadBtn').disabled = true;
                 
+                // Reset sweep detection tracking
+                firstReceivedSample = null;
+                lastExpectedSample = null;
+                glitchCount = 0;
+                
                 // Reset timing tracking
                 streamStartTime = performance.now();
                 lastNetworkChunkTime = 0;
@@ -678,11 +747,24 @@
                 // Start visualization
                 startVisualization();
                 
-                // Get selected size
+                // Get selected size and data type
                 const size = document.getElementById('sizeSelect').value;
+                const dataType = document.getElementById('dataTypeSelect').value;
+                
+                // Build fetch URL based on data type
+                let fetchUrl;
+                if (dataType === 'linear-sweep') {
+                    // Use linear sweep test files
+                    fetchUrl = `https://volcano-audio-test.robertalexander-music.workers.dev/stream?size=${size}&gzip=true&filter=false&linear_sweep=true`;
+                } else {
+                    // Use real seismic data
+                    fetchUrl = `https://volcano-audio-test.robertalexander-music.workers.dev/stream?size=${size}&gzip=true&filter=false`;
+                }
+                
+                console.log(`📡 Fetching: ${fetchUrl}`);
                 
                 // Fetch from worker
-                const response = await fetch(`https://volcano-audio-test.robertalexander-music.workers.dev/stream?size=${size}&gzip=true&filter=false`);
+                const response = await fetch(fetchUrl);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
@@ -700,8 +782,20 @@
                         console.log('✅ Stream complete');
                         streamComplete = true;
                         
-                        document.getElementById('status').className = 'status success';
-                        document.getElementById('status').textContent = 'Stream complete! Audio still playing from buffer.';
+                        // Report glitch count for linear sweep
+                        if (dataType === 'linear-sweep' && glitchCount > 0) {
+                            console.error(`❌ TOTAL GLITCHES DETECTED: ${glitchCount}`);
+                            document.getElementById('status').className = 'status error';
+                            document.getElementById('status').textContent = `⚠️ Stream complete but ${glitchCount} glitches detected! Check console for timestamps.`;
+                        } else if (dataType === 'linear-sweep') {
+                            console.log(`✅ Perfect linear sweep - no glitches detected!`);
+                            document.getElementById('status').className = 'status success';
+                            document.getElementById('status').textContent = '✅ Perfect linear sweep - no glitches!';
+                        } else {
+                            document.getElementById('status').className = 'status success';
+                            document.getElementById('status').textContent = 'Stream complete! Audio still playing from buffer.';
+                        }
+                        
                         document.getElementById('downloadBtn').disabled = false;
                         document.getElementById('sizeSelect').disabled = false;
                         break;
@@ -807,6 +901,14 @@
             document.getElementById('startBtn').disabled = false;
             document.getElementById('status').className = 'status';
             document.getElementById('status').textContent = 'Ready to stream';
+        }
+        
+        function onDataTypeChange() {
+            dataType = document.getElementById('dataTypeSelect').value;
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('status').className = 'status';
+            document.getElementById('status').textContent = `Ready to stream ${dataType === 'linear-sweep' ? 'linear sweep (debug mode)' : 'real seismic data'}`;
+            console.log(`📊 Data type changed to: ${dataType}`);
         }
         
         function startVisualization() {

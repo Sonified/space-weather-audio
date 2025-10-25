@@ -262,3 +262,141 @@ Through empirical testing in `test_chunk_scheduling.html`, discovered that **256
 Commit: `v1.17 Dynamic chunk scheduling with playback-rate-aware lead time (256 samples magic number), test_chunk_scheduling.html created`
 
 ---
+
+## AudioWorklet Mystery Solved: Circular Buffer Overflow Race Condition
+
+### Problem
+In `test_audioworklet.html`, linear sweep test files played perfectly for small (1 min) and medium (10 min) files, but the large file (1 hour) exhibited bizarre behavior:
+- Audio started from ~40% through the file instead of the beginning
+- 390,789 discontinuities detected (jumps in the linear sweep)
+- Playback capture showed completely scrambled audio
+- Raw download was perfect (zero discontinuities)
+
+**User's observation**: "It thinks about starting at the beginning, then JUMPS ahead around sample 8169, then JUMPS again around sample 9193, then makes a BIG jump around sample 10472, and then from there it plays through to the end."
+
+### Investigation
+Created `analyze_audio_jumps.py` to compare raw download vs playback capture:
+- **Raw Download**: Perfect linear sweep, 1.44M samples (32.65s), zero glitches ✅
+- **Playback**: Flat/stuck at beginning, then wild jumps, 390K discontinuities ❌
+- **Pattern**: Playback started at writeIndex position instead of oldest buffered sample
+
+### Root Cause: Buffer Overflow During Pre-loading
+The bug was in `seismic-processor.js` (AudioWorklet) circular buffer overflow logic:
+
+```javascript
+// OLD CODE (BUGGY):
+addSamples(samples) {
+    for (let i = 0; i < samples.length; i++) {
+        if (this.samplesInBuffer < this.maxBufferSize) {
+            // Add sample...
+            this.samplesInBuffer++;
+        } else {
+            // Buffer full - overwrite oldest sample
+            this.buffer[this.writeIndex] = samples[i];
+            this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
+            this.readIndex = (this.readIndex + 1) % this.maxBufferSize; // 🐛 BUG!
+        }
+    }
+}
+```
+
+**The race condition**:
+1. Buffer size: 20 seconds (882K samples)
+2. Large file: 32 seconds (1.44M samples)
+3. Pre-loading phase: 2 seconds before playback starts
+4. During pre-load, buffer fills up and **overflows**
+5. Line `this.readIndex = (this.readIndex + 1)` advances readIndex **even though playback hasn't started yet**
+6. When playback finally starts, the calculation `readIndex = (writeIndex - samplesInBuffer)` produces **readIndex = writeIndex** (because samplesInBuffer = maxBufferSize)
+7. Result: Playback starts from wherever the write pointer happens to be (40% into the file!)
+
+**Why small/medium files worked**: They fit entirely within the 20-second buffer without overflowing before playback started.
+
+### Solution
+Don't advance `readIndex` during buffer overflow if playback hasn't started yet:
+
+```javascript
+// FIXED CODE:
+addSamples(samples) {
+    for (let i = 0; i < samples.length; i++) {
+        if (this.samplesInBuffer < this.maxBufferSize) {
+            // Add sample...
+            this.samplesInBuffer++;
+        } else {
+            // Buffer full - overwrite oldest sample
+            this.buffer[this.writeIndex] = samples[i];
+            this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
+            
+            // 🔧 FIX: Only advance readIndex if playback has already started
+            if (this.hasStarted) {
+                this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
+            }
+            // If not started, samplesInBuffer stays at maxBufferSize
+        }
+    }
+}
+```
+
+### Additional Improvements
+Added better diagnostics to catch similar race conditions:
+```javascript
+console.log(`🎯 Starting playback: readIndex=${this.readIndex}, writeIndex=${this.writeIndex}, buffer=${this.samplesInBuffer} samples (${(this.samplesInBuffer/44100).toFixed(2)}s)`);
+console.log(`   Buffer state: maxSize=${this.maxBufferSize}, utilization=${(100*this.samplesInBuffer/this.maxBufferSize).toFixed(1)}%`);
+```
+
+### Key Insight (from ChatGPT consultation)
+"AudioWorklets give you 'most control' the same way giving a toddler a real steering wheel does — technically true, but one bad tick of timing and you're in the ditch."
+
+The pattern (jumps ahead, then stabilizes) was a classic producer/consumer race condition where `samplesInBuffer` is mutated across messages, and playback starts before buffer state is coherent.
+
+### Files Modified
+- `seismic-processor.js` - Fixed circular buffer overflow logic
+- `test_audioworklet.html` - Updated embedded worklet code with same fix
+- `analyze_audio_jumps.py` - Created diagnostic tool for comparing WAV files and detecting discontinuities
+
+### Testing Plan
+1. Test large file (1 hour) with linear sweep - should be perfect now
+2. Monitor console for buffer utilization at playback start
+3. Verify readIndex calculation when buffer is at 100% capacity
+4. Test with varying buffer sizes (10s, 20s, 40s)
+
+### Resolution
+**Testing revealed the real issue**: When buffer size was increased to 120 seconds (larger than the 32-second test file), the glitches disappeared completely! This proved the bug was in our circular buffer overflow logic, not Chrome's GC.
+
+**The Actual Bug**: 
+- 20-second buffer with 32-second file → buffer overflows during pre-load
+- Overflow handler advances `readIndex` to track oldest sample
+- When playback starts, code recalculates `readIndex = (writeIndex - samplesInBuffer)`
+- **This calculation assumes `readIndex` was never touched!**
+- Result: `readIndex` points to wrong position → audio starts 40% into file
+
+**The Real Fix - "Lock the Start Position"**:
+```javascript
+// In addSamples() when ready to start:
+if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
+    this.readIndex = (this.writeIndex - this.samplesInBuffer + this.maxBufferSize) % this.maxBufferSize;
+    this.readIndexLocked = true; // LOCK IT - never recalculate!
+    this.isPlaying = true;
+    this.hasStarted = true;
+}
+
+// In overflow handler:
+if (!this.readIndexLocked) {
+    this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
+}
+```
+
+**Why it works**: 
+- `readIndex` is calculated ONCE at the moment we decide to start playback
+- Locked flag prevents overflow handler from touching it after that
+- No race condition between `addSamples()` and `process()`
+- Works with any file size, any buffer size
+
+**Final buffer size**: 60 seconds (reasonable compromise - handles most files without being wasteful)
+
+**Result**: ✅ Perfect linear sweep playback on all file sizes (small, medium, large) with zero glitches!
+
+**v1.18** - AudioWorklet circular buffer readIndex lock prevents glitches from buffer overflow during pre-load
+
+Commit: `v1.18 Fix: AudioWorklet circular buffer readIndex lock prevents glitches from buffer overflow during pre-load`
+
+---

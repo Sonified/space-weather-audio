@@ -277,16 +277,22 @@ export default {
       const size = url.searchParams.get('size') || 'small';
       const useGzip = url.searchParams.get('gzip') === 'true'; // If true, use gzipped data
       const useFilter = url.searchParams.get('filter') !== 'false'; // Default true, set ?filter=false to skip
+      const isLinearSweep = url.searchParams.get('linear_sweep') === 'true'; // Use linear sweep test data
       
       try {
-        console.log(`[Worker] Stream request: size=${size}, gzip=${useGzip}`);
+        console.log(`[Worker] Stream request: size=${size}, gzip=${useGzip}, linear_sweep=${isLinearSweep}`);
         
         const t0 = performance.now();
         
-        // Fetch from R2 (either gzipped or raw int32)
-        const r2Key = useGzip 
-          ? `test/worker_test_files/seismic_${size}_gzip3.bin.gz`
-          : `test/worker_test_files/seismic_${size}_int32.bin`;
+        // Fetch from R2 - either linear sweep or real seismic data
+        let r2Key;
+        if (isLinearSweep) {
+          r2Key = `test/linear_sweep_${size}.bin`; // Raw int16, no gzip!
+        } else {
+          r2Key = useGzip 
+            ? `test/worker_test_files/seismic_${size}_gzip3.bin.gz`
+            : `test/worker_test_files/seismic_${size}_int32.bin`;
+        }
         console.log(`[Worker] Fetching from R2: ${r2Key}`);
         
         const r2Object = await env.R2_BUCKET.get(r2Key);
@@ -298,36 +304,64 @@ export default {
         const fetchTime = (performance.now() - t0).toFixed(4);
         console.log(`[Worker] Fetched ${rawData.length} bytes in ${fetchTime}ms`);
         
-        // Step 1: Decompress if gzipped
+        // Step 1: Decompress if gzipped (skip for linear sweep)
         const t1 = performance.now();
-        let int32Bytes;
-        if (useGzip) {
+        let decompressedBytes;
+        if (isLinearSweep) {
+          console.log('[Worker] Using raw int16 data (no decompression for linear sweep)');
+          decompressedBytes = rawData;
+        } else if (useGzip) {
           console.log('[Worker] Decompressing with Gzip...');
-          int32Bytes = pako.inflate(rawData);
+          decompressedBytes = pako.inflate(rawData);
         } else {
-          console.log('[Worker] Using raw int32 data (no decompression)');
-          int32Bytes = rawData;
+          console.log('[Worker] Using raw data (no decompression)');
+          decompressedBytes = rawData;
         }
         const decompressTime = (performance.now() - t1).toFixed(4);
         
-        // Step 2: Convert to Int32Array then to Float64 for processing
-        // CRITICAL: Ensure 4-byte alignment for Int32Array
-        let int32Data;
-        if (int32Bytes.byteOffset % 4 === 0) {
-          // Properly aligned
-          int32Data = new Int32Array(int32Bytes.buffer, int32Bytes.byteOffset, int32Bytes.byteLength / 4);
-        } else {
-          // Misaligned - copy to new buffer
-          console.warn(`[Worker] ⚠️ Misaligned byteOffset (${int32Bytes.byteOffset}), copying to aligned buffer`);
-          const alignedBytes = new Uint8Array(int32Bytes);
-          int32Data = new Int32Array(alignedBytes.buffer);
-        }
-        console.log(`[Worker] Int32 samples: ${int32Data.length}`);
+        // Step 2: Convert to Int32Array or Int16Array then to Float64 for processing
+        let floatData;
         
-        // Convert to float for filtering (normalize to -1 to 1 range)
-        const floatData = new Float64Array(int32Data.length);
-        for (let i = 0; i < int32Data.length; i++) {
-          floatData[i] = int32Data[i] / 2147483648.0; // int32 max
+        if (isLinearSweep) {
+          // Linear sweep is already int16 format
+          console.log('[Worker] Processing linear sweep (int16 format)');
+          let int16Data;
+          if (decompressedBytes.byteOffset % 2 === 0) {
+            // Properly aligned
+            int16Data = new Int16Array(decompressedBytes.buffer, decompressedBytes.byteOffset, decompressedBytes.byteLength / 2);
+          } else {
+            // Misaligned - copy to new buffer
+            console.warn(`[Worker] ⚠️ Misaligned byteOffset (${decompressedBytes.byteOffset}), copying to aligned buffer`);
+            const alignedBytes = new Uint8Array(decompressedBytes);
+            int16Data = new Int16Array(alignedBytes.buffer);
+          }
+          console.log(`[Worker] Int16 samples: ${int16Data.length}`);
+          
+          // Convert to float for processing (normalize to -1 to 1 range)
+          floatData = new Float64Array(int16Data.length);
+          for (let i = 0; i < int16Data.length; i++) {
+            floatData[i] = int16Data[i] / 32768.0; // int16 max
+          }
+        } else {
+          // Real seismic data is int32 format
+          console.log('[Worker] Processing seismic data (int32 format)');
+          let int32Data;
+          if (decompressedBytes.byteOffset % 4 === 0) {
+            // Properly aligned
+            int32Data = new Int32Array(decompressedBytes.buffer, decompressedBytes.byteOffset, decompressedBytes.byteLength / 4);
+          } else {
+            // Misaligned - copy to new buffer
+            console.warn(`[Worker] ⚠️ Misaligned byteOffset (${decompressedBytes.byteOffset}), copying to aligned buffer`);
+            const alignedBytes = new Uint8Array(decompressedBytes);
+            int32Data = new Int32Array(alignedBytes.buffer);
+          }
+          console.log(`[Worker] Int32 samples: ${int32Data.length}`);
+          
+          // Convert to float for filtering (normalize to -1 to 1 range)
+          floatData = new Float64Array(int32Data.length);
+          for (let i = 0; i < int32Data.length; i++) {
+            floatData[i] = int32Data[i] / 2147483648.0; // int32 max
+          }
         }
         
         // Check input data BEFORE filtering
