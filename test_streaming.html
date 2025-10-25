@@ -280,11 +280,11 @@
             <div class="control-group" style="margin-bottom: 20px;">
                 <label for="pipeline">🔬 Pipeline Architecture:</label>
                 <select id="pipeline" onchange="updatePipelineInfo()" style="font-weight: bold; border-color: #667eea;">
+                    <option value="worker-stream" selected>🌩️ Cloudflare Worker Stream Pipeline (REAL DATA)</option>
                     <option value="local-file">Local (File)</option>
                     <option value="local-backend-r2">Local Backend → R2 "Cache" → IRIS</option>
                     <option value="local-backend-local-cache">Local Backend → Local Cache → IRIS</option>
                     <option value="r2-render">Production → R2 Cache → IRIS</option>
-                    <option value="worker-stream">🌩️ Cloudflare Worker Stream Pipeline (REAL DATA)</option>
                 </select>
                 <div id="pipelineInfo" style="margin-top: 8px; padding: 10px; background: #f0f4ff; border-radius: 5px; font-size: 13px; color: #555; white-space: pre-wrap;"></div>
             </div>
@@ -480,6 +480,11 @@
         // Just-in-time chunk scheduling (for gapless playback)
         let nextChunkScheduleTimeout = null; // Timeout to schedule next chunk before current ends
         let currentChunkPlaybackPosition = 0; // Sample-accurate position tracking (in seconds)
+        
+        // Dynamic chunk scheduling (accounts for playback rate changes)
+        let scheduleLeadSamples = 256; // Schedule next chunk 256 samples before current ends (~5.8ms at 44.1kHz)
+        let currentChunkStartTime = 0; // When current chunk started (audioContext time)
+        let currentChunkDurationSamples = 0; // Duration of current chunk in samples
         
         // Station data
         let availableStations = null;
@@ -1566,6 +1571,7 @@
             const logRange = maxLog - minLog;
             const newRate = Math.exp(minLog + (logRange * (sliderValue - minPos)) / (maxPos - minPos));
             
+            const oldRate = currentPlaybackRate;
             currentPlaybackRate = newRate;
             document.getElementById('speedValue').textContent = newRate.toFixed(2);
             
@@ -1579,6 +1585,43 @@
                 try {
                     source.playbackRate.value = newRate;
                 } catch (e) {}
+            }
+            
+            // 🎯 CRITICAL: Reschedule next chunk based on NEW playback rate! (chunk mode)
+            if (nextChunkScheduleTimeout && chunkQueue.length > 0 && currentChunkStartTime > 0 && !isDeckMode) {
+                // Cancel old timeout
+                clearTimeout(nextChunkScheduleTimeout);
+                nextChunkScheduleTimeout = null;
+                
+                // Calculate how much time has elapsed since chunk started
+                const now = audioContext.currentTime;
+                const elapsedRealTime = now - currentChunkStartTime;
+                
+                // Calculate how many samples have been played at old rate
+                const samplesPlayedAtOldRate = elapsedRealTime * audioRate * oldRate;
+                
+                // Calculate remaining samples in chunk
+                const remainingSamples = currentChunkDurationSamples - samplesPlayedAtOldRate;
+                
+                // Calculate when chunk will end at NEW rate
+                const remainingRealTime = remainingSamples / audioRate / newRate;
+                
+                // Calculate lead time at new rate
+                const leadTimeAudioSeconds = scheduleLeadSamples / audioRate;
+                const leadTimeRealSeconds = leadTimeAudioSeconds / newRate;
+                
+                // Reschedule
+                const newScheduleDelay = Math.max(0, remainingRealTime - leadTimeRealSeconds);
+                
+                console.log(`🔄 Chunk mode speed ${oldRate.toFixed(2)}x → ${newRate.toFixed(2)}x: Rescheduling next chunk in ${(newScheduleDelay * 1000).toFixed(2)}ms (${scheduleLeadSamples} samples lead)`);
+                
+                const chunkEndTime = now + remainingRealTime;
+                nextChunkScheduleTimeout = setTimeout(() => {
+                    nextChunkScheduleTimeout = null;
+                    if (chunkQueue.length > 0 && isPlaying && !isPaused && !isDeckMode) {
+                        playNextChunk(chunkEndTime);
+                    }
+                }, newScheduleDelay * 1000);
             }
             
             // Update DJ deck sources (deck mode)
@@ -1753,6 +1796,8 @@
             currentAudioPosition = 0;
             lastUpdateTime = 0;
             currentChunkPlaybackPosition = 0; // Reset sample-accurate position
+            currentChunkStartTime = 0; // Reset chunk timing tracking
+            currentChunkDurationSamples = 0;
             
             // Reset DJ deck state
             isStreamComplete = false;
@@ -2123,6 +2168,8 @@
                     lastUpdateTime = audioContext.currentTime;
                     nextChunkStartTime = audioContext.currentTime; // Reset precise timing
                     currentChunkPlaybackPosition = 0; // Reset sample-accurate position
+                    currentChunkStartTime = 0; // Reset chunk timing tracking
+                    currentChunkDurationSamples = 0;
                     
                     // Keep playing (don't set isPlaying = false)
                     // Immediately play the next chunk (which is now the first chunk again)
@@ -2172,12 +2219,17 @@
             const now = audioContext.currentTime;
             const actualStartTime = startTime || now; // Use provided start time or start immediately
             const chunkDuration = buffer.length / buffer.sampleRate; // Duration in seconds (at 1.0x speed)
+            const chunkDurationSamples = buffer.length; // Duration in samples
             const adjustedDuration = chunkDuration / currentPlaybackRate; // Adjust for current playback rate
             const chunkEndTime = actualStartTime + adjustedDuration;
             
+            // 🎯 TRACK CURRENT CHUNK for dynamic rescheduling
+            currentChunkStartTime = actualStartTime;
+            currentChunkDurationSamples = chunkDurationSamples;
+            
             // Start chunk at precise time
             source.start(actualStartTime);
-            console.log(`🎵 Chunk ${index + 1} scheduled: start=${actualStartTime.toFixed(3)}s, end=${chunkEndTime.toFixed(3)}s, duration=${adjustedDuration.toFixed(3)}s, rate=${currentPlaybackRate.toFixed(2)}x`);
+            console.log(`🎵 Chunk ${index + 1} scheduled: start=${actualStartTime.toFixed(3)}s, end=${chunkEndTime.toFixed(3)}s, duration=${adjustedDuration.toFixed(3)}s (${chunkDurationSamples.toLocaleString()} samples), rate=${currentPlaybackRate.toFixed(2)}x`);
             
             // ✅ SAMPLE-ACCURATE POSITION TRACKING: Track actual audio duration scheduled
             currentChunkPlaybackPosition += chunkDuration; // Add chunk duration (at 1.0x speed)
@@ -2198,12 +2250,14 @@
                 document.getElementById('playbackProgress').textContent = `${progress}%`;
             }
             
-            // ✅ JUST-IN-TIME SCHEDULING: Schedule next chunk 5ms before this one ends
-            // This gives us time to prepare while still being precise
+            // ✅ DYNAMIC SCHEDULING: Schedule next chunk with playback-rate-aware lead time
             if (chunkQueue.length > 0) {
-                // There are more chunks - schedule the next one
-                const scheduleLeadTime = 0.005; // 5ms before end
-                const timeUntilSchedule = Math.max(0, adjustedDuration - scheduleLeadTime);
+                // Convert lead time from samples to REAL TIME (accounting for playback rate!)
+                const leadTimeAudioSeconds = scheduleLeadSamples / audioRate; // Audio time at 1.0x
+                const leadTimeRealSeconds = leadTimeAudioSeconds / currentPlaybackRate; // Real time at current speed
+                const timeUntilSchedule = Math.max(0, adjustedDuration - leadTimeRealSeconds);
+                
+                console.log(`⏰ Scheduling next chunk in ${(timeUntilSchedule * 1000).toFixed(2)}ms (${scheduleLeadSamples} samples = ${(leadTimeAudioSeconds * 1000).toFixed(2)}ms audio, ${(leadTimeRealSeconds * 1000).toFixed(2)}ms real @ ${currentPlaybackRate.toFixed(2)}x)`);
                 
                 nextChunkScheduleTimeout = setTimeout(() => {
                     nextChunkScheduleTimeout = null;
@@ -2215,7 +2269,6 @@
                     }
                     
                     if (chunkQueue.length > 0 && isPlaying && !isPaused) {
-                        console.log(`⏰ Just-in-time: scheduling next chunk to start at ${chunkEndTime.toFixed(3)}s`);
                         playNextChunk(chunkEndTime); // Schedule to start exactly when current chunk ends
                     }
                 }, timeUntilSchedule * 1000);

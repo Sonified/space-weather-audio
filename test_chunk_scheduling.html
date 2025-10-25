@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 Chunk Scheduling Test</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #2d1b3d 0%, #4a2545 50%, #3d2636 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: white;
+            text-align: center;
+            font-size: 2em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            border: 1px solid rgba(248, 165, 194, 0.1);
+        }
+        
+        h2 {
+            color: #d4a5bd;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #c06c84 0%, #a85a73 100%);
+            color: white;
+            font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        button:hover:not(:disabled) {
+            background: linear-gradient(135deg, #d47b94 0%, #c06c84 100%);
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #5a4550;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        button.loop-active {
+            background: linear-gradient(135deg, #f67280 0%, #c06c84 100%);
+        }
+        
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            min-width: 250px;
+        }
+        
+        .slider-group label {
+            font-weight: 600;
+            color: #f0e6ed;
+        }
+        
+        .slider-value {
+            font-size: 20px;
+            color: #f8a5c2;
+            font-weight: 700;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #4a3545;
+            outline: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f8a5c2 0%, #c06c84 100%);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f8a5c2 0%, #c06c84 100%);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .metric {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid rgba(248, 165, 194, 0.2);
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #b08090;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #f8a5c2;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+        
+        .status.info { background: rgba(192, 108, 132, 0.2); color: #f8a5c2; border-left: 4px solid #c06c84; }
+        .status.success { background: rgba(168, 218, 181, 0.2); color: #a8dab5; border-left: 4px solid #7fb88e; }
+        .status.error { background: rgba(246, 114, 128, 0.2); color: #f67280; border-left: 4px solid #f67280; }
+        
+        canvas {
+            width: 100%;
+            display: block;
+            border-radius: 8px;
+            background: #000;
+            height: 250px;
+        }
+        
+        .hypothesis {
+            background: rgba(243, 156, 18, 0.15);
+            border-left: 4px solid #f39c12;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            color: #f8c291;
+        }
+        
+        .hypothesis strong {
+            color: #ffd89b;
+        }
+        
+        select {
+            background: rgba(255, 255, 255, 0.1);
+            color: #f8a5c2;
+            border: 2px solid rgba(248, 165, 194, 0.3);
+        }
+        
+        select option {
+            background: #2d1b3d;
+            color: #f8a5c2;
+        }
+        
+        label {
+            color: #e0d0d8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Chunk Scheduling Sweet Spot Test</h1>
+        
+        <div class="panel">
+            <div class="hypothesis">
+                <strong>🧪 Hypothesis:</strong> There's a sweet spot between 50-200 samples where pre-scheduled chunks can handle dynamic playback speed changes without clicks or gaps.
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label><strong>Dataset Size:</strong></label>
+                <select id="sizeSelect" onchange="onSizeChange()" style="margin-left: 10px; padding: 10px; border-radius: 6px; font-size: 14px;">
+                    <option value="small">Small (90k samples, ~2s)</option>
+                    <option value="medium" selected>Medium (540k samples, ~12s)</option>
+                    <option value="large">Large (1.44M samples, ~32s)</option>
+                </select>
+            </div>
+            
+            <div class="controls">
+                <button id="startBtn" onclick="startStreaming()">🎵 Start Streaming</button>
+                <button id="pauseBtn" onclick="togglePause()" disabled>⏸️ Pause</button>
+                <button id="loopBtn" onclick="toggleLoop()" disabled>🔁 Loop</button>
+            </div>
+            
+            <!-- THE KEY SLIDER: Schedule Lead Time -->
+            <div class="slider-group" style="background: rgba(192, 108, 132, 0.15); padding: 15px; border-radius: 8px; border: 2px solid rgba(192, 108, 132, 0.4);">
+                <label>
+                    ⏱️ Schedule Lead Time: 
+                    <span class="slider-value" id="leadSamplesValue">256</span> samples 
+                    (<span id="leadMsValue">5.80</span>ms)
+                </label>
+                <input type="range" id="leadSlider" min="0" max="256" value="256" step="5" oninput="updateLeadTime()">
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+                <div class="slider-group">
+                    <label>
+                        🎚️ Playback Speed: 
+                        <span class="slider-value" id="speedValue">1.00</span>x
+                    </label>
+                    <input type="range" id="speedSlider" min="0" max="1000" value="500" oninput="changeSpeed()">
+                </div>
+                
+                <div class="slider-group">
+                    <label>
+                        🔊 Volume: 
+                        <span class="slider-value" id="volumeValue">1.0</span>
+                    </label>
+                    <input type="range" id="volumeSlider" min="0" max="200" value="100" oninput="changeVolume()">
+                </div>
+            </div>
+            
+            <div class="status info" id="status">
+                Ready to test! Adjust the schedule lead time slider and playback speed while audio plays to find the sweet spot.
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2 style="margin-bottom: 15px;">📊 Live Spectrogram</h2>
+            <canvas id="spectrogram" width="1200" height="250"></canvas>
+        </div>
+        
+        <div class="panel">
+            <h2 style="margin-bottom: 15px;">📈 Metrics</h2>
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-label">Chunks Received</div>
+                    <div class="metric-value" id="chunksReceived">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Playing Chunk</div>
+                    <div class="metric-value" id="playingChunk">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Queue Size</div>
+                    <div class="metric-value" id="queueSize">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Total Downloaded</div>
+                    <div class="metric-value" id="totalDownloaded">0 KB</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Configuration
+        const AUDIO_SAMPLE_RATE = 44100;
+        const AUDIO_FADE_TIME = 0.15; // Fade in/out to prevent clicks
+        
+        // Global state
+        let audioContext = null;
+        let spectrogramAnalyser = null;
+        let spectrogramAnimationId = null;
+        let currentGainNode = null;
+        let scheduledSources = [];
+        let currentPlaybackRate = 1.0;
+        let isPaused = false;
+        let isPlaying = false;
+        let isLooping = false;
+        
+        // Streaming state
+        let allChunksData = [];
+        let chunkQueue = [];
+        let chunksReceived = 0;
+        let totalBytesReceived = 0;
+        let currentSource = null;
+        let nextChunkScheduleTimeout = null;
+        
+        // THE KEY VARIABLE: Schedule lead time in SAMPLES
+        let scheduleLeadSamples = 256; // Default: 256 samples (~5.8ms at 44.1kHz) - THE MAGIC NUMBER!
+        
+        // Track current chunk timing for dynamic rescheduling
+        let currentChunkStartTime = 0; // When current chunk started (audioContext time)
+        let currentChunkDuration = 0; // Duration of current chunk in samples
+        
+        function updateLeadTime() {
+            scheduleLeadSamples = parseInt(document.getElementById('leadSlider').value);
+            const leadMs = (scheduleLeadSamples / AUDIO_SAMPLE_RATE) * 1000;
+            
+            document.getElementById('leadSamplesValue').textContent = scheduleLeadSamples;
+            document.getElementById('leadMsValue').textContent = leadMs.toFixed(2);
+            
+            console.log(`⏱️ Schedule lead time: ${scheduleLeadSamples} samples (${leadMs.toFixed(2)}ms)`);
+        }
+        
+        function changeSpeed() {
+            const sliderValue = parseFloat(document.getElementById('speedSlider').value);
+            
+            // Logarithmic mapping: 0-1000 -> 0.01-10, with 500 = 1.0
+            const minSpeed = 0.01;
+            const maxSpeed = 10;
+            const minPos = 0;
+            const maxPos = 1000;
+            const minLog = Math.log(minSpeed);
+            const maxLog = Math.log(maxSpeed);
+            const logRange = maxLog - minLog;
+            const newRate = Math.exp(minLog + (logRange * (sliderValue - minPos)) / (maxPos - minPos));
+            
+            const oldRate = currentPlaybackRate;
+            currentPlaybackRate = newRate;
+            document.getElementById('speedValue').textContent = newRate.toFixed(2);
+            
+            // Update currently playing source
+            if (currentSource) {
+                currentSource.playbackRate.value = newRate;
+            }
+            
+            // Update all scheduled sources
+            for (const source of scheduledSources) {
+                try {
+                    source.playbackRate.value = newRate;
+                } catch (e) {}
+            }
+            
+            // 🎯 CRITICAL: Reschedule next chunk based on NEW playback rate!
+            if (nextChunkScheduleTimeout && chunkQueue.length > 0 && currentChunkStartTime > 0) {
+                // Cancel old timeout
+                clearTimeout(nextChunkScheduleTimeout);
+                nextChunkScheduleTimeout = null;
+                
+                // Calculate how much time has elapsed since chunk started
+                const now = audioContext.currentTime;
+                const elapsedRealTime = now - currentChunkStartTime;
+                
+                // Calculate how many samples have been played at old rate
+                const samplesPlayedAtOldRate = elapsedRealTime * AUDIO_SAMPLE_RATE * oldRate;
+                
+                // Calculate remaining samples in chunk
+                const remainingSamples = currentChunkDuration - samplesPlayedAtOldRate;
+                
+                // Calculate when chunk will end at NEW rate
+                const remainingRealTime = remainingSamples / AUDIO_SAMPLE_RATE / newRate;
+                
+                // Calculate lead time at new rate
+                const leadTimeAudioSeconds = scheduleLeadSamples / AUDIO_SAMPLE_RATE;
+                const leadTimeRealSeconds = leadTimeAudioSeconds / newRate;
+                
+                // Reschedule
+                const newScheduleDelay = Math.max(0, remainingRealTime - leadTimeRealSeconds);
+                
+                console.log(`🔄 Speed changed ${oldRate.toFixed(2)}x → ${newRate.toFixed(2)}x: Rescheduling next chunk in ${(newScheduleDelay * 1000).toFixed(2)}ms (was going to fire at old timing)`);
+                
+                const chunkEndTime = now + remainingRealTime;
+                nextChunkScheduleTimeout = setTimeout(() => {
+                    nextChunkScheduleTimeout = null;
+                    if (chunkQueue.length > 0 && isPlaying && !isPaused) {
+                        playNextChunk(chunkEndTime);
+                    }
+                }, newScheduleDelay * 1000);
+            }
+            
+            console.log(`🎚️ Playback speed: ${newRate.toFixed(2)}x`);
+        }
+        
+        function changeVolume() {
+            const volume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+            document.getElementById('volumeValue').textContent = volume.toFixed(1);
+            
+            if (currentGainNode) {
+                currentGainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+            }
+        }
+        
+        function stopAllAudio() {
+            // Clear scheduling timeout
+            if (nextChunkScheduleTimeout) {
+                clearTimeout(nextChunkScheduleTimeout);
+                nextChunkScheduleTimeout = null;
+            }
+            
+            // Stop current source
+            if (currentSource) {
+                try { currentSource.stop(); } catch (e) {}
+                currentSource = null;
+            }
+            
+            // Stop all scheduled sources
+            for (const source of scheduledSources) {
+                try { source.stop(); } catch (e) {}
+            }
+            scheduledSources = [];
+            
+            // Clear queue
+            chunkQueue = [];
+            
+            isPlaying = false;
+            
+            // Stop spectrogram
+            if (spectrogramAnimationId) {
+                cancelAnimationFrame(spectrogramAnimationId);
+                spectrogramAnimationId = null;
+            }
+        }
+        
+        function togglePause() {
+            if (!audioContext) return;
+            
+            isPaused = !isPaused;
+            const btn = document.getElementById('pauseBtn');
+            
+            if (isPaused) {
+                // Fade out
+                if (currentGainNode) {
+                    currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, audioContext.currentTime);
+                    currentGainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                    
+                    setTimeout(() => {
+                        audioContext.suspend();
+                    }, AUDIO_FADE_TIME * 1000);
+                } else {
+                    audioContext.suspend();
+                }
+                
+                btn.textContent = '▶️ Resume';
+                
+                if (spectrogramAnimationId) {
+                    cancelAnimationFrame(spectrogramAnimationId);
+                    spectrogramAnimationId = null;
+                }
+            } else {
+                // Resume and fade in
+                audioContext.resume();
+                
+                if (currentGainNode) {
+                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                    currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, audioContext.currentTime);
+                    currentGainNode.gain.linearRampToValueAtTime(targetVolume, audioContext.currentTime + AUDIO_FADE_TIME);
+                }
+                
+                btn.textContent = '⏸️ Pause';
+                
+                if (!spectrogramAnimationId && spectrogramAnalyser && isPlaying) {
+                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                }
+            }
+        }
+        
+        function toggleLoop() {
+            isLooping = !isLooping;
+            const btn = document.getElementById('loopBtn');
+            
+            if (isLooping) {
+                btn.classList.add('loop-active');
+                btn.textContent = '🔁 Loop ON';
+                console.log('🔁 Looping enabled');
+            } else {
+                btn.classList.remove('loop-active');
+                btn.textContent = '🔁 Loop';
+                console.log('🔁 Looping disabled');
+            }
+        }
+        
+        function onSizeChange() {
+            // Re-enable start button when size changes
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('status').className = 'status info';
+            document.getElementById('status').textContent = 'Dataset size changed - ready to stream!';
+            console.log('📊 Dataset size changed');
+        }
+        
+        async function startStreaming() {
+            const size = document.getElementById('sizeSelect').value;
+            const status = document.getElementById('status');
+            const startBtn = document.getElementById('startBtn');
+            
+            // Fade out existing audio
+            if (isPlaying && currentGainNode) {
+                currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, audioContext.currentTime);
+                currentGainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                await new Promise(resolve => setTimeout(resolve, AUDIO_FADE_TIME * 1000));
+            }
+            
+            // Reset state
+            stopAllAudio();
+            allChunksData = [];
+            chunksReceived = 0;
+            totalBytesReceived = 0;
+            chunkQueue = [];
+            isPlaying = false;
+            isPaused = false;
+            currentSource = null;
+            
+            // Update UI
+            document.getElementById('chunksReceived').textContent = '0';
+            document.getElementById('playingChunk').textContent = '--';
+            document.getElementById('queueSize').textContent = '0';
+            document.getElementById('totalDownloaded').textContent = '0 KB';
+            
+            startBtn.disabled = true;
+            document.getElementById('pauseBtn').disabled = true;
+            document.getElementById('loopBtn').disabled = true;
+            status.className = 'status info';
+            status.textContent = `Connecting to Cloudflare Worker (${size} dataset)...`;
+            
+            try {
+                // Initialize audio context
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: AUDIO_SAMPLE_RATE });
+                }
+                await audioContext.resume();
+                
+                if (!spectrogramAnalyser) {
+                    spectrogramAnalyser = audioContext.createAnalyser();
+                    spectrogramAnalyser.fftSize = 2048;
+                    spectrogramAnalyser.smoothingTimeConstant = 0.8;
+                }
+                
+                if (!currentGainNode) {
+                    currentGainNode = audioContext.createGain();
+                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                    currentGainNode.gain.value = targetVolume;
+                    currentGainNode.connect(audioContext.destination);
+                }
+                
+                // Start streaming
+                const url = `https://volcano-audio-test.robertalexander-music.workers.dev/stream?size=${size}&gzip=true`;
+                console.log(`📡 Streaming from: ${url}`);
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const sampleRate = parseInt(response.headers.get('X-Sample-Rate') || '100');
+                const sampleCount = parseInt(response.headers.get('X-Sample-Count') || '0');
+                
+                console.log(`🌩️ Worker stream: ${sampleCount} samples @ ${sampleRate}Hz, playing @ ${AUDIO_SAMPLE_RATE}Hz`);
+                
+                status.textContent = `Streaming ${size} dataset - adjust lead time and speed to find the sweet spot!`;
+                
+                const reader = response.body.getReader();
+                
+                // Length-prefix frame reader
+                let frameBuffer = new Uint8Array(0);
+                let networkChunkIndex = 0;
+                
+                while (true) {
+                    const {done, value} = await reader.read();
+                    
+                    if (done) {
+                        console.log('✅ Stream complete!');
+                        status.className = 'status success';
+                        status.textContent = `✅ Stream complete! You can still adjust speed and lead time with buffered chunks.`;
+                        break;
+                    }
+                    
+                    networkChunkIndex++;
+                    totalBytesReceived += value.length;
+                    document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                    
+                    // Append to frame buffer
+                    const newBuffer = new Uint8Array(frameBuffer.length + value.length);
+                    newBuffer.set(frameBuffer, 0);
+                    newBuffer.set(value, frameBuffer.length);
+                    frameBuffer = newBuffer;
+                    
+                    // Extract complete frames
+                    while (frameBuffer.length >= 4) {
+                        const lengthView = new DataView(frameBuffer.buffer, frameBuffer.byteOffset, 4);
+                        const chunkLength = lengthView.getUint32(0, true);
+                        
+                        if (frameBuffer.length >= 4 + chunkLength) {
+                            const frameData = frameBuffer.slice(4, 4 + chunkLength);
+                            
+                            // Convert Int16 to Float32
+                            const int16Data = new Int16Array(frameData.buffer, frameData.byteOffset, frameData.length / 2);
+                            const float32Data = Float32Array.from(int16Data, v => v / 32768.0);
+                            
+                            // Store and queue
+                            allChunksData.push(float32Data);
+                            chunkQueue.push({data: float32Data, index: chunksReceived});
+                            chunksReceived++;
+                            document.getElementById('chunksReceived').textContent = chunksReceived;
+                            document.getElementById('queueSize').textContent = chunkQueue.length;
+                            
+                            // Play first chunk immediately
+                            if (chunksReceived === 1) {
+                                console.log(`🎵 First chunk received: ${float32Data.length} samples`);
+                                
+                                // Enable controls
+                                document.getElementById('pauseBtn').disabled = false;
+                                document.getElementById('loopBtn').disabled = false;
+                                
+                                isPlaying = true;
+                                isPaused = false;
+                                
+                                // Fade in
+                                if (currentGainNode) {
+                                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                                    currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                                    currentGainNode.gain.linearRampToValueAtTime(targetVolume, audioContext.currentTime + AUDIO_FADE_TIME);
+                                }
+                                
+                                // Start spectrogram
+                                if (!spectrogramAnimationId) {
+                                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                                }
+                                
+                                // Start playing
+                                playNextChunk();
+                            }
+                            
+                            // Remove frame from buffer
+                            frameBuffer = frameBuffer.slice(4 + chunkLength);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Streaming error:', error);
+                status.className = 'status error';
+                status.textContent = `❌ Error: ${error.message}`;
+                startBtn.disabled = false;
+            }
+        }
+        
+        function playNextChunk(startTime = null) {
+            console.log(`▶️ playNextChunk: queue=${chunkQueue.length}, leadSamples=${scheduleLeadSamples}, looping=${isLooping}`);
+            
+            // Clear any pending schedule
+            if (nextChunkScheduleTimeout) {
+                clearTimeout(nextChunkScheduleTimeout);
+                nextChunkScheduleTimeout = null;
+            }
+            
+            if (chunkQueue.length === 0) {
+                // Queue is empty - check if we should loop
+                if (isLooping && allChunksData.length > 0) {
+                    console.log('🔁 Queue empty - looping! Re-populating queue from stored chunks...');
+                    
+                    // Re-populate the queue from stored chunk data
+                    allChunksData.forEach((chunkData, index) => {
+                        chunkQueue.push({ data: chunkData, index: index });
+                    });
+                    document.getElementById('queueSize').textContent = chunkQueue.length;
+                    
+                    // Continue playing (recursive call will pick up the first chunk)
+                    playNextChunk(startTime);
+                    return;
+                } else {
+                    // No looping - stop playback
+                    currentSource = null;
+                    isPlaying = false;
+                    document.getElementById('pauseBtn').disabled = true;
+                    document.getElementById('startBtn').disabled = false;
+                    console.log('🏁 Queue empty - playback finished');
+                    return;
+                }
+            }
+            
+            const {data, index} = chunkQueue.shift();
+            document.getElementById('queueSize').textContent = chunkQueue.length;
+            isPlaying = true;
+            
+            // Create audio buffer
+            const buffer = audioContext.createBuffer(1, data.length, AUDIO_SAMPLE_RATE);
+            buffer.copyToChannel(data, 0);
+            
+            // Create source
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.playbackRate.value = currentPlaybackRate;
+            source.connect(currentGainNode);
+            source.connect(spectrogramAnalyser);
+            
+            currentSource = source;
+            scheduledSources.push(source);
+            
+            // ⏱️ SAMPLE-BASED SCHEDULING: Calculate timing in samples
+            const now = audioContext.currentTime;
+            const actualStartTime = startTime || now;
+            const chunkDurationSamples = buffer.length; // Samples in this chunk
+            const chunkDurationSeconds = chunkDurationSamples / AUDIO_SAMPLE_RATE; // Duration at 1.0x speed
+            const adjustedDuration = chunkDurationSeconds / currentPlaybackRate; // Adjust for playback rate
+            const chunkEndTime = actualStartTime + adjustedDuration;
+            
+            // 🎯 TRACK CURRENT CHUNK for dynamic rescheduling
+            currentChunkStartTime = actualStartTime;
+            currentChunkDuration = chunkDurationSamples; // Store in samples!
+            
+            // Start chunk
+            source.start(actualStartTime);
+            console.log(`🎵 Chunk ${index + 1}: start=${actualStartTime.toFixed(3)}s, end=${chunkEndTime.toFixed(3)}s, dur=${adjustedDuration.toFixed(3)}s (${chunkDurationSamples} samples), rate=${currentPlaybackRate.toFixed(2)}x`);
+            
+            // Update UI
+            const playingChunkElement = document.getElementById('playingChunk');
+            playingChunkElement.textContent = index + 1;
+            playingChunkElement.style.color = '#2ecc71';
+            playingChunkElement.style.transition = 'color 0.3s';
+            setTimeout(() => {
+                playingChunkElement.style.color = '';
+            }, 300);
+            
+            // 🎯 KEY LOGIC: Schedule next chunk with SAMPLE-BASED lead time
+            if (chunkQueue.length > 0) {
+                // Convert lead time from samples to REAL TIME (accounting for playback rate!)
+                const leadTimeAudioSeconds = scheduleLeadSamples / AUDIO_SAMPLE_RATE; // Audio time at 1.0x
+                const leadTimeRealSeconds = leadTimeAudioSeconds / currentPlaybackRate; // Real time at current speed
+                const scheduleDelay = Math.max(0, adjustedDuration - leadTimeRealSeconds);
+                
+                console.log(`⏱️ Scheduling next chunk in ${(scheduleDelay * 1000).toFixed(2)}ms (${scheduleLeadSamples} samples = ${(leadTimeAudioSeconds * 1000).toFixed(2)}ms audio, ${(leadTimeRealSeconds * 1000).toFixed(2)}ms real @ ${currentPlaybackRate.toFixed(2)}x)`);
+                
+                nextChunkScheduleTimeout = setTimeout(() => {
+                    nextChunkScheduleTimeout = null;
+                    if (chunkQueue.length > 0 && isPlaying && !isPaused) {
+                        playNextChunk(chunkEndTime); // Schedule to start exactly when current ends
+                    }
+                }, scheduleDelay * 1000);
+            } else {
+                // Last chunk - use onended for cleanup
+                source.onended = () => {
+                    playNextChunk();
+                };
+            }
+        }
+        
+        function drawSpectrogramFrame() {
+            if (!spectrogramAnimationId || !spectrogramAnalyser || !isPlaying || isPaused) {
+                spectrogramAnimationId = null;
+                return;
+            }
+            
+            const canvas = document.getElementById('spectrogram');
+            const ctx = canvas.getContext('2d', { alpha: false });
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            const bufferLength = spectrogramAnalyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            spectrogramAnalyser.getByteFrequencyData(dataArray);
+            
+            // Scroll left
+            ctx.drawImage(canvas, -1, 0);
+            
+            // Draw new column
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const percent = value / 255;
+                const y = height - (i / bufferLength) * height;
+                const barHeight = height / bufferLength;
+                
+                const r = Math.min(255, percent * 255 * 1.5);
+                const g = Math.min(255, Math.max(0, (percent - 0.3) * 255 * 2));
+                const b = Math.min(255, Math.max(0, (percent - 0.7) * 255 * 3));
+                
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fillRect(width - 1, y - barHeight, 1, barHeight);
+            }
+            
+            if (isPlaying) {
+                spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+            } else {
+                spectrogramAnimationId = null;
+            }
+        }
+        
+        // Initialize lead time display
+        updateLeadTime();
+    </script>
+</body>
+</html>
+

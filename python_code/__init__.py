@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.16"
+__version__ = "1.17"
 __commit_message__ = (
-    "v1.16 Length-prefix framing for perfect chunk control, AudioWorklet deframing in worker, improved diagnostics (glitch still present)"
+    "v1.17 Dynamic chunk scheduling with playback-rate-aware lead time (256 samples magic number), test_chunk_scheduling.html created"
 )
 
 # Import key modules to make them available when importing the package

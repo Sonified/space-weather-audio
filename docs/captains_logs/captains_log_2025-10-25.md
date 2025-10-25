@@ -217,3 +217,48 @@ Commit: `v1.15 Fix: Gapless audio streaming with auto-crossfade to deck mode, sa
 Commit: `v1.16 Length-prefix framing for perfect chunk control, AudioWorklet deframing in worker, improved diagnostics (glitch still present)`
 
 ---
+
+## The "Magic Sauce": Dynamic Chunk Scheduling with Playback Rate Awareness
+
+### Discovery
+While debugging gapless chunk playback with dynamic speed changes, discovered that scheduling lead time MUST account for playback rate to prevent gaps.
+
+### The Problem
+When using a fixed lead time (e.g., 5ms) to schedule the next chunk before the current one ends:
+- At 1.0x speed: 125 samples = 2.83ms ✅ Works
+- At 0.1x speed: 125 samples = 28.3ms ⚠️ But code was still using 2.83ms!
+- Result: HUGE gaps when slowing down playback
+
+### The Solution: Dynamic Rescheduling
+1. **Track current chunk timing**:
+   - `currentChunkStartTime` - when chunk started
+   - `currentChunkDurationSamples` - total samples in chunk
+
+2. **Calculate lead time based on current playback rate**:
+   ```javascript
+   const leadTimeAudioSeconds = scheduleLeadSamples / audioRate; // 5.8ms at 1.0x
+   const leadTimeRealSeconds = leadTimeAudioSeconds / currentPlaybackRate; // Actual real time!
+   ```
+
+3. **When speed changes mid-chunk, reschedule**:
+   - Calculate samples already played at old rate
+   - Calculate remaining samples in chunk
+   - Reschedule timeout based on NEW playback rate
+
+### The Magic Number: 256 Samples
+Through empirical testing in `test_chunk_scheduling.html`, discovered that **256 samples (~5.8ms)** is the sweet spot for lead time - enough buffer for timing jitter, not too much to feel sluggish.
+
+### Implementation
+- Added to `test_streaming.html` (production streaming interface)
+- Integrated with existing auto-crossfade to deck mode
+- Properly resets on new streams and loops
+- Skips all calculations when in deck mode (guards protect)
+
+### Files Created
+- `test_chunk_scheduling.html` - Dedicated testing interface for exploring lead time parameter (night-themed for bedtime debugging 🌙)
+
+**v1.17** - Dynamic chunk scheduling with playback-rate-aware lead time (256 samples magic number), test_chunk_scheduling.html created
+
+Commit: `v1.17 Dynamic chunk scheduling with playback-rate-aware lead time (256 samples magic number), test_chunk_scheduling.html created`
+
+---
