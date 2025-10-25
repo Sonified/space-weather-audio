@@ -148,10 +148,72 @@ function changePlaybackSpeed() {
 
 ---
 
+## Length-Prefix Framing: Perfect Chunk Control Through TCP Re-chunking
+
+### Problem
+Despite implementing server-side progressive chunking (8KB → 16KB → 32KB...), the browser was still receiving randomly-sized network chunks (458KB, 23KB, 682KB...). This caused:
+- Audio clicks due to unpredictable chunk boundaries
+- Alignment issues (partial int16 samples)
+- Loss of control over chunk sizes
+
+### Root Cause
+**TCP/HTTP re-chunking**: Even though the server sends explicit chunks (8KB, 16KB, 32KB...), the browser's network layer combines/splits them based on TCP flow control, TCP window size, HTTP/2 multiplexing, and other factors. The server has **no control** over what size chunks the browser receives.
+
+### Solution: Length-Prefix Framing
+Prepend a 4-byte little-endian length prefix to each chunk, creating explicit "frames":
+```
+Frame = [4-byte length][chunk data]
+```
+
+**Server (Cloudflare Worker)**:
+```javascript
+const frame = new Uint8Array(4 + actualChunkSize);
+const lengthView = new DataView(frame.buffer);
+lengthView.setUint32(0, actualChunkSize, true); // Little-endian length
+frame.set(chunkData, 4); // Chunk data after header
+```
+
+**Client (Browser)**:
+```javascript
+// Accumulate bytes until we have 4 bytes for length
+if (frameBuffer.length >= 4) {
+    const lengthView = new DataView(frameBuffer.buffer, frameBuffer.byteOffset, 4);
+    const chunkLength = lengthView.getUint32(0, true);
+    
+    // Extract complete frame
+    if (frameBuffer.length >= 4 + chunkLength) {
+        const frameData = frameBuffer.slice(4, 4 + chunkLength);
+        const int16Data = new Int16Array(frameData.buffer, frameData.byteOffset, frameData.length / 2);
+        // Process...
+        frameBuffer = frameBuffer.slice(4 + chunkLength); // Remove processed frame
+    }
+}
+```
+
+### Benefits
+- ✅ **Perfect chunks**: Client extracts exact sizes regardless of network re-chunking
+- ✅ **HTTP compression**: Still works automatically (gzip deflates frames)
+- ✅ **Guaranteed alignment**: Every deframed chunk is even bytes (int16-aligned)
+- ✅ **Zero complexity**: Simple 4-byte header, no fancy protocols
+
+### Implementation Notes
+- Moved deframing to Web Worker (async processing, no main-thread blocking)
+- Fire-and-forget architecture: Main thread pumps bytes to worker, worker processes async
+- Changed chunk progression from `[8,16,32,64,128]` to `[16,32,64,128]` for more comfortable first buffer
+
+### AudioWorklet Investigation
+`test_streaming.html` works perfectly with the same framing. `test_audioworklet.html` has scrambled audio despite receiving perfect chunks, proving the bug is in the AudioWorklet's circular buffer implementation, not the data delivery.
+
+**Status**: Mystery bug - audio gets rearranged during playback (heard in iZotope RX analysis). Worker returns chunks in correct order, so the issue is in worklet's read/write logic.
+
 ## Version Archive
 
 **v1.15** - Gapless audio streaming with auto-crossfade to deck mode, sample-accurate position tracking, dynamic fadeout rescheduling
 
 Commit: `v1.15 Fix: Gapless audio streaming with auto-crossfade to deck mode, sample-accurate position tracking, dynamic fadeout rescheduling`
+
+**v1.16** - Length-prefix framing for perfect chunk control, AudioWorklet deframing in worker, improved diagnostics (glitch still present)
+
+Commit: `v1.16 Length-prefix framing for perfect chunk control, AudioWorklet deframing in worker, improved diagnostics (glitch still present)`
 
 ---

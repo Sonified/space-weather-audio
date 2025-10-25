@@ -1,1 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌋 Volcano Audio - AudioWorklet Test</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: white;
+            text-align: center;
+            font-size: 2em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .panel {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        
+        button:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-1px);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        input[type="range"] {
+            flex: 1;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .metric {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #333;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+        
+        .status.info { background: #e3f2fd; color: #1976d2; }
+        .status.success { background: #e8f5e9; color: #388e3c; }
+        .status.error { background: #ffebee; color: #c62828; }
+        
+        canvas {
+            width: 100%;
+            display: block;
+            border-radius: 6px;
+            background: #000;
+        }
+        
+        #waveform {
+            height: 150px;
+            margin-bottom: 10px;
+        }
+        
+        #spectrogram {
+            height: 350px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌋 Volcano Audio - AudioWorklet Streaming Test</h1>
+        
+        <div class="panel">
+            <h2 style="margin-bottom: 15px;">Controls</h2>
+            <div style="margin-bottom: 15px;">
+                <label><strong>Stream Size:</strong></label>
+                <select id="sizeSelect" style="margin-left: 10px; padding: 8px; border-radius: 4px; font-size: 14px;" onchange="onSizeChange()">
+                    <option value="small">Small (1 minute)</option>
+                    <option value="medium" selected>Medium (10 minutes)</option>
+                    <option value="large">Large (1 hour)</option>
+                </select>
+            </div>
+            
+            <div class="controls">
+                <button id="startBtn" onclick="startStreaming()">🎵 Start Streaming</button>
+                <button id="pauseBtn" onclick="togglePause()" disabled>⏸️ Pause</button>
+                
+                <div class="slider-group">
+                    <label>Speed: <span id="speedValue">1.0</span>x</label>
+                    <input type="range" id="speedSlider" min="0" max="1000" value="667" oninput="changeSpeed()">
+                </div>
+                
+                <div class="slider-group">
+                    <label>Volume: <span id="volumeValue">1.0</span></label>
+                    <input type="range" id="volumeSlider" min="0" max="200" value="100" oninput="changeVolume()">
+                </div>
+            </div>
+            
+            <div class="status info" id="status">
+                Ready to stream. AudioWorklet will process audio in real-time with zero gaps!
+            </div>
+            
+            <button id="downloadBtn" onclick="downloadRawData()" disabled style="margin-top: 20px; width: 100%;">💾 Download Raw Data (Int16 WAV)</button>
+        </div>
+        
+        <div class="panel">
+            <h2 style="margin-bottom: 15px;">Visualizations</h2>
+            <canvas id="waveform" width="1200" height="150"></canvas>
+            <canvas id="spectrogram" width="1200" height="350"></canvas>
+        </div>
+        
+        <div class="panel">
+            <h2 style="margin-bottom: 15px;">Metrics</h2>
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-label">Buffer Size</div>
+                    <div class="metric-value" id="bufferSize">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Chunks Received</div>
+                    <div class="metric-value" id="chunksReceived">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Total Downloaded</div>
+                    <div class="metric-value" id="totalDownloaded">0 KB</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Underruns</div>
+                    <div class="metric-value" id="underruns">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global state
+        let audioContext = null;
+        let workletNode = null;
+        let analyserNode = null;
+        let gainNode = null;
+        let isPlaying = false;
+        let isPaused = false;
+        let chunksReceived = 0;
+        let totalBytes = 0;
+        let animationId = null;
+        let streamComplete = false; // Track when stream download completes
+        
+        // Timing tracking
+        let streamStartTime = 0;
+        let lastNetworkChunkTime = 0;
+        let lastDeframedChunkTime = 0;
+        
+        // Chunk transition tracking
+        let lastChunkFinalSample = null;
+        
+        // Chunk buffering for smooth delivery to worklet
+        const WORKLET_CHUNK_SIZE = 1024; // Fixed size chunks for AudioWorklet
+        let sampleBuffer = new Float32Array(0); // Buffer for accumulating samples
+        
+        // Pre-loading buffer (main thread holds samples until we have enough)
+        const PRELOAD_SECONDS = 2; // Buffer 2 seconds before starting playback
+        const PRELOAD_SAMPLES = 44100 * PRELOAD_SECONDS;
+        let preloadBuffer = [];
+        let isPreloading = true;
+        let totalPreloadedSamples = 0;
+        
+        // Store all received data for download
+        let allReceivedData = [];
+        
+        // Web Worker for offloading ALL audio processing (including deframing!)
+        const workerCode = `
+            const CHUNK_SIZE = 1024;
+            let buffer = new Float32Array(0);
+            let frameBuffer = new Uint8Array(0); // Frame accumulator for deframing
+            
+            self.onmessage = function(e) {
+                const { networkBytes } = e.data;
+                
+                // ✅ DEFRAMING IN WORKER: Append network bytes to frame buffer
+                const newFrameBuffer = new Uint8Array(frameBuffer.length + networkBytes.length);
+                newFrameBuffer.set(frameBuffer, 0);
+                newFrameBuffer.set(networkBytes, frameBuffer.length);
+                frameBuffer = newFrameBuffer;
+                
+                const results = [];
+                
+                // Extract complete frames
+                while (frameBuffer.length >= 4) {
+                    // Read 4-byte length prefix
+                    const lengthView = new DataView(frameBuffer.buffer, frameBuffer.byteOffset, 4);
+                    const chunkLength = lengthView.getUint32(0, true);
+                    
+                    // Check if we have complete frame
+                    if (frameBuffer.length >= 4 + chunkLength) {
+                        // Extract frame data (skip 4-byte header)
+                        const frameData = frameBuffer.slice(4, 4 + chunkLength);
+                        
+                        // Convert to Int16 array (guaranteed aligned!)
+                        const int16Data = new Int16Array(frameData.buffer, frameData.byteOffset, frameData.length / 2);
+                        
+                        // Convert Int16 to Float32
+                        const float32Data = new Float32Array(int16Data.length);
+                        for (let i = 0; i < int16Data.length; i++) {
+                            const x = int16Data[i] / 32768.0;
+                            float32Data[i] = Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : 0;
+                        }
+                        
+                        // Calculate stats
+                        let sum = 0;
+                        let min = Infinity, max = -Infinity;
+                        for (let i = 0; i < float32Data.length; i++) {
+                            const v = float32Data[i];
+                            sum += v;
+                            if (v < min) min = v;
+                            if (v > max) max = v;
+                        }
+                        
+                        const mean = sum / float32Data.length;
+                        let variance = 0;
+                        for (let i = 0; i < float32Data.length; i++) {
+                            const diff = float32Data[i] - mean;
+                            variance += diff * diff;
+                        }
+                        variance /= float32Data.length;
+                        const stdDev = Math.sqrt(variance);
+                        
+                        // Append to sample buffer
+                        const newBuffer = new Float32Array(buffer.length + float32Data.length);
+                        newBuffer.set(buffer, 0);
+                        newBuffer.set(float32Data, buffer.length);
+                        buffer = newBuffer;
+                        
+                        // Create fixed-size chunks
+                        const chunks = [];
+                        while (buffer.length >= CHUNK_SIZE) {
+                            chunks.push(buffer.slice(0, CHUNK_SIZE));
+                            buffer = buffer.slice(CHUNK_SIZE);
+                        }
+                        
+                        // Save result for this frame
+                        results.push({
+                            float32Data: float32Data,
+                            stats: { min, max, stdDev, isFinite: Number.isFinite(min) && Number.isFinite(max) },
+                            chunks: chunks,
+                            frameLength: frameData.length
+                        });
+                        
+                        // Remove this frame from buffer
+                        frameBuffer = frameBuffer.slice(4 + chunkLength);
+                    } else {
+                        // Not enough data yet
+                        break;
+                    }
+                }
+                
+                // Send back all results
+                self.postMessage({
+                    results: results,
+                    bufferedSamples: buffer.length,
+                    frameBufferSize: frameBuffer.length
+                });
+            };
+        `;
+        const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+        const processingWorker = new Worker(URL.createObjectURL(workerBlob));
+        
+        // ✅ PERSISTENT ASYNC HANDLER: Process worker results as they arrive (non-blocking!)
+        processingWorker.onmessage = function(e) {
+            const { results, bufferedSamples, frameBufferSize } = e.data;
+            
+            // Process all deframed chunks from this worker message
+            for (const result of results) {
+                const { float32Data, stats, chunks, frameLength } = result;
+                
+                // Guard against corrupt chunks
+                if (!stats.isFinite) {
+                    console.warn(`⚠️ Corrupt chunk detected, skipping`);
+                    continue;
+                }
+                
+                // Log stats for first few chunks
+                const now = performance.now();
+                const elapsed = (now - streamStartTime).toFixed(0);
+                const delta = lastDeframedChunkTime ? (now - lastDeframedChunkTime).toFixed(0) : '0';
+                lastDeframedChunkTime = now;
+                
+                // Check chunk transition continuity
+                const firstSample = float32Data[0];
+                const finalSample = float32Data[float32Data.length - 1];
+                let transitionInfo = '';
+                if (lastChunkFinalSample !== null) {
+                    const jumpSize = Math.abs(firstSample - lastChunkFinalSample);
+                    const jumpWarning = jumpSize > 0.1 ? ' ⚠️ BIG JUMP!' : '';
+                    transitionInfo = ` | Transition: ${lastChunkFinalSample.toFixed(3)} → ${firstSample.toFixed(3)} (Δ${jumpSize.toFixed(3)})${jumpWarning}`;
+                }
+                lastChunkFinalSample = finalSample;
+                
+                if (isPreloading || chunksReceived < 5) {
+                    console.log(`📦 [+${elapsed}ms Δ${delta}ms] Deframed chunk ${chunksReceived + 1}: ${frameLength} bytes (${(frameLength/1024).toFixed(1)}KB) → ${float32Data.length.toLocaleString()} samples, range [${stats.min.toFixed(3)}, ${stats.max.toFixed(3)}]${transitionInfo}`);
+                    
+                    if (chunksReceived === 0) {
+                        const first16 = Array.from(float32Data.slice(0, 16)).map(x => x.toFixed(3)).join(', ');
+                        console.log(`🔍 First 16 samples: [${first16}]`);
+                    }
+                }
+                
+                // Store for download
+                allReceivedData.push(float32Data);
+                
+                // PRE-LOADING PHASE: Accumulate chunks but send them to worklet!
+                if (isPreloading) {
+                    preloadBuffer.push(float32Data);
+                    totalPreloadedSamples += float32Data.length;
+                    
+                    // ✅ SEND CHUNKS TO WORKLET IMMEDIATELY (worklet will buffer them)
+                    for (const chunk of chunks) {
+                        workletNode.port.postMessage({
+                            type: 'audio-data',
+                            data: chunk
+                        });
+                    }
+                    
+                    if (totalPreloadedSamples >= PRELOAD_SAMPLES) {
+                        const elapsed = (performance.now() - streamStartTime).toFixed(0);
+                        console.log(`🎬 [+${elapsed}ms] Pre-loaded ${totalPreloadedSamples.toLocaleString()} samples (${(totalPreloadedSamples/44100).toFixed(1)}s). Worklet will auto-start.`);
+                        isPreloading = false;
+                    } else {
+                        document.getElementById('status').textContent = `Pre-loading... ${(totalPreloadedSamples/44100).toFixed(1)}s / ${PRELOAD_SECONDS}s`;
+                    }
+                } else {
+                    // STREAMING PHASE: Send chunks immediately!
+                    for (const chunk of chunks) {
+                        workletNode.port.postMessage({
+                            type: 'audio-data',
+                            data: chunk
+                        });
+                    }
+                }
+                
+                chunksReceived++;
+                document.getElementById('chunksReceived').textContent = chunksReceived;
+            }
+        };
+        
+        // AudioWorklet processor code (embedded to avoid CORS issues)
+        const workletCode = `
+            // AudioWorklet processor for seismic data streaming
+            // Runs in the audio rendering thread (high priority, separate from main thread)
+            
+            class SeismicProcessor extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    
+                    // Use Float32Array for efficient circular buffer
+                    this.maxBufferSize = 44100 * 20; // 20 seconds max buffer (bigger for network jitter)
+                    this.buffer = new Float32Array(this.maxBufferSize);
+                    this.buffer.fill(0); // CRITICAL: Initialize to silence, not random memory
+                    this.writeIndex = 0;
+                    this.readIndex = 0;
+                    this.samplesInBuffer = 0;
+                    
+                    // Playback control
+                    this.speed = 1.0;
+                    this.isPlaying = false; // Start paused until we have data
+                    this.minBufferBeforePlay = 44100 * 1; // Wait for 1 second of audio in worklet (main thread pre-loads more)
+                    this.hasStarted = false;
+                    
+                    // Metrics
+                    this.underruns = 0; // Count of times buffer ran empty
+                    this.metricsCounter = 0;
+                    
+                    // Listen for messages from main thread
+                    this.port.onmessage = (event) => {
+                        const { type, data, speed, rate } = event.data;
+                        
+                        if (type === 'audio-data') {
+                            // Receive audio chunk from main thread
+                            this.addSamples(data);
+                        } else if (type === 'set-speed') {
+                            this.speed = speed;
+                        } else if (type === 'set-playback-rate') {
+                            this.speed = rate;
+                            console.log(\`🎚️ Worklet playback rate: \${rate}x\`);
+                        } else if (type === 'pause') {
+                            this.isPlaying = false;
+                        } else if (type === 'resume') {
+                            this.isPlaying = true;
+                        }
+                    };
+                }
+                
+                addSamples(samples) {
+                    // Add samples to circular buffer
+                    for (let i = 0; i < samples.length; i++) {
+                        if (this.samplesInBuffer < this.maxBufferSize) {
+                            this.buffer[this.writeIndex] = samples[i];
+                            this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
+                            this.samplesInBuffer++;
+                        } else {
+                            // Buffer full - overwrite oldest sample
+                            this.buffer[this.writeIndex] = samples[i];
+                            this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
+                            this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
+                        }
+                    }
+                    
+                    // Auto-start playback once we have enough buffer
+                    if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
+                        // CRITICAL: Set read pointer to start of valid data, not zero!
+                        // Without this, we read uninitialized memory = WHITE NOISE BLAST
+                        this.readIndex = (this.writeIndex - this.samplesInBuffer + this.maxBufferSize) % this.maxBufferSize;
+                        console.log(\`🎯 Starting playback: readIndex=\${this.readIndex}, writeIndex=\${this.writeIndex}, buffer=\${this.samplesInBuffer} samples\`);
+                        this.isPlaying = true;
+                        this.hasStarted = true;
+                        this.port.postMessage({ type: 'started' });
+                    }
+                }
+                
+                process(inputs, outputs, parameters) {
+                    const output = outputs[0];
+                    const channel = output[0];
+                    
+                    if (!this.isPlaying) {
+                        // Output silence when paused
+                        channel.fill(0);
+                        return true;
+                    }
+                    
+                    // Calculate how many samples to read based on playback speed
+                    const samplesToRead = Math.ceil(channel.length * this.speed);
+                    
+                    // Fill output buffer - output what we have, pad with zeros if underrun
+                    let min = Infinity, max = -Infinity;
+                    let i = 0;
+                    
+                    if (this.samplesInBuffer < samplesToRead) {
+                        // Underrun: output available samples, then silence
+                        console.warn(\`⚠️ UNDERRUN: only \${this.samplesInBuffer} samples, need \${samplesToRead}. Padding with zeros.\`);
+                        
+                        // Output what we have with simple downsampling/upsampling
+                        const availableForOutput = Math.min(this.samplesInBuffer, channel.length);
+                        for (i = 0; i < availableForOutput; i++) {
+                            const sample = this.buffer[this.readIndex];
+                            channel[i] = sample;
+                            if (sample < min) min = sample;
+                            if (sample > max) max = sample;
+                            this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
+                            this.samplesInBuffer--;
+                        }
+                        
+                        // Fill remainder with silence (prevents hissy on/off edges)
+                        for (; i < channel.length; i++) {
+                            channel[i] = 0;
+                        }
+                        
+                        this.underruns++;
+                        this.port.postMessage({ type: 'underrun', samplesInBuffer: this.samplesInBuffer });
+                    } else {
+                        // Normal case: plenty of samples available
+                        // Simple playback rate by reading more/fewer samples
+                        if (this.speed === 1.0) {
+                            // Normal speed - just copy
+                            for (i = 0; i < channel.length; i++) {
+                                const sample = this.buffer[this.readIndex];
+                                channel[i] = sample;
+                                if (sample < min) min = sample;
+                                if (sample > max) max = sample;
+                                this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
+                                this.samplesInBuffer--;
+                            }
+                        } else {
+                            // Variable speed - linear interpolation
+                            let sourcePos = 0;
+                            for (i = 0; i < channel.length; i++) {
+                                const readPos = Math.floor(sourcePos);
+                                if (readPos < samplesToRead - 1) {
+                                    // Linear interpolation between samples
+                                    const frac = sourcePos - readPos;
+                                    const idx1 = (this.readIndex + readPos) % this.maxBufferSize;
+                                    const idx2 = (this.readIndex + readPos + 1) % this.maxBufferSize;
+                                    const sample = this.buffer[idx1] * (1 - frac) + this.buffer[idx2] * frac;
+                                    channel[i] = sample;
+                                    if (sample < min) min = sample;
+                                    if (sample > max) max = sample;
+                                } else {
+                                    channel[i] = this.buffer[(this.readIndex + readPos) % this.maxBufferSize];
+                                }
+                                sourcePos += this.speed;
+                            }
+                            // Advance read pointer by samples consumed
+                            this.readIndex = (this.readIndex + samplesToRead) % this.maxBufferSize;
+                            this.samplesInBuffer -= samplesToRead;
+                        }
+                    }
+                    
+                    // Log output range periodically
+                    const range = max - min;
+                    if (this.metricsCounter % 4410 === 0) { // Log every ~100ms
+                        console.log(\`🎵 Output range: [\${min.toFixed(3)}, \${max.toFixed(3)}], buffer=\${this.samplesInBuffer} samples\`);
+                    }
+                    
+                    // Send metrics to main thread periodically (every ~100ms at 44.1kHz)
+                    this.metricsCounter++;
+                    if (this.metricsCounter >= 4410) {
+                        this.port.postMessage({
+                            type: 'metrics',
+                            bufferSize: this.samplesInBuffer,
+                            underruns: this.underruns
+                        });
+                        this.metricsCounter = 0;
+                    }
+                    
+                    // Keep processor alive
+                    return true;
+                }
+            }
+            
+            // Register the processor
+            registerProcessor('seismic-processor', SeismicProcessor);
+        `;
+        const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
+        
+        // Initialize audio worklet
+        async function initAudioWorklet() {
+            // Create audio context once
+            if (!audioContext) {
+                audioContext = new AudioContext({ sampleRate: 44100 });
+                // Load the worklet processor (only once) - using blob URL to avoid CORS
+                await audioContext.audioWorklet.addModule(URL.createObjectURL(workletBlob));
+            }
+            
+            // Always create fresh worklet node, analyser, and gain (for clean restart)
+            workletNode = new AudioWorkletNode(audioContext, 'seismic-processor');
+            
+            // Create analyser for visualization
+            analyserNode = audioContext.createAnalyser();
+            analyserNode.fftSize = 2048;
+            analyserNode.smoothingTimeConstant = 0.8;
+            
+            // Create gain node for volume control
+            gainNode = audioContext.createGain();
+            gainNode.gain.value = 1.0; // Initial volume matches slider default
+            
+            // Connect: worklet → gain → analyser → destination
+            workletNode.connect(gainNode);
+            gainNode.connect(analyserNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Listen for messages from worklet
+            workletNode.port.onmessage = (event) => {
+                const { type, bufferSize, underruns } = event.data;
+                
+                if (type === 'metrics') {
+                    console.log(`🎵 Worklet metrics: buffer=${bufferSize} samples (${(bufferSize/44100).toFixed(2)}s), underruns=${underruns}`);
+                    document.getElementById('bufferSize').textContent = bufferSize.toLocaleString();
+                    document.getElementById('underruns').textContent = underruns;
+                    
+                    // Detect when all audio has finished playing
+                    if (streamComplete && bufferSize === 0 && !isPaused) {
+                        console.log('🎵 All audio finished playing');
+                        document.getElementById('status').className = 'status success';
+                        document.getElementById('status').textContent = 'All audio finished! Click Start to play again.';
+                        document.getElementById('startBtn').disabled = false;
+                        document.getElementById('pauseBtn').disabled = true;
+                    }
+                } else if (type === 'started') {
+                    console.log('🎬 Worklet auto-started playback');
+                }
+            };
+            
+            console.log('✅ AudioWorklet initialized');
+        }
+        
+        async function startStreaming() {
+            try {
+                // Reset worklet by reinitializing (clean slate for new stream)
+                if (workletNode) {
+                    workletNode.disconnect();
+                    workletNode = null;
+                }
+                
+                await initAudioWorklet();
+                
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('pauseBtn').disabled = false;
+                document.getElementById('sizeSelect').disabled = true; // Lock size during streaming
+                document.getElementById('status').className = 'status info';
+                document.getElementById('status').textContent = 'Streaming from Cloudflare Worker...';
+                
+                isPlaying = true;
+                isPaused = false;
+                streamComplete = false; // Reset stream completion flag
+                chunksReceived = 0;
+                totalBytes = 0;
+                sampleBuffer = new Float32Array(0); // Reset sample buffer
+                allReceivedData = []; // Reset download buffer
+                partialChunkBuffer = new Uint8Array(0); // Reset partial chunk buffer
+                preloadBuffer = []; // Reset preload buffer
+                isPreloading = true;
+                totalPreloadedSamples = 0;
+                document.getElementById('downloadBtn').disabled = true;
+                
+                // Reset timing tracking
+                streamStartTime = performance.now();
+                lastNetworkChunkTime = 0;
+                lastDeframedChunkTime = 0;
+                lastChunkFinalSample = null;
+                
+                // Start visualization
+                startVisualization();
+                
+                // Get selected size
+                const size = document.getElementById('sizeSelect').value;
+                
+                // Fetch from worker
+                const response = await fetch(`https://volcano-audio-test.robertalexander-music.workers.dev/stream?size=${size}&gzip=true&filter=false`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                
+                // ✅ FIRE-AND-FORGET: Just pump bytes to worker, no blocking!
+                let networkChunkIndex = 0;
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) {
+                        console.log('✅ Stream complete');
+                        streamComplete = true;
+                        
+                        document.getElementById('status').className = 'status success';
+                        document.getElementById('status').textContent = 'Stream complete! Audio still playing from buffer.';
+                        document.getElementById('downloadBtn').disabled = false;
+                        document.getElementById('sizeSelect').disabled = false;
+                        break;
+                    }
+                    
+                    networkChunkIndex++;
+                    const now = performance.now();
+                    const elapsed = (now - streamStartTime).toFixed(0);
+                    const delta = lastNetworkChunkTime ? (now - lastNetworkChunkTime).toFixed(0) : '0';
+                    lastNetworkChunkTime = now;
+                    console.log(`📡 [+${elapsed}ms Δ${delta}ms] Network chunk ${networkChunkIndex}: ${value.length} bytes`);
+                    
+                    totalBytes += value.byteLength;
+                    document.getElementById('totalDownloaded').textContent = (totalBytes / 1024).toFixed(1) + ' KB';
+                    
+                    // ✅ FIRE-AND-FORGET: Send to worker and immediately continue reading!
+                    processingWorker.postMessage({ networkBytes: value }, [value.buffer]);
+                }
+                
+            } catch (error) {
+                console.error('Streaming error:', error);
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Error: ${error.message}`;
+                document.getElementById('startBtn').disabled = false; // Re-enable on error
+                document.getElementById('pauseBtn').disabled = true;
+                document.getElementById('sizeSelect').disabled = false; // Unlock size selector
+            }
+        }
+        
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = document.getElementById('pauseBtn');
+            
+            if (isPaused) {
+                audioContext.suspend();
+                btn.textContent = '▶️ Resume';
+                document.getElementById('status').textContent = 'Paused';
+            } else {
+                audioContext.resume();
+                btn.textContent = '⏸️ Pause';
+                document.getElementById('status').textContent = 'Playing...';
+            }
+        }
+        
+        function changeSpeed() {
+            const slider = document.getElementById('speedSlider');
+            const value = parseFloat(slider.value);
+            
+            // Logarithmic mapping: 0-1000 -> 0.1-10, with 667 = 1.0
+            // Split into two ranges: 0-667 = 0.1-1.0, 667-1000 = 1.0-10
+            let speed;
+            if (value <= 667) {
+                // Map 0-667 to 0.1-1.0 logarithmically
+                const normalized = value / 667; // 0-1
+                speed = 0.1 * Math.pow(10, normalized); // 0.1 to 1.0
+            } else {
+                // Map 667-1000 to 1.0-10 logarithmically
+                const normalized = (value - 667) / 333; // 0-1
+                speed = Math.pow(10, normalized); // 1.0 to 10.0
+            }
+            
+            document.getElementById('speedValue').textContent = speed.toFixed(2);
+            
+            if (workletNode) {
+                workletNode.port.postMessage({
+                    type: 'set-speed',
+                    speed: speed
+                });
+            }
+        }
+        
+        function changeVolume() {
+            const slider = document.getElementById('volumeSlider');
+            const volume = parseFloat(slider.value) / 100;
+            
+            document.getElementById('volumeValue').textContent = volume.toFixed(2);
+            
+            if (gainNode) {
+                // Use exponential ramp for smoother volume changes (prevents clicks)
+                gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(volume, audioContext.currentTime + 0.05);
+            }
+        }
+        
+        function changePlaybackSpeed() {
+            const slider = document.getElementById('speedSlider');
+            const speed = parseFloat(slider.value);
+            
+            document.getElementById('speedValue').textContent = `${speed.toFixed(2)}x`;
+            
+            if (workletNode) {
+                // Send playback rate to worklet
+                workletNode.port.postMessage({
+                    type: 'set-playback-rate',
+                    rate: speed
+                });
+                console.log(`🎚️ Playback speed: ${speed}x`);
+            }
+        }
+        
+        function onSizeChange() {
+            // Re-enable start button when size changes
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('status').className = 'status';
+            document.getElementById('status').textContent = 'Ready to stream';
+        }
+        
+        function startVisualization() {
+            drawWaveform();
+            drawSpectrogram();
+        }
+        
+        function drawWaveform() {
+            if (!analyserNode) return;
+            
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            const bufferLength = analyserNode.fftSize;
+            const dataArray = new Float32Array(bufferLength);
+            analyserNode.getFloatTimeDomainData(dataArray);
+            
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#00ff00';
+            ctx.beginPath();
+            
+            const sliceWidth = width / bufferLength;
+            let x = 0;
+            
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i];
+                const y = (v * 0.5 + 0.5) * height;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                
+                x += sliceWidth;
+            }
+            
+            ctx.stroke();
+            
+            requestAnimationFrame(drawWaveform);
+        }
+        
+        function drawSpectrogram() {
+            if (!analyserNode) return;
+            
+            const canvas = document.getElementById('spectrogram');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            const bufferLength = analyserNode.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyserNode.getByteFrequencyData(dataArray);
+            
+            // Scroll left
+            ctx.drawImage(canvas, -1, 0);
+            
+            // Draw new column
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const percent = value / 255;
+                const hue = 240 - (percent * 240); // Blue to red
+                const y = height - (i / bufferLength) * height;
+                
+                ctx.fillStyle = `hsl(${hue}, 100%, ${percent * 50}%)`;
+                ctx.fillRect(width - 1, y, 1, height / bufferLength);
+            }
+            
+            requestAnimationFrame(drawSpectrogram);
+        }
+        
+        function downloadRawData() {
+            if (allReceivedData.length === 0) {
+                alert('No data to download');
+                return;
+            }
+            
+            console.log('💾 Creating WAV file from received data...');
+            
+            // Combine all chunks
+            const totalSamples = allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
+            const combinedData = new Float32Array(totalSamples);
+            let offset = 0;
+            for (const chunk of allReceivedData) {
+                combinedData.set(chunk, offset);
+                offset += chunk.length;
+            }
+            
+            console.log(`📊 Combined ${allReceivedData.length} chunks: ${totalSamples.toLocaleString()} samples`);
+            
+            // Create WAV file (16-bit PCM, 44100 Hz)
+            const sampleRate = 44100;
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const bytesPerSample = bitsPerSample / 8;
+            const blockAlign = numChannels * bytesPerSample;
+            const byteRate = sampleRate * blockAlign;
+            const dataSize = totalSamples * bytesPerSample;
+            const fileSize = 44 + dataSize;
+            
+            const buffer = new ArrayBuffer(fileSize);
+            const view = new DataView(buffer);
+            
+            // WAV header
+            let pos = 0;
+            const writeString = (str) => {
+                for (let i = 0; i < str.length; i++) {
+                    view.setUint8(pos++, str.charCodeAt(i));
+                }
+            };
+            
+            writeString('RIFF');
+            view.setUint32(pos, fileSize - 8, true); pos += 4;
+            writeString('WAVE');
+            writeString('fmt ');
+            view.setUint32(pos, 16, true); pos += 4;
+            view.setUint16(pos, 1, true); pos += 2; // PCM
+            view.setUint16(pos, numChannels, true); pos += 2;
+            view.setUint32(pos, sampleRate, true); pos += 4;
+            view.setUint32(pos, byteRate, true); pos += 4;
+            view.setUint16(pos, blockAlign, true); pos += 2;
+            view.setUint16(pos, bitsPerSample, true); pos += 2;
+            writeString('data');
+            view.setUint32(pos, dataSize, true); pos += 4;
+            
+            // Convert float32 to int16
+            for (let i = 0; i < totalSamples; i++) {
+                const sample = Math.max(-1, Math.min(1, combinedData[i]));
+                view.setInt16(pos, sample * 0x7FFF, true);
+                pos += 2;
+            }
+            
+            // Download
+            const blob = new Blob([buffer], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `worker_stream_${Date.now()}.wav`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            console.log(`✅ Downloaded ${(fileSize / 1024 / 1024).toFixed(2)} MB WAV file`);
+        }
+    </script>
+</body>
+</html>
 

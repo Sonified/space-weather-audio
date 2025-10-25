@@ -418,18 +418,19 @@ export default {
         const stdDev = Math.sqrt(variance);
         console.log(`[Worker] First 1000 samples: range [${minVal}, ${maxVal}], mean=${mean.toFixed(1)}, stdDev=${stdDev.toFixed(1)}`);
         
-        // ✅ PROGRESSIVE CHUNKING: Send data in explicit chunk sizes
+        // ✅ LENGTH-PREFIX FRAMING: Send data with explicit chunk boundaries
+        // Format: [4-byte length][chunk data][4-byte length][chunk data]...
         // Pattern: 8KB → 16KB → 32KB → 64KB → 128KB → 512KB (repeat)
-        // This gives the browser EXACTLY the chunks we want, no auto-chunking!
+        // This gives the browser EXACTLY the chunks we want!
         
         const cleanBuffer = int16Data.buffer.slice(int16Data.byteOffset, int16Data.byteOffset + int16Data.byteLength);
         const totalBytes = cleanBuffer.byteLength;
         
         // Define progressive chunk sizes (in KB)
-        const CHUNK_SIZES = [8, 16, 32, 64, 128]; // Then repeat 512KB
+        const CHUNK_SIZES = [16, 32, 64, 128]; // Then repeat 512KB
         const FINAL_CHUNK_SIZE = 512; // KB
         
-        console.log(`[Worker] Starting progressive chunking: ${totalBytes} bytes total`);
+        console.log(`[Worker] Starting length-prefixed progressive chunking: ${totalBytes} bytes total`);
         
         const stream = new ReadableStream({
           async start(controller) {
@@ -449,19 +450,25 @@ export default {
               const remainingBytes = totalBytes - offset;
               const actualChunkSize = Math.min(chunkSizeBytes, remainingBytes);
               
-              // Extract chunk
-              const chunk = cleanBuffer.slice(offset, offset + actualChunkSize);
+              // Extract chunk data
+              const chunkData = new Uint8Array(cleanBuffer.slice(offset, offset + actualChunkSize));
               
-              console.log(`[Worker] Chunk ${chunkIndex + 1}: ${actualChunkSize} bytes (${chunkSizeKB}KB requested)`);
+              // Create frame: [4-byte length][chunk data]
+              const frame = new Uint8Array(4 + actualChunkSize);
+              const lengthView = new DataView(frame.buffer);
+              lengthView.setUint32(0, actualChunkSize, true); // Little-endian length prefix
+              frame.set(chunkData, 4); // Copy chunk data after length
               
-              // Send chunk
-              controller.enqueue(new Uint8Array(chunk));
+              console.log(`[Worker] Framed chunk ${chunkIndex + 1}: ${actualChunkSize} bytes data + 4 bytes header = ${frame.byteLength} total (${chunkSizeKB}KB requested)`);
+              
+              // Send framed chunk
+              controller.enqueue(frame);
               
               offset += actualChunkSize;
               chunkIndex++;
             }
             
-            console.log(`[Worker] ✅ All chunks sent (${chunkIndex} chunks)`);
+            console.log(`[Worker] ✅ All framed chunks sent (${chunkIndex} chunks)`);
             controller.close();
           }
         });

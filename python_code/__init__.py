@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.15"
+__version__ = "1.16"
 __commit_message__ = (
-    "v1.15 Fix: Gapless audio streaming with auto-crossfade to deck mode, sample-accurate position tracking, dynamic fadeout rescheduling"
+    "v1.16 Length-prefix framing for perfect chunk control, AudioWorklet deframing in worker, improved diagnostics (glitch still present)"
 )
 
 # Import key modules to make them available when importing the package

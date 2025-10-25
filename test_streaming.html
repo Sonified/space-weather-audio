@@ -1895,13 +1895,23 @@
                 } else {
                     // Progressive streaming for IRIS/backend modes
                     const reader = response.body.getReader();
-                    let chunkIndex = 0;
+                    
+                    // ✅ LENGTH-PREFIX FRAME READER: Extract exact chunks from network stream
+                    // Format: [4-byte length][chunk data][4-byte length][chunk data]...
+                    let frameBuffer = new Uint8Array(0); // Accumulate bytes until we have complete frames
+                    let networkChunkIndex = 0;
+                    let logicalChunkIndex = 0; // Actual chunk count (after deframing)
                     
                     while (true) {
                         const {done, value} = await reader.read();
                         
                         if (done) {
                             console.log('✅ Stream complete!');
+                            
+                            // Check for leftover bytes (shouldn't happen with proper framing)
+                            if (frameBuffer.length > 0) {
+                                console.warn(`⚠️ Warning: ${frameBuffer.length} leftover bytes after stream end`);
+                            }
                             
                             // Combine chunks into single buffer for seeking
                             combineChunksIntoSingleBuffer();
@@ -1915,19 +1925,50 @@
                             break;
                         }
                         
+                        networkChunkIndex++;
                         totalBytesReceived += value.length;
-                        chunkIndex++;
                         document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
                         
-                        if (chunkIndex === 1) {
-                            const firstChunkTime = performance.now() - streamStartTime;
-                            console.log(`📦 Received chunk 1: ${value.length} bytes (${firstChunkTime.toFixed(0)}ms from click)`);
-                        } else {
-                            console.log(`📦 Received chunk ${chunkIndex}: ${value.length} bytes`);
-                        }
+                        console.log(`📡 Network chunk ${networkChunkIndex}: ${value.length} bytes`);
                         
-                        // Process chunk (decompress and convert to audio)
-                        await processChunk(value, format);
+                        // Append to frame buffer
+                        const newBuffer = new Uint8Array(frameBuffer.length + value.length);
+                        newBuffer.set(frameBuffer, 0);
+                        newBuffer.set(value, frameBuffer.length);
+                        frameBuffer = newBuffer;
+                        
+                        // Extract complete frames from buffer
+                        while (frameBuffer.length >= 4) {
+                            // Read 4-byte length prefix
+                            const lengthView = new DataView(frameBuffer.buffer, frameBuffer.byteOffset, 4);
+                            const chunkLength = lengthView.getUint32(0, true); // Little-endian
+                            
+                            // Check if we have the complete frame
+                            if (frameBuffer.length >= 4 + chunkLength) {
+                                // Extract frame data (skip 4-byte header)
+                                const frameData = frameBuffer.slice(4, 4 + chunkLength);
+                                
+                                logicalChunkIndex++;
+                                
+                                if (logicalChunkIndex === 1) {
+                                    const firstChunkTime = performance.now() - streamStartTime;
+                                    console.log(`📦 Deframed chunk 1: ${frameData.length} bytes (${firstChunkTime.toFixed(0)}ms from click)`);
+                                } else if (logicalChunkIndex <= 10 || logicalChunkIndex % 10 === 0) {
+                                    // Log first 10 chunks, then every 10th
+                                    console.log(`📦 Deframed chunk ${logicalChunkIndex}: ${frameData.length} bytes`);
+                                }
+                                
+                                // Process this complete chunk
+                                await processChunk(frameData, format);
+                                
+                                // Remove this frame from buffer
+                                frameBuffer = frameBuffer.slice(4 + chunkLength);
+                            } else {
+                                // Not enough data yet, wait for next network chunk
+                                console.log(`⏳ Partial frame: have ${frameBuffer.length} bytes, need ${4 + chunkLength} (waiting for ${4 + chunkLength - frameBuffer.length} more)`);
+                                break;
+                            }
+                        }
                     }
                 }
                 
@@ -1947,7 +1988,10 @@
             let float32Data;
             
             if (format === 'int16') {
-                // Handle partial int16 samples (need 2-byte alignment)
+                // ✅ NOTE: With length-prefix framing, chunks are guaranteed to be int16-aligned!
+                // The partial buffer logic below is now redundant for framed streams,
+                // but kept for compatibility with non-framed backends
+                
                 let completeData = rawData;
                 
                 // If we have a partial sample from previous chunk, prepend it
@@ -1964,12 +2008,13 @@
                 let processableData = completeData;
                 
                 if (extraByte !== 0) {
-                    // Save the last byte for next chunk
+                    // Save the last byte for next chunk (shouldn't happen with framed streams!)
+                    console.warn(`⚠️ Odd byte count detected: ${completeData.length} bytes (partial int16 sample)`);
                     partialChunkBuffer = completeData.slice(-1);
                     processableData = completeData.slice(0, -1);
                 }
                 
-                // Convert to int16 array (now guaranteed to be aligned)
+                // Convert to int16 array (guaranteed to be aligned with framing)
                 const int16Data = new Int16Array(processableData.buffer, processableData.byteOffset, processableData.length / 2);
                 float32Data = Float32Array.from(int16Data, v => v / 32768.0);
             } else if (format === 'int32') {
