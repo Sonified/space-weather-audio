@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Method Comparison Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        .container {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #fff;
+            margin-top: 0;
+        }
+        h2 {
+            color: #ccc;
+            margin-top: 0;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #4a9eff;
+            color: white;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        button:hover:not(:disabled) {
+            background: #3a8eef;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        button.secondary {
+            background: #666;
+        }
+        button.secondary:hover:not(:disabled) {
+            background: #777;
+        }
+        select {
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 6px;
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.info {
+            background: #2a4a6a;
+            color: #a0d0ff;
+        }
+        .status.success {
+            background: #2a6a3a;
+            color: #a0ffa0;
+        }
+        .status.error {
+            background: #6a2a2a;
+            color: #ffa0a0;
+        }
+        .comparison {
+            background: #333;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+        .comparison h3 {
+            margin-top: 0;
+            color: #fff;
+        }
+        .diff {
+            background: #4a2a2a;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .diff-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #ff6a6a;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .metric {
+            background: #333;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4a9eff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔬 Download Method Comparison Test</h1>
+        <p>This test downloads the same file using two methods and compares them byte-for-byte:</p>
+        <ul>
+            <li><strong>Method 1 (Streaming):</strong> Uses <code>response.body.getReader()</code> to stream chunks and accumulate them</li>
+            <li><strong>Method 2 (Complete):</strong> Uses <code>await response.blob()</code> to download the entire file at once</li>
+        </ul>
+        
+        <div class="controls">
+            <select id="sizeSelect">
+                <option value="small">Small (0.34 MB)</option>
+                <option value="medium" selected>Medium (2.06 MB)</option>
+                <option value="large">Large (5.49 MB)</option>
+            </select>
+            <button id="compareBtn" onclick="runComparison()">🔬 Run Comparison</button>
+        </div>
+        
+        <div class="status info" id="status">
+            Ready to compare download methods.
+        </div>
+        
+        <div class="metrics" id="metrics" style="display: none;">
+            <div class="metric">
+                <div class="metric-label">Streaming Download Time</div>
+                <div class="metric-value" id="streamingTime">--</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Complete Download Time</div>
+                <div class="metric-value" id="completeTime">--</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Streaming Size</div>
+                <div class="metric-value" id="streamingSize">--</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Complete Size</div>
+                <div class="metric-value" id="completeSize">--</div>
+            </div>
+        </div>
+        
+        <div class="comparison" id="comparison" style="display: none;">
+            <h3>Comparison Results</h3>
+            <div id="comparisonResults"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Store downloaded data globally for download
+        let streamingArrayBuffer = null;
+        let completeArrayBuffer = null;
+        
+        async function runComparison() {
+            const size = document.getElementById('sizeSelect').value;
+            const fetchUrl = `https://volcano-audio-test.robertalexander-music.workers.dev/stream?size=${size}&gzip=false&filter=false`;
+            
+            // Clear previous data
+            streamingArrayBuffer = null;
+            completeArrayBuffer = null;
+            
+            document.getElementById('compareBtn').disabled = true;
+            document.getElementById('status').className = 'status info';
+            document.getElementById('status').textContent = 'Running comparison...';
+            document.getElementById('metrics').style.display = 'none';
+            document.getElementById('comparison').style.display = 'none';
+            
+            try {
+                console.log('═══════════════════════════════════════════════════════');
+                console.log('🔬 STARTING DOWNLOAD METHOD COMPARISON');
+                console.log(`📡 URL: ${fetchUrl}`);
+                console.log('═══════════════════════════════════════════════════════');
+                
+                // ===== METHOD 1: STREAMING DOWNLOAD =====
+                console.log('\n📥 METHOD 1: Streaming Download (response.body.getReader())');
+                const streamingStart = performance.now();
+                const streamingData = await downloadViaStreaming(fetchUrl);
+                streamingArrayBuffer = streamingData; // Store for download
+                const streamingTime = performance.now() - streamingStart;
+                console.log(`   ✅ Streaming download complete: ${(streamingData.byteLength / 1024).toFixed(1)} KB in ${streamingTime.toFixed(0)}ms`);
+                
+                // ===== METHOD 2: COMPLETE DOWNLOAD =====
+                console.log('\n📥 METHOD 2: Complete Download (response.blob())');
+                const completeStart = performance.now();
+                const completeData = await downloadViaComplete(fetchUrl);
+                completeArrayBuffer = completeData; // Store for download
+                const completeTime = performance.now() - completeStart;
+                console.log(`   ✅ Complete download: ${(completeData.byteLength / 1024).toFixed(1)} KB in ${completeTime.toFixed(0)}ms`);
+                
+                // ===== COMPARE =====
+                console.log('\n🔍 COMPARING ARRAYBUFFERS...');
+                const comparison = compareArrayBuffers(streamingData, completeData);
+                
+                // Update UI
+                document.getElementById('streamingTime').textContent = `${streamingTime.toFixed(0)}ms`;
+                document.getElementById('completeTime').textContent = `${completeTime.toFixed(0)}ms`;
+                document.getElementById('streamingSize').textContent = `${(streamingData.byteLength / 1024).toFixed(1)} KB`;
+                document.getElementById('completeSize').textContent = `${(completeData.byteLength / 1024).toFixed(1)} KB`;
+                document.getElementById('metrics').style.display = 'grid';
+                
+                // Display comparison results
+                const resultsDiv = document.getElementById('comparisonResults');
+                const downloadButtons = `
+                    <div style="margin-top: 20px; display: flex; gap: 15px; flex-wrap: wrap;">
+                        <button onclick="downloadAsWAV('progressive')" class="secondary" ${!streamingArrayBuffer ? 'disabled' : ''}>
+                            💾 Download Progressive WAV
+                        </button>
+                        <button onclick="downloadAsWAV('whole')" class="secondary" ${!completeArrayBuffer ? 'disabled' : ''}>
+                            💾 Download Whole WAV
+                        </button>
+                    </div>
+                `;
+                
+                if (comparison.identical) {
+                    resultsDiv.innerHTML = `
+                        <div style="background: #2a6a3a; padding: 15px; border-radius: 6px; color: #a0ffa0;">
+                            <strong>✅ IDENTICAL!</strong> Both methods downloaded the exact same data.
+                            <br>Size: ${streamingData.byteLength.toLocaleString()} bytes
+                            <br>No differences found.
+                        </div>
+                        ${downloadButtons}
+                    `;
+                    document.getElementById('status').className = 'status success';
+                    document.getElementById('status').textContent = '✅ Files are IDENTICAL - No differences found!';
+                } else {
+                    let diffHtml = `
+                        <div style="background: #6a2a2a; padding: 15px; border-radius: 6px; color: #ffa0a0; margin-bottom: 15px;">
+                            <strong>❌ DIFFERENCES FOUND!</strong>
+                            <br>Total differences: ${comparison.differences.length}
+                            <br>First difference at byte offset: ${comparison.firstDifference}
+                        </div>
+                        <div class="diff">
+                            <strong>First 50 differences:</strong>
+                    `;
+                    
+                    const maxDiffs = Math.min(50, comparison.differences.length);
+                    for (let i = 0; i < maxDiffs; i++) {
+                        const diff = comparison.differences[i];
+                        diffHtml += `
+                            <div class="diff-item">
+                                Byte ${diff.offset}: Streaming=0x${diff.streaming.toString(16).padStart(2, '0')} (${diff.streaming}), Complete=0x${diff.complete.toString(16).padStart(2, '0')} (${diff.complete})
+                            </div>
+                        `;
+                    }
+                    
+                    if (comparison.differences.length > 50) {
+                        diffHtml += `<div style="margin-top: 10px; color: #aaa;">... and ${comparison.differences.length - 50} more differences</div>`;
+                    }
+                    
+                    diffHtml += '</div>';
+                    diffHtml += downloadButtons;
+                    resultsDiv.innerHTML = diffHtml;
+                    document.getElementById('status').className = 'status error';
+                    document.getElementById('status').textContent = `❌ Found ${comparison.differences.length} differences! Check console for details.`;
+                }
+                
+                document.getElementById('comparison').style.display = 'block';
+                document.getElementById('compareBtn').disabled = false;
+                
+                console.log('\n═══════════════════════════════════════════════════════');
+                console.log(comparison.identical ? '✅ COMPARISON COMPLETE: FILES ARE IDENTICAL' : `❌ COMPARISON COMPLETE: FOUND ${comparison.differences.length} DIFFERENCES`);
+                console.log('═══════════════════════════════════════════════════════');
+                
+            } catch (error) {
+                console.error('❌ Comparison failed:', error);
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `❌ Error: ${error.message}`;
+                document.getElementById('compareBtn').disabled = false;
+            }
+        }
+        
+        async function downloadViaStreaming(url) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const reader = response.body.getReader();
+            const chunks = [];
+            let totalBytes = 0;
+            let chunkIndex = 0;
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) {
+                    console.log(`   📊 Stream complete: ${chunkIndex} chunks, ${totalBytes.toLocaleString()} bytes total`);
+                    break;
+                }
+                
+                chunkIndex++;
+                totalBytes += value.byteLength;
+                chunks.push(value);
+                
+                if (chunkIndex % 10 === 0) {
+                    console.log(`   📡 Chunk ${chunkIndex}: ${value.byteLength} bytes (total: ${(totalBytes / 1024).toFixed(1)} KB)`);
+                }
+            }
+            
+            // Combine all chunks into single ArrayBuffer
+            const combinedBuffer = new Uint8Array(totalBytes);
+            let offset = 0;
+            for (const chunk of chunks) {
+                combinedBuffer.set(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength), offset);
+                offset += chunk.byteLength;
+            }
+            
+            console.log(`   ✅ Combined ${chunks.length} chunks into ${(combinedBuffer.byteLength / 1024).toFixed(1)} KB ArrayBuffer`);
+            return combinedBuffer.buffer;
+        }
+        
+        async function downloadViaComplete(url) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const blob = await response.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            
+            console.log(`   ✅ Downloaded complete blob: ${(blob.size / 1024).toFixed(1)} KB`);
+            console.log(`   ✅ Converted to ArrayBuffer: ${(arrayBuffer.byteLength / 1024).toFixed(1)} KB`);
+            
+            return arrayBuffer;
+        }
+        
+        function compareArrayBuffers(buffer1, buffer2) {
+            const view1 = new Uint8Array(buffer1);
+            const view2 = new Uint8Array(buffer2);
+            
+            const differences = [];
+            const minLength = Math.min(view1.length, view2.length);
+            const maxLength = Math.max(view1.length, view2.length);
+            
+            if (view1.length !== view2.length) {
+                console.log(`⚠️ SIZE MISMATCH: Streaming=${view1.length} bytes, Complete=${view2.length} bytes`);
+            }
+            
+            // Compare byte-by-byte
+            for (let i = 0; i < minLength; i++) {
+                if (view1[i] !== view2[i]) {
+                    differences.push({
+                        offset: i,
+                        streaming: view1[i],
+                        complete: view2[i]
+                    });
+                    
+                    // Log first few differences
+                    if (differences.length <= 10) {
+                        console.log(`   ❌ Byte ${i}: Streaming=0x${view1[i].toString(16).padStart(2, '0')} (${view1[i]}), Complete=0x${view2[i].toString(16).padStart(2, '0')} (${view2[i]})`);
+                    }
+                }
+            }
+            
+            // Check for extra bytes
+            if (view1.length !== view2.length) {
+                console.log(`   ⚠️ Length difference: ${Math.abs(view1.length - view2.length)} bytes`);
+            }
+            
+            return {
+                identical: differences.length === 0 && view1.length === view2.length,
+                differences: differences,
+                firstDifference: differences.length > 0 ? differences[0].offset : null,
+                length1: view1.length,
+                length2: view2.length
+            };
+        }
+        
+        function downloadAsWAV(method) {
+            const arrayBuffer = method === 'progressive' ? streamingArrayBuffer : completeArrayBuffer;
+            
+            if (!arrayBuffer) {
+                alert('No data available to download!');
+                return;
+            }
+            
+            console.log(`💾 Creating WAV file from ${method} download method...`);
+            
+            // Convert ArrayBuffer to Int16Array (assuming raw int16 data)
+            const int16Data = new Int16Array(arrayBuffer);
+            const totalSamples = int16Data.length;
+            
+            console.log(`   📊 Samples: ${totalSamples.toLocaleString()} (${(totalSamples / 44100).toFixed(1)}s)`);
+            
+            // Create WAV file
+            const sampleRate = 44100;
+            const numChannels = 1;
+            const bytesPerSample = 2;
+            const blockAlign = numChannels * bytesPerSample;
+            const byteRate = sampleRate * blockAlign;
+            const dataSize = int16Data.length * bytesPerSample;
+            const wavSize = 44 + dataSize;
+            
+            const buffer = new ArrayBuffer(wavSize);
+            const view = new DataView(buffer);
+            
+            // WAV header
+            let offset = 0;
+            
+            // "RIFF" chunk descriptor
+            writeString(view, offset, 'RIFF'); offset += 4;
+            view.setUint32(offset, wavSize - 8, true); offset += 4;
+            writeString(view, offset, 'WAVE'); offset += 4;
+            
+            // "fmt " sub-chunk
+            writeString(view, offset, 'fmt '); offset += 4;
+            view.setUint32(offset, 16, true); offset += 4; // SubChunk1Size (16 for PCM)
+            view.setUint16(offset, 1, true); offset += 2; // AudioFormat (1 for PCM)
+            view.setUint16(offset, numChannels, true); offset += 2;
+            view.setUint32(offset, sampleRate, true); offset += 4;
+            view.setUint32(offset, byteRate, true); offset += 4;
+            view.setUint16(offset, blockAlign, true); offset += 2;
+            view.setUint16(offset, bytesPerSample * 8, true); offset += 2;
+            
+            // "data" sub-chunk
+            writeString(view, offset, 'data'); offset += 4;
+            view.setUint32(offset, dataSize, true); offset += 4;
+            
+            // Write audio data (direct copy since it's already Int16)
+            for (let i = 0; i < int16Data.length; i++) {
+                view.setInt16(offset, int16Data[i], true);
+                offset += 2;
+            }
+            
+            console.log(`   ✅ WAV file created: ${(wavSize / 1024).toFixed(1)} KB`);
+            
+            // Trigger download
+            const blob = new Blob([buffer], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `volcano_audio_${method}_download.wav`;
+            a.click();
+            
+            URL.revokeObjectURL(url);
+            
+            console.log(`   💾 Download triggered: ${a.download}`);
+        }
+        
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+    </script>
+</body>
+</html>
+

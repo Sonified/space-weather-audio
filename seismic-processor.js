@@ -24,6 +24,13 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.underruns = 0; // Count of times buffer ran empty
         this.metricsCounter = 0;
         
+        // Fade in/out
+        this.fadeDurationSamples = Math.ceil(44100 * 0.05); // 50ms fade = 2205 samples at 44.1kHz
+        this.samplesRendered = 0; // Track total samples rendered (for fade-in)
+        this.isFadingOut = false; // Track if we're in fade-out mode
+        this.pauseFadeOut = false; // Track if we're fading out for pause
+        this.pauseFadeProgress = 0; // Track progress of pause fade-out
+        
         // Listen for messages from main thread
         this.port.onmessage = (event) => {
             const { type, data, speed, rate } = event.data;
@@ -36,10 +43,36 @@ class SeismicProcessor extends AudioWorkletProcessor {
             } else if (type === 'set-playback-rate') {
                 this.speed = rate;
                 console.log(`🎚️ Worklet playback rate: ${rate}x`);
+            } else if (type === 'pause-fade') {
+                // Trigger fade-out for pause
+                console.log('⏸️ Worklet: Starting 50ms fade-out for pause');
+                this.pauseFadeOut = true;
+                this.pauseFadeProgress = 0;
             } else if (type === 'pause') {
+                // Immediate pause (no fade) - only used internally after fade completes
                 this.isPlaying = false;
             } else if (type === 'resume') {
+                // Resume playback with fade-in
+                console.log('▶️ Worklet: Resuming with 50ms fade-in');
                 this.isPlaying = true;
+                this.pauseFadeOut = false;
+                this.pauseFadeProgress = 0;
+                this.samplesRendered = 0; // Reset to trigger fade-in
+            } else if (type === 'reset') {
+                // Reset all buffer state for new stream
+                console.log('🔄 WORKLET RESET: Clearing all buffers for new stream');
+                this.buffer.fill(0);
+                this.readIndex = 0;
+                this.writeIndex = 0;
+                this.samplesInBuffer = 0;
+                this.hasStarted = false;
+                this.readIndexLocked = false;
+                this.underruns = 0;
+                this.metricsCounter = 0;
+                this.samplesRendered = 0;
+                this.isFadingOut = false;
+                this.pauseFadeOut = false;
+                this.pauseFadeProgress = 0;
             }
         };
     }
@@ -160,6 +193,64 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 this.readIndex = (this.readIndex + samplesToRead) % this.maxBufferSize;
                 this.samplesInBuffer -= samplesToRead;
             }
+        }
+        
+        // ✨ FADE IN/OUT PROCESSING
+        // Check if we should start fade-out (speed-aware)
+        // Remaining time = samplesInBuffer / (sampleRate * speed)
+        const remainingTimeSec = this.samplesInBuffer / (44100 * this.speed);
+        const fadeOutThreshold = 0.05; // 50ms
+        
+        if (!this.isFadingOut && remainingTimeSec < fadeOutThreshold) {
+            this.isFadingOut = true;
+            console.log('🌅 Starting fade-out (' + (remainingTimeSec * 1000).toFixed(1) + 'ms remaining at ' + this.speed + 'x speed)');
+        }
+        
+        // Apply fade-in or fade-out to each sample
+        for (let j = 0; j < channel.length; j++) {
+            let gain = 1.0;
+            
+            // Pause fade-out: Takes priority over everything else
+            if (this.pauseFadeOut) {
+                const fadeOutProgress = this.pauseFadeProgress / this.fadeDurationSamples;
+                // Cosine fade: smooth S-curve from 1 to 0
+                gain = 1 - ((1 - Math.cos(fadeOutProgress * Math.PI)) / 2);
+                this.pauseFadeProgress++;
+                
+                // When fade complete, pause playback and notify main thread
+                if (this.pauseFadeProgress >= this.fadeDurationSamples) {
+                    this.pauseFadeOut = false;
+                    this.pauseFadeProgress = 0;
+                    this.isPlaying = false;
+                    this.port.postMessage({ type: 'pause-fade-complete' });
+                    console.log('⏸️ Worklet: Pause fade-out complete, playback stopped');
+                }
+            } else {
+                // Normal fade-in: First 50ms (2205 samples) of playback
+                if (this.samplesRendered < this.fadeDurationSamples) {
+                    const fadeInProgress = this.samplesRendered / this.fadeDurationSamples;
+                    // Cosine fade: smooth S-curve from 0 to 1
+                    gain = (1 - Math.cos(fadeInProgress * Math.PI)) / 2;
+                }
+                
+                // Fade-out: Last 50ms based on remaining buffer
+                if (this.isFadingOut) {
+                    // Calculate how far through the fade-out we are
+                    // When samplesInBuffer is high, fadeOutProgress is 0 (full volume)
+                    // When samplesInBuffer approaches 0, fadeOutProgress approaches 1 (silence)
+                    const fadeOutSamples = this.fadeDurationSamples * this.speed; // Adjust for playback speed
+                    const fadeOutProgress = 1 - (this.samplesInBuffer / fadeOutSamples);
+                    const fadeOutGain = 1 - ((1 - Math.cos(fadeOutProgress * Math.PI)) / 2);
+                    
+                    // Use the quieter of fade-in or fade-out
+                    gain = Math.min(gain, fadeOutGain);
+                }
+                
+                this.samplesRendered++;
+            }
+            
+            // Apply gain
+            channel[j] *= gain;
         }
         
         // Log output range periodically

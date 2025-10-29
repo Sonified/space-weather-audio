@@ -387,6 +387,7 @@ export default {
         const t2 = performance.now();
         let filtered;
         if (useFilter) {
+          console.log(`[Worker] ✅ STARTING HIGH-PASS FILTER (useFilter=${useFilter})`);
           const cutoffHz = 0.1; // 0.1 Hz seismic → 20 Hz audio (200x speedup)
           const RC = 1.0 / (2 * Math.PI * cutoffHz);
           const alpha = RC / (RC + 1 / sampleRate);
@@ -402,14 +403,17 @@ export default {
             prevX = x;
             prevY = y;
           }
-          console.log(`[Worker] High-pass filtered in ${(performance.now() - t2).toFixed(4)}ms`);
+          const actualFilterTime = (performance.now() - t2).toFixed(4);
+          console.log(`[Worker] ✅ High-pass filter COMPLETE in ${actualFilterTime}ms`);
         } else {
           filtered = floatData; // No filtering
-          console.log(`[Worker] Skipped filtering (disabled via ?filter=false)`);
+          console.log(`[Worker] ⏭️ Skipped filtering (disabled via ?filter=false)`);
         }
         const filterTime = (performance.now() - t2).toFixed(4);
+        console.log(`[Worker] 📊 filterTime header value: ${filterTime}ms`);
         
         // Step 4: Normalize (find max, scale to int16 range)
+        console.log(`[Worker] ✅ STARTING NORMALIZATION`);
         const t3 = performance.now();
         let max = 0;
         for (let i = 0; i < filtered.length; i++) {
@@ -427,7 +431,8 @@ export default {
           int16Data[i] = Math.max(-32768, Math.min(32767, scaled));
         }
         const normalizeTime = (performance.now() - t3).toFixed(4);
-        console.log(`[Worker] Normalized and converted to int16 in ${normalizeTime}ms`);
+        console.log(`[Worker] ✅ Normalization COMPLETE in ${normalizeTime}ms`);
+        console.log(`[Worker] 📊 normalizeTime header value: ${normalizeTime}ms`);
         
         const totalTime = (performance.now() - t0).toFixed(4);
         console.log(`[Worker] ✅ Pipeline complete: ${totalTime}ms total`);
@@ -452,13 +457,36 @@ export default {
         const stdDev = Math.sqrt(variance);
         console.log(`[Worker] First 1000 samples: range [${minVal}, ${maxVal}], mean=${mean.toFixed(1)}, stdDev=${stdDev.toFixed(1)}`);
         
-        // ✅ LENGTH-PREFIX FRAMING: Send data with explicit chunk boundaries
-        // Format: [4-byte length][chunk data][4-byte length][chunk data]...
-        // Pattern: 8KB → 16KB → 32KB → 64KB → 128KB → 512KB (repeat)
-        // This gives the browser EXACTLY the chunks we want!
-        
         const cleanBuffer = int16Data.buffer.slice(int16Data.byteOffset, int16Data.byteOffset + int16Data.byteLength);
         const totalBytes = cleanBuffer.byteLength;
+        
+        // 🔧 CRITICAL FIX: If both gzip=false AND filter=false, return RAW data without any framing!
+        // This is for browser-side processing - we want PURE raw int16 data, no length prefixes!
+        if (!useGzip && !useFilter) {
+          console.log(`[Worker] 🔧 RAW MODE: gzip=false AND filter=false - returning COMPLETE raw data WITHOUT framing!`);
+          console.log(`[Worker] Sending ${totalBytes} bytes as single raw response (no length prefixes, no chunking)`);
+          
+          return new Response(cleanBuffer, {
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Expose-Headers': 'X-Fetch-Time, X-Decompress-Time, X-Filter-Time, X-Normalize-Time, X-Total-Time, X-Sample-Count, X-Sample-Rate, X-Data-Type',
+              'X-Fetch-Time': fetchTime,
+              'X-Decompress-Time': decompressTime,
+              'X-Filter-Time': filterTime,
+              'X-Normalize-Time': normalizeTime,
+              'X-Total-Time': totalTime,
+              'X-Sample-Count': int16Data.length.toString(),
+              'X-Sample-Rate': sampleRate.toString(),
+              'X-Data-Type': 'int16',
+            }
+          });
+        }
+        
+        // ✅ LENGTH-PREFIX FRAMING: Send data with explicit chunk boundaries (for progressive streaming)
+        // Format: [4-byte length][chunk data][4-byte length][chunk data]...
+        // Pattern: 16KB → 32KB → 64KB → 128KB → 512KB (repeat)
+        // This gives the browser EXACTLY the chunks we want!
         
         // Define progressive chunk sizes (in KB)
         const CHUNK_SIZES = [16, 32, 64, 128]; // Then repeat 512KB

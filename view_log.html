@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captain's Log Viewer</title>
+    
+    <!-- Toast UI Editor CSS -->
+    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.8em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .btn-save {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-save:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-close {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        .btn-close:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .editor-container {
+            padding: 30px;
+        }
+
+        .save-status {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #333;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+            z-index: 10000;
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .save-status.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .save-status.saving {
+            background: #667eea;
+        }
+
+        .save-status.saved {
+            background: #28a745;
+        }
+
+        .save-status.error {
+            background: #dc3545;
+        }
+
+        .spinner {
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading {
+            text-align: center;
+            padding: 100px 20px;
+            color: #666;
+            font-size: 1.2em;
+        }
+
+        .error {
+            text-align: center;
+            padding: 100px 20px;
+            color: #dc3545;
+            font-size: 1.2em;
+        }
+
+        /* Customize Toast UI Editor */
+        #editor {
+            height: 700px;
+        }
+        
+        .toastui-editor-contents {
+            font-size: 15px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                📓 <span id="log-title">Captain's Log</span>
+            </h1>
+            <div class="header-actions">
+                <button class="btn btn-save" onclick="saveLog()">💾 Save</button>
+                <button class="btn btn-close" onclick="window.close()">✕ Close</button>
+            </div>
+        </div>
+        
+        <div class="editor-container" id="editor-container">
+            <div class="loading" id="loading">Loading...</div>
+            <div id="editor" style="display: none;"></div>
+        </div>
+    </div>
+
+    <div class="save-status" id="saveStatus">
+        <span class="spinner" id="spinner" style="display: none;"></span>
+        <span id="statusText">Saved</span>
+    </div>
+
+    <!-- Toast UI Editor JS -->
+    <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+
+    <script>
+        let editor;
+        let currentFileHandle;
+        let logsDirectoryHandle;
+        let filename;
+        let autoSaveTimeout;
+        let isSaving = false;
+
+        async function initEditor() {
+            try {
+                filename = localStorage.getItem('currentLogFilename');
+                if (!filename) {
+                    showError('No log file selected');
+                    return;
+                }
+
+                const date = filename.replace('captains_log_', '').replace('.md', '');
+                document.getElementById('log-title').textContent = `Captain's Log - ${date}`;
+
+                logsDirectoryHandle = await getStoredDirectoryHandle();
+                if (!logsDirectoryHandle) {
+                    showError('No access to logs folder. Please grant access from the dashboard.');
+                    return;
+                }
+
+                currentFileHandle = await logsDirectoryHandle.getFileHandle(filename);
+                
+                const file = await currentFileHandle.getFile();
+                const content = await file.text();
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('editor').style.display = 'block';
+
+                // Create Toast UI Editor in WYSIWYG mode
+                editor = new toastui.Editor({
+                    el: document.querySelector('#editor'),
+                    height: '700px',
+                    initialEditType: 'wysiwyg', // WYSIWYG mode by default!
+                    initialValue: content,
+                    previewStyle: 'vertical',
+                    usageStatistics: false,
+                    toolbarItems: [
+                        ['heading', 'bold', 'italic', 'strike'],
+                        ['hr', 'quote'],
+                        ['ul', 'ol', 'task', 'indent', 'outdent'],
+                        ['table', 'link', 'image'],
+                        ['code', 'codeblock'],
+                    ]
+                });
+
+                // Auto-save on changes (debounced)
+                editor.on('change', () => {
+                    clearTimeout(autoSaveTimeout);
+                    autoSaveTimeout = setTimeout(() => {
+                        autoSave();
+                    }, 2000); // Wait 2 seconds after user stops typing
+                });
+
+                // Cmd+S to save immediately
+                document.addEventListener('keydown', (event) => {
+                    if ((event.metaKey || event.ctrlKey) && event.key === 's') {
+                        event.preventDefault();
+                        clearTimeout(autoSaveTimeout); // Cancel auto-save
+                        saveLog();
+                    }
+                });
+
+            } catch (err) {
+                console.error('Error initializing editor:', err);
+                showError('Failed to load log: ' + err.message);
+            }
+        }
+
+        async function autoSave() {
+            if (isSaving) return;
+            
+            isSaving = true;
+            showSaveStatus('saving');
+            
+            try {
+                const content = editor.getMarkdown();
+                const writable = await currentFileHandle.createWritable();
+                await writable.write(content);
+                await writable.close();
+                
+                showSaveStatus('saved');
+            } catch (err) {
+                console.error('Error auto-saving:', err);
+                showSaveStatus('error');
+            } finally {
+                isSaving = false;
+            }
+        }
+
+        async function saveLog() {
+            if (isSaving) return;
+            
+            isSaving = true;
+            showSaveStatus('saving');
+            
+            try {
+                const content = editor.getMarkdown();
+                const writable = await currentFileHandle.createWritable();
+                await writable.write(content);
+                await writable.close();
+                
+                showSaveStatus('saved');
+            } catch (err) {
+                console.error('Error saving:', err);
+                showSaveStatus('error');
+            } finally {
+                isSaving = false;
+            }
+        }
+
+        function showSaveStatus(status) {
+            const statusEl = document.getElementById('saveStatus');
+            const textEl = document.getElementById('statusText');
+            const spinnerEl = document.getElementById('spinner');
+            
+            // Remove all status classes
+            statusEl.classList.remove('saving', 'saved', 'error');
+            
+            if (status === 'saving') {
+                statusEl.classList.add('saving');
+                textEl.textContent = 'Saving...';
+                spinnerEl.style.display = 'block';
+                statusEl.classList.add('show');
+            } else if (status === 'saved') {
+                statusEl.classList.add('saved');
+                textEl.textContent = 'Saved ✓';
+                spinnerEl.style.display = 'none';
+                statusEl.classList.add('show');
+                
+                // Hide after 2 seconds
+                setTimeout(() => {
+                    statusEl.classList.remove('show');
+                }, 2000);
+            } else if (status === 'error') {
+                statusEl.classList.add('error');
+                textEl.textContent = 'Save failed!';
+                spinnerEl.style.display = 'none';
+                statusEl.classList.add('show');
+                
+                // Hide after 3 seconds
+                setTimeout(() => {
+                    statusEl.classList.remove('show');
+                }, 3000);
+            }
+        }
+
+        async function getStoredDirectoryHandle() {
+            try {
+                const db = await openLogsDB();
+                const tx = db.transaction('handles', 'readonly');
+                const store = tx.objectStore('handles');
+                
+                const handle = await new Promise((resolve, reject) => {
+                    const request = store.get('logsDirectory');
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                
+                if (!handle) {
+                    console.log('No stored handle found');
+                    return null;
+                }
+                
+                // Check if we still have permission
+                const permission = await handle.queryPermission({ mode: 'readwrite' });
+                console.log('Permission status:', permission);
+                
+                if (permission === 'granted') {
+                    return handle;
+                }
+                
+                // Try to request permission again
+                console.log('Requesting permission...');
+                const newPermission = await handle.requestPermission({ mode: 'readwrite' });
+                if (newPermission === 'granted') {
+                    return handle;
+                }
+                
+                console.log('Permission denied');
+                return null;
+            } catch (e) {
+                console.log('Error getting stored handle:', e);
+                return null;
+            }
+        }
+
+        function openLogsDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('CaptainLogsDB', 1);
+                request.onupgradeneeded = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains('handles')) {
+                        db.createObjectStore('handles');
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+
+        function showError(message) {
+            document.getElementById('loading').innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        window.addEventListener('DOMContentLoaded', initEditor);
+    </script>
+</body>
+</html>
+

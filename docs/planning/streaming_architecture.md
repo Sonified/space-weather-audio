@@ -78,6 +78,122 @@ Real-time playback
 - Retained for 30 days, then auto-expires
 - 2.4x compression ratio achieved in testing
 
+#### File Hierarchy Structure
+
+**Production hierarchy (R2 and local cache):**
+```
+/data/
+  └─ {YEAR}/              # e.g., 2025
+      └─ {MONTH}/         # e.g., 10 (zero-padded)
+          └─ {NETWORK}/   # e.g., HV (Hawaii Volcano Observatory)
+              └─ {VOLCANO}/       # e.g., kilauea, maunaloa
+                  └─ {STATION}/   # e.g., NPOC, MLX
+                      └─ {LOCATION}/  # e.g., 01, --, 00
+                          └─ {CHANNEL}/   # e.g., HHZ, BDF, EHZ
+                              ├─ 2025-10-23.blosc      # Compressed data
+                              └─ 2025-10-23.json       # Metadata
+```
+
+**Example paths:**
+```
+/data/2025/10/HV/kilauea/NPOC/01/HHZ/2025-10-23.blosc
+/data/2025/10/HV/kilauea/NPOC/01/HHZ/2025-10-23.json
+/data/2025/10/AV/pavlof/PS4A/--/BHZ/2025-10-23.blosc
+/data/2025/03/HV/maunaloa/MLX/10/HHZ/2025-03-15.blosc
+```
+
+**Rationale:**
+- **Year/Month first:** Natural time-based organization, enables easy cleanup of old data
+- **Network → Volcano:** Mirrors real-world structure (networks monitor multiple volcanoes)
+  - Example: HV network monitors Kīlauea, Mauna Loa, Hualālai
+  - Example: AV network monitors ~50+ Alaskan volcanoes
+- **Station/Location/Channel:** Follows SEED identifier standard (Network.Station.Location.Channel)
+- **All separate folders:** Most scalable, easily queryable at each level
+- **No compound names:** Clean hierarchy, no arbitrary groupings
+- **Consistent naming:** Zero-padded months (01-12), ISO date format for files (YYYY-MM-DD)
+
+**Metadata structure (`*.json`):**
+```json
+{
+  "network": "HV",
+  "station": "NPOC",
+  "location": "01",
+  "channel": "HHZ",
+  "volcano": "kilauea",
+  "start_time": "2025-10-23T00:00:00.000000Z",
+  "end_time": "2025-10-23T23:59:59.990000Z",
+  "sample_rate": 100.0,
+  "samples": 8640000,
+  "gaps": [],
+  "data_range": {
+    "min": -12345678,
+    "max": 12345678
+  },
+  "compression": {
+    "algorithm": "blosc",
+    "codec": "zstd",
+    "level": 5,
+    "shuffle": true
+  },
+  "cached_at": "2025-10-24T14:32:15.123Z",
+  "processing": {
+    "deduplicated": true,
+    "interpolated": false
+  }
+}
+```
+
+**Key design decisions:**
+1. **Daily files:** Each file contains one full day of data (not hourly/10-min splits)
+   - Simplifies management (144 fewer files per day)
+   - Still allows partial reads via Blosc chunk access
+   - Natural alignment with IRIS data availability
+   
+2. **Location handling:** Location codes can be `--` (empty), `00`, `01`, etc.
+   - Stored as folder name exactly as returned by IRIS
+   - Example: `--` → `/--/` (literally two dashes)
+   
+3. **Volcano assignment:** Derived from station lookup table
+   - Not all stations are volcano-specific (some are regional)
+   - Stations can be shared across volcanoes (e.g., midpoint stations)
+   - Volcano field in metadata for easy filtering
+
+#### Alternative: Test/Temporary Cache Structure
+
+**For testing and progressive loading experiments:**
+```
+cache/
+├── int16/
+│   ├── raw/{cache_key}.bin
+│   └── zarr/{cache_key}/data.zarr/...
+├── gzip/
+│   ├── raw/{cache_key}.bin.gz
+│   └── zarr/{cache_key}/data.zarr/...
+├── blosc/
+│   ├── raw/{cache_key}.blosc
+│   └── zarr/{cache_key}/data.zarr/...
+└── metadata/
+    ├── {cache_key}.json
+    └── {cache_key}_profiles.json
+```
+
+**Cache key generation:**
+```python
+import hashlib
+
+def generate_cache_key(volcano: str, hours_ago: int, duration_hours: int) -> str:
+    key_string = f"{volcano}_{hours_ago}h_ago_{duration_hours}h_duration"
+    return hashlib.sha256(key_string.encode()).hexdigest()[:16]
+```
+
+**Example:**
+- Request: `kilauea, 12 hours ago, 4 hour duration`
+- Cache key: `a3f2d8c9e1b4f7a2`
+- Path: `cache/blosc/raw/a3f2d8c9e1b4f7a2.blosc`
+
+**Use case:** Compression benchmarking, format comparison testing
+**Not used for:** Production serving (too opaque, no time-based cleanup)
+
 ### Layer 2: Audio Cache (Short-Term, 10-Min TTL)
 
 **Purpose:** Request deduplication only

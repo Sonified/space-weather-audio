@@ -657,7 +657,7 @@ Anderson's implementation likely includes:
 
 ### Anderson's Work
 - **TDD R Package**: https://cran.r-project.org/src/contrib/Archive/TDD/TDD_0.4.tar.gz
-- **Paper**: Anderson et al., "Time Domain Deconvolution..." (need to find citation)
+- **Paper**: Anderson, J. F., & Lees, J. M. (2014). "Instrument Corrections by Time-Domain Deconvolution." Seismological Research Letters, 85(1), 197-201. DOI: 10.1785/0220130062
 
 ### Bilinear Transform
 - **scipy.signal.zpk2sos**: https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.zpk2sos.html

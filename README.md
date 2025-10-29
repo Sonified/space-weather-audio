@@ -6,6 +6,14 @@ A real-time web-based system for streaming and audifying seismic data from activ
 
 This project provides a complete pipeline for converting seismic data into audio streams. It fetches real-time data from IRIS FDSN, processes and compresses it, and streams it progressively to web browsers for immediate playback and visualization.
 
+## 🎯 Quick Links
+
+- **[📊 Project Dashboard](dashboard.html)** - Visual status, interactive task manager, one-click test launching
+- **[🛠️ Developer Guide](docs/DEV_GUIDE.md)** - Backend setup, R2 uploads, testing, debugging
+- **[📖 Architecture Docs](docs/planning/streaming_architecture.md)** - Complete technical overview
+- **[🗂️ Cache Design](docs/cache_architecture.md)** - File hierarchy, compression benchmarks
+- **[📝 Captain's Logs](docs/captains_logs/)** - Daily progress notes
+
 ## Architecture
 
 ### Data Pipeline
@@ -42,16 +50,22 @@ This project provides a complete pipeline for converting seismic data into audio
 
 ## Installation
 
-### Backend (Flask API)
+### Quick Start
 ```bash
 cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python main.py
 ```
 Server runs on `http://localhost:5001`
 
+**Need more help?** See **[Developer Guide](docs/DEV_GUIDE.md)** for detailed setup, R2 configuration, and troubleshooting.
+
 ### Frontend
-Open `test_streaming.html` in any modern web browser (Chrome, Firefox, Safari, Edge)
+Open `test_streaming.html` or `test_audioworklet.html` in any modern web browser (Chrome, Firefox, Safari, Edge)
+
+Or use the **[Project Dashboard](dashboard.html)** to launch tests with one click!
 
 ## Usage
 
