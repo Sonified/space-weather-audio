@@ -7,3 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [[r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "hearts-data-cache"
+
+# Environment variables
+[vars]
+RENDER_URL = "http://localhost:5001"

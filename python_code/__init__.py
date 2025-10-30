@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.18"
+__version__ = "1.19"
 __commit_message__ = (
-    "v1.18 Fix: AudioWorklet circular buffer readIndex lock prevents glitches from buffer overflow during pre-load"
+    "v1.19 Feature: Render → R2 → Browser direct chunk fetching with presigned URLs, SSE event buffering fix, dashboard expand button"
 )
 
 # Import key modules to make them available when importing the package

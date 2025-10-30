@@ -30,6 +30,7 @@ R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
 R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
 R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
 R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL', f'https://pub-{R2_ACCOUNT_ID}.r2.dev')
 
 s3_client = boto3.client(
     's3',
@@ -1017,6 +1018,413 @@ def serve_local_file():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/request', methods=['POST'])
+def handle_request():
+    """
+    FULL PIPELINE - Receives requests from R2 Worker
+    Fetches from IRIS, processes, chunks, compresses, and uploads to R2
+    """
+    import zstandard as zstd
+    from datetime import datetime, timedelta
+    
+    try:
+        data = request.get_json()
+        
+        network = data.get('network', 'HV')
+        station = data.get('station', 'NPOC')
+        location = data.get('location', '')  # NPOC has empty location
+        channel = data.get('channel', 'HHZ')
+        starttime_str = data.get('starttime')
+        duration = data.get('duration', 3600)  # seconds
+        
+        if not starttime_str:
+            return jsonify({'error': 'starttime is required'}), 400
+        
+        app.logger.info(f"[Render] 📥 Received request: {network}.{station}.{location}.{channel} @ {starttime_str} for {duration}s")
+        
+        # Convert to ObsPy time
+        starttime = UTCDateTime(starttime_str)
+        endtime = starttime + duration
+        
+        # STEP 1: Fetch from IRIS with retry logic
+        app.logger.info(f"[Render] 📤 Requesting from IRIS...")
+        client = Client("IRIS")
+        
+        attempt_duration = duration
+        st = None
+        while attempt_duration >= 60:  # Minimum 1 minute
+            try:
+                st = client.get_waveforms(
+                    network=network,
+                    station=station,
+                    location=location,
+                    channel=channel,
+                    starttime=starttime,
+                    endtime=starttime + attempt_duration
+                )
+                app.logger.info(f"[Render] ✅ IRIS returned {len(st)} traces for {attempt_duration}s")
+                break
+            except Exception as e:
+                app.logger.warning(f"[Render] IRIS failed for {attempt_duration}s: {e}")
+                attempt_duration = attempt_duration // 2
+                app.logger.info(f"[Render] Retrying with half duration: {attempt_duration}s")
+        
+        if not st:
+            return jsonify({'error': 'Failed to fetch data from IRIS'}), 500
+        
+        # STEP 2: Merge and dedupe
+        app.logger.info(f"[Render] 🔧 Merging traces...")
+        st.merge(method=1, fill_value='interpolate')
+        trace = st[0]
+        
+        # STEP 3: Calculate metadata
+        app.logger.info(f"[Render] 📊 Calculating metadata...")
+        data_array = trace.data.astype(np.int32)
+        metadata = {
+            'network': network,
+            'station': station,
+            'location': location,
+            'channel': channel,
+            'starttime': str(trace.stats.starttime),
+            'endtime': str(trace.stats.endtime),
+            'sampling_rate': float(trace.stats.sampling_rate),
+            'npts': int(trace.stats.npts),
+            'min': int(np.min(data_array)),
+            'max': int(np.max(data_array)),
+        }
+        app.logger.info(f"[Render] Min/Max: [{metadata['min']}, {metadata['max']}]")
+        
+        # STEP 4: Create chunks
+        sampling_rate = trace.stats.sampling_rate
+        samples_per_minute = int(sampling_rate * 60)
+        
+        chunks_created = []
+        
+        # Build R2 path
+        dt = datetime.fromisoformat(starttime_str.replace('Z', '+00:00'))
+        year = dt.year
+        month = dt.month
+        day = dt.day
+        hour = dt.hour
+        minute = dt.minute
+        
+        # Build path (handle empty location)
+        loc_part = location if location else '--'
+        base_path = f"data/{year}/{month:02d}/{network}/kilauea/{station}/{loc_part}/{channel}"
+        
+        # Compress function
+        compressor = zstd.ZstdCompressor(level=3)
+        
+        # 6 x 1-minute chunks
+        app.logger.info(f"[Render] ✂️ Creating 1-minute chunks...")
+        for i in range(6):
+            start_sample = i * samples_per_minute
+            end_sample = min((i + 1) * samples_per_minute, len(data_array))
+            if start_sample >= len(data_array):
+                break
+            
+            chunk_data = data_array[start_sample:end_sample]
+            chunk_bytes = chunk_data.tobytes()
+            compressed = compressor.compress(chunk_bytes)
+            
+            # Upload to R2
+            chunk_time = starttime + (i * 60)
+            chunk_filename = f"{year}-{month:02d}-{day:02d}-{hour:02d}-{(minute + i):02d}.zst"
+            r2_key = f"{base_path}/{chunk_filename}"
+            
+            s3_client.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=r2_key,
+                Body=compressed,
+                ContentType='application/zstd'
+            )
+            
+            chunks_created.append({'type': '1min', 'key': r2_key, 'size': len(compressed)})
+            app.logger.info(f"[Render] ✅ Uploaded 1-min chunk {i+1}/6: {len(chunk_data)} samples → {len(compressed)} bytes")
+        
+        # 4 x 6-minute chunks (starting after first 6 minutes)
+        if len(data_array) > 6 * samples_per_minute:
+            app.logger.info(f"[Render] ✂️ Creating 6-minute chunks...")
+            samples_per_6min = samples_per_minute * 6
+            offset = 6 * samples_per_minute
+            
+            for i in range(4):
+                start_sample = offset + (i * samples_per_6min)
+                end_sample = min(start_sample + samples_per_6min, len(data_array))
+                if start_sample >= len(data_array):
+                    break
+                
+                chunk_data = data_array[start_sample:end_sample]
+                chunk_bytes = chunk_data.tobytes()
+                compressed = compressor.compress(chunk_bytes)
+                
+                chunk_time = starttime + 360 + (i * 360)  # 6 min = 360s
+                chunk_filename = f"{year}-{month:02d}-{day:02d}-{hour:02d}-{(minute + 6 + i*6):02d}_6min.zst"
+                r2_key = f"{base_path}/{chunk_filename}"
+                
+                s3_client.put_object(
+                    Bucket=R2_BUCKET_NAME,
+                    Key=r2_key,
+                    Body=compressed,
+                    ContentType='application/zstd'
+                )
+                
+                chunks_created.append({'type': '6min', 'key': r2_key, 'size': len(compressed)})
+                app.logger.info(f"[Render] ✅ Uploaded 6-min chunk {i+1}/4: {len(chunk_data)} samples → {len(compressed)} bytes")
+        
+        # 1 x 30-minute chunk (final)
+        if len(data_array) > 30 * samples_per_minute:
+            app.logger.info(f"[Render] ✂️ Creating 30-minute chunk...")
+            offset = 30 * samples_per_minute
+            
+            chunk_data = data_array[offset:]
+            chunk_bytes = chunk_data.tobytes()
+            compressed = compressor.compress(chunk_bytes)
+            
+            chunk_filename = f"{year}-{month:02d}-{day:02d}-{hour:02d}-{(minute + 30):02d}_30min.zst"
+            r2_key = f"{base_path}/{chunk_filename}"
+            
+            s3_client.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=r2_key,
+                Body=compressed,
+                ContentType='application/zstd'
+            )
+            
+            chunks_created.append({'type': '30min', 'key': r2_key, 'size': len(compressed)})
+            app.logger.info(f"[Render] ✅ Uploaded 30-min chunk: {len(chunk_data)} samples → {len(compressed)} bytes")
+        
+        # Upload metadata
+        metadata_filename = f"{year}-{month:02d}-{day:02d}.json"
+        metadata_key = f"{base_path}/{metadata_filename}"
+        
+        s3_client.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=metadata_key,
+            Body=json.dumps(metadata, indent=2),
+            ContentType='application/json'
+        )
+        
+        app.logger.info(f"[Render] ✅ Uploaded metadata: {metadata_key}")
+        app.logger.info(f"[Render] 🎉 Pipeline complete: {len(chunks_created)} chunks created")
+        
+        return jsonify({
+            'status': 'completed',
+            'message': 'Data processed and uploaded to R2',
+            'request_id': f"{network}.{station}.{location}.{channel}@{starttime_str}",
+            'metadata': metadata,
+            'chunks': chunks_created,
+            'metadata_key': metadata_key,
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"[Render] Pipeline error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/request-stream', methods=['POST'])
+def handle_request_stream():
+    """
+    SSE STREAMING PIPELINE - Real-time progress updates
+    Same as /api/request but streams events as they happen
+    """
+    import zstandard as zstd
+    from datetime import datetime, timedelta
+    
+    # Parse request data BEFORE generator (must be in request context)
+    data = request.get_json()
+    
+    network = data.get('network', 'HV')
+    station = data.get('station', 'NPOC')
+    location = data.get('location', '')
+    channel = data.get('channel', 'HHZ')
+    starttime_str = data.get('starttime')
+    duration = data.get('duration', 3600)
+    
+    if not starttime_str:
+        return jsonify({'error': 'starttime is required'}), 400
+    
+    app.logger.info(f"[Render SSE] 📥 Received streaming request: {network}.{station}.{location}.{channel} @ {starttime_str} for {duration}s")
+    
+    def generate():
+        try:
+            
+            # Event: Request received
+            yield f"event: request_received\ndata: {json.dumps({'network': network, 'station': station, 'channel': channel, 'starttime': starttime_str, 'duration': duration})}\n\n"
+            
+            starttime = UTCDateTime(starttime_str)
+            endtime = starttime + duration
+            
+            # Event: Requesting from IRIS
+            yield f"event: iris_request\ndata: {json.dumps({'message': 'Requesting data from IRIS'})}\n\n"
+            
+            client = Client("IRIS")
+            attempt_duration = duration
+            st = None
+            
+            while attempt_duration >= 60:
+                try:
+                    st = client.get_waveforms(
+                        network=network,
+                        station=station,
+                        location=location,
+                        channel=channel,
+                        starttime=starttime,
+                        endtime=starttime + attempt_duration
+                    )
+                    # Event: IRIS response
+                    yield f"event: iris_response\ndata: {json.dumps({'traces': len(st), 'duration': attempt_duration})}\n\n"
+                    break
+                except Exception as e:
+                    attempt_duration = attempt_duration // 2
+                    yield f"event: iris_retry\ndata: {json.dumps({'message': f'Retrying with {attempt_duration}s'})}\n\n"
+            
+            if not st:
+                yield f"event: error\ndata: {json.dumps({'error': 'Failed to fetch data from IRIS'})}\n\n"
+                return
+            
+            # Event: Merging traces
+            yield f"event: merge_start\ndata: {json.dumps({'message': 'Merging and deduplicating traces'})}\n\n"
+            st.merge(method=1, fill_value='interpolate')
+            trace = st[0]
+            
+            # Event: Calculating metadata
+            yield f"event: metadata_start\ndata: {json.dumps({'message': 'Calculating metadata'})}\n\n"
+            data_array = trace.data.astype(np.int32)
+            metadata = {
+                'network': network,
+                'station': station,
+                'location': location,
+                'channel': channel,
+                'starttime': str(trace.stats.starttime),
+                'endtime': str(trace.stats.endtime),
+                'sampling_rate': float(trace.stats.sampling_rate),
+                'npts': int(trace.stats.npts),
+                'min': int(np.min(data_array)),
+                'max': int(np.max(data_array)),
+            }
+            
+            # Event: Metadata calculated
+            yield f"event: metadata_calculated\ndata: {json.dumps(metadata)}\n\n"
+            
+            # Setup for chunking
+            sampling_rate = trace.stats.sampling_rate
+            samples_per_minute = int(sampling_rate * 60)
+            
+            dt = datetime.fromisoformat(starttime_str.replace('Z', '+00:00'))
+            year = dt.year
+            month = dt.month
+            day = dt.day
+            hour = dt.hour
+            minute = dt.minute
+            
+            loc_part = location if location else '--'
+            base_path = f"data/{year}/{month:02d}/{network}/kilauea/{station}/{loc_part}/{channel}"
+            
+            compressor = zstd.ZstdCompressor(level=3)
+            chunks_created = []
+            
+            # Event: Starting chunk creation
+            yield f"event: chunk_start\ndata: {json.dumps({'message': 'Creating 1-minute chunks'})}\n\n"
+            
+            # 6 x 1-minute chunks
+            for i in range(6):
+                start_sample = i * samples_per_minute
+                end_sample = min((i + 1) * samples_per_minute, len(data_array))
+                if start_sample >= len(data_array):
+                    break
+                
+                chunk_data = data_array[start_sample:end_sample]
+                chunk_bytes = chunk_data.tobytes()
+                compressed = compressor.compress(chunk_bytes)
+                
+                chunk_filename = f"{year}-{month:02d}-{day:02d}-{hour:02d}-{(minute + i):02d}.zst"
+                r2_key = f"{base_path}/{chunk_filename}"
+                
+                s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=r2_key, Body=compressed, ContentType='application/zstd')
+                chunks_created.append({'type': '1min', 'key': r2_key, 'size': len(compressed)})
+                
+                # Event: Chunk uploaded with presigned URL (works around CORS)
+                chunk_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': R2_BUCKET_NAME, 'Key': r2_key},
+                    ExpiresIn=3600  # 1 hour
+                )
+                yield f"event: chunk_uploaded\ndata: {json.dumps({'type': '1min', 'index': i+1, 'total': 6, 'samples': len(chunk_data), 'compressed_size': len(compressed), 'url': chunk_url, 'key': r2_key})}\n\n"
+            
+            # 4 x 6-minute chunks
+            if len(data_array) > 6 * samples_per_minute:
+                yield f"event: chunk_start\ndata: {json.dumps({'message': 'Creating 6-minute chunks'})}\n\n"
+                
+                samples_per_6min = samples_per_minute * 6
+                offset = 6 * samples_per_minute
+                
+                for i in range(4):
+                    start_sample = offset + (i * samples_per_6min)
+                    end_sample = min(start_sample + samples_per_6min, len(data_array))
+                    if start_sample >= len(data_array):
+                        break
+                    
+                    chunk_data = data_array[start_sample:end_sample]
+                    chunk_bytes = chunk_data.tobytes()
+                    compressed = compressor.compress(chunk_bytes)
+                    
+                    chunk_filename = f"{year}-{month:02d}-{day:02d}-{hour:02d}-{(minute + 6 + i*6):02d}_6min.zst"
+                    r2_key = f"{base_path}/{chunk_filename}"
+                    
+                    s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=r2_key, Body=compressed, ContentType='application/zstd')
+                    chunks_created.append({'type': '6min', 'key': r2_key, 'size': len(compressed)})
+                    
+                    # Event: Chunk uploaded with presigned URL
+                    chunk_url = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={'Bucket': R2_BUCKET_NAME, 'Key': r2_key},
+                        ExpiresIn=3600
+                    )
+                    yield f"event: chunk_uploaded\ndata: {json.dumps({'type': '6min', 'index': i+1, 'total': 4, 'samples': len(chunk_data), 'compressed_size': len(compressed), 'url': chunk_url, 'key': r2_key})}\n\n"
+            
+            # 1 x 30-minute chunk
+            if len(data_array) > 30 * samples_per_minute:
+                yield f"event: chunk_start\ndata: {json.dumps({'message': 'Creating 30-minute chunk'})}\n\n"
+                
+                offset = 30 * samples_per_minute
+                chunk_data = data_array[offset:]
+                chunk_bytes = chunk_data.tobytes()
+                compressed = compressor.compress(chunk_bytes)
+                
+                chunk_filename = f"{year}-{month:02d}-{day:02d}-{hour:02d}-{(minute + 30):02d}_30min.zst"
+                r2_key = f"{base_path}/{chunk_filename}"
+                
+                s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=r2_key, Body=compressed, ContentType='application/zstd')
+                chunks_created.append({'type': '30min', 'key': r2_key, 'size': len(compressed)})
+                
+                # Event: Chunk uploaded with presigned URL
+                chunk_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': R2_BUCKET_NAME, 'Key': r2_key},
+                    ExpiresIn=3600
+                )
+                yield f"event: chunk_uploaded\ndata: {json.dumps({'type': '30min', 'index': 1, 'total': 1, 'samples': len(chunk_data), 'compressed_size': len(compressed), 'url': chunk_url, 'key': r2_key})}\n\n"
+            
+            # Upload metadata
+            metadata_filename = f"{year}-{month:02d}-{day:02d}.json"
+            metadata_key = f"{base_path}/{metadata_filename}"
+            s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=metadata_key, Body=json.dumps(metadata, indent=2), ContentType='application/json')
+            
+            yield f"event: metadata_uploaded\ndata: {json.dumps({'key': metadata_key})}\n\n"
+            
+            # Event: Complete
+            yield f"event: complete\ndata: {json.dumps({'chunks': len(chunks_created), 'metadata_key': metadata_key})}\n\n"
+            
+        except Exception as e:
+            app.logger.error(f"[Render] SSE Pipeline error: {e}", exc_info=True)
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+    
+    return Response(stream_with_context(generate()), mimetype='text/event-stream', headers={
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*'
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))

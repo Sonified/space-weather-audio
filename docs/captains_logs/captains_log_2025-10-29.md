@@ -230,3 +230,20 @@ Every time a new chunk started (16KB, 32KB, 64KB, etc.), those 4-byte length pre
 
 *"In space, no one can hear you debug. But on Earth, everyone can hear the clicks."*
 
+---
+
+## Version v1.19 Push
+
+**Commit**: v1.19 Feature: Render → R2 → Browser direct chunk fetching with presigned URLs, SSE event buffering fix, dashboard expand button
+
+**Changes**:
+- Implemented direct R2 Storage → Browser chunk fetching architecture
+- Flask now generates presigned URLs in `chunk_uploaded` events (bypasses CORS)
+- Browser fetches chunks directly from R2 using presigned URLs (no Worker proxy)
+- Fixed SSE event/data pair parsing when split across network chunks (pendingEvent buffer)
+- Added expand/collapse button to pipeline dashboard time log (4x height)
+- Made checkboxes bright green when completed
+- Documented finish line architecture in `docs/planning/render_r2_browser_finish_line_plan.md`
+
+**Architecture**: Browser → R2 Worker (notifications only) ← Render → R2 Storage ← Browser (data)
+

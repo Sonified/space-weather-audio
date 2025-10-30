@@ -1077,11 +1077,10 @@
             const filterStatus = enableFilter ? 'enabled' : 'DISABLED';
             const normalizeStatus = enableNormalize ? 'enabled' : 'DISABLED';
             
-            // Only update status if not currently streaming
-            if (!isPlaying || streamComplete) {
-                document.getElementById('status').className = 'status';
-                document.getElementById('status').textContent = `Ready to stream (Filter: ${filterStatus}, Normalize: ${normalizeStatus})`;
-            }
+            // Re-enable start button and update status
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('status').className = 'status';
+            document.getElementById('status').textContent = `Ready to stream (Filter: ${filterStatus}, Normalize: ${normalizeStatus})`;
         }
         
         function changeVolume() {
