@@ -142,14 +142,33 @@
             cursor: not-allowed;
             pointer-events: none;
             accent-color: #666;
-        }
-
-        .check-item input[type="checkbox"] {
-            accent-color: #666;
+            /* Custom styling for better browser support */
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            border: 2px solid #666;
+            border-radius: 3px;
+            background-color: rgba(255, 255, 255, 0.1);
+            position: relative;
+            flex-shrink: 0;
         }
         
         .check-item input[type="checkbox"]:checked {
-            accent-color: #00FF00;  /* Bright green */
+            accent-color: #4CAF50;
+            background-color: #4CAF50;
+            border-color: #4CAF50;
+        }
+        
+        .check-item input[type="checkbox"]:checked::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 2px;
+            width: 5px;
+            height: 10px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
         }
 
         .check-item.mock input[type="checkbox"] {
@@ -158,11 +177,39 @@
 
         .check-item.mock input[type="checkbox"]:checked {
             accent-color: #9C27B0;
+            background-color: #9C27B0;
+            border-color: #9C27B0;
+        }
+        
+        .check-item.mock input[type="checkbox"]:checked::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 2px;
+            width: 5px;
+            height: 10px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
         }
 
         .check-item.sub-item input[type="checkbox"] {
             width: 16px;
             height: 16px;
+        }
+        
+        .check-item.sub-item input[type="checkbox"]:checked::after {
+            left: 4px;
+            top: 1px;
+            width: 4px;
+            height: 8px;
+        }
+        
+        .check-item.sub-item.mock input[type="checkbox"]:checked::after {
+            left: 4px;
+            top: 1px;
+            width: 4px;
+            height: 8px;
         }
 
         .check-item input[type="checkbox"]:checked + label {
@@ -539,41 +586,6 @@
                         <label for="r2-forward-to-render">📤 Request forwarded to Render</label>
                         <span class="time" id="r2-forward-to-render-time"></span>
                     </div>
-                    <div class="check-item real">
-                        <input type="checkbox" id="r2-receiving-chunks" disabled>
-                        <label for="r2-receiving-chunks">📦 Receiving chunks from Render</label>
-                        <span class="time" id="r2-receiving-chunks-time"></span>
-                    </div>
-                    <div class="check-item sub-item real">
-                        <input type="checkbox" id="r2-1min-chunks-received" disabled>
-                        <label for="r2-1min-chunks-received">💾 6 × 1-minute chunks received</label>
-                        <span class="time" id="r2-1min-chunks-received-time"></span>
-                    </div>
-                    <div class="check-item sub-item real" style="margin-left: 40px;">
-                        <input type="checkbox" id="r2-1min-chunks-sent-browser" disabled>
-                        <label for="r2-1min-chunks-sent-browser">📤 1-minute chunks sent to Browser</label>
-                        <span class="time" id="r2-1min-chunks-sent-browser-time"></span>
-                    </div>
-                    <div class="check-item sub-item real">
-                        <input type="checkbox" id="r2-6min-chunks-received" disabled>
-                        <label for="r2-6min-chunks-received">💾 4 × 6-minute chunks received</label>
-                        <span class="time" id="r2-6min-chunks-received-time"></span>
-                    </div>
-                    <div class="check-item sub-item real" style="margin-left: 40px;">
-                        <input type="checkbox" id="r2-6min-chunks-sent-browser" disabled>
-                        <label for="r2-6min-chunks-sent-browser">📤 6-minute chunks sent to Browser</label>
-                        <span class="time" id="r2-6min-chunks-sent-browser-time"></span>
-                    </div>
-                    <div class="check-item sub-item real">
-                        <input type="checkbox" id="r2-30min-chunk-received" disabled>
-                        <label for="r2-30min-chunk-received">💾 1 × 30-minute chunk received</label>
-                        <span class="time" id="r2-30min-chunk-received-time"></span>
-                    </div>
-                    <div class="check-item sub-item real" style="margin-left: 40px;">
-                        <input type="checkbox" id="r2-30min-chunk-sent-browser" disabled>
-                        <label for="r2-30min-chunk-sent-browser">📤 30-minute chunk sent to Browser</label>
-                        <span class="time" id="r2-30min-chunk-sent-browser-time"></span>
-                    </div>
                 </div>
             </div>
 
@@ -600,6 +612,26 @@
                         <input type="checkbox" id="browser-minmax-received" disabled>
                         <label for="browser-minmax-received">📊 Min/max received from Render</label>
                         <span class="time" id="browser-minmax-received-time"></span>
+                    </div>
+                    <div class="check-item real">
+                        <input type="checkbox" id="browser-chunks-received" disabled>
+                        <label for="browser-chunks-received">📦 Chunks received from R2 Storage</label>
+                        <span class="time" id="browser-chunks-received-time"></span>
+                    </div>
+                    <div class="check-item sub-item real">
+                        <input type="checkbox" id="browser-1min-chunks-received" disabled>
+                        <label for="browser-1min-chunks-received">💾 6 × 1-minute chunks received</label>
+                        <span class="time" id="browser-1min-chunks-received-time"></span>
+                    </div>
+                    <div class="check-item sub-item real">
+                        <input type="checkbox" id="browser-6min-chunks-received" disabled>
+                        <label for="browser-6min-chunks-received">💾 4 × 6-minute chunks received</label>
+                        <span class="time" id="browser-6min-chunks-received-time"></span>
+                    </div>
+                    <div class="check-item sub-item real">
+                        <input type="checkbox" id="browser-30min-chunk-received" disabled>
+                        <label for="browser-30min-chunk-received">💾 1 × 30-minute chunk received</label>
+                        <span class="time" id="browser-30min-chunk-received-time"></span>
                     </div>
                     <div class="check-item real">
                         <input type="checkbox" id="browser-first-file" disabled>
@@ -694,14 +726,22 @@
                 throw new Error(`Checkbox not found: ${stepId}`);
             }
             const timeEl = document.getElementById(`${stepId}-time`);
+            if (!timeEl) {
+                console.error(`[checkStep] ERROR: Time element not found for ID: ${stepId}-time`);
+                throw new Error(`Time element not found: ${stepId}-time`);
+            }
             const checkItem = checkbox.closest('.check-item');
+            if (!checkItem) {
+                console.error(`[checkStep] ERROR: Check item container not found for: ${stepId}`);
+                throw new Error(`Check item container not found: ${stepId}`);
+            }
             
             const now = Date.now();
             const totalTime = ((now - startTime) / 1000).toFixed(2);
             const stepTime = lastStepTime ? ((now - lastStepTime) / 1000).toFixed(2) : totalTime;
             
             checkbox.checked = true;
-            timeEl.textContent = `${stepTime}s`;
+            timeEl.textContent = `${totalTime}s`;  // Show total time elapsed since beginning
             
             // Ensure correct class based on isMock
             if (isMock) {
@@ -960,9 +1000,11 @@
                                             checkStep('render-metadata-parsed', 'Render: 🔍 Metadata parsed', false);
                                             break;
                                         
-                        case 'metadata_calculated':
-                            checkStep('render-minmax-sent', `Render: 📊 Min/max sent to browser [${data.min}, ${data.max}]`, false);
-                            break;
+                                        case 'metadata_calculated':
+                                            checkStep('render-minmax-sent', `Render: 📊 Min/max sent to browser [${data.min}, ${data.max}]`, false);
+                                            // Browser receives this metadata via SSE, so check browser step too
+                                            checkStep('browser-minmax-received', `Browser: 📊 Min/max received [${data.min}, ${data.max}], samples: ${data.npts || 'N/A'}`, false);
+                                            break;
                                         
                                         case 'chunk_start':
                                             if (data.message.includes('1-minute')) {
@@ -979,7 +1021,6 @@
                                     // Fetch first chunk immediately
                                     if (data.url) {
                                         console.log(`[Browser] 🎯 First chunk ready! Fetching from: ${data.url}`);
-                                        checkStep('browser-first-file', 'Browser: 📦 Fetching first file from R2...', false);
                                         
                                         fetch(data.url)
                                             .then(r => {
@@ -988,7 +1029,10 @@
                                             })
                                             .then(compressed => {
                                                 console.log(`[Browser] ✅ Downloaded ${compressed.byteLength} bytes`);
-                                                updateStepLabel('browser-first-file', `Browser: 📦 First file received (${(compressed.byteLength/1024).toFixed(1)} KB)`);
+                                                const fileSizeKB = (compressed.byteLength/1024).toFixed(1);
+                                                const finalLabel = `Browser: 📦 First file received (${fileSizeKB} KB)`;
+                                                checkStep('browser-first-file', finalLabel, false);
+                                                updateStepLabel('browser-first-file', finalLabel);
                                                 
                                                 // For now just log - actual decompression/processing comes next
                                                 console.log(`[Browser] 🎉 Ready for decompression and processing!`);
@@ -1004,6 +1048,8 @@
                                 
                                 if (oneMinCount === 6) {
                                     checkStep('render-1min-chunks-sent-r2', 'Render: 🚀 1-minute chunks sent to R2', false);
+                                    checkStep('browser-chunks-received', 'Browser: 📦 Chunks received from R2 Storage', false);
+                                    checkStep('browser-1min-chunks-received', 'Browser: 💾 6 × 1-minute chunks received', false);
                                 }
                             } else if (data.type === '6min') {
                                 sixMinCount++;
@@ -1015,10 +1061,12 @@
                                 
                                 if (sixMinCount === 4) {
                                     checkStep('render-6min-chunks-sent-r2', 'Render: 🚀 6-minute chunks sent to R2', false);
+                                    checkStep('browser-6min-chunks-received', 'Browser: 💾 4 × 6-minute chunks received', false);
                                 }
                             } else if (data.type === '30min') {
                                 checkStep('render-30min-chunk-created', 'Render: ⏱️ 1 × 30-minute chunk created', false);
                                 checkStep('render-30min-chunk-sent-r2', 'Render: 🚀 30-minute chunk sent to R2', false);
+                                checkStep('browser-30min-chunk-received', 'Browser: 💾 1 × 30-minute chunk received', false);
                             }
                             break;
                                         
@@ -1026,41 +1074,9 @@
                                             addLogEntry('📊 Metadata uploaded to R2', elapsed, '0', false);
                                             break;
                                         
-                                        // R2 chunk forwarding events
-                                        case 'r2_1min_chunks_received':
-                                            checkStep('r2-receiving-chunks', 'R2: 📦 Receiving chunks from Render', false);
-                                            checkStep('r2-1min-chunks-received', 'R2: 💾 6 × 1-minute chunks received', false);
-                                            break;
-                                        
-                                        case 'r2_1min_chunks_sent_browser':
-                                            checkStep('r2-1min-chunks-sent-browser', 'R2: 📤 1-minute chunks sent to Browser', false);
-                                            break;
-                                        
-                                        case 'r2_6min_chunks_received':
-                                            checkStep('r2-6min-chunks-received', 'R2: 💾 4 × 6-minute chunks received', false);
-                                            break;
-                                        
-                                        case 'r2_6min_chunks_sent_browser':
-                                            checkStep('r2-6min-chunks-sent-browser', 'R2: 📤 6-minute chunks sent to Browser', false);
-                                            break;
-                                        
-                                        case 'r2_30min_chunk_received':
-                                            checkStep('r2-30min-chunk-received', 'R2: 💾 1 × 30-minute chunk received', false);
-                                            break;
-                                        
-                                        case 'r2_30min_chunk_sent_browser':
-                                            checkStep('r2-30min-chunk-sent-browser', 'R2: 📤 30-minute chunk sent to Browser', false);
-                                            setStatus('r2', 'success');
-                                            break;
+                                        // R2 chunk events removed - chunks are tracked in Browser box
                                         
                                         // Browser processing events
-                                        case 'browser_minmax_received':
-                                            checkStep('browser-minmax-received', `Browser: 📊 Min/max received [${data.min}, ${data.max}]`, false);
-                                            break;
-                                        
-                                        case 'browser_first_file':
-                                            checkStep('browser-first-file', 'Browser: 📦 First file received from R2', false);
-                                            break;
                                         
                                         case 'browser_decompressed':
                                             checkStep('browser-decompressed', 'Browser: 🔓 Decompressed (.zst → int32)', false);
@@ -1085,16 +1101,16 @@
                                             addLogEntry(`🎉 Pipeline complete! ${data.chunks} chunks created`, elapsed, '0', true);
                                             break;
                                         
-                        case 'error':
-                            setStatus('render', 'error');
-                            setStatus('browser', 'error');
-                            addLogEntry(`❌ Error: ${data.error}`, elapsed, '0', false);
-                            break;
-                        
-                        default:
-                            console.warn(`[Dashboard] ⚠️ Unhandled event type: ${type}`, data);
-                            addLogEntry(`⚠️ Unhandled event: ${type}`, elapsed, '0', false);
-                            break;
+                                        case 'error':
+                                            setStatus('render', 'error');
+                                            setStatus('browser', 'error');
+                                            addLogEntry(`❌ Error: ${data.error}`, elapsed, '0', false);
+                                            break;
+                                        
+                                        default:
+                                            console.warn(`[Dashboard] ⚠️ Unhandled event type: ${type}`, data);
+                                            addLogEntry(`⚠️ Unhandled event: ${type}`, elapsed, '0', false);
+                                            break;
                     }
                 }
                 
@@ -1173,8 +1189,18 @@
         
         function updateStepLabel(stepId, newLabel) {
             const checkbox = document.getElementById(stepId);
-            if (checkbox && checkbox.nextSibling) {
-                checkbox.nextSibling.textContent = ' ' + newLabel;
+            if (checkbox) {
+                // Use nextElementSibling to skip whitespace text nodes
+                const label = checkbox.nextElementSibling;
+                if (label && label.tagName === 'LABEL') {
+                    label.textContent = newLabel;
+                } else {
+                    // Fallback: find label by 'for' attribute
+                    const labelByFor = document.querySelector(`label[for="${stepId}"]`);
+                    if (labelByFor) {
+                        labelByFor.textContent = newLabel;
+                    }
+                }
             }
         }
 

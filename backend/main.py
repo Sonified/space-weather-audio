@@ -1291,6 +1291,10 @@ def handle_request_stream():
             # Event: Calculating metadata
             yield f"event: metadata_start\ndata: {json.dumps({'message': 'Calculating metadata'})}\n\n"
             data_array = trace.data.astype(np.int32)
+            min_val = int(np.min(data_array))
+            max_val = int(np.max(data_array))
+            npts_val = int(trace.stats.npts)
+            
             metadata = {
                 'network': network,
                 'station': station,
@@ -1299,13 +1303,18 @@ def handle_request_stream():
                 'starttime': str(trace.stats.starttime),
                 'endtime': str(trace.stats.endtime),
                 'sampling_rate': float(trace.stats.sampling_rate),
-                'npts': int(trace.stats.npts),
-                'min': int(np.min(data_array)),
-                'max': int(np.max(data_array)),
+                'npts': npts_val,
+                'min': min_val,
+                'max': max_val,
             }
             
+            # Log metadata calculation
+            app.logger.info(f"[Render] 📊 Metadata calculated: min={min_val}, max={max_val}, npts={npts_val}, samples={len(data_array)}")
+            
             # Event: Metadata calculated
-            yield f"event: metadata_calculated\ndata: {json.dumps(metadata)}\n\n"
+            metadata_json = json.dumps(metadata)
+            app.logger.info(f"[Render] 📤 Sending metadata_calculated event: {metadata_json[:200]}...")
+            yield f"event: metadata_calculated\ndata: {metadata_json}\n\n"
             
             # Setup for chunking
             sampling_rate = trace.stats.sampling_rate
