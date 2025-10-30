@@ -1985,7 +1985,18 @@ Once Render is writing correct metadata, implement the complete metadata flow th
 
 Add browser-side IndexedDB caching so repeated playback requests are instant (no network needed).
 
-**Future Enhancements (Phase 4):**
+### Priority 4: Add System Intelligence for Progressive Playback
+
+Enable audio playback to begin while some files are still being retrieved. System should intelligently determine minimum buffer needed and start playback as soon as sufficient data is available.
+
+### Priority 5: Add Adaptive Normalization
+
+Implement dynamic normalization that adjusts smoothly as new data arrives, preventing volume jumps when transitioning between cached and newly-generated chunks.
+
+### Priority 6: Deploy to Render Production Server
+
+Switch from local Flask development server to actual Render production deployment. Configure environment variables, scale resources, and monitor performance.
+
+**Future Enhancements:**
 - Split gap details into separate `*_gaps.json` file (lazy-loaded)
 - Implement MUSTANG API for fast historical metadata
-- Add metadata caching in R2 Worker (avoid re-fetching same metadata)

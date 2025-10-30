@@ -277,10 +277,13 @@
 
         .browser-box { grid-column: 1; grid-row: 1; }
         .r2-box { grid-column: 2; grid-row: 1; }
-        .render-box { grid-column: 3; grid-row: 1; }
+        .render-box { 
+            grid-column: 3; 
+            grid-row: 1 / 3; /* Spans both rows */
+        }
         .iris-box { grid-column: 4; grid-row: 1; }
         .time-log-box { 
-            grid-column: 2 / 4;
+            grid-column: 1 / 3; /* Under Browser and R2 */
             grid-row: 2;
             height: 250px;
             min-height: 250px;
@@ -453,6 +456,13 @@
                 <input type="checkbox" id="local-mode" checked style="width: 18px; height: 18px; margin-right: 8px; vertical-align: middle;">
                 🖥️ Local Mode (localhost testing)
             </label>
+            <label style="margin-right: 20px; font-size: 1.1em;">
+                🔧 Backend Version:
+                <select id="backend-version" style="margin-left: 8px; padding: 5px 10px; font-size: 1em; border-radius: 5px; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; cursor: pointer;">
+                    <option value="v1">v1 (Original)</option>
+                    <option value="v2" selected>v2 (Metadata-Aware) ⭐</option>
+                </select>
+            </label>
             <button class="start" onclick="startPipeline()">▶️ Start Pipeline Test</button>
             <button class="reset" onclick="resetDashboard()">🔄 Reset</button>
         </div>
@@ -490,6 +500,11 @@
                         <span class="time" id="render-request-received-time"></span>
                     </div>
                     <div class="check-item real">
+                        <input type="checkbox" id="render-cache-metadata-parsed" disabled>
+                        <label for="render-cache-metadata-parsed">📋 Cache metadata parsed</label>
+                        <span class="time" id="render-cache-metadata-parsed-time"></span>
+                    </div>
+                    <div class="check-item real">
                         <input type="checkbox" id="render-iris-request" disabled>
                         <label for="render-iris-request">📤 Request sent to IRIS</label>
                         <span class="time" id="render-iris-request-time"></span>
@@ -500,9 +515,19 @@
                         <span class="time" id="render-data-received-time"></span>
                     </div>
                     <div class="check-item real">
-                        <input type="checkbox" id="render-metadata-parsed" disabled>
-                        <label for="render-metadata-parsed">🔍 Metadata parsed</label>
-                        <span class="time" id="render-metadata-parsed-time"></span>
+                        <input type="checkbox" id="render-miniseed-parsed" disabled>
+                        <label for="render-miniseed-parsed">🔍 MiniSEED metadata parsed</label>
+                        <span class="time" id="render-miniseed-parsed-time"></span>
+                    </div>
+                    <div class="check-item real">
+                        <input type="checkbox" id="render-gap-detection" disabled>
+                        <label for="render-gap-detection">🔍 Gaps detected before merging</label>
+                        <span class="time" id="render-gap-detection-time"></span>
+                    </div>
+                    <div class="check-item real">
+                        <input type="checkbox" id="render-boundary-rounding" disabled>
+                        <label for="render-boundary-rounding">⏱️ Rounded to second boundaries</label>
+                        <span class="time" id="render-boundary-rounding-time"></span>
                     </div>
                     <div class="check-item real">
                         <input type="checkbox" id="render-minmax-sent" disabled>
@@ -520,9 +545,9 @@
                         <span class="time" id="render-1min-chunks-created-time"></span>
                     </div>
                     <div class="check-item sub-item real">
-                        <input type="checkbox" id="render-1min-chunks-sent-r2" disabled>
-                        <label for="render-1min-chunks-sent-r2">🚀 1-minute chunks sent to R2</label>
-                        <span class="time" id="render-1min-chunks-sent-r2-time"></span>
+                        <input type="checkbox" id="render-1min-chunks-sent-browser" disabled>
+                        <label for="render-1min-chunks-sent-browser">🔗 1-minute chunk URLs sent to Browser</label>
+                        <span class="time" id="render-1min-chunks-sent-browser-time"></span>
                     </div>
                     <div class="check-item real">
                         <input type="checkbox" id="render-6min-chunks-created" disabled>
@@ -530,9 +555,9 @@
                         <span class="time" id="render-6min-chunks-created-time"></span>
                     </div>
                     <div class="check-item sub-item real">
-                        <input type="checkbox" id="render-6min-chunks-sent-r2" disabled>
-                        <label for="render-6min-chunks-sent-r2">🚀 6-minute chunks sent to R2</label>
-                        <span class="time" id="render-6min-chunks-sent-r2-time"></span>
+                        <input type="checkbox" id="render-6min-chunks-sent-browser" disabled>
+                        <label for="render-6min-chunks-sent-browser">🔗 6-minute chunk URLs sent to Browser</label>
+                        <span class="time" id="render-6min-chunks-sent-browser-time"></span>
                     </div>
                     <div class="check-item real">
                         <input type="checkbox" id="render-30min-chunk-created" disabled>
@@ -540,9 +565,19 @@
                         <span class="time" id="render-30min-chunk-created-time"></span>
                     </div>
                     <div class="check-item sub-item real">
-                        <input type="checkbox" id="render-30min-chunk-sent-r2" disabled>
-                        <label for="render-30min-chunk-sent-r2">🚀 30-minute chunk sent to R2</label>
-                        <span class="time" id="render-30min-chunk-sent-r2-time"></span>
+                        <input type="checkbox" id="render-30min-chunk-sent-browser" disabled>
+                        <label for="render-30min-chunk-sent-browser">🔗 30-minute chunk URL sent to Browser</label>
+                        <span class="time" id="render-30min-chunk-sent-browser-time"></span>
+                    </div>
+                    <div class="check-item real">
+                        <input type="checkbox" id="render-metadata-cleanup" disabled>
+                        <label for="render-metadata-cleanup">🧹 Metadata sorted & deduplicated</label>
+                        <span class="time" id="render-metadata-cleanup-time"></span>
+                    </div>
+                    <div class="check-item real">
+                        <input type="checkbox" id="render-metadata-saved" disabled>
+                        <label for="render-metadata-saved">📊 Metadata updated and saved to R2</label>
+                        <span class="time" id="render-metadata-saved-time"></span>
                     </div>
                 </div>
             </div>
@@ -585,6 +620,11 @@
                         <input type="checkbox" id="r2-forward-to-render" disabled>
                         <label for="r2-forward-to-render">📤 Request forwarded to Render</label>
                         <span class="time" id="r2-forward-to-render-time"></span>
+                    </div>
+                    <div class="check-item real">
+                        <input type="checkbox" id="r2-metadata-sent" disabled>
+                        <label for="r2-metadata-sent">📋 Existing metadata sent to Render</label>
+                        <span class="time" id="r2-metadata-sent-time"></span>
                     </div>
                 </div>
             </div>
@@ -701,9 +741,23 @@
 
         function getRenderUrl() {
             const isLocalMode = document.getElementById('local-mode').checked;
-            return isLocalMode
-                ? 'http://localhost:5001'
-                : 'https://your-render-app.onrender.com';
+            const backendVersion = document.getElementById('backend-version').value;
+            
+            if (isLocalMode) {
+                // v1 runs on port 5001, v2 runs on port 5002
+                return backendVersion === 'v2' 
+                    ? 'http://localhost:5002'
+                    : 'http://localhost:5001';
+            } else {
+                return 'https://your-render-app.onrender.com';
+            }
+        }
+        
+        function getRenderEndpoint() {
+            const backendVersion = document.getElementById('backend-version').value;
+            return backendVersion === 'v2' 
+                ? '/api/request-stream-v2'
+                : '/api/request-stream';
         }
 
         function setStatus(component, status) {
@@ -867,11 +921,17 @@
             
             // Log which mode we're in
             const isLocalMode = document.getElementById('local-mode').checked;
+            const backendVersion = document.getElementById('backend-version').value;
             const modeLabel = isLocalMode ? '🖥️ LOCAL MODE' : '🌐 PRODUCTION MODE';
+            const versionLabel = backendVersion === 'v2' ? 'v2 (Metadata-Aware) ⭐' : 'v1 (Original)';
             const workerUrl = getWorkerUrl();
+            const renderUrl = getRenderUrl();
+            const endpoint = getRenderEndpoint();
+            
             document.getElementById('time-log').innerHTML = `
                 <div style="padding: 10px; background: ${isLocalMode ? '#2196F3' : '#FF9800'}; color: white; font-weight: bold; border-radius: 5px; margin-bottom: 10px;">
-                    ${modeLabel} - Render: ${getRenderUrl()}
+                    ${modeLabel} - Backend: ${versionLabel}<br/>
+                    Render: ${renderUrl}${endpoint}
                 </div>
             `;
             
@@ -985,9 +1045,24 @@
                                             checkStep('render-request-received', 'Render: 📥 Request received from R2', false);
                                             break;
                                         
+                                        case 'metadata_parsed':
+                                            if (data.existing_chunks) {
+                                                checkStep('r2-metadata-sent', `R2: 📋 Existing metadata sent (${data.existing_chunks} chunks)`, false);
+                                                checkStep('render-cache-metadata-parsed', `Render: 📋 Cache metadata parsed (${data.existing_chunks} existing)`, false);
+                                                if (data.missing_ranges) {
+                                                    addLogEntry(`📍 Missing ranges: ${data.missing_ranges}`, elapsed, '0', false);
+                                                }
+                                            } else {
+                                                checkStep('render-cache-metadata-parsed', 'Render: 📋 No existing metadata (fresh request)', false);
+                                            }
+                                            break;
+                                        
                                         case 'iris_request':
                                             setStatus('iris', 'working');
                                             checkStep('render-iris-request', 'Render: 📤 Request sent to IRIS', false);
+                                            if (data.time_range) {
+                                                addLogEntry(`🎯 Fetching from IRIS: ${data.time_range}`, elapsed, '0', false);
+                                            }
                                             break;
                                         
                                         case 'iris_response':
@@ -996,8 +1071,21 @@
                                             setStatus('iris', 'success');
                                             break;
                                         
+                                        case 'gap_detection':
+                                            const gapCount = data.gap_count || 0;
+                                            checkStep('render-miniseed-parsed', 'Render: 🔍 MiniSEED metadata parsed', false);
+                                            checkStep('render-gap-detection', `Render: 🔍 ${gapCount} gap${gapCount !== 1 ? 's' : ''} detected before merging`, false);
+                                            if (gapCount > 0) {
+                                                addLogEntry(`⚠️ ${gapCount} gap(s) will be filled with linear interpolation`, elapsed, '0', false);
+                                            }
+                                            break;
+                                        
+                                        case 'rounding':
+                                            checkStep('render-boundary-rounding', 'Render: ⏱️ Rounded to second boundaries', false);
+                                            break;
+                                        
                                         case 'merge_start':
-                                            checkStep('render-metadata-parsed', 'Render: 🔍 Metadata parsed', false);
+                                            // This event still exists but we handle miniseed parsing in gap_detection now
                                             break;
                                         
                                         case 'metadata_calculated':
@@ -1047,7 +1135,7 @@
                                 }
                                 
                                 if (oneMinCount === 6) {
-                                    checkStep('render-1min-chunks-sent-r2', 'Render: 🚀 1-minute chunks sent to R2', false);
+                                    checkStep('render-1min-chunks-sent-browser', 'Render: 🔗 1-minute chunk URLs sent to Browser', false);
                                     checkStep('browser-chunks-received', 'Browser: 📦 Chunks received from R2 Storage', false);
                                     checkStep('browser-1min-chunks-received', 'Browser: 💾 6 × 1-minute chunks received', false);
                                 }
@@ -1060,18 +1148,23 @@
                                 }
                                 
                                 if (sixMinCount === 4) {
-                                    checkStep('render-6min-chunks-sent-r2', 'Render: 🚀 6-minute chunks sent to R2', false);
+                                    checkStep('render-6min-chunks-sent-browser', 'Render: 🔗 6-minute chunk URLs sent to Browser', false);
                                     checkStep('browser-6min-chunks-received', 'Browser: 💾 4 × 6-minute chunks received', false);
                                 }
                             } else if (data.type === '30min') {
                                 checkStep('render-30min-chunk-created', 'Render: ⏱️ 1 × 30-minute chunk created', false);
-                                checkStep('render-30min-chunk-sent-r2', 'Render: 🚀 30-minute chunk sent to R2', false);
+                                checkStep('render-30min-chunk-sent-browser', 'Render: 🔗 30-minute chunk URL sent to Browser', false);
                                 checkStep('browser-30min-chunk-received', 'Browser: 💾 1 × 30-minute chunk received', false);
                             }
                             break;
                                         
+                                        case 'metadata_cleanup':
+                                            checkStep('render-metadata-cleanup', 'Render: 🧹 Metadata sorted & deduplicated', false);
+                                            break;
+                                        
                                         case 'metadata_uploaded':
-                                            addLogEntry('📊 Metadata uploaded to R2', elapsed, '0', false);
+                                            checkStep('render-metadata-saved', 'Render: 📊 Metadata updated and saved to R2', false);
+                                            addLogEntry(`💾 Metadata saved: ${data.key || 'unknown'}`, elapsed, '0', false);
                                             break;
                                         
                                         // R2 chunk events removed - chunks are tracked in Browser box

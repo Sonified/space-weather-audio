@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.20"
+__version__ = "1.21"
 __commit_message__ = (
-    "v1.20 Docs: Updated cache architecture with self-describing filenames (includes sample rate), phased metadata format, and implementation priorities"
+    "v1.21 Feature: Backend v2 with metadata-aware architecture, progressive chunking, gap detection, partial chunk flags, and dashboard v2 selector"
 )
 
 # Import key modules to make them available when importing the package
