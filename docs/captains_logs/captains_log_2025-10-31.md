@@ -337,3 +337,67 @@ v1.29 - Commit: "v1.29 UI: Enhanced loading animations, improved text visibility
 
 ---
 
+## Playback Speed Fix
+
+### Changes Made:
+
+1. **Speed Setting Preserved on New Data**
+   - When new data is downloaded, playback speed now respects the current speed slider setting
+   - Speed is set to `currentPlaybackRate` immediately after data is sent to AudioWorklet
+   - Prevents new data from playing at default 1.0x speed when user has changed speed
+
+### Problem:
+- When fetching new data while playing at a custom speed (e.g., 2.0x), the new data would play at default 1.0x speed
+- User had to manually adjust speed slider again after each new data fetch
+
+### Solution:
+- Set playback speed immediately after data is loaded using `workletNode.port.postMessage({ type: 'set-speed', speed: currentPlaybackRate })`
+- Ensures new data plays at the user's selected speed without requiring manual adjustment
+
+### Key Learnings:
+
+- **State Preservation**: Always restore user preferences (speed, volume) when loading new data
+- **Timing**: Set speed after data is sent but before playback starts for seamless experience
+
+### Version
+v1.30 - Commit: "v1.30 Fix: New data playback now respects current speed setting"
+
+---
+
+## UI Refinements & Spacebar Control Improvements
+
+### Changes Made:
+
+1. **Darker Background**
+   - Darkened body background gradient from `#4a0e0e → #5a1a1a` to `#2a0606 → #3a0f0f`
+   - Provides better contrast with panels
+
+2. **Bold Text for Processing Options**
+   - Made "High Pass (20Hz)" and "Normalization" labels bold (font-weight: 700)
+   - Improves visibility and emphasis
+
+3. **Improved Slider Styling**
+   - Speed and volume sliders now take full width (flex: 1)
+   - Added 20px padding on left and right of both sliders for breathing room
+   - Made slider bars thinner (track height reduced from 8px to 4px)
+   - Reduced border-radius to match thinner bars
+
+4. **Spacebar Control Enhancements**
+   - Spacebar now works with range inputs (sliders) - they don't block spacebar
+   - All form elements (dropdowns, checkboxes, sliders) auto-blur after interaction
+   - Ensures spacebar always controls play/pause immediately after using any form control
+   - Dropdowns blur on change event
+   - Checkboxes blur on change and click events
+   - Sliders blur on mouseup and change events
+
+### Key Learnings:
+
+- **Form Element Focus**: Auto-blurring form elements after interaction improves keyboard control UX
+- **Slider Styling**: Thinner tracks (4px) provide cleaner look while maintaining usability
+- **Keyboard Shortcuts**: Explicitly allowing range inputs in spacebar handler ensures consistent behavior
+
+### Version
+v1.31 - Commit: "v1.31 UI: Darker background, bold High Pass/Normalization labels, improved slider styling with padding, thinner slider bars, spacebar control works with all form elements"
+
+---
+

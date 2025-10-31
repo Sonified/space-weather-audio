@@ -15,7 +15,7 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #4a0e0e 0%, #5a1a1a 100%);
+            background: linear-gradient(135deg, #2a0606 0%, #3a0f0f 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -134,7 +134,7 @@
         input[type="range"] {
             -webkit-appearance: none;
             appearance: none;
-            background: linear-gradient(to bottom, transparent 6px, #5a1a1a 6px, #5a1a1a 14px, transparent 14px);
+            background: linear-gradient(to bottom, transparent 6px, #5a1a1a 6px, #5a1a1a 12px, transparent 12px);
             height: 20px;
             cursor: pointer;
             padding: 0;
@@ -146,8 +146,8 @@
         /* Webkit (Chrome, Safari, Edge) - Track */
         input[type="range"]::-webkit-slider-track {
             background: #5a1a1a;
-            height: 8px;
-            border-radius: 4px;
+            height: 4px;
+            border-radius: 2px;
             border: none;
         }
         
@@ -170,8 +170,8 @@
         /* Firefox - Track */
         input[type="range"]::-moz-range-track {
             background: #5a1a1a;
-            height: 8px;
-            border-radius: 4px;
+            height: 4px;
+            border-radius: 2px;
             border: none;
         }
         
@@ -532,11 +532,11 @@
                 
                 <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
                     <input type="checkbox" id="enableHighpass" checked style="width: 24px; height: 24px; cursor: pointer;">
-                    <label for="enableHighpass" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 18px; color: #333;">High Pass (20Hz)</label>
+                    <label for="enableHighpass" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 18px; color: #333;">High Pass (20Hz)</label>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
                     <input type="checkbox" id="enableNormalize" checked style="width: 24px; height: 24px; cursor: pointer;">
-                    <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 18px; color: #333;">Normalization</label>
+                    <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 18px; color: #333;">Normalization</label>
                 </div>
             </div>
             
@@ -550,11 +550,11 @@
                 <button type="button" id="startBtn" onclick="startStreaming(event)" style="min-width: 150px;">📡 Fetch Data</button>
                 <button type="button" onclick="togglePlayPause()" id="playPauseBtn" disabled style="min-width: 150px;">⏸️ Pause</button>
                 <button type="button" onclick="toggleLoop()" id="loopBtn" disabled style="min-width: 150px;">🔁 Loop</button>
-                <div style="display: flex; align-items: center; flex: 1; min-width: 150px; gap: 10px;">
+                <div style="display: flex; align-items: center; flex: 1; min-width: 150px; gap: 10px; padding: 0 20px;">
                     <label for="playbackSpeed" style="font-weight: 600; white-space: nowrap; font-size: 18px;">Speed: <span id="speedValue">1.0</span>x</label>
                     <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" oninput="changePlaybackSpeed()" style="flex: 1;">
                 </div>
-                <div style="display: flex; align-items: center; flex: 1; min-width: 150px; gap: 10px;">
+                <div style="display: flex; align-items: center; flex: 1; min-width: 150px; gap: 10px; padding: 0 20px;">
                     <label for="volumeSlider" style="font-weight: 600; white-space: nowrap; font-size: 18px;">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" oninput="changeVolume()" style="flex: 1;">
                 </div>
@@ -1234,6 +1234,13 @@
                 // Signal that all data has been sent
                 workletNode.port.postMessage({ type: 'data-complete' });
                 
+                // Set playback speed to current setting
+                workletNode.port.postMessage({
+                    type: 'set-speed',
+                    speed: currentPlaybackRate
+                });
+                console.log(`🎚️ Set playback speed for new data: ${currentPlaybackRate.toFixed(2)}x`);
+                
                 // Clear the fetching flag - new data is loaded and ready
                 isFetchingNewData = false;
                 
@@ -1632,6 +1639,73 @@
             document.getElementById('enableHighpass').addEventListener('change', enableFetchButton);
             document.getElementById('enableNormalize').addEventListener('change', enableFetchButton);
             document.getElementById('useLocalServer').addEventListener('change', enableFetchButton);
+            
+            // Spacebar to toggle play/pause
+            document.addEventListener('keydown', (event) => {
+                // Handle spacebar - allow for range inputs (sliders), but not text inputs
+                if (event.code === 'Space') {
+                    const isTextInput = event.target.tagName === 'INPUT' && 
+                                       event.target.type !== 'range';
+                    const isTextarea = event.target.tagName === 'TEXTAREA';
+                    const isSelect = event.target.tagName === 'SELECT';
+                    
+                    // If it's a text input, textarea, or select, don't handle it
+                    if (isTextInput || isTextarea || isSelect) {
+                        return;
+                    }
+                    
+                    // For range inputs (sliders) or other elements, allow spacebar to control playback
+                    event.preventDefault(); // Prevent page scroll
+                    
+                    // Only toggle if we have audio data and play/pause button is enabled
+                    const playPauseBtn = document.getElementById('playPauseBtn');
+                    if (!playPauseBtn.disabled && (isPlaying || allReceivedData.length > 0)) {
+                        togglePlayPause();
+                    }
+                }
+            });
+            
+            // Blur sliders after interaction so spacebar works immediately
+            const playbackSpeedSlider = document.getElementById('playbackSpeed');
+            const volumeSlider = document.getElementById('volumeSlider');
+            
+            [playbackSpeedSlider, volumeSlider].forEach(slider => {
+                slider.addEventListener('mouseup', () => {
+                    slider.blur(); // Remove focus so spacebar works
+                });
+                slider.addEventListener('change', () => {
+                    slider.blur(); // Remove focus so spacebar works
+                });
+            });
+            
+            // Blur dropdowns after interaction so spacebar works immediately
+            const dropdowns = ['volcano', 'dataType', 'station', 'duration'];
+            dropdowns.forEach(id => {
+                const dropdown = document.getElementById(id);
+                if (dropdown) {
+                    dropdown.addEventListener('change', () => {
+                        dropdown.blur(); // Remove focus so spacebar works
+                    });
+                    dropdown.addEventListener('blur', () => {
+                        // Already blurred, but ensure it stays blurred
+                    });
+                }
+            });
+            
+            // Blur checkboxes after interaction so spacebar works immediately
+            const checkboxes = ['enableHighpass', 'enableNormalize', 'useLocalServer'];
+            checkboxes.forEach(id => {
+                const checkbox = document.getElementById(id);
+                if (checkbox) {
+                    checkbox.addEventListener('change', () => {
+                        checkbox.blur(); // Remove focus so spacebar works
+                    });
+                    checkbox.addEventListener('click', () => {
+                        // Blur after a short delay to allow change event to fire first
+                        setTimeout(() => checkbox.blur(), 10);
+                    });
+                }
+            });
             
             console.log('✅ Event listeners added for fetch button re-enabling');
         });

@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.29"
+__version__ = "1.31"
 __commit_message__ = (
-    "v1.29 UI: Enhanced loading animations, improved text visibility, removed headers, adjusted layout (larger labels, taller spectrogram, smaller waveform), moved local server checkbox down"
+    "v1.31 UI: Darker background, bold High Pass/Normalization labels, improved slider styling with padding, thinner slider bars, spacebar control works with all form elements"
 )
 
 # Import key modules to make them available when importing the package
