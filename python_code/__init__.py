@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.36"
+__version__ = "1.37"
 __commit_message__ = (
-    "v1.36 Feature: Click-to-reset speed/volume labels, scroll speed control for spectrogram with discrete steps (.125, .25, .5, 1, 2, 3x), GPU-accelerated scrolling using drawImage"
+    "v1.37 UI: Increased spectrogram scroll speed max to 5x, adjusted panel padding, added button shadows for depth, fixed scroll speed control positioning, added construction emoji to title"
 )
 
 # Import key modules to make them available when importing the package

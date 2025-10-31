@@ -560,3 +560,44 @@ v1.36 - Commit: "v1.36 Feature: Click-to-reset speed/volume labels, scroll speed
 
 ---
 
+## UI Polish & Layout Refinements
+
+### Changes Made:
+
+1. **Spectrogram Scroll Speed Enhancement**
+   - Increased maximum scroll speed from 3x to 5x
+   - Added 4.0x and 5.0x to discrete speed steps
+   - Adjusted multiplier from 2.0x to 4.0x (0.5x display = 2.0x actual, making it twice as fast overall)
+
+2. **Panel Padding Adjustments**
+   - Reduced vertical padding on top two panels (from 20px to 12px)
+   - Reduced vertical padding on bottom metrics panel (from 20px to 12px)
+   - Creates more compact, efficient use of screen space
+
+3. **Button Depth Enhancement**
+   - Added consistent shadow (`0 3px 6px rgba(0, 0, 0, 0.3)`) to all button states
+   - Provides subtle depth/extrusion effect
+   - Fixed animation conflicts that were removing shadows from Fetch Data button
+
+4. **Scroll Speed Control Positioning**
+   - Fixed slider and value text positioning with absolute positioning
+   - Slider fixed at 150px width, value text anchored at fixed offset
+   - Prevents layout shifts when value text length changes
+   - Adjusted spacing and alignment for better visual consistency
+   - Slightly red-tinted text color (`#ffe8e8`) for better blending with dark background
+
+5. **UI Details**
+   - Added construction emoji (🚧) to title and h1 heading
+   - Matching scroll speed slider style with other sliders on page
+
+### Key Learnings:
+
+- **Fixed Positioning**: Absolute positioning prevents layout shifts when text content varies
+- **Consistent Shadows**: All button states should maintain base shadow, animations need to include shadow in keyframes
+- **UI Polish**: Small adjustments to padding, shadows, and positioning create more polished, professional appearance
+
+### Version
+v1.37 - Commit: "v1.37 UI: Increased spectrogram scroll speed max to 5x, adjusted panel padding, added button shadows for depth, fixed scroll speed control positioning, added construction emoji to title"
+
+---
+
