@@ -189,6 +189,47 @@
             background: #ff3333;
         }
         
+        /* Enhanced styling for spectrogram scroll speed slider */
+        #spectrogramScrollSpeed::-webkit-slider-track {
+            background: #8b4444 !important;
+            height: 6px !important;
+            border-radius: 3px !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+        }
+        
+        #spectrogramScrollSpeed::-webkit-slider-thumb {
+            background: #ff6666 !important;
+            height: 24px !important;
+            width: 24px !important;
+            border: 3px solid #ffffff !important;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+        }
+        
+        #spectrogramScrollSpeed::-webkit-slider-thumb:hover {
+            background: #ff8888 !important;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6) !important;
+        }
+        
+        #spectrogramScrollSpeed::-moz-range-track {
+            background: #8b4444 !important;
+            height: 6px !important;
+            border-radius: 3px !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+        }
+        
+        #spectrogramScrollSpeed::-moz-range-thumb {
+            background: #ff6666 !important;
+            height: 22px !important;
+            width: 22px !important;
+            border: 3px solid #ffffff !important;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+        }
+        
+        #spectrogramScrollSpeed::-moz-range-thumb:hover {
+            background: #ff8888 !important;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6) !important;
+        }
+        
         button {
             padding: 12px 24px;
             font-size: 16px;
@@ -568,12 +609,12 @@
                 <button type="button" id="startBtn" onclick="startStreaming(event)" style="min-width: 150px;">📡 Fetch Data</button>
                 <button type="button" onclick="togglePlayPause()" id="playPauseBtn" disabled style="min-width: 150px;">⏸️ Pause</button>
                 <button type="button" onclick="toggleLoop()" id="loopBtn" disabled style="min-width: 150px;">🔁 Loop</button>
-                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(400px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
-                    <label for="playbackSpeed" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0;">Speed: <span id="speedValue">1.0</span>x</label>
+                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(600px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
+                    <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
                     <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" oninput="changePlaybackSpeed()" style="flex: 1; min-width: 0;">
                 </div>
                 <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(400px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
-                    <label for="volumeSlider" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0;">Volume: <span id="volumeValue">1.0</span></label>
+                    <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" oninput="changeVolume()" style="flex: 1; min-width: 0;">
                 </div>
             </div>
@@ -582,6 +623,11 @@
         <div class="panel">
             <canvas id="waveform" width="1200" height="135"></canvas>
             <canvas id="spectrogram" width="1200" height="450"></canvas>
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; padding: 8px 0;">
+                <label for="spectrogramScrollSpeed" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ddd; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Scroll Speed:</label>
+                <input type="range" id="spectrogramScrollSpeed" min="0" max="100" step="1" value="67" style="width: 150px; flex-shrink: 0;" title="Spectrogram scroll speed">
+                <span id="spectrogramScrollSpeedValue" style="font-size: 14px; font-weight: 700; width: 45px; text-align: right; color: #ddd; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); display: inline-block;">1.0x</span>
+            </div>
         </div>
         
         <div class="panel">
@@ -634,6 +680,8 @@
         let isFetchingNewData = false; // Flag to ignore stale "finished" messages
         let loadingInterval = null; // Interval for animated loading dots
         let spectrogramInitialized = false; // Flag to track if spectrogram has been cleared for first time
+        let spectrogramScrollSpeed = 1.0; // Scroll speed multiplier (default 1.0x)
+        let spectrogramFrameCounter = 0; // Frame counter for controlling scroll speed
         let currentMetadata = null; // Store metadata for duration calculation
         let playbackStartTime = null; // Track when playback started (for position tracking)
         let playbackPositionInterval = null; // Interval for updating position
@@ -1588,7 +1636,7 @@
             }
             
             // Display shows ONLY the slider value (not multiplied)
-            document.getElementById('speedValue').textContent = baseSpeed.toFixed(2);
+            document.getElementById('speedValue').textContent = baseSpeed.toFixed(2) + 'x';
             
             // Apply base sample rate multiplier to actual playback speed
             const multiplier = getBaseSampleRateMultiplier();
@@ -1603,6 +1651,21 @@
                     speed: finalSpeed
                 });
             }
+        }
+        
+        function resetSpeedTo1() {
+            // Reset base speed to 1.0x by setting slider to 667 (which is 1.0 in the logarithmic mapping)
+            const slider = document.getElementById('playbackSpeed');
+            slider.value = 667;
+            updatePlaybackSpeed();
+            updatePlaybackDuration();
+        }
+        
+        function resetVolumeTo1() {
+            // Reset volume to 1.0 by setting slider to 100 (which is 1.0)
+            const slider = document.getElementById('volumeSlider');
+            slider.value = 100;
+            changeVolume();
         }
         
         function changePlaybackSpeed() {
@@ -1886,28 +1949,119 @@
             const dataArray = new Uint8Array(bufferLength);
             analyserNode.getByteFrequencyData(dataArray);
             
-            // Scroll the spectrogram left
-            ctx.drawImage(canvas, -1, 0);
+            // Control scroll speed:
+            // Display scale: what shows as 1.0x is actually 0.5x (half speed)
+            // So we divide by 2 to get actual scroll speed
+            const actualScrollSpeed = spectrogramScrollSpeed / 2.0;
             
-            // Clear the rightmost column to remove dark artifacts
-            ctx.clearRect(width - 1, 0, 1, height);
+            if (actualScrollSpeed <= 0) {
+                // Speed is 0, don't scroll
+                return;
+            }
             
-            // Draw new column on the right
-            for (let i = 0; i < bufferLength; i++) {
-                const value = dataArray[i];
-                const percent = value / 255;
+            if (actualScrollSpeed < 1.0) {
+                // Slow speed: skip frames
+                spectrogramFrameCounter++;
+                const skipFrames = Math.max(1, Math.round(1.0 / actualScrollSpeed));
+                const shouldScroll = (spectrogramFrameCounter % skipFrames === 0);
                 
-                // Lava/magma color scheme: dark red -> red -> orange -> yellow
-                const hue = percent * 60; // 0 (red) to 60 (yellow)
-                const saturation = 100;
-                const lightness = 10 + (percent * 60); // 10% (dark red) to 70% (bright yellow)
-                const y = height - (i / bufferLength) * height;
+                if (shouldScroll) {
+                    ctx.drawImage(canvas, -1, 0);
+                    ctx.clearRect(width - 1, 0, 1, height);
+                    
+                    // Draw new column
+                    for (let i = 0; i < bufferLength; i++) {
+                        const value = dataArray[i];
+                        const percent = value / 255;
+                        const hue = percent * 60;
+                        const saturation = 100;
+                        const lightness = 10 + (percent * 60);
+                        const y = height - (i / bufferLength) * height;
+                        ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                        ctx.fillRect(width - 1, y, 1, height / bufferLength);
+                    }
+                }
+            } else {
+                // Fast speed: scroll multiple pixels per frame
+                const scrollPixels = Math.round(actualScrollSpeed);
+                for (let p = 0; p < scrollPixels; p++) {
+                    ctx.drawImage(canvas, -1, 0);
+                }
                 
-                ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-                ctx.fillRect(width - 1, y, 1, height / bufferLength);
+                // Clear the rightmost columns
+                ctx.clearRect(width - scrollPixels, 0, scrollPixels, height);
+                
+                // Draw new columns on the right
+                for (let p = 0; p < scrollPixels; p++) {
+                    for (let i = 0; i < bufferLength; i++) {
+                        const value = dataArray[i];
+                        const percent = value / 255;
+                        const hue = percent * 60;
+                        const saturation = 100;
+                        const lightness = 10 + (percent * 60);
+                        const y = height - (i / bufferLength) * height;
+                        ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                        ctx.fillRect(width - scrollPixels + p, y, 1, height / bufferLength);
+                    }
+                }
             }
             
             requestAnimationFrame(drawSpectrogram);
+        }
+        
+        function changeSpectrogramScrollSpeed() {
+            const slider = document.getElementById('spectrogramScrollSpeed');
+            const value = parseFloat(slider.value);
+            
+            // Logarithmic mapping: 0-1x uses more slider range for finer control
+            // 0-66.67% of slider maps to 0-1.0x (logarithmic)
+            // 66.67-100% of slider maps to 1.0-3.0x (logarithmic)
+            let rawSpeed;
+            if (value === 0) {
+                rawSpeed = 0;
+            } else if (value <= 66.67) {
+                // 0 to 66.67 maps to 0.0 to 1.0x (logarithmic)
+                const normalized = value / 66.67; // 0 to 1
+                rawSpeed = Math.pow(10, normalized - 1); // 0.1 to 1.0 (log scale)
+            } else {
+                // 66.67 to 100 maps to 1.0 to 3.0x (logarithmic)
+                const normalized = (value - 66.67) / 33.33; // 0 to 1
+                rawSpeed = Math.pow(10, normalized * Math.log10(3)); // 1.0 to 3.0 (log scale)
+            }
+            
+            // Snap to discrete achievable speeds
+            const discreteSpeeds = [0, 0.125, 0.25, 0.5, 1.0, 2.0, 3.0];
+            let displaySpeed = discreteSpeeds[0];
+            for (let i = 0; i < discreteSpeeds.length - 1; i++) {
+                const midpoint = (discreteSpeeds[i] + discreteSpeeds[i + 1]) / 2;
+                if (rawSpeed >= midpoint) {
+                    displaySpeed = discreteSpeeds[i + 1];
+                } else {
+                    displaySpeed = discreteSpeeds[i];
+                    break;
+                }
+            }
+            
+            // Store the display speed (will be divided by 2 for actual speed)
+            spectrogramScrollSpeed = displaySpeed;
+            
+            // Update display - remove unnecessary zeros
+            let displayText;
+            if (displaySpeed === 0) {
+                displayText = '0x';
+            } else if (displaySpeed < 1.0) {
+                // Remove leading zero and trailing zeros for fractional speeds
+                let speedStr = displaySpeed.toString();
+                if (speedStr.startsWith('0.')) {
+                    speedStr = speedStr.substring(1); // Remove "0"
+                }
+                // Remove trailing zeros
+                speedStr = speedStr.replace(/\.?0+$/, '');
+                displayText = speedStr + 'x';
+            } else {
+                displayText = displaySpeed.toFixed(0) + 'x';
+            }
+            document.getElementById('spectrogramScrollSpeedValue').textContent = displayText;
         }
         
         // Initialize on page load
@@ -1937,6 +2091,14 @@
             
             // Initialize playback speed with multiplier
             updatePlaybackSpeed();
+            
+            // Add click handlers to reset speed and volume to 1.0 (on entire label)
+            document.getElementById('speedLabel').addEventListener('click', resetSpeedTo1);
+            document.getElementById('volumeLabel').addEventListener('click', resetVolumeTo1);
+            
+            // Initialize spectrogram scroll speed slider
+            document.getElementById('spectrogramScrollSpeed').addEventListener('input', changeSpectrogramScrollSpeed);
+            changeSpectrogramScrollSpeed(); // Set initial display value
             
             // Spacebar to toggle play/pause
             document.addEventListener('keydown', (event) => {

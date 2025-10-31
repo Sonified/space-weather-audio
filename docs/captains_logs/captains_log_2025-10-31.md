@@ -522,3 +522,41 @@ v1.35 - Commit: "v1.35 UI: Moved base sampling rate before high-pass filter, add
 
 ---
 
+## Click-to-Reset Controls & Spectrogram Scroll Speed
+
+### Changes Made:
+
+1. **Click-to-Reset Speed and Volume**
+   - Entire label ("Speed: 1.0x" and "Volume: 1.0") is now clickable
+   - Single click resets to 1.0x speed or 1.0 volume
+   - Removed leading zeros from display (.5x instead of 0.5x)
+
+2. **Spectrogram Scroll Speed Control**
+   - Added scroll speed slider below spectrogram (lower right)
+   - Discrete speed steps: 0, .125, .25, .5, 1, 2, 3x
+   - Logarithmic slider mapping for finer control in slower speeds
+   - Display shows clean format (removes unnecessary zeros)
+   - Default speed set to 1.0x (which actually scrolls at 0.5x - half the original speed)
+
+3. **GPU-Accelerated Scrolling**
+   - Uses `ctx.drawImage(canvas, -1, 0)` for scrolling (GPU-accelerated)
+   - More efficient than `getImageData`/`putImageData` (CPU-bound)
+   - Frame skipping for speeds < 1.0x
+   - Multiple pixel scrolling for speeds > 1.0x
+
+4. **UI Enhancements**
+   - Scroll speed slider has fixed width (150px) and fixed value display width (45px)
+   - Text styling with white color and shadow for visibility on dark background
+   - Enhanced slider thumb styling (brighter, larger, with shadows)
+
+### Key Learnings:
+
+- **GPU vs CPU**: `drawImage` is GPU-accelerated and much faster than `getImageData`/`putImageData`
+- **Frame Skipping**: For speeds < 1.0x, skip drawing frames rather than fractional pixel scrolling
+- **Display Formatting**: Removing leading zeros (.5x vs 0.5x) improves readability
+
+### Version
+v1.36 - Commit: "v1.36 Feature: Click-to-reset speed/volume labels, scroll speed control for spectrogram with discrete steps (.125, .25, .5, 1, 2, 3x), GPU-accelerated scrolling using drawImage"
+
+---
+

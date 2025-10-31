@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.35"
+__version__ = "1.36"
 __commit_message__ = (
-    "v1.35 UI: Moved base sampling rate before high-pass filter, added max-width constraints to sliders, fixed slider overflow beyond panel boundaries"
+    "v1.36 Feature: Click-to-reset speed/volume labels, scroll speed control for spectrogram with discrete steps (.125, .25, .5, 1, 2, 3x), GPU-accelerated scrolling using drawImage"
 )
 
 # Import key modules to make them available when importing the package
