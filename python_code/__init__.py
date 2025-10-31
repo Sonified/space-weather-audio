@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.37"
+__version__ = "1.38"
 __commit_message__ = (
-    "v1.37 UI: Increased spectrogram scroll speed max to 5x, adjusted panel padding, added button shadows for depth, fixed scroll speed control positioning, added construction emoji to title"
+    "v1.38 UI: Added 50 kHz base sampling rate option, changed multiplier display to show relative to original 100 Hz rate (441x, 480x, 500x, etc.)"
 )
 
 # Import key modules to make them available when importing the package

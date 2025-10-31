@@ -601,3 +601,27 @@ v1.37 - Commit: "v1.37 UI: Increased spectrogram scroll speed max to 5x, adjuste
 
 ---
 
+## Base Sampling Rate Improvements
+
+### Changes Made:
+
+1. **Added 50 kHz Option**
+   - Added 50 kHz (500x) as a base sampling rate option
+   - Positioned between 48 kHz and 96 kHz options
+   - Provides another intermediate speedup option
+
+2. **Multiplier Display Update**
+   - Changed multiplier display from relative to 44.1 kHz to relative to original 100 Hz rate
+   - Now shows: 44.1 kHz (441x), 48 kHz (480x), 50 kHz (500x), etc.
+   - Makes it clearer how much faster playback is compared to original seismic data rate
+
+### Key Learnings:
+
+- **User Clarity**: Showing multipliers relative to original data rate (100 Hz) is more intuitive than relative to 44.1 kHz
+- **More Options**: Additional intermediate speeds (50 kHz) give users more granular control
+
+### Version
+v1.38 - Commit: "v1.38 UI: Added 50 kHz base sampling rate option, changed multiplier display to show relative to original 100 Hz rate (441x, 480x, 500x, etc.)"
+
+---
+
