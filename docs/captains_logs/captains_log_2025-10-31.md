@@ -454,3 +454,71 @@ v1.32 - Commit: "v1.32 Feature: High-pass filter dropdown (None/0.01Hz/0.045Hz),
 
 ---
 
+## Sample-Based Position Tracking & Dynamic High-Pass Filter Display
+
+### Changes Made:
+
+1. **Sample-Based Position Tracking**
+   - Replaced time-based position calculation with sample-based calculation
+   - Position now calculated as: `(samplesConsumed / totalSamples) × playbackDuration`
+   - Worklet sends `samplesConsumed` and `totalSamples` in metrics messages
+   - Fixes incorrect position display when playback speed changes
+   - Position now accurately reflects actual sample being played, regardless of speed
+
+2. **Dynamic High-Pass Filter Display**
+   - High-pass filter label now dynamically shows selected base sampling rate (e.g., "@ 44.1k", "@ 1M")
+   - Dropdown options dynamically calculate and display audio frequencies based on selected base rate
+   - Formula: `audio_frequency = original_frequency × (base_rate / original_rate)`
+   - Updates automatically when base sampling rate changes or when metadata is received
+   - Shows both original frequency (0.01 Hz) and calculated audio frequency (e.g., "100 Hz")
+
+3. **Fixed Audio Frequency Calculation**
+   - Corrected calculation to account for total speedup from original sample rate to base sampling rate
+   - Now properly accounts for both speedup to 44.1k AND multiplier to selected base rate
+   - Matches the table showing frequency conversions at different playback rates
+
+4. **UI Cleanup**
+   - Removed volcano emoji 🌋 from page title and h1 heading
+   - Title now reads "IRIS Data Audification (Beta)"
+
+### Key Learnings:
+
+- **Position Tracking**: Sample-based tracking is more accurate than time-based when speed can change dynamically
+- **Frequency Calculation**: Must account for total speedup (base_rate / original_rate), not just multiplier
+- **Dynamic UI**: Updating UI elements based on other control selections improves user understanding
+
+### Version
+v1.34 - Commit: "v1.34 Feature: Dynamic high-pass filter display based on base sampling rate, fixed audio frequency calculation (base_rate/original_rate), removed volcano emoji from title, sample-based position tracking"
+
+---
+
+## UI Layout Improvements & Slider Overflow Fix
+
+### Changes Made:
+
+1. **Control Ordering**
+   - Moved "Base Sampling Rate" dropdown to the left of "High Pass" filter dropdown
+   - More logical flow: base rate first, then filter that depends on it
+
+2. **Slider Size Constraints**
+   - Added `max-width: min(400px, 100%)` to speed and volume slider containers
+   - Prevents sliders from extending beyond panel boundaries
+   - Maintains consistent size when wrapping to new rows
+
+3. **Overflow Prevention**
+   - Added `width: 100%` and `box-sizing: border-box` to flex container
+   - Added `min-width: 0` to range inputs to allow proper shrinking
+   - Set labels to `flex-shrink: 0` to prevent label compression
+   - Sliders now properly respect panel boundaries on small screens
+
+### Key Learnings:
+
+- **Flexbox Overflow**: Flex items with `flex: 1` can overflow containers; need `max-width: min(value, 100%)` to constrain
+- **Box-sizing**: Essential for accurate width calculations when padding is involved
+- **Min-width: 0**: Required on flex children to allow shrinking below content size
+
+### Version
+v1.35 - Commit: "v1.35 UI: Moved base sampling rate before high-pass filter, added max-width constraints to sliders, fixed slider overflow beyond panel boundaries"
+
+---
+

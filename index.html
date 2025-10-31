@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🌋 IRIS Data Audification (Beta)</title>
+    <title>IRIS Data Audification (Beta)</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌋</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
     <style>
@@ -488,7 +488,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🌋 IRIS Data Audification (Beta)</h1>
+        <h1>IRIS Data Audification (Beta)</h1>
         
         <div class="panel">
             <div class="controls">
@@ -531,15 +531,6 @@
                 </div>
                 
                 <div class="control-group">
-                    <label for="highpassFreq">High Pass (@ 44.1k):</label>
-                    <select id="highpassFreq">
-                        <option value="none">None</option>
-                        <option value="0.01" selected>0.01 Hz (4.4 Hz)</option>
-                        <option value="0.045">0.045 Hz (19.8 Hz)</option>
-                    </select>
-                </div>
-                
-                <div class="control-group">
                     <label for="baseSampleRate">Base Sampling Rate:</label>
                     <select id="baseSampleRate">
                         <option value="44100" selected>44.1 kHz (1x)</option>
@@ -549,6 +540,15 @@
                         <option value="200000">200 kHz (4.54x)</option>
                         <option value="441000">441 kHz (10x)</option>
                         <option value="1000000">1 MHz (22.7x)</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="highpassFreq" id="highpassLabel">High Pass (@ 44.1k):</label>
+                    <select id="highpassFreq">
+                        <option value="none">None</option>
+                        <option value="0.01" selected>0.01 Hz</option>
+                        <option value="0.045">0.045 Hz</option>
                     </select>
                 </div>
                 
@@ -564,17 +564,17 @@
         </div>
         
         <div class="panel">
-            <div style="display: flex; gap: 15px; align-items: center;">
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
                 <button type="button" id="startBtn" onclick="startStreaming(event)" style="min-width: 150px;">📡 Fetch Data</button>
                 <button type="button" onclick="togglePlayPause()" id="playPauseBtn" disabled style="min-width: 150px;">⏸️ Pause</button>
                 <button type="button" onclick="toggleLoop()" id="loopBtn" disabled style="min-width: 150px;">🔁 Loop</button>
-                <div style="display: flex; align-items: center; flex: 1; min-width: 150px; gap: 10px; padding: 0 20px;">
-                    <label for="playbackSpeed" style="font-weight: 600; white-space: nowrap; font-size: 18px;">Speed: <span id="speedValue">1.0</span>x</label>
-                    <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" oninput="changePlaybackSpeed()" style="flex: 1;">
+                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(400px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
+                    <label for="playbackSpeed" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0;">Speed: <span id="speedValue">1.0</span>x</label>
+                    <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" oninput="changePlaybackSpeed()" style="flex: 1; min-width: 0;">
                 </div>
-                <div style="display: flex; align-items: center; flex: 1; min-width: 150px; gap: 10px; padding: 0 20px;">
-                    <label for="volumeSlider" style="font-weight: 600; white-space: nowrap; font-size: 18px;">Volume: <span id="volumeValue">1.0</span></label>
-                    <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" oninput="changeVolume()" style="flex: 1;">
+                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(400px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
+                    <label for="volumeSlider" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0;">Volume: <span id="volumeValue">1.0</span></label>
+                    <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" oninput="changeVolume()" style="flex: 1; min-width: 0;">
                 </div>
             </div>
         </div>
@@ -599,8 +599,12 @@
                     <div class="metric-value" id="sampleCount">--</div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Buffer Size</div>
-                    <div class="metric-value" id="bufferSize">0</div>
+                    <div class="metric-label">Current Position</div>
+                    <div class="metric-value" id="currentPosition">0m 0s</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Playback Duration</div>
+                    <div class="metric-value" id="playbackDuration">--</div>
                 </div>
             </div>
         </div>
@@ -630,6 +634,11 @@
         let isFetchingNewData = false; // Flag to ignore stale "finished" messages
         let loadingInterval = null; // Interval for animated loading dots
         let spectrogramInitialized = false; // Flag to track if spectrogram has been cleared for first time
+        let currentMetadata = null; // Store metadata for duration calculation
+        let playbackStartTime = null; // Track when playback started (for position tracking)
+        let playbackPositionInterval = null; // Interval for updating position
+        let pausedPosition = 0; // Track position when paused (in seconds)
+        let playbackDurationSeconds = null; // Store calculated playback duration in seconds
         
         // AudioWorklet processor code
         const workletCode = `
@@ -819,11 +828,14 @@
                     // No fade logic here - let gain node handle it!
                     // AudioWorklet just outputs clean audio
                     
-                    // Send metrics periodically
+                    // Send metrics periodically (sample position for current position display)
                     if (this.hasStarted && Math.random() < 0.01) {
+                        const samplesConsumed = this.totalSamples - this.samplesInBuffer;
                         this.port.postMessage({
                             type: 'metrics',
-                            bufferSize: this.samplesInBuffer
+                            bufferSize: this.samplesInBuffer,
+                            samplesConsumed: samplesConsumed,
+                            totalSamples: this.totalSamples
                         });
                     }
                     
@@ -853,14 +865,20 @@
             gainNode.connect(audioContext.destination);
             
             workletNode.port.onmessage = (event) => {
-                const { type, bufferSize } = event.data;
+                const { type, bufferSize, samplesConsumed, totalSamples } = event.data;
                 
                 if (type === 'metrics') {
-                    document.getElementById('bufferSize').textContent = bufferSize.toLocaleString();
+                    // Update current position based on actual sample position
+                    if (samplesConsumed !== undefined && totalSamples && totalSamples > 0) {
+                        updateCurrentPositionFromSamples(samplesConsumed, totalSamples);
+                    }
                 } else if (type === 'started') {
                     const ttfa = performance.now() - streamStartTime;
                     document.getElementById('ttfa').textContent = `${ttfa.toFixed(0)}ms`;
                     console.log(`⏱️ TIME TO FIRST AUDIO: ${ttfa.toFixed(0)}ms`);
+                    
+                    // Start position tracking
+                    startPositionTracking();
                     
                     // Fade in using exponential ramp (sounds more natural)
                     if (gainNode) {
@@ -939,6 +957,7 @@
                         } else {
                             // Not looping - playback finished
                             isPlaying = false;
+                            stopPositionTracking();
                             const playBtn = document.getElementById('playPauseBtn');
                             playBtn.disabled = false;
                             playBtn.textContent = '▶️ Play';
@@ -1075,6 +1094,11 @@
                     
                     // Clear old data
                     allReceivedData = [];
+                    currentMetadata = null; // Clear metadata for duration calculation
+                    document.getElementById('playbackDuration').textContent = '--'; // Reset duration display
+                    window.playbackDurationSeconds = null; // Clear stored duration
+                    stopPositionTracking(); // Stop position tracking
+                    document.getElementById('currentPosition').textContent = '0m 0s'; // Reset position display
                     
                     // Reset playback state
                     isPlaying = false;
@@ -1217,6 +1241,12 @@
                 
                 console.log('📋 Metadata:', metadata);
                 
+                // Store metadata for duration calculation
+                currentMetadata = metadata;
+                
+                // Update high-pass filter display with correct original sample rate
+                updateHighPassFilterDisplay();
+                
                 // Log backend filtering info
                 if (metadata.highpass_hz && metadata.highpass_hz > 0) {
                     console.log(`🎛️ Backend applied ${metadata.highpass_hz} Hz high-pass filter`);
@@ -1284,6 +1314,9 @@
                 // Set playback speed to current setting (with multiplier applied)
                 updatePlaybackSpeed();
                 console.log(`🎚️ Set playback speed for new data: ${currentPlaybackRate.toFixed(2)}x (base slider speed × multiplier)`);
+                
+                // Update playback duration display
+                updatePlaybackDuration();
                 
                 // Clear the fetching flag - new data is loaded and ready
                 isFetchingNewData = false;
@@ -1386,6 +1419,9 @@
             if (isPaused) {
                 console.log('⏸️ PAUSING - exponential fade to near-zero (keep audio running)');
                 
+                // Pause position tracking
+                pausePositionTracking();
+                
                 // Fade to near-zero with exponential ramp (don't suspend AudioContext!)
                 if (gainNode) {
                     gainNode.gain.cancelScheduledValues(audioContext.currentTime);
@@ -1409,6 +1445,9 @@
                 document.getElementById('status').textContent = 'Paused';
             } else {
                 console.log('▶️ RESUMING - exponential fade back to target volume');
+                
+                // Resume position tracking
+                resumePositionTracking();
                 
                 // Remove pulse animations if present
                 btn.classList.remove('pulse-play', 'pulse-resume');
@@ -1474,6 +1513,66 @@
             return selectedRate / 44100;
         }
         
+        function formatSampleRateShorthand(rate) {
+            // Format sample rate for display: 44100 -> "44.1k", 1000000 -> "1M", etc.
+            if (rate >= 1000000) {
+                return (rate / 1000000).toFixed(0) + 'M';
+            } else if (rate >= 1000) {
+                const khz = rate / 1000;
+                // Show one decimal place if not whole number (e.g., 44.1k, 48k)
+                return khz % 1 === 0 ? khz.toFixed(0) + 'k' : khz.toFixed(1) + 'k';
+            }
+            return rate.toString();
+        }
+        
+        function updateHighPassFilterDisplay() {
+            // Update high-pass filter label and dropdown options based on selected base sampling rate
+            const baseSampleRateSelect = document.getElementById('baseSampleRate');
+            const selectedRate = parseFloat(baseSampleRateSelect.value);
+            const shorthand = formatSampleRateShorthand(selectedRate);
+            
+            // Update label
+            const label = document.getElementById('highpassLabel');
+            label.textContent = `High Pass (@ ${shorthand}):`;
+            
+            // Update dropdown options with calculated frequencies
+            const highpassSelect = document.getElementById('highpassFreq');
+            const selectedValue = highpassSelect.value; // Preserve current selection
+            
+            // Calculate audio frequencies based on speedup from original sample rate to base sampling rate
+            // Formula: audio_freq = original_freq × (base_rate / original_rate)
+            // This accounts for both the speedup to 44.1k AND the multiplier to the selected base rate
+            let originalSampleRate = 100; // Default to 100 Hz for seismic data if metadata not available
+            if (currentMetadata && currentMetadata.original_sample_rate) {
+                originalSampleRate = currentMetadata.original_sample_rate;
+            }
+            
+            // Total speedup = base_rate / original_rate
+            const totalSpeedup = selectedRate / originalSampleRate;
+            const freq001Hz = 0.01 * totalSpeedup;
+            const freq0045Hz = 0.045 * totalSpeedup;
+            
+            // Format frequencies (show decimals if needed, but round to reasonable precision)
+            const formatFreq = (freq) => {
+                if (freq < 1) {
+                    return freq.toFixed(2) + ' Hz';
+                } else if (freq < 10) {
+                    return freq.toFixed(1) + ' Hz';
+                } else {
+                    return freq.toFixed(0) + ' Hz';
+                }
+            };
+            
+            // Update option texts
+            const options = highpassSelect.options;
+            options[0].text = 'None'; // First option stays as None
+            options[1].text = `0.01 Hz (${formatFreq(freq001Hz)})`;
+            options[2].text = `0.045 Hz (${formatFreq(freq0045Hz)})`;
+            
+            // Restore selection
+            highpassSelect.value = selectedValue;
+        }
+        
         function updatePlaybackSpeed() {
             const slider = document.getElementById('playbackSpeed');
             const value = parseFloat(slider.value);
@@ -1508,12 +1607,137 @@
         
         function changePlaybackSpeed() {
             updatePlaybackSpeed();
+            updatePlaybackDuration();
         }
         
         function changeBaseSampleRate() {
             // When base sample rate changes, update playback speed immediately
             // This does NOT trigger a new fetch - just updates the playing audio speed
+            updateHighPassFilterDisplay(); // Update high-pass filter label and options
             updatePlaybackSpeed();
+            updatePlaybackDuration();
+        }
+        
+        function updatePlaybackDuration() {
+            // Calculate playback duration based on samples, original sample rate, base multiplier, and speed
+            if (!currentMetadata || !allReceivedData || allReceivedData.length === 0) {
+                document.getElementById('playbackDuration').textContent = '--';
+                return;
+            }
+            
+            const totalSamples = currentMetadata.npts || allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
+            const originalSampleRate = currentMetadata.original_sample_rate;
+            
+            if (!totalSamples || !originalSampleRate) {
+                document.getElementById('playbackDuration').textContent = '--';
+                return;
+            }
+            
+            // Get current speeds
+            const slider = document.getElementById('playbackSpeed');
+            const sliderValue = parseFloat(slider.value);
+            
+            // Calculate base speed from slider
+            let baseSpeed;
+            if (sliderValue <= 667) {
+                const normalized = sliderValue / 667;
+                baseSpeed = 0.1 * Math.pow(10, normalized);
+            } else {
+                const normalized = (sliderValue - 667) / 333;
+                baseSpeed = Math.pow(10, normalized);
+            }
+            
+            // Get multiplier from base sampling rate
+            const multiplier = getBaseSampleRateMultiplier();
+            const finalSpeed = baseSpeed * multiplier;
+            
+            // Calculate duration
+            // Original duration = totalSamples / originalSampleRate (real-world time in seconds)
+            // Uses actual originalSampleRate from metadata (e.g., 50 Hz, 100 Hz)
+            // AudioContext plays at 44.1 kHz, so there's a base speedup factor
+            // Base speedup = 44100 / originalSampleRate
+            // Final total speed = baseSpeedup × multiplier × baseSpeed
+            // Playback duration = originalDuration / totalSpeed
+            
+            const AUDIO_CONTEXT_SAMPLE_RATE = 44100;
+            const originalDuration = totalSamples / originalSampleRate;
+            const baseSpeedup = AUDIO_CONTEXT_SAMPLE_RATE / originalSampleRate;
+            const totalSpeed = baseSpeedup * multiplier * baseSpeed;
+            const playbackDurationSeconds = originalDuration / totalSpeed;
+            
+            // Store duration for position calculation
+            window.playbackDurationSeconds = playbackDurationSeconds;
+            
+            // Format duration as "Xm Ys" style
+            const minutes = Math.floor(playbackDurationSeconds / 60);
+            const seconds = Math.floor(playbackDurationSeconds % 60);
+            
+            let durationText;
+            if (minutes > 0) {
+                durationText = `${minutes}m ${seconds}s`;
+            } else {
+                durationText = `0m ${seconds}s`;
+            }
+            
+            document.getElementById('playbackDuration').textContent = durationText;
+        }
+        
+        function formatDuration(seconds) {
+            // Format seconds as "Xm Ys" style
+            const minutes = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${minutes}m ${secs}s`;
+        }
+        
+        function updateCurrentPositionFromSamples(samplesConsumed, totalSamples) {
+            // Calculate position from actual sample position: (samplesConsumed / totalSamples) × playbackDuration
+            if (!currentMetadata || !totalSamples || totalSamples <= 0 || samplesConsumed < 0) {
+                return;
+            }
+            
+            // Get playback duration (stored when calculated)
+            const totalDurationSeconds = window.playbackDurationSeconds;
+            
+            if (!totalDurationSeconds || !isFinite(totalDurationSeconds) || totalDurationSeconds <= 0) {
+                return;
+            }
+            
+            // Calculate position: (samplesConsumed / totalSamples) × totalDuration
+            const positionRatio = samplesConsumed / totalSamples;
+            const playbackPositionSeconds = positionRatio * totalDurationSeconds;
+            
+            if (!isFinite(playbackPositionSeconds) || playbackPositionSeconds < 0) {
+                return;
+            }
+            
+            document.getElementById('currentPosition').textContent = formatDuration(playbackPositionSeconds);
+        }
+        
+        function updateCurrentPosition() {
+            // This function is no longer used - position comes from worklet samples
+            // Keeping for backwards compatibility but it won't be called
+        }
+        
+        function startPositionTracking() {
+            // Position is now tracked from worklet sample position, not time-based
+            // Just reset the display
+            document.getElementById('currentPosition').textContent = '0m 0s';
+            console.log('▶️ Position tracking started (sample-based)');
+        }
+        
+        function stopPositionTracking() {
+            if (playbackPositionInterval) {
+                clearInterval(playbackPositionInterval);
+                playbackPositionInterval = null;
+            }
+        }
+        
+        function pausePositionTracking() {
+            // Position is tracked from samples, no action needed on pause
+        }
+        
+        function resumePositionTracking() {
+            // Position is tracked from samples, no action needed on resume
         }
         
         function changeVolume() {
@@ -1707,6 +1931,9 @@
             
             // Base sample rate changes playback speed immediately (does NOT trigger new fetch)
             document.getElementById('baseSampleRate').addEventListener('change', changeBaseSampleRate);
+            
+            // Initialize high-pass filter display based on default base sampling rate
+            updateHighPassFilterDisplay();
             
             // Initialize playback speed with multiplier
             updatePlaybackSpeed();

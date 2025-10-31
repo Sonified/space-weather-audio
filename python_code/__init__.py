@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.32"
+__version__ = "1.35"
 __commit_message__ = (
-    "v1.32 Feature: High-pass filter dropdown (None/0.01Hz/0.045Hz), base sampling rate multiplier (44.1k-1MHz), backend filtering, optimized loop reset (read pointer only), comprehensive fade/loop logging"
+    "v1.35 UI: Moved base sampling rate before high-pass filter, added max-width constraints to sliders, fixed slider overflow beyond panel boundaries"
 )
 
 # Import key modules to make them available when importing the package
