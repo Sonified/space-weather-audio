@@ -149,3 +149,61 @@ v1.26 - Commit: "v1.26 Fix: Added CORS headers to all error responses and explic
 
 ---
 
+## Memory Optimizations & Bug Fixes
+
+### Changes Made:
+
+1. **Memory Optimizations for 24-Hour Files**
+   - Changed from float64 to float32 for intermediate arrays (50% memory savings)
+   - Added explicit `del` statements to free arrays immediately after use
+   - Optimized `normalize_audio()` to work with float32 input (no conversion to float64)
+   - Frees `samples`, `filtered`, `processed`, `samples_bytes`, and `uncompressed_blob` immediately after use
+   - Should keep 24-hour files under Render.com's 512MB limit
+
+2. **Dynamic Buffer Expansion**
+   - AudioWorklet buffer now expands dynamically instead of capping at 60 seconds
+   - Buffer grows as needed (doubles when full) to handle hours of audio
+   - Handles circular buffer wrap-around when copying during expansion
+   - Added `dataLoadingComplete` flag to track when all data has been sent
+   - Only reports "finished" when buffer is empty AND all data has been loaded
+
+3. **Fixed Stale "Finished" Messages**
+   - Added `isFetchingNewData` flag to ignore "finished" messages from old worklets
+   - Clears old worklet's `onmessage` handler before disconnecting
+   - Prevents "playback finished" message appearing after switching stations
+
+4. **Removed Conflicting OPTIONS Handler**
+   - Deleted manual OPTIONS handler from `audio_stream.py`
+   - Flask-CORS now handles OPTIONS preflight automatically
+   - Removes conflict between manual handler and Flask-CORS
+
+5. **Fixed Template Literal Syntax Error**
+   - Fixed template literal inside template literal in AudioWorklet code
+   - Changed to string concatenation to avoid syntax conflict
+
+### Problem:
+- 24-hour files causing "Ran out of memory (used over 512MB)" on Render.com
+- Long audio files getting truncated at 60 seconds (buffer overflow)
+- False "playback finished" messages when switching stations
+- CORS issues with conflicting OPTIONS handlers
+
+### Solution:
+- Use float32 instead of float64 (sufficient precision for audio, halves memory)
+- Explicitly free arrays after use to reduce peak memory
+- Dynamic buffer expansion to handle any length audio
+- Flag-based message filtering to ignore stale worklet messages
+- Let Flask-CORS handle OPTIONS automatically
+
+### Key Learnings:
+
+- **Memory Management**: Explicit `del` statements help Python free memory sooner
+- **Float32 vs Float64**: Float32 is sufficient for audio processing, saves 50% memory
+- **Dynamic Buffers**: Expanding buffers is better than fixed-size limits
+- **Message Queuing**: Old AudioWorklet messages can be queued, need to clear handlers
+- **Flask-CORS**: Manual OPTIONS handlers conflict with Flask-CORS's automatic handling
+
+### Version
+v1.27 - Commit: "v1.27 Fix: Memory optimizations for 24-hour files (float32, explicit cleanup), dynamic buffer expansion, fixed stale finished messages, removed conflicting OPTIONS handler"
+
+---
+

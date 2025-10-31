@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify, send_file, Response, stream_with_context
-from flask_cors import CORS
 from obspy.clients.fdsn import Client
 from obspy import UTCDateTime
 import numpy as np
@@ -19,15 +18,19 @@ import gzip
 import boto3
 
 app = Flask(__name__)
-CORS(app, 
-     origins='*',
-     expose_headers=['X-Metadata', 'X-Cache-Hit', 'X-Data-Ready-Ms', 'X-Original-Size', 'X-Compressed-Size', 'X-Compression', 'X-Sample-Rate', 'X-Sample-Count', 'X-Format', 'X-Highpass', 'X-Normalized'],
-     allow_headers=['Content-Type'],
-     methods=['GET', 'POST', 'OPTIONS'])
 
 # Register audio streaming blueprint (separate from chunk pipeline)
 from audio_stream import audio_stream_bp
 app.register_blueprint(audio_stream_bp)
+
+# ✅ RELIABLE CORS SETUP - After-request hook catches EVERYTHING
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Access-Control-Expose-Headers'] = 'X-Metadata,X-Cache-Hit,X-Data-Ready-Ms,X-Original-Size,X-Compressed-Size,X-Compression,X-Sample-Rate,X-Sample-Count,X-Format,X-Highpass,X-Normalized'
+    return response
 
 # Configuration
 MAX_RADIUS_KM = 13.0 * 1.60934  # 13 miles converted to km

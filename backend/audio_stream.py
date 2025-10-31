@@ -33,9 +33,10 @@ def highpass_filter(data, sample_rate, cutoff_hz=0.5, order=4):
 def normalize_audio(data, output_format='float32'):
     """
     Normalize data to appropriate range for audio playback.
+    Optimized to use float32 instead of float64 to save memory.
     
     Args:
-        data: Input data array
+        data: Input data array (already float32 from caller)
         output_format: 'int16', 'int32', or 'float32'
     
     Returns:
@@ -44,24 +45,24 @@ def normalize_audio(data, output_format='float32'):
         - int32: [-2147483648, 2147483647]  
         - float32: [-1.0, 1.0] (for Web Audio API)
     """
-    data = data.astype(np.float64)
+    # Data is already float32 from caller, no need to convert
     max_val = np.abs(data).max()
     
     if max_val == 0:
-        return data.astype(np.float32)
+        return data  # Already float32
     
     if output_format == 'int16':
-        # Normalize to int16 range
+        # Normalize to int16 range (use float32 for computation, then convert)
         max_range = 32767
         normalized = (data / max_val) * max_range
         return normalized.astype(np.int16)
     elif output_format == 'int32':
-        # Normalize to int32 range
+        # Normalize to int32 range (use float32 for computation, then convert)
         max_range = 2147483647
         normalized = (data / max_val) * max_range
         return normalized.astype(np.int32)
     else:  # float32
-        # Normalize to [-1.0, 1.0] for Web Audio API
+        # Normalize to [-1.0, 1.0] for Web Audio API (in-place if possible)
         normalized = data / max_val
         return normalized.astype(np.float32)
 
@@ -184,14 +185,20 @@ def stream_audio():
         logging.info(f"[Audio Stream] 📊 Original dtype: {samples.dtype}")
         
         # STEP 4: Optional High-pass filter
+        # Use float32 instead of float64 to save memory (sufficient precision for audio)
         if highpass_hz and highpass_hz > 0:
             logging.info(f"[Audio Stream] 🎛️  Applying {highpass_hz} Hz high-pass filter...")
-            samples_float = samples.astype(np.float64)
+            # Convert to float32 in-place to save memory (instead of float64)
+            samples_float = samples.astype(np.float32, copy=False)
+            del samples  # Free original int32 array immediately
             filtered = highpass_filter(samples_float, sample_rate, cutoff_hz=highpass_hz)
+            del samples_float  # Free intermediate array
             logging.info(f"[Audio Stream] 📊 After filter: [{filtered.min():.0f}, {filtered.max():.0f}]")
         else:
             logging.info(f"[Audio Stream] ⏭️  Skipping high-pass filter")
-            filtered = samples.astype(np.float64)
+            # Convert directly to float32 (not float64) to save memory
+            filtered = samples.astype(np.float32, copy=False)
+            del samples  # Free original array
         
         # STEP 5: Optional Normalize
         if normalize:
@@ -199,6 +206,7 @@ def stream_audio():
             # Determine output format based on send_raw flag
             output_format = 'int32' if send_raw else 'float32'
             processed = normalize_audio(filtered, output_format=output_format)
+            del filtered  # Free filtered array immediately after normalization
             if send_raw:
                 logging.info(f"[Audio Stream] 📊 After normalize (int32): [{processed.min()}, {processed.max()}]")
             else:
@@ -207,7 +215,8 @@ def stream_audio():
             logging.info(f"[Audio Stream] ⏭️  Skipping normalization")
             processed = filtered
         
-        # STEP 6: Prepare metadata
+        # STEP 6: Prepare metadata (store len before deleting processed)
+        npts = len(processed)
         metadata = {
             'network': network,
             'station': station,
@@ -216,8 +225,8 @@ def stream_audio():
             'starttime': str(trace.stats.starttime),
             'endtime': str(trace.stats.endtime),
             'original_sample_rate': sample_rate,
-            'npts': len(processed),
-            'duration_seconds': len(processed) / sample_rate,
+            'npts': npts,
+            'duration_seconds': npts / sample_rate,
             'speedup': speedup,
             'highpass_hz': highpass_hz if highpass_hz else 0,
             'normalized': normalize,
@@ -259,6 +268,10 @@ def stream_audio():
             samples_bytes
         )
         
+        # Free processed array and samples_bytes immediately after creating blob
+        del processed
+        del samples_bytes
+        
         logging.info(f"[Audio Stream] 📦 Uncompressed size: {len(uncompressed_blob):,} bytes")
         
         # STEP 8: Optionally compress with zstd
@@ -270,7 +283,7 @@ def stream_audio():
                 'X-Original-Size': str(len(uncompressed_blob)),
                 'X-Compression': 'none',
                 'X-Sample-Rate': str(sample_rate),
-                'X-Sample-Count': str(len(processed)),
+                'X-Sample-Count': str(npts),
                 'X-Format': metadata['format'],
                 'X-Highpass': str(highpass_hz if highpass_hz else 0),
                 'X-Normalized': str(normalize),
@@ -281,18 +294,22 @@ def stream_audio():
             logging.info(f"[Audio Stream] 🗜️  Compressing with zstd...")
             import zstandard as zstd
             compressor = zstd.ZstdCompressor(level=3)
+            original_size = len(uncompressed_blob)  # Store size before compression
             compressed_blob = compressor.compress(uncompressed_blob)
             
-            compression_ratio = len(uncompressed_blob) / len(compressed_blob)
+            # Free uncompressed blob immediately after compression to save memory
+            del uncompressed_blob
+            
+            compression_ratio = original_size / len(compressed_blob)
             logging.info(f"[Audio Stream] ✅ Compressed: {len(compressed_blob):,} bytes ({compression_ratio:.1f}x)")
             final_blob = compressed_blob
             headers = {
                 'Content-Type': 'application/octet-stream',
-                'X-Original-Size': str(len(uncompressed_blob)),
+                'X-Original-Size': str(original_size),
                 'X-Compressed-Size': str(len(compressed_blob)),
                 'X-Compression': 'zstd',
                 'X-Sample-Rate': str(sample_rate),
-                'X-Sample-Count': str(len(processed)),
+                'X-Sample-Count': str(npts),
                 'X-Format': metadata['format'],
                 'X-Highpass': str(highpass_hz if highpass_hz else 0),
                 'X-Normalized': str(normalize),
@@ -318,15 +335,7 @@ def stream_audio():
         return response
 
 @audio_stream_bp.route('/api/stream-audio', methods=['OPTIONS'])
-def stream_audio_options():
-    """Handle CORS preflight"""
-    return Response(
-        '',
-        status=200,
-        headers={
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-        }
-    )
+def handle_options():
+    """Handle OPTIONS preflight - headers added by after_request hook"""
+    return '', 204
 

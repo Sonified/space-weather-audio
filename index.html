@@ -341,6 +341,7 @@
         let streamStartTime = 0;
         let availableStations = { seismic: [], infrasound: [] };
         let allReceivedData = [];
+        let isFetchingNewData = false; // Flag to ignore stale "finished" messages
         
         // AudioWorklet processor code
         const workletCode = `
@@ -359,6 +360,7 @@
                     this.speed = 1.0;
                     this.finishSent = false; // Prevent duplicate 'finished' messages
                     this.loopWarningShown = false; // Track if we've warned about upcoming loop
+                    this.dataLoadingComplete = false; // Track when all data has been sent
                     
                     this.port.onmessage = (event) => {
                         const { type, data, speed } = event.data;
@@ -371,6 +373,8 @@
                             this.isPlaying = true;
                         } else if (type === 'set-speed') {
                             this.speed = speed;
+                        } else if (type === 'data-complete') {
+                            this.dataLoadingComplete = true;
                         } else if (type === 'reset') {
                             this.buffer.fill(0);
                             this.readIndex = 0;
@@ -380,22 +384,42 @@
                             this.hasStarted = true;  // ✅ Don't wait for buffer to fill
                             this.finishSent = false;  // ✅ Allow another 'finished' message
                             this.loopWarningShown = false; // ✅ Reset loop warning
+                            this.dataLoadingComplete = false; // ✅ Reset data loading flag
                             this.speed = 1.0;
                         }
                     };
                 }
                 
                 addSamples(samples) {
-                    for (let i = 0; i < samples.length; i++) {
-                        if (this.samplesInBuffer < this.maxBufferSize) {
-                            this.buffer[this.writeIndex] = samples[i];
-                            this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
-                            this.samplesInBuffer++;
+                    // Expand buffer if needed
+                    const neededSize = this.samplesInBuffer + samples.length;
+                    if (neededSize > this.maxBufferSize) {
+                        const newSize = Math.max(neededSize, this.maxBufferSize * 2);
+                        const newBuffer = new Float32Array(newSize);
+                        
+                        // Copy existing data (handle circular buffer wrap-around)
+                        for (let i = 0; i < this.samplesInBuffer; i++) {
+                            const srcIdx = (this.readIndex + i) % this.maxBufferSize;
+                            newBuffer[i] = this.buffer[srcIdx];
                         }
+                        
+                        this.buffer = newBuffer;
+                        this.maxBufferSize = newSize;
+                        this.readIndex = 0;
+                        this.writeIndex = this.samplesInBuffer;
+                        
+                        console.log('📏 Expanded buffer to ' + (newSize / 44100 / 60).toFixed(1) + ' minutes');
+                    }
+                    
+                    // Add new samples
+                    for (let i = 0; i < samples.length; i++) {
+                        this.buffer[this.writeIndex] = samples[i];
+                        this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
+                        this.samplesInBuffer++;
                     }
                     
                     if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
-                        this.readIndex = (this.writeIndex - this.samplesInBuffer + this.maxBufferSize) % this.maxBufferSize;
+                        this.readIndex = 0; // Reset read index after potential expansion
                         this.isPlaying = true;
                         this.hasStarted = true;
                         this.port.postMessage({ type: 'started' });
@@ -434,13 +458,15 @@
                         }
                         
                         if (this.samplesInBuffer === 0) {
-                            // Send 'finished' message once, but ONLY if we've actually started playing
-                            if (!this.finishSent && this.hasStarted) {
+                            // Send 'finished' message once, but ONLY if:
+                            // 1. We've actually started playing
+                            // 2. All data has been loaded (not just a temporary underrun)
+                            if (!this.finishSent && this.hasStarted && this.dataLoadingComplete) {
                                 this.isPlaying = false;
                                 this.port.postMessage({ type: 'finished' });
                                 this.finishSent = true;
                             }
-                            // ✅ Output silence but keep worklet alive for potential loop
+                            // ✅ Output silence but keep worklet alive for potential loop or more data
                             channel.fill(0);
                             return true;  // Keep worklet alive!
                         }
@@ -534,6 +560,12 @@
                         // This just gives us advanced warning for future optimization
                     }
                 } else if (type === 'finished') {
+                    // Ignore "finished" messages if we're fetching new data (stale message from old worklet)
+                    if (isFetchingNewData) {
+                        console.log('⚠️ Ignoring stale "finished" message - new data is being fetched');
+                        return;
+                    }
+                    
                     // Fade out before handling finish
                     if (gainNode) {
                         gainNode.gain.cancelScheduledValues(audioContext.currentTime);
@@ -544,6 +576,12 @@
                     
                     // Wait for fade, then handle loop/finish
                     setTimeout(() => {
+                        // Double-check we're still not fetching new data
+                        if (isFetchingNewData) {
+                            console.log('⚠️ Ignoring finish handler - new data fetch in progress');
+                            return;
+                        }
+                        
                         // Handle looping
                         if (isLooping && allReceivedData && allReceivedData.length > 0) {
                             console.log('🔁 LOOPING: Restarting playback...');
@@ -664,8 +702,14 @@
                 const enableNormalize = document.getElementById('enableNormalize').checked;
                 
                 // ===== STOP OLD PLAYBACK AND CLEAN UP =====
+                // Set flag to ignore any stale "finished" messages
+                isFetchingNewData = true;
+                
                 if (workletNode) {
                     console.log('🛑 Stopping old playback and cleaning up for new data...');
+                    
+                    // Clear the old worklet's message handler FIRST to prevent queued messages
+                    workletNode.port.onmessage = null;
                     
                     // Fade out current playback if playing
                     if (gainNode && audioContext && isPlaying) {
@@ -869,11 +913,20 @@
                 
                 console.log(`✅ Sent ${allReceivedData.length} chunks to AudioWorklet`);
                 
+                // Signal that all data has been sent
+                workletNode.port.postMessage({ type: 'data-complete' });
+                
+                // Clear the fetching flag - new data is loaded and ready
+                isFetchingNewData = false;
+                
                 document.getElementById('status').className = 'status success';
                 document.getElementById('status').textContent = '✅ Playing!';
                 console.log('✅ Streaming complete');
                 
             } catch (error) {
+                // Clear the fetching flag on error too
+                isFetchingNewData = false;
+                
                 console.error('❌ Error:', error);
                 document.getElementById('status').className = 'status error';
                 document.getElementById('status').textContent = `Error: ${error.message}`;
@@ -921,6 +974,9 @@
                             data: allReceivedData[i]
                         });
                     }
+                    
+                    // Signal that all data has been sent
+                    workletNode.port.postMessage({ type: 'data-complete' });
                     
                     isPlaying = true;
                     isPaused = false;

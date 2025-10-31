@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.26"
+__version__ = "1.27"
 __commit_message__ = (
-    "v1.26 Fix: Added CORS headers to all error responses and explicitly configured Flask-CORS for Render.com backend"
+    "v1.27 Fix: Memory optimizations for 24-hour files (float32, explicit cleanup), dynamic buffer expansion, fixed stale finished messages, removed conflicting OPTIONS handler"
 )
 
 # Import key modules to make them available when importing the package
