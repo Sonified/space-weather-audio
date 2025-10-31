@@ -1,0 +1,50 @@
+{
+  "stations": [
+    {
+      "name": "Kīlauea Caldera (NPOC)",
+      "network": "HV",
+      "station": "NPOC",
+      "channel": "HHZ",
+      "description": "Kīlauea summit, highly active volcanic tremor",
+      "location": "Hawaii Volcanoes National Park",
+      "active": true
+    },
+    {
+      "name": "Mauna Loa (DEVL)",
+      "network": "HV",
+      "station": "DEVL",
+      "channel": "HHZ",
+      "description": "Mauna Loa volcano monitoring",
+      "location": "Hawaii",
+      "active": true
+    },
+    {
+      "name": "Mt. Spurr (SPNW)",
+      "network": "AV",
+      "station": "SPNW",
+      "channel": "BHZ",
+      "description": "Mt. Spurr volcano, Alaska",
+      "location": "Alaska",
+      "active": true
+    },
+    {
+      "name": "Albuquerque Seismological Lab",
+      "network": "IU",
+      "station": "ANMO",
+      "channel": "BHZ",
+      "description": "Quiet reference station for testing",
+      "location": "New Mexico",
+      "active": true
+    },
+    {
+      "name": "Mount St. Helens",
+      "network": "CC",
+      "station": "VALT",
+      "channel": "HHZ",
+      "description": "Mount St. Helens monitoring",
+      "location": "Washington",
+      "active": true
+    }
+  ]
+}
+

@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SeedLink Real-Time Audification Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #ffffff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            position: relative;
+        }
+        
+        .card h2 {
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            color: #00d4ff;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-connected {
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+        }
+        
+        .status-disconnected {
+            background: #ff4444;
+            box-shadow: 0 0 10px #ff4444;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .stat-label {
+            color: #a0c4ff;
+        }
+        
+        .stat-value {
+            font-weight: bold;
+            color: #ffffff;
+        }
+        
+        #waveform-container {
+            position: relative;
+        }
+        
+        #waveform {
+            width: 100%;
+            height: 300px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            display: block;
+        }
+        
+        .meter {
+            height: 30px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+            margin-top: 10px;
+        }
+        
+        .meter-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #00d4ff, #ff00ff);
+            transition: width 0.1s ease-out;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+            font-size: 0.9em;
+        }
+        
+        .alert {
+            background: rgba(255, 68, 68, 0.2);
+            border-left: 4px solid #ff4444;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .info {
+            background: rgba(0, 212, 255, 0.2);
+            border-left: 4px solid #00d4ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        
+        .station-info {
+            font-size: 1.5em;
+            text-align: center;
+            padding: 10px;
+            background: rgba(0, 212, 255, 0.2);
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌋 SeedLink Real-Time Audification Monitor</h1>
+        
+        <div class="grid">
+            <!-- Connection Status Card -->
+            <div class="card">
+                <h2>Connection Status</h2>
+                <div class="station-info">
+                    <span class="status-indicator" id="status-indicator"></span>
+                    <span id="station-display">Connecting...</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Network:</span>
+                    <span class="stat-value" id="network">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Station:</span>
+                    <span class="stat-value" id="station">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Channel:</span>
+                    <span class="stat-value" id="channel">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Last Update:</span>
+                    <span class="stat-value" id="last-update">--</span>
+                </div>
+                <div style="position: absolute; bottom: 15px; left: 15px; display: flex; align-items: center; gap: 8px;">
+                    <button id="reset-btn" style="
+                        padding: 6px 12px;
+                        background: rgba(255, 68, 68, 0.3);
+                        color: #ff8888;
+                        border: 1px solid rgba(255, 68, 68, 0.5);
+                        border-radius: 5px;
+                        font-size: 0.85em;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                    " onmouseover="this.style.background='rgba(255, 68, 68, 0.5)'; this.style.color='#ffffff'" 
+                       onmouseout="this.style.background='rgba(255, 68, 68, 0.3)'; this.style.color='#ff8888'"
+                       onclick="resetStats()">
+                        🔄 Reset
+                    </button>
+                    <span style="font-size: 0.85em; color: #a0c4ff;">Clear stats</span>
+                </div>
+            </div>
+            
+            <!-- Data Flow Card -->
+            <div class="card">
+                <h2>Data Flow</h2>
+                <div class="stat-row">
+                    <span class="stat-label">Packets Received:</span>
+                    <span class="stat-value" id="packets">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Samples/Packet:</span>
+                    <span class="stat-value" id="sample-count">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Total Samples Received:</span>
+                    <span class="stat-value" id="total-rx">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Total Samples Played:</span>
+                    <span class="stat-value" id="total-consumed">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Remaining Buffer:</span>
+                    <span class="stat-value" id="remaining-buffer">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Buffer: Current/Max:</span>
+                    <span class="stat-value" id="buffer-size">0 / 0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Audio Underruns:</span>
+                    <span class="stat-value" id="underruns">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Playback Started:</span>
+                    <span class="stat-value" id="playback-started">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Effective Sample Rate:</span>
+                    <span class="stat-value" id="effective-rate">-- Hz</span>
+                </div>
+                <div class="info" style="margin-top: 10px;">
+                    Should be ~100 Hz for HHZ channels
+                </div>
+            </div>
+            
+            <!-- Signal Processing Card -->
+            <div class="card">
+                <h2>Signal Processing</h2>
+                <div class="stat-row">
+                    <span class="stat-label">Current Max:</span>
+                    <span class="stat-value" id="current-max">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Running Max (adaptive):</span>
+                    <span class="stat-value" id="running-max">1000</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Audio Status:</span>
+                    <span class="stat-value" id="audio-active">--</span>
+                </div>
+                
+                <h3 style="margin-top: 20px; color: #a0c4ff; font-size: 1em;">Signal Level (% of Running Max)</h3>
+                <div class="meter">
+                    <div class="meter-fill" id="signal-meter">0%</div>
+                </div>
+                <div class="info" style="margin-top: 10px; font-size: 0.85em;">
+                    Shows current amplitude relative to adaptive normalization level
+                </div>
+                <div style="position: absolute; bottom: 15px; left: 15px; display: flex; align-items: center; gap: 8px;">
+                    <button id="backend-stop" style="
+                        padding: 6px 12px;
+                        background: rgba(255, 68, 68, 0.3);
+                        color: #ff8888;
+                        border: 1px solid rgba(255, 68, 68, 0.5);
+                        border-radius: 5px;
+                        font-size: 0.85em;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                    " onmouseover="this.style.background='rgba(255, 68, 68, 0.5)'; this.style.color='#ffffff'" 
+                       onmouseout="this.style.background='rgba(255, 68, 68, 0.3)'; this.style.color='#ff8888'"
+                       onclick="stopBackend()">
+                        ⏹ Stop Backend
+                    </button>
+                    <span style="font-size: 0.85em; color: #a0c4ff;">Shut down server</span>
+                </div>
+            </div>
+            
+            <!-- Update Intervals Card -->
+            <div class="card">
+                <h2>Data Update Intervals</h2>
+                <div class="stat-row">
+                    <span class="stat-label">Average Update Interval:</span>
+                    <span class="stat-value" id="avg-delta">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Min / Max Interval:</span>
+                    <span class="stat-value" id="minmax-delta">-- / --</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Last 5 Update Intervals:</span>
+                    <span class="stat-value" id="recent-deltas" style="font-size: 0.9em;">--</span>
+                </div>
+                <div class="info">
+                    Time between receiving new data from SeedLink server
+                </div>
+            </div>
+            
+        </div>
+        
+        <!-- Live Monitoring Row -->
+        <div style="display: grid; grid-template-columns: 400px 1fr; gap: 20px; margin-top: 20px;">
+            <!-- Live Amplitude Card -->
+            <div class="card">
+                <h2>Live Amplitude Monitor</h2>
+                <div style="text-align: center; font-size: 2em; color: #00d4ff; margin: 20px 0;">
+                    <span id="live-amplitude">0.000</span>
+                </div>
+                <div style="position: relative; height: 200px; background: rgba(0, 0, 0, 0.3); border-radius: 10px; overflow: hidden;">
+                    <!-- Center line -->
+                    <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(255, 255, 255, 0.3);"></div>
+                    <!-- Moving amplitude line -->
+                    <div id="amplitude-line" style="position: absolute; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #00ff88, #00d4ff); transition: top 0.05s ease-out; box-shadow: 0 0 10px #00d4ff;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 0.9em; color: #a0c4ff;">
+                    <span>-1.0</span>
+                    <span>0.0</span>
+                    <span>+1.0</span>
+                </div>
+            </div>
+            
+            <!-- Waveform Display -->
+            <div class="card" id="waveform-container">
+                <h2>Real-Time Waveform (Last 100 seconds, 10 Hz)</h2>
+                <canvas id="waveform"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('waveform');
+        const ctx = canvas.getContext('2d');
+        
+        // Track last update time (client-side)
+        let lastPacketCount = 0;
+        let lastUpdateTime = null;  // Start as null, set on first packet
+        
+        // Track actual update intervals (how long between data arrivals)
+        let updateIntervals = [];  // Store the actual intervals we experience
+        
+        // Set canvas size
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Update status
+        async function updateStatus() {
+            try {
+                const response = await fetch('http://localhost:8888/api/status');
+                const data = await response.json();
+                
+                // Update connection status
+                const indicator = document.getElementById('status-indicator');
+                if (data.connected) {
+                    indicator.className = 'status-indicator status-connected';
+                    document.getElementById('station-display').textContent = 
+                        `${data.network}.${data.station}.${data.channel}`;
+                } else {
+                    indicator.className = 'status-indicator status-disconnected';
+                    document.getElementById('station-display').textContent = 'Disconnected';
+                }
+                
+                // Update all stats
+                document.getElementById('network').textContent = data.network || '--';
+                document.getElementById('station').textContent = data.station || '--';
+                document.getElementById('channel').textContent = data.channel || '--';
+                
+                // Check if new packet arrived (record the interval and reset timer)
+                const currentPackets = data.packets_received || 0;
+                if (currentPackets > lastPacketCount) {
+                    // Only record interval if we have a previous time (skip first packet)
+                    if (lastUpdateTime !== null) {
+                        const intervalSeconds = (Date.now() - lastUpdateTime) / 1000;
+                        updateIntervals.push(intervalSeconds);
+                    }
+                    lastPacketCount = currentPackets;
+                    lastUpdateTime = Date.now();
+                }
+                
+                document.getElementById('packets').textContent = currentPackets;
+                document.getElementById('sample-count').textContent = data.sample_count || 0;
+                document.getElementById('total-rx').textContent = (data.total_samples_received || 0).toLocaleString();
+                document.getElementById('total-consumed').textContent = (data.total_samples_consumed || 0).toLocaleString();
+                
+                // Calculate remaining buffer (buffer size - playback position)
+                const remaining = (data.buffer_current || 0) - (data.playback_position || 0);
+                document.getElementById('remaining-buffer').textContent = remaining.toFixed(0);
+                document.getElementById('remaining-buffer').style.color = remaining > 500 ? '#00ff88' : '#ff4444';
+                
+                document.getElementById('buffer-size').textContent = `${(data.buffer_current || 0).toLocaleString()} / ${(data.buffer_max || 0).toLocaleString()}`;
+                document.getElementById('underruns').textContent = data.underruns || 0;
+                document.getElementById('playback-started').textContent = data.playback_started ? '✓ Yes' : '✗ No';
+                
+                // Effective sample rate (should be ~100 Hz)
+                const effectiveRate = data.effective_sample_rate || 0;
+                document.getElementById('effective-rate').textContent = effectiveRate.toFixed(2) + ' Hz';
+                document.getElementById('effective-rate').style.color = 
+                    (effectiveRate > 95 && effectiveRate < 105) ? '#00ff88' : '#ff4444';
+                document.getElementById('current-max').textContent = (data.current_max || 0).toFixed(1);
+                document.getElementById('running-max').textContent = (data.running_max || 1000).toFixed(1);
+                document.getElementById('audio-active').textContent = data.audio_active ? 'Active' : 'Inactive';
+                document.getElementById('audio-active').style.color = data.audio_active ? '#00ff88' : '#ff4444';
+                
+                // Update last update time (client-side calculation)
+                if (lastUpdateTime !== null) {
+                    const secondsSinceUpdate = Math.floor((Date.now() - lastUpdateTime) / 1000);
+                    document.getElementById('last-update').textContent = `${secondsSinceUpdate}s ago`;
+                } else {
+                    document.getElementById('last-update').textContent = 'Waiting for first packet...';
+                }
+                
+                // Update signal meter (normalize to 0-100%)
+                const signalPercent = Math.min(100, (data.current_max / data.running_max) * 100);
+                const meterFill = document.getElementById('signal-meter');
+                meterFill.style.width = signalPercent + '%';
+                meterFill.textContent = signalPercent.toFixed(1) + '%';
+                
+                // Update interval stats (using our locally tracked intervals)
+                if (updateIntervals.length > 0) {
+                    const avgInterval = updateIntervals.reduce((a, b) => a + b, 0) / updateIntervals.length;
+                    const minInterval = Math.min(...updateIntervals);
+                    const maxInterval = Math.max(...updateIntervals);
+                    
+                    document.getElementById('avg-delta').textContent = avgInterval.toFixed(1) + 's';
+                    document.getElementById('minmax-delta').textContent = 
+                        `${minInterval.toFixed(1)}s / ${maxInterval.toFixed(1)}s`;
+                    
+                    // Show last 5 intervals
+                    const recent = updateIntervals.slice(-5).map(d => d.toFixed(1) + 's').join(', ');
+                    document.getElementById('recent-deltas').textContent = recent;
+                }
+                
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+        
+        // Update waveform
+        async function updateWaveform() {
+            try {
+                const response = await fetch('http://localhost:8888/api/waveform');
+                const data = await response.json();
+                
+                if (data.data && data.data.length > 0) {
+                    drawWaveform(data.data);
+                }
+            } catch (error) {
+                console.error('Error fetching waveform:', error);
+            }
+        }
+        
+        // Update live amplitude (real-time from audio callback)
+        async function updateLiveAmplitude() {
+            try {
+                const response = await fetch('http://localhost:8888/api/live_amplitude');
+                const data = await response.json();
+                
+                if (data.amplitude !== undefined) {
+                    updateAmplitudeDisplay(data.amplitude);
+                }
+            } catch (error) {
+                console.error('Error fetching live amplitude:', error);
+            }
+        }
+        
+        function updateAmplitudeDisplay(value) {
+            // Update numeric display
+            document.getElementById('live-amplitude').textContent = value.toFixed(3);
+            
+            // Update position of amplitude line
+            // Map value from [-1, 1] to [0, 200] pixels (inverted for screen coords)
+            const lineElement = document.getElementById('amplitude-line');
+            const position = ((1 - value) / 2) * 200; // -1 -> 200px, 0 -> 100px, +1 -> 0px
+            lineElement.style.top = position + 'px';
+            
+            // Color based on magnitude
+            const magnitude = Math.abs(value);
+            if (magnitude > 0.8) {
+                lineElement.style.background = 'linear-gradient(90deg, #ff4444, #ff00ff)';
+                lineElement.style.boxShadow = '0 0 15px #ff4444';
+            } else if (magnitude > 0.5) {
+                lineElement.style.background = 'linear-gradient(90deg, #ffaa00, #ff00ff)';
+                lineElement.style.boxShadow = '0 0 12px #ffaa00';
+            } else {
+                lineElement.style.background = 'linear-gradient(90deg, #00ff88, #00d4ff)';
+                lineElement.style.boxShadow = '0 0 10px #00d4ff';
+            }
+        }
+        
+        // Note: Update intervals are now calculated directly in updateStatus() 
+        // using client-side timing for more accurate user experience measurement
+        
+        // Reset all stats
+        async function resetStats() {
+            if (!confirm('Reset all statistics? This will clear packet counts, buffer stats, and timing data.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://localhost:8888/api/reset', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Also reset client-side tracking
+                    updateIntervals = [];
+                    lastPacketCount = 0;
+                    lastUpdateTime = null;  // Reset to null so first interval after reset is skipped
+                    
+                    // Show success feedback
+                    const btn = document.getElementById('reset-btn');
+                    const originalText = btn.textContent;
+                    btn.textContent = '✓ Done';
+                    btn.style.background = 'rgba(0, 255, 136, 0.5)';
+                    btn.style.color = '#ffffff';
+                    btn.style.borderColor = 'rgba(0, 255, 136, 0.7)';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.style.background = 'rgba(255, 68, 68, 0.3)';
+                        btn.style.color = '#ff8888';
+                        btn.style.borderColor = 'rgba(255, 68, 68, 0.5)';
+                    }, 2000);
+                    
+                    // Immediately refresh display
+                    updateStatus();
+                }
+            } catch (error) {
+                console.error('Error resetting stats:', error);
+                alert('Failed to reset stats');
+            }
+        }
+        
+        // Stop the backend server
+        async function stopBackend() {
+            if (!confirm('Stop backend server? This will shut down the audio stream and close the SeedLink connection. You will need to restart manually from terminal.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://localhost:8888/api/stop', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Reset client-side tracking
+                    updateIntervals = [];
+                    lastPacketCount = 0;
+                    lastUpdateTime = null;
+                    
+                    // Show success feedback
+                    const btn = document.getElementById('backend-stop');
+                    btn.textContent = '✓ Stopped';
+                    btn.style.background = 'rgba(0, 255, 136, 0.5)';
+                    btn.style.color = '#ffffff';
+                    btn.style.borderColor = 'rgba(0, 255, 136, 0.7)';
+                    btn.disabled = true;
+                    
+                    // Update display to show disconnected
+                    setTimeout(() => {
+                        updateStatus();
+                    }, 500);
+                }
+            } catch (error) {
+                console.error('Error stopping backend:', error);
+                // This might fail if server already stopped
+            }
+        }
+        
+        function drawWaveform(data) {
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerY = height / 2;
+            
+            // Clear canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw center line
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, centerY);
+            ctx.lineTo(width, centerY);
+            ctx.stroke();
+            
+            // Draw waveform
+            ctx.strokeStyle = '#00d4ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const maxAmplitude = Math.max(...data.map(Math.abs)) || 1;
+            const scale = (height * 0.4) / maxAmplitude;
+            const xStep = width / data.length;
+            
+            for (let i = 0; i < data.length; i++) {
+                const x = i * xStep;
+                const y = centerY - (data[i] * scale);
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+            
+            // Draw scale info
+            ctx.fillStyle = '#a0c4ff';
+            ctx.font = '12px monospace';
+            ctx.fillText(`Max: ±${maxAmplitude.toFixed(1)}`, 10, 20);
+            ctx.fillText(`Samples: ${data.length}`, 10, 35);
+        }
+        
+        // Update status and timing at regular intervals
+        setInterval(updateStatus, 500);  // Also updates interval stats
+        setInterval(updateWaveform, 500);
+        
+        // Update live amplitude as fast as possible for real-time monitoring
+        setInterval(updateLiveAmplitude, 50);  // 20 fps
+        
+        // Initial update
+        updateStatus();
+        updateWaveform();
+        updateLiveAmplitude();
+    </script>
+</body>
+</html>
+

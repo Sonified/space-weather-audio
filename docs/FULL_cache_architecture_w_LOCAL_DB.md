@@ -1997,6 +1997,8 @@ Implement dynamic normalization that adjusts smoothly as new data arrives, preve
 
 Switch from local Flask development server to actual Render production deployment. Configure environment variables, scale resources, and monitor performance.
 
+### Priority 6: Implement cron job for automated file creation.
+
 **Future Enhancements:**
 - Split gap details into separate `*_gaps.json` file (lazy-loaded)
 - Implement MUSTANG API for fast historical metadata

@@ -110,3 +110,68 @@ Created complete metadata-aware backend with intelligent caching system:
 ### Version
 v1.21 - Commit: "v1.21 Feature: Backend v2 with metadata-aware architecture, progressive chunking, gap detection, partial chunk flags, and dashboard v2 selector"
 
+---
+
+## EXPLORATORY: SeedLink Dashboard
+
+Created experimental real-time SeedLink audification dashboard and backend:
+
+### New Dashboard (`SeedLink/dashboard.html`):
+
+1. **Update Interval Tracking**
+   - Renamed "Packet Timing" → "Data Update Intervals" (measures actual user experience)
+   - Tracks intervals between data arrivals (client-side timing)
+   - Skips initial page-load-to-first-packet time (doesn't count as interval)
+   - Shows average, min/max, and last 5 intervals
+   - More accurate than backend packet-level tracking
+
+2. **Dashboard Controls**
+   - **Reset Stats Button** (lower left of Connection Status card)
+     - Clears all statistics: packet counts, buffers, timing data
+     - Keeps streaming active, just resets counters
+   - **Stop Backend Button** (lower left of Signal Processing card)
+     - Shuts down audio stream and SeedLink connection
+     - Exits the Flask server process cleanly
+     - Server must be restarted manually after stopping
+
+3. **UI Improvements**
+   - Renamed "Total Samples RX" → "Total Samples Received" (clearer)
+   - Better visual feedback for button actions
+   - Improved status indicators
+
+### New Backend (`SeedLink/live_audifier.py`):
+
+1. **New API Endpoints**
+   - `/api/reset` (POST) - Resets all statistics and buffers
+   - `/api/stop` (POST) - Stops audio stream and exits process
+
+2. **Reset Functionality**
+   - Clears packet counts, buffers, timing data
+   - Resets playback position to 0
+   - Keeps streaming connection active
+
+3. **Stop Functionality**
+   - Stops audio stream cleanly
+   - Closes SeedLink connection
+   - Exits process after short delay (allows response to be sent)
+
+### Launch Script (`SeedLink/launch.sh`):
+
+Created launch script matching `boot_local_mode.sh` pattern:
+- Cleans up existing processes first
+- Starts backend in background
+- Polls port with `lsof` (no blind sleeping)
+- Confirms service is actually running
+- Shows troubleshooting info if it fails
+- Logs to `/tmp/seedlink_audifier.log`
+
+### Documentation (`SeedLink/README.md`):
+
+- Updated with launch script instructions
+- Documented all dashboard features and controls
+- Added log viewing section
+- Enhanced troubleshooting guide
+
+### Version
+v1.22 - Commit: "v1.22 Feature: Experimental SeedLink real-time audification dashboard with update interval tracking, reset/stop controls, and launch script"
+
