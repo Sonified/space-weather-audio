@@ -11,7 +11,7 @@ Flow:
 6. Send to browser
 """
 
-from flask import Blueprint, request, jsonify, Response
+from flask import Blueprint, request, jsonify, Response, make_response
 import numpy as np
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
@@ -103,7 +103,9 @@ def stream_audio():
         bypass_compression = data.get('bypass_compression', False)
         
         if not starttime_str:
-            return jsonify({'error': 'starttime is required'}), 400
+            response = make_response(jsonify({'error': 'starttime is required'}), 400)
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response
         
         logging.info(f"[Audio Stream] 📥 {network}.{station}.{location}.{channel} @ {starttime_str} for {duration}s")
         
@@ -144,27 +146,31 @@ def stream_audio():
             error_msg = f'No data available from IRIS for {network}.{station}.{location or "--"}.{channel}'
             if last_error and 'No data available' in last_error:
                 error_msg += ' (station may be inactive or no data for requested time range)'
-            return jsonify({
+            response = make_response(jsonify({
                 'error': error_msg,
                 'network': network,
                 'station': station,
                 'location': location,
                 'channel': channel,
                 'details': last_error
-            }), 404
+            }), 404)
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response
         
         # STEP 2: Merge traces
         logging.info(f"[Audio Stream] 🔧 Merging traces...")
         st.merge(method=1, fill_value='interpolate')
         
         if len(st) == 0:
-            return jsonify({
+            response = make_response(jsonify({
                 'error': f'No data available after merge for {network}.{station}.{location or "--"}.{channel}',
                 'network': network,
                 'station': station,
                 'location': location,
                 'channel': channel
-            }), 404
+            }), 404)
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response
         
         trace = st[0]
         
@@ -307,7 +313,9 @@ def stream_audio():
         logging.error(f"[Audio Stream] ❌ Error: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        response = make_response(jsonify({'error': str(e)}), 500)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
 
 @audio_stream_bp.route('/api/stream-audio', methods=['OPTIONS'])
 def stream_audio_options():

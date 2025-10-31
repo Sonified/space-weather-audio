@@ -19,7 +19,11 @@ import gzip
 import boto3
 
 app = Flask(__name__)
-CORS(app, expose_headers=['X-Metadata', 'X-Cache-Hit', 'X-Data-Ready-Ms'])
+CORS(app, 
+     origins='*',
+     expose_headers=['X-Metadata', 'X-Cache-Hit', 'X-Data-Ready-Ms', 'X-Original-Size', 'X-Compressed-Size', 'X-Compression', 'X-Sample-Rate', 'X-Sample-Count', 'X-Format', 'X-Highpass', 'X-Normalized'],
+     allow_headers=['Content-Type'],
+     methods=['GET', 'POST', 'OPTIONS'])
 
 # Register audio streaming blueprint (separate from chunk pipeline)
 from audio_stream import audio_stream_bp

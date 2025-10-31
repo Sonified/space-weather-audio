@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.25"
+__version__ = "1.26"
 __commit_message__ = (
-    "v1.25 Feature: Added 24-hour duration option, improved error handling for inactive stations (404 instead of 500), better frontend error messages"
+    "v1.26 Fix: Added CORS headers to all error responses and explicitly configured Flask-CORS for Render.com backend"
 )
 
 # Import key modules to make them available when importing the package

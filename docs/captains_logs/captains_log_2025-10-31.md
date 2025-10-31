@@ -112,3 +112,40 @@ v1.25 - Commit: "v1.25 Feature: Added 24-hour duration option, improved error ha
 
 ---
 
+## CORS Fix for Render.com Backend
+
+### Changes Made:
+
+1. **Fixed CORS Headers on Error Responses**
+   - All error responses (400, 404, 500) now include `Access-Control-Allow-Origin: *` header
+   - Used `make_response()` to explicitly add CORS headers to error JSON responses
+   - Prevents CORS errors when frontend fetches from Render.com backend
+
+2. **Explicit Flask-CORS Configuration**
+   - Updated `main.py` to explicitly set `origins='*'` for Flask-CORS
+   - Added all custom headers to `expose_headers` list
+   - Explicitly allowed `POST` and `OPTIONS` methods
+   - Added `Content-Type` to allowed headers
+
+### Problem:
+- Frontend getting CORS errors when fetching 24-hour data from Render.com
+- Error: "No 'Access-Control-Allow-Origin' header is present on the requested resource"
+- Error responses (404, 500) weren't including CORS headers
+- Flask-CORS config might not have been explicit enough
+
+### Solution:
+- All error responses now use `make_response()` with explicit CORS headers
+- Main Flask app CORS config now explicitly allows all origins and methods
+- Both success and error responses now properly handle CORS
+
+### Key Learnings:
+
+- **Error Responses Need CORS Too**: Even error responses must include CORS headers for browsers to read them
+- **Explicit Configuration**: When using Flask-CORS, explicitly set `origins='*'` to ensure all origins are allowed
+- **make_response()**: Use `make_response()` instead of returning tuples when you need to add custom headers
+
+### Version
+v1.26 - Commit: "v1.26 Fix: Added CORS headers to all error responses and explicitly configured Flask-CORS for Render.com backend"
+
+---
+
