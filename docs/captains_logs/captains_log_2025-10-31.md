@@ -401,3 +401,56 @@ v1.31 - Commit: "v1.31 UI: Darker background, bold High Pass/Normalization label
 
 ---
 
+## High-Pass Filter Dropdown & Base Sampling Rate Multiplier
+
+### Changes Made:
+
+1. **High-Pass Filter Dropdown**
+   - Replaced checkbox with dropdown showing original data frequencies
+   - Options: None, 0.01 Hz (~4.4 Hz @ 44.1k), 0.045 Hz (~19.8 Hz @ 44.1k)
+   - Default set to 0.01 Hz
+   - Filtering now done by backend (more efficient than browser-side)
+   - Frontend sends `highpass_hz` parameter to backend
+
+2. **Base Sampling Rate Multiplier**
+   - Added dropdown for emulating different audio sample rates
+   - Options: 44.1 kHz (1x), 48 kHz (1.09x), 96 kHz (2.18x), 192 kHz (4.35x), 200 kHz (4.54x), 441 kHz (10x), 1 MHz (22.7x)
+   - Multiplier applied ON TOP of speed slider (slider display unaffected)
+   - Changes playback speed immediately without refetching data
+   - Speed slider shows base value, actual playback speed = slider × multiplier
+
+3. **Backend Filtering Integration**
+   - Frontend now sends selected high-pass frequency to backend
+   - Backend applies Butterworth filter before compression
+   - More efficient than browser-side filtering (processes once on server)
+   - Browser-side filtering code removed
+
+4. **Optimized Loop Reset**
+   - Changed from full worklet reset (clears buffer, reloads data) to simple read pointer reset
+   - Loop now just resets `readIndex` to 0 and restores `samplesInBuffer`
+   - Buffer stays intact, no data reloading needed
+   - Fixed variable loop timing issue (was caused by buffer clearing/reloading)
+
+5. **Comprehensive Fade/Loop Logging**
+   - Added detailed console logs for fade timing
+   - Logs approaching end (~100ms remaining), buffer empty, fade-out start/complete, fade-in start
+   - Logs worklet loop reset with read index and buffer state
+   - Helps diagnose timing issues and fade behavior
+
+6. **Hidden Normalization Checkbox**
+   - Normalization checkbox hidden from UI (still functional, defaults to checked)
+   - Cleaner interface
+
+### Key Learnings:
+
+- **Backend vs Browser Processing**: Backend filtering is more efficient - processes once on server vs browser processing on every playback
+- **Loop Optimization**: Simple read pointer reset is much faster than full buffer reset - avoids data reloading overhead
+- **State Management**: Speed multiplier should not affect slider display - users expect slider to show base value
+- **Logging**: Comprehensive logging helps diagnose timing issues, especially with high-speed playback
+- **Worklet Lifecycle**: Keeping buffer intact between loops is more efficient than clearing and reloading
+
+### Version
+v1.32 - Commit: "v1.32 Feature: High-pass filter dropdown (None/0.01Hz/0.045Hz), base sampling rate multiplier (44.1k-1MHz), backend filtering, optimized loop reset (read pointer only), comprehensive fade/loop logging"
+
+---
+

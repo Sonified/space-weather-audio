@@ -530,11 +530,29 @@
                     </select>
                 </div>
                 
-                <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
-                    <input type="checkbox" id="enableHighpass" checked style="width: 24px; height: 24px; cursor: pointer;">
-                    <label for="enableHighpass" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 18px; color: #333;">High Pass (20Hz)</label>
+                <div class="control-group">
+                    <label for="highpassFreq">High Pass (@ 44.1k):</label>
+                    <select id="highpassFreq">
+                        <option value="none">None</option>
+                        <option value="0.01" selected>0.01 Hz (4.4 Hz)</option>
+                        <option value="0.045">0.045 Hz (19.8 Hz)</option>
+                    </select>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
+                
+                <div class="control-group">
+                    <label for="baseSampleRate">Base Sampling Rate:</label>
+                    <select id="baseSampleRate">
+                        <option value="44100" selected>44.1 kHz (1x)</option>
+                        <option value="48000">48 kHz (1.09x)</option>
+                        <option value="96000">96 kHz (2.18x)</option>
+                        <option value="192000">192 kHz (4.35x)</option>
+                        <option value="200000">200 kHz (4.54x)</option>
+                        <option value="441000">441 kHz (10x)</option>
+                        <option value="1000000">1 MHz (22.7x)</option>
+                    </select>
+                </div>
+                
+                <div style="display: none;">
                     <input type="checkbox" id="enableNormalize" checked style="width: 24px; height: 24px; cursor: pointer;">
                     <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 18px; color: #333;">Normalization</label>
                 </div>
@@ -631,6 +649,7 @@
                     this.finishSent = false; // Prevent duplicate 'finished' messages
                     this.loopWarningShown = false; // Track if we've warned about upcoming loop
                     this.dataLoadingComplete = false; // Track when all data has been sent
+                    this.totalSamples = 0; // Track total samples loaded (for looping)
                     
                     this.port.onmessage = (event) => {
                         const { type, data, speed } = event.data;
@@ -645,17 +664,31 @@
                             this.speed = speed;
                         } else if (type === 'data-complete') {
                             this.dataLoadingComplete = true;
+                            this.totalSamples = this.samplesInBuffer; // Store total for looping
                         } else if (type === 'reset') {
+                            // Full reset - clears buffer (used when fetching new data)
                             this.buffer.fill(0);
                             this.readIndex = 0;
                             this.writeIndex = 0;
                             this.samplesInBuffer = 0;
-                            this.isPlaying = true;  // ✅ Start playing immediately for loops
-                            this.hasStarted = true;  // ✅ Don't wait for buffer to fill
-                            this.finishSent = false;  // ✅ Allow another 'finished' message
-                            this.loopWarningShown = false; // ✅ Reset loop warning
-                            this.dataLoadingComplete = false; // ✅ Reset data loading flag
+                            this.isPlaying = true;
+                            this.hasStarted = true;
+                            this.finishSent = false;
+                            this.loopWarningShown = false;
+                            this.dataLoadingComplete = false;
+                            this.totalSamples = 0;
                             this.speed = 1.0;
+                        } else if (type === 'loop') {
+                            // Loop reset - just go back to start, keep buffer intact
+                            const previousReadIndex = this.readIndex;
+                            const previousSamplesInBuffer = this.samplesInBuffer;
+                            this.readIndex = 0;  // Go back to first sample
+                            this.samplesInBuffer = this.totalSamples;  // Restore total samples available
+                            this.isPlaying = true;  // Keep playing
+                            this.finishSent = false;  // Allow another 'finished' message
+                            this.loopWarningShown = false; // Reset loop warning
+                            console.log('🔄 WORKLET LOOP: ReadIndex ' + previousReadIndex + ' -> 0, SamplesInBuffer ' + previousSamplesInBuffer + ' -> ' + this.totalSamples + ', Speed: ' + this.speed.toFixed(2) + 'x');
+                            // Keep buffer, writeIndex, hasStarted, dataLoadingComplete, speed intact
                         }
                     };
                 }
@@ -710,7 +743,14 @@
                     // Detect near-end for gapless looping (send warning with ~100ms left)
                     const loopWarningThreshold = 44100 * 0.1; // 100ms at 44.1kHz
                     if (this.samplesInBuffer < loopWarningThreshold && !this.loopWarningShown && this.hasStarted) {
-                        this.port.postMessage({ type: 'loop-soon' });
+                        const remainingSeconds = this.samplesInBuffer / 44100;
+                        const remainingMs = remainingSeconds * 1000;
+                        this.port.postMessage({ 
+                            type: 'loop-soon',
+                            samplesRemaining: this.samplesInBuffer,
+                            secondsRemaining: remainingSeconds,
+                            speed: this.speed
+                        });
                         this.loopWarningShown = true;
                     }
                     
@@ -733,7 +773,14 @@
                             // 2. All data has been loaded (not just a temporary underrun)
                             if (!this.finishSent && this.hasStarted && this.dataLoadingComplete) {
                                 this.isPlaying = false;
-                                this.port.postMessage({ type: 'finished' });
+                                // Expected duration at current speed: totalSamples / (sampleRate * speed)
+                                const expectedDuration = this.totalSamples / (44100 * this.speed);
+                                this.port.postMessage({ 
+                                    type: 'finished',
+                                    totalSamples: this.totalSamples,
+                                    speed: this.speed,
+                                    expectedDurationSeconds: expectedDuration
+                                });
                                 this.finishSent = true;
                             }
                             // ✅ Output silence but keep worklet alive for potential loop or more data
@@ -824,6 +871,10 @@
                     }
                 } else if (type === 'loop-soon') {
                     // Gapless loop warning: ~100ms left, start preparing next loop
+                    const { samplesRemaining, secondsRemaining, speed } = event.data;
+                    const remainingMs = secondsRemaining * 1000;
+                    console.log(`⏱️ APPROACHING END: ${samplesRemaining.toLocaleString()} samples remaining (${remainingMs.toFixed(1)}ms @ speed ${speed.toFixed(2)}x)`);
+                    
                     if (isLooping && allReceivedData && allReceivedData.length > 0) {
                         console.log('🔁 Loop approaching - preparing gapless transition...');
                         // Note: We'll still do the full reset on 'finished' for clean fade
@@ -836,16 +887,26 @@
                         return;
                     }
                     
+                    const { totalSamples, speed, expectedDurationSeconds } = event.data;
+                    const durationAt1x = totalSamples / 44100;
+                    console.log(`🏁 BUFFER EMPTY: Total samples: ${totalSamples.toLocaleString()}, Speed: ${speed.toFixed(2)}x, Duration @ 1x: ${durationAt1x.toFixed(3)}s, Expected @ ${speed.toFixed(2)}x: ${expectedDurationSeconds.toFixed(3)}s`);
+                    
                     // Fade out before handling finish
+                    const fadeOutStartTime = audioContext.currentTime;
                     if (gainNode) {
+                        const currentGain = gainNode.gain.value;
                         gainNode.gain.cancelScheduledValues(audioContext.currentTime);
-                        gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
+                        gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
                         gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.05); // 50ms exponential fade-out
-                        console.log('🎚️ Exponential fade-out before finish');
+                        console.log(`🔽 FADE-OUT START: Current gain: ${currentGain.toFixed(4)}, Target: 0.0001, Duration: 50ms, Audio time: ${fadeOutStartTime.toFixed(3)}s`);
                     }
                     
                     // Wait for fade, then handle loop/finish
                     setTimeout(() => {
+                        const fadeOutCompleteTime = audioContext.currentTime;
+                        const fadeOutDuration = fadeOutCompleteTime - fadeOutStartTime;
+                        console.log(`🔽 FADE-OUT COMPLETE: Audio time: ${fadeOutCompleteTime.toFixed(3)}s, Actual fade duration: ${(fadeOutDuration * 1000).toFixed(1)}ms`);
+                        
                         // Double-check we're still not fetching new data
                         if (isFetchingNewData) {
                             console.log('⚠️ Ignoring finish handler - new data fetch in progress');
@@ -854,34 +915,27 @@
                         
                         // Handle looping
                         if (isLooping && allReceivedData && allReceivedData.length > 0) {
-                            console.log('🔁 LOOPING: Restarting playback...');
+                            console.log('🔁 LOOPING: Going back to first sample (buffer intact)...');
                             
-                            // Reset worklet to start fresh
-                            workletNode.port.postMessage({ type: 'reset' });
-                            console.log('🔄 Worklet reset for loop');
+                            // Just reset read pointer - no need to reload data!
+                            workletNode.port.postMessage({ type: 'loop' });
+                            console.log('🔄 Read pointer reset to start (buffer unchanged)');
                             
-                            // Restore playback speed after reset
-                            workletNode.port.postMessage({ 
-                                type: 'set-speed', 
-                                speed: currentPlaybackRate 
-                            });
-                            console.log(`🎚️ Restored playback speed: ${currentPlaybackRate.toFixed(2)}x`);
+                            // Ensure playback speed is current (multiplier applied)
+                            updatePlaybackSpeed();
+                            console.log(`🎚️ Playback speed: ${currentPlaybackRate.toFixed(2)}x (base slider speed × multiplier)`);
                             
                             // Fade back in for loop
+                            const fadeInStartTime = audioContext.currentTime;
                             if (gainNode) {
                                 const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                                const currentGain = gainNode.gain.value;
                                 gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
                                 gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + 0.05);
-                                console.log('🎚️ Loop fade-in: 0.0001 → ' + targetVolume.toFixed(2));
+                                console.log(`🔼 FADE-IN START: Current gain: ${currentGain.toFixed(4)}, Start: 0.0001, Target: ${targetVolume.toFixed(2)}, Duration: 50ms, Audio time: ${fadeInStartTime.toFixed(3)}s`);
                             }
                             
-                            // Send all chunks back to worklet
-                            for (let i = 0; i < allReceivedData.length; i++) {
-                                workletNode.port.postMessage({
-                                    type: 'audio-data',
-                                    data: allReceivedData[i]
-                                });
-                            }
+                            // No need to reload data - it's already in the buffer!
                         } else {
                             // Not looping - playback finished
                             isPlaying = false;
@@ -978,7 +1032,7 @@
                 
                 const stationData = JSON.parse(stationValue);
                 const duration = parseFloat(document.getElementById('duration').value);
-                const enableHighpass = document.getElementById('enableHighpass').checked;
+                const highpassFreq = document.getElementById('highpassFreq').value;
                 const enableNormalize = document.getElementById('enableNormalize').checked;
                 
                 // ===== STOP OLD PLAYBACK AND CLEAN UP =====
@@ -1061,7 +1115,8 @@
                     return date.toISOString().slice(0, 19);
                 };
                 
-                // Request RAW data from backend (no processing)
+                // Request data from backend (backend will apply high-pass filter)
+                const highpassValue = highpassFreq === 'none' ? 0 : parseFloat(highpassFreq);
                 const requestBody = {
                     network: stationData.network,
                     station: stationData.station,
@@ -1069,8 +1124,8 @@
                     channel: stationData.channel,
                     starttime: formatTime(startTime),
                     duration: duration * 3600,
-                    highpass_hz: 0,  // NO server-side filtering
-                    normalize: false,  // NO server-side normalization
+                    highpass_hz: highpassValue,  // Backend will apply high-pass filter
+                    normalize: false,  // NO server-side normalization (done in browser)
                     send_raw: false  // Send float32
                 };
                 
@@ -1162,6 +1217,13 @@
                 
                 console.log('📋 Metadata:', metadata);
                 
+                // Log backend filtering info
+                if (metadata.highpass_hz && metadata.highpass_hz > 0) {
+                    console.log(`🎛️ Backend applied ${metadata.highpass_hz} Hz high-pass filter`);
+                } else {
+                    console.log('🎛️ No high-pass filter applied by backend');
+                }
+                
                 // Extract samples
                 const samplesOffset = 4 + metadataLength;
                 const samplesBytes = decompressed.slice(samplesOffset);
@@ -1180,25 +1242,10 @@
                 
                 // ===== BROWSER-SIDE PROCESSING =====
                 
-                // 1. High-pass filter
-                if (enableHighpass) {
-                    // Calculate seismic domain cutoff for 20 Hz in audio domain
-                    const audioPlaybackRate = 44100;
-                    const speedup = audioPlaybackRate / metadata.original_sample_rate;
-                    const seismicCutoff = 20 / speedup;
-                    console.log(`🎛️ Applying ${seismicCutoff.toFixed(3)} Hz high-pass filter (${speedup.toFixed(0)}x speedup = 20 Hz in audio)...`);
-                    const filterStart = performance.now();
-                    samples = applyHighPassFilter(samples, metadata.original_sample_rate, seismicCutoff);
-                    const filterTime = performance.now() - filterStart;
-                    let minF = Infinity, maxF = -Infinity;
-                    for (let i = 0; i < samples.length; i++) {
-                        if (samples[i] < minF) minF = samples[i];
-                        if (samples[i] > maxF) maxF = samples[i];
-                    }
-                    console.log(`✅ Filtered in ${filterTime.toFixed(2)}ms | Range: [${minF.toFixed(3)}, ${maxF.toFixed(3)}]`);
-                }
+                // Note: High-pass filtering is done by the backend (already applied)
+                // Backend used highpass_hz parameter from request
                 
-                // 2. Normalize
+                // Normalize
                 if (enableNormalize) {
                     console.log('📏 Normalizing...');
                     const normStart = performance.now();
@@ -1234,12 +1281,9 @@
                 // Signal that all data has been sent
                 workletNode.port.postMessage({ type: 'data-complete' });
                 
-                // Set playback speed to current setting
-                workletNode.port.postMessage({
-                    type: 'set-speed',
-                    speed: currentPlaybackRate
-                });
-                console.log(`🎚️ Set playback speed for new data: ${currentPlaybackRate.toFixed(2)}x`);
+                // Set playback speed to current setting (with multiplier applied)
+                updatePlaybackSpeed();
+                console.log(`🎚️ Set playback speed for new data: ${currentPlaybackRate.toFixed(2)}x (base slider speed × multiplier)`);
                 
                 // Clear the fetching flag - new data is loaded and ready
                 isFetchingNewData = false;
@@ -1309,12 +1353,9 @@
                 workletNode.disconnect();
                 workletNode = null;
                 initAudioWorklet().then(() => {
-                    // Restore playback speed
-                    workletNode.port.postMessage({ 
-                        type: 'set-speed', 
-                        speed: currentPlaybackRate 
-                    });
-                    console.log(`🎚️ Restored playback speed for replay: ${currentPlaybackRate.toFixed(2)}x`);
+                    // Restore playback speed (with multiplier applied)
+                    updatePlaybackSpeed();
+                    console.log(`🎚️ Restored playback speed for replay: ${currentPlaybackRate.toFixed(2)}x (base slider speed × multiplier)`);
                     
                     // Send all chunks back to worklet
                     for (let i = 0; i < allReceivedData.length; i++) {
@@ -1426,29 +1467,53 @@
             }
         }
         
-        function changePlaybackSpeed() {
+        function getBaseSampleRateMultiplier() {
+            const baseSampleRateSelect = document.getElementById('baseSampleRate');
+            const selectedRate = parseFloat(baseSampleRateSelect.value);
+            // Multiplier is relative to 44.1 kHz
+            return selectedRate / 44100;
+        }
+        
+        function updatePlaybackSpeed() {
             const slider = document.getElementById('playbackSpeed');
             const value = parseFloat(slider.value);
             
             // Logarithmic mapping: 0-1000 -> 0.1-10, with 667 = 1.0
-            let speed;
+            let baseSpeed;
             if (value <= 667) {
                 const normalized = value / 667;
-                speed = 0.1 * Math.pow(10, normalized);
+                baseSpeed = 0.1 * Math.pow(10, normalized);
             } else {
                 const normalized = (value - 667) / 333;
-                speed = Math.pow(10, normalized);
+                baseSpeed = Math.pow(10, normalized);
             }
             
-            currentPlaybackRate = speed;
-            document.getElementById('speedValue').textContent = speed.toFixed(2);
+            // Display shows ONLY the slider value (not multiplied)
+            document.getElementById('speedValue').textContent = baseSpeed.toFixed(2);
+            
+            // Apply base sample rate multiplier to actual playback speed
+            const multiplier = getBaseSampleRateMultiplier();
+            const finalSpeed = baseSpeed * multiplier;
+            
+            // Store final speed for worklet and loop logic
+            currentPlaybackRate = finalSpeed;
             
             if (workletNode) {
                 workletNode.port.postMessage({
                     type: 'set-speed',
-                    speed: speed
+                    speed: finalSpeed
                 });
             }
+        }
+        
+        function changePlaybackSpeed() {
+            updatePlaybackSpeed();
+        }
+        
+        function changeBaseSampleRate() {
+            // When base sample rate changes, update playback speed immediately
+            // This does NOT trigger a new fetch - just updates the playing audio speed
+            updatePlaybackSpeed();
         }
         
         function changeVolume() {
@@ -1636,9 +1701,15 @@
             document.getElementById('dataType').addEventListener('change', enableFetchButton);
             document.getElementById('station').addEventListener('change', enableFetchButton);
             document.getElementById('duration').addEventListener('change', enableFetchButton);
-            document.getElementById('enableHighpass').addEventListener('change', enableFetchButton);
+            document.getElementById('highpassFreq').addEventListener('change', enableFetchButton);
             document.getElementById('enableNormalize').addEventListener('change', enableFetchButton);
             document.getElementById('useLocalServer').addEventListener('change', enableFetchButton);
+            
+            // Base sample rate changes playback speed immediately (does NOT trigger new fetch)
+            document.getElementById('baseSampleRate').addEventListener('change', changeBaseSampleRate);
+            
+            // Initialize playback speed with multiplier
+            updatePlaybackSpeed();
             
             // Spacebar to toggle play/pause
             document.addEventListener('keydown', (event) => {
@@ -1693,7 +1764,7 @@
             });
             
             // Blur checkboxes after interaction so spacebar works immediately
-            const checkboxes = ['enableHighpass', 'enableNormalize', 'useLocalServer'];
+            const checkboxes = ['enableNormalize', 'useLocalServer'];
             checkboxes.forEach(id => {
                 const checkbox = document.getElementById(id);
                 if (checkbox) {
