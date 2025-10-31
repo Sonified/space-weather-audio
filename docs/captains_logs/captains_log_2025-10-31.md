@@ -77,3 +77,38 @@ v1.24 - Commit: "v1.24 Feature: Added Local Server checkbox for backend selectio
 
 ---
 
+## Duration & Error Handling Improvements
+
+### Changes Made:
+
+1. **24-Hour Duration Option**
+   - Added 24-hour option to duration dropdown
+   - Users can now fetch up to 24 hours of seismic/infrasound data
+
+2. **Improved Error Handling for Inactive Stations**
+   - Backend now returns 404 (Not Found) instead of 500 for stations with no data
+   - Properly handles IRIS HTTP 204 responses (No data available)
+   - Returns detailed error messages including station/channel info
+   - Tracks last error message for better debugging
+
+3. **Better Frontend Error Display**
+   - Frontend now parses JSON error responses from backend
+   - Displays specific error messages instead of generic HTTP status codes
+   - Shows helpful messages like "station may be inactive or no data for requested time range"
+
+4. **Debug Logging**
+   - Added console logging for station filtering to help debug infrasound station issues
+   - Identified that Kilauea infrasound stations (MENE1-5) are inactive in IRIS
+
+### Key Learnings:
+
+- **IRIS HTTP 204**: ObsPy raises exceptions when IRIS returns HTTP 204 (No data available)
+- **Station Status**: Some stations in EMBEDDED_STATIONS may be inactive/decommissioned
+- **Error Codes**: Use 404 for "resource not found" (inactive station) vs 500 for server errors
+- **User Experience**: Specific error messages help users understand why data fetch failed
+
+### Version
+v1.25 - Commit: "v1.25 Feature: Added 24-hour duration option, improved error handling for inactive stations (404 instead of 500), better frontend error messages"
+
+---
+

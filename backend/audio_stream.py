@@ -117,6 +117,7 @@ def stream_audio():
         # Retry with progressively shorter durations
         attempt_duration = duration
         st = None
+        last_error = None
         while attempt_duration >= 60:
             try:
                 st = client.get_waveforms(
@@ -127,18 +128,44 @@ def stream_audio():
                     starttime=starttime,
                     endtime=starttime + attempt_duration
                 )
-                logging.info(f"[Audio Stream] ✅ Got {len(st)} traces for {attempt_duration}s")
-                break
+                if st and len(st) > 0:
+                    logging.info(f"[Audio Stream] ✅ Got {len(st)} traces for {attempt_duration}s")
+                    break
+                else:
+                    logging.warning(f"[Audio Stream] IRIS returned empty stream for {attempt_duration}s")
+                    st = None
             except Exception as e:
+                last_error = str(e)
                 logging.warning(f"[Audio Stream] IRIS failed for {attempt_duration}s: {e}")
-                attempt_duration = attempt_duration // 2
+                st = None
+            attempt_duration = attempt_duration // 2
         
-        if not st:
-            return jsonify({'error': 'Failed to fetch data from IRIS'}), 500
+        if not st or len(st) == 0:
+            error_msg = f'No data available from IRIS for {network}.{station}.{location or "--"}.{channel}'
+            if last_error and 'No data available' in last_error:
+                error_msg += ' (station may be inactive or no data for requested time range)'
+            return jsonify({
+                'error': error_msg,
+                'network': network,
+                'station': station,
+                'location': location,
+                'channel': channel,
+                'details': last_error
+            }), 404
         
         # STEP 2: Merge traces
         logging.info(f"[Audio Stream] 🔧 Merging traces...")
         st.merge(method=1, fill_value='interpolate')
+        
+        if len(st) == 0:
+            return jsonify({
+                'error': f'No data available after merge for {network}.{station}.{location or "--"}.{channel}',
+                'network': network,
+                'station': station,
+                'location': location,
+                'channel': channel
+            }), 404
+        
         trace = st[0]
         
         # STEP 3: Extract samples (ObsPy already decoded miniSEED!)

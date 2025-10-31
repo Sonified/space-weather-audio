@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.24"
+__version__ = "1.25"
 __commit_message__ = (
-    "v1.24 Feature: Added Local Server checkbox for backend selection, improved cleanup on new data fetch, removed Visualizations header"
+    "v1.25 Feature: Added 24-hour duration option, improved error handling for inactive stations (404 instead of 500), better frontend error messages"
 )
 
 # Import key modules to make them available when importing the package
