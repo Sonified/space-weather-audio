@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.38"
+__version__ = "1.39"
 __commit_message__ = (
-    "v1.38 UI: Added 50 kHz base sampling rate option, changed multiplier display to show relative to original 100 Hz rate (441x, 480x, 500x, etc.)"
+    "v1.39 Fix: Set minimum spectrogram scroll speed to 0.125x (never 0), fixed spectrogram continuing to scroll after playback finishes, fixed 2x scroll speed bug on replay (prevented multiple visualization loops)"
 )
 
 # Import key modules to make them available when importing the package

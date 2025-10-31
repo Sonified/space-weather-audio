@@ -625,3 +625,35 @@ v1.38 - Commit: "v1.38 UI: Added 50 kHz base sampling rate option, changed multi
 
 ---
 
+## Spectrogram Scroll Speed Fixes
+
+### Changes Made:
+
+1. **Minimum Scroll Speed**
+   - Changed minimum scroll speed from 0x to 0.125x
+   - Spectrogram now always scrolls at least 0.125x (0.5x actual with 4x multiplier)
+   - Never stops completely, preventing static display
+
+2. **Fixed Spectrogram Continuing After Playback**
+   - Spectrogram now stops scrolling when playback finishes
+   - Added `!isPlaying` check to both `drawWaveform()` and `drawSpectrogram()`
+   - Visualization pauses properly when `isPlaying = false`
+
+3. **Fixed 2x Scroll Speed Bug on Replay**
+   - Root cause: `startVisualization()` was being called multiple times, creating duplicate animation loops
+   - Added `visualizationStarted` flag to prevent multiple visualization loops
+   - Each call was starting new `drawSpectrogram()` loops that all ran simultaneously
+   - With 2 loops running, spectrogram scrolled twice per frame = 2x speed appearance
+   - Now visualization starts only once, loops self-perpetuate via `requestAnimationFrame`
+
+### Key Learnings:
+
+- **Animation Loop Management**: Multiple `requestAnimationFrame` loops will all execute, causing double/triple rendering
+- **State Checks**: Visualizations should check both `isPaused` AND `isPlaying` to properly stop
+- **Initialization Guards**: Functions that start persistent loops should have guards against multiple calls
+
+### Version
+v1.39 - Commit: "v1.39 Fix: Set minimum spectrogram scroll speed to 0.125x (never 0), fixed spectrogram continuing to scroll after playback finishes, fixed 2x scroll speed bug on replay (prevented multiple visualization loops)"
+
+---
+

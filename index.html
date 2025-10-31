@@ -688,6 +688,7 @@
         let spectrogramInitialized = false; // Flag to track if spectrogram has been cleared for first time
         let spectrogramScrollSpeed = 1.0; // Scroll speed multiplier (default 1.0x)
         let spectrogramFrameCounter = 0; // Frame counter for controlling scroll speed
+        let visualizationStarted = false; // Flag to prevent multiple visualization loops
         let currentMetadata = null; // Store metadata for duration calculation
         let playbackStartTime = null; // Track when playback started (for position tracking)
         let playbackPositionInterval = null; // Interval for updating position
@@ -1440,6 +1441,9 @@
                 workletNode.disconnect();
                 workletNode = null;
                 initAudioWorklet().then(() => {
+                    // Reset spectrogram frame counter for clean replay
+                    spectrogramFrameCounter = 0;
+                    
                     // Restore playback speed (with multiplier applied)
                     updatePlaybackSpeed();
                     console.log(`🎚️ Restored playback speed for replay: ${currentPlaybackRate.toFixed(2)}x (base slider speed × multiplier)`);
@@ -1882,6 +1886,11 @@
         }
         
         function startVisualization() {
+            // Only start visualization once to prevent multiple animation loops
+            if (visualizationStarted) {
+                return;
+            }
+            visualizationStarted = true;
             drawWaveform();
             drawSpectrogram();
         }
@@ -1889,8 +1898,8 @@
         function drawWaveform() {
             if (!analyserNode) return;
             
-            // Pause visualization when audio is paused
-            if (isPaused) {
+            // Pause visualization when audio is paused or not playing
+            if (isPaused || !isPlaying) {
                 requestAnimationFrame(drawWaveform);
                 return;
             }
@@ -1934,8 +1943,8 @@
         function drawSpectrogram() {
             if (!analyserNode) return;
             
-            // Pause visualization when audio is paused
-            if (isPaused) {
+            // Pause visualization when audio is paused or not playing
+            if (isPaused || !isPlaying) {
                 requestAnimationFrame(drawSpectrogram);
                 return;
             }
@@ -2019,24 +2028,24 @@
             const slider = document.getElementById('spectrogramScrollSpeed');
             const value = parseFloat(slider.value);
             
-            // Logarithmic mapping: 0-1x uses more slider range for finer control
-            // 0-66.67% of slider maps to 0-1.0x (logarithmic)
+            // Logarithmic mapping: 0.125-1x uses more slider range for finer control
+            // 0-66.67% of slider maps to 0.125-1.0x (logarithmic)
             // 66.67-100% of slider maps to 1.0-5.0x (logarithmic)
             let rawSpeed;
-            if (value === 0) {
-                rawSpeed = 0;
-            } else if (value <= 66.67) {
-                // 0 to 66.67 maps to 0.0 to 1.0x (logarithmic)
+            if (value <= 66.67) {
+                // 0 to 66.67 maps to 0.125 to 1.0x (logarithmic)
                 const normalized = value / 66.67; // 0 to 1
-                rawSpeed = Math.pow(10, normalized - 1); // 0.1 to 1.0 (log scale)
+                // Map 0 to 0.125, 1 to 1.0 on log scale
+                // log10(0.125) ≈ -0.903, log10(1.0) = 0
+                rawSpeed = Math.pow(10, normalized * 0.903 - 0.903); // 0.125 to 1.0 (log scale)
             } else {
                 // 66.67 to 100 maps to 1.0 to 5.0x (logarithmic)
                 const normalized = (value - 66.67) / 33.33; // 0 to 1
                 rawSpeed = Math.pow(10, normalized * Math.log10(5)); // 1.0 to 5.0 (log scale)
             }
             
-            // Snap to discrete achievable speeds
-            const discreteSpeeds = [0, 0.125, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0];
+            // Snap to discrete achievable speeds (minimum is 0.125, never 0)
+            const discreteSpeeds = [0.125, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0];
             let displaySpeed = discreteSpeeds[0];
             for (let i = 0; i < discreteSpeeds.length - 1; i++) {
                 const midpoint = (discreteSpeeds[i] + discreteSpeeds[i + 1]) / 2;
@@ -2053,9 +2062,7 @@
             
             // Update display - remove unnecessary zeros
             let displayText;
-            if (displaySpeed === 0) {
-                displayText = '0x';
-            } else if (displaySpeed < 1.0) {
+            if (displaySpeed < 1.0) {
                 // Remove leading zero and trailing zeros for fractional speeds
                 let speedStr = displaySpeed.toString();
                 if (speedStr.startsWith('0.')) {
