@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.23"
+__version__ = "1.24"
 __commit_message__ = (
-    "v1.23 Fix: AudioWorklet fade improvements - exponential ramps for pause/resume, proper worklet lifecycle management for looping, speed preservation on restart"
+    "v1.24 Feature: Added Local Server checkbox for backend selection, improved cleanup on new data fetch, removed Visualizations header"
 )
 
 # Import key modules to make them available when importing the package

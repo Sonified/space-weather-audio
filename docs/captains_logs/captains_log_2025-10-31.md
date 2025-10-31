@@ -44,3 +44,36 @@ v1.23 - Commit: "v1.23 Fix: AudioWorklet fade improvements - exponential ramps f
 
 ---
 
+## Backend Selection & Cleanup Improvements
+
+### Changes Made:
+
+1. **Local Server Checkbox**
+   - Added checkbox to switch between localhost:5005 and Render.com backend
+   - Default unchecked (uses Render.com production backend)
+   - Status message shows which backend is being used
+   - Console logs backend URL for debugging
+
+2. **Cleanup on New Data Fetch**
+   - When fetching new data while old data is playing, properly stops old playback
+   - Fades out current audio smoothly (50ms exponential ramp)
+   - Disconnects old worklet and gain nodes
+   - Clears old data buffer
+   - Resets playback state for fresh start
+   - Prevents audio overlap/corruption
+
+3. **UI Improvements**
+   - Removed "Visualizations" header for cleaner layout
+   - Improved status messages to show backend type
+
+### Key Learnings:
+
+- **Best Practice**: Always clean up old audio nodes before creating new ones
+- **Best Practice**: Fade out before disconnecting to prevent clicks
+- **User Experience**: Clear status messages help debug backend connectivity issues
+
+### Version
+v1.24 - Commit: "v1.24 Feature: Added Local Server checkbox for backend selection, improved cleanup on new data fetch, removed Visualizations header"
+
+---
+

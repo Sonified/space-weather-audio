@@ -269,6 +269,10 @@
                     <input type="checkbox" id="enableNormalize" checked style="width: 24px; height: 24px; cursor: pointer;">
                     <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: #333;">Enable Normalization</label>
                 </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
+                    <input type="checkbox" id="useLocalServer" style="width: 24px; height: 24px; cursor: pointer;">
+                    <label for="useLocalServer" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: #333;">Local Server</label>
+                </div>
             </div>
             
             <div class="status info" id="status" style="margin-top: 15px;">
@@ -705,7 +709,15 @@
                 
                 console.log('📡 Requesting:', requestBody);
                 
-                const response = await fetch('http://localhost:5005/api/stream-audio', {
+                // Determine backend URL based on checkbox
+                const useLocal = document.getElementById('useLocalServer').checked;
+                const backendUrl = useLocal 
+                    ? 'http://localhost:5005/api/stream-audio'
+                    : 'https://volcano-audio.onrender.com/api/stream-audio';
+                
+                console.log(`🌐 Using ${useLocal ? 'local' : 'Render.com'} backend: ${backendUrl}`);
+                
+                const response = await fetch(backendUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestBody)
@@ -1153,6 +1165,7 @@
             document.getElementById('duration').addEventListener('change', enableFetchButton);
             document.getElementById('enableHighpass').addEventListener('change', enableFetchButton);
             document.getElementById('enableNormalize').addEventListener('change', enableFetchButton);
+            document.getElementById('useLocalServer').addEventListener('change', enableFetchButton);
             
             console.log('✅ Event listeners added for fetch button re-enabling');
         });

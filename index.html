@@ -269,6 +269,10 @@
                     <input type="checkbox" id="enableNormalize" checked style="width: 24px; height: 24px; cursor: pointer;">
                     <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: #333;">Enable Normalization</label>
                 </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
+                    <input type="checkbox" id="useLocalServer" style="width: 24px; height: 24px; cursor: pointer;">
+                    <label for="useLocalServer" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: #333;">Local Server</label>
+                </div>
             </div>
             
             <div class="status info" id="status" style="margin-top: 15px;">
@@ -293,7 +297,6 @@
         </div>
         
         <div class="panel">
-            <h2 style="margin-bottom: 15px;">Visualizations</h2>
             <canvas id="waveform" width="1200" height="150"></canvas>
             <canvas id="spectrogram" width="1200" height="350"></canvas>
         </div>
@@ -659,9 +662,42 @@
                 const enableHighpass = document.getElementById('enableHighpass').checked;
                 const enableNormalize = document.getElementById('enableNormalize').checked;
                 
-                // Initialize AudioWorklet
+                // ===== STOP OLD PLAYBACK AND CLEAN UP =====
+                if (workletNode) {
+                    console.log('🛑 Stopping old playback and cleaning up for new data...');
+                    
+                    // Fade out current playback if playing
+                    if (gainNode && audioContext && isPlaying) {
+                        gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                        gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.05);
+                        
+                        // Wait for fade before cleaning up
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                    
+                    // Disconnect old worklet node (disconnects from gainNode automatically)
+                    workletNode.disconnect();
+                    workletNode = null;
+                    
+                    // Disconnect old gain node (if it exists)
+                    if (gainNode) {
+                        gainNode.disconnect();
+                        gainNode = null;
+                    }
+                    
+                    // Clear old data
+                    allReceivedData = [];
+                    
+                    // Reset playback state
+                    isPlaying = false;
+                    isPaused = false;
+                    
+                    console.log('✅ Old playback stopped and cleaned up');
+                }
+                
+                // Initialize fresh AudioWorklet (will create new node)
                 await initAudioWorklet();
-                // DON'T reset here - worklet constructor already has correct initial state
                 
                 // Update UI
                 const startBtn = document.getElementById('startBtn');
@@ -705,7 +741,17 @@
                 
                 console.log('📡 Requesting:', requestBody);
                 
-                const response = await fetch('http://localhost:5005/api/stream-audio', {
+                // Determine backend URL based on checkbox
+                const useLocal = document.getElementById('useLocalServer').checked;
+                const backendUrl = useLocal 
+                    ? 'http://localhost:5005/api/stream-audio'
+                    : 'https://volcano-audio.onrender.com/api/stream-audio';
+                
+                const backendType = useLocal ? 'local' : 'Render.com';
+                console.log(`🌐 Using ${backendType} backend: ${backendUrl}`);
+                document.getElementById('status').textContent = `Fetching data from ${backendType} backend...`;
+                
+                const response = await fetch(backendUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestBody)
@@ -1153,6 +1199,7 @@
             document.getElementById('duration').addEventListener('change', enableFetchButton);
             document.getElementById('enableHighpass').addEventListener('change', enableFetchButton);
             document.getElementById('enableNormalize').addEventListener('change', enableFetchButton);
+            document.getElementById('useLocalServer').addEventListener('change', enableFetchButton);
             
             console.log('✅ Event listeners added for fetch button re-enabling');
         });
