@@ -21,6 +21,10 @@ import boto3
 app = Flask(__name__)
 CORS(app, expose_headers=['X-Metadata', 'X-Cache-Hit', 'X-Data-Ready-Ms'])
 
+# Register audio streaming blueprint (separate from chunk pipeline)
+from audio_stream import audio_stream_bp
+app.register_blueprint(audio_stream_bp)
+
 # Configuration
 MAX_RADIUS_KM = 13.0 * 1.60934  # 13 miles converted to km
 REQUIRED_COMPONENT = 'Z'  # Z-component only (vertical)

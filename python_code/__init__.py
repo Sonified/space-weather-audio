@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.22"
+__version__ = "1.23"
 __commit_message__ = (
-    "v1.22 Feature: Experimental SeedLink real-time audification dashboard with update interval tracking, reset/stop controls, and launch script"
+    "v1.23 Fix: AudioWorklet fade improvements - exponential ramps for pause/resume, proper worklet lifecycle management for looping, speed preservation on restart"
 )
 
 # Import key modules to make them available when importing the package

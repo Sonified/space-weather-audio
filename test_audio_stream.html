@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Stream Test - No MiniSEED Parsing!</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .info {
+            background: #e8f4fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background: #e8f8e8;
+            border-left: 4px solid #4CAF50;
+        }
+        .controls {
+            display: grid;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .row {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 10px;
+            align-items: center;
+        }
+        label {
+            font-weight: 600;
+            color: #555;
+        }
+        input, select, button {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.1s;
+        }
+        button:hover {
+            transform: scale(1.02);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+        }
+        .waveform {
+            width: 100%;
+            height: 200px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .playback-controls {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .time-display {
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Audio Stream Test</h1>
+        
+        <div class="info">
+            <strong>✨ No MiniSEED Parsing Required!</strong><br>
+            Server fetches, decodes, filters, normalizes, and compresses with zstd.<br>
+            Browser just decompresses and plays. Simple!
+        </div>
+
+        <div class="controls">
+            <div class="row">
+                <label>Volcano:</label>
+                <select id="volcano">
+                    <option value="kilauea">Kilauea</option>
+                    <option value="mauna_loa">Mauna Loa</option>
+                    <option value="haleakala">Haleakala</option>
+                </select>
+            </div>
+
+            <div class="row">
+                <label>Station:</label>
+                <select id="station">
+                    <option value="HV.NPOC..HHZ">HV.NPOC..HHZ (Kilauea)</option>
+                    <option value="HV.UWE..HHZ">HV.UWE..HHZ (Kilauea)</option>
+                    <option value="HV.AIND..HHZ">HV.AIND..HHZ (Mauna Loa)</option>
+                </select>
+            </div>
+
+            <div class="row">
+                <label>Duration:</label>
+                <select id="duration">
+                    <option value="300">5 minutes</option>
+                    <option value="600">10 minutes</option>
+                    <option value="1800">30 minutes</option>
+                    <option value="3600" selected>1 hour</option>
+                </select>
+            </div>
+
+            <div class="row">
+                <label>Hours Ago:</label>
+                <input type="number" id="hoursAgo" value="1" min="1" max="168">
+            </div>
+
+            <div class="row">
+                <label>Speedup:</label>
+                <input type="number" id="speedup" value="200" min="1" max="1000">
+            </div>
+
+            <div class="row">
+                <label>Highpass (Hz):</label>
+                <input type="number" id="highpass" value="0.5" min="0" max="10" step="0.1">
+                <small style="grid-column: 2; color: #666;">Set to 0 to disable server-side filtering</small>
+            </div>
+
+            <div class="row">
+                <label>Server Processing:</label>
+                <div style="display: flex; gap: 15px;">
+                    <label style="font-weight: normal;">
+                        <input type="checkbox" id="serverNormalize" checked> Normalize on server
+                    </label>
+                    <label style="font-weight: normal;">
+                        <input type="checkbox" id="sendRaw"> Send raw int32 (no conversion)
+                    </label>
+                </div>
+            </div>
+
+            <div class="row">
+                <label>Server:</label>
+                <input type="text" id="serverUrl" value="http://localhost:5001" style="grid-column: 2;">
+            </div>
+
+            <button id="streamBtn" onclick="startStream()">🚀 Start Stream</button>
+        </div>
+
+        <div id="status" class="status" style="display:none;"></div>
+
+        <canvas id="waveform" class="waveform" style="display:none;"></canvas>
+
+        <div class="playback-controls" id="playbackControls" style="display:none;">
+            <button onclick="togglePlayback()">▶️ Play</button>
+            <button onclick="stopPlayback()">⏹️ Stop</button>
+            <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
+        </div>
+
+        <div class="info success" id="metadata" style="display:none;"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+    <script>
+        let audioContext = null;
+        let audioBuffer = null;
+        let sourceNode = null;
+        let gainNode = null;
+        let startTime = 0;
+        let pauseTime = 0;
+        let isPlaying = false;
+
+        function log(message) {
+            const status = document.getElementById('status');
+            status.style.display = 'block';
+            status.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}\n`;
+            status.scrollTop = status.scrollHeight;
+            console.log(message);
+        }
+
+        async function startStream() {
+            const btn = document.getElementById('streamBtn');
+            btn.disabled = true;
+            
+            document.getElementById('status').innerHTML = '';
+            document.getElementById('metadata').style.display = 'none';
+            
+            try {
+                log('🚀 Starting audio stream...');
+                
+                // Parse station
+                const stationStr = document.getElementById('station').value;
+                const [network, station, location, channel] = stationStr.split('.');
+                
+                // Calculate time
+                const hoursAgo = parseInt(document.getElementById('hoursAgo').value);
+                const duration = parseInt(document.getElementById('duration').value);
+                const now = new Date();
+                const startTime = new Date(now.getTime() - hoursAgo * 3600000);
+                const startTimeISO = startTime.toISOString().replace('.000Z', 'Z');
+                
+                log(`📍 ${network}.${station}.${location}.${channel}`);
+                log(`⏰ Start: ${startTimeISO}`);
+                log(`⏱️  Duration: ${duration}s`);
+                
+                // Build request
+                const serverUrl = document.getElementById('serverUrl').value;
+                const speedup = parseInt(document.getElementById('speedup').value);
+                const highpass = parseFloat(document.getElementById('highpass').value);
+                
+                const normalize = document.getElementById('serverNormalize').checked;
+                const sendRaw = document.getElementById('sendRaw').checked;
+                
+                const requestBody = {
+                    network,
+                    station,
+                    location: location === '--' ? '' : location,
+                    channel,
+                    starttime: startTimeISO,
+                    duration,
+                    speedup,
+                    highpass_hz: highpass,
+                    normalize: normalize,
+                    send_raw: sendRaw
+                };
+                
+                log('📤 Requesting from server...');
+                
+                const response = await fetch(`${serverUrl}/api/stream-audio`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}: ${await response.text()}`);
+                }
+                
+                // Get headers
+                const sampleRate = parseFloat(response.headers.get('X-Sample-Rate'));
+                const sampleCount = parseInt(response.headers.get('X-Sample-Count'));
+                const compressedSize = parseInt(response.headers.get('X-Compressed-Size'));
+                const originalSize = parseInt(response.headers.get('X-Original-Size'));
+                
+                log(`✅ Received ${(compressedSize / 1024 / 1024).toFixed(2)} MB (${(originalSize / 1024 / 1024).toFixed(2)} MB uncompressed)`);
+                log(`📊 ${sampleCount.toLocaleString()} samples @ ${sampleRate} Hz`);
+                
+                // Get compressed blob
+                const compressedBlob = await response.arrayBuffer();
+                log('🗜️  Decompressing with zstd...');
+                
+                // Decompress with fflate (supports zstd)
+                const decompressed = fflate.decompressSync(new Uint8Array(compressedBlob));
+                log(`✅ Decompressed: ${(decompressed.length / 1024 / 1024).toFixed(2)} MB`);
+                
+                // Parse: [metadata_length (4 bytes)] [metadata_json] [float32_samples]
+                const view = new DataView(decompressed.buffer);
+                const metadataLength = view.getUint32(0, true); // little-endian
+                
+                const metadataBytes = decompressed.slice(4, 4 + metadataLength);
+                const metadataJson = new TextDecoder().decode(metadataBytes);
+                const metadata = JSON.parse(metadataJson);
+                
+                log('📋 Metadata parsed:');
+                log(`   Original rate: ${metadata.original_sample_rate} Hz`);
+                log(`   Samples: ${metadata.npts.toLocaleString()}`);
+                log(`   Duration: ${metadata.duration_seconds.toFixed(1)}s`);
+                log(`   Format: ${metadata.format}`);
+                log(`   ObsPy decoder: ${metadata.obspy_decoder ? 'YES ✓' : 'NO'}`);
+                log(`   Highpass: ${metadata.highpass_hz} Hz ${metadata.highpass_hz === 0 ? '(DISABLED)' : ''}`);
+                log(`   Normalized: ${metadata.normalized ? 'YES' : 'NO'}`);
+                
+                // Extract samples (float32 or int32 depending on format)
+                const samplesOffset = 4 + metadataLength;
+                const samplesBytes = decompressed.slice(samplesOffset);
+                
+                let samples;
+                if (metadata.format === 'int32') {
+                    samples = new Int32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
+                    log(`✅ Extracted ${samples.length.toLocaleString()} int32 samples (raw counts)`);
+                } else {
+                    samples = new Float32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
+                    log(`✅ Extracted ${samples.length.toLocaleString()} float32 samples`);
+                }
+                
+                
+                const minVal = samples.reduce((a, b) => Math.min(a, b));
+                const maxVal = samples.reduce((a, b) => Math.max(a, b));
+                const formatStr = metadata.format === 'int32' ? '.0f' : '.3f';
+                log(`   Range: [${minVal.toFixed(metadata.format === 'int32' ? 0 : 3)}, ${maxVal.toFixed(metadata.format === 'int32' ? 0 : 3)}]`);
+                
+                // Create audio buffer
+                log('🎵 Creating audio buffer...');
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                const playbackRate = metadata.original_sample_rate * speedup;
+                audioBuffer = audioContext.createBuffer(1, samples.length, audioContext.sampleRate);
+                
+                // Copy samples to audio buffer (with time stretching)
+                const channelData = audioBuffer.getChannelData(0);
+                const stretchFactor = playbackRate / audioContext.sampleRate;
+                
+                for (let i = 0; i < channelData.length; i++) {
+                    const sourceIndex = Math.floor(i * stretchFactor);
+                    if (sourceIndex < samples.length) {
+                        channelData[i] = samples[sourceIndex];
+                    }
+                }
+                
+                log('✅ Audio buffer ready!');
+                
+                // Show metadata
+                const metaDiv = document.getElementById('metadata');
+                metaDiv.innerHTML = `
+                    <strong>🎵 Ready to Play!</strong><br>
+                    Station: ${metadata.network}.${metadata.station}.${metadata.location}.${metadata.channel}<br>
+                    Original Duration: ${metadata.duration_seconds.toFixed(1)}s<br>
+                    Playback Duration: ${(metadata.duration_seconds / speedup).toFixed(1)}s (${speedup}x speedup)<br>
+                    Audio Rate: ${audioContext.sampleRate} Hz
+                `;
+                metaDiv.style.display = 'block';
+                
+                // Draw waveform
+                drawWaveform(samples);
+                
+                // Show controls
+                document.getElementById('playbackControls').style.display = 'flex';
+                document.getElementById('waveform').style.display = 'block';
+                
+                log('🎉 Ready to play!');
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function togglePlayback() {
+            if (isPlaying) {
+                pausePlayback();
+            } else {
+                playAudio();
+            }
+        }
+
+        function playAudio() {
+            if (!audioBuffer) {
+                alert('No audio loaded!');
+                return;
+            }
+
+            if (sourceNode) {
+                sourceNode.stop();
+            }
+
+            sourceNode = audioContext.createBufferSource();
+            sourceNode.buffer = audioBuffer;
+            
+            gainNode = audioContext.createGain();
+            gainNode.gain.value = 0.5;
+            
+            sourceNode.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            const offset = pauseTime || 0;
+            sourceNode.start(0, offset);
+            startTime = audioContext.currentTime - offset;
+            isPlaying = true;
+            
+            sourceNode.onended = () => {
+                isPlaying = false;
+                pauseTime = 0;
+            };
+            
+            log('▶️  Playing...');
+        }
+
+        function pausePlayback() {
+            if (sourceNode) {
+                pauseTime = audioContext.currentTime - startTime;
+                sourceNode.stop();
+                sourceNode = null;
+                isPlaying = false;
+                log('⏸️  Paused');
+            }
+        }
+
+        function stopPlayback() {
+            if (sourceNode) {
+                sourceNode.stop();
+                sourceNode = null;
+            }
+            isPlaying = false;
+            pauseTime = 0;
+            log('⏹️  Stopped');
+        }
+
+        function drawWaveform(samples) {
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+            const height = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+            
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.strokeStyle = '#667eea';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const step = Math.floor(samples.length / width);
+            const mid = height / 2;
+            
+            for (let i = 0; i < width; i++) {
+                const index = i * step;
+                const value = samples[index] || 0;
+                const y = mid + (value * mid * 0.9);
+                
+                if (i === 0) {
+                    ctx.moveTo(i, y);
+                } else {
+                    ctx.lineTo(i, y);
+                }
+            }
+            
+            ctx.stroke();
+            
+            // Draw center line
+            ctx.strokeStyle = '#dee2e6';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, mid);
+            ctx.lineTo(width, mid);
+            ctx.stroke();
+        }
+
+        // Update time display
+        setInterval(() => {
+            if (isPlaying && audioContext && audioBuffer) {
+                const currentTime = audioContext.currentTime - startTime;
+                const duration = audioBuffer.duration;
+                const current = Math.min(currentTime, duration);
+                
+                const formatTime = (seconds) => {
+                    const mins = Math.floor(seconds / 60);
+                    const secs = Math.floor(seconds % 60);
+                    return `${mins}:${secs.toString().padStart(2, '0')}`;
+                };
+                
+                document.getElementById('timeDisplay').textContent = 
+                    `${formatTime(current)} / ${formatTime(duration)}`;
+            }
+        }, 100);
+    </script>
+</body>
+</html>
+

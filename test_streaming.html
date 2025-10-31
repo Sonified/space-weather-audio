@@ -6,10 +6,370 @@
     <title>Volcano Audio - True Streaming</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌋</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
     <script type="module">
         import * as numcodecs from 'https://cdn.jsdelivr.net/npm/numcodecs@0.3.1/+esm';
         window.numcodecs = numcodecs;
         console.log('✅ Numcodecs loaded!');
+    </script>
+    
+    <!-- Basic miniSEED parser implementation -->
+    <script>
+        // Simple miniSEED parser for Steim1/Steim2 compressed data
+        // Based on SEED format specification
+        class MiniSEEDParser {
+            constructor() {
+                this.steim1Decompress = this.steim1Decompress.bind(this);
+                this.steim2Decompress = this.steim2Decompress.bind(this);
+            }
+            
+            parseDataRecords(arrayBuffer) {
+                const records = [];
+                let offset = 0;
+                const view = new DataView(arrayBuffer);
+                
+                // miniSEED records are typically 512 bytes
+                // Look for valid records by checking indicator byte (offset 6)
+                // Indicator can be: 'D' (data), 'R' (record), 'Q' (quality), 'M' (miniSEED)
+                const RECORD_SIZE = 512;
+                
+                while (offset + 64 <= arrayBuffer.byteLength) {
+                    // Check indicator byte (offset 6)
+                    const indicatorByte = view.getUint8(offset + 6);
+                    const indicator = String.fromCharCode(indicatorByte);
+                    
+                    // Accept 'D', 'R', 'Q', or 'M' (M is common for miniSEED format)
+                    if (indicator === 'D' || indicator === 'R' || indicator === 'Q' || indicator === 'M') {
+                        // Check if encoding byte (offset 39) is in valid range
+                        if (offset + 64 <= arrayBuffer.byteLength) {
+                            const encoding = view.getUint8(offset + 39);
+                            if (encoding <= 11) { // Valid encoding range: 0-11
+                                try {
+                                    const record = this.parseRecord(view, offset, arrayBuffer.byteLength - offset);
+                                    if (record && record.header) {
+                                        // Accept records even if numSamples is 0 (samples might be in data section)
+                                        records.push(record);
+                                        offset += RECORD_SIZE;
+                                        continue;
+                                    }
+                                } catch (e) {
+                                    console.warn(`Failed to parse record at offset ${offset}:`, e);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Move to next 512-byte boundary
+                    offset += RECORD_SIZE;
+                }
+                
+                return records;
+            }
+            
+            parseRecord(view, offset, maxLength) {
+                if (offset + 64 > maxLength) return null;
+                
+                const seqNum = this.readString(view, offset, 6);
+                const indicator = String.fromCharCode(view.getUint8(offset + 6));
+                
+                // Accept 'D', 'R', 'Q', or 'M' (M is common for miniSEED format)
+                if (indicator !== 'D' && indicator !== 'R' && indicator !== 'Q' && indicator !== 'M') {
+                    return null;
+                }
+                
+                const station = this.readString(view, offset + 8, 5).trim();
+                const location = this.readString(view, offset + 13, 2).trim();
+                const channel = this.readString(view, offset + 15, 3).trim();
+                const network = this.readString(view, offset + 18, 2).trim();
+                
+                // Parse start time (year, day of year, hour, minute, second, 0.0001 secs)
+                const year = view.getUint16(offset + 20, false); // big-endian
+                const dayOfYear = view.getUint16(offset + 22, false);
+                const hour = view.getUint8(offset + 24);
+                const minute = view.getUint8(offset + 25);
+                const second = view.getUint8(offset + 26);
+                const tenthMilli = view.getUint8(offset + 27);
+                
+                // Sample rate factor and multiplier (offset 30-31)
+                const sampleRateFactor = view.getInt16(offset + 30, false);
+                const sampleRateMult = view.getInt16(offset + 32, false);
+                
+                // Activity flags (offset 36)
+                const activityFlags = view.getUint8(offset + 36);
+                const ioSFlags = view.getUint8(offset + 37);
+                const dataQuality = view.getUint8(offset + 38);
+                
+                // Number of samples (offset 40-41)
+                const numSamples = view.getUint16(offset + 40, false);
+                
+                // Sample rate calculation
+                let sampleRate = 0;
+                if (sampleRateFactor > 0 && sampleRateMult > 0) {
+                    sampleRate = sampleRateFactor * sampleRateMult;
+                } else if (sampleRateFactor < 0 && sampleRateMult > 0) {
+                    sampleRate = -1.0 * sampleRateFactor / sampleRateMult;
+                } else if (sampleRateFactor > 0 && sampleRateMult < 0) {
+                    sampleRate = -1.0 * sampleRateFactor / sampleRateMult;
+                } else {
+                    sampleRate = 0;
+                }
+                
+                // Encoding format (offset 39)
+                const encoding = view.getUint8(offset + 39);
+                
+                // Byte order (offset 42) - 0 = big endian, 1 = little endian
+                const byteOrder = view.getUint8(offset + 42);
+                const isBigEndian = byteOrder === 0;
+                
+                // Data offset (offset 43-44) - where data starts in record
+                // If dataOffset is 0, use default fixed header length of 48 bytes
+                let dataOffset = view.getUint16(offset + 43, false);
+                if (dataOffset === 0 || dataOffset < 48) {
+                    dataOffset = 48; // Standard fixed header length
+                }
+                
+                // If numSamples is 0, try to calculate from data length and encoding
+                let actualNumSamples = numSamples;
+                if (actualNumSamples === 0) {
+                    const dataLength = 512 - dataOffset; // Record size minus header
+                    // Calculate samples based on encoding
+                    switch (encoding) {
+                        case 1: actualNumSamples = Math.floor(dataLength / 2); break; // int16: 2 bytes per sample
+                        case 2: actualNumSamples = Math.floor(dataLength / 3); break; // int24: 3 bytes per sample
+                        case 3: actualNumSamples = Math.floor(dataLength / 4); break; // int32: 4 bytes per sample
+                        case 4: actualNumSamples = Math.floor(dataLength / 4); break; // float32: 4 bytes per sample
+                        case 5: actualNumSamples = Math.floor(dataLength / 8); break; // float64: 8 bytes per sample
+                        case 10: // Steim1 - complex, use estimate
+                        case 11: // Steim2 - complex, use estimate
+                            actualNumSamples = Math.floor(dataLength / 2); // Rough estimate
+                            break;
+                        default: actualNumSamples = 0;
+                    }
+                }
+                
+                const header = {
+                    netCode: network,
+                    staCode: station,
+                    locCode: location,
+                    chanCode: channel,
+                    startTime: new Date(year, 0, 1 + dayOfYear - 1, hour, minute, second, tenthMilli * 10),
+                    sampleRate: sampleRate,
+                    numSamples: actualNumSamples,
+                    encoding: encoding
+                };
+                
+                // Parse data block
+                const dataStart = offset + dataOffset;
+                const dataLength = 512 - dataOffset; // Assuming 512-byte records
+                
+                return {
+                    header: header,
+                    encoding: encoding,
+                    dataOffset: dataStart,
+                    dataLength: dataLength,
+                    byteOrder: isBigEndian,
+                    decompress: () => this.decompressRecord(view, dataStart, dataLength, encoding, actualNumSamples, isBigEndian)
+                };
+            }
+            
+            decompressRecord(view, dataOffset, dataLength, encoding, numSamples, isBigEndian) {
+                switch (encoding) {
+                    case 0: // ASCII (not common for seismic)
+                        return new Int32Array(0);
+                    case 1: // 16-bit integers
+                        return this.readInt16Array(view, dataOffset, numSamples, isBigEndian);
+                    case 2: // 24-bit integers
+                        return this.readInt24Array(view, dataOffset, numSamples, isBigEndian);
+                    case 3: // 32-bit integers
+                        return this.readInt32Array(view, dataOffset, numSamples, isBigEndian);
+                    case 4: // IEEE 32-bit float
+                        return this.readFloat32Array(view, dataOffset, numSamples, isBigEndian);
+                    case 5: // IEEE 64-bit double
+                        return this.readFloat64Array(view, dataOffset, numSamples, isBigEndian);
+                    case 10: // Steim1 compression
+                        return this.steim1Decompress(view, dataOffset, dataLength, numSamples, isBigEndian);
+                    case 11: // Steim2 compression
+                        return this.steim2Decompress(view, dataOffset, dataLength, numSamples, isBigEndian);
+                    default:
+                        console.warn('Unsupported encoding:', encoding);
+                        return new Int32Array(0);
+                }
+            }
+            
+            readString(view, offset, length) {
+                let str = '';
+                for (let i = 0; i < length; i++) {
+                    const char = view.getUint8(offset + i);
+                    if (char !== 0) str += String.fromCharCode(char);
+                }
+                return str;
+            }
+            
+            readInt16Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = view.getInt16(offset + i * 2, !isBigEndian);
+                }
+                return result;
+            }
+            
+            readInt24Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    const byteOffset = offset + i * 3;
+                    
+                    if (isBigEndian) {
+                        const b1 = view.getUint8(byteOffset);
+                        const b2 = view.getUint8(byteOffset + 1);
+                        const b3 = view.getUint8(byteOffset + 2);
+                        // Sign extend 24-bit to 32-bit (same as Python: (b1 << 24 | b2 << 16 | b3 << 8) >> 8)
+                        result[i] = (b1 << 24 | b2 << 16 | b3 << 8) >> 8;
+                    } else {
+                        const b1 = view.getUint8(byteOffset);
+                        const b2 = view.getUint8(byteOffset + 1);
+                        const b3 = view.getUint8(byteOffset + 2);
+                        // Little endian: reverse byte order
+                        result[i] = (b3 << 24 | b2 << 16 | b1 << 8) >> 8;
+                    }
+                }
+                return result;
+            }
+            
+            readInt32Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = view.getInt32(offset + i * 4, !isBigEndian);
+                }
+                return result;
+            }
+            
+            readFloat32Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = Math.round(view.getFloat32(offset + i * 4, !isBigEndian));
+                }
+                return result;
+            }
+            
+            readFloat64Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = Math.round(view.getFloat64(offset + i * 8, !isBigEndian));
+                }
+                return result;
+            }
+            
+            steim1Decompress(view, offset, length, numSamples, isBigEndian) {
+                // Steim1 decompression - simplified version
+                // This is a basic implementation; full Steim1 is more complex
+                const samples = new Int32Array(numSamples);
+                let sampleIndex = 0;
+                let dataOffset = offset;
+                let prevValue = 0;
+                
+                // Read first frame
+                const frameControl = view.getUint32(dataOffset, !isBigEndian);
+                dataOffset += 4;
+                prevValue = view.getInt32(dataOffset, !isBigEndian);
+                samples[sampleIndex++] = prevValue;
+                dataOffset += 4;
+                
+                // Process remaining frames (simplified - assumes 4-byte differences)
+                while (sampleIndex < numSamples && dataOffset + 4 <= offset + length) {
+                    const diff = view.getInt32(dataOffset, !isBigEndian);
+                    prevValue += diff;
+                    samples[sampleIndex++] = prevValue;
+                    dataOffset += 4;
+                    
+                    if (sampleIndex >= numSamples) break;
+                }
+                
+                return samples.slice(0, sampleIndex);
+            }
+            
+            steim2Decompress(view, offset, length, numSamples, isBigEndian) {
+                const samples = new Int32Array(numSamples);
+                let sampleIndex = 0;
+                let pos = offset;
+                let xn = 0, xn1 = 0; // Previous two sample values
+                let frameCount = 0;
+                const maxFrames = Math.floor(length / 64); // 64 bytes per frame
+                
+                while (frameCount < maxFrames && sampleIndex < numSamples && pos + 64 <= offset + length) {
+                    // Read frame header (4 bytes)
+                    const frameHeader = view.getUint32(pos, !isBigEndian);
+                    pos += 4;
+                    
+                    // Read first sample value (xn)
+                    xn = view.getInt32(pos, !isBigEndian);
+                    pos += 4;
+                    
+                    // Read second sample value (xn1)
+                    xn1 = view.getInt32(pos, !isBigEndian);
+                    pos += 4;
+                    
+                    if (frameCount === 0) {
+                        samples[sampleIndex++] = xn;
+                        samples[sampleIndex++] = xn1;
+                    }
+                    
+                    // Process 15 nibbles (60 bytes of compressed data)
+                    for (let nibbleIdx = 0; nibbleIdx < 15 && sampleIndex < numSamples; nibbleIdx++) {
+                        const nibble = view.getUint8(pos);
+                        const ctrl = (nibble >> 6) & 0x3;
+                        const val = nibble & 0x3f;
+                        pos++;
+                        
+                        let diff = 0;
+                        switch (ctrl) {
+                            case 0: // 8-bit difference
+                                diff = (val << 24) >> 24; // Sign extend
+                                break;
+                            case 1: // 16-bit difference
+                                const nextByte = view.getUint8(pos++);
+                                diff = ((val << 8 | nextByte) << 16) >> 16; // Sign extend
+                                break;
+                            case 2: // 32-bit difference
+                                const b1 = view.getUint8(pos++);
+                                const b2 = view.getUint8(pos++);
+                                const b3 = view.getUint8(pos++);
+                                diff = (val << 24 | b1 << 16 | b2 << 8 | b3);
+                                break;
+                            case 3: // Special/other - skip for now
+                                pos += 3;
+                                continue;
+                        }
+                        
+                        xn1 = xn1 + diff;
+                        if (sampleIndex < numSamples) {
+                            samples[sampleIndex++] = xn1;
+                        }
+                    }
+                    
+                    frameCount++;
+                }
+                
+                return samples.slice(0, sampleIndex);
+            }
+        }
+        
+        // Initialize parser
+        try {
+            window.miniSEEDParser = new MiniSEEDParser();
+            window.seisplotjsMiniseed = {
+                parseDataRecords: (arrayBuffer) => {
+                    if (!window.miniSEEDParser) {
+                        throw new Error('MiniSEED parser not initialized');
+                    }
+                    return window.miniSEEDParser.parseDataRecords(arrayBuffer);
+                }
+            };
+            console.log('✅ Built-in miniSEED parser initialized!');
+            console.log('   Parser available:', !!window.seisplotjsMiniseed, !!window.seisplotjsMiniseed?.parseDataRecords);
+        } catch (e) {
+            console.error('❌ Failed to initialize miniSEED parser:', e);
+            window.seisplotjsMiniseed = null;
+        }
     </script>
     <style>
         * {
@@ -280,7 +640,8 @@
             <div class="control-group" style="margin-bottom: 20px;">
                 <label for="pipeline">🔬 Pipeline Architecture:</label>
                 <select id="pipeline" onchange="updatePipelineInfo()" style="font-weight: bold; border-color: #667eea;">
-                    <option value="worker-stream" selected>🌩️ Cloudflare Worker Stream Pipeline (REAL DATA)</option>
+                    <option value="simple-iris" selected>🚀 Render Audio Stream (ObsPy processed)</option>
+                    <option value="worker-stream">🌩️ Cloudflare Worker Stream Pipeline (REAL DATA)</option>
                     <option value="local-file">Local (File)</option>
                     <option value="local-backend-r2">Local Backend → R2 "Cache" → IRIS</option>
                     <option value="local-backend-local-cache">Local Backend → Local Cache → IRIS</option>
@@ -364,13 +725,33 @@
                     </select>
                 </div>
                 
-                <div class="control-group">
+                <div id="formatControlGroup" class="control-group">
                     <label for="format">File Format:</label>
                     <select id="format" style="max-width: 155px;">
                         <option value="int16" selected>Int16</option>
                         <option value="int32" disabled>Int32</option>
                         <option value="mseed" disabled>MiniSEED</option>
                     </select>
+                </div>
+                
+                <!-- Server-side processing controls (only shown for simple-iris mode) -->
+                <div id="serverProcessingControls" class="controls" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 2px solid #ddd;">
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="enableHighpass" style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="enableHighpass" style="margin-bottom: 0; cursor: pointer;">Enable High-Pass Filter (0.5 Hz)</label>
+                    </div>
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="enableNormalize" style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer;">Enable Normalization</label>
+                    </div>
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="sendRaw" style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="sendRaw" style="margin-bottom: 0; cursor: pointer;">Send Raw (int32 instead of float32)</label>
+                    </div>
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="bypassCompression" style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="bypassCompression" style="margin-bottom: 0; cursor: pointer;">Bypass Zstd Compression (debug)</label>
+                    </div>
                 </div>
             </div>
         </div>
@@ -494,8 +875,18 @@
         let isPlaying = false;
         let currentSource = null;
         
+        // Embedded station data (active stations within 20km of top 5 volcanoes)
+        const EMBEDDED_STATIONS = {"greatsitkin":{"name":"Great Sitkin","lat":52.0765,"lon":-176.1109,"seismic":[{"network":"AV","station":"GSTD","location":"","channel":"BHZ","distance_km":3.3,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSTR","location":"","channel":"BHZ","distance_km":4.1,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSSP","location":"","channel":"BHZ","distance_km":4.9,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSMY","location":"","channel":"BHZ","distance_km":5.2,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSCK","location":"","channel":"BHZ","distance_km":7.7,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSIG","location":"","channel":"BHZ","distance_km":16.2,"sample_rate":50.0,"priority":0}],"infrasound":[{"network":"AV","station":"GSMY","location":"","channel":"BDF","distance_km":5.2,"sample_rate":50.0}]},"shishaldin":{"name":"Shishaldin","lat":54.7554,"lon":-163.9711,"seismic":[{"network":"AV","station":"SSLS","location":"","channel":"BHZ","distance_km":5.4,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SSLN","location":"","channel":"BHZ","distance_km":6.5,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SSBA","location":"","channel":"BHZ","distance_km":10.1,"sample_rate":50.0,"priority":0},{"network":"AV","station":"ISNN","location":"","channel":"BHZ","distance_km":14.9,"sample_rate":50.0,"priority":0},{"network":"AV","station":"ISLZ","location":"","channel":"BHZ","distance_km":16.9,"sample_rate":50.0,"priority":0},{"network":"AV","station":"BRPK","location":"","channel":"BHZ","distance_km":19.2,"sample_rate":50.0,"priority":0}],"infrasound":[{"network":"AV","station":"SSLS","location":"","channel":"BDF","distance_km":5.4,"sample_rate":50.0},{"network":"AV","station":"SSLN","location":"","channel":"BDF","distance_km":6.5,"sample_rate":50.0},{"network":"AV","station":"SSBA","location":"","channel":"BDF","distance_km":10.1,"sample_rate":50.0}]},"spurr":{"name":"Spurr","lat":61.2989,"lon":-152.2539,"seismic":[{"network":"AV","station":"SPCP","location":"","channel":"BHZ","distance_km":6.4,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPBG","location":"","channel":"BHZ","distance_km":7.7,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPCN","location":"","channel":"BHZ","distance_km":9.2,"sample_rate":50.0,"priority":0},{"network":"AV","station":"N20K","location":"","channel":"BHZ","distance_km":11.2,"sample_rate":40.0,"priority":0},{"network":"AV","station":"SPCG","location":"","channel":"BHZ","distance_km":12.4,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPCL","location":"","channel":"BHZ","distance_km":12.4,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPWE","location":"","channel":"BHZ","distance_km":16.5,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPU","location":"","channel":"BHZ","distance_km":16.8,"sample_rate":50.0,"priority":0}],"infrasound":[{"network":"AV","station":"SPCP","location":"","channel":"BDF","distance_km":6.4,"sample_rate":50.0},{"network":"AV","station":"N20K","location":"20","channel":"BDF","distance_km":11.2,"sample_rate":20.0},{"network":"AV","station":"N20K","location":"EP","channel":"BDF","distance_km":11.2,"sample_rate":40.0},{"network":"AV","station":"N20K","location":"EP","channel":"BDO","distance_km":11.2,"sample_rate":40.0},{"network":"AV","station":"SPWE","location":"","channel":"BDF","distance_km":16.5,"sample_rate":50.0},{"network":"AV","station":"SPU","location":"","channel":"BDF","distance_km":16.8,"sample_rate":50.0}]},"kilauea":{"name":"Kilauea","lat":19.421,"lon":-155.287,"seismic":[{"network":"HV","station":"UWE","location":"","channel":"HHZ","distance_km":0.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"UWE","location":"QC","channel":"EHZ","distance_km":0.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"UWE","location":"QC","channel":"HHZ","distance_km":0.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"OBL","location":"","channel":"HHZ","distance_km":0.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"UWB","location":"","channel":"HHZ","distance_km":1.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"SBL","location":"","channel":"HHZ","distance_km":2.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"WRM","location":"","channel":"HHZ","distance_km":2.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"HAT","location":"","channel":"HHZ","distance_km":2.7,"sample_rate":100.0,"priority":0},{"network":"HV","station":"BYL","location":"","channel":"HHZ","distance_km":3.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"RIMD","location":"","channel":"HHZ","distance_km":3.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"KKO","location":"","channel":"HHZ","distance_km":3.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"SDH","location":"","channel":"HHZ","distance_km":3.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"OTLD","location":"","channel":"HHZ","distance_km":3.9,"sample_rate":100.0,"priority":0},{"network":"HV","station":"RSDD","location":"01","channel":"HHZ","distance_km":4.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"CPKD","location":"","channel":"HHZ","distance_km":5.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"NAHU","location":"","channel":"HHZ","distance_km":5.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"PUHI","location":"","channel":"HHZ","distance_km":5.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"PUHI","location":"00","channel":"HHZ","distance_km":5.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"AHUD","location":"","channel":"EHZ","distance_km":6.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"AHUD","location":"00","channel":"HHZ","distance_km":6.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"KOSM","location":"","channel":"HHZ","distance_km":7.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"DEVL","location":"","channel":"HHZ","distance_km":7.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"PAUD","location":"","channel":"HHZ","distance_km":9.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"MITD","location":"","channel":"HHZ","distance_km":9.6,"sample_rate":100.0,"priority":0},{"network":"HV","station":"MLOD","location":"","channel":"HHZ","distance_km":13.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"KNHD","location":"","channel":"EHZ","distance_km":13.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"HLPD","location":"","channel":"HHZ","distance_km":14.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"DESD","location":"","channel":"EHZ","distance_km":14.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"POLD","location":"","channel":"EHZ","distance_km":16.9,"sample_rate":100.0,"priority":0},{"network":"HV","station":"STCD","location":"","channel":"HHZ","distance_km":17.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"AIND","location":"","channel":"HHZ","distance_km":18.7,"sample_rate":100.0,"priority":0},{"network":"HV","station":"NPOC","location":"","channel":"HHZ","distance_km":18.9,"sample_rate":100.0,"priority":0},{"network":"HV","station":"JCUZ","location":"","channel":"HHZ","distance_km":19.9,"sample_rate":100.0,"priority":0}],"infrasound":[{"network":"UH","station":"MENE2","location":"01","channel":"BDF","distance_km":7.0,"sample_rate":40.0},{"network":"UH","station":"MENE4","location":"01","channel":"BDF","distance_km":7.0,"sample_rate":40.0},{"network":"UH","station":"MENE1","location":"01","channel":"BDF","distance_km":7.1,"sample_rate":40.0},{"network":"UH","station":"MENE3","location":"01","channel":"BDF","distance_km":7.1,"sample_rate":40.0},{"network":"UH","station":"MENE5","location":"01","channel":"BDF","distance_km":7.1,"sample_rate":40.0}]},"maunaloa":{"name":"Mauna Loa","lat":19.475,"lon":-155.608,"seismic":[{"network":"HV","station":"MOKD","location":"","channel":"HHZ","distance_km":1.6,"sample_rate":100.0,"priority":0},{"network":"HV","station":"SWRD","location":"","channel":"EHZ","distance_km":2.6,"sample_rate":100.0,"priority":0},{"network":"HV","station":"WILD","location":"","channel":"EHZ","distance_km":3.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"ALEP","location":"","channel":"EHZ","distance_km":8.3,"sample_rate":100.0,"priority":0},{"network":"HV","station":"RCOD","location":"","channel":"EHZ","distance_km":8.3,"sample_rate":100.0,"priority":0},{"network":"HV","station":"ELEP","location":"","channel":"EHZ","distance_km":9.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"TRAD","location":"","channel":"EHZ","distance_km":9.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"TOUO","location":"","channel":"HHZ","distance_km":10.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"DAND","location":"","channel":"EHZ","distance_km":14.7,"sample_rate":100.0,"priority":0},{"network":"HV","station":"PLAD","location":"","channel":"EHZ","distance_km":17.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"HSSD","location":"","channel":"HHZ","distance_km":19.3,"sample_rate":100.0,"priority":0},{"network":"HV","station":"AIND","location":"","channel":"HHZ","distance_km":19.5,"sample_rate":100.0,"priority":0}],"infrasound":[]}};
+        
         // Pipeline configuration
         const PIPELINE_CONFIGS = {
+            'simple-iris': {
+                name: 'Render Audio Stream (ObsPy processed)',
+                description: '🚀 Render Backend: ObsPy decodes miniSEED → optional high-pass/normalize → zstd compressed → browser plays',
+                color: '#28a745',
+                useEmbeddedStations: true,
+                audioStreamUrl: 'http://localhost:5001/api/stream-audio'
+            },
             'local-file': {
                 name: 'Local (File)',
                 localFilesUrl: 'http://localhost:5001/api/local-files',
@@ -544,12 +935,45 @@
             const controls = document.querySelector('.controls');
             const streamBtn = document.getElementById('streamBtn');
             
-            if (config.localFilesUrl) {
+            if (config.useEmbeddedStations) {
+                // Render audio stream mode - uses embedded station data
+                info.innerHTML = `${config.description}  |  🌐 Endpoint: ${config.audioStreamUrl || 'http://localhost:5001/api/stream-audio'}`;
+                localFileDropdown.style.display = 'none';
+                controls.style.display = 'flex';
+                streamBtn.textContent = '🎵 Start Streaming';
+                
+                // Hide format dropdown (not needed for simple IRIS mode - always miniSEED)
+                const formatControlGroup = document.getElementById('formatControlGroup');
+                if (formatControlGroup) {
+                    formatControlGroup.style.display = 'none';
+                }
+                
+                // Show server processing controls
+                const serverProcessingControls = document.getElementById('serverProcessingControls');
+                if (serverProcessingControls) {
+                    serverProcessingControls.style.display = 'flex';
+                }
+                
+                // Hide worker controls
+                const workerControls = document.getElementById('workerControls');
+                if (workerControls) {
+                    workerControls.style.display = 'none';
+                }
+                
+                loadStations(); // Uses embedded data
+            } else if (config.localFilesUrl) {
                 // Local file mode
                 info.innerHTML = `${config.description}`;
                 localFileDropdown.style.display = 'flex';
                 controls.style.display = 'none';
                 streamBtn.textContent = '🎵 Start';
+                
+                // Hide server processing controls
+                const serverProcessingControls = document.getElementById('serverProcessingControls');
+                if (serverProcessingControls) {
+                    serverProcessingControls.style.display = 'none';
+                }
+                
                 loadLocalFiles();
             } else if (config.workerStreamUrl) {
                 // Worker stream mode - simple size selector
@@ -557,6 +981,12 @@
                 localFileDropdown.style.display = 'none';
                 controls.style.display = 'none';
                 streamBtn.textContent = '🎵 Test Pipeline';
+                
+                // Hide server processing controls
+                const serverProcessingControls = document.getElementById('serverProcessingControls');
+                if (serverProcessingControls) {
+                    serverProcessingControls.style.display = 'none';
+                }
                 
                 // Show simple controls for worker stream (size + gzip toggle)
                 const workerControls = document.getElementById('workerControls');
@@ -570,10 +1000,22 @@
                 controls.style.display = 'flex';
                 streamBtn.textContent = '🎵 Start Streaming';
                 
+                // Show format dropdown (needed for backend modes)
+                const formatControlGroup = document.getElementById('formatControlGroup');
+                if (formatControlGroup) {
+                    formatControlGroup.style.display = 'flex';
+                }
+                
                 // Hide worker controls
                 const workerControls = document.getElementById('workerControls');
                 if (workerControls) {
                     workerControls.style.display = 'none';
+                }
+                
+                // Hide server processing controls (not for backend modes)
+                const serverProcessingControls = document.getElementById('serverProcessingControls');
+                if (serverProcessingControls) {
+                    serverProcessingControls.style.display = 'none';
                 }
                 
                 loadStations();
@@ -723,6 +1165,13 @@
             document.getElementById('playbackSpeed').value = sliderValueFor1x;
             console.log(`Initialized slider at position ${sliderValueFor1x} for 1.0x speed`);
             
+            // Ensure volcano dropdown has a selected value before loading stations
+            const volcanoSelect = document.getElementById('volcano');
+            if (volcanoSelect && (!volcanoSelect.value || volcanoSelect.value === '')) {
+                volcanoSelect.value = volcanoSelect.options[0]?.value || 'kilauea';
+                console.log(`✅ Initialized volcano dropdown to: ${volcanoSelect.value}`);
+            }
+            
             // Initialize pipeline (will load files or stations as needed)
             updatePipelineInfo();
             
@@ -740,6 +1189,10 @@
             document.getElementById('localFile').addEventListener('change', enableStreamButton);
             document.getElementById('workerSize').addEventListener('change', enableStreamButton);
             document.getElementById('workerGzip').addEventListener('change', enableStreamButton);
+            document.getElementById('enableHighpass').addEventListener('change', enableStreamButton);
+            document.getElementById('enableNormalize').addEventListener('change', enableStreamButton);
+            document.getElementById('sendRaw').addEventListener('change', enableStreamButton);
+            document.getElementById('bypassCompression').addEventListener('change', enableStreamButton);
             
             // Add spacebar support for play/pause
             document.addEventListener('keydown', (e) => {
@@ -761,6 +1214,48 @@
             const config = getPipelineConfig();
             const stationSelect = document.getElementById('station');
             
+            // Use embedded stations for simple-iris mode
+            if (config.useEmbeddedStations) {
+                const volcanoSelect = document.getElementById('volcano');
+                let volcano = volcanoSelect.value;
+                
+                // If no volcano selected, default to first option
+                if (!volcano || volcano === '') {
+                    volcano = volcanoSelect.options[0]?.value || 'kilauea';
+                    volcanoSelect.value = volcano;
+                }
+                
+                if (!EMBEDDED_STATIONS[volcano]) {
+                    stationSelect.innerHTML = '<option value="">Volcano not found in embedded data</option>';
+                    console.warn(`⚠️ Volcano '${volcano}' not found in embedded data`);
+                    return;
+                }
+                
+                // Convert embedded format to match backend format
+                const volcanoData = EMBEDDED_STATIONS[volcano];
+                availableStations = {
+                    seismic: volcanoData.seismic.map(s => ({
+                        network: s.network,
+                        station: s.station,
+                        location: s.location,
+                        channel: s.channel,
+                        label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
+                    })),
+                    infrasound: volcanoData.infrasound.map(s => ({
+                        network: s.network,
+                        station: s.station,
+                        location: s.location,
+                        channel: s.channel,
+                        label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
+                    }))
+                };
+                
+                updateStationList();
+                console.log(`✅ Loaded ${Object.values(availableStations).flat().length} embedded stations for ${volcanoData.name}`);
+                return;
+            }
+            
+            // Backend mode - fetch from API
             if (!config.stationsUrl) {
                 return;
             }
@@ -1713,16 +2208,61 @@
         async function startStreaming() {
             const config = getPipelineConfig();
             const outputSampleRate = parseInt(document.getElementById('sampleRate').value);
-            const format = document.getElementById('format').value;
             
             // Check if we're in worker stream mode
             const isWorkerStreamMode = !!config.workerStreamUrl;
             // Check if we're in local file mode
             const isLocalFileMode = !!config.localFilesUrl;
+            // Check if we're in simple IRIS direct mode
+            const isSimpleIrisMode = !!config.useEmbeddedStations;
+            
+            // Format is always 'mseed' for simple IRIS mode, otherwise from dropdown
+            const format = isSimpleIrisMode ? 'mseed' : document.getElementById('format').value;
             
             let stationLabel, url, hours;
             
-            if (isWorkerStreamMode) {
+            if (isSimpleIrisMode) {
+                // Render Audio Stream mode - server processes miniSEED with ObsPy
+                const volcano = document.getElementById('volcano').value;
+                hours = parseInt(document.getElementById('duration').value);
+                const stationSelect = document.getElementById('station');
+                
+                if (!stationSelect.value) {
+                    alert('Please select a station');
+                    return;
+                }
+                
+                const stationData = JSON.parse(stationSelect.value);
+                stationLabel = stationSelect.options[stationSelect.selectedIndex].text;
+                
+                // Calculate time window (hours ago to now, accounting for latency)
+                const now = Date.now();
+                const latencyMinutes = 15; // Account for IRIS data latency
+                const endTime = new Date(now - latencyMinutes * 60 * 1000);
+                const startTime = new Date(endTime.getTime() - hours * 60 * 60 * 1000);
+                
+                // Format time in ISO format: "YYYY-MM-DDTHH:MM:SS"
+                const formatTime = (date) => {
+                    const year = date.getUTCFullYear();
+                    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                    const day = String(date.getUTCDate()).padStart(2, '0');
+                    const hours = String(date.getUTCHours()).padStart(2, '0');
+                    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+                };
+                
+                const startStr = formatTime(startTime);
+                const duration_seconds = hours * 3600;
+                
+                // Build Render audio stream URL
+                const audioStreamUrl = config.audioStreamUrl || 'http://localhost:5001/api/stream-audio';
+                url = audioStreamUrl; // Will use POST with body
+                
+                console.log(`🚀 Render Audio Stream: Fetching from ${audioStreamUrl}`);
+                console.log(`   Network: ${stationData.network}, Station: ${stationData.station}, Location: ${stationData.location || '--'}, Channel: ${stationData.channel}`);
+                console.log(`   Start: ${startStr}, Duration: ${duration_seconds}s`);
+            } else if (isWorkerStreamMode) {
                 // Worker stream mode
                 const size = document.getElementById('workerSize').value;
                 const useGzip = document.getElementById('workerGzip').value;
@@ -1860,15 +2400,62 @@
                 // Start streaming
                 console.log(`📡 Streaming from: ${url}`);
                 console.log(`📦 Requesting format: ${format}`);
-                const response = await fetch(url);
                 
+                // Build fetch options based on mode
+                let fetchOptions = {};
+                if (isSimpleIrisMode) {
+                    // Render audio stream - POST with JSON body
+                    const stationData = JSON.parse(document.getElementById('station').value);
+                    const now = Date.now();
+                    const latencyMinutes = 15;
+                    const endTime = new Date(now - latencyMinutes * 60 * 1000);
+                    const startTime = new Date(endTime.getTime() - hours * 60 * 60 * 1000);
+                    const formatTime = (date) => {
+                        const year = date.getUTCFullYear();
+                        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                        const day = String(date.getUTCDate()).padStart(2, '0');
+                        const hours = String(date.getUTCHours()).padStart(2, '0');
+                        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                        const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+                    };
+                    
+                    fetchOptions = {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            network: stationData.network,
+                            station: stationData.station,
+                            location: stationData.location || '',
+                            channel: stationData.channel,
+                            starttime: formatTime(startTime),
+                            duration: hours * 3600,
+                            speedup: Math.round(outputSampleRate / 100), // Rough speedup estimate
+                            highpass_hz: document.getElementById('enableHighpass').checked ? 0.5 : 0,  // User-controlled filtering
+                            normalize: document.getElementById('enableNormalize').checked,  // User-controlled normalization
+                            send_raw: document.getElementById('sendRaw').checked,  // User-controlled format (int32 vs float32)
+                            bypass_compression: document.getElementById('bypassCompression').checked  // Debug: skip compression
+                        })
+                    };
+                }
+                
+                const response = await fetch(url, fetchOptions);
+                
+                // Check response
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    const errorText = await response.text().catch(() => '');
+                    throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
                 }
                 
                 // Handle worker-stream mode differently (already processed data)
                 let metadata;
-                if (isWorkerStreamMode) {
+                if (isSimpleIrisMode) {
+                    // Simple IRIS mode - metadata will be parsed from miniSEED file
+                    // Skip header parsing, will parse from data below
+                    metadata = null; // Will be set after parsing
+                } else if (isWorkerStreamMode) {
                     // Worker returns processed int16 data with sample rate in header
                     const sampleRate = parseInt(response.headers.get('X-Sample-Rate') || '100');
                     const sampleCount = parseInt(response.headers.get('X-Sample-Count') || '0');
@@ -1891,17 +2478,19 @@
                 }
                 const metadataTime = performance.now() - streamStartTime;
                 
-                // Read cache status headers
-                const cacheHit = response.headers.get('X-Cache-Hit') === 'true';
-                cacheHitForMetrics = cacheHit; // Store for TTFA metric
-                const dataReadyMs = parseInt(response.headers.get('X-Data-Ready-Ms') || '0');
-                
-                console.log('📊 Metadata received:', metadata);
-                const speedupFactor = Math.round(audioRate / metadata.sample_rate);
-                console.log(`🎵 Audio rate: ${audioRate} Hz (${metadata.sample_rate} Hz seismic → ${speedupFactor}x speedup)`);
-                console.log(`⏱️ Time to metadata: ${metadataTime.toFixed(0)}ms`);
-                console.log(`💾 Cache status: ${cacheHit ? '✅ HIT (from R2)' : '❌ MISS (fetched from IRIS)'}`);
-                console.log(`⚡ Backend data ready: ${dataReadyMs}ms ${cacheHit ? '(pure R2 perf!)' : '(includes IRIS fetch)'}`);
+                // Read cache status headers (not applicable for simple IRIS mode)
+                if (!isSimpleIrisMode) {
+                    const cacheHit = response.headers.get('X-Cache-Hit') === 'true';
+                    cacheHitForMetrics = cacheHit; // Store for TTFA metric
+                    const dataReadyMs = parseInt(response.headers.get('X-Data-Ready-Ms') || '0');
+                    
+                    console.log('📊 Metadata received:', metadata);
+                    const speedupFactor = Math.round(audioRate / metadata.sample_rate);
+                    console.log(`🎵 Audio rate: ${audioRate} Hz (${metadata.sample_rate} Hz seismic → ${speedupFactor}x speedup)`);
+                    console.log(`⏱️ Time to metadata: ${metadataTime.toFixed(0)}ms`);
+                    console.log(`💾 Cache status: ${cacheHit ? '✅ HIT (from R2)' : '❌ MISS (fetched from IRIS)'}`);
+                    console.log(`⚡ Backend data ready: ${dataReadyMs}ms ${cacheHit ? '(pure R2 perf!)' : '(includes IRIS fetch)'}`);
+                }
                 
                 if (isWorkerStreamMode) {
                     const durationMins = Math.round(metadata.duration_seconds / 60);
@@ -1910,12 +2499,228 @@
                     const durationMins = Math.round(metadata.duration_seconds / 60);
                     const speedupFactor = Math.round(audioRate / metadata.sample_rate);
                     status.textContent = `Loading ${stationLabel} (${durationMins} min, ${metadata.sample_rate} Hz → ${audioRate} Hz audio, ${speedupFactor}x) - seeking disabled until complete...`;
-                } else {
+                } else if (!isSimpleIrisMode) {
                     const speedupFactor = Math.round(audioRate / metadata.sample_rate);
                     status.textContent = `Streaming ${hours}h from ${stationLabel} (${metadata.sample_rate} Hz seismic → ${audioRate} Hz audio, ${speedupFactor}x) - seeking disabled until complete...`;
                 }
                 
-                if (isLocalFileMode) {
+                if (isSimpleIrisMode) {
+                    // Render Audio Stream mode - optionally compressed float32/int32 samples
+                    const receivedBlob = await response.arrayBuffer();
+                    totalBytesReceived = receivedBlob.byteLength;
+                    document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                    
+                    const loadTime = performance.now() - streamStartTime;
+                    console.log(`📦 Received data: ${receivedBlob.byteLength} bytes (${loadTime.toFixed(0)}ms)`);
+                    
+                    // Check for empty response
+                    if (receivedBlob.byteLength === 0) {
+                        throw new Error('Server returned 0 bytes - no data available.');
+                    }
+                    
+                    let decompressed;
+                    const bypassCompression = document.getElementById('bypassCompression').checked;
+                    
+                    if (bypassCompression) {
+                        // No compression - use data directly
+                        console.log('⏭️  Bypassing decompression (data not compressed)');
+                        decompressed = new Uint8Array(receivedBlob);
+                    } else {
+                        // Decompress with fzstd (tested and working in worker/src/index.js!)
+                        console.log('🗜️  Decompressing with zstd (fzstd)...');
+                        if (typeof fzstd === 'undefined') {
+                            throw new Error('fzstd not loaded - please refresh the page');
+                        }
+                        
+                        // Decompress - fzstd.decompress expects Uint8Array
+                        const compressedArray = new Uint8Array(receivedBlob);
+                        decompressed = fzstd.decompress(compressedArray);
+                        console.log(`✅ Decompressed: ${(decompressed.length / 1024 / 1024).toFixed(2)} MB`);
+                    }
+                    
+                    // Parse blob: [metadata_length (4 bytes)] [metadata_json] [float32_samples]
+                    // Handle byteOffset if decompressed is a view into a larger buffer (like test script does)
+                    const view = new DataView(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength);
+                    const metadataLength = view.getUint32(0, true); // little-endian
+                    
+                    console.log(`📋 Metadata length: ${metadataLength} bytes`);
+                    
+                    const metadataBytes = decompressed.slice(4, 4 + metadataLength);
+                    const metadataJson = new TextDecoder().decode(metadataBytes);
+                    
+                    // Debug: log first/last chars of JSON to catch corruption
+                    if (metadataJson.length > 150) {
+                        console.log(`📋 Metadata JSON preview: ${metadataJson.substring(0, 100)}...${metadataJson.substring(metadataJson.length - 50)}`);
+                    } else {
+                        console.log(`📋 Metadata JSON: ${metadataJson}`);
+                    }
+                    console.log(`📋 Metadata JSON length: ${metadataJson.length} chars`);
+                    
+                    const serverMetadata = JSON.parse(metadataJson);
+                    
+                    console.log('📋 Server metadata:', serverMetadata);
+                    
+                    // Extract samples (float32 or int32 based on format)
+                    const samplesOffset = 4 + metadataLength;
+                    const samplesBytes = decompressed.slice(samplesOffset);
+                    let allSamples;
+                    
+                    if (serverMetadata.format === 'int32') {
+                        // Raw int32 counts - convert to float32
+                        const int32Data = new Int32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
+                        allSamples = Float32Array.from(int32Data, v => v / 2147483648.0);
+                        console.log(`✅ Converted ${int32Data.length} int32 samples to float32`);
+                    } else {
+                        // Already float32
+                        allSamples = new Float32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
+                        console.log(`✅ Extracted ${allSamples.length} float32 samples`);
+                    }
+                    
+                    // 🔍 DEBUG: Log sample statistics
+                    let min = Infinity, max = -Infinity, sum = 0;
+                    for (let i = 0; i < allSamples.length; i++) {
+                        const v = allSamples[i];
+                        if (v < min) min = v;
+                        if (v > max) max = v;
+                        sum += v;
+                    }
+                    const mean = sum / allSamples.length;
+                    console.log(`🔍 Sample stats: min=${min.toFixed(6)}, max=${max.toFixed(6)}, mean=${mean.toFixed(6)}`);
+                    console.log(`🔍 First 10 samples: ${Array.from(allSamples.slice(0, 10)).map(v => v.toFixed(6)).join(', ')}`);
+                    console.log(`🔍 Last 10 samples: ${Array.from(allSamples.slice(-10)).map(v => v.toFixed(6)).join(', ')}`);
+                    
+                    const parseStart = performance.now();
+                    
+                    // Get sample rate from server metadata
+                    const sampleRate = serverMetadata.original_sample_rate;
+                    
+                    const parseTime = performance.now() - parseStart;
+                    console.log(`✅ Got ${allSamples.length} samples @ ${sampleRate}Hz (ObsPy processed on server)`);
+                    
+                    if (allSamples.length === 0) {
+                        throw new Error('No samples received from server.');
+                    }
+                    
+                    // Samples are already Float32 (-1 to 1)
+                    const float32Data = allSamples;
+                    
+                    // Set metadata
+                    metadata = {
+                        sample_rate: sampleRate,
+                        total_samples: allSamples.length,
+                        duration_seconds: allSamples.length / sampleRate
+                    };
+                    audioRate = outputSampleRate;
+                    totalAudioDuration = float32Data.length / audioRate;
+                    
+                    const speedupFactor = Math.round(audioRate / sampleRate);
+                    const durationMins = Math.round(metadata.duration_seconds / 60);
+                    status.textContent = `✅ Loaded ${stationLabel} (${durationMins} min, ${sampleRate} Hz → ${audioRate} Hz audio, ${speedupFactor}x)`;
+                    
+                    // ✅ SIMPLE IRIS MODE: Direct playback (no chunking)
+                    // Store combined audio for deck mode
+                    combinedAudioData = float32Data;
+                    isStreamComplete = true;
+                    
+                    // Store for download button
+                    allChunksData = [float32Data];
+                    chunksReceived = 1;
+                    document.getElementById('chunksReceived').textContent = chunksReceived;
+                    
+                    // Draw waveform
+                    drawWaveform();
+                    
+                    // Enable download button
+                    document.getElementById('downloadBtn').disabled = false;
+                    
+                    // Start playback automatically using deck mode (simpler than chunks)
+                    firstAudioTime = performance.now() - streamStartTime;
+                    document.getElementById('ttfa').textContent = `${firstAudioTime.toFixed(0)}ms`;
+                    
+                    // Enable controls
+                    const playPauseBtn = document.getElementById('playPauseBtn');
+                    playPauseBtn.disabled = false;
+                    playPauseBtn.textContent = '⏸️ Pause';
+                    playPauseBtn.classList.remove('secondary', 'play-active');
+                    playPauseBtn.classList.add('pause-active');
+                    
+                    document.getElementById('loopBtn').disabled = false;
+                    
+                    // Set playing state
+                    isPlaying = true;
+                    isPaused = false;
+                    isDeckMode = true; // Use deck mode for simple IRIS (single file)
+                    console.log(`🎬 Simple IRIS mode: Starting direct playback (deck mode)`);
+                    
+                    // Start spectrogram
+                    if (spectrogramAnimationId) {
+                        cancelAnimationFrame(spectrogramAnimationId);
+                    }
+                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                    
+                    // Initialize deck A
+                    deckA.gain = audioContext.createGain();
+                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                    deckA.gain.gain.value = 0;
+                    deckA.gain.connect(audioContext.destination);
+                    deckA.gain.connect(spectrogramAnalyser);
+                    
+                    // Create audio buffer
+                    const buffer = audioContext.createBuffer(1, float32Data.length, audioRate);
+                    buffer.copyToChannel(float32Data, 0);
+                    
+                    // Create and play source
+                    const source = audioContext.createBufferSource();
+                    source.buffer = buffer;
+                    source.playbackRate.value = currentPlaybackRate;
+                    source.connect(deckA.gain);
+                    deckA.source = source;
+                    activeDeck = 'A';
+                    
+                    // Fade in
+                    const now = audioContext.currentTime;
+                    deckA.gain.gain.setValueAtTime(0, now);
+                    deckA.gain.gain.linearRampToValueAtTime(targetVolume, now + AUDIO_FADE_TIME);
+                    
+                    // Schedule fadeout before end
+                    const fadeoutStartTime = Math.max(0, totalAudioDuration - AUDIO_FADE_TIME - AUDIO_FADE_BUFFER);
+                    if (fadeoutStartTime > 0) {
+                        deckA.fadeoutTimeout = setTimeout(() => {
+                            if (deckA.gain && !deckA.manualStop) {
+                                deckA.gain.gain.setValueAtTime(deckA.gain.gain.value, audioContext.currentTime);
+                                deckA.gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                            }
+                            deckA.fadeoutTimeout = null;
+                        }, fadeoutStartTime * 1000);
+                    }
+                    
+                    // Handle playback end
+                    source.onended = () => {
+                        if (isLooping && combinedAudioData) {
+                            console.log('🔁 Looping - restarting from beginning...');
+                            seekToPosition(0);
+                        } else {
+                            isPlaying = false;
+                            isPaused = true;
+                            playPauseBtn.textContent = '▶️ Play';
+                            playPauseBtn.classList.remove('pause-active');
+                            playPauseBtn.classList.add('play-active');
+                            console.log(`🏁 Playback finished: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                        }
+                    };
+                    
+                    // Start playback
+                    source.start(0);
+                    console.log(`▶️ Playing ${float32Data.length.toLocaleString()} samples @ ${audioRate}Hz (${totalAudioDuration.toFixed(2)}s)`);
+                    
+                    // Record playback start time for indicator
+                    playbackStartTime = audioContext.currentTime;
+                    currentAudioPosition = 0;
+                    lastUpdateTime = audioContext.currentTime;
+                    
+                    // Start playback indicator
+                    updatePlaybackIndicator();
+                } else if (isLocalFileMode) {
                     // For local files, read entire response at once (no progressive streaming)
                     const arrayBuffer = await response.arrayBuffer();
                     totalBytesReceived = arrayBuffer.byteLength;
@@ -2067,10 +2872,40 @@
                 const int32Data = new Int32Array(rawData.buffer);
                 float32Data = Float32Array.from(int32Data, v => v / 2147483648.0);
             } else if (format === 'mseed') {
-                // Data is miniSEED format - needs parsing (placeholder for now)
-                console.warn('⚠️ MiniSEED parsing not yet implemented - using placeholder');
-                // TODO: Implement miniSEED parsing with seisplotjs
-                float32Data = new Float32Array(0);
+                // Data is miniSEED format - parse with seisplotjs
+                if (!window.seisplotjsMiniseed) {
+                    throw new Error('seisplotjs not loaded - please refresh the page');
+                }
+                
+                console.log('🔍 Parsing miniSEED chunk...');
+                const parseStart = performance.now();
+                
+                // Convert Uint8Array to ArrayBuffer
+                const arrayBuffer = rawData.buffer.slice(rawData.byteOffset, rawData.byteOffset + rawData.byteLength);
+                
+                // Parse records
+                const records = window.seisplotjsMiniseed.parseDataRecords(arrayBuffer);
+                
+                if (!records || records.length === 0) {
+                    console.warn('⚠️ No data records found in miniSEED chunk');
+                    float32Data = new Float32Array(0);
+                } else {
+                    // Decompress and collect all samples
+                    let allSamples = [];
+                    for (let i = 0; i < records.length; i++) {
+                        const rec = records[i];
+                        const samples = rec.decompress();
+                        if (samples && samples.length > 0) {
+                            allSamples = allSamples.concat(Array.from(samples));
+                        }
+                    }
+                    
+                    const parseTime = performance.now() - parseStart;
+                    console.log(`✅ Parsed ${allSamples.length} samples in ${parseTime.toFixed(0)}ms`);
+                    
+                    // Convert Int32 samples to Float32 normalized (-1 to 1)
+                    float32Data = Float32Array.from(allSamples, v => v / 2147483648.0);
+                }
             } else {
                 throw new Error(`Unknown format: ${format}`);
             }

@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zstd Browser Decompression Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 { color: #4ec9b0; }
+        h2 { color: #569cd6; margin-top: 30px; }
+        .test-case {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .pass={color: #4ec9b0;}
+        .fail { color: #f48771; }
+        .info { color: #9cdcfe; }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #1177bb; }
+        button:disabled { background: #3e3e42; cursor: not-allowed; }
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .library-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #2d2d30;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Zstd Browser Decompression Test</h1>
+    <p class="info">Testing various JavaScript zstd libraries against backend-compressed data</p>
+    
+    <div id="status">Loading libraries...</div>
+    
+    <h2>Test Files</h2>
+    <div id="test-files"></div>
+    
+    <h2>Library Tests</h2>
+    <div id="library-tests"></div>
+    
+    <script>
+        // Test files from Python script
+        const TEST_FILES = [
+        {
+                "name": "small",
+                "path": "./zstd_test_small.bin",
+                "reference_path": "./zstd_test_small_reference.json",
+                "uncompressed_path": "./zstd_test_small_uncompressed.bin",
+                "expected_samples": 36000,
+                "sample_rate": 10.0,
+                "compressed_size": 133400
+        },
+        {
+                "name": "medium",
+                "path": "./zstd_test_medium.bin",
+                "reference_path": "./zstd_test_medium_reference.json",
+                "uncompressed_path": "./zstd_test_medium_uncompressed.bin",
+                "expected_samples": 360000,
+                "sample_rate": 100.0,
+                "compressed_size": 1331928
+        },
+        {
+                "name": "large",
+                "path": "./zstd_test_large.bin",
+                "reference_path": "./zstd_test_large_reference.json",
+                "uncompressed_path": "./zstd_test_large_uncompressed.bin",
+                "expected_samples": 3600000,
+                "sample_rate": 1000.0,
+                "compressed_size": 13142344
+        }
+];
+        
+        // Library configurations
+        const LIBRARIES = [
+            {
+                name: 'fzstd',
+                load: async () => {
+                    if (typeof fzstd !== 'undefined') {
+                        return { decompress: (data) => fzstd.decompress(data) };
+                    }
+                    // Try loading from CDN
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js';
+                    document.head.appendChild(script);
+                    return new Promise((resolve, reject) => {
+                        script.onload = () => {
+                            if (typeof fzstd !== 'undefined') {
+                                resolve({ decompress: (data) => fzstd.decompress(data) });
+                            } else {
+                                reject(new Error('fzstd not available'));
+                            }
+                        };
+                        script.onerror = reject;
+                    });
+                }
+            },
+            {
+                name: '@yoshihitoh/zstddec',
+                load: async () => {
+                    try {
+                        const module = await import('https://unpkg.com/@yoshihitoh/zstddec@0.1.0/dist/index.js');
+                        return { decompress: module.decompress };
+                    } catch (e) {
+                        throw new Error('Failed to load @yoshihitoh/zstddec: ' + e.message);
+                    }
+                }
+            },
+            {
+                name: 'numcodecs.Zstd',
+                load: async () => {
+                    try {
+                        const numcodecs = await import('https://cdn.jsdelivr.net/npm/numcodecs@0.3.1/+esm');
+                        return {
+                            decompress: async (data) => {
+                                const codec = numcodecs.Zstd.fromConfig({ level: 3 });
+                                return await codec.decode(data);
+                            }
+                        };
+                    } catch (e) {
+                        throw new Error('Failed to load numcodecs: ' + e.message);
+                    }
+                }
+            }
+        ];
+        
+        async function testLibrary(lib, testFile) {
+            const results = [];
+            
+            try {
+                console.log(`[${lib.name}] Loading library...`);
+                const libInstance = await lib.load();
+                console.log(`[${lib.name}] ✅ Library loaded`);
+                
+                // Fetch test file
+                console.log(`[${lib.name}] Fetching ${testFile.name}...`);
+                const response = await fetch(testFile.path);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const compressed = new Uint8Array(await response.arrayBuffer());
+                console.log(`[${lib.name}] ✅ Fetched ${compressed.length} bytes`);
+                
+                // Decompress
+                const t0 = performance.now();
+                let decompressed;
+                if (libInstance.decompress.constructor.name === 'AsyncFunction') {
+                    decompressed = await libInstance.decompress(compressed);
+                } else {
+                    decompressed = libInstance.decompress(compressed);
+                }
+                const t1 = performance.now();
+                const decompressTime = (t1 - t0).toFixed(2);
+                
+                console.log(`[${lib.name}] ✅ Decompressed ${decompressed.length} bytes in ${decompressTime}ms`);
+                
+                // Verify format
+                if (!(decompressed instanceof Uint8Array)) {
+                    throw new Error(`Expected Uint8Array, got ${decompressed.constructor.name}`);
+                }
+                
+                // Parse metadata
+                const view = new DataView(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength);
+                const metadataLength = view.getUint32(0, true);
+                const metadataBytes = decompressed.slice(4, 4 + metadataLength);
+                const metadataJson = new TextDecoder().decode(metadataBytes);
+                const metadata = JSON.parse(metadataJson);
+                
+                // Verify sample count
+                const samplesOffset = 4 + metadataLength;
+                const samplesBytes = decompressed.slice(samplesOffset);
+                const expectedSamples = testFile.expected_samples;
+                const actualSamples = samplesBytes.length / 4; // float32 = 4 bytes
+                
+                if (Math.abs(actualSamples - expectedSamples) > 1) {
+                    throw new Error(`Sample count mismatch: expected ${expectedSamples}, got ${actualSamples}`);
+                }
+                
+                // Load reference data for comparison
+                const referenceResponse = await fetch(testFile.reference_path);
+                if (!referenceResponse.ok) {
+                    throw new Error(`Failed to load reference: HTTP ${referenceResponse.status}`);
+                }
+                const reference = await referenceResponse.json();
+                
+                // Compare metadata exactly
+                const metadataMatch = JSON.stringify(metadata) === JSON.stringify(reference.metadata);
+                if (!metadataMatch) {
+                    throw new Error('Metadata mismatch!');
+                }
+                
+                // Load expected uncompressed blob for byte-level comparison
+                const expectedResponse = await fetch(testFile.uncompressed_path);
+                if (!expectedResponse.ok) {
+                    throw new Error(`Failed to load expected data: HTTP ${expectedResponse.status}`);
+                }
+                const expectedBlob = new Uint8Array(await expectedResponse.arrayBuffer());
+                
+                // Byte-by-byte comparison
+                let byteMatches = 0;
+                let byteMismatches = 0;
+                const maxMismatchesToReport = 10;
+                const mismatches = [];
+                
+                if (decompressed.length !== expectedBlob.length) {
+                    throw new Error(`Length mismatch: expected ${expectedBlob.length}, got ${decompressed.length}`);
+                }
+                
+                for (let i = 0; i < decompressed.length; i++) {
+                    if (decompressed[i] === expectedBlob[i]) {
+                        byteMatches++;
+                    } else {
+                        byteMismatches++;
+                        if (mismatches.length < maxMismatchesToReport) {
+                            mismatches.push({ offset: i, expected: expectedBlob[i], actual: decompressed[i] });
+                        }
+                    }
+                }
+                
+                if (byteMismatches > 0) {
+                    throw new Error(`Byte mismatch: ${byteMismatches} bytes differ (${((byteMismatches/decompressed.length)*100).toFixed(4)}%). First mismatches: ${JSON.stringify(mismatches.slice(0, 5))}`);
+                }
+                
+                // Sample value comparison (float32 precision)
+                const decompressedSamples = new Float32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
+                const referenceSamples = reference.reference_samples;
+                let sampleMatches = 0;
+                let sampleMismatches = 0;
+                const sampleMismatchDetails = [];
+                const FLOAT32_EPSILON = 1e-6; // Allow small floating point differences
+                
+                for (let i = 0; i < referenceSamples.indices.length; i++) {
+                    const idx = referenceSamples.indices[i];
+                    const expectedValue = referenceSamples.values[i];
+                    const actualValue = decompressedSamples[idx];
+                    const diff = Math.abs(actualValue - expectedValue);
+                    
+                    if (diff < FLOAT32_EPSILON) {
+                        sampleMatches++;
+                    } else {
+                        sampleMismatches++;
+                        if (sampleMismatchDetails.length < 5) {
+                            sampleMismatchDetails.push({
+                                index: idx,
+                                expected: expectedValue,
+                                actual: actualValue,
+                                diff: diff
+                            });
+                        }
+                    }
+                }
+                
+                if (sampleMismatches > 0) {
+                    throw new Error(`Sample value mismatch: ${sampleMismatches}/${referenceSamples.indices.length} reference samples differ. Details: ${JSON.stringify(sampleMismatchDetails)}`);
+                }
+                
+                results.push({
+                    success: true,
+                    library: lib.name,
+                    testFile: testFile.name,
+                    compressedSize: compressed.length,
+                    decompressedSize: decompressed.length,
+                    decompressTime: decompressTime,
+                    samples: actualSamples,
+                    byteMatches: byteMatches,
+                    byteMismatches: byteMismatches,
+                    sampleMatches: sampleMatches,
+                    sampleMismatches: sampleMismatches,
+                    metadataMatch: metadataMatch,
+                    verified: true
+                });
+                
+            } catch (error) {
+                console.error(`[${lib.name}] ❌ Error:`, error);
+                results.push({
+                    success: false,
+                    library: lib.name,
+                    testFile: testFile.name,
+                    error: error.message
+                });
+            }
+            
+            return results;
+        }
+        
+        async function runAllTests() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = '<span class="info">Running tests...</span>';
+            
+            const allResults = [];
+            
+            // Test each library with each test file
+            for (const lib of LIBRARIES) {
+                for (const testFile of TEST_FILES) {
+                    const results = await testLibrary(lib, testFile);
+                    allResults.push(...results);
+                }
+            }
+            
+            // Display results
+            displayResults(allResults);
+            
+            statusDiv.innerHTML = `<span class="pass">✅ Tests complete! Check results below.</span>`;
+        }
+        
+        function displayResults(results) {
+            const libraryTestsDiv = document.getElementById('library-tests');
+            
+            // Group by library
+            const byLibrary = {};
+            for (const result of results) {
+                if (!byLibrary[result.library]) {
+                    byLibrary[result.library] = [];
+                }
+                byLibrary[result.library].push(result);
+            }
+            
+            let html = '';
+            for (const [libName, libResults] of Object.entries(byLibrary)) {
+                html += `<div class="library-section">`;
+                html += `<h3>${libName}</h3>`;
+                
+                for (const result of libResults) {
+                    if (result.success) {
+                        html += `<div class="test-case">`;
+                        html += `<span class="pass">✅ ${result.testFile}</span><br>`;
+                        html += `Compressed: ${(result.compressedSize/1024).toFixed(1)} KB<br>`;
+                        html += `Decompressed: ${(result.decompressedSize/1024/1024).toFixed(2)} MB<br>`;
+                        html += `Time: ${result.decompressTime}ms<br>`;
+                        html += `Samples: ${result.samples.toLocaleString()}<br>`;
+                        if (result.verified) {
+                            html += `<strong class="pass">✅ DATA VERIFIED:</strong><br>`;
+                            html += `  Bytes: ${result.byteMatches.toLocaleString()} matched, ${result.byteMismatches} mismatched<br>`;
+                            html += `  Samples: ${result.sampleMatches} matched, ${result.sampleMismatches} mismatched<br>`;
+                            html += `  Metadata: ${result.metadataMatch ? '✅ Match' : '❌ Mismatch'}<br>`;
+                        }
+                        html += `</div>`;
+                    } else {
+                        html += `<div class="test-case">`;
+                        html += `<span class="fail">❌ ${result.testFile}</span><br>`;
+                        html += `Error: ${result.error}<br>`;
+                        html += `</div>`;
+                    }
+                }
+                
+                html += `</div>`;
+            }
+            
+            libraryTestsDiv.innerHTML = html;
+        }
+        
+        // List test files
+        const testFilesDiv = document.getElementById('test-files');
+        let filesHtml = '';
+        for (const testFile of TEST_FILES) {
+            filesHtml += `<div class="test-case">`;
+            filesHtml += `<strong>${testFile.name}</strong><br>`;
+            filesHtml += `Expected samples: ${testFile.expected_samples.toLocaleString()}<br>`;
+            filesHtml += `Sample rate: ${testFile.sample_rate} Hz<br>`;
+            filesHtml += `Compressed size: ${(testFile.compressed_size/1024).toFixed(1)} KB<br>`;
+            filesHtml += `</div>`;
+        }
+        testFilesDiv.innerHTML = filesHtml;
+        
+        // Auto-run tests when page loads
+        window.addEventListener('load', () => {
+            setTimeout(runAllTests, 1000);
+        });
+    </script>
+    
+    <!-- Load fzstd for testing -->
+    <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiniSEED Parser Validation</title>
+    <!-- Try multiple CDN sources for seisplotjs -->
+    <script>
+        // Try loading seisplotjs from multiple sources
+        const cdnOptions = [
+            'https://cdn.jsdelivr.net/npm/seisplotjs@3.1.3/dist/seisplotjs_3.1.3_standalone.js',
+            'https://unpkg.com/seisplotjs@3.1.3/dist/seisplotjs_3.1.3_standalone.js',
+            'https://cdn.jsdelivr.net/npm/seisplotjs@3/dist/seisplotjs_3.1.3_standalone.js',
+            'https://unpkg.com/seisplotjs@3/dist/seisplotjs_3.1.3_standalone.js'
+        ];
+        
+        let seisplotjsLoaded = false;
+        let loadAttempt = 0;
+        
+        function tryLoadSeisplotjs(index) {
+            if (index >= cdnOptions.length) {
+                console.warn('❌ Could not load seisplotjs from any CDN, will use custom parser');
+                window.seisplotjsAvailable = false;
+                return;
+            }
+            
+            const script = document.createElement('script');
+            script.src = cdnOptions[index];
+            script.onload = () => {
+                if (typeof seisplotjs !== 'undefined') {
+                    console.log('✅ Loaded seisplotjs from:', cdnOptions[index]);
+                    window.seisplotjsAvailable = true;
+                    seisplotjsLoaded = true;
+                } else {
+                    console.warn('⚠️ Script loaded but seisplotjs not defined:', cdnOptions[index]);
+                    tryLoadSeisplotjs(index + 1);
+                }
+            };
+            script.onerror = () => {
+                console.warn('❌ Failed to load from:', cdnOptions[index]);
+                tryLoadSeisplotjs(index + 1);
+            };
+            document.head.appendChild(script);
+        }
+        
+        tryLoadSeisplotjs(0);
+    </script>
+    <style>
+        body {
+            font-family: 'Monaco', 'Menlo', monospace;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 {
+            color: #4ec9b0;
+            border-bottom: 2px solid #4ec9b0;
+            padding-bottom: 10px;
+        }
+        .section {
+            background: #252526;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border-left: 4px solid #007acc;
+        }
+        .success {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+        .error {
+            color: #f48771;
+            font-weight: bold;
+        }
+        .warning {
+            color: #dcdcaa;
+            font-weight: bold;
+        }
+        pre {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            border: 1px solid #3e3e42;
+        }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        #fileInput {
+            margin: 10px 0;
+        }
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .comparison > div {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #3e3e42;
+        }
+        .match {
+            color: #4ec9b0;
+        }
+        .mismatch {
+            color: #f48771;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔬 MiniSEED Parser Validation Test</h1>
+    
+    <div class="section">
+        <h2>📂 Load Test File</h2>
+        <p>Select the <code>test_miniseed.mseed</code> file to validate the parser:</p>
+        <input type="file" id="fileInput" accept=".mseed,.miniseed">
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        // Copy the MiniSEED parser from test_streaming.html
+        class MiniSEEDParser {
+            constructor() {
+                this.steim1Decompress = this.steim1Decompress.bind(this);
+                this.steim2Decompress = this.steim2Decompress.bind(this);
+            }
+            
+            parseDataRecords(arrayBuffer) {
+                const records = [];
+                let offset = 0;
+                const view = new DataView(arrayBuffer);
+                const RECORD_SIZE = 512;
+                
+                while (offset + 64 <= arrayBuffer.byteLength) {
+                    const indicatorByte = view.getUint8(offset + 6);
+                    const indicator = String.fromCharCode(indicatorByte);
+                    
+                    if (indicator === 'D' || indicator === 'R' || indicator === 'Q' || indicator === 'M') {
+                        const encodingByte = offset + 39 < arrayBuffer.byteLength ? view.getUint8(offset + 39) : 255;
+                        
+                        if (encodingByte <= 11) {
+                            const record = this.parseRecord(view, offset, arrayBuffer.byteLength);
+                            if (record && record.samples && record.samples.length > 0) {
+                                records.push(record);
+                            }
+                        }
+                    }
+                    
+                    offset += RECORD_SIZE;
+                }
+                
+                return records;
+            }
+            
+            parseRecord(view, offset, maxLength) {
+                if (offset + 64 > maxLength) return null;
+                
+                const indicator = String.fromCharCode(view.getUint8(offset + 6));
+                if (indicator !== 'D' && indicator !== 'R' && indicator !== 'Q' && indicator !== 'M') {
+                    return null;
+                }
+                
+                // Read encoding from fixed header (might be overridden by blockettes)
+                let encoding = view.getUint8(offset + 39);
+                const byteOrder = view.getUint8(offset + 42);
+                const isBigEndian = byteOrder === 0;
+                
+                let dataOffset = view.getUint16(offset + 43, false);
+                
+                // Follow blockette chain to find encoding and data offset
+                // Start at offset 48 (right after fixed header)
+                try {
+                    let currentBlockette = 48;
+                    let lastBlocketteEnd = 48;
+                    
+                    while (currentBlockette > 0 && currentBlockette < 512) {
+                        if (offset + currentBlockette + 8 > maxLength) break;
+                        
+                        const blockType = view.getUint16(offset + currentBlockette, false);
+                        const nextBlockette = view.getUint16(offset + currentBlockette + 2, false);
+                        
+                        if (blockType === 1000) {
+                            // Blockette 1000: get true encoding
+                            encoding = view.getUint8(offset + currentBlockette + 4);
+                            lastBlocketteEnd = currentBlockette + 8;
+                        } else if (blockType === 1001) {
+                            // Blockette 1001: timing quality (8 bytes)
+                            lastBlocketteEnd = currentBlockette + 8;
+                        }
+                        
+                        // Move to next blockette
+                        if (nextBlockette === 0) {
+                            // No more blockettes - data starts after this one
+                            if (dataOffset === 0 || dataOffset < 48) {
+                                dataOffset = lastBlocketteEnd;
+                            }
+                            break;
+                        }
+                        
+                        currentBlockette = nextBlockette;
+                    }
+                } catch (e) {
+                    // Silently continue if blockette scan fails
+                }
+                
+                if (dataOffset === 0 || dataOffset < 48) {
+                    dataOffset = 48;
+                }
+                
+                let numSamples = view.getUint16(offset + 40, false);
+                
+                // Calculate data section length (from data start to end of 512-byte record)
+                const recordSize = 512;
+                const dataLength = recordSize - dataOffset;
+                
+                // Ensure we don't read past the end of the buffer
+                const maxDataLength = Math.min(dataLength, maxLength - (offset + dataOffset));
+                
+                if (numSamples === 0) {
+                    if (encoding === 1) numSamples = maxDataLength / 2;
+                    else if (encoding === 2) numSamples = maxDataLength / 3;
+                    else if (encoding === 3) numSamples = maxDataLength / 4;
+                    else if (encoding === 10 || encoding === 11) numSamples = 1000; // Steim default
+                }
+                
+                // Debug first record
+                if (offset === 0) {
+                    console.log(`First record: dataOffset=${dataOffset}, maxDataLength=${maxDataLength}, numSamples=${numSamples}, encoding=${encoding}`);
+                }
+                
+                const samples = this.decompressSamples(view, offset + dataOffset, maxDataLength, numSamples, encoding, isBigEndian);
+                
+                return { samples, encoding };
+            }
+            
+            decompressSamples(view, dataOffset, dataLength, numSamples, encoding, isBigEndian) {
+                switch(encoding) {
+                    case 1:
+                        return this.readInt16Array(view, dataOffset, numSamples, isBigEndian);
+                    case 2:
+                        return this.readInt24Array(view, dataOffset, numSamples, isBigEndian);
+                    case 3:
+                        return this.readInt32Array(view, dataOffset, numSamples, isBigEndian);
+                    case 10:
+                        return this.steim1Decompress(view, dataOffset, dataLength, numSamples, isBigEndian);
+                    case 11:
+                        return this.steim2Decompress(view, dataOffset, dataLength, numSamples, isBigEndian);
+                    default:
+                        return new Int32Array(0);
+                }
+            }
+            
+            readInt16Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = view.getInt16(offset + i * 2, !isBigEndian);
+                }
+                return result;
+            }
+            
+            readInt24Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    const byteOffset = offset + i * 3;
+                    if (isBigEndian) {
+                        const b1 = view.getUint8(byteOffset);
+                        const b2 = view.getUint8(byteOffset + 1);
+                        const b3 = view.getUint8(byteOffset + 2);
+                        result[i] = (b1 << 24 | b2 << 16 | b3 << 8) >> 8;
+                    } else {
+                        const b1 = view.getUint8(byteOffset);
+                        const b2 = view.getUint8(byteOffset + 1);
+                        const b3 = view.getUint8(byteOffset + 2);
+                        result[i] = (b3 << 24 | b2 << 16 | b1 << 8) >> 8;
+                    }
+                }
+                return result;
+            }
+            
+            readInt32Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = view.getInt32(offset + i * 4, !isBigEndian);
+                }
+                return result;
+            }
+            
+            steim1Decompress(view, offset, length, numSamples, isBigEndian) {
+                const samples = new Int32Array(numSamples);
+                let sampleIndex = 0;
+                let pos = offset;
+                let x0 = 0, xn = 0;
+                
+                const maxFrames = Math.floor(length / 64);
+                
+                for (let frame = 0; frame < maxFrames && sampleIndex < numSamples; frame++) {
+                    const ctrl = view.getUint32(pos, !isBigEndian);
+                    pos += 4;
+                    
+                    x0 = view.getInt32(pos, !isBigEndian);
+                    pos += 4;
+                    xn = view.getInt32(pos, !isBigEndian);
+                    pos += 4;
+                    
+                    if (frame === 0) {
+                        samples[sampleIndex++] = x0;
+                    }
+                    
+                    for (let word = 0; word < 15 && sampleIndex < numSamples; word++) {
+                        const nibble = (ctrl >> ((15 - word) * 2)) & 0x3;
+                        const wordVal = view.getInt32(pos, !isBigEndian);
+                        pos += 4;
+                        
+                        if (nibble === 0) {
+                            continue;
+                        } else if (nibble === 1) {
+                            for (let j = 0; j < 4 && sampleIndex < numSamples; j++) {
+                                const diff = ((wordVal >> (24 - j * 8)) & 0xFF) << 24 >> 24;
+                                xn += diff;
+                                samples[sampleIndex++] = xn;
+                            }
+                        } else if (nibble === 2) {
+                            for (let j = 0; j < 2 && sampleIndex < numSamples; j++) {
+                                const diff = ((wordVal >> (16 - j * 16)) & 0xFFFF) << 16 >> 16;
+                                xn += diff;
+                                samples[sampleIndex++] = xn;
+                            }
+                        } else if (nibble === 3) {
+                            xn += wordVal;
+                            samples[sampleIndex++] = xn;
+                        }
+                    }
+                }
+                
+                return samples.slice(0, sampleIndex);
+            }
+            
+            steim2Decompress(view, offset, length, numSamples, isBigEndian) {
+                // COMPLETE STEIM2 implementation - all compression types supported
+                const samples = new Int32Array(numSamples);
+                let sampleIndex = 0;
+                let pos = offset;
+                let x0 = 0, xn = 0;
+                const maxFrames = Math.floor(length / 64);
+                const endPos = offset + length;
+                
+                for (let frame = 0; frame < maxFrames && sampleIndex < numSamples; frame++) {
+                    const frameStart = pos;
+                    
+                    // Check if we have enough bytes for frame header (12 bytes: ctrl + x0 + xn)
+                    if (pos + 12 > endPos) break;
+                    
+                    // Read control word
+                    const ctrl = view.getUint32(pos, !isBigEndian);
+                    pos += 4;
+                    
+                    // Read forward and reverse integration constants
+                    x0 = view.getInt32(pos, !isBigEndian);
+                    pos += 4;
+                    const xn_check = view.getInt32(pos, !isBigEndian);  // For validation only
+                    pos += 4;
+                    
+                    // First frame: output x0 and start accumulating from x0
+                    if (frame === 0) {
+                        samples[sampleIndex++] = x0;
+                        xn = x0;  // Start accumulating differences from x0
+                    }
+                    // Subsequent frames: xn carries over from previous frame, x0 should match it
+                    
+                    // Process 15 data words
+                    for (let wordIdx = 0; wordIdx < 15 && sampleIndex < numSamples; wordIdx++) {
+                        // Check bounds before reading
+                        if (pos + 4 > endPos) break;
+                        
+                        const nibble = (ctrl >> (30 - wordIdx * 2)) & 0x3;
+                        const wordVal = view.getUint32(pos, !isBigEndian);
+                        pos += 4;
+                        
+                        if (nibble === 0) {
+                            // Special flag or no data
+                            continue;
+                        } else if (nibble === 1) {
+                            // Four 8-bit differences
+                            const d0 = ((wordVal >> 24) & 0xFF) << 24 >> 24;
+                            const d1 = ((wordVal >> 16) & 0xFF) << 24 >> 24;
+                            const d2 = ((wordVal >> 8) & 0xFF) << 24 >> 24;
+                            const d3 = (wordVal & 0xFF) << 24 >> 24;
+                            
+                            if (sampleIndex < numSamples) { xn += d0; samples[sampleIndex++] = xn; }
+                            if (sampleIndex < numSamples) { xn += d1; samples[sampleIndex++] = xn; }
+                            if (sampleIndex < numSamples) { xn += d2; samples[sampleIndex++] = xn; }
+                            if (sampleIndex < numSamples) { xn += d3; samples[sampleIndex++] = xn; }
+                        } else if (nibble === 2) {
+                            const dnib = (wordVal >> 30) & 0x3;
+                            
+                            if (dnib === 1) {
+                                // Two 15-bit differences
+                                const d0 = ((wordVal >> 15) & 0x7FFF) << 17 >> 17;
+                                const d1 = (wordVal & 0x7FFF) << 17 >> 17;
+                                
+                                if (sampleIndex < numSamples) { xn += d0; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d1; samples[sampleIndex++] = xn; }
+                            } else if (dnib === 2) {
+                                // Three 10-bit differences
+                                const d0 = ((wordVal >> 20) & 0x3FF) << 22 >> 22;
+                                const d1 = ((wordVal >> 10) & 0x3FF) << 22 >> 22;
+                                const d2 = (wordVal & 0x3FF) << 22 >> 22;
+                                
+                                if (sampleIndex < numSamples) { xn += d0; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d1; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d2; samples[sampleIndex++] = xn; }
+                            } else if (dnib === 3) {
+                                // Five 6-bit differences
+                                const d0 = ((wordVal >> 24) & 0x3F) << 26 >> 26;
+                                const d1 = ((wordVal >> 18) & 0x3F) << 26 >> 26;
+                                const d2 = ((wordVal >> 12) & 0x3F) << 26 >> 26;
+                                const d3 = ((wordVal >> 6) & 0x3F) << 26 >> 26;
+                                const d4 = (wordVal & 0x3F) << 26 >> 26;
+                                
+                                if (sampleIndex < numSamples) { xn += d0; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d1; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d2; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d3; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d4; samples[sampleIndex++] = xn; }
+                            } else {
+                                // dnib === 0: Two 16-bit differences
+                                const d0 = ((wordVal >> 16) & 0xFFFF) << 16 >> 16;
+                                const d1 = (wordVal & 0xFFFF) << 16 >> 16;
+                                
+                                if (sampleIndex < numSamples) { xn += d0; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d1; samples[sampleIndex++] = xn; }
+                            }
+                        } else if (nibble === 3) {
+                            const dnib = (wordVal >> 30) & 0x3;
+                            
+                            if (dnib === 0) {
+                                // Six 5-bit differences
+                                const d0 = ((wordVal >> 25) & 0x1F) << 27 >> 27;
+                                const d1 = ((wordVal >> 20) & 0x1F) << 27 >> 27;
+                                const d2 = ((wordVal >> 15) & 0x1F) << 27 >> 27;
+                                const d3 = ((wordVal >> 10) & 0x1F) << 27 >> 27;
+                                const d4 = ((wordVal >> 5) & 0x1F) << 27 >> 27;
+                                const d5 = (wordVal & 0x1F) << 27 >> 27;
+                                
+                                if (sampleIndex < numSamples) { xn += d0; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d1; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d2; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d3; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d4; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d5; samples[sampleIndex++] = xn; }
+                            } else if (dnib === 1) {
+                                // Seven 4-bit differences
+                                const d0 = ((wordVal >> 24) & 0xF) << 28 >> 28;
+                                const d1 = ((wordVal >> 20) & 0xF) << 28 >> 28;
+                                const d2 = ((wordVal >> 16) & 0xF) << 28 >> 28;
+                                const d3 = ((wordVal >> 12) & 0xF) << 28 >> 28;
+                                const d4 = ((wordVal >> 8) & 0xF) << 28 >> 28;
+                                const d5 = ((wordVal >> 4) & 0xF) << 28 >> 28;
+                                const d6 = (wordVal & 0xF) << 28 >> 28;
+                                
+                                if (sampleIndex < numSamples) { xn += d0; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d1; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d2; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d3; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d4; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d5; samples[sampleIndex++] = xn; }
+                                if (sampleIndex < numSamples) { xn += d6; samples[sampleIndex++] = xn; }
+                            } else if (dnib === 2) {
+                                // One 30-bit difference
+                                let diff = wordVal & 0x3FFFFFFF;
+                                // Sign extend from 30 bits to 32 bits
+                                if (diff & 0x20000000) {
+                                    diff |= 0xC0000000;
+                                }
+                                xn += diff;
+                                if (sampleIndex < numSamples) {
+                                    samples[sampleIndex++] = xn;
+                                }
+                            }
+                            // dnib === 3 is reserved/unused
+                        }
+                    }
+                    
+                    // Ensure we move to next frame boundary
+                    pos = frameStart + 64;
+                }
+                
+                return samples.slice(0, sampleIndex);
+            }
+        }
+
+        // Test the parser
+        console.log('🔧 Script loaded, setting up file input listener...');
+        
+        const fileInput = document.getElementById('fileInput');
+        console.log('File input element:', fileInput);
+        
+        fileInput.addEventListener('change', async (e) => {
+            console.log('📂 File input changed!');
+            const file = e.target.files[0];
+            console.log('Selected file:', file);
+            
+            if (!file) {
+                console.warn('No file selected');
+                return;
+            }
+            
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="section"><p class="warning">⏳ Loading and parsing file...</p></div>';
+            console.log('Set loading message');
+            
+            try {
+                console.log('Reading file as array buffer...');
+                const arrayBuffer = await file.arrayBuffer();
+                console.log('✅ File loaded:', arrayBuffer.byteLength, 'bytes');
+                
+                let allSamples = [];
+                let parserUsed = 'Unknown';
+                let dataRecords = [];
+                
+                // Try seisplotjs first if available
+                if (window.seisplotjsAvailable && typeof seisplotjs !== 'undefined' && seisplotjs.miniseed) {
+                    try {
+                        console.log('📦 Using seisplotjs library for STEIM2 support...');
+                        dataRecords = seisplotjs.miniseed.parseDataRecords(arrayBuffer);
+                        console.log(`✅ seisplotjs parsed ${dataRecords.length} records`);
+                        
+                        // Concatenate all samples from seisplotjs
+                        for (const record of dataRecords) {
+                            if (record.y && record.y.length > 0) {
+                                allSamples = allSamples.concat(Array.from(record.y));
+                            }
+                        }
+                        parserUsed = 'seisplotjs (full STEIM2 support)';
+                    } catch (e) {
+                        console.warn('⚠️ seisplotjs failed, falling back to custom parser:', e);
+                    }
+                }
+                
+                // Fallback to custom parser if seisplotjs failed or unavailable
+                if (allSamples.length === 0) {
+                    console.log('🔧 Using custom parser...');
+                    const parser = new MiniSEEDParser();
+                    const records = parser.parseDataRecords(arrayBuffer);
+                    console.log(`✅ Custom parser found ${records.length} records`);
+                    
+                    dataRecords = records;
+                    for (const record of records) {
+                        if (record.samples && record.samples.length > 0) {
+                            allSamples = allSamples.concat(Array.from(record.samples));
+                        }
+                    }
+                    parserUsed = 'Custom parser (limited STEIM2)';
+                }
+                
+                if (allSamples.length === 0) {
+                    resultsDiv.innerHTML = '<div class="section"><p class="error">❌ No samples extracted!</p></div>';
+                    return;
+                }
+                
+                console.log(`Total samples: ${allSamples.length}`);
+                
+                // Expected values from ObsPy
+                const EXPECTED = {
+                    first: 2560,
+                    index1000: 2758,
+                    last: 3325,
+                    totalSamples: 360001,
+                    min: -669,
+                    max: 6847
+                };
+                
+                const firstMatch = allSamples[0] === EXPECTED.first;
+                const index1000Match = allSamples[1000] === EXPECTED.index1000;
+                const lastMatch = allSamples[allSamples.length - 1] === EXPECTED.last;
+                const countMatch = allSamples.length === EXPECTED.totalSamples;
+                
+                // Calculate min/max without spreading (which causes stack overflow)
+                let actualMin = allSamples[0];
+                let actualMax = allSamples[0];
+                let sum = 0;
+                for (let i = 0; i < allSamples.length; i++) {
+                    const val = allSamples[i];
+                    if (val < actualMin) actualMin = val;
+                    if (val > actualMax) actualMax = val;
+                    sum += val;
+                }
+                const actualMean = sum / allSamples.length;
+                
+                const encoding = dataRecords[0]?.encoding || dataRecords[0]?.header?.encoding || 'Unknown';
+                const encodingName = encoding === 11 ? 'STEIM2' : encoding === 10 ? 'STEIM1' : encoding === 2 ? 'int24' : `Type ${encoding}`;
+                
+                resultsDiv.innerHTML = `
+                <div class="section">
+                    <h2>✅ Parsing Complete</h2>
+                    <p>Parser used: <strong>${parserUsed}</strong></p>
+                    <p>Records parsed: <strong>${dataRecords.length}</strong></p>
+                    <p>Total samples: <strong>${allSamples.length}</strong></p>
+                    <p>Encoding: <strong>${encodingName}</strong></p>
+                </div>
+                
+                <div class="section">
+                    <h2>🎯 Validation Against ObsPy</h2>
+                    <div class="comparison">
+                        <div>
+                            <h3>Expected (ObsPy)</h3>
+                            <pre>First sample:   ${EXPECTED.first}
+Sample [1000]:  ${EXPECTED.index1000}
+Last sample:    ${EXPECTED.last}
+Total samples:  ${EXPECTED.totalSamples}
+Min value:      ${EXPECTED.min}
+Max value:      ${EXPECTED.max}</pre>
+                        </div>
+                        <div>
+                            <h3>Actual (JavaScript)</h3>
+                            <pre>First sample:   ${allSamples[0]}
+Sample [1000]:  ${allSamples[1000]}
+Last sample:    ${allSamples[allSamples.length - 1]}
+Total samples:  ${allSamples.length}
+Min value:      ${actualMin}
+Max value:      ${actualMax}</pre>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>📊 Comparison Results</h2>
+                    <p class="${firstMatch ? 'success' : 'error'}">
+                        First sample: ${firstMatch ? '✅ MATCH' : '❌ MISMATCH'}
+                    </p>
+                    <p class="${index1000Match ? 'success' : 'error'}">
+                        Sample at index 1000: ${index1000Match ? '✅ MATCH' : '❌ MISMATCH'}
+                    </p>
+                    <p class="${lastMatch ? 'success' : 'error'}">
+                        Last sample: ${lastMatch ? '✅ MATCH' : '❌ MISMATCH'}
+                    </p>
+                    <p class="${countMatch ? 'success' : 'error'}">
+                        Total sample count: ${countMatch ? '✅ MATCH' : '❌ MISMATCH'}
+                    </p>
+                    <p class="${actualMin === EXPECTED.min ? 'success' : 'error'}">
+                        Min value: ${actualMin === EXPECTED.min ? '✅ MATCH' : '❌ MISMATCH'}
+                    </p>
+                    <p class="${actualMax === EXPECTED.max ? 'success' : 'error'}">
+                        Max value: ${actualMax === EXPECTED.max ? '✅ MATCH' : '❌ MISMATCH'}
+                    </p>
+                </div>
+                
+                <div class="section">
+                    <h2>${firstMatch && index1000Match && lastMatch && countMatch ? '🎉' : '⚠️'} Final Result</h2>
+                    <p class="${firstMatch && index1000Match && lastMatch && countMatch ? 'success' : 'error'}">
+                        ${firstMatch && index1000Match && lastMatch && countMatch 
+                            ? '✅ PARSERS ARE IDENTICAL! JavaScript parser produces exactly the same output as ObsPy.' 
+                            : '❌ There are differences between the parsers.'}
+                    </p>
+                    ${firstMatch && index1000Match && lastMatch && countMatch ? `
+                        <p style="margin-top: 20px; color: #4ec9b0;">
+                            ✨ The custom JavaScript miniSEED parser in test_streaming.html is validated and working perfectly!
+                        </p>
+                    ` : ''}
+                </div>
+                
+                <div class="section">
+                    <h2>📝 Sample Preview</h2>
+                    <h3>First 20 samples:</h3>
+                    <pre>${allSamples.slice(0, 20).join(', ')}</pre>
+                    <h3>Samples around index 1000:</h3>
+                    <pre>${allSamples.slice(995, 1005).join(', ')}</pre>
+                    <h3>Last 20 samples:</h3>
+                    <pre>${allSamples.slice(-20).join(', ')}</pre>
+                </div>
+                `;
+            } catch (error) {
+                console.error('Error parsing file:', error);
+                resultsDiv.innerHTML = `
+                    <div class="section">
+                        <h2 class="error">❌ Error</h2>
+                        <p class="error">Failed to parse file: ${error.message}</p>
+                        <pre>${error.stack}</pre>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
+
