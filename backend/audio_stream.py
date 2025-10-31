@@ -117,31 +117,105 @@ def stream_audio():
         logging.info(f"[Audio Stream] 📤 Fetching from IRIS...")
         client = Client("IRIS")
         
-        # Retry with progressively shorter durations
-        attempt_duration = duration
+        # Special handling for 24-hour requests: split into two 12-hour requests
+        TWELVE_HOURS = 43200  # seconds
+        TWENTY_FOUR_HOURS = 86400  # seconds
+        
         st = None
         last_error = None
-        while attempt_duration >= 60:
+        
+        if duration >= TWENTY_FOUR_HOURS:
+            # Split 24-hour request into two 12-hour requests
+            logging.info(f"[Audio Stream] 🔀 Splitting 24-hour request into two 12-hour requests...")
+            
+            st_first = None
+            st_second = None
+            
+            # Fetch first 12 hours
+            logging.info(f"[Audio Stream] 📤 Fetching first 12 hours...")
             try:
-                st = client.get_waveforms(
+                st_first = client.get_waveforms(
                     network=network,
                     station=station,
                     location=location,
                     channel=channel,
                     starttime=starttime,
-                    endtime=starttime + attempt_duration
+                    endtime=starttime + TWELVE_HOURS
                 )
-                if st and len(st) > 0:
-                    logging.info(f"[Audio Stream] ✅ Got {len(st)} traces for {attempt_duration}s")
-                    break
+                if st_first and len(st_first) > 0:
+                    logging.info(f"[Audio Stream] ✅ Got {len(st_first)} traces for first 12 hours")
                 else:
-                    logging.warning(f"[Audio Stream] IRIS returned empty stream for {attempt_duration}s")
-                    st = None
+                    logging.warning(f"[Audio Stream] IRIS returned empty stream for first 12 hours")
+                    st_first = None
             except Exception as e:
                 last_error = str(e)
-                logging.warning(f"[Audio Stream] IRIS failed for {attempt_duration}s: {e}")
+                logging.warning(f"[Audio Stream] IRIS failed for first 12 hours: {e}")
+                st_first = None
+            
+            # Fetch second 12 hours
+            logging.info(f"[Audio Stream] 📤 Fetching second 12 hours...")
+            try:
+                st_second = client.get_waveforms(
+                    network=network,
+                    station=station,
+                    location=location,
+                    channel=channel,
+                    starttime=starttime + TWELVE_HOURS,
+                    endtime=starttime + TWENTY_FOUR_HOURS
+                )
+                if st_second and len(st_second) > 0:
+                    logging.info(f"[Audio Stream] ✅ Got {len(st_second)} traces for second 12 hours")
+                else:
+                    logging.warning(f"[Audio Stream] IRIS returned empty stream for second 12 hours")
+                    st_second = None
+            except Exception as e:
+                last_error = str(e) if not last_error else last_error
+                logging.warning(f"[Audio Stream] IRIS failed for second 12 hours: {e}")
+                st_second = None
+            
+            # Combine the two streams
+            if st_first and len(st_first) > 0:
+                if st_second and len(st_second) > 0:
+                    # Both succeeded - combine them
+                    st = st_first + st_second
+                    logging.info(f"[Audio Stream] ✅ Combined both 12-hour segments: {len(st)} traces")
+                else:
+                    # Only first succeeded - use it (partial data)
+                    st = st_first
+                    logging.warning(f"[Audio Stream] ⚠️ Only first 12 hours available, using partial data")
+            elif st_second and len(st_second) > 0:
+                # Only second succeeded - use it (partial data)
+                st = st_second
+                logging.warning(f"[Audio Stream] ⚠️ Only second 12 hours available, using partial data")
+            else:
+                # Both failed
                 st = None
-            attempt_duration = attempt_duration // 2
+                logging.error(f"[Audio Stream] ❌ Both 12-hour segments failed")
+        else:
+            # Normal single request (not 24 hours)
+            # Retry with progressively shorter durations
+            attempt_duration = duration
+            while attempt_duration >= 60:
+                try:
+                    st = client.get_waveforms(
+                        network=network,
+                        station=station,
+                        location=location,
+                        channel=channel,
+                        starttime=starttime,
+                        endtime=starttime + attempt_duration
+                    )
+                    if st and len(st) > 0:
+                        logging.info(f"[Audio Stream] ✅ Got {len(st)} traces for {attempt_duration}s")
+                        break
+                    else:
+                        logging.warning(f"[Audio Stream] IRIS returned empty stream for {attempt_duration}s")
+                        st = None
+                except Exception as e:
+                    last_error = str(e)
+                    logging.warning(f"[Audio Stream] IRIS failed for {attempt_duration}s: {e}")
+                    st = None
+                attempt_duration = attempt_duration // 2
         
         if not st or len(st) == 0:
             error_msg = f'No data available from IRIS for {network}.{station}.{location or "--"}.{channel}'

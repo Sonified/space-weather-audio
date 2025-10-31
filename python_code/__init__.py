@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.27"
+__version__ = "1.29"
 __commit_message__ = (
-    "v1.27 Fix: Memory optimizations for 24-hour files (float32, explicit cleanup), dynamic buffer expansion, fixed stale finished messages, removed conflicting OPTIONS handler"
+    "v1.29 UI: Enhanced loading animations, improved text visibility, removed headers, adjusted layout (larger labels, taller spectrogram, smaller waveform), moved local server checkbox down"
 )
 
 # Import key modules to make them available when importing the package

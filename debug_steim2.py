@@ -151,3 +151,4 @@ with open('test_miniseed.mseed', 'rb') as f:
     matches = sum(1 for i in range(min(len(samples), 30)) if samples[i] == obspy_samples[i])
     print(f"Matches: {matches}/{min(len(samples), 30)}")
 
+

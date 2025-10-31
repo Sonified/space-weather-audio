@@ -207,3 +207,133 @@ v1.27 - Commit: "v1.27 Fix: Memory optimizations for 24-hour files (float32, exp
 
 ---
 
+## Test Streaming Integration with ObsPy Audio Stream
+
+Major integration of server-side ObsPy audio processing into `test_streaming.html`:
+
+### Changes Made:
+
+1. **Zstd Decompression Fix**
+   - Fixed "invalid length/literal" error from incorrect fflate usage
+   - Changed from `fflate.decompressSync()` (gzip) to `fzstd.decompress()` (zstd)
+   - Matches the proven decompression method already tested in `worker/src/index.js`
+   - Added CDN import for fzstd library (v0.1.1)
+
+2. **Server-Side Processing Controls**
+   - Added collapsible "Server Processing Controls" section to UI
+   - Only visible when "Render Audio Stream (ObsPy processed)" pipeline is selected
+   - Checkboxes for:
+     - Enable High-Pass Filter (0.5 Hz)
+     - Enable Normalization
+     - Send Raw (int32 instead of float32)
+     - Bypass Zstd Compression (debug mode)
+   - Controls properly hidden for other pipeline modes
+
+3. **Backend Enhancements (audio_stream.py)**
+   - **24-Hour Request Splitting**: Splits 24-hour requests into two 12-hour requests to handle IRIS limitations
+   - **Memory Optimizations**: 
+     - Uses float32 instead of float64 throughout (50% memory savings)
+     - Explicit `del` statements to free arrays immediately after use
+     - Should keep large files under Render.com's 512MB limit
+   - **Smart Normalization**: 
+     - `normalize_audio()` now accepts `output_format` parameter ('int16', 'int32', 'float32')
+     - Normalizes to appropriate range for each format
+     - float32 normalized to [-1.0, 1.0] for Web Audio API
+   - **Better Error Handling**:
+     - 404 responses with detailed error messages for inactive stations
+     - Handles empty streams after merge
+     - Returns network/station/channel info in error responses
+     - All error responses include CORS headers
+   - **Bypass Compression Mode**: Optional debug mode to skip zstd compression for troubleshooting
+   - **Optimized OPTIONS Handler**: Simplified to return 204 status, letting Flask-CORS handle headers
+
+4. **Frontend Debugging Improvements**
+   - Added extensive logging for decompression process
+   - Logs metadata preview (first 100 and last 50 chars)
+   - Logs sample statistics (min, max, mean)
+   - Logs first/last 10 samples for validation
+   - Properly handles `byteOffset` when decompressed data is a view into larger buffer
+
+5. **DataView Buffer Handling**
+   - Fixed potential bug with `DataView` by explicitly passing `byteOffset` and `byteLength`
+   - Handles cases where `decompressed` is a view into a larger `ArrayBuffer`
+   - Matches pattern used in successful test scripts
+
+### Problem:
+
+- Initial attempt used wrong fflate function (`decompressSync` for gzip instead of zstd)
+- Simple streaming mode needed integration with new `/api/stream-audio` endpoint
+- Need user controls for server-side processing options
+- 24-hour requests failing due to IRIS limitations and memory constraints
+
+### Solution:
+
+- Use `fzstd.decompress()` which was already proven working in our R2 Worker code
+- Add UI controls for all server-side processing options
+- Split large requests into smaller chunks
+- Optimize memory usage with float32 and explicit cleanup
+- Add bypass compression mode for easier debugging
+
+### Key Learnings:
+
+- **Decompression Libraries**: `fflate.decompressSync()` is for gzip, `fflate.unzstdSync()` is for zstd, but **`fzstd.decompress()`** is the proven working solution from our worker code
+- **IRIS Limitations**: Very long duration requests (24+ hours) may need to be split into multiple requests
+- **Memory Efficiency**: float32 is sufficient for audio processing and saves 50% memory compared to float64
+- **Explicit Cleanup**: Python's `del` statement helps free memory sooner for large arrays
+- **DataView Views**: When working with Uint8Array views, must pass `byteOffset` and `byteLength` to DataView constructor
+- **UI/UX**: Collapsible control sections keep interface clean while providing advanced options
+
+### Version
+v1.28 - Commit: "v1.28 Feature: Integrated ObsPy audio stream into test_streaming.html with fzstd decompression, server-side processing controls, 24-hour request splitting, and memory optimizations"
+
+---
+
+## UI Improvements & Layout Refinements
+
+### Changes Made:
+
+1. **Enhanced Loading Animations**
+   - Added shimmer gradient background animation for loading state
+   - Added subtle white shimmer sweep (faint, doesn't cover text)
+   - Added diagonal stripes that slide horizontally to the right
+   - Added pulsing background effect
+   - Text stays visible above all animations with proper z-index stacking
+
+2. **Improved Text Visibility**
+   - Fixed text being covered by loading animations
+   - Removed blurry text shadows
+   - Dark, high-contrast text color (#331100) for loading state
+   - Text positioned above all animation layers
+
+3. **Layout Improvements**
+   - Removed "Volcano & Station Selection" header for cleaner look
+   - Removed "Metrics" header (just showing boxes now)
+   - Increased label font size to 18px in top panel (was 14px)
+   - Increased select/input font size to 16px in top panel
+   - Made waveform 10% smaller (150px → 135px)
+   - Made spectrogram taller (350px → 450px)
+   - Moved local server checkbox down (partially hidden off-screen)
+   - Removed 24-hour duration option from dropdown
+
+4. **Button Styling**
+   - Added text glow effect to "Fetch Data" button when pulsing
+   - Brightened button text colors
+
+5. **Status Bar Enhancements**
+   - Loading state immediately switches to "fetching" (no fade delay)
+   - Multiple animated effects make loading state more obvious
+   - Stripe animation slides horizontally for clearer progress indication
+
+### Key Learnings:
+
+- **CSS z-index**: Requires `isolation: isolate` to create proper stacking context
+- **Pseudo-elements**: `::before` and `::after` need lower z-index than content
+- **Text shadows**: Blurry shadows can make text look fuzzy - remove for crisp text
+- **Loading feedback**: Multiple subtle animations create better sense of progress than single effect
+- **UI simplification**: Removing unnecessary headers creates cleaner, more focused interface
+
+### Version
+v1.29 - Commit: "v1.29 UI: Enhanced loading animations, improved text visibility, removed headers, adjusted layout (larger labels, taller spectrogram, smaller waveform), moved local server checkbox down"
+
+---
+

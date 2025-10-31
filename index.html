@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🌋 Simple IRIS Data Audification</title>
+    <title>🌋 IRIS Data Audification (Beta)</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌋</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
     <style>
@@ -15,7 +15,7 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #4a0e0e 0%, #5a1a1a 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -30,15 +30,69 @@
             text-align: center;
             font-size: 2em;
             margin-bottom: 20px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            text-shadow: 2px 2px 8px rgba(255, 100, 100, 0.6), 0 0 20px rgba(255, 50, 50, 0.4);
+        }
+        
+        h2 {
+            color: #550000;
+            text-shadow: 1px 1px 3px rgba(255, 200, 200, 0.5), 0 0 2px rgba(255, 255, 255, 0.8);
+            font-weight: 700;
         }
         
         .panel {
-            background: white;
+            background: linear-gradient(135deg, rgba(255, 250, 250, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
             border-radius: 10px;
             padding: 20px;
             margin-bottom: 15px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 
+                0 10px 20px rgba(80, 20, 20, 0.35),
+                0 6px 12px rgba(80, 20, 20, 0.25),
+                0 3px 6px rgba(255, 100, 100, 0.15),
+                0 1px 3px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+            border: 1px solid rgba(200, 100, 100, 0.2);
+            position: relative;
+            transform: translateZ(0);
+        }
+        
+        .panel:first-child label {
+            font-size: 18px;
+        }
+        
+        .panel:first-child select,
+        .panel:first-child input {
+            font-size: 16px;
+        }
+        
+        .panel:nth-child(2) {
+            background: linear-gradient(135deg, rgba(255, 240, 240, 0.95) 0%, rgba(245, 210, 205, 0.95) 100%);
+        }
+        
+        .panel:nth-child(2) label {
+            font-size: 15px;
+        }
+        
+        .panel:nth-child(2) select,
+        .panel:nth-child(2) input {
+            font-size: 15px;
+        }
+        
+        .panel:nth-child(2) h2 {
+            font-size: calc(1.5em + 1px);
+        }
+        
+        .panel:nth-child(3) {
+            background: linear-gradient(135deg, rgba(255, 245, 245, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
+        }
+        
+        .panel:nth-child(4) {
+            background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
+            border: 1px solid rgba(200, 100, 100, 0.3);
+        }
+        
+        .panel:nth-child(5) {
+            background: linear-gradient(135deg, rgba(240, 200, 200, 0.95) 0%, rgba(190, 130, 125, 0.95) 100%);
+            padding-top: 20px;
         }
         
         .controls {
@@ -56,14 +110,14 @@
         }
         
         label {
-            font-weight: 500;
+            font-weight: 700;
             font-size: 14px;
             color: #333;
         }
         
         select, input {
             padding: 8px 12px;
-            border: 2px solid #ddd;
+            border: 2px solid rgba(200, 100, 100, 0.3);
             border-radius: 6px;
             font-size: 14px;
             background: white;
@@ -71,7 +125,68 @@
         
         select:focus, input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: #cc5533;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(204, 85, 51, 0.1);
+        }
+        
+        /* Range slider styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: linear-gradient(to bottom, transparent 6px, #5a1a1a 6px, #5a1a1a 14px, transparent 14px);
+            height: 20px;
+            cursor: pointer;
+            padding: 0;
+            border: none;
+            outline: none;
+            border-radius: 4px;
+        }
+        
+        /* Webkit (Chrome, Safari, Edge) - Track */
+        input[type="range"]::-webkit-slider-track {
+            background: #5a1a1a;
+            height: 8px;
+            border-radius: 4px;
+            border: none;
+        }
+        
+        /* Webkit - Thumb */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            background: #cc3333;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #ff3333;
+        }
+        
+        /* Firefox - Track */
+        input[type="range"]::-moz-range-track {
+            background: #5a1a1a;
+            height: 8px;
+            border-radius: 4px;
+            border: none;
+        }
+        
+        /* Firefox - Thumb */
+        input[type="range"]::-moz-range-thumb {
+            background: #cc3333;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-moz-range-thumb:hover {
+            background: #ff3333;
         }
         
         button {
@@ -80,19 +195,23 @@
             border: none;
             border-radius: 6px;
             cursor: pointer;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: linear-gradient(135deg, #cc3333 0%, #991111 100%);
+            color: #ffffff;
             font-weight: 600;
             transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(150, 30, 30, 0.3);
+            text-shadow: none;
         }
         
         button:hover:not(:disabled) {
             transform: translateY(-1px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 5px 15px rgba(200, 50, 50, 0.5);
+            background: linear-gradient(135deg, #dd4444 0%, #aa2222 100%);
         }
         
         #startBtn:not(:disabled):not(.streaming) {
-            animation: pulseBrightness 2s ease-in-out infinite;
+            animation: pulseResumeDarken 1.8s ease-in-out infinite;
+            text-shadow: 0 0 4px rgba(255, 255, 255, 0.8), 0 1px 2px rgba(0, 0, 0, 0.2);
         }
         
         @keyframes pulseBrightness {
@@ -100,45 +219,75 @@
                 filter: brightness(1);
             }
             50% {
-                filter: brightness(1.3);
+                filter: brightness(0.85);
             }
         }
         
+        @keyframes pulsePlayButton {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 2px 4px rgba(150, 30, 30, 0.3), 0 0 0 0 rgba(200, 50, 50, 0.4);
+            }
+            50% {
+                transform: scale(1.02);
+                box-shadow: 0 3px 8px rgba(200, 50, 50, 0.4), 0 0 0 6px rgba(200, 50, 50, 0);
+            }
+        }
+        
+        @keyframes pulseResumeDarken {
+            0%, 100% {
+                box-shadow: inset 0 0 0 0 rgba(100, 0, 0, 0);
+            }
+            50% {
+                box-shadow: inset 0 0 100px 50px rgba(100, 0, 0, 0.4);
+            }
+        }
+        
+        button.pulse-play {
+            animation: pulsePlayButton 2s ease-in-out infinite;
+        }
+        
+        button.pulse-resume {
+            animation: pulseResumeDarken 1.8s ease-in-out infinite;
+            color: #ffffff !important;
+        }
+        
         button:disabled {
-            background: #ccc;
+            background: linear-gradient(135deg, #999 0%, #777 100%);
             cursor: not-allowed;
+            box-shadow: none;
         }
         
         button.secondary {
-            background: #6c757d;
+            background: linear-gradient(135deg, #aa6655 0%, #884433 100%);
         }
         
         button.secondary:hover:not(:disabled) {
-            background: #5a6268;
+            background: linear-gradient(135deg, #bb7766 0%, #995544 100%);
         }
         
         button.pause-active {
-            background: linear-gradient(135deg, #ee6766 0%, #c44ba2 100%);
+            background: linear-gradient(135deg, #ff6633 0%, #cc3311 100%);
         }
         
         button.pause-active:hover:not(:disabled) {
-            background: linear-gradient(135deg, #d85655 0%, #a83891 100%);
+            background: linear-gradient(135deg, #ff7744 0%, #dd4422 100%);
         }
         
         button.play-active {
-            background: linear-gradient(135deg, #66ee9a 0%, #4ba27c 100%);
+            background: linear-gradient(135deg, #ff8844 0%, #dd5522 100%);
         }
         
         button.play-active:hover:not(:disabled) {
-            background: linear-gradient(135deg, #55d789 0%, #3a916b 100%);
+            background: linear-gradient(135deg, #ff9955 0%, #ee6633 100%);
         }
         
         button.loop-active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #ff6633 0%, #cc3311 100%);
         }
         
         button.loop-active:hover:not(:disabled) {
-            background: linear-gradient(135deg, #5568d3 0%, #653991 100%);
+            background: linear-gradient(135deg, #ff7744 0%, #dd4422 100%);
         }
         
         .status {
@@ -146,36 +295,145 @@
             border-radius: 6px;
             margin-top: 15px;
             font-weight: 500;
+            min-height: 50px;
+            max-height: 50px;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+            border: 2px solid rgba(150, 80, 80, 0.5);
+            position: relative;
         }
         
-        .status.info { background: #e3f2fd; color: #1976d2; }
-        .status.success { background: #e8f5e9; color: #388e3c; }
-        .status.error { background: #ffebee; color: #c62828; }
+        .status.info { background: rgba(255, 200, 150, 0.3); color: #663300; font-weight: 600; }
+        .status.success { background: rgba(240, 180, 160, 0.5); color: #884400; font-weight: 600; }
+        .status.error { background: rgba(255, 150, 150, 0.4); color: #880000; font-weight: 600; }
+        
+        .status.loading {
+            background: linear-gradient(
+                90deg,
+                rgba(255, 180, 120, 0.4) 0%,
+                rgba(255, 240, 200, 0.8) 50%,
+                rgba(255, 180, 120, 0.4) 100%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 1.5s ease-in-out infinite, pulseBackground 1s ease-in-out infinite;
+            border-color: rgba(200, 100, 100, 0.8) !important;
+            color: #331100 !important;
+            font-weight: 700 !important;
+            position: relative;
+            text-shadow: none;
+            isolation: isolate; /* Creates new stacking context */
+        }
+        
+        /* Ensure text content is above pseudo-elements */
+        .status.loading > * {
+            position: relative;
+            z-index: 10;
+        }
+        
+        .status.loading::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.15) 30%,
+                rgba(255, 255, 255, 0.2) 50%,
+                rgba(255, 255, 255, 0.15) 70%,
+                transparent
+            );
+            animation: shimmerSweep 1.5s ease-in-out infinite;
+            z-index: 0;
+            pointer-events: none;
+        }
+        
+        .status.loading::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                rgba(255, 140, 90, 0.3) 10px,
+                rgba(255, 140, 90, 0.3) 20px
+            );
+            background-size: 28px 28px;
+            animation: stripeMove 1.2s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        @keyframes shimmer {
+            0%, 100% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+        
+        @keyframes pulseBackground {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
+        
+        @keyframes shimmerSweep {
+            0% {
+                left: -100%;
+            }
+            100% {
+                left: 100%;
+            }
+        }
+        
+        @keyframes stripeMove {
+            0% {
+                background-position: 0 0;
+            }
+            100% {
+                background-position: 28px 0;
+            }
+        }
         
         .metrics {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
-            margin-top: 20px;
+            margin-top: 0;
         }
         
         .metric {
-            background: #f5f5f5;
+            background: linear-gradient(135deg, rgba(255, 220, 220, 0.6) 0%, rgba(255, 200, 190, 0.6) 100%);
             padding: 15px;
             border-radius: 6px;
+            border: 1px solid rgba(180, 120, 120, 0.4);
+            box-shadow: 0 2px 4px rgba(80, 20, 20, 0.15);
         }
         
         .metric-label {
             font-size: 12px;
-            color: #666;
+            color: #885555;
             text-transform: uppercase;
             margin-bottom: 5px;
+            font-weight: 600;
         }
         
         .metric-value {
             font-size: 24px;
             font-weight: 700;
-            color: #333;
+            color: #662222;
         }
         
         canvas {
@@ -183,15 +441,17 @@
             display: block;
             border-radius: 6px;
             background: #000;
+            box-shadow: inset 0 0 20px rgba(200, 50, 50, 0.3), 0 0 15px rgba(200, 50, 50, 0.2);
         }
         
         #waveform {
-            height: 150px;
+            height: 135px;
             margin-bottom: 10px;
         }
         
         #spectrogram {
-            height: 350px;
+            height: 450px;
+            background: transparent;
         }
         
         .checkbox-group {
@@ -205,6 +465,11 @@
             height: 20px;
             cursor: pointer;
             margin: 0;
+            accent-color: #cc3333;
+        }
+        
+        input[type="checkbox"] {
+            accent-color: #cc3333;
         }
         
         .checkbox-group label {
@@ -214,14 +479,18 @@
             font-size: 14px;
             color: #333;
         }
+        
+        #localServerCheckbox {
+            transform: translateY(15px);
+            margin-bottom: -15px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🌋 Simple IRIS Data Audification</h1>
+        <h1>🌋 IRIS Data Audification (Beta)</h1>
         
         <div class="panel">
-            <h2 style="margin-bottom: 15px;">Volcano & Station Selection</h2>
             <div class="controls">
                 <div class="control-group">
                     <label for="volcano">Volcano:</label>
@@ -258,21 +527,16 @@
                         <option value="4">4 hours</option>
                         <option value="6">6 hours</option>
                         <option value="12">12 hours</option>
-                        <option value="24">24 hours</option>
                     </select>
                 </div>
                 
                 <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
                     <input type="checkbox" id="enableHighpass" checked style="width: 24px; height: 24px; cursor: pointer;">
-                    <label for="enableHighpass" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: #333;">Enable High Pass (20Hz)</label>
+                    <label for="enableHighpass" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 18px; color: #333;">High Pass (20Hz)</label>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
                     <input type="checkbox" id="enableNormalize" checked style="width: 24px; height: 24px; cursor: pointer;">
-                    <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: #333;">Enable Normalization</label>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
-                    <input type="checkbox" id="useLocalServer" style="width: 24px; height: 24px; cursor: pointer;">
-                    <label for="useLocalServer" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: #333;">Local Server</label>
+                    <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 18px; color: #333;">Normalization</label>
                 </div>
             </div>
             
@@ -283,27 +547,26 @@
         
         <div class="panel">
             <div style="display: flex; gap: 15px; align-items: center;">
-                <button id="startBtn" onclick="startStreaming()" style="min-width: 150px;">📡 Fetch Data</button>
-                <button onclick="togglePlayPause()" id="playPauseBtn" disabled style="min-width: 150px;">⏸️ Pause</button>
-                <button onclick="toggleLoop()" id="loopBtn" class="secondary" disabled style="min-width: 150px;">🔁 Loop</button>
+                <button type="button" id="startBtn" onclick="startStreaming(event)" style="min-width: 150px;">📡 Fetch Data</button>
+                <button type="button" onclick="togglePlayPause()" id="playPauseBtn" disabled style="min-width: 150px;">⏸️ Pause</button>
+                <button type="button" onclick="toggleLoop()" id="loopBtn" disabled style="min-width: 150px;">🔁 Loop</button>
                 <div style="display: flex; align-items: center; flex: 1; min-width: 150px; gap: 10px;">
-                    <label for="playbackSpeed" style="font-weight: 600; white-space: nowrap;">Speed: <span id="speedValue">1.0</span>x</label>
+                    <label for="playbackSpeed" style="font-weight: 600; white-space: nowrap; font-size: 18px;">Speed: <span id="speedValue">1.0</span>x</label>
                     <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" oninput="changePlaybackSpeed()" style="flex: 1;">
                 </div>
                 <div style="display: flex; align-items: center; flex: 1; min-width: 150px; gap: 10px;">
-                    <label for="volumeSlider" style="font-weight: 600; white-space: nowrap;">Volume: <span id="volumeValue">1.0</span></label>
+                    <label for="volumeSlider" style="font-weight: 600; white-space: nowrap; font-size: 18px;">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" oninput="changeVolume()" style="flex: 1;">
                 </div>
             </div>
         </div>
         
         <div class="panel">
-            <canvas id="waveform" width="1200" height="150"></canvas>
-            <canvas id="spectrogram" width="1200" height="350"></canvas>
+            <canvas id="waveform" width="1200" height="135"></canvas>
+            <canvas id="spectrogram" width="1200" height="450"></canvas>
         </div>
         
         <div class="panel">
-            <h2 style="margin-bottom: 15px;">Metrics</h2>
             <div class="metrics">
                 <div class="metric">
                     <div class="metric-label">Time to First Audio</div>
@@ -322,6 +585,11 @@
                     <div class="metric-value" id="bufferSize">0</div>
                 </div>
             </div>
+        </div>
+        
+        <div id="localServerCheckbox" style="display: flex; align-items: center; gap: 10px; margin-top: 10px; background: rgba(0, 0, 0, 0.01); padding: 8px 12px; border-radius: 6px;">
+            <input type="checkbox" id="useLocalServer" style="width: 24px; height: 24px; cursor: pointer; opacity: 0.6;">
+            <label for="useLocalServer" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: rgba(255, 255, 255, 0.5);">Local Server</label>
         </div>
     </div>
     
@@ -342,6 +610,8 @@
         let availableStations = { seismic: [], infrasound: [] };
         let allReceivedData = [];
         let isFetchingNewData = false; // Flag to ignore stale "finished" messages
+        let loadingInterval = null; // Interval for animated loading dots
+        let spectrogramInitialized = false; // Flag to track if spectrogram has been cleared for first time
         
         // AudioWorklet processor code
         const workletCode = `
@@ -615,8 +885,10 @@
                         } else {
                             // Not looping - playback finished
                             isPlaying = false;
-                            document.getElementById('playPauseBtn').disabled = false;
-                            document.getElementById('playPauseBtn').textContent = '▶️ Play';
+                            const playBtn = document.getElementById('playPauseBtn');
+                            playBtn.disabled = false;
+                            playBtn.textContent = '▶️ Play';
+                            playBtn.classList.add('pulse-play');
                             document.getElementById('status').className = 'status success';
                             document.getElementById('status').textContent = '✅ Playback finished! Click Play to replay or enable Loop.';
                         }
@@ -687,8 +959,16 @@
             return normalized;
         }
         
-        async function startStreaming() {
+        async function startStreaming(event) {
             try {
+                // Prevent any default form submission behavior
+                if (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                
+                console.log('🎬 startStreaming() called');
+                
                 // Get selected station
                 const stationValue = document.getElementById('station').value;
                 if (!stationValue) {
@@ -704,6 +984,16 @@
                 // ===== STOP OLD PLAYBACK AND CLEAN UP =====
                 // Set flag to ignore any stale "finished" messages
                 isFetchingNewData = true;
+                // Reset spectrogram initialization flag so canvas clears on new stream
+                spectrogramInitialized = false;
+                
+                // Immediately update status to show fetching (don't wait for fade-out)
+                const useLocal = document.getElementById('useLocalServer').checked;
+                const baseMessage = useLocal 
+                    ? 'Fetching data from local backend'
+                    : 'Fetching data from Render backend';
+                document.getElementById('status').className = 'status info loading';
+                document.getElementById('status').textContent = baseMessage;
                 
                 if (workletNode) {
                     console.log('🛑 Stopping old playback and cleaning up for new data...');
@@ -711,14 +1001,12 @@
                     // Clear the old worklet's message handler FIRST to prevent queued messages
                     workletNode.port.onmessage = null;
                     
-                    // Fade out current playback if playing
+                    // Fade out current playback if playing (but don't wait - status already updated)
                     if (gainNode && audioContext && isPlaying) {
                         gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                         gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
                         gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.05);
-                        
-                        // Wait for fade before cleaning up
-                        await new Promise(resolve => setTimeout(resolve, 50));
+                        // Don't await - let fade happen in background while we continue
                     }
                     
                     // Disconnect old worklet node (disconnects from gainNode automatically)
@@ -744,20 +1032,22 @@
                 // Initialize fresh AudioWorklet (will create new node)
                 await initAudioWorklet();
                 
-                // Update UI
+                // Update UI - disable all playback controls during fetch
                 const startBtn = document.getElementById('startBtn');
+                const playPauseBtn = document.getElementById('playPauseBtn');
+                
                 startBtn.classList.add('streaming');
                 startBtn.disabled = true;
-                const playPauseBtn = document.getElementById('playPauseBtn');
-                playPauseBtn.disabled = false;
-                playPauseBtn.textContent = '⏸️ Pause';
-                playPauseBtn.classList.remove('play-active', 'secondary');
-                playPauseBtn.classList.add('pause-active');
                 
-                document.getElementById('loopBtn').disabled = false;
+                // Disable and grey out pause button
+                playPauseBtn.disabled = true;
+                playPauseBtn.textContent = '⏸️ Pause';  // Set text even when disabled
+                playPauseBtn.classList.remove('pause-active', 'play-active', 'loop-active', 'pulse-play', 'pulse-resume');
                 
-                document.getElementById('status').className = 'status info';
-                document.getElementById('status').textContent = 'Fetching data from IRIS...';
+                // Disable and grey out loop button
+                const loopBtn = document.getElementById('loopBtn');
+                loopBtn.disabled = true;
+                loopBtn.classList.remove('loop-active');
                 
                 isPlaying = true;
                 isPaused = false;
@@ -786,21 +1076,49 @@
                 
                 console.log('📡 Requesting:', requestBody);
                 
-                // Determine backend URL based on checkbox
-                const useLocal = document.getElementById('useLocalServer').checked;
+                // Determine backend URL based on checkbox (useLocal already defined above)
                 const backendUrl = useLocal 
-                    ? 'http://localhost:5005/api/stream-audio'
+                    ? 'http://localhost:5001/api/stream-audio'
                     : 'https://volcano-audio.onrender.com/api/stream-audio';
                 
                 const backendType = useLocal ? 'local' : 'Render.com';
                 console.log(`🌐 Using ${backendType} backend: ${backendUrl}`);
-                document.getElementById('status').textContent = `Fetching data from ${backendType} backend...`;
+                
+                // Start animated loading indicator with growing periods (2 per second)
+                // (baseMessage already defined above)
+                
+                let dotCount = 0;
+                loadingInterval = setInterval(() => {
+                    dotCount++; // Keep growing dots continuously
+                    const statusEl = document.getElementById('status');
+                    statusEl.textContent = baseMessage + '.'.repeat(dotCount);
+                    // Ensure loading class is maintained
+                    if (!statusEl.classList.contains('loading')) {
+                        statusEl.classList.add('loading');
+                    }
+                }, 500); // Update every 500ms (2 per second)
+                
+                console.log('🔄 About to fetch from:', backendUrl);
                 
                 const response = await fetch(backendUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody)
+                    body: JSON.stringify(requestBody),
+                    mode: 'cors',  // Explicitly set CORS mode
+                    credentials: 'omit'  // Don't send credentials
+                }).catch(fetchError => {
+                    console.error('🚫 Fetch failed:', fetchError);
+                    console.error('🚫 Fetch error details:', {
+                        message: fetchError.message,
+                        name: fetchError.name,
+                        stack: fetchError.stack
+                    });
+                    throw fetchError;  // Re-throw to be caught by outer try-catch
                 });
+                
+                console.log('✅ Fetch succeeded, response:', response);
+                console.log('✅ Response status:', response.status, response.statusText);
+                console.log('✅ Response headers:', [...response.headers.entries()]);
                 
                 if (!response.ok) {
                     // Try to get error message from response
@@ -919,6 +1237,20 @@
                 // Clear the fetching flag - new data is loaded and ready
                 isFetchingNewData = false;
                 
+                // Stop loading animation
+                if (loadingInterval) {
+                    clearInterval(loadingInterval);
+                    loadingInterval = null;
+                }
+                
+                // Re-enable playback controls after data is fetched
+                playPauseBtn.disabled = false;
+                playPauseBtn.textContent = '⏸️ Pause';
+                playPauseBtn.classList.remove('play-active', 'secondary');
+                playPauseBtn.classList.add('pause-active');
+                
+                document.getElementById('loopBtn').disabled = false;
+                
                 document.getElementById('status').className = 'status success';
                 document.getElementById('status').textContent = '✅ Playing!';
                 console.log('✅ Streaming complete');
@@ -927,7 +1259,14 @@
                 // Clear the fetching flag on error too
                 isFetchingNewData = false;
                 
+                // Stop loading animation
+                if (loadingInterval) {
+                    clearInterval(loadingInterval);
+                    loadingInterval = null;
+                }
+                
                 console.error('❌ Error:', error);
+                console.error('Stack:', error.stack);
                 document.getElementById('status').className = 'status error';
                 document.getElementById('status').textContent = `Error: ${error.message}`;
                 
@@ -948,6 +1287,9 @@
             // If playback has finished and we have data, "Play" means replay from beginning
             if (!isPlaying && allReceivedData && allReceivedData.length > 0) {
                 console.log('▶️ PLAY AGAIN: Replaying data from beginning');
+                
+                // Remove pulse animations
+                btn.classList.remove('pulse-play', 'pulse-resume');
                 
                 // Fade in the gain node with exponential ramp
                 if (gainNode) {
@@ -981,7 +1323,7 @@
                     isPlaying = true;
                     isPaused = false;
                     btn.textContent = '⏸️ Pause';
-                    btn.classList.remove('play-active');
+                    btn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
                     btn.classList.add('pause-active');
                     document.getElementById('status').className = 'status info';
                     document.getElementById('status').textContent = 'Replaying audio...';
@@ -1013,12 +1355,15 @@
                 }, 50); // Wait for fade
                 
                 btn.textContent = '▶️ Resume';
-                btn.classList.remove('pause-active');
-                btn.classList.add('play-active');
+                btn.classList.remove('pause-active', 'pulse-play');
+                btn.classList.add('play-active', 'pulse-resume');
                 document.getElementById('status').className = 'status';
                 document.getElementById('status').textContent = 'Paused';
             } else {
                 console.log('▶️ RESUMING - exponential fade back to target volume');
+                
+                // Remove pulse animations if present
+                btn.classList.remove('pulse-play', 'pulse-resume');
                 
                 btn.textContent = '⏸️ Pause';
                 btn.classList.remove('play-active');
@@ -1198,7 +1543,7 @@
             ctx.fillRect(0, 0, width, height);
             
             ctx.lineWidth = 2;
-            ctx.strokeStyle = '#00ff00';
+            ctx.strokeStyle = '#ff3333';
             ctx.beginPath();
             
             const sliceWidth = width / bufferLength;
@@ -1235,6 +1580,12 @@
             const width = canvas.width;
             const height = canvas.height;
             
+            // Clear entire canvas only on first initialization
+            if (!spectrogramInitialized) {
+                ctx.clearRect(0, 0, width, height);
+                spectrogramInitialized = true;
+            }
+            
             const bufferLength = analyserNode.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
             analyserNode.getByteFrequencyData(dataArray);
@@ -1242,14 +1593,21 @@
             // Scroll the spectrogram left
             ctx.drawImage(canvas, -1, 0);
             
+            // Clear the rightmost column to remove dark artifacts
+            ctx.clearRect(width - 1, 0, 1, height);
+            
             // Draw new column on the right
             for (let i = 0; i < bufferLength; i++) {
                 const value = dataArray[i];
                 const percent = value / 255;
-                const hue = 240 - (percent * 240);
+                
+                // Lava/magma color scheme: dark red -> red -> orange -> yellow
+                const hue = percent * 60; // 0 (red) to 60 (yellow)
+                const saturation = 100;
+                const lightness = 10 + (percent * 60); // 10% (dark red) to 70% (bright yellow)
                 const y = height - (i / bufferLength) * height;
                 
-                ctx.fillStyle = `hsl(${hue}, 100%, ${percent * 50}%)`;
+                ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
                 ctx.fillRect(width - 1, y, 1, height / bufferLength);
             }
             

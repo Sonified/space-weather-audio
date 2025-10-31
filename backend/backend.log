@@ -7,5 +7,37 @@
 🌋 Loaded 5 volcano configurations
  * Serving Flask app 'main'
  * Debug mode: on
-Address already in use
-Port 5001 is in use by another program. Either identify and stop that program, or start the server with a different port.
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.4.246:5001
+Press CTRL+C to quit
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 134-108-540
+127.0.0.1 - - [31/Oct/2025 02:17:31] "OPTIONS /api/stream-audio HTTP/1.1" 200 -
+127.0.0.1 - - [31/Oct/2025 02:17:34] "POST /api/stream-audio HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [31/Oct/2025 02:17:34] "POST /api/stream-audio HTTP/1.1" 200 -
+127.0.0.1 - - [31/Oct/2025 02:19:42] "OPTIONS /api/stream-audio HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [31/Oct/2025 02:19:42] "OPTIONS /api/stream-audio HTTP/1.1" 200 -
+127.0.0.1 - - [31/Oct/2025 02:19:44] "POST /api/stream-audio HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [31/Oct/2025 02:19:44] "POST /api/stream-audio HTTP/1.1" 200 -
+127.0.0.1 - - [31/Oct/2025 02:21:07] "OPTIONS /api/stream-audio HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [31/Oct/2025 02:21:07] "OPTIONS /api/stream-audio HTTP/1.1" 200 -
+127.0.0.1 - - [31/Oct/2025 02:21:08] "POST /api/stream-audio HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [31/Oct/2025 02:21:08] "POST /api/stream-audio HTTP/1.1" 200 -
+ * Detected change in '/Users/robertalexander/GitHub/volcano-audio/backend/test_audio_stream_local.py', reloading
+INFO:werkzeug: * Detected change in '/Users/robertalexander/GitHub/volcano-audio/backend/test_audio_stream_local.py', reloading
+✅ Great Sitkin: AV.GSTD.BHZ (3.3km, 50.0Hz)
+✅ Shishaldin: AV.SSLS.BHZ (5.4km, 50.0Hz)
+✅ Spurr: AV.SPCP.BHZ (6.4km, 50.0Hz)
+✅ Kilauea: HV.UWE.HHZ (0.4km, 100.0Hz)
+✅ Mauna Loa: HV.MOKD.HHZ (1.6km, 100.0Hz)
+
+🌋 Loaded 5 volcano configurations
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 134-108-540
+127.0.0.1 - - [31/Oct/2025 02:22:34] "OPTIONS /api/stream-audio HTTP/1.1" 200 -
+127.0.0.1 - - [31/Oct/2025 02:22:36] "POST /api/stream-audio HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [31/Oct/2025 02:22:36] "POST /api/stream-audio HTTP/1.1" 200 -

@@ -364,3 +364,4 @@ def test_parse_miniseed():
 if __name__ == '__main__':
     test_parse_miniseed()
 
+

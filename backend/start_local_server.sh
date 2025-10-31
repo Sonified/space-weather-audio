@@ -25,3 +25,4 @@ export FLASK_DEBUG=1
 cd "$(dirname "$0")"
 python main.py
 
+
