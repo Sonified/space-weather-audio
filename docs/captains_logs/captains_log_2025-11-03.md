@@ -131,3 +131,39 @@ v1.42 - Commit: "v1.42 Fix: Waveform scrubbing improvements - click prevention, 
 
 ---
 
+## Loop Playback Indicator Bug Fix
+
+### Changes Made:
+
+1. **Fixed Loop Transition Interference**
+   - Added early return in `finished` event timeout handler to ignore stale events during loop transition
+   - Prevents `finished` event from setting `isPlaying = false` when loop is in progress
+   - Added check for `loopTransitionInProgress` flag before handling finished state
+
+2. **Improved Loop Indicator Restart**
+   - Enhanced loop-soon timeout handler to use nested setTimeout for indicator restart
+   - Refreshes `lastUpdateTime` right before starting animation frame
+   - Ensures clean state when restarting playback indicator after loop
+
+### Problem:
+- Playback indicator would stop moving after loop completed
+- Console logs showed: indicator started updating (0.01s, 0.02s...) then suddenly stopped
+- Root cause: `finished` event's 50ms timeout was firing AFTER loop completed
+- When `finished` timeout checked `if (isLooping && !loopTransitionInProgress)`, condition was FALSE (flag was true)
+- Fell through to `else` block which set `isPlaying = false`, killing the indicator
+
+### Solution:
+- Added early return if `loopTransitionInProgress` is true in finished timeout handler
+- Prevents stale `finished` events from interfering with active loop transitions
+- Loop transition handler already sets state correctly, so finished handler should exit early
+
+### Key Learnings:
+- **Race Conditions**: Timeout handlers can fire in unexpected order - always check transition flags
+- **State Flags**: Use flags like `loopTransitionInProgress` to prevent stale events from interfering
+- **Event Timing**: Finished events can arrive after transitions complete - need defensive checks
+
+### Version
+v1.43 - Commit: "v1.43 Fix: Loop playback indicator bug - prevent finished event from stopping indicator during loop transition"
+
+---
+

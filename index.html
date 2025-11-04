@@ -809,8 +809,8 @@
                 <div class="control-group">
                     <label for="duration">Duration:</label>
                     <select id="duration">
-                        <option value="0.5">30 minutes</option>
-                        <option value="1" selected>1 hour</option>
+                        <option value="0.5" selected>30 minutes</option>
+                        <option value="1">1 hour</option>
                         <option value="2">2 hours</option>
                         <option value="4">4 hours</option>
                         <option value="6">6 hours</option>
@@ -1127,6 +1127,7 @@
         let isPlaying = false;
         let isPaused = false;
         let isLooping = false;
+        let loopTransitionInProgress = false; // Prevent double-triggering loop reset
         let currentPlaybackRate = 1.0;
         let streamStartTime = 0;
         let availableStations = { seismic: [], infrasound: [] };
@@ -1273,8 +1274,8 @@
                     
                     const samplesToRead = Math.ceil(channel.length * this.speed);
                     
-                    // Detect near-end for gapless looping (send warning with ~100ms left)
-                    const loopWarningThreshold = 44100 * 0.1; // 100ms at 44.1kHz
+                    // Detect near-end for gapless looping (send warning with ~20ms left for 10ms fade)
+                    const loopWarningThreshold = 44100 * 0.020; // 20ms at 44.1kHz (gives time for 10ms fade)
                     if (this.samplesInBuffer < loopWarningThreshold && !this.loopWarningShown && this.hasStarted) {
                         const remainingSeconds = this.samplesInBuffer / 44100;
                         const remainingMs = remainingSeconds * 1000;
@@ -1419,15 +1420,79 @@
                         console.log(`🎚️ Exponential fade-in: 0.0001 → ${targetVolume.toFixed(2)}`);
                     }
                 } else if (type === 'loop-soon') {
-                    // Gapless loop warning: ~100ms left, start fade-out (unless looping)
+                    // Gapless loop warning: ~20ms left, start fade-out (unless looping)
                     const { samplesRemaining, secondsRemaining, speed } = event.data;
                     const remainingMs = secondsRemaining * 1000;
-                    console.log(`⏱️ APPROACHING END: ${samplesRemaining.toLocaleString()} samples remaining (${remainingMs.toFixed(1)}ms @ speed ${speed.toFixed(2)}x)`);
+                    console.log(`⏱️ [LOOP-SOON] APPROACHING END: ${samplesRemaining.toLocaleString()} samples remaining (${remainingMs.toFixed(1)}ms @ speed ${speed.toFixed(2)}x)`);
+                    console.log(`⏱️ [LOOP-SOON] State check: isLooping=${isLooping}, hasData=${!!allReceivedData && allReceivedData.length > 0}, transitionInProgress=${loopTransitionInProgress}`);
                     
-                    if (isLooping && allReceivedData && allReceivedData.length > 0) {
-                        console.log('🔁 Loop approaching - preparing gapless transition...');
-                        // Note: We'll still do the full reset on 'finished' for clean fade
-                        // This just gives us advanced warning for future optimization
+                    if (isLooping && allReceivedData && allReceivedData.length > 0 && !loopTransitionInProgress) {
+                        console.log('🔁 [LOOP-SOON] Loop approaching - preparing instant transition...');
+                        loopTransitionInProgress = true; // Prevent duplicate loop handling
+                        console.log('🔁 [LOOP-SOON] Set loopTransitionInProgress = true');
+                        // For looping, use very short fade and reset immediately
+                        const LOOP_FADE_TIME = 0.010; // 10ms for instant-feeling loop
+                        if (gainNode && audioContext) {
+                            const currentGain = gainNode.gain.value;
+                            const now = audioContext.currentTime;
+                            // Brief fade-out
+                            gainNode.gain.cancelScheduledValues(now);
+                            gainNode.gain.setValueAtTime(currentGain, now);
+                            gainNode.gain.exponentialRampToValueAtTime(0.0001, now + LOOP_FADE_TIME);
+                            
+                            // Schedule loop reset and fade-in to happen when audio actually reaches the end
+                            // samplesRemaining is in audio time, need to convert to real time
+                            const realTimeRemaining = secondsRemaining / speed;
+                            console.log(`⏱️ [LOOP-SOON] Scheduling loop reset in ${(realTimeRemaining * 1000).toFixed(1)}ms (real time)`);
+                            setTimeout(() => {
+                                console.log(`🔄 [LOOP-SOON TIMEOUT] Executing loop reset - isLooping=${isLooping}, workletNode=${!!workletNode}`);
+                                if (isLooping && workletNode) {
+                                    // Ensure playback state flags are correct FIRST
+                                    console.log(`🔄 [LOOP-SOON TIMEOUT] Setting isPlaying=true, isPaused=false`);
+                                    isPlaying = true;
+                                    isPaused = false;
+                                    
+                                    // Reset read pointer
+                                    console.log('🔄 [LOOP-SOON TIMEOUT] Sending loop message to worklet');
+                                    workletNode.port.postMessage({ type: 'loop' });
+                                    
+                                    // Reset playback indicator position (NOW at the actual loop point)
+                                    console.log(`🔄 [LOOP-SOON TIMEOUT] Resetting playback indicator: currentAudioPosition=0, lastUpdateTime=${audioContext.currentTime.toFixed(3)}`);
+                                    currentAudioPosition = 0;
+                                    lastUpdateTime = audioContext.currentTime;
+                                    
+                                    // Brief fade-in
+                                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                                    gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                                    gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+                                    gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + LOOP_FADE_TIME);
+                                    console.log(`🔄 [LOOP-SOON TIMEOUT] Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over ${(LOOP_FADE_TIME * 1000).toFixed(0)}ms`);
+                                    
+                                    // CRITICAL: Force the indicator to restart with fresh state
+                                    // Use setTimeout to ensure state changes are complete before starting animation
+                                    if (totalAudioDuration > 0) {
+                                        setTimeout(() => {
+                                            // Refresh timing right before starting animation
+                                            lastUpdateTime = audioContext.currentTime;
+                                            requestAnimationFrame(updatePlaybackIndicator);
+                                            console.log(`🔄 [LOOP-SOON TIMEOUT] Playback indicator restarted at time ${audioContext.currentTime.toFixed(3)} (totalAudioDuration=${totalAudioDuration.toFixed(2)}s)`);
+                                        }, 10); // Small delay to ensure all state changes are complete
+                                    } else {
+                                        console.warn(`⚠️ [LOOP-SOON TIMEOUT] NOT restarting indicator - totalAudioDuration=${totalAudioDuration}`);
+                                    }
+                                    
+                                    console.log('🔄 [LOOP-SOON TIMEOUT] Loop transition complete - continuing playback');
+                                    
+                                    // Reset flag after loop completes
+                                    setTimeout(() => {
+                                        console.log('🔄 [LOOP-SOON TIMEOUT] Resetting loopTransitionInProgress flag');
+                                        loopTransitionInProgress = false;
+                                    }, 50); // Small delay to ensure finished event is ignored
+                                } else {
+                                    console.warn(`⚠️ [LOOP-SOON TIMEOUT] Loop reset skipped - isLooping=${isLooping}, workletNode=${!!workletNode}`);
+                                }
+                            }, realTimeRemaining * 1000);
+                        }
                     } else {
                         // Not looping - start fade-out now (before playback ends)
                         console.log('🔽 Starting fade-out before playback ends...');
@@ -1447,13 +1512,14 @@
                 } else if (type === 'finished') {
                     // Ignore "finished" messages if we're fetching new data (stale message from old worklet)
                     if (isFetchingNewData) {
-                        console.log('⚠️ Ignoring stale "finished" message - new data is being fetched');
+                        console.log('⚠️ [FINISHED] Ignoring stale "finished" message - new data is being fetched');
                         return;
                     }
                     
                     const { totalSamples, speed, expectedDurationSeconds } = event.data;
                     const durationAt1x = totalSamples / 44100;
-                    console.log(`🏁 BUFFER EMPTY: Total samples: ${totalSamples.toLocaleString()}, Speed: ${speed.toFixed(2)}x, Duration @ 1x: ${durationAt1x.toFixed(3)}s, Expected @ ${speed.toFixed(2)}x: ${expectedDurationSeconds.toFixed(3)}s`);
+                    console.log(`🏁 [FINISHED] BUFFER EMPTY: Total samples: ${totalSamples.toLocaleString()}, Speed: ${speed.toFixed(2)}x, Duration @ 1x: ${durationAt1x.toFixed(3)}s, Expected @ ${speed.toFixed(2)}x: ${expectedDurationSeconds.toFixed(3)}s`);
+                    console.log(`🏁 [FINISHED] State check: isLooping=${isLooping}, hasData=${!!allReceivedData && allReceivedData.length > 0}, transitionInProgress=${loopTransitionInProgress}`);
                     
                     // Fade-out should have already started in 'loop-soon' event (unless looping)
                     // But ensure it's complete before handling finish
@@ -1462,46 +1528,75 @@
                     
                     // Only start fade-out here if it hasn't already started (shouldn't happen, but safety check)
                     if (gainNode && currentGain > 0.001) {
-                        console.log(`🔽 FADE-OUT (backup): Current gain: ${currentGain.toFixed(4)}, starting immediate fade`);
+                        console.log(`🔽 [FINISHED] FADE-OUT (backup): Current gain: ${currentGain.toFixed(4)}, starting immediate fade`);
                         gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                         gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
                         gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.05); // 50ms exponential fade-out
                     } else {
-                        console.log(`🔽 FADE-OUT: Already faded (gain: ${currentGain.toFixed(4)})`);
+                        console.log(`🔽 [FINISHED] FADE-OUT: Already faded (gain: ${currentGain.toFixed(4)})`);
                     }
                     
                     // Wait for fade to complete, then handle loop/finish
                     setTimeout(() => {
                         const fadeOutCompleteTime = audioContext.currentTime;
                         const fadeOutDuration = fadeOutCompleteTime - fadeOutStartTime;
-                        console.log(`🔽 FADE-OUT COMPLETE: Audio time: ${fadeOutCompleteTime.toFixed(3)}s, Actual fade duration: ${(fadeOutDuration * 1000).toFixed(1)}ms`);
+                        console.log(`🔽 [FINISHED TIMEOUT] FADE-OUT COMPLETE: Audio time: ${fadeOutCompleteTime.toFixed(3)}s, Actual fade duration: ${(fadeOutDuration * 1000).toFixed(1)}ms`);
                         
                         // Double-check we're still not fetching new data
                         if (isFetchingNewData) {
-                            console.log('⚠️ Ignoring finish handler - new data fetch in progress');
+                            console.log('⚠️ [FINISHED TIMEOUT] Ignoring finish handler - new data fetch in progress');
                             return;
                         }
                         
-                        // Handle looping
+                        // If loop is in progress, ignore this stale finished event
+                        if (loopTransitionInProgress) {
+                            console.log('⚠️ [FINISHED TIMEOUT] Ignoring finish handler - loop transition in progress');
+                            return;
+                        }
+                        
+                        // Handle looping (fallback - should have been handled in 'loop-soon' event)
                         if (isLooping && allReceivedData && allReceivedData.length > 0) {
-                            console.log('🔁 LOOPING: Going back to first sample (buffer intact)...');
+                            console.log('🔁 [FINISHED TIMEOUT] LOOPING (FALLBACK): Going back to first sample (buffer intact)...');
+                            console.log('⚠️ [FINISHED TIMEOUT] WARNING: Fallback loop handler executed - loop-soon event may have failed!');
+                            
+                            // Ensure playback state flags are correct
+                            console.log(`🔁 [FINISHED TIMEOUT] Setting isPlaying=true, isPaused=false`);
+                            isPlaying = true;
+                            isPaused = false;
                             
                             // Just reset read pointer - no need to reload data!
                             workletNode.port.postMessage({ type: 'loop' });
                             console.log('🔄 Read pointer reset to start (buffer unchanged)');
                             
+                            // Reset playback indicator position
+                            currentAudioPosition = 0;
+                            lastUpdateTime = audioContext.currentTime;
+                            
                             // Ensure playback speed is current (multiplier applied)
                             updatePlaybackSpeed();
                             console.log(`🎚️ Playback speed: ${currentPlaybackRate.toFixed(2)}x (base slider speed × multiplier)`);
                             
-                            // Fade back in for loop
+                            // Brief fade-in for loop (10ms)
+                            const LOOP_FADE_TIME = 0.010;
                             const fadeInStartTime = audioContext.currentTime;
                             if (gainNode) {
                                 const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
                                 const currentGain = gainNode.gain.value;
+                                gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                                 gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
-                                gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + 0.05);
-                                console.log(`🔼 FADE-IN START: Current gain: ${currentGain.toFixed(4)}, Start: 0.0001, Target: ${targetVolume.toFixed(2)}, Duration: 50ms, Audio time: ${fadeInStartTime.toFixed(3)}s`);
+                                gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + LOOP_FADE_TIME);
+                                console.log(`🔼 FADE-IN START: Current gain: ${currentGain.toFixed(4)}, Start: 0.0001, Target: ${targetVolume.toFixed(2)}, Duration: ${(LOOP_FADE_TIME * 1000).toFixed(0)}ms, Audio time: ${fadeInStartTime.toFixed(3)}s`);
+                            }
+                            
+                            // CRITICAL: Force the indicator to restart with fresh state
+                            // Use setTimeout to ensure state changes are complete before starting animation
+                            if (totalAudioDuration > 0) {
+                                setTimeout(() => {
+                                    // Refresh timing right before starting animation
+                                    lastUpdateTime = audioContext.currentTime;
+                                    requestAnimationFrame(updatePlaybackIndicator);
+                                    console.log(`🔄 [FINISHED TIMEOUT] Playback indicator restarted at time ${audioContext.currentTime.toFixed(3)} (totalAudioDuration=${totalAudioDuration.toFixed(2)}s)`);
+                                }, 10); // Small delay to ensure all state changes are complete
                             }
                             
                             // No need to reload data - it's already in the buffer!
@@ -2454,7 +2549,7 @@
             ctx.fillRect(0, 0, width, height);
             
             // Draw waveform line
-            ctx.strokeStyle = '#ff3333';
+            ctx.strokeStyle = '#e8c0c0';
             ctx.lineWidth = 2;
             ctx.beginPath();
             
@@ -2727,8 +2822,11 @@
             }
             
             if (!isPlaying || isPaused || totalAudioDuration === 0) {
+                console.log(`⏸️ [PLAYBACK INDICATOR] Stopped: isPlaying=${isPlaying}, isPaused=${isPaused}, totalAudioDuration=${totalAudioDuration}`);
                 return;
             }
+            
+            console.log(`🎬 [PLAYBACK INDICATOR] Drawing: position=${currentAudioPosition.toFixed(2)}s / ${totalAudioDuration.toFixed(2)}s`);
             
             const canvas = document.getElementById('waveform');
             if (!canvas) return;
@@ -2743,6 +2841,9 @@
                 const realTimeElapsed = now - lastUpdateTime;
                 currentAudioPosition += realTimeElapsed * currentPlaybackRate;
                 lastUpdateTime = now;
+                console.log(`🎬 [PLAYBACK INDICATOR] Updated position: ${currentAudioPosition.toFixed(2)}s (elapsed=${(realTimeElapsed * 1000).toFixed(1)}ms @ ${currentPlaybackRate.toFixed(2)}x)`);
+            } else {
+                console.warn(`⚠️ [PLAYBACK INDICATOR] Cannot update position: audioContext=${!!audioContext}, lastUpdateTime=${lastUpdateTime}`);
             }
             
             // Calculate progress
@@ -2768,6 +2869,8 @@
             // Continue updating
             if (isPlaying && !isPaused) {
                 requestAnimationFrame(updatePlaybackIndicator);
+            } else {
+                console.log(`⏸️ [PLAYBACK INDICATOR] Not continuing: isPlaying=${isPlaying}, isPaused=${isPaused}`);
             }
         }
         

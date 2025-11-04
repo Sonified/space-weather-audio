@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.42"
+__version__ = "1.43"
 __commit_message__ = (
-    "v1.42 Fix: Waveform scrubbing improvements - click prevention, playback indicator fixes, removed local server checkbox"
+    "v1.43 Fix: Loop playback indicator bug - prevent finished event from stopping indicator during loop transition"
 )
 
 # Import key modules to make them available when importing the package
