@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.46"
+__version__ = "1.47"
 __commit_message__ = (
-    "v1.46 Fix: Removed unnecessary worklet recreation on replay - simplified togglePlayPause to use seekToPosition instead of destroying/recreating worklet"
+    "v1.47 Fix: Prevented clicks when creating new selection while looping - temporarily clear selection bounds during seek to prevent worklet from looping immediately"
 )
 
 # Import key modules to make them available when importing the package

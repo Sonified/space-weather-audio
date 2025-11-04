@@ -2805,26 +2805,48 @@
                         isSelecting = false;
                         selectionStartX = null;
                         
-                        selectionStart = Math.min(startPos, endPos);
-                        selectionEnd = Math.max(startPos, endPos);
+                        // Calculate new selection bounds
+                        const newSelectionStart = Math.min(startPos, endPos);
+                        const newSelectionEnd = Math.max(startPos, endPos);
+                        const newIsLooping = isLooping;
                         
                         // No minimum selection size - worklet handles tiny loops perfectly!
-                        console.log(`📏 Selection created: ${selectionStart.toFixed(2)}s - ${selectionEnd.toFixed(2)}s (duration: ${(selectionEnd - selectionStart).toFixed(3)}s)`);
+                        console.log(`📏 Selection created: ${newSelectionStart.toFixed(2)}s - ${newSelectionEnd.toFixed(2)}s (duration: ${(newSelectionEnd - newSelectionStart).toFixed(3)}s)`);
                         
-                        // Notify worklet of new selection
-                        updateWorkletSelection();
+                        // CRITICAL: Temporarily clear selection bounds to prevent worklet from looping during seek
+                        // This prevents worklet from immediately looping if current position is past new selectionEnd
+                        
+                        // Clear selection bounds in worklet temporarily (prevents immediate loop)
+                        if (workletNode) {
+                            workletNode.port.postMessage({
+                                type: 'set-selection',
+                                start: null,
+                                end: null,
+                                loop: false
+                            });
+                        }
                         
                         // Set playhead position immediately (so it's visible)
-                        currentAudioPosition = selectionStart;
+                        currentAudioPosition = newSelectionStart;
                         if (audioContext) {
                             lastUpdateTime = audioContext.currentTime;
                         }
                         
-                        // Draw waveform with selection and playhead
+                        // Draw waveform with selection and playhead (using local bounds for display)
+                        selectionStart = newSelectionStart;
+                        selectionEnd = newSelectionEnd;
                         drawWaveformWithSelection();
                         
-                        // Auto-seek to selection start and start playback
-                        seekToPosition(selectionStart);
+                        // Seek to selection start (worklet has no bounds, so no clamping/looping interference)
+                        seekToPosition(newSelectionStart);
+                        
+                        // Restore selection bounds AFTER seek completes (prevents race condition)
+                        setTimeout(() => {
+                            selectionStart = newSelectionStart;
+                            selectionEnd = newSelectionEnd;
+                            isLooping = newIsLooping;
+                            updateWorkletSelection();
+                        }, 25); // 25ms = after 20ms seek fade completes
                         
                         // Ensure playback starts (seekToPosition should handle this, but ensure it)
                         if (!isPlaying || isPaused) {

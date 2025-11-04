@@ -286,3 +286,38 @@ v1.46 - Commit: "v1.46 Fix: Removed unnecessary worklet recreation on replay - s
 
 ---
 
+## Selection Creation Click Fix
+
+### Changes Made:
+
+1. **Fixed Click When Creating New Selection While Looping**
+   - Temporarily clear selection bounds in worklet before seeking to new selection start
+   - Restore selection bounds after seek completes (25ms delay)
+   - Prevents worklet from immediately looping when current position is past new selectionEnd
+
+### Problem:
+- When creating a new selection while already looping, audio would click at the beginning
+- Root cause: `updateWorkletSelection()` was called BEFORE `seekToPosition()`
+- Worklet received new bounds immediately, checked current position, and if past `selectionEnd`, looped instantly (no fade)
+- This loop happened WHILE `seekToPosition()` was doing its own fade-out/seek/fade-in, causing conflict
+
+### Solution:
+- Clear selection bounds in worklet FIRST (prevents immediate loop check)
+- Seek to new selection start (worklet has no bounds, so no interference)
+- After 25ms (seek fade completes), restore selection bounds
+- Now worklet only learns about new bounds AFTER we've safely navigated to selection start
+
+### Key Differences:
+- **Normal seek path**: Only changes position, no selection bounds change - clean and smooth
+- **New selection path**: Changes both position AND bounds - needs careful sequencing to prevent race condition
+
+### Key Learnings:
+- **Race conditions**: Worklet processes audio every ~2.9ms, so timing matters critically
+- **Boundary checks**: Worklet checks selection boundaries every frame - can't send new bounds while seeking
+- **Sequence matters**: Clear bounds → Seek → Restore bounds = click-free
+
+### Version
+v1.47 - Commit: "v1.47 Fix: Prevented clicks when creating new selection while looping - temporarily clear selection bounds during seek to prevent worklet from looping immediately"
+
+---
+
