@@ -1308,8 +1308,8 @@
                         const selectionEndSample = Math.floor(this.selectionEnd * 44100);
                         const samplesToEnd = selectionEndSample - this.readIndex;
                         
-                        // Warn 15ms before selection end for tight crossfades
-                        const WARNING_THRESHOLD = 662; // 15ms at 44.1kHz (~3x the crossfade time)
+                        // Warn 20ms before selection end to match fade time
+                        const WARNING_THRESHOLD = 882; // 20ms at 44.1kHz (matches fade time)
                         if (samplesToEnd <= WARNING_THRESHOLD && samplesToEnd > 0 && !this.selectionEndWarned) {
                             this.selectionEndWarned = true;
                             const secondsToEnd = samplesToEnd / 44100 / this.speed; // Real-time seconds
@@ -1473,16 +1473,15 @@
                 } else if (type === 'selection-end-approaching') {
                     // Worklet warns us it's approaching selection end
                     const { secondsToEnd, isLooping: workletIsLooping, loopDuration } = event.data;
-                    console.log(`⏱️ [WORKLET] Selection end approaching in ${(secondsToEnd * 1000).toFixed(1)}ms (loop=${workletIsLooping}, loopDuration=${(loopDuration * 1000).toFixed(1)}ms)`);
                     
                     // Start fade NOW if not looping
                     if (!workletIsLooping && gainNode && audioContext) {
                         const currentGain = gainNode.gain.value;
-                        const fadeTime = Math.max(secondsToEnd, 0.010); // At least 10ms for endings
+                        // Always use full 20ms fade - warning threshold matches fade time
+                        const fadeTime = 0.020; // Fixed 20ms for smooth endings
                         gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                         gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
                         gainNode.gain.linearRampToValueAtTime(0.0001, audioContext.currentTime + fadeTime);
-                        console.log(`🔽 [WORKLET-DRIVEN] Fade-out: ${currentGain.toFixed(4)} → 0.0001 over ${(fadeTime * 1000).toFixed(1)}ms`);
                     } else if (workletIsLooping && gainNode && audioContext) {
                         // Intelligent crossfade based on loop duration
                         // Short loops = audio rate = NO FADE (bypass entirely)
@@ -1491,7 +1490,6 @@
                         if (loopDuration < 0.050) {
                             // <50ms = >20Hz = audio rate territory
                             // NO FADE! Just loop at full volume - it's a periodic waveform
-                            console.log(`🎵 [AUDIO-RATE LOOP] Duration ${(loopDuration * 1000).toFixed(1)}ms = tone, bypassing fade (keep full volume)`);
                             // Don't touch gain at all - let it loop at full volume!
                         } else {
                             // >50ms = needs crossfade to prevent clicks
@@ -1501,7 +1499,6 @@
                             if (loopDuration < 0.200) {
                                 // 50-200ms = transitional range, minimal fade
                                 fadeTime = Math.min(secondsToEnd, 0.002); // 2ms max
-                                console.log(`⚡ [SHORT LOOP] Duration ${(loopDuration * 1000).toFixed(1)}ms, minimal ${(fadeTime * 1000).toFixed(1)}ms fade`);
                             } else {
                                 // >200ms = normal loop, standard crossfade
                                 fadeTime = Math.min(secondsToEnd, 0.005); // 5ms max
@@ -1510,13 +1507,11 @@
                             gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                             gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
                             gainNode.gain.linearRampToValueAtTime(0.0001, audioContext.currentTime + fadeTime);
-                            console.log(`🔽 [LOOP CROSSFADE] Fade-out: ${currentGain.toFixed(4)} → 0.0001 over ${(fadeTime * 1000).toFixed(1)}ms`);
                         }
                     }
                 } else if (type === 'selection-loop') {
                     // Worklet already looped - just update UI and fade back in
                     const { newPosition } = event.data;
-                    console.log(`🔁 [WORKLET] Loop executed, jumped to ${newPosition.toFixed(3)}s`);
                     
                     currentAudioPosition = newPosition;
                     lastWorkletPosition = newPosition;
@@ -1528,7 +1523,6 @@
                         
                         if (loopDuration < 0.050) {
                             // Audio-rate loop - NO fade-in! Already at full volume
-                            console.log(`🎵 [AUDIO-RATE LOOP] No fade-in needed, keeping full volume`);
                             // Don't touch gain - it never faded out, so no need to fade in!
                         } else {
                             // >50ms = needs fade-in to match fade-out
@@ -1546,13 +1540,11 @@
                             gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                             gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
                             gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + fadeTime);
-                            console.log(`🔼 [LOOP CROSSFADE] Fade-in: 0.0001 → ${targetVolume.toFixed(2)} over ${(fadeTime * 1000).toFixed(1)}ms`);
                         }
                     }
                 } else if (type === 'selection-end-reached') {
                     // Worklet stopped at selection end
                     const { position } = event.data;
-                    console.log(`⏸️ [WORKLET] Stopped at selection end: ${position.toFixed(3)}s`);
                     
                     isPlaying = false;
                     isPaused = true;
@@ -1596,12 +1588,10 @@
                         const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
                         gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime); // Start near-zero
                         gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + 0.05); // 50ms exponential fade-in
-                        console.log(`🎚️ Exponential fade-in: 0.0001 → ${targetVolume.toFixed(2)}`);
                     }
                 } else if (type === 'loop-soon') {
                     // Full-buffer loop warning (only for non-selection loops)
                     const { samplesRemaining, secondsRemaining, speed } = event.data;
-                    console.log(`⏱️ [LOOP-SOON] Approaching buffer end: ${samplesRemaining.toLocaleString()} samples (${(secondsRemaining * 1000).toFixed(1)}ms @ ${speed.toFixed(2)}x)`);
                     
                     if (isLooping) {
                         // Brief crossfade for full-buffer loop
@@ -1611,7 +1601,6 @@
                             gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                             gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
                             gainNode.gain.linearRampToValueAtTime(0.0001, audioContext.currentTime + LOOP_FADE_TIME);
-                            console.log(`🔽 [FULL-BUFFER LOOP] Crossfade out: ${currentGain.toFixed(4)} → 0.0001 over 5ms`);
                         }
                     } else {
                         // Not looping - fade out before end
@@ -1622,7 +1611,6 @@
                             gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                             gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
                             gainNode.gain.linearRampToValueAtTime(0.0001, audioContext.currentTime + fadeDuration);
-                            console.log(`🔽 [END FADE] ${currentGain.toFixed(4)} → 0.0001 over ${(fadeDuration * 1000).toFixed(1)}ms`);
                         }
                     }
                 } else if (type === 'finished') {
@@ -1637,7 +1625,6 @@
                     
                     // Handle full-buffer loop
                     if (isLooping && allReceivedData && allReceivedData.length > 0) {
-                        console.log('🔁 [FINISHED] Full-buffer loop - resetting to start');
                         isPlaying = true;
                         isPaused = false;
                         currentAudioPosition = 0;
@@ -1651,7 +1638,6 @@
                             gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                             gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
                             gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + 0.005);
-                            console.log(`🔼 [FULL-BUFFER LOOP] Fade in: 0.0001 → ${targetVolume.toFixed(2)} over 5ms`);
                         }
                         
                         // Restart playback indicator
@@ -2096,70 +2082,17 @@
                 // Remove pulse animations
                 btn.classList.remove('pulse-play', 'pulse-resume');
                 
-                // Fade in the gain node with exponential ramp
-                if (gainNode) {
-                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                    gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime); // Start near-zero (exponential can't hit 0)
-                    gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + 0.05); // 50ms exponential fade
-                }
+                // Update button state
+                isPlaying = true;
+                isPaused = false;
+                btn.textContent = '⏸️ Pause';
+                btn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
+                btn.classList.add('pause-active');
+                document.getElementById('status').className = 'status info';
+                document.getElementById('status').textContent = 'Replaying audio...';
                 
-                // Reinitialize worklet for clean restart
-                workletNode.disconnect();
-                workletNode = null;
-                initAudioWorklet().then(() => {
-                    // Reset spectrogram frame counter for clean replay
-                    spectrogramFrameCounter = 0;
-                    
-                    // Restore playback speed (with multiplier applied)
-                    updatePlaybackSpeed();
-                    console.log(`🎚️ Restored playback speed for replay: ${currentPlaybackRate.toFixed(2)}x (base slider speed × multiplier)`);
-                    
-                    // Send all chunks back to worklet
-                    for (let i = 0; i < allReceivedData.length; i++) {
-                        workletNode.port.postMessage({
-                            type: 'audio-data',
-                            data: allReceivedData[i]
-                        });
-                    }
-                    
-                    // Signal that all data has been sent
-                    workletNode.port.postMessage({ type: 'data-complete' });
-                    
-                    // Send selection state to worklet
-                    updateWorkletSelection();
-                    
-                    // Redraw waveform with stored samples
-                    if (completeSamplesArray) {
-                        drawWaveform();
-                    }
-                    
-                    // Initialize playback indicator at replay position
-                    currentAudioPosition = replayPosition;
-                    lastUpdateTime = audioContext.currentTime;
-                    
-                    // If replaying from selection start, seek to that position
-                    if (replayPosition > 0) {
-                        const sampleRate = 44100;
-                        const targetSample = Math.floor(replayPosition * sampleRate);
-                        workletNode.port.postMessage({
-                            type: 'seek',
-                            samplePosition: targetSample
-                        });
-                        console.log(`🎯 Seeking to selection start: ${replayPosition.toFixed(2)}s`);
-                    }
-                    
-                    if (totalAudioDuration > 0) {
-                        requestAnimationFrame(updatePlaybackIndicator);
-                    }
-                    
-                    isPlaying = true;
-                    isPaused = false;
-                    btn.textContent = '⏸️ Pause';
-                    btn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
-                    btn.classList.add('pause-active');
-                    document.getElementById('status').className = 'status info';
-                    document.getElementById('status').textContent = 'Replaying audio...';
-                });
+                // Just seek to replay position - seekToPosition handles everything!
+                seekToPosition(replayPosition);
                 
                 return;
             }
@@ -2168,8 +2101,6 @@
             isPaused = !isPaused;
             
             if (isPaused) {
-                console.log('⏸️ PAUSING - exponential fade to near-zero (keep audio running)');
-                
                 // Pause position tracking
                 pausePositionTracking();
                 
@@ -2178,14 +2109,12 @@
                     gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                     gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
                     gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.05); // 50ms exponential fade to near-zero
-                    console.log(`🎚️ Exponential fade: ${gainNode.gain.value.toFixed(4)} → 0.0001`);
                 }
                 
                 // Tell worklet to stop consuming samples
                 setTimeout(() => {
                     if (workletNode) {
                         workletNode.port.postMessage({ type: 'pause' });
-                        console.log('⏸️ Worklet paused (stopped consuming samples)');
                     }
                 }, 50); // Wait for fade
                 
@@ -2195,8 +2124,6 @@
                 document.getElementById('status').className = 'status';
                 document.getElementById('status').textContent = 'Paused';
             } else {
-                console.log('▶️ RESUMING - exponential fade back to target volume');
-                
                 // Resume position tracking
                 resumePositionTracking();
                 
@@ -2212,7 +2139,6 @@
                 // Tell worklet to resume consuming samples
                 if (workletNode) {
                     workletNode.port.postMessage({ type: 'resume' });
-                    console.log('▶️ Worklet resumed (consuming samples again)');
                 }
                 
                 // Fade back to target volume with exponential ramp
@@ -2221,7 +2147,6 @@
                     gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                     gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
                     gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + 0.05); // 50ms exponential fade
-                    console.log(`🎚️ Exponential fade: ${gainNode.gain.value.toFixed(4)} → ${targetVolume.toFixed(2)}`);
                 }
                 
                 // Restart playback indicator
@@ -3012,7 +2937,7 @@
             const targetSample = Math.floor(targetPosition * sampleRate);
             
             // Seek crossfade time (brief fade to prevent clicks)
-            const SEEK_CROSSFADE_TIME = 0.010; // 10ms - very short fade to prevent clicks
+            const SEEK_CROSSFADE_TIME = 0.020; // 20ms - smooth fade for big jumps
             const now = audioContext.currentTime;
             const seekTime = now + SEEK_CROSSFADE_TIME; // When to actually perform the seek
             
@@ -3069,7 +2994,6 @@
                 gainNode.gain.cancelScheduledValues(now);
                 gainNode.gain.setValueAtTime(currentGain, now);
                 gainNode.gain.linearRampToValueAtTime(0.0001, seekTime);
-                console.log(`📉 Fading out before seek (${(SEEK_CROSSFADE_TIME * 1000).toFixed(1)}ms)`);
             }
             
             // Perform seek - with or without fade depending on playback state
@@ -3093,7 +3017,6 @@
                     gainNode.gain.cancelScheduledValues(fadeInStart);
                     gainNode.gain.setValueAtTime(0.0001, fadeInStart);
                     gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), fadeInStart + SEEK_CROSSFADE_TIME);
-                    console.log(`📈 Fading in after seek (${(SEEK_CROSSFADE_TIME * 1000).toFixed(1)}ms)`);
                 }
                 
                 // Ensure playback indicator is running (in case it was stopped)

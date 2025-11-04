@@ -255,3 +255,34 @@ v1.45 - Commit: "v1.45 Feature: Added 0.02 Hz high-pass filter option, set as de
 
 ---
 
+## Worklet Recreation Bug Fix
+
+### Changes Made:
+
+1. **Removed Unnecessary Worklet Recreation**
+   - Fixed `togglePlayPause()` function to stop destroying/recreating worklet when replaying after playback finishes
+   - Reduced replay logic from 70+ lines to ~20 lines
+   - Now uses existing `seekToPosition()` mechanism instead of reinitializing entire worklet
+   - Worklet stays alive during all normal playback operations
+
+### Problem:
+- When playback finished and user clicked "Play" again, code was destroying and recreating the entire AudioWorklet
+- This caused unnecessary complexity, potential race conditions, and flash of playhead at position 0
+- Worklet recreation was completely unnecessary - `seekToPosition()` already handles replay perfectly
+
+### Solution:
+- Removed all worklet destruction/recreation logic from replay handler
+- Simplified to just call `seekToPosition(replayPosition)` 
+- `seekToPosition()` already handles: fade-out, seek, fade-in, resume, UI updates
+- Worklet now only recreated when fetching new data (which is necessary)
+
+### Key Learnings:
+- **Don't recreate what already works**: `seekToPosition()` is proven and handles all edge cases
+- **Simplify aggressively**: 70 lines → 20 lines is a massive improvement
+- **Worklet lifecycle**: Should only be destroyed when truly necessary (new data fetch), not for simple replay
+
+### Version
+v1.46 - Commit: "v1.46 Fix: Removed unnecessary worklet recreation on replay - simplified togglePlayPause to use seekToPosition instead of destroying/recreating worklet"
+
+---
+

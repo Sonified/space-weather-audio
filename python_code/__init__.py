@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.45"
+__version__ = "1.46"
 __commit_message__ = (
-    "v1.45 Feature: Added 0.02 Hz high-pass filter option, set as default, verified frequency calculation math"
+    "v1.46 Fix: Removed unnecessary worklet recreation on replay - simplified togglePlayPause to use seekToPosition instead of destroying/recreating worklet"
 )
 
 # Import key modules to make them available when importing the package
