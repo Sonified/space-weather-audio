@@ -167,3 +167,58 @@ v1.43 - Commit: "v1.43 Fix: Loop playback indicator bug - prevent finished event
 
 ---
 
+## Worklet-Driven Selection & Looping Architecture Refactor
+
+### Changes Made:
+
+1. **Worklet-Driven Boundary Detection**
+   - Moved selection boundary logic entirely into AudioWorklet
+   - Worklet checks sample position every frame (128 samples = ~2.9ms)
+   - Warns 15ms before selection end (reduced from 100ms for tighter loops)
+   - Worklet owns selection state (`selectionStart`, `selectionEnd`, `isLooping`)
+   - Main thread only reacts to worklet events - no time-based predictions
+
+2. **Removed Time-Based Predictions**
+   - Deleted `checkFadePrediction()` function (was causing race conditions)
+   - Removed `loopTransitionInProgress` and `selectionEndFadeStarted` flags
+   - Eliminated competing loop handlers - single source of truth now
+
+3. **Selection Loop Fixes**
+   - Fixed "Play Again" after selection end - now replays from selection start (not global 0)
+   - Removed minimum selection size restriction (can loop tiny 0.01s selections)
+   - Worklet clamps seeks to selection bounds automatically
+
+4. **Intelligent Audio-Rate Fade Bypass**
+   - Loops <50ms (>20Hz) bypass ALL fade logic - no volume dip
+   - Loops 50-200ms use minimal 2ms crossfade
+   - Loops >200ms use standard 5ms crossfade
+   - Audio-rate loops now create pure tones without artifacts
+
+### Problems Fixed:
+
+- **Race conditions**: Time-based predictions vs sample-based reality caused failures
+- **Short loops failing**: Prediction timing was off, worklet already passed boundary
+- **Selection end jump**: "Play Again" jumped to 0 instead of selection start
+- **Silent dropouts**: Tiny loops were fading to near-zero, killing the tone
+- **Artificial limits**: Minimum selection size prevented tiny loops
+
+### Solution:
+
+- **Single source of truth**: Worklet owns position and boundaries
+- **Sample-accurate**: Checks every audio frame, not time estimates
+- **Event-driven**: Main thread only reacts to worklet warnings
+- **Smart fades**: Auto-detects audio-rate loops and bypasses fades
+- **No limits**: Any selection size works perfectly
+
+### Key Learnings:
+
+- **DAW Architecture**: Professional audio apps work exactly like this - playback engine owns timing
+- **Audio Rate**: Loops <50ms are periodic waveforms - fading creates artifacts
+- **Sample Accuracy**: Time-based estimates fail at high speeds - worklet position is reality
+- **Event Coordination**: Multiple handlers fighting each other = bugs. Single handler = clean
+
+### Version
+v1.44 - Commit: "v1.44 Refactor: Worklet-driven selection/looping architecture - sample-accurate boundaries, audio-rate fade bypass, removed selection size limits"
+
+---
+

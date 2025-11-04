@@ -1127,7 +1127,6 @@
         let isPlaying = false;
         let isPaused = false;
         let isLooping = false;
-        let loopTransitionInProgress = false; // Prevent double-triggering loop reset
         let currentPlaybackRate = 1.0;
         let streamStartTime = 0;
         let availableStations = { seismic: [], infrasound: [] };
@@ -1148,8 +1147,14 @@
         let isDragging = false; // Flag for scrubbing drag state
         let scrubTargetPosition = null; // Position to seek to when user releases mouse
         let totalAudioDuration = 0; // Total audio duration in seconds
-        let currentAudioPosition = 0; // Current playback position in seconds
+        let currentAudioPosition = 0; // Current playback position in seconds (updated from worklet - source of truth)
         let lastUpdateTime = 0; // Last audioContext.currentTime for position tracking
+        let lastWorkletPosition = 0; // Last position received from worklet (source of truth)
+        let lastWorkletUpdateTime = 0; // Timestamp when we received last worklet position update
+        let selectionStart = null; // Selection start time in seconds (null = no selection)
+        let selectionEnd = null; // Selection end time in seconds (null = no selection)
+        let isSelecting = false; // Flag for selection drag state
+        let selectionStartX = null; // Mouse X position when selection started (for drag detection)
         
         // AudioWorklet processor code
         const workletCode = `
@@ -1166,10 +1171,20 @@
                     this.hasStarted = false;
                     this.minBufferBeforePlay = 44100 * 1; // 1 second
                     this.speed = 1.0;
-                    this.finishSent = false; // Prevent duplicate 'finished' messages
-                    this.loopWarningShown = false; // Track if we've warned about upcoming loop
-                    this.dataLoadingComplete = false; // Track when all data has been sent
-                    this.totalSamples = 0; // Track total samples loaded (for looping)
+                    this.finishSent = false;
+                    this.loopWarningShown = false;
+                    this.dataLoadingComplete = false;
+                    this.totalSamples = 0;
+                    
+                    // Selection and looping (worklet owns this state)
+                    this.selectionStart = null; // in seconds
+                    this.selectionEnd = null; // in seconds
+                    this.isLooping = false;
+                    this.selectionEndWarned = false;
+                    
+                    // Throttle position updates
+                    this.samplesSinceLastPositionUpdate = 0;
+                    this.positionUpdateIntervalSamples = 1323; // ~30ms at 44.1kHz
                     
                     this.port.onmessage = (event) => {
                         const { type, data, speed } = event.data;
@@ -1184,9 +1199,8 @@
                             this.speed = speed;
                         } else if (type === 'data-complete') {
                             this.dataLoadingComplete = true;
-                            this.totalSamples = this.samplesInBuffer; // Store total for looping
+                            this.totalSamples = this.samplesInBuffer;
                         } else if (type === 'reset') {
-                            // Full reset - clears buffer (used when fetching new data)
                             this.buffer.fill(0);
                             this.readIndex = 0;
                             this.writeIndex = 0;
@@ -1198,43 +1212,57 @@
                             this.dataLoadingComplete = false;
                             this.totalSamples = 0;
                             this.speed = 1.0;
+                            this.samplesSinceLastPositionUpdate = 0;
+                            this.selectionStart = null;
+                            this.selectionEnd = null;
+                            this.isLooping = false;
+                            this.selectionEndWarned = false;
                         } else if (type === 'loop') {
-                            // Loop reset - just go back to start, keep buffer intact
                             const previousReadIndex = this.readIndex;
                             const previousSamplesInBuffer = this.samplesInBuffer;
-                            this.readIndex = 0;  // Go back to first sample
-                            this.samplesInBuffer = this.totalSamples;  // Restore total samples available
-                            this.isPlaying = true;  // Keep playing
-                            this.finishSent = false;  // Allow another 'finished' message
-                            this.loopWarningShown = false; // Reset loop warning
+                            this.readIndex = 0;
+                            this.samplesInBuffer = this.totalSamples;
+                            this.isPlaying = true;
+                            this.finishSent = false;
+                            this.loopWarningShown = false;
                             console.log('🔄 WORKLET LOOP: ReadIndex ' + previousReadIndex + ' -> 0, SamplesInBuffer ' + previousSamplesInBuffer + ' -> ' + this.totalSamples + ', Speed: ' + this.speed.toFixed(2) + 'x');
-                            // Keep buffer, writeIndex, hasStarted, dataLoadingComplete, speed intact
                         } else if (type === 'seek') {
-                            // Seek to specific sample position
-                            const targetSample = event.data.samplePosition;
+                            let targetSample = event.data.samplePosition;
+                            
+                            // Clamp to selection bounds if selection exists
+                            if (this.selectionStart !== null && this.selectionEnd !== null) {
+                                const startSample = Math.floor(this.selectionStart * 44100);
+                                const endSample = Math.floor(this.selectionEnd * 44100);
+                                targetSample = Math.max(startSample, Math.min(targetSample, endSample));
+                            }
+                            
                             if (targetSample >= 0 && targetSample <= this.totalSamples) {
                                 const previousReadIndex = this.readIndex;
                                 const previousSamplesInBuffer = this.samplesInBuffer;
-                                // Buffer is linear during initial load, so readIndex = sample position
                                 this.readIndex = targetSample;
-                                this.samplesInBuffer = this.totalSamples - targetSample;  // Update remaining samples
-                                this.finishSent = false;  // Allow another 'finished' message
-                                this.loopWarningShown = false; // Reset loop warning
-                                this.isPlaying = true; // Ensure playback continues
+                                this.samplesInBuffer = this.totalSamples - targetSample;
+                                this.finishSent = false;
+                                this.loopWarningShown = false;
+                                this.selectionEndWarned = false;
+                                this.isPlaying = true;
                                 console.log('🎯 WORKLET SEEK: ReadIndex ' + previousReadIndex + ' -> ' + this.readIndex + ', SamplesInBuffer ' + previousSamplesInBuffer + ' -> ' + this.samplesInBuffer + ', Target sample: ' + targetSample);
                             }
+                        } else if (type === 'set-selection') {
+                            this.selectionStart = event.data.start;
+                            this.selectionEnd = event.data.end;
+                            this.isLooping = event.data.loop;
+                            this.selectionEndWarned = false;
+                            console.log('🎯 WORKLET SELECTION: Start=' + this.selectionStart + 's, End=' + this.selectionEnd + 's, Loop=' + this.isLooping);
                         }
                     };
                 }
                 
                 addSamples(samples) {
-                    // Expand buffer if needed
                     const neededSize = this.samplesInBuffer + samples.length;
                     if (neededSize > this.maxBufferSize) {
                         const newSize = Math.max(neededSize, this.maxBufferSize * 2);
                         const newBuffer = new Float32Array(newSize);
                         
-                        // Copy existing data (handle circular buffer wrap-around)
                         for (let i = 0; i < this.samplesInBuffer; i++) {
                             const srcIdx = (this.readIndex + i) % this.maxBufferSize;
                             newBuffer[i] = this.buffer[srcIdx];
@@ -1248,7 +1276,6 @@
                         console.log('📏 Expanded buffer to ' + (newSize / 44100 / 60).toFixed(1) + ' minutes');
                     }
                     
-                    // Add new samples
                     for (let i = 0; i < samples.length; i++) {
                         this.buffer[this.writeIndex] = samples[i];
                         this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
@@ -1256,7 +1283,7 @@
                     }
                     
                     if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
-                        this.readIndex = 0; // Reset read index after potential expansion
+                        this.readIndex = 0;
                         this.isPlaying = true;
                         this.hasStarted = true;
                         this.port.postMessage({ type: 'started' });
@@ -1274,23 +1301,66 @@
                     
                     const samplesToRead = Math.ceil(channel.length * this.speed);
                     
-                    // Detect near-end for gapless looping (send warning with ~20ms left for 10ms fade)
-                    const loopWarningThreshold = 44100 * 0.020; // 20ms at 44.1kHz (gives time for 10ms fade)
-                    if (this.samplesInBuffer < loopWarningThreshold && !this.loopWarningShown && this.hasStarted) {
-                        const remainingSeconds = this.samplesInBuffer / 44100;
-                        const remainingMs = remainingSeconds * 1000;
-                        this.port.postMessage({ 
-                            type: 'loop-soon',
-                            samplesRemaining: this.samplesInBuffer,
-                            secondsRemaining: remainingSeconds,
-                            speed: this.speed
-                        });
-                        this.loopWarningShown = true;
+                    // ===== SELECTION BOUNDARY HANDLING (WORKLET-DRIVEN) =====
+                    if (this.selectionStart !== null && this.selectionEnd !== null) {
+                        const currentPositionSec = this.readIndex / 44100;
+                        const selectionEndSample = Math.floor(this.selectionEnd * 44100);
+                        const samplesToEnd = selectionEndSample - this.readIndex;
+                        
+                        // Warn 15ms before selection end for tight crossfades
+                        const WARNING_THRESHOLD = 662; // 15ms at 44.1kHz (~3x the crossfade time)
+                        if (samplesToEnd <= WARNING_THRESHOLD && samplesToEnd > 0 && !this.selectionEndWarned) {
+                            this.selectionEndWarned = true;
+                            const secondsToEnd = samplesToEnd / 44100 / this.speed; // Real-time seconds
+                            const loopDuration = this.selectionEnd - this.selectionStart; // Loop duration in seconds
+                            this.port.postMessage({
+                                type: 'selection-end-approaching',
+                                samplesToEnd: samplesToEnd,
+                                secondsToEnd: secondsToEnd,
+                                isLooping: this.isLooping,
+                                loopDuration: loopDuration
+                            });
+                        }
+                        
+                        // At selection end, loop or stop
+                        if (this.readIndex >= selectionEndSample) {
+                            if (this.isLooping) {
+                                // Jump to selection start (sample-accurate)
+                                const selectionStartSample = Math.floor(this.selectionStart * 44100);
+                                this.readIndex = selectionStartSample;
+                                this.samplesInBuffer = this.totalSamples - selectionStartSample;
+                                this.selectionEndWarned = false;
+                                this.port.postMessage({ 
+                                    type: 'selection-loop',
+                                    newPosition: this.selectionStart
+                                });
+                            } else {
+                                // Stop at selection end
+                                this.isPlaying = false;
+                                this.port.postMessage({ 
+                                    type: 'selection-end-reached',
+                                    position: this.selectionEnd
+                                });
+                            }
+                        }
+                    }
+                    // ===== FULL-BUFFER LOOP HANDLING (for non-selection loops) =====
+                    else {
+                        const loopWarningThreshold = 44100 * 0.020;
+                        if (this.samplesInBuffer < loopWarningThreshold && !this.loopWarningShown && this.hasStarted) {
+                            const remainingSeconds = this.samplesInBuffer / 44100;
+                            this.port.postMessage({ 
+                                type: 'loop-soon',
+                                samplesRemaining: this.samplesInBuffer,
+                                secondsRemaining: remainingSeconds,
+                                speed: this.speed
+                            });
+                            this.loopWarningShown = true;
+                        }
                     }
                     
-                    // STEP 1: Fill the output buffer with audio samples
+                    // Fill output buffer
                     if (this.samplesInBuffer < samplesToRead) {
-                        // Underrun: output available samples, then silence
                         const availableForOutput = Math.min(this.samplesInBuffer, channel.length);
                         for (let i = 0; i < availableForOutput; i++) {
                             channel[i] = this.buffer[this.readIndex];
@@ -1302,12 +1372,8 @@
                         }
                         
                         if (this.samplesInBuffer === 0) {
-                            // Send 'finished' message once, but ONLY if:
-                            // 1. We've actually started playing
-                            // 2. All data has been loaded (not just a temporary underrun)
                             if (!this.finishSent && this.hasStarted && this.dataLoadingComplete) {
                                 this.isPlaying = false;
-                                // Expected duration at current speed: totalSamples / (sampleRate * speed)
                                 const expectedDuration = this.totalSamples / (44100 * this.speed);
                                 this.port.postMessage({ 
                                     type: 'finished',
@@ -1317,21 +1383,17 @@
                                 });
                                 this.finishSent = true;
                             }
-                            // ✅ Output silence but keep worklet alive for potential loop or more data
                             channel.fill(0);
-                            return true;  // Keep worklet alive!
+                            return true;
                         }
                     } else {
-                        // Normal playback with variable speed
                         if (this.speed === 1.0) {
-                            // Normal speed - just copy
                             for (let i = 0; i < channel.length; i++) {
                                 channel[i] = this.buffer[this.readIndex];
                                 this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
                                 this.samplesInBuffer--;
                             }
                         } else {
-                            // Variable speed - linear interpolation
                             let sourcePos = 0;
                             for (let i = 0; i < channel.length; i++) {
                                 const readPos = Math.floor(sourcePos);
@@ -1350,10 +1412,20 @@
                         }
                     }
                     
-                    // No fade logic here - let gain node handle it!
-                    // AudioWorklet just outputs clean audio
+                    // Throttled position updates (~30ms intervals)
+                    this.samplesSinceLastPositionUpdate += 128; // frame size
+                    if (this.samplesSinceLastPositionUpdate >= this.positionUpdateIntervalSamples) {
+                        if (this.hasStarted && this.isPlaying) {
+                            this.port.postMessage({
+                                type: 'position',
+                                samplePosition: this.readIndex,
+                                positionSeconds: this.readIndex / 44100
+                            });
+                        }
+                        this.samplesSinceLastPositionUpdate = 0;
+                    }
                     
-                    // Send metrics periodically (sample position for current position display)
+                    // Occasional metrics for display
                     if (this.hasStarted && Math.random() < 0.01) {
                         const samplesConsumed = this.totalSamples - this.samplesInBuffer;
                         this.port.postMessage({
@@ -1390,9 +1462,113 @@
             gainNode.connect(audioContext.destination);
             
             workletNode.port.onmessage = (event) => {
-                const { type, bufferSize, samplesConsumed, totalSamples } = event.data;
+                const { type, bufferSize, samplesConsumed, totalSamples, positionSeconds, samplePosition } = event.data;
                 
-                if (type === 'metrics') {
+                if (type === 'position') {
+                    // Worklet position is SOURCE OF TRUTH - just update, no clamping needed
+                    currentAudioPosition = positionSeconds;
+                    lastWorkletPosition = positionSeconds;
+                    lastWorkletUpdateTime = audioContext.currentTime;
+                } else if (type === 'selection-end-approaching') {
+                    // Worklet warns us it's approaching selection end
+                    const { secondsToEnd, isLooping: workletIsLooping, loopDuration } = event.data;
+                    console.log(`⏱️ [WORKLET] Selection end approaching in ${(secondsToEnd * 1000).toFixed(1)}ms (loop=${workletIsLooping}, loopDuration=${(loopDuration * 1000).toFixed(1)}ms)`);
+                    
+                    // Start fade NOW if not looping
+                    if (!workletIsLooping && gainNode && audioContext) {
+                        const currentGain = gainNode.gain.value;
+                        const fadeTime = Math.max(secondsToEnd, 0.010); // At least 10ms for endings
+                        gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                        gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
+                        gainNode.gain.linearRampToValueAtTime(0.0001, audioContext.currentTime + fadeTime);
+                        console.log(`🔽 [WORKLET-DRIVEN] Fade-out: ${currentGain.toFixed(4)} → 0.0001 over ${(fadeTime * 1000).toFixed(1)}ms`);
+                    } else if (workletIsLooping && gainNode && audioContext) {
+                        // Intelligent crossfade based on loop duration
+                        // Short loops = audio rate = NO FADE (bypass entirely)
+                        // Long loops = need fade to prevent clicks
+                        
+                        if (loopDuration < 0.050) {
+                            // <50ms = >20Hz = audio rate territory
+                            // NO FADE! Just loop at full volume - it's a periodic waveform
+                            console.log(`🎵 [AUDIO-RATE LOOP] Duration ${(loopDuration * 1000).toFixed(1)}ms = tone, bypassing fade (keep full volume)`);
+                            // Don't touch gain at all - let it loop at full volume!
+                        } else {
+                            // >50ms = needs crossfade to prevent clicks
+                            const currentGain = gainNode.gain.value;
+                            let fadeTime;
+                            
+                            if (loopDuration < 0.200) {
+                                // 50-200ms = transitional range, minimal fade
+                                fadeTime = Math.min(secondsToEnd, 0.002); // 2ms max
+                                console.log(`⚡ [SHORT LOOP] Duration ${(loopDuration * 1000).toFixed(1)}ms, minimal ${(fadeTime * 1000).toFixed(1)}ms fade`);
+                            } else {
+                                // >200ms = normal loop, standard crossfade
+                                fadeTime = Math.min(secondsToEnd, 0.005); // 5ms max
+                            }
+                            
+                            gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                            gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
+                            gainNode.gain.linearRampToValueAtTime(0.0001, audioContext.currentTime + fadeTime);
+                            console.log(`🔽 [LOOP CROSSFADE] Fade-out: ${currentGain.toFixed(4)} → 0.0001 over ${(fadeTime * 1000).toFixed(1)}ms`);
+                        }
+                    }
+                } else if (type === 'selection-loop') {
+                    // Worklet already looped - just update UI and fade back in
+                    const { newPosition } = event.data;
+                    console.log(`🔁 [WORKLET] Loop executed, jumped to ${newPosition.toFixed(3)}s`);
+                    
+                    currentAudioPosition = newPosition;
+                    lastWorkletPosition = newPosition;
+                    lastWorkletUpdateTime = audioContext.currentTime;
+                    
+                    // Intelligent fade-in matching the fade-out duration
+                    if (gainNode && audioContext && selectionStart !== null && selectionEnd !== null) {
+                        const loopDuration = selectionEnd - selectionStart;
+                        
+                        if (loopDuration < 0.050) {
+                            // Audio-rate loop - NO fade-in! Already at full volume
+                            console.log(`🎵 [AUDIO-RATE LOOP] No fade-in needed, keeping full volume`);
+                            // Don't touch gain - it never faded out, so no need to fade in!
+                        } else {
+                            // >50ms = needs fade-in to match fade-out
+                            const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                            let fadeTime;
+                            
+                            if (loopDuration < 0.200) {
+                                // Short loop - minimal fade-in
+                                fadeTime = 0.002; // 2ms
+                            } else {
+                                // Normal loop - standard fade-in
+                                fadeTime = 0.005; // 5ms
+                            }
+                            
+                            gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                            gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+                            gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + fadeTime);
+                            console.log(`🔼 [LOOP CROSSFADE] Fade-in: 0.0001 → ${targetVolume.toFixed(2)} over ${(fadeTime * 1000).toFixed(1)}ms`);
+                        }
+                    }
+                } else if (type === 'selection-end-reached') {
+                    // Worklet stopped at selection end
+                    const { position } = event.data;
+                    console.log(`⏸️ [WORKLET] Stopped at selection end: ${position.toFixed(3)}s`);
+                    
+                    isPlaying = false;
+                    isPaused = true;
+                    currentAudioPosition = position;
+                    
+                    // Update UI
+                    const playBtn = document.getElementById('playPauseBtn');
+                    playBtn.disabled = false;
+                    playBtn.textContent = '▶️ Resume';
+                    playBtn.classList.remove('pause-active');
+                    playBtn.classList.add('play-active', 'pulse-resume');
+                    document.getElementById('status').className = 'status';
+                    document.getElementById('status').textContent = '⏸️ Paused at selection end';
+                    
+                    // Update waveform to show final position
+                    drawWaveformWithSelection();
+                } else if (type === 'metrics') {
                     // Update current position based on actual sample position
                     if (samplesConsumed !== undefined && totalSamples && totalSamples > 0) {
                         updateCurrentPositionFromSamples(samplesConsumed, totalSamples);
@@ -1407,6 +1583,8 @@
                     
                     // Initialize playback indicator
                     currentAudioPosition = 0;
+                    lastWorkletPosition = 0;
+                    lastWorkletUpdateTime = audioContext.currentTime;
                     lastUpdateTime = audioContext.currentTime;
                     if (totalAudioDuration > 0) {
                         requestAnimationFrame(updatePlaybackIndicator);
@@ -1420,198 +1598,76 @@
                         console.log(`🎚️ Exponential fade-in: 0.0001 → ${targetVolume.toFixed(2)}`);
                     }
                 } else if (type === 'loop-soon') {
-                    // Gapless loop warning: ~20ms left, start fade-out (unless looping)
+                    // Full-buffer loop warning (only for non-selection loops)
                     const { samplesRemaining, secondsRemaining, speed } = event.data;
-                    const remainingMs = secondsRemaining * 1000;
-                    console.log(`⏱️ [LOOP-SOON] APPROACHING END: ${samplesRemaining.toLocaleString()} samples remaining (${remainingMs.toFixed(1)}ms @ speed ${speed.toFixed(2)}x)`);
-                    console.log(`⏱️ [LOOP-SOON] State check: isLooping=${isLooping}, hasData=${!!allReceivedData && allReceivedData.length > 0}, transitionInProgress=${loopTransitionInProgress}`);
+                    console.log(`⏱️ [LOOP-SOON] Approaching buffer end: ${samplesRemaining.toLocaleString()} samples (${(secondsRemaining * 1000).toFixed(1)}ms @ ${speed.toFixed(2)}x)`);
                     
-                    if (isLooping && allReceivedData && allReceivedData.length > 0 && !loopTransitionInProgress) {
-                        console.log('🔁 [LOOP-SOON] Loop approaching - preparing instant transition...');
-                        loopTransitionInProgress = true; // Prevent duplicate loop handling
-                        console.log('🔁 [LOOP-SOON] Set loopTransitionInProgress = true');
-                        // For looping, use very short fade and reset immediately
-                        const LOOP_FADE_TIME = 0.010; // 10ms for instant-feeling loop
+                    if (isLooping) {
+                        // Brief crossfade for full-buffer loop
+                        const LOOP_FADE_TIME = 0.005; // 5ms for tight loops
                         if (gainNode && audioContext) {
                             const currentGain = gainNode.gain.value;
-                            const now = audioContext.currentTime;
-                            // Brief fade-out
-                            gainNode.gain.cancelScheduledValues(now);
-                            gainNode.gain.setValueAtTime(currentGain, now);
-                            gainNode.gain.exponentialRampToValueAtTime(0.0001, now + LOOP_FADE_TIME);
-                            
-                            // Schedule loop reset and fade-in to happen when audio actually reaches the end
-                            // samplesRemaining is in audio time, need to convert to real time
-                            const realTimeRemaining = secondsRemaining / speed;
-                            console.log(`⏱️ [LOOP-SOON] Scheduling loop reset in ${(realTimeRemaining * 1000).toFixed(1)}ms (real time)`);
-                            setTimeout(() => {
-                                console.log(`🔄 [LOOP-SOON TIMEOUT] Executing loop reset - isLooping=${isLooping}, workletNode=${!!workletNode}`);
-                                if (isLooping && workletNode) {
-                                    // Ensure playback state flags are correct FIRST
-                                    console.log(`🔄 [LOOP-SOON TIMEOUT] Setting isPlaying=true, isPaused=false`);
-                                    isPlaying = true;
-                                    isPaused = false;
-                                    
-                                    // Reset read pointer
-                                    console.log('🔄 [LOOP-SOON TIMEOUT] Sending loop message to worklet');
-                                    workletNode.port.postMessage({ type: 'loop' });
-                                    
-                                    // Reset playback indicator position (NOW at the actual loop point)
-                                    console.log(`🔄 [LOOP-SOON TIMEOUT] Resetting playback indicator: currentAudioPosition=0, lastUpdateTime=${audioContext.currentTime.toFixed(3)}`);
-                                    currentAudioPosition = 0;
-                                    lastUpdateTime = audioContext.currentTime;
-                                    
-                                    // Brief fade-in
-                                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                                    gainNode.gain.cancelScheduledValues(audioContext.currentTime);
-                                    gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
-                                    gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + LOOP_FADE_TIME);
-                                    console.log(`🔄 [LOOP-SOON TIMEOUT] Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over ${(LOOP_FADE_TIME * 1000).toFixed(0)}ms`);
-                                    
-                                    // CRITICAL: Force the indicator to restart with fresh state
-                                    // Use setTimeout to ensure state changes are complete before starting animation
-                                    if (totalAudioDuration > 0) {
-                                        setTimeout(() => {
-                                            // Refresh timing right before starting animation
-                                            lastUpdateTime = audioContext.currentTime;
-                                            requestAnimationFrame(updatePlaybackIndicator);
-                                            console.log(`🔄 [LOOP-SOON TIMEOUT] Playback indicator restarted at time ${audioContext.currentTime.toFixed(3)} (totalAudioDuration=${totalAudioDuration.toFixed(2)}s)`);
-                                        }, 10); // Small delay to ensure all state changes are complete
-                                    } else {
-                                        console.warn(`⚠️ [LOOP-SOON TIMEOUT] NOT restarting indicator - totalAudioDuration=${totalAudioDuration}`);
-                                    }
-                                    
-                                    console.log('🔄 [LOOP-SOON TIMEOUT] Loop transition complete - continuing playback');
-                                    
-                                    // Reset flag after loop completes
-                                    setTimeout(() => {
-                                        console.log('🔄 [LOOP-SOON TIMEOUT] Resetting loopTransitionInProgress flag');
-                                        loopTransitionInProgress = false;
-                                    }, 50); // Small delay to ensure finished event is ignored
-                                } else {
-                                    console.warn(`⚠️ [LOOP-SOON TIMEOUT] Loop reset skipped - isLooping=${isLooping}, workletNode=${!!workletNode}`);
-                                }
-                            }, realTimeRemaining * 1000);
-                        }
-                    } else {
-                        // Not looping - start fade-out now (before playback ends)
-                        console.log('🔽 Starting fade-out before playback ends...');
-                        if (gainNode && audioContext) {
-                            const currentGain = gainNode.gain.value;
-                            // Calculate fade duration: remaining time in real seconds (already accounts for speed in worklet)
-                            // But secondsRemaining is based on samples/44100, which is audio time, not real time
-                            // Need to divide by speed to get real-time duration
-                            const realTimeRemaining = secondsRemaining / speed; // Convert audio time to real time
-                            const fadeDuration = Math.min(realTimeRemaining, 0.1); // Fade over remaining time or 100ms, whichever is shorter
                             gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                             gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
-                            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + fadeDuration);
-                            console.log(`🔽 FADE-OUT START: Current gain: ${currentGain.toFixed(4)}, Target: 0.0001, Duration: ${(fadeDuration * 1000).toFixed(1)}ms (real time @ ${speed.toFixed(2)}x speed)`);
+                            gainNode.gain.linearRampToValueAtTime(0.0001, audioContext.currentTime + LOOP_FADE_TIME);
+                            console.log(`🔽 [FULL-BUFFER LOOP] Crossfade out: ${currentGain.toFixed(4)} → 0.0001 over 5ms`);
+                        }
+                    } else {
+                        // Not looping - fade out before end
+                        const realTimeRemaining = secondsRemaining / speed;
+                        const fadeDuration = Math.min(realTimeRemaining, 0.1);
+                        if (gainNode && audioContext) {
+                            const currentGain = gainNode.gain.value;
+                            gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                            gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
+                            gainNode.gain.linearRampToValueAtTime(0.0001, audioContext.currentTime + fadeDuration);
+                            console.log(`🔽 [END FADE] ${currentGain.toFixed(4)} → 0.0001 over ${(fadeDuration * 1000).toFixed(1)}ms`);
                         }
                     }
                 } else if (type === 'finished') {
-                    // Ignore "finished" messages if we're fetching new data (stale message from old worklet)
+                    // Full-buffer playback finished
                     if (isFetchingNewData) {
-                        console.log('⚠️ [FINISHED] Ignoring stale "finished" message - new data is being fetched');
+                        console.log('⚠️ [FINISHED] Ignoring - new data being fetched');
                         return;
                     }
                     
-                    const { totalSamples, speed, expectedDurationSeconds } = event.data;
-                    const durationAt1x = totalSamples / 44100;
-                    console.log(`🏁 [FINISHED] BUFFER EMPTY: Total samples: ${totalSamples.toLocaleString()}, Speed: ${speed.toFixed(2)}x, Duration @ 1x: ${durationAt1x.toFixed(3)}s, Expected @ ${speed.toFixed(2)}x: ${expectedDurationSeconds.toFixed(3)}s`);
-                    console.log(`🏁 [FINISHED] State check: isLooping=${isLooping}, hasData=${!!allReceivedData && allReceivedData.length > 0}, transitionInProgress=${loopTransitionInProgress}`);
+                    const { totalSamples, speed } = event.data;
+                    console.log(`🏁 [FINISHED] Buffer empty: ${totalSamples.toLocaleString()} samples @ ${speed.toFixed(2)}x speed`);
                     
-                    // Fade-out should have already started in 'loop-soon' event (unless looping)
-                    // But ensure it's complete before handling finish
-                    const fadeOutStartTime = audioContext.currentTime;
-                    const currentGain = gainNode ? gainNode.gain.value : 0.0001;
-                    
-                    // Only start fade-out here if it hasn't already started (shouldn't happen, but safety check)
-                    if (gainNode && currentGain > 0.001) {
-                        console.log(`🔽 [FINISHED] FADE-OUT (backup): Current gain: ${currentGain.toFixed(4)}, starting immediate fade`);
-                        gainNode.gain.cancelScheduledValues(audioContext.currentTime);
-                        gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
-                        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.05); // 50ms exponential fade-out
+                    // Handle full-buffer loop
+                    if (isLooping && allReceivedData && allReceivedData.length > 0) {
+                        console.log('🔁 [FINISHED] Full-buffer loop - resetting to start');
+                        isPlaying = true;
+                        isPaused = false;
+                        currentAudioPosition = 0;
+                        lastUpdateTime = audioContext.currentTime;
+                        
+                        workletNode.port.postMessage({ type: 'loop' });
+                        
+                        // Fade back in
+                        if (gainNode) {
+                            const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                            gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                            gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+                            gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + 0.005);
+                            console.log(`🔼 [FULL-BUFFER LOOP] Fade in: 0.0001 → ${targetVolume.toFixed(2)} over 5ms`);
+                        }
+                        
+                        // Restart playback indicator
+                        if (totalAudioDuration > 0) {
+                            requestAnimationFrame(updatePlaybackIndicator);
+                        }
                     } else {
-                        console.log(`🔽 [FINISHED] FADE-OUT: Already faded (gain: ${currentGain.toFixed(4)})`);
+                        // Not looping - playback finished
+                        isPlaying = false;
+                        stopPositionTracking();
+                        const playBtn = document.getElementById('playPauseBtn');
+                        playBtn.disabled = false;
+                        playBtn.textContent = '▶️ Play';
+                        playBtn.classList.add('pulse-play');
+                        document.getElementById('status').className = 'status success';
+                        document.getElementById('status').textContent = '✅ Playback finished! Click Play to replay or enable Loop.';
                     }
-                    
-                    // Wait for fade to complete, then handle loop/finish
-                    setTimeout(() => {
-                        const fadeOutCompleteTime = audioContext.currentTime;
-                        const fadeOutDuration = fadeOutCompleteTime - fadeOutStartTime;
-                        console.log(`🔽 [FINISHED TIMEOUT] FADE-OUT COMPLETE: Audio time: ${fadeOutCompleteTime.toFixed(3)}s, Actual fade duration: ${(fadeOutDuration * 1000).toFixed(1)}ms`);
-                        
-                        // Double-check we're still not fetching new data
-                        if (isFetchingNewData) {
-                            console.log('⚠️ [FINISHED TIMEOUT] Ignoring finish handler - new data fetch in progress');
-                            return;
-                        }
-                        
-                        // If loop is in progress, ignore this stale finished event
-                        if (loopTransitionInProgress) {
-                            console.log('⚠️ [FINISHED TIMEOUT] Ignoring finish handler - loop transition in progress');
-                            return;
-                        }
-                        
-                        // Handle looping (fallback - should have been handled in 'loop-soon' event)
-                        if (isLooping && allReceivedData && allReceivedData.length > 0) {
-                            console.log('🔁 [FINISHED TIMEOUT] LOOPING (FALLBACK): Going back to first sample (buffer intact)...');
-                            console.log('⚠️ [FINISHED TIMEOUT] WARNING: Fallback loop handler executed - loop-soon event may have failed!');
-                            
-                            // Ensure playback state flags are correct
-                            console.log(`🔁 [FINISHED TIMEOUT] Setting isPlaying=true, isPaused=false`);
-                            isPlaying = true;
-                            isPaused = false;
-                            
-                            // Just reset read pointer - no need to reload data!
-                            workletNode.port.postMessage({ type: 'loop' });
-                            console.log('🔄 Read pointer reset to start (buffer unchanged)');
-                            
-                            // Reset playback indicator position
-                            currentAudioPosition = 0;
-                            lastUpdateTime = audioContext.currentTime;
-                            
-                            // Ensure playback speed is current (multiplier applied)
-                            updatePlaybackSpeed();
-                            console.log(`🎚️ Playback speed: ${currentPlaybackRate.toFixed(2)}x (base slider speed × multiplier)`);
-                            
-                            // Brief fade-in for loop (10ms)
-                            const LOOP_FADE_TIME = 0.010;
-                            const fadeInStartTime = audioContext.currentTime;
-                            if (gainNode) {
-                                const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                                const currentGain = gainNode.gain.value;
-                                gainNode.gain.cancelScheduledValues(audioContext.currentTime);
-                                gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
-                                gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + LOOP_FADE_TIME);
-                                console.log(`🔼 FADE-IN START: Current gain: ${currentGain.toFixed(4)}, Start: 0.0001, Target: ${targetVolume.toFixed(2)}, Duration: ${(LOOP_FADE_TIME * 1000).toFixed(0)}ms, Audio time: ${fadeInStartTime.toFixed(3)}s`);
-                            }
-                            
-                            // CRITICAL: Force the indicator to restart with fresh state
-                            // Use setTimeout to ensure state changes are complete before starting animation
-                            if (totalAudioDuration > 0) {
-                                setTimeout(() => {
-                                    // Refresh timing right before starting animation
-                                    lastUpdateTime = audioContext.currentTime;
-                                    requestAnimationFrame(updatePlaybackIndicator);
-                                    console.log(`🔄 [FINISHED TIMEOUT] Playback indicator restarted at time ${audioContext.currentTime.toFixed(3)} (totalAudioDuration=${totalAudioDuration.toFixed(2)}s)`);
-                                }, 10); // Small delay to ensure all state changes are complete
-                            }
-                            
-                            // No need to reload data - it's already in the buffer!
-                        } else {
-                            // Not looping - playback finished
-                            isPlaying = false;
-                            stopPositionTracking();
-                            const playBtn = document.getElementById('playPauseBtn');
-                            playBtn.disabled = false;
-                            playBtn.textContent = '▶️ Play';
-                            playBtn.classList.add('pulse-play');
-                            document.getElementById('status').className = 'status success';
-                            document.getElementById('status').textContent = '✅ Playback finished! Click Play to replay or enable Loop.';
-                        }
-                    }, 50);
                 }
             };
             
@@ -2030,9 +2086,11 @@
             
             const btn = document.getElementById('playPauseBtn');
             
-            // If playback has finished and we have data, "Play" means replay from beginning
+            // If playback has finished and we have data, "Play" means replay
             if (!isPlaying && allReceivedData && allReceivedData.length > 0) {
-                console.log('▶️ PLAY AGAIN: Replaying data from beginning');
+                // Determine replay position: selection start if selection exists, otherwise 0
+                const replayPosition = (selectionStart !== null && selectionEnd !== null) ? selectionStart : 0;
+                console.log(`▶️ PLAY AGAIN: Replaying from ${replayPosition.toFixed(2)}s (selection=${selectionStart !== null ? 'yes' : 'no'})`);
                 
                 // Remove pulse animations
                 btn.classList.remove('pulse-play', 'pulse-resume');
@@ -2066,14 +2124,29 @@
                     // Signal that all data has been sent
                     workletNode.port.postMessage({ type: 'data-complete' });
                     
+                    // Send selection state to worklet
+                    updateWorkletSelection();
+                    
                     // Redraw waveform with stored samples
                     if (completeSamplesArray) {
                         drawWaveform();
                     }
                     
-                    // Initialize playback indicator
-                    currentAudioPosition = 0;
+                    // Initialize playback indicator at replay position
+                    currentAudioPosition = replayPosition;
                     lastUpdateTime = audioContext.currentTime;
+                    
+                    // If replaying from selection start, seek to that position
+                    if (replayPosition > 0) {
+                        const sampleRate = 44100;
+                        const targetSample = Math.floor(replayPosition * sampleRate);
+                        workletNode.port.postMessage({
+                            type: 'seek',
+                            samplePosition: targetSample
+                        });
+                        console.log(`🎯 Seeking to selection start: ${replayPosition.toFixed(2)}s`);
+                    }
+                    
                     if (totalAudioDuration > 0) {
                         requestAnimationFrame(updatePlaybackIndicator);
                     }
@@ -2173,6 +2246,23 @@
                 btn.textContent = '🔁 Loop';
                 console.log('🔁 Looping disabled');
             }
+            
+            // Update worklet with new loop state
+            updateWorkletSelection();
+        }
+        
+        // Send current selection state to worklet
+        function updateWorkletSelection() {
+            if (!workletNode) return;
+            
+            workletNode.port.postMessage({
+                type: 'set-selection',
+                start: selectionStart,
+                end: selectionEnd,
+                loop: isLooping
+            });
+            
+            console.log(`📤 Sent to worklet: selection=${selectionStart !== null ? selectionStart.toFixed(2) : 'null'}-${selectionEnd !== null ? selectionEnd.toFixed(2) : 'null'}, loop=${isLooping}`);
         }
         
         // Calculate slider value for 1.0x speed (reversing the log function)
@@ -2586,6 +2676,69 @@
             cacheCtx.drawImage(canvas, 0, 0);
         }
         
+        // Draw waveform with selection highlight
+        function drawWaveformWithSelection() {
+            const canvas = document.getElementById('waveform');
+            if (!canvas || !cachedWaveformCanvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear and draw cached waveform
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(cachedWaveformCanvas, 0, 0);
+            
+            // Draw selection highlight if selection exists
+            if (selectionStart !== null && selectionEnd !== null) {
+                const startProgress = selectionStart / totalAudioDuration;
+                const endProgress = selectionEnd / totalAudioDuration;
+                const startX = startProgress * width;
+                const endX = endProgress * width;
+                const selectionWidth = endX - startX;
+                
+                // Draw semi-transparent overlay
+                ctx.fillStyle = 'rgba(255, 255, 0, 0.2)'; // Yellow tint
+                ctx.fillRect(startX, 0, selectionWidth, height);
+                
+                // Draw selection borders
+                ctx.strokeStyle = 'rgba(255, 200, 0, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(startX, 0);
+                ctx.lineTo(startX, height);
+                ctx.moveTo(endX, 0);
+                ctx.lineTo(endX, height);
+                ctx.stroke();
+            }
+            
+            // Draw playback indicator (playhead)
+            // Always show playhead - at selection start during drag, otherwise at current position
+            let playheadPosition = null;
+            
+            if (isSelecting && selectionStart !== null) {
+                // During selection drag, show playhead at selection start (left edge)
+                // This makes it follow left side when dragging left, stay at left when dragging right
+                playheadPosition = selectionStart;
+            } else {
+                // Always show at current position (even when paused)
+                playheadPosition = currentAudioPosition;
+            }
+            
+            // Always draw playhead if we have valid position and duration
+            if (playheadPosition !== null && totalAudioDuration > 0 && playheadPosition >= 0) {
+                const progress = Math.min(playheadPosition / totalAudioDuration, 1.0);
+                const x = progress * width;
+                
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+        }
+        
         // Interactive waveform scrubbing
         function setupWaveformInteraction() {
             const canvas = document.getElementById('waveform');
@@ -2638,6 +2791,23 @@
                 
                 if (scrubTargetPosition !== null) {
                     console.log(`🖱️ Mouse released - seeking to ${scrubTargetPosition.toFixed(2)}s`);
+                    
+                    // CRITICAL: Update indicator position IMMEDIATELY to prevent showing old position
+                    // This must happen BEFORE seekToPosition() so the visual never goes back
+                    // Clamp to selection bounds if selection exists
+                    let clampedPosition = scrubTargetPosition;
+                    if (selectionStart !== null && selectionEnd !== null) {
+                        clampedPosition = Math.max(selectionStart, Math.min(scrubTargetPosition, selectionEnd));
+                    }
+                    currentAudioPosition = clampedPosition;
+                    if (audioContext) {
+                        lastUpdateTime = audioContext.currentTime;
+                    }
+                    
+                    // Draw waveform with selection and indicator at new position immediately
+                    drawWaveformWithSelection();
+                    
+                    // Now perform the actual audio seek (indicator already at new position)
                     seekToPosition(scrubTargetPosition);
                     scrubTargetPosition = null;
                 }
@@ -2645,15 +2815,48 @@
             
             canvas.addEventListener('mousedown', (e) => {
                 if (!completeSamplesArray || totalAudioDuration === 0) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const startX = e.clientX - rect.left;
+                selectionStartX = startX;
+                
+                // Determine if this will be a selection or a seek
+                // We'll detect drag on mousemove (if mouse moves > 3px, it's a drag)
                 isDragging = true;
                 canvas.style.cursor = 'grabbing';
                 updateScrubPreview(e);
-                console.log('🖱️ Scrub started (drag to preview, release to seek)');
+                console.log('🖱️ Mouse down - waiting to detect drag vs click');
             });
             
             canvas.addEventListener('mousemove', (e) => {
-                if (isDragging) {
-                    updateScrubPreview(e); // Just preview, don't seek yet!
+                if (isDragging && selectionStartX !== null) {
+                    const rect = canvas.getBoundingClientRect();
+                    const currentX = e.clientX - rect.left;
+                    const dragDistance = Math.abs(currentX - selectionStartX);
+                    
+                    // If moved more than 3 pixels, it's a selection drag
+                    if (dragDistance > 3 && !isSelecting) {
+                        isSelecting = true;
+                        canvas.style.cursor = 'col-resize';
+                        console.log('📏 Selection drag detected');
+                    }
+                    
+                    if (isSelecting) {
+                        // Update selection while dragging
+                        const { targetPosition } = getPositionFromMouse(e);
+                        const startProgress = Math.max(0, Math.min(1, selectionStartX / rect.width));
+                        const startPos = startProgress * totalAudioDuration;
+                        const endPos = targetPosition;
+                        
+                        selectionStart = Math.min(startPos, endPos);
+                        selectionEnd = Math.max(startPos, endPos);
+                        
+                        // Redraw waveform with selection highlight
+                        drawWaveformWithSelection();
+                    } else {
+                        // Just preview scrub position
+                        updateScrubPreview(e);
+                    }
                 }
             });
             
@@ -2661,30 +2864,118 @@
                 if (isDragging) {
                     isDragging = false;
                     canvas.style.cursor = 'pointer';
-                    updateScrubPreview(e); // Final preview position
-                    performSeek(); // NOW actually seek!
                     
-                    // Restart playback indicator after scrubbing
-                    if (isPlaying && !isPaused) {
-                        requestAnimationFrame(updatePlaybackIndicator);
+                    if (isSelecting) {
+                        // Selection drag completed
+                        // Finalize selection (need selectionStartX before clearing it)
+                        const { targetPosition } = getPositionFromMouse(e);
+                        const rect = canvas.getBoundingClientRect();
+                        const startProgress = Math.max(0, Math.min(1, (selectionStartX || 0) / rect.width));
+                        const startPos = startProgress * totalAudioDuration;
+                        const endPos = targetPosition;
+                        
+                        isSelecting = false;
+                        selectionStartX = null;
+                        
+                        selectionStart = Math.min(startPos, endPos);
+                        selectionEnd = Math.max(startPos, endPos);
+                        
+                        // No minimum selection size - worklet handles tiny loops perfectly!
+                        console.log(`📏 Selection created: ${selectionStart.toFixed(2)}s - ${selectionEnd.toFixed(2)}s (duration: ${(selectionEnd - selectionStart).toFixed(3)}s)`);
+                        
+                        // Notify worklet of new selection
+                        updateWorkletSelection();
+                        
+                        // Set playhead position immediately (so it's visible)
+                        currentAudioPosition = selectionStart;
+                        if (audioContext) {
+                            lastUpdateTime = audioContext.currentTime;
+                        }
+                        
+                        // Draw waveform with selection and playhead
+                        drawWaveformWithSelection();
+                        
+                        // Auto-seek to selection start and start playback
+                        seekToPosition(selectionStart);
+                        
+                        // Ensure playback starts (seekToPosition should handle this, but ensure it)
+                        if (!isPlaying || isPaused) {
+                            // Force playback to start
+                            isPaused = false;
+                            isPlaying = true;
+                            if (workletNode) {
+                                workletNode.port.postMessage({ type: 'resume' });
+                            }
+                            // Start indicator animation
+                            if (totalAudioDuration > 0) {
+                                requestAnimationFrame(updatePlaybackIndicator);
+                            }
+                        }
+                    } else {
+                        // Single click - clear selection and seek
+                        selectionStart = null;
+                        selectionEnd = null;
+                        selectionStartX = null;
+                        
+                        // Notify worklet selection was cleared
+                        updateWorkletSelection();
+                        
+                        // Clear preview line by redrawing waveform without preview
+                        const ctx = canvas.getContext('2d');
+                        if (cachedWaveformCanvas) {
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            ctx.drawImage(cachedWaveformCanvas, 0, 0);
+                        }
+                        
+                        performSeek(); // NOW actually seek! (seekToPosition will restart indicator)
+                        console.log('🖱️ Single click - cleared selection and seeking');
                     }
-                    
-                    console.log('🖱️ Scrub ended');
                 }
             });
             
             canvas.addEventListener('mouseleave', () => {
                 if (isDragging) {
+                    const wasSelecting = isSelecting; // Store before clearing
                     isDragging = false;
+                    isSelecting = false;
                     canvas.style.cursor = completeSamplesArray && totalAudioDuration > 0 ? 'pointer' : 'default';
-                    performSeek(); // Seek even if mouse leaves canvas
                     
-                    // Restart playback indicator after scrubbing
-                    if (isPlaying && !isPaused) {
-                        requestAnimationFrame(updatePlaybackIndicator);
+                    if (selectionStartX !== null) {
+                        // Treat mouse leave during drag as selection completion
+                        if (wasSelecting && selectionStart !== null && selectionEnd !== null) {
+                            // Finalize selection (any size is valid!)
+                            updateWorkletSelection(); // Notify worklet
+                            currentAudioPosition = selectionStart;
+                            if (audioContext) {
+                                lastUpdateTime = audioContext.currentTime;
+                            }
+                            drawWaveformWithSelection();
+                            seekToPosition(selectionStart);
+                            
+                            // Ensure playback starts
+                            if (!isPlaying || isPaused) {
+                                isPaused = false;
+                                isPlaying = true;
+                                if (workletNode) {
+                                    workletNode.port.postMessage({ type: 'resume' });
+                                }
+                                if (totalAudioDuration > 0) {
+                                    requestAnimationFrame(updatePlaybackIndicator);
+                                }
+                            }
+                        } else {
+                            // Cancel - treat as click
+                            selectionStart = null;
+                            selectionEnd = null;
+                            updateWorkletSelection(); // Notify worklet selection cleared
+                            performSeek();
+                        }
+                    } else {
+                        performSeek();
                     }
                     
-                    console.log('🖱️ Scrub ended (mouse left canvas)');
+                    selectionStartX = null;
+                    console.log('🖱️ Mouse left canvas during interaction');
                 }
             });
             
@@ -2702,8 +2993,12 @@
                 return;
             }
             
-            // Clamp position to valid range
-            targetPosition = Math.max(0, Math.min(targetPosition, totalAudioDuration));
+            // Clamp position to selection bounds if selection exists, otherwise full range
+            if (selectionStart !== null && selectionEnd !== null) {
+                targetPosition = Math.max(selectionStart, Math.min(targetPosition, selectionEnd));
+            } else {
+                targetPosition = Math.max(0, Math.min(targetPosition, totalAudioDuration));
+            }
             
             const targetMinutes = Math.floor(targetPosition / 60);
             const targetSeconds = (targetPosition % 60).toFixed(1);
@@ -2752,6 +3047,8 @@
                 
                 // Start playback indicator
                 currentAudioPosition = targetPosition;
+                lastWorkletPosition = targetPosition;
+                lastWorkletUpdateTime = audioContext.currentTime;
                 lastUpdateTime = audioContext.currentTime;
                 requestAnimationFrame(updatePlaybackIndicator);
                 
@@ -2774,8 +3071,10 @@
             
             // Perform seek - with or without fade depending on playback state
             const performSeekOperation = () => {
-                // Update current position
+                // Update current position (worklet will confirm via position message)
                 currentAudioPosition = targetPosition;
+                lastWorkletPosition = targetPosition;
+                lastWorkletUpdateTime = audioContext.currentTime;
                 lastUpdateTime = audioContext.currentTime;
                 
                 // Send seek message to worklet
@@ -2814,63 +3113,27 @@
             status.textContent = `✅ Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')}`;
         }
         
+        // ===== REMOVED: checkFadePrediction() =====
+        // Fade handling is now 100% worklet-driven via 'selection-end-approaching' event
+        // No more time-based predictions or race conditions!
+        
         function updatePlaybackIndicator() {
-            // Don't update during scrubbing - let the scrub preview show instead
+            // Don't update during scrubbing
             if (isDragging) {
-                requestAnimationFrame(updatePlaybackIndicator); // Keep loop alive
+                requestAnimationFrame(updatePlaybackIndicator);
                 return;
             }
             
             if (!isPlaying || isPaused || totalAudioDuration === 0) {
-                console.log(`⏸️ [PLAYBACK INDICATOR] Stopped: isPlaying=${isPlaying}, isPaused=${isPaused}, totalAudioDuration=${totalAudioDuration}`);
                 return;
             }
             
-            console.log(`🎬 [PLAYBACK INDICATOR] Drawing: position=${currentAudioPosition.toFixed(2)}s / ${totalAudioDuration.toFixed(2)}s`);
+            // Position comes from worklet - just draw
+            drawWaveformWithSelection();
             
-            const canvas = document.getElementById('waveform');
-            if (!canvas) return;
-            
-            const ctx = canvas.getContext('2d');
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            // Update current audio position based on elapsed real time and playback rate
-            if (audioContext && lastUpdateTime > 0) {
-                const now = audioContext.currentTime;
-                const realTimeElapsed = now - lastUpdateTime;
-                currentAudioPosition += realTimeElapsed * currentPlaybackRate;
-                lastUpdateTime = now;
-                console.log(`🎬 [PLAYBACK INDICATOR] Updated position: ${currentAudioPosition.toFixed(2)}s (elapsed=${(realTimeElapsed * 1000).toFixed(1)}ms @ ${currentPlaybackRate.toFixed(2)}x)`);
-            } else {
-                console.warn(`⚠️ [PLAYBACK INDICATOR] Cannot update position: audioContext=${!!audioContext}, lastUpdateTime=${lastUpdateTime}`);
-            }
-            
-            // Calculate progress
-            const progress = Math.min(currentAudioPosition / totalAudioDuration, 1.0);
-            
-            // Calculate x position
-            const x = progress * width;
-            
-            // Use cached waveform instead of redrawing
-            if (cachedWaveformCanvas) {
-                ctx.clearRect(0, 0, width, height);
-                ctx.drawImage(cachedWaveformCanvas, 0, 0);
-            }
-            
-            // Draw playback indicator line
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, height);
-            ctx.stroke();
-            
-            // Continue updating
+            // Continue animation loop
             if (isPlaying && !isPaused) {
                 requestAnimationFrame(updatePlaybackIndicator);
-            } else {
-                console.log(`⏸️ [PLAYBACK INDICATOR] Not continuing: isPlaying=${isPlaying}, isPaused=${isPaused}`);
             }
         }
         
