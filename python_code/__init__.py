@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.41"
+__version__ = "1.42"
 __commit_message__ = (
-    "v1.41 Feature: Default station selection - 4th station for Kilauea, first station for others"
+    "v1.42 Fix: Waveform scrubbing improvements - click prevention, playback indicator fixes, removed local server checkbox"
 )
 
 # Import key modules to make them available when importing the package

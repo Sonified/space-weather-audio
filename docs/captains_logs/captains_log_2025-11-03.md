@@ -56,3 +56,78 @@ v1.41 - Commit: "v1.41 Feature: Default station selection - 4th station for Kila
 
 ---
 
+## Waveform Scrubbing Implementation
+
+### Changes Made:
+
+1. **Interactive Waveform Scrubbing**
+   - Added click-and-drag scrubbing functionality to waveform canvas
+   - Click and drag to preview seek position (grey line)
+   - Release mouse to seek to previewed position
+   - Red playback indicator line shows current position during playback
+   - Cached waveform canvas for performance (avoids redrawing waveform on every frame)
+
+2. **Seek Functionality**
+   - Added `seekToPosition()` function that sends seek message to AudioWorklet
+   - AudioWorklet now supports `seek` message type to jump to specific sample position
+   - Seeking automatically resumes playback if paused
+   - Position tracking updates correctly after seeking
+
+3. **Playback Indicator**
+   - Added `updatePlaybackIndicator()` function that draws red vertical line showing current playback position
+   - Indicator updates smoothly based on playback speed
+   - Indicator pauses during scrubbing to show preview line instead
+
+### Implementation Details:
+
+- **Scrubbing**: Mirrored from `test_streaming.html` but adapted for AudioWorklet (no A/B buffer system needed)
+- **Full scrubbing implementation reference**: `test_streaming.html` contains the complete scrubbing implementation with A/B buffer crossfading
+- **Variables added**: `isDragging`, `scrubTargetPosition`, `cachedWaveformCanvas`, `totalAudioDuration`, `currentAudioPosition`, `lastUpdateTime`
+- **Functions added**: `setupWaveformInteraction()`, `seekToPosition()`, `updatePlaybackIndicator()`
+- **AudioWorklet changes**: Added `seek` message handler that sets `readIndex` to target sample position
+
+### Key Differences from test_streaming.html:
+
+- No A/B buffer system - AudioWorklet handles seeking by repositioning read pointer
+- Simpler implementation - no crossfading needed since AudioWorklet manages buffer internally
+- Uses cached waveform canvas for better performance
+
+---
+
+## Waveform Scrubbing Fixes and UI Improvements
+
+### Changes Made:
+
+1. **Click Prevention on Seeking**
+   - Added 10ms crossfade (fade-out before seek, fade-in after) to prevent audio clicks/pops
+   - Only applies fade when audio is actively playing (skips fade if paused)
+   - Uses `audioContext.currentTime` for precise audio timeline coordination
+   - Based on Web Audio API best practices for preventing discontinuities
+
+2. **Playback Indicator Fixes**
+   - Fixed playback indicator not restarting after seeking when playback had finished
+   - Fixed playback indicator not restarting after spacebar resume
+   - Indicator now properly restarts in all resume scenarios (pause/resume, seek after finish, etc.)
+
+3. **UI Improvements**
+   - Changed seeking status emoji from mixer (🔀) to green checkmark (✅)
+   - Removed "Local Server" checkbox from lower left - always uses Railway backend now
+   - Simplified UI by removing unused local server option
+
+### Problems Fixed:
+
+- **Audio clicks on seek**: Clicking sounds when releasing mouse after scrubbing
+- **Playback indicator not updating**: Scan line stopped drawing after seeking when playback had finished
+- **Playback indicator not restarting**: Spacebar pause/resume didn't restart the indicator animation
+
+### Solutions:
+
+- **Click prevention**: Brief crossfade (10ms) masks the discontinuity when jumping to new position
+- **Indicator restart**: Added explicit `requestAnimationFrame(updatePlaybackIndicator)` calls in resume logic
+- **Seek state handling**: Improved condition checking for when to restart indicators (handles both `isPaused` and `!isPlaying` states)
+
+### Version
+v1.42 - Commit: "v1.42 Fix: Waveform scrubbing improvements - click prevention, playback indicator fixes, removed local server checkbox"
+
+---
+

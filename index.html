@@ -524,10 +524,6 @@
             color: #333;
         }
         
-        #localServerCheckbox {
-            transform: translateY(15px);
-            margin-bottom: -15px;
-        }
         
         /* Modal styling */
         .modal-overlay {
@@ -908,11 +904,6 @@
                 </div>
             </div>
         </div>
-        
-        <div id="localServerCheckbox" style="display: flex; align-items: center; gap: 10px; margin-top: 10px; background: rgba(0, 0, 0, 0.01); padding: 8px 12px; border-radius: 6px;">
-            <input type="checkbox" id="useLocalServer" style="width: 24px; height: 24px; cursor: pointer; opacity: 0.6;">
-            <label for="useLocalServer" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: rgba(255, 255, 255, 0.5);">Local Server</label>
-        </div>
     </div>
     
     <!-- Participant Setup Modal -->
@@ -1152,6 +1143,12 @@
         let pausedPosition = 0; // Track position when paused (in seconds)
         let playbackDurationSeconds = null; // Store calculated playback duration in seconds
         let completeSamplesArray = null; // Store complete samples array for waveform drawing
+        let cachedWaveformCanvas = null; // Cached waveform canvas for performance
+        let isDragging = false; // Flag for scrubbing drag state
+        let scrubTargetPosition = null; // Position to seek to when user releases mouse
+        let totalAudioDuration = 0; // Total audio duration in seconds
+        let currentAudioPosition = 0; // Current playback position in seconds
+        let lastUpdateTime = 0; // Last audioContext.currentTime for position tracking
         
         // AudioWorklet processor code
         const workletCode = `
@@ -1211,6 +1208,20 @@
                             this.loopWarningShown = false; // Reset loop warning
                             console.log('🔄 WORKLET LOOP: ReadIndex ' + previousReadIndex + ' -> 0, SamplesInBuffer ' + previousSamplesInBuffer + ' -> ' + this.totalSamples + ', Speed: ' + this.speed.toFixed(2) + 'x');
                             // Keep buffer, writeIndex, hasStarted, dataLoadingComplete, speed intact
+                        } else if (type === 'seek') {
+                            // Seek to specific sample position
+                            const targetSample = event.data.samplePosition;
+                            if (targetSample >= 0 && targetSample <= this.totalSamples) {
+                                const previousReadIndex = this.readIndex;
+                                const previousSamplesInBuffer = this.samplesInBuffer;
+                                // Buffer is linear during initial load, so readIndex = sample position
+                                this.readIndex = targetSample;
+                                this.samplesInBuffer = this.totalSamples - targetSample;  // Update remaining samples
+                                this.finishSent = false;  // Allow another 'finished' message
+                                this.loopWarningShown = false; // Reset loop warning
+                                this.isPlaying = true; // Ensure playback continues
+                                console.log('🎯 WORKLET SEEK: ReadIndex ' + previousReadIndex + ' -> ' + this.readIndex + ', SamplesInBuffer ' + previousSamplesInBuffer + ' -> ' + this.samplesInBuffer + ', Target sample: ' + targetSample);
+                            }
                         }
                     };
                 }
@@ -1392,6 +1403,13 @@
                     
                     // Start position tracking
                     startPositionTracking();
+                    
+                    // Initialize playback indicator
+                    currentAudioPosition = 0;
+                    lastUpdateTime = audioContext.currentTime;
+                    if (totalAudioDuration > 0) {
+                        requestAnimationFrame(updatePlaybackIndicator);
+                    }
                     
                     // Fade in using exponential ramp (sounds more natural)
                     if (gainNode) {
@@ -1594,10 +1612,8 @@
                 spectrogramInitialized = false;
                 
                 // Immediately update status to show fetching (don't wait for fade-out)
-                const useLocal = document.getElementById('useLocalServer').checked;
-                const baseMessage = useLocal 
-                    ? 'Fetching data from local backend'
-                    : 'Fetching data from Railway backend';
+                const useLocal = false; // Always use Railway backend
+                const baseMessage = 'Fetching data from Railway backend';
                 document.getElementById('status').className = 'status info loading';
                 document.getElementById('status').textContent = baseMessage;
                 
@@ -1628,7 +1644,10 @@
                     // Clear old data
                     allReceivedData = [];
                     completeSamplesArray = null; // Clear stored samples for waveform
+                    cachedWaveformCanvas = null; // Clear cached waveform
                     currentMetadata = null; // Clear metadata for duration calculation
+                    totalAudioDuration = 0; // Reset duration
+                    currentAudioPosition = 0; // Reset position
                     document.getElementById('playbackDuration').textContent = '--'; // Reset duration display
                     window.playbackDurationSeconds = null; // Clear stored duration
                     stopPositionTracking(); // Stop position tracking
@@ -1957,6 +1976,13 @@
                         drawWaveform();
                     }
                     
+                    // Initialize playback indicator
+                    currentAudioPosition = 0;
+                    lastUpdateTime = audioContext.currentTime;
+                    if (totalAudioDuration > 0) {
+                        requestAnimationFrame(updatePlaybackIndicator);
+                    }
+                    
                     isPlaying = true;
                     isPaused = false;
                     btn.textContent = '⏸️ Pause';
@@ -2027,6 +2053,13 @@
                     gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
                     gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + 0.05); // 50ms exponential fade
                     console.log(`🎚️ Exponential fade: ${gainNode.gain.value.toFixed(4)} → ${targetVolume.toFixed(2)}`);
+                }
+                
+                // Restart playback indicator
+                if (audioContext && totalAudioDuration > 0) {
+                    lastUpdateTime = audioContext.currentTime;
+                    requestAnimationFrame(updatePlaybackIndicator);
+                    console.log('🎬 Playback indicator restarted');
                 }
             }
         }
@@ -2412,6 +2445,10 @@
             const width = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
             const height = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
             
+            // Calculate total audio duration
+            const sampleRate = 44100; // AudioWorklet sample rate
+            totalAudioDuration = completeSamplesArray.length / sampleRate;
+            
             // Clear canvas
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, width, height);
@@ -2445,6 +2482,293 @@
             ctx.moveTo(0, mid);
             ctx.lineTo(width, mid);
             ctx.stroke();
+            
+            // Cache the waveform canvas for performance
+            cachedWaveformCanvas = document.createElement('canvas');
+            cachedWaveformCanvas.width = width;
+            cachedWaveformCanvas.height = height;
+            const cacheCtx = cachedWaveformCanvas.getContext('2d');
+            cacheCtx.drawImage(canvas, 0, 0);
+        }
+        
+        // Interactive waveform scrubbing
+        function setupWaveformInteraction() {
+            const canvas = document.getElementById('waveform');
+            if (!canvas) return;
+            
+            // Calculate position from mouse event
+            function getPositionFromMouse(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const progress = Math.max(0, Math.min(1, x / rect.width));
+                const targetPosition = progress * totalAudioDuration;
+                return { targetPosition, progress, x, width: rect.width };
+            }
+            
+            // Update visual preview of scrub position
+            function updateScrubPreview(event) {
+                if (!completeSamplesArray || !totalAudioDuration) return;
+                
+                const { targetPosition, progress, x, width } = getPositionFromMouse(event);
+                scrubTargetPosition = targetPosition;
+                
+                // Draw preview line
+                const ctx = canvas.getContext('2d');
+                const canvasHeight = canvas.height;
+                
+                // Convert progress to canvas coordinate space (not rendered size)
+                const canvasX = progress * canvas.width;
+                
+                // Redraw waveform
+                if (cachedWaveformCanvas) {
+                    ctx.clearRect(0, 0, canvas.width, canvasHeight);
+                    ctx.drawImage(cachedWaveformCanvas, 0, 0);
+                }
+                
+                // Draw preview line (different color for scrubbing)
+                ctx.strokeStyle = isDragging ? '#bbbbbb' : '#ff0000'; // Light grey while scrubbing, red normally
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(canvasX, 0);
+                ctx.lineTo(canvasX, canvasHeight);
+                ctx.stroke();
+            }
+            
+            // Actually perform the seek
+            function performSeek() {
+                if (!completeSamplesArray || !totalAudioDuration) {
+                    console.log('⏸️ Seeking disabled - no audio data loaded');
+                    return;
+                }
+                
+                if (scrubTargetPosition !== null) {
+                    console.log(`🖱️ Mouse released - seeking to ${scrubTargetPosition.toFixed(2)}s`);
+                    seekToPosition(scrubTargetPosition);
+                    scrubTargetPosition = null;
+                }
+            }
+            
+            canvas.addEventListener('mousedown', (e) => {
+                if (!completeSamplesArray || totalAudioDuration === 0) return;
+                isDragging = true;
+                canvas.style.cursor = 'grabbing';
+                updateScrubPreview(e);
+                console.log('🖱️ Scrub started (drag to preview, release to seek)');
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    updateScrubPreview(e); // Just preview, don't seek yet!
+                }
+            });
+            
+            canvas.addEventListener('mouseup', (e) => {
+                if (isDragging) {
+                    isDragging = false;
+                    canvas.style.cursor = 'pointer';
+                    updateScrubPreview(e); // Final preview position
+                    performSeek(); // NOW actually seek!
+                    
+                    // Restart playback indicator after scrubbing
+                    if (isPlaying && !isPaused) {
+                        requestAnimationFrame(updatePlaybackIndicator);
+                    }
+                    
+                    console.log('🖱️ Scrub ended');
+                }
+            });
+            
+            canvas.addEventListener('mouseleave', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    canvas.style.cursor = completeSamplesArray && totalAudioDuration > 0 ? 'pointer' : 'default';
+                    performSeek(); // Seek even if mouse leaves canvas
+                    
+                    // Restart playback indicator after scrubbing
+                    if (isPlaying && !isPaused) {
+                        requestAnimationFrame(updatePlaybackIndicator);
+                    }
+                    
+                    console.log('🖱️ Scrub ended (mouse left canvas)');
+                }
+            });
+            
+            // Add hover cursor to indicate interactivity (only when data loaded)
+            canvas.addEventListener('mouseenter', () => {
+                if (completeSamplesArray && totalAudioDuration > 0) {
+                    canvas.style.cursor = 'pointer';
+                }
+            });
+        }
+        
+        function seekToPosition(targetPosition) {
+            if (!audioContext || !workletNode || !completeSamplesArray || totalAudioDuration === 0) {
+                console.log('❌ Cannot seek: audio not ready');
+                return;
+            }
+            
+            // Clamp position to valid range
+            targetPosition = Math.max(0, Math.min(targetPosition, totalAudioDuration));
+            
+            const targetMinutes = Math.floor(targetPosition / 60);
+            const targetSeconds = (targetPosition % 60).toFixed(1);
+            console.log(`🎯 Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')} (${targetPosition.toFixed(2)}s / ${totalAudioDuration.toFixed(2)}s)`);
+            
+            // Calculate sample position
+            const sampleRate = 44100; // AudioWorklet sample rate
+            const targetSample = Math.floor(targetPosition * sampleRate);
+            
+            // Seek crossfade time (brief fade to prevent clicks)
+            const SEEK_CROSSFADE_TIME = 0.010; // 10ms - very short fade to prevent clicks
+            const now = audioContext.currentTime;
+            const seekTime = now + SEEK_CROSSFADE_TIME; // When to actually perform the seek
+            
+            // Determine if we need to fade (only if currently playing)
+            const wasPlaying = isPlaying && !isPaused;
+            
+            // If we're paused OR playback has finished, seeking should resume playback
+            if (!isPlaying || isPaused) {
+                console.log(`▶️ Seeking while paused - auto-resuming playback`);
+                isPaused = false;
+                isPlaying = true;
+                
+                // Update button state
+                const btn = document.getElementById('playPauseBtn');
+                btn.textContent = '⏸️ Pause';
+                btn.classList.remove('play-active', 'secondary');
+                btn.classList.add('pause-active');
+                
+                // Resume audio context if suspended
+                if (audioContext.state === 'suspended') {
+                    console.log('▶️ Resuming suspended AudioContext');
+                    audioContext.resume();
+                }
+                
+                // Resume worklet playback
+                if (workletNode) {
+                    workletNode.port.postMessage({ type: 'resume' });
+                }
+                
+                // Start spectrogram (it will restart automatically via requestAnimationFrame)
+                if (analyserNode) {
+                    drawSpectrogram();
+                    console.log('🎨 Restarting spectrogram');
+                }
+                
+                // Start playback indicator
+                currentAudioPosition = targetPosition;
+                lastUpdateTime = audioContext.currentTime;
+                requestAnimationFrame(updatePlaybackIndicator);
+                
+                // Restart spectrogram if it was stopped
+                if (!visualizationStarted && analyserNode) {
+                    startVisualization();
+                }
+                
+                console.log('✅ Auto-resume complete: isPlaying=true, isPaused=false');
+            }
+            
+            // Fade out briefly before seeking to prevent clicks (only if currently playing)
+            if (gainNode && wasPlaying) {
+                const currentGain = gainNode.gain.value;
+                gainNode.gain.cancelScheduledValues(now);
+                gainNode.gain.setValueAtTime(currentGain, now);
+                gainNode.gain.linearRampToValueAtTime(0.0001, seekTime);
+                console.log(`📉 Fading out before seek (${(SEEK_CROSSFADE_TIME * 1000).toFixed(1)}ms)`);
+            }
+            
+            // Perform seek - with or without fade depending on playback state
+            const performSeekOperation = () => {
+                // Update current position
+                currentAudioPosition = targetPosition;
+                lastUpdateTime = audioContext.currentTime;
+                
+                // Send seek message to worklet
+                workletNode.port.postMessage({ 
+                    type: 'seek',
+                    samplePosition: targetSample
+                });
+                
+                // Fade back in after seek using precise audio timing
+                if (gainNode) {
+                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                    const fadeInStart = audioContext.currentTime;
+                    gainNode.gain.cancelScheduledValues(fadeInStart);
+                    gainNode.gain.setValueAtTime(0.0001, fadeInStart);
+                    gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), fadeInStart + SEEK_CROSSFADE_TIME);
+                    console.log(`📈 Fading in after seek (${(SEEK_CROSSFADE_TIME * 1000).toFixed(1)}ms)`);
+                }
+                
+                // Ensure playback indicator is running (in case it was stopped)
+                if (isPlaying && !isPaused) {
+                    requestAnimationFrame(updatePlaybackIndicator);
+                }
+            };
+            
+            // Schedule seek: wait for fade-out if playing, otherwise seek immediately
+            if (wasPlaying) {
+                setTimeout(performSeekOperation, SEEK_CROSSFADE_TIME * 1000);
+            } else {
+                // No fade needed if not playing - seek immediately
+                performSeekOperation();
+            }
+            
+            // Update status message
+            const status = document.getElementById('status');
+            status.className = 'status info';
+            status.textContent = `✅ Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')}`;
+        }
+        
+        function updatePlaybackIndicator() {
+            // Don't update during scrubbing - let the scrub preview show instead
+            if (isDragging) {
+                requestAnimationFrame(updatePlaybackIndicator); // Keep loop alive
+                return;
+            }
+            
+            if (!isPlaying || isPaused || totalAudioDuration === 0) {
+                return;
+            }
+            
+            const canvas = document.getElementById('waveform');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Update current audio position based on elapsed real time and playback rate
+            if (audioContext && lastUpdateTime > 0) {
+                const now = audioContext.currentTime;
+                const realTimeElapsed = now - lastUpdateTime;
+                currentAudioPosition += realTimeElapsed * currentPlaybackRate;
+                lastUpdateTime = now;
+            }
+            
+            // Calculate progress
+            const progress = Math.min(currentAudioPosition / totalAudioDuration, 1.0);
+            
+            // Calculate x position
+            const x = progress * width;
+            
+            // Use cached waveform instead of redrawing
+            if (cachedWaveformCanvas) {
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(cachedWaveformCanvas, 0, 0);
+            }
+            
+            // Draw playback indicator line
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+            
+            // Continue updating
+            if (isPlaying && !isPaused) {
+                requestAnimationFrame(updatePlaybackIndicator);
+            }
         }
         
         function drawSpectrogram() {
@@ -2601,7 +2925,7 @@
             document.getElementById('duration').addEventListener('change', enableFetchButton);
             document.getElementById('highpassFreq').addEventListener('change', enableFetchButton);
             document.getElementById('enableNormalize').addEventListener('change', enableFetchButton);
-            document.getElementById('useLocalServer').addEventListener('change', enableFetchButton);
+            // Local server checkbox removed - always use Railway backend
             
             // Base sample rate changes playback speed immediately (does NOT trigger new fetch)
             document.getElementById('baseSampleRate').addEventListener('change', changeBaseSampleRate);
@@ -2619,6 +2943,9 @@
             // Initialize spectrogram scroll speed slider
             document.getElementById('spectrogramScrollSpeed').addEventListener('input', changeSpectrogramScrollSpeed);
             changeSpectrogramScrollSpeed(); // Set initial display value
+            
+            // Setup interactive waveform scrubbing
+            setupWaveformInteraction();
             
             // Spacebar to toggle play/pause
             document.addEventListener('keydown', (event) => {
@@ -2673,7 +3000,7 @@
             });
             
             // Blur checkboxes after interaction so spacebar works immediately
-            const checkboxes = ['enableNormalize', 'useLocalServer'];
+            const checkboxes = ['enableNormalize'];
             checkboxes.forEach(id => {
                 const checkbox = document.getElementById(id);
                 if (checkbox) {
