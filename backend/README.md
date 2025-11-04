@@ -4,9 +4,9 @@ Python/FastAPI backend for fetching, caching, and serving seismic audio data.
 
 ## Deployment
 
-**Production URL**: https://volcano-audio.onrender.com
+**Production URL**: https://volcano-audio-production.up.railway.app
 
-- **Platform**: Render.com
+- **Platform**: Railway.app
 - **Auto-deploys**: From `main` branch on GitHub push
 - **Directory**: `/backend`
 
@@ -14,37 +14,37 @@ Python/FastAPI backend for fetching, caching, and serving seismic audio data.
 
 ### Health Check
 ```bash
-curl https://volcano-audio.onrender.com/
+curl https://volcano-audio-production.up.railway.app/
 # Returns: "Volcano Audio API - Ready"
 ```
 
 ### Progressive Streaming Test
 ```bash
-curl "https://volcano-audio.onrender.com/progressive_test?volcano=kilauea&hours_ago=12&duration_hours=4"
+curl "https://volcano-audio-production.up.railway.app/progressive_test?volcano=kilauea&hours_ago=12&duration_hours=4"
 ```
 
 ### Main Audio Endpoint
 ```bash
-curl "https://volcano-audio.onrender.com/audio/{volcano}/{duration_hours}?hours_ago={hours_ago}"
+curl "https://volcano-audio-production.up.railway.app/audio/{volcano}/{duration_hours}?hours_ago={hours_ago}"
 ```
 
 ## Running Tests
 
-### Test IRIS → Render → R2 Pipeline
+### Test IRIS → Railway → R2 Pipeline
 ```bash
-# SSH to Render or use Render Shell:
-cd /opt/render/project/src/backend
+# SSH to Railway or use Railway Shell:
+cd /app/backend
 python test_render_iris_to_r2.py
 ```
 
 Or trigger via API (once deployed):
 ```bash
-curl https://volcano-audio.onrender.com/test_iris_to_r2
+curl https://volcano-audio-production.up.railway.app/test_iris_to_r2
 ```
 
 ## Environment Variables
 
-Set in Render dashboard:
+Set in Railway dashboard:
 
 ```bash
 R2_ACCOUNT_ID=66f906f29f28b08ae9c80d4f36e25c7a
@@ -58,7 +58,7 @@ R2_BUCKET_NAME=hearts-data-cache
 ```
 IRIS (seismic data)
     ↓ fetch miniSEED
-Render Backend (this service)
+Railway Backend (this service)
     ↓ process & cache
 Cloudflare R2 (object storage)
     ↓ serve cached data

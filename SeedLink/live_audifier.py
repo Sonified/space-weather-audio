@@ -58,6 +58,9 @@ class LiveAudifier(EasySeedLinkClient):
         self.playback_position = 0.0  # Float for smooth interpolation
         self.current_amplitude = 0.0  # Current amplitude being played
         
+        # Pause state
+        self.paused = False
+        
         # Start audio stream at 44.1 kHz
         self.audio_stream = sd.OutputStream(
             samplerate=44100,
@@ -157,6 +160,12 @@ class LiveAudifier(EasySeedLinkClient):
             outdata[:] = np.zeros((frames, 1))
             return
         
+        # If paused, output silence (don't advance playback position)
+        if self.paused:
+            outdata[:] = np.zeros((frames, 1))
+            self.current_amplitude = 0.0
+            return
+        
         # How fast to step through seismic data (at native 100 Hz rate)
         # playback_rate = 100 Hz / 44100 Hz = 0.00226757 seismic samples per audio sample
         playback_rate = self.seismic_sample_rate / self.audio_sample_rate
@@ -210,11 +219,23 @@ class LiveAudifier(EasySeedLinkClient):
     
     def get_stats(self):
         """Get current diagnostics"""
-        return self.stats.copy()
+        stats = self.stats.copy()
+        stats['paused'] = self.paused
+        return stats
     
     def get_recent_data(self):
         """Get recent waveform data for visualization"""
         return list(self.recent_data)
+    
+    def pause_audio(self):
+        """Pause audio playback (data still accumulates in buffer)"""
+        self.paused = True
+        print("[PAUSE] Audio playback paused")
+    
+    def resume_audio(self):
+        """Resume audio playback"""
+        self.paused = False
+        print("[RESUME] Audio playback resumed")
     
     def reset_stats(self):
         """Reset all statistics and buffers (but keep streaming)"""
@@ -346,6 +367,22 @@ def reset_stats():
     if audifier:
         audifier.reset_stats()
         return jsonify({'success': True, 'message': 'Statistics reset'})
+    return jsonify({'success': False, 'error': 'Audifier not initialized'})
+
+@app.route('/api/pause', methods=['POST'])
+def pause_audio():
+    """Pause audio playback"""
+    if audifier:
+        audifier.pause_audio()
+        return jsonify({'success': True, 'message': 'Audio paused', 'paused': True})
+    return jsonify({'success': False, 'error': 'Audifier not initialized'})
+
+@app.route('/api/resume', methods=['POST'])
+def resume_audio():
+    """Resume audio playback"""
+    if audifier:
+        audifier.resume_audio()
+        return jsonify({'success': True, 'message': 'Audio resumed', 'paused': False})
     return jsonify({'success': False, 'error': 'Audifier not initialized'})
 
 @app.route('/api/stop', methods=['POST'])

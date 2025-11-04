@@ -1151,6 +1151,7 @@
         let playbackPositionInterval = null; // Interval for updating position
         let pausedPosition = 0; // Track position when paused (in seconds)
         let playbackDurationSeconds = null; // Store calculated playback duration in seconds
+        let completeSamplesArray = null; // Store complete samples array for waveform drawing
         
         // AudioWorklet processor code
         const workletCode = `
@@ -1400,7 +1401,7 @@
                         console.log(`🎚️ Exponential fade-in: 0.0001 → ${targetVolume.toFixed(2)}`);
                     }
                 } else if (type === 'loop-soon') {
-                    // Gapless loop warning: ~100ms left, start preparing next loop
+                    // Gapless loop warning: ~100ms left, start fade-out (unless looping)
                     const { samplesRemaining, secondsRemaining, speed } = event.data;
                     const remainingMs = secondsRemaining * 1000;
                     console.log(`⏱️ APPROACHING END: ${samplesRemaining.toLocaleString()} samples remaining (${remainingMs.toFixed(1)}ms @ speed ${speed.toFixed(2)}x)`);
@@ -1409,6 +1410,21 @@
                         console.log('🔁 Loop approaching - preparing gapless transition...');
                         // Note: We'll still do the full reset on 'finished' for clean fade
                         // This just gives us advanced warning for future optimization
+                    } else {
+                        // Not looping - start fade-out now (before playback ends)
+                        console.log('🔽 Starting fade-out before playback ends...');
+                        if (gainNode && audioContext) {
+                            const currentGain = gainNode.gain.value;
+                            // Calculate fade duration: remaining time in real seconds (already accounts for speed in worklet)
+                            // But secondsRemaining is based on samples/44100, which is audio time, not real time
+                            // Need to divide by speed to get real-time duration
+                            const realTimeRemaining = secondsRemaining / speed; // Convert audio time to real time
+                            const fadeDuration = Math.min(realTimeRemaining, 0.1); // Fade over remaining time or 100ms, whichever is shorter
+                            gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                            gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
+                            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + fadeDuration);
+                            console.log(`🔽 FADE-OUT START: Current gain: ${currentGain.toFixed(4)}, Target: 0.0001, Duration: ${(fadeDuration * 1000).toFixed(1)}ms (real time @ ${speed.toFixed(2)}x speed)`);
+                        }
                     }
                 } else if (type === 'finished') {
                     // Ignore "finished" messages if we're fetching new data (stale message from old worklet)
@@ -1421,17 +1437,22 @@
                     const durationAt1x = totalSamples / 44100;
                     console.log(`🏁 BUFFER EMPTY: Total samples: ${totalSamples.toLocaleString()}, Speed: ${speed.toFixed(2)}x, Duration @ 1x: ${durationAt1x.toFixed(3)}s, Expected @ ${speed.toFixed(2)}x: ${expectedDurationSeconds.toFixed(3)}s`);
                     
-                    // Fade out before handling finish
+                    // Fade-out should have already started in 'loop-soon' event (unless looping)
+                    // But ensure it's complete before handling finish
                     const fadeOutStartTime = audioContext.currentTime;
-                    if (gainNode) {
-                        const currentGain = gainNode.gain.value;
+                    const currentGain = gainNode ? gainNode.gain.value : 0.0001;
+                    
+                    // Only start fade-out here if it hasn't already started (shouldn't happen, but safety check)
+                    if (gainNode && currentGain > 0.001) {
+                        console.log(`🔽 FADE-OUT (backup): Current gain: ${currentGain.toFixed(4)}, starting immediate fade`);
                         gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                         gainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
                         gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.05); // 50ms exponential fade-out
-                        console.log(`🔽 FADE-OUT START: Current gain: ${currentGain.toFixed(4)}, Target: 0.0001, Duration: 50ms, Audio time: ${fadeOutStartTime.toFixed(3)}s`);
+                    } else {
+                        console.log(`🔽 FADE-OUT: Already faded (gain: ${currentGain.toFixed(4)})`);
                     }
                     
-                    // Wait for fade, then handle loop/finish
+                    // Wait for fade to complete, then handle loop/finish
                     setTimeout(() => {
                         const fadeOutCompleteTime = audioContext.currentTime;
                         const fadeOutDuration = fadeOutCompleteTime - fadeOutStartTime;
@@ -1606,11 +1627,20 @@
                     
                     // Clear old data
                     allReceivedData = [];
+                    completeSamplesArray = null; // Clear stored samples for waveform
                     currentMetadata = null; // Clear metadata for duration calculation
                     document.getElementById('playbackDuration').textContent = '--'; // Reset duration display
                     window.playbackDurationSeconds = null; // Clear stored duration
                     stopPositionTracking(); // Stop position tracking
                     document.getElementById('currentPosition').textContent = '0m 0s'; // Reset position display
+                    
+                    // Clear waveform canvas
+                    const waveformCanvas = document.getElementById('waveform');
+                    if (waveformCanvas) {
+                        const ctx = waveformCanvas.getContext('2d');
+                        ctx.fillStyle = '#000';
+                        ctx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+                    }
                     
                     // Reset playback state
                     isPlaying = false;
@@ -1801,6 +1831,9 @@
                     console.log(`✅ Normalized in ${normTime.toFixed(2)}ms | Range: [${minN.toFixed(3)}, ${maxN.toFixed(3)}]`);
                 }
                 
+                // Store complete samples array for waveform drawing
+                completeSamplesArray = samples;
+                
                 // Send to AudioWorklet in chunks (prevents blocking audio thread)
                 console.log('🎵 Sending to AudioWorklet in 1024-sample chunks...');
                 const WORKLET_CHUNK_SIZE = 1024;
@@ -1817,6 +1850,9 @@
                     
                     allReceivedData.push(chunk);
                 }
+                
+                // Draw complete waveform once after data is loaded
+                drawWaveform();
                 
                 console.log(`✅ Sent ${allReceivedData.length} chunks to AudioWorklet`);
                 
@@ -1915,6 +1951,11 @@
                     
                     // Signal that all data has been sent
                     workletNode.port.postMessage({ type: 'data-complete' });
+                    
+                    // Redraw waveform with stored samples
+                    if (completeSamplesArray) {
+                        drawWaveform();
+                    }
                     
                     isPlaying = true;
                     isPaused = false;
@@ -2307,6 +2348,7 @@
                     station: s.station,
                     location: s.location,
                     channel: s.channel,
+                    distance_km: s.distance_km,
                     label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
                 })),
                 infrasound: (volcanoData.infrasound || []).map(s => ({
@@ -2314,6 +2356,7 @@
                     station: s.station,
                     location: s.location,
                     channel: s.channel,
+                    distance_km: s.distance_km,
                     label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
                 }))
             };
@@ -2323,6 +2366,7 @@
         
         function updateStationList() {
             const dataType = document.getElementById('dataType').value;
+            const volcano = document.getElementById('volcano').value;
             const stationSelect = document.getElementById('station');
             const stations = availableStations[dataType] || [];
             
@@ -2335,8 +2379,11 @@
                 return;
             }
             
-            stationSelect.innerHTML = stations.map(s => 
-                `<option value='${JSON.stringify(s)}'>${s.label}</option>`
+            // Default to 4th station in list (index 3) for Kilauea only
+            const defaultIndex = (volcano === 'kilauea') ? 3 : 0;
+            
+            stationSelect.innerHTML = stations.map((s, index) => 
+                `<option value='${JSON.stringify(s)}' ${index === defaultIndex ? 'selected' : ''}>${s.label}</option>`
             ).join('');
             
             console.log(`✅ Populated ${stations.length} ${dataType} stations`);
@@ -2348,53 +2395,56 @@
                 return;
             }
             visualizationStarted = true;
-            drawWaveform();
+            // Waveform is drawn once when data is loaded, not continuously
             drawSpectrogram();
         }
         
         function drawWaveform() {
-            if (!analyserNode) return;
-            
-            // Pause visualization when audio is paused or not playing
-            if (isPaused || !isPlaying) {
-                requestAnimationFrame(drawWaveform);
+            // Draw complete waveform from stored samples array (static, not live)
+            if (!completeSamplesArray || completeSamplesArray.length === 0) {
                 return;
             }
             
             const canvas = document.getElementById('waveform');
+            if (!canvas) return;
+            
             const ctx = canvas.getContext('2d');
-            const width = canvas.width;
-            const height = canvas.height;
+            const width = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+            const height = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
             
-            const bufferLength = analyserNode.fftSize;
-            const dataArray = new Float32Array(bufferLength);
-            analyserNode.getFloatTimeDomainData(dataArray);
-            
+            // Clear canvas
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, width, height);
             
-            ctx.lineWidth = 2;
+            // Draw waveform line
             ctx.strokeStyle = '#ff3333';
+            ctx.lineWidth = 2;
             ctx.beginPath();
             
-            const sliceWidth = width / bufferLength;
-            let x = 0;
+            const step = Math.floor(completeSamplesArray.length / width);
+            const mid = height / 2;
             
-            for (let i = 0; i < bufferLength; i++) {
-                const v = dataArray[i];
-                const y = (v * 0.5 + 0.5) * height;
+            for (let i = 0; i < width; i++) {
+                const index = i * step;
+                const value = completeSamplesArray[index] || 0;
+                const y = mid + (value * mid * 0.9);
                 
                 if (i === 0) {
-                    ctx.moveTo(x, y);
+                    ctx.moveTo(i, y);
                 } else {
-                    ctx.lineTo(x, y);
+                    ctx.lineTo(i, y);
                 }
-                
-                x += sliceWidth;
             }
             
             ctx.stroke();
-            requestAnimationFrame(drawWaveform);
+            
+            // Draw center line
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, mid);
+            ctx.lineTo(width, mid);
+            ctx.stroke();
         }
         
         function drawSpectrogram() {

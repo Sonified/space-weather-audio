@@ -881,8 +881,8 @@
         // Pipeline configuration
         const PIPELINE_CONFIGS = {
             'simple-iris': {
-                name: 'Render Audio Stream (ObsPy processed)',
-                description: '🚀 Render Backend: ObsPy decodes miniSEED → optional high-pass/normalize → zstd compressed → browser plays',
+                name: 'Railway Audio Stream (ObsPy processed)',
+                description: '🚀 Railway Backend: ObsPy decodes miniSEED → optional high-pass/normalize → zstd compressed → browser plays',
                 color: '#28a745',
                 useEmbeddedStations: true,
                 audioStreamUrl: 'http://localhost:5001/api/stream-audio'
@@ -910,9 +910,9 @@
             },
             'r2-render': {
                 name: 'Production → R2 Cache → IRIS',
-                stationsUrl: 'https://volcano-audio.onrender.com/api/stations',
-                streamUrl: 'https://volcano-audio.onrender.com/api/progressive-test',
-                description: '🌐 Production Render.com: Checks R2 cache first, fetches from IRIS if needed',
+                stationsUrl: 'https://volcano-audio-production.up.railway.app/api/stations',
+                streamUrl: 'https://volcano-audio-production.up.railway.app/api/progressive-test',
+                description: '🌐 Production Railway: Checks R2 cache first, fetches from IRIS if needed',
                 color: '#764ba2'
             },
             'worker-stream': {

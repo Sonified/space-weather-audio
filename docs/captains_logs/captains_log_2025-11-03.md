@@ -32,3 +32,27 @@ v1.40 - Commit: "v1.40 Fix: Fixed swapped panel background colors - corrected nt
 
 ---
 
+## Default Station Selection Update
+
+### Changes Made:
+
+1. **Volcano-Specific Default Station Selection**
+   - Updated `updateStationList()` function to check the selected volcano
+   - For Kilauea: defaults to the 4th station in the list (index 3)
+   - For all other volcanoes: defaults to the first station (index 0)
+   - This provides a better default experience for Kilauea while keeping standard behavior for others
+
+### Problem:
+- User wanted the 4th station selected by default, but only for Kilauea volcano
+- Needed to make the default selection conditional based on volcano selection
+
+### Solution:
+- Added volcano check in `updateStationList()` function
+- Conditional default index: `const defaultIndex = (volcano === 'kilauea') ? 3 : 0;`
+- Maintains existing behavior for non-Kilauea volcanoes
+
+### Version
+v1.41 - Commit: "v1.41 Feature: Default station selection - 4th station for Kilauea, first station for others"
+
+---
+

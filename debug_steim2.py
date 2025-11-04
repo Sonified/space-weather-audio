@@ -152,3 +152,4 @@ with open('test_miniseed.mseed', 'rb') as f:
     print(f"Matches: {matches}/{min(len(samples), 30)}")
 
 
+

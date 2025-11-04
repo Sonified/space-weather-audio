@@ -18,8 +18,8 @@ This project provides a complete pipeline for converting seismic data into audio
 
 ### Data Pipeline Flow
 ```
-Browser → R2 Worker (Cloudflare) → Render Backend → IRIS → R2 Storage
-   ↓                                                              ↓
+Browser → R2 Worker (Cloudflare) → Railway Backend → IRIS → R2 Storage
+   ↓                                                               ↓
    ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ←
         (Browser fetches .zst chunks directly from R2)
 ```
@@ -91,7 +91,7 @@ pkill -9 -f 'backend/main.py'
 
 ### Manual Setup (if needed)
 
-#### Backend (Render/Flask)
+#### Backend (Railway/Flask)
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -130,7 +130,7 @@ Primary entry point for data requests
 - **Response**: Cache status (`cache_hit` or `processing`) with metadata
 - **Example**: `/request?network=HV&station=NPOC&location=&channel=HHZ&starttime=2025-10-28T00:00:00Z&duration=3600`
 
-#### Render Backend: `POST /api/request`
+#### Railway Backend: `POST /api/request`
 Processing endpoint (called by R2 Worker on cache miss)
 - **Body**: JSON with network, station, location, channel, starttime, duration
 - **Response**: Processing status with chunk metadata

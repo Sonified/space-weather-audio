@@ -41,3 +41,17 @@ INFO:werkzeug: * Detected change in '/Users/robertalexander/GitHub/volcano-audio
 127.0.0.1 - - [31/Oct/2025 02:22:34] "OPTIONS /api/stream-audio HTTP/1.1" 200 -
 127.0.0.1 - - [31/Oct/2025 02:22:36] "POST /api/stream-audio HTTP/1.1" 200 -
 INFO:werkzeug:127.0.0.1 - - [31/Oct/2025 02:22:36] "POST /api/stream-audio HTTP/1.1" 200 -
+ * Detected change in '/Users/robertalexander/GitHub/volcano-audio/backend/test_audio_stream_local.py', reloading
+INFO:werkzeug: * Detected change in '/Users/robertalexander/GitHub/volcano-audio/backend/test_audio_stream_local.py', reloading
+✅ Great Sitkin: AV.GSTD.BHZ (3.3km, 50.0Hz)
+✅ Shishaldin: AV.SSLS.BHZ (5.4km, 50.0Hz)
+✅ Spurr: AV.SPCP.BHZ (6.4km, 50.0Hz)
+✅ Kilauea: HV.UWE.HHZ (0.4km, 100.0Hz)
+✅ Mauna Loa: HV.MOKD.HHZ (1.6km, 100.0Hz)
+
+🌋 Loaded 5 volcano configurations
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 134-108-540
+/opt/anaconda3/envs/plotbot_anaconda/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

@@ -5,12 +5,12 @@ Streams seismic audio data from R2 with on-demand processing (detrend + normaliz
 ## Why Cloudflare Worker?
 
 **Performance:**
-- Co-located with R2 (1-5ms latency vs 100-150ms via Render)
+- Co-located with R2 (1-5ms latency vs 100-150ms via Railway)
 - Global edge network (fast for all users)
-- Expected TTFA: ~50-80ms (vs 355ms via Render)
+- Expected TTFA: ~50-80ms (vs 355ms via Railway)
 
 **Cost:**
-- FREE R2 egress (vs Render bandwidth costs)
+- FREE R2 egress (vs Railway bandwidth costs)
 - 100k requests/day FREE on Workers
 - ~$5/month even if viral (1M requests)
 
@@ -88,7 +88,7 @@ The worker performs on-demand processing:
 3. **Normalize**: Scale by max absolute value (~1ms)
 4. **Stream**: Progressive chunks to client
 
-**Total TTFA: ~50-80ms** (10x faster than Render!)
+**Total TTFA: ~50-80ms** (10x faster than Railway!)
 
 ## Cache Key Format
 
@@ -107,7 +107,7 @@ Example: `kilauea_12h_ago_4h_duration` → `53f1fa20d8eec968`
 - R2 Egress: $0 (FREE from Workers!)
 - **Total: ~$6/month**
 
-Compare to Render: ~$200-400/month bandwidth costs!
+Compare to Railway: ~$200-400/month bandwidth costs!
 
 ## Development
 
@@ -130,8 +130,8 @@ R2 credentials are automatically injected by Cloudflare (no need to manage secre
 ## Next Steps
 
 1. Deploy worker
-2. Update frontend to use worker URL instead of Render
-3. Keep Render for IRIS fetching & cache population
+2. Update frontend to use worker URL instead of Railway
+3. Keep Railway for IRIS fetching & cache population
 4. Monitor costs & performance in Cloudflare dashboard
 
 

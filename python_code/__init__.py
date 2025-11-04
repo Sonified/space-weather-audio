@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.40"
+__version__ = "1.41"
 __commit_message__ = (
-    "v1.40 Fix: Fixed swapped panel background colors - corrected nth-child selectors accounting for h1 tag in container"
+    "v1.41 Feature: Default station selection - 4th station for Kilauea, first station for others"
 )
 
 # Import key modules to make them available when importing the package

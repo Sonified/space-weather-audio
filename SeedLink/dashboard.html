@@ -181,7 +181,22 @@
                     <span class="stat-label">Last Update:</span>
                     <span class="stat-value" id="last-update">--</span>
                 </div>
-                <div style="position: absolute; bottom: 15px; left: 15px; display: flex; align-items: center; gap: 8px;">
+                <div style="position: absolute; bottom: 15px; left: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <button id="pause-play-btn" style="
+                        padding: 6px 12px;
+                        background: rgba(0, 212, 255, 0.3);
+                        color: #00d4ff;
+                        border: 1px solid rgba(0, 212, 255, 0.5);
+                        border-radius: 5px;
+                        font-size: 0.85em;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                    " onmouseover="if (!this.disabled) { this.style.opacity='0.8'; }" 
+                       onmouseout="if (!this.disabled) { this.style.opacity='1'; }"
+                       onclick="togglePausePlay()">
+                        ⏸️ Pause
+                    </button>
+                    <span style="font-size: 0.85em; color: #a0c4ff;">Audio control</span>
                     <button id="reset-btn" style="
                         padding: 6px 12px;
                         background: rgba(255, 68, 68, 0.3);
@@ -422,6 +437,20 @@
                     document.getElementById('last-update').textContent = 'Waiting for first packet...';
                 }
                 
+                // Update pause/play button state
+                const pausePlayBtn = document.getElementById('pause-play-btn');
+                if (data.paused) {
+                    pausePlayBtn.textContent = '▶️ Play';
+                    pausePlayBtn.style.background = 'rgba(0, 255, 136, 0.3)';
+                    pausePlayBtn.style.color = '#00ff88';
+                    pausePlayBtn.style.borderColor = 'rgba(0, 255, 136, 0.5)';
+                } else {
+                    pausePlayBtn.textContent = '⏸️ Pause';
+                    pausePlayBtn.style.background = 'rgba(0, 212, 255, 0.3)';
+                    pausePlayBtn.style.color = '#00d4ff';
+                    pausePlayBtn.style.borderColor = 'rgba(0, 212, 255, 0.5)';
+                }
+                
                 // Update signal meter (normalize to 0-100%)
                 const signalPercent = Math.min(100, (data.current_max / data.running_max) * 100);
                 const meterFill = document.getElementById('signal-meter');
@@ -502,6 +531,34 @@
         
         // Note: Update intervals are now calculated directly in updateStatus() 
         // using client-side timing for more accurate user experience measurement
+        
+        // Toggle pause/play
+        async function togglePausePlay() {
+            const btn = document.getElementById('pause-play-btn');
+            const isCurrentlyPaused = btn.textContent.includes('Play');
+            
+            try {
+                const endpoint = isCurrentlyPaused ? '/api/resume' : '/api/pause';
+                const response = await fetch(`http://localhost:8888${endpoint}`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Button state will be updated by next status update
+                    // Show immediate feedback
+                    btn.disabled = true;
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        updateStatus(); // Force immediate status update
+                    }, 100);
+                } else {
+                    console.error('Failed to toggle pause/play:', result.error);
+                }
+            } catch (error) {
+                console.error('Error toggling pause/play:', error);
+            }
+        }
         
         // Reset all stats
         async function resetStats() {
