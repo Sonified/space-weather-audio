@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.44"
+__version__ = "1.45"
 __commit_message__ = (
-    "v1.44 Refactor: Worklet-driven selection/looping architecture - sample-accurate boundaries, audio-rate fade bypass, removed selection size limits"
+    "v1.45 Feature: Added 0.02 Hz high-pass filter option, set as default, verified frequency calculation math"
 )
 
 # Import key modules to make them available when importing the package

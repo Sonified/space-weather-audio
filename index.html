@@ -836,7 +836,8 @@
                     <label for="highpassFreq" id="highpassLabel">High Pass (@ 44.1k):</label>
                     <select id="highpassFreq">
                         <option value="none">None</option>
-                        <option value="0.01" selected>0.01 Hz</option>
+                        <option value="0.01">0.01 Hz</option>
+                        <option value="0.02" selected>0.02 Hz</option>
                         <option value="0.045">0.045 Hz</option>
                     </select>
                 </div>
@@ -2324,6 +2325,7 @@
             // Total speedup = base_rate / original_rate
             const totalSpeedup = selectedRate / originalSampleRate;
             const freq001Hz = 0.01 * totalSpeedup;
+            const freq002Hz = 0.02 * totalSpeedup;
             const freq0045Hz = 0.045 * totalSpeedup;
             
             // Format frequencies (show decimals if needed, but round to reasonable precision)
@@ -2341,7 +2343,8 @@
             const options = highpassSelect.options;
             options[0].text = 'None'; // First option stays as None
             options[1].text = `0.01 Hz (${formatFreq(freq001Hz)})`;
-            options[2].text = `0.045 Hz (${formatFreq(freq0045Hz)})`;
+            options[2].text = `0.02 Hz (${formatFreq(freq002Hz)})`;
+            options[3].text = `0.045 Hz (${formatFreq(freq0045Hz)})`;
             
             // Restore selection
             highpassSelect.value = selectedValue;

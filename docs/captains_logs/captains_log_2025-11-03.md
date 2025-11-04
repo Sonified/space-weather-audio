@@ -222,3 +222,36 @@ v1.44 - Commit: "v1.44 Refactor: Worklet-driven selection/looping architecture -
 
 ---
 
+## High-Pass Filter Update: Added 0.02 Hz Option
+
+### Changes Made:
+
+1. **Added 0.02 Hz High-Pass Filter Option**
+   - Added 0.02 Hz as a new option in the high-pass filter dropdown
+   - Positioned between 0.01 Hz and 0.045 Hz options
+   - Set as the new default selection (replacing 0.01 Hz)
+
+2. **Updated Frequency Calculation Math**
+   - Added `freq002Hz` calculation to match existing pattern
+   - Formula verified: `audio_freq = original_freq × (base_rate / original_rate)`
+   - Display correctly shows calculated audio frequency for 0.02 Hz based on selected base sampling rate
+
+### Problem:
+- User wanted 0.02 Hz as a filter option between 0.01 and 0.045 Hz
+- Needed to verify the math was correct for calculating audio frequencies
+
+### Solution:
+- Added 0.02 Hz option to dropdown HTML
+- Updated `updateHighPassFilterDisplay()` to calculate and display 0.02 Hz audio frequency
+- Set as default selection
+- Math verified: At 44.1 kHz with 100 Hz original rate, 0.02 Hz becomes 8.82 Hz audio frequency
+
+### Key Learnings:
+- Frequency calculation accounts for both base sampling rate speedup and any multiplier
+- Backend already supports any highpass_hz value, so no backend changes needed
+
+### Version
+v1.45 - Commit: "v1.45 Feature: Added 0.02 Hz high-pass filter option, set as default, verified frequency calculation math"
+
+---
+
