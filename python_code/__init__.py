@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.39"
+__version__ = "1.40"
 __commit_message__ = (
-    "v1.39 Fix: Set minimum spectrogram scroll speed to 0.125x (never 0), fixed spectrogram continuing to scroll after playback finishes, fixed 2x scroll speed bug on replay (prevented multiple visualization loops)"
+    "v1.40 Fix: Fixed swapped panel background colors - corrected nth-child selectors accounting for h1 tag in container"
 )
 
 # Import key modules to make them available when importing the package

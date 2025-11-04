@@ -93,14 +93,14 @@
         }
         
         .panel:nth-child(4) {
-            background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
-            border: 1px solid rgba(200, 100, 100, 0.3);
+            background: linear-gradient(135deg, rgba(255, 245, 245, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
             padding-top: 12px;
             padding-bottom: 12px;
         }
         
         .panel:nth-child(5) {
-            background: linear-gradient(135deg, rgba(240, 200, 200, 0.95) 0%, rgba(190, 130, 125, 0.95) 100%);
+            background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
+            border: 1px solid rgba(200, 100, 100, 0.3);
             padding-top: 20px;
         }
         
@@ -528,11 +528,259 @@
             transform: translateY(15px);
             margin-bottom: -15px;
         }
+        
+        /* Modal styling */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-overlay.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, rgba(255, 250, 250, 0.98) 0%, rgba(240, 200, 195, 0.98) 100%);
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 800px;
+            min-width: 400px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 
+                0 20px 40px rgba(80, 20, 20, 0.5),
+                0 10px 20px rgba(80, 20, 20, 0.4),
+                0 5px 10px rgba(255, 100, 100, 0.2);
+            border: 2px solid rgba(200, 100, 100, 0.3);
+            position: relative;
+        }
+        
+        @media (max-width: 500px) {
+            .modal-content {
+                min-width: calc(100vw - 40px);
+                padding: 20px;
+            }
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(200, 100, 100, 0.3);
+        }
+        
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #550000;
+            text-shadow: 1px 1px 3px rgba(255, 200, 200, 0.5);
+        }
+        
+        .modal-close {
+            background: linear-gradient(135deg, #cc3333 0%, #991111 100%);
+            color: white;
+            border: none;
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            min-height: 36px;
+            border-radius: 50%;
+            font-size: 24px;
+            line-height: 36px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            padding: 0;
+        }
+        
+        .modal-close:hover {
+            transform: scale(1.1);
+            box-shadow: 0 3px 8px rgba(200, 50, 50, 0.5);
+            background: linear-gradient(135deg, #dd4444 0%, #aa2222 100%);
+        }
+        
+        .modal-body {
+            color: #333;
+        }
+        
+        .modal-form-group {
+            margin-bottom: 20px;
+        }
+        
+        .modal-form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #550000;
+        }
+        
+        .modal-form-group input[type="text"],
+        .modal-form-group input[type="number"] {
+            width: 100%;
+            padding: 10px 14px;
+            border: 2px solid rgba(200, 100, 100, 0.3);
+            border-radius: 6px;
+            font-size: 16px;
+            background: white;
+            box-sizing: border-box;
+        }
+        
+        .modal-form-group input:focus {
+            outline: none;
+            border-color: #cc5533;
+            box-shadow: 0 0 0 3px rgba(204, 85, 51, 0.1);
+        }
+        
+        .mood-scale-container {
+            border-radius: 8px;
+            border: 1px solid rgba(200, 100, 100, 0.3);
+            overflow: hidden;
+            margin-bottom: 13px;
+        }
+        
+        .mood-scale-item {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            align-items: center;
+            gap: 13px;
+            margin-bottom: 0;
+            padding: 10px;
+            min-height: 38px;
+            border-radius: 0;
+            border: none;
+            border-bottom: 1px solid rgba(200, 100, 100, 0.2);
+        }
+        
+        .mood-scale-item:nth-child(odd) {
+            background: rgba(255, 255, 255, 0.5);
+        }
+        
+        .mood-scale-item:nth-child(even) {
+            background: rgba(255, 235, 235, 0.7);
+        }
+        
+        .mood-scale-item:last-child {
+            border-bottom: none;
+        }
+        
+        .mood-scale-label {
+            font-weight: 700;
+            color: #550000;
+            font-size: 16px;
+            text-align: right;
+        }
+        
+        .mood-scale-options {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            width: 100%;
+        }
+        
+        .mood-scale-option {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            position: relative;
+            min-width: 0;
+        }
+        
+        .mood-scale-option input[type="radio"] {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            cursor: pointer;
+            accent-color: #cc3333;
+            margin: 0;
+            margin-top: 9px;
+        }
+        
+        .mood-scale-option label {
+            font-size: 13px;
+            font-weight: bold;
+            color: #666;
+            text-align: center;
+            cursor: pointer;
+            margin: 0;
+            margin-top: 2px;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+        
+        .survey-scale-labels {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: 13px;
+            margin-bottom: 10px;
+            padding: 0 15px;
+        }
+        
+        .survey-scale-labels-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            width: 100%;
+        }
+        
+        .survey-scale-labels-grid span {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+            color: #000;
+            -webkit-hyphens: manual;
+            -moz-hyphens: manual;
+            -ms-hyphens: manual;
+            hyphens: manual;
+            min-width: 0;
+        }
+        
+        .modal-submit {
+            width: 100%;
+            padding: 9px 24px;
+            font-size: 18px;
+            margin-top: 6px;
+        }
+        
+        .mood-survey-intro {
+            font-size: 24px;
+            font-weight: 700;
+            color: #550000;
+            margin-top: 13px;
+            margin-bottom: 19px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>IRIS Data Audification (Beta) 🚧</h1>
+        
+        <!-- Simulate Row -->
+        <div class="panel" style="padding: 15px 20px;">
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Simulate:</label>
+                <button type="button" onclick="openParticipantModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👤 Participant Setup</button>
+                <button type="button" onclick="openPrePostSurveyModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Pre/Post Survey</button>
+            </div>
+        </div>
         
         <div class="panel">
             <div class="controls">
@@ -664,6 +912,215 @@
         <div id="localServerCheckbox" style="display: flex; align-items: center; gap: 10px; margin-top: 10px; background: rgba(0, 0, 0, 0.01); padding: 8px 12px; border-radius: 6px;">
             <input type="checkbox" id="useLocalServer" style="width: 24px; height: 24px; cursor: pointer; opacity: 0.6;">
             <label for="useLocalServer" style="margin-bottom: 0; cursor: pointer; font-weight: 500; font-size: 14px; color: rgba(255, 255, 255, 0.5);">Local Server</label>
+        </div>
+    </div>
+    
+    <!-- Participant Setup Modal -->
+    <div id="participantModal" class="modal-overlay" onclick="closeParticipantModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 class="modal-title">Welcome</h3>
+                <button class="modal-close" onclick="closeParticipantModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px; color: #333; font-size: 16px;">Enter your participant ID number to begin:</p>
+                <div class="modal-form-group">
+                    <label for="participantId" style="display: none;">Participant ID/Number:</label>
+                    <input type="text" id="participantId" placeholder="Enter participant identifier">
+                </div>
+                <button type="button" class="modal-submit" onclick="submitParticipantSetup()">✓ Start Session</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Pre/Post Survey Modal -->
+    <div id="prePostSurveyModal" class="modal-overlay" onclick="closePrePostSurveyModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 class="modal-title">📊 Pre/Post Survey</h3>
+                <button class="modal-close" onclick="closePrePostSurveyModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="mood-survey-intro">Right now, I feel:</div>
+                
+                <!-- Scale header labels -->
+                <div class="survey-scale-labels">
+                    <div></div>
+                    <div class="survey-scale-labels-grid">
+                        <span>Not at all</span>
+                        <span>A lit&shy;tle</span>
+                        <span>Mod&shy;er&shy;ate</span>
+                        <span>Quite a bit</span>
+                        <span>Very much</span>
+                    </div>
+                </div>
+                
+                <div class="mood-scale-container">
+                <!-- Calm -->
+                <div class="mood-scale-item">
+                    <div class="mood-scale-label">Calm</div>
+                    <div class="mood-scale-options">
+                        <div class="mood-scale-option">
+                            <input type="radio" name="calm" id="calm1" value="1">
+                            <label for="calm1">1</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="calm" id="calm2" value="2">
+                            <label for="calm2">2</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="calm" id="calm3" value="3">
+                            <label for="calm3">3</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="calm" id="calm4" value="4">
+                            <label for="calm4">4</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="calm" id="calm5" value="5">
+                            <label for="calm5">5</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Energized -->
+                <div class="mood-scale-item">
+                    <div class="mood-scale-label">Energized</div>
+                    <div class="mood-scale-options">
+                        <div class="mood-scale-option">
+                            <input type="radio" name="energized" id="energized1" value="1">
+                            <label for="energized1">1</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="energized" id="energized2" value="2">
+                            <label for="energized2">2</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="energized" id="energized3" value="3">
+                            <label for="energized3">3</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="energized" id="energized4" value="4">
+                            <label for="energized4">4</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="energized" id="energized5" value="5">
+                            <label for="energized5">5</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Connected -->
+                <div class="mood-scale-item">
+                    <div class="mood-scale-label">Connected</div>
+                    <div class="mood-scale-options">
+                        <div class="mood-scale-option">
+                            <input type="radio" name="connected" id="connected1" value="1">
+                            <label for="connected1">1</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="connected" id="connected2" value="2">
+                            <label for="connected2">2</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="connected" id="connected3" value="3">
+                            <label for="connected3">3</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="connected" id="connected4" value="4">
+                            <label for="connected4">4</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="connected" id="connected5" value="5">
+                            <label for="connected5">5</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Stressed -->
+                <div class="mood-scale-item">
+                    <div class="mood-scale-label">Stressed</div>
+                    <div class="mood-scale-options">
+                        <div class="mood-scale-option">
+                            <input type="radio" name="stressed" id="stressed1" value="1">
+                            <label for="stressed1">1</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="stressed" id="stressed2" value="2">
+                            <label for="stressed2">2</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="stressed" id="stressed3" value="3">
+                            <label for="stressed3">3</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="stressed" id="stressed4" value="4">
+                            <label for="stressed4">4</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="stressed" id="stressed5" value="5">
+                            <label for="stressed5">5</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Focused -->
+                <div class="mood-scale-item">
+                    <div class="mood-scale-label">Focused</div>
+                    <div class="mood-scale-options">
+                        <div class="mood-scale-option">
+                            <input type="radio" name="focused" id="focused1" value="1">
+                            <label for="focused1">1</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="focused" id="focused2" value="2">
+                            <label for="focused2">2</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="focused" id="focused3" value="3">
+                            <label for="focused3">3</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="focused" id="focused4" value="4">
+                            <label for="focused4">4</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="focused" id="focused5" value="5">
+                            <label for="focused5">5</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Sense of Wonder -->
+                <div class="mood-scale-item">
+                    <div class="mood-scale-label">Sense of Wonder</div>
+                    <div class="mood-scale-options">
+                        <div class="mood-scale-option">
+                            <input type="radio" name="wonder" id="wonder1" value="1">
+                            <label for="wonder1">1</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="wonder" id="wonder2" value="2">
+                            <label for="wonder2">2</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="wonder" id="wonder3" value="3">
+                            <label for="wonder3">3</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="wonder" id="wonder4" value="4">
+                            <label for="wonder4">4</label>
+                        </div>
+                        <div class="mood-scale-option">
+                            <input type="radio" name="wonder" id="wonder5" value="5">
+                            <label for="wonder5">5</label>
+                        </div>
+                    </div>
+                </div>
+                </div>
+                
+                <button type="button" class="modal-submit" onclick="submitPrePostSurvey()">✓ Submit Survey</button>
+            </div>
         </div>
     </div>
     
@@ -1119,7 +1576,7 @@
                 const useLocal = document.getElementById('useLocalServer').checked;
                 const baseMessage = useLocal 
                     ? 'Fetching data from local backend'
-                    : 'Fetching data from Render backend';
+                    : 'Fetching data from Railway backend';
                 document.getElementById('status').className = 'status info loading';
                 document.getElementById('status').textContent = baseMessage;
                 
@@ -1213,9 +1670,9 @@
                 // Determine backend URL based on checkbox (useLocal already defined above)
                 const backendUrl = useLocal 
                     ? 'http://localhost:5001/api/stream-audio'
-                    : 'https://volcano-audio.onrender.com/api/stream-audio';
+                    : 'https://volcano-audio-production.up.railway.app/api/stream-audio';
                 
-                const backendType = useLocal ? 'local' : 'Render.com';
+                const backendType = useLocal ? 'local' : 'Railway';
                 console.log(`🌐 Using ${backendType} backend: ${backendUrl}`);
                 
                 // Start animated loading indicator with growing periods (2 per second)
@@ -2182,6 +2639,99 @@
             
             console.log('✅ Event listeners added for fetch button re-enabling');
         });
+        
+        // Modal control functions
+        function openParticipantModal() {
+            document.getElementById('participantModal').classList.add('active');
+            console.log('👤 Participant Setup modal opened');
+        }
+        
+        function closeParticipantModal(event) {
+            // Close if clicking overlay or explicit close
+            if (!event || event.target.classList.contains('modal-overlay')) {
+                document.getElementById('participantModal').classList.remove('active');
+                console.log('👤 Participant Setup modal closed');
+            }
+        }
+        
+        function submitParticipantSetup() {
+            const participantId = document.getElementById('participantId').value;
+            
+            console.log('📝 Participant Setup Data (not submitted yet):');
+            console.log('  - Participant ID:', participantId || '(none)');
+            console.log('  - Timestamp:', new Date().toISOString());
+            
+            // Show confirmation in status bar
+            const statusEl = document.getElementById('status');
+            statusEl.className = 'status success';
+            statusEl.textContent = `✅ Participant setup recorded: ${participantId || 'Anonymous'}`;
+            
+            // Close modal
+            closeParticipantModal();
+            
+            // Clear form for next use
+            setTimeout(() => {
+                document.getElementById('participantId').value = '';
+            }, 300);
+        }
+        
+        function openPrePostSurveyModal() {
+            document.getElementById('prePostSurveyModal').classList.add('active');
+            console.log('📊 Pre/Post Survey modal opened');
+        }
+        
+        function closePrePostSurveyModal(event) {
+            // Close if clicking overlay or explicit close
+            if (!event || event.target.classList.contains('modal-overlay')) {
+                document.getElementById('prePostSurveyModal').classList.remove('active');
+                console.log('📊 Pre/Post Survey modal closed');
+            }
+        }
+        
+        function submitPrePostSurvey() {
+            // Collect all mood ratings
+            const surveyData = {
+                calm: document.querySelector('input[name="calm"]:checked')?.value || null,
+                energized: document.querySelector('input[name="energized"]:checked')?.value || null,
+                connected: document.querySelector('input[name="connected"]:checked')?.value || null,
+                stressed: document.querySelector('input[name="stressed"]:checked')?.value || null,
+                focused: document.querySelector('input[name="focused"]:checked')?.value || null,
+                wonder: document.querySelector('input[name="wonder"]:checked')?.value || null,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Check if any ratings were provided
+            const hasRatings = Object.values(surveyData).some(v => v !== null && v !== surveyData.timestamp);
+            
+            if (!hasRatings) {
+                alert('Please rate at least one item before submitting.');
+                return;
+            }
+            
+            console.log('📊 Pre/Post Survey Data (not submitted yet):');
+            console.log('  - Calm:', surveyData.calm || 'not rated');
+            console.log('  - Energized:', surveyData.energized || 'not rated');
+            console.log('  - Connected:', surveyData.connected || 'not rated');
+            console.log('  - Stressed:', surveyData.stressed || 'not rated');
+            console.log('  - Focused:', surveyData.focused || 'not rated');
+            console.log('  - Sense of Wonder:', surveyData.wonder || 'not rated');
+            console.log('  - Timestamp:', surveyData.timestamp);
+            
+            // Show confirmation in status bar
+            const statusEl = document.getElementById('status');
+            statusEl.className = 'status success';
+            statusEl.textContent = '✅ Pre/Post survey recorded!';
+            
+            // Close modal
+            closePrePostSurveyModal();
+            
+            // Clear form for next use
+            setTimeout(() => {
+                document.querySelectorAll('input[type="radio"]').forEach(radio => {
+                    radio.checked = false;
+                });
+            }, 300);
+        }
     </script>
 </body>
 </html>
