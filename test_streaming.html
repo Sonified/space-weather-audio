@@ -1,0 +1,3238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volcano Audio - True Streaming</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌋</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
+    <script type="module">
+        import * as numcodecs from 'https://cdn.jsdelivr.net/npm/numcodecs@0.3.1/+esm';
+        window.numcodecs = numcodecs;
+        console.log('✅ Numcodecs loaded!');
+    </script>
+    
+    <!-- Basic miniSEED parser implementation -->
+    <script>
+        // Simple miniSEED parser for Steim1/Steim2 compressed data
+        // Based on SEED format specification
+        class MiniSEEDParser {
+            constructor() {
+                this.steim1Decompress = this.steim1Decompress.bind(this);
+                this.steim2Decompress = this.steim2Decompress.bind(this);
+            }
+            
+            parseDataRecords(arrayBuffer) {
+                const records = [];
+                let offset = 0;
+                const view = new DataView(arrayBuffer);
+                
+                // miniSEED records are typically 512 bytes
+                // Look for valid records by checking indicator byte (offset 6)
+                // Indicator can be: 'D' (data), 'R' (record), 'Q' (quality), 'M' (miniSEED)
+                const RECORD_SIZE = 512;
+                
+                while (offset + 64 <= arrayBuffer.byteLength) {
+                    // Check indicator byte (offset 6)
+                    const indicatorByte = view.getUint8(offset + 6);
+                    const indicator = String.fromCharCode(indicatorByte);
+                    
+                    // Accept 'D', 'R', 'Q', or 'M' (M is common for miniSEED format)
+                    if (indicator === 'D' || indicator === 'R' || indicator === 'Q' || indicator === 'M') {
+                        // Check if encoding byte (offset 39) is in valid range
+                        if (offset + 64 <= arrayBuffer.byteLength) {
+                            const encoding = view.getUint8(offset + 39);
+                            if (encoding <= 11) { // Valid encoding range: 0-11
+                                try {
+                                    const record = this.parseRecord(view, offset, arrayBuffer.byteLength - offset);
+                                    if (record && record.header) {
+                                        // Accept records even if numSamples is 0 (samples might be in data section)
+                                        records.push(record);
+                                        offset += RECORD_SIZE;
+                                        continue;
+                                    }
+                                } catch (e) {
+                                    console.warn(`Failed to parse record at offset ${offset}:`, e);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Move to next 512-byte boundary
+                    offset += RECORD_SIZE;
+                }
+                
+                return records;
+            }
+            
+            parseRecord(view, offset, maxLength) {
+                if (offset + 64 > maxLength) return null;
+                
+                const seqNum = this.readString(view, offset, 6);
+                const indicator = String.fromCharCode(view.getUint8(offset + 6));
+                
+                // Accept 'D', 'R', 'Q', or 'M' (M is common for miniSEED format)
+                if (indicator !== 'D' && indicator !== 'R' && indicator !== 'Q' && indicator !== 'M') {
+                    return null;
+                }
+                
+                const station = this.readString(view, offset + 8, 5).trim();
+                const location = this.readString(view, offset + 13, 2).trim();
+                const channel = this.readString(view, offset + 15, 3).trim();
+                const network = this.readString(view, offset + 18, 2).trim();
+                
+                // Parse start time (year, day of year, hour, minute, second, 0.0001 secs)
+                const year = view.getUint16(offset + 20, false); // big-endian
+                const dayOfYear = view.getUint16(offset + 22, false);
+                const hour = view.getUint8(offset + 24);
+                const minute = view.getUint8(offset + 25);
+                const second = view.getUint8(offset + 26);
+                const tenthMilli = view.getUint8(offset + 27);
+                
+                // Sample rate factor and multiplier (offset 30-31)
+                const sampleRateFactor = view.getInt16(offset + 30, false);
+                const sampleRateMult = view.getInt16(offset + 32, false);
+                
+                // Activity flags (offset 36)
+                const activityFlags = view.getUint8(offset + 36);
+                const ioSFlags = view.getUint8(offset + 37);
+                const dataQuality = view.getUint8(offset + 38);
+                
+                // Number of samples (offset 40-41)
+                const numSamples = view.getUint16(offset + 40, false);
+                
+                // Sample rate calculation
+                let sampleRate = 0;
+                if (sampleRateFactor > 0 && sampleRateMult > 0) {
+                    sampleRate = sampleRateFactor * sampleRateMult;
+                } else if (sampleRateFactor < 0 && sampleRateMult > 0) {
+                    sampleRate = -1.0 * sampleRateFactor / sampleRateMult;
+                } else if (sampleRateFactor > 0 && sampleRateMult < 0) {
+                    sampleRate = -1.0 * sampleRateFactor / sampleRateMult;
+                } else {
+                    sampleRate = 0;
+                }
+                
+                // Encoding format (offset 39)
+                const encoding = view.getUint8(offset + 39);
+                
+                // Byte order (offset 42) - 0 = big endian, 1 = little endian
+                const byteOrder = view.getUint8(offset + 42);
+                const isBigEndian = byteOrder === 0;
+                
+                // Data offset (offset 43-44) - where data starts in record
+                // If dataOffset is 0, use default fixed header length of 48 bytes
+                let dataOffset = view.getUint16(offset + 43, false);
+                if (dataOffset === 0 || dataOffset < 48) {
+                    dataOffset = 48; // Standard fixed header length
+                }
+                
+                // If numSamples is 0, try to calculate from data length and encoding
+                let actualNumSamples = numSamples;
+                if (actualNumSamples === 0) {
+                    const dataLength = 512 - dataOffset; // Record size minus header
+                    // Calculate samples based on encoding
+                    switch (encoding) {
+                        case 1: actualNumSamples = Math.floor(dataLength / 2); break; // int16: 2 bytes per sample
+                        case 2: actualNumSamples = Math.floor(dataLength / 3); break; // int24: 3 bytes per sample
+                        case 3: actualNumSamples = Math.floor(dataLength / 4); break; // int32: 4 bytes per sample
+                        case 4: actualNumSamples = Math.floor(dataLength / 4); break; // float32: 4 bytes per sample
+                        case 5: actualNumSamples = Math.floor(dataLength / 8); break; // float64: 8 bytes per sample
+                        case 10: // Steim1 - complex, use estimate
+                        case 11: // Steim2 - complex, use estimate
+                            actualNumSamples = Math.floor(dataLength / 2); // Rough estimate
+                            break;
+                        default: actualNumSamples = 0;
+                    }
+                }
+                
+                const header = {
+                    netCode: network,
+                    staCode: station,
+                    locCode: location,
+                    chanCode: channel,
+                    startTime: new Date(year, 0, 1 + dayOfYear - 1, hour, minute, second, tenthMilli * 10),
+                    sampleRate: sampleRate,
+                    numSamples: actualNumSamples,
+                    encoding: encoding
+                };
+                
+                // Parse data block
+                const dataStart = offset + dataOffset;
+                const dataLength = 512 - dataOffset; // Assuming 512-byte records
+                
+                return {
+                    header: header,
+                    encoding: encoding,
+                    dataOffset: dataStart,
+                    dataLength: dataLength,
+                    byteOrder: isBigEndian,
+                    decompress: () => this.decompressRecord(view, dataStart, dataLength, encoding, actualNumSamples, isBigEndian)
+                };
+            }
+            
+            decompressRecord(view, dataOffset, dataLength, encoding, numSamples, isBigEndian) {
+                switch (encoding) {
+                    case 0: // ASCII (not common for seismic)
+                        return new Int32Array(0);
+                    case 1: // 16-bit integers
+                        return this.readInt16Array(view, dataOffset, numSamples, isBigEndian);
+                    case 2: // 24-bit integers
+                        return this.readInt24Array(view, dataOffset, numSamples, isBigEndian);
+                    case 3: // 32-bit integers
+                        return this.readInt32Array(view, dataOffset, numSamples, isBigEndian);
+                    case 4: // IEEE 32-bit float
+                        return this.readFloat32Array(view, dataOffset, numSamples, isBigEndian);
+                    case 5: // IEEE 64-bit double
+                        return this.readFloat64Array(view, dataOffset, numSamples, isBigEndian);
+                    case 10: // Steim1 compression
+                        return this.steim1Decompress(view, dataOffset, dataLength, numSamples, isBigEndian);
+                    case 11: // Steim2 compression
+                        return this.steim2Decompress(view, dataOffset, dataLength, numSamples, isBigEndian);
+                    default:
+                        console.warn('Unsupported encoding:', encoding);
+                        return new Int32Array(0);
+                }
+            }
+            
+            readString(view, offset, length) {
+                let str = '';
+                for (let i = 0; i < length; i++) {
+                    const char = view.getUint8(offset + i);
+                    if (char !== 0) str += String.fromCharCode(char);
+                }
+                return str;
+            }
+            
+            readInt16Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = view.getInt16(offset + i * 2, !isBigEndian);
+                }
+                return result;
+            }
+            
+            readInt24Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    const byteOffset = offset + i * 3;
+                    
+                    if (isBigEndian) {
+                        const b1 = view.getUint8(byteOffset);
+                        const b2 = view.getUint8(byteOffset + 1);
+                        const b3 = view.getUint8(byteOffset + 2);
+                        // Sign extend 24-bit to 32-bit (same as Python: (b1 << 24 | b2 << 16 | b3 << 8) >> 8)
+                        result[i] = (b1 << 24 | b2 << 16 | b3 << 8) >> 8;
+                    } else {
+                        const b1 = view.getUint8(byteOffset);
+                        const b2 = view.getUint8(byteOffset + 1);
+                        const b3 = view.getUint8(byteOffset + 2);
+                        // Little endian: reverse byte order
+                        result[i] = (b3 << 24 | b2 << 16 | b1 << 8) >> 8;
+                    }
+                }
+                return result;
+            }
+            
+            readInt32Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = view.getInt32(offset + i * 4, !isBigEndian);
+                }
+                return result;
+            }
+            
+            readFloat32Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = Math.round(view.getFloat32(offset + i * 4, !isBigEndian));
+                }
+                return result;
+            }
+            
+            readFloat64Array(view, offset, count, isBigEndian) {
+                const result = new Int32Array(count);
+                for (let i = 0; i < count; i++) {
+                    result[i] = Math.round(view.getFloat64(offset + i * 8, !isBigEndian));
+                }
+                return result;
+            }
+            
+            steim1Decompress(view, offset, length, numSamples, isBigEndian) {
+                // Steim1 decompression - simplified version
+                // This is a basic implementation; full Steim1 is more complex
+                const samples = new Int32Array(numSamples);
+                let sampleIndex = 0;
+                let dataOffset = offset;
+                let prevValue = 0;
+                
+                // Read first frame
+                const frameControl = view.getUint32(dataOffset, !isBigEndian);
+                dataOffset += 4;
+                prevValue = view.getInt32(dataOffset, !isBigEndian);
+                samples[sampleIndex++] = prevValue;
+                dataOffset += 4;
+                
+                // Process remaining frames (simplified - assumes 4-byte differences)
+                while (sampleIndex < numSamples && dataOffset + 4 <= offset + length) {
+                    const diff = view.getInt32(dataOffset, !isBigEndian);
+                    prevValue += diff;
+                    samples[sampleIndex++] = prevValue;
+                    dataOffset += 4;
+                    
+                    if (sampleIndex >= numSamples) break;
+                }
+                
+                return samples.slice(0, sampleIndex);
+            }
+            
+            steim2Decompress(view, offset, length, numSamples, isBigEndian) {
+                const samples = new Int32Array(numSamples);
+                let sampleIndex = 0;
+                let pos = offset;
+                let xn = 0, xn1 = 0; // Previous two sample values
+                let frameCount = 0;
+                const maxFrames = Math.floor(length / 64); // 64 bytes per frame
+                
+                while (frameCount < maxFrames && sampleIndex < numSamples && pos + 64 <= offset + length) {
+                    // Read frame header (4 bytes)
+                    const frameHeader = view.getUint32(pos, !isBigEndian);
+                    pos += 4;
+                    
+                    // Read first sample value (xn)
+                    xn = view.getInt32(pos, !isBigEndian);
+                    pos += 4;
+                    
+                    // Read second sample value (xn1)
+                    xn1 = view.getInt32(pos, !isBigEndian);
+                    pos += 4;
+                    
+                    if (frameCount === 0) {
+                        samples[sampleIndex++] = xn;
+                        samples[sampleIndex++] = xn1;
+                    }
+                    
+                    // Process 15 nibbles (60 bytes of compressed data)
+                    for (let nibbleIdx = 0; nibbleIdx < 15 && sampleIndex < numSamples; nibbleIdx++) {
+                        const nibble = view.getUint8(pos);
+                        const ctrl = (nibble >> 6) & 0x3;
+                        const val = nibble & 0x3f;
+                        pos++;
+                        
+                        let diff = 0;
+                        switch (ctrl) {
+                            case 0: // 8-bit difference
+                                diff = (val << 24) >> 24; // Sign extend
+                                break;
+                            case 1: // 16-bit difference
+                                const nextByte = view.getUint8(pos++);
+                                diff = ((val << 8 | nextByte) << 16) >> 16; // Sign extend
+                                break;
+                            case 2: // 32-bit difference
+                                const b1 = view.getUint8(pos++);
+                                const b2 = view.getUint8(pos++);
+                                const b3 = view.getUint8(pos++);
+                                diff = (val << 24 | b1 << 16 | b2 << 8 | b3);
+                                break;
+                            case 3: // Special/other - skip for now
+                                pos += 3;
+                                continue;
+                        }
+                        
+                        xn1 = xn1 + diff;
+                        if (sampleIndex < numSamples) {
+                            samples[sampleIndex++] = xn1;
+                        }
+                    }
+                    
+                    frameCount++;
+                }
+                
+                return samples.slice(0, sampleIndex);
+            }
+        }
+        
+        // Initialize parser
+        try {
+            window.miniSEEDParser = new MiniSEEDParser();
+            window.seisplotjsMiniseed = {
+                parseDataRecords: (arrayBuffer) => {
+                    if (!window.miniSEEDParser) {
+                        throw new Error('MiniSEED parser not initialized');
+                    }
+                    return window.miniSEEDParser.parseDataRecords(arrayBuffer);
+                }
+            };
+            console.log('✅ Built-in miniSEED parser initialized!');
+            console.log('   Parser available:', !!window.seisplotjsMiniseed, !!window.seisplotjsMiniseed?.parseDataRecords);
+        } catch (e) {
+            console.error('❌ Failed to initialize miniSEED parser:', e);
+            window.seisplotjsMiniseed = null;
+        }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #5a3a4a 0%, #4a2a3a 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .panel {
+            background: white;
+            border-radius: 10px;
+            padding: 20px 40px; /* 20px top/bottom, 30px left/right */
+            box-shadow: 
+                3px 3px 0 rgba(0,0,0,0.1),
+                6px 6px 0 rgba(0,0,0,0.08),
+                9px 9px 0 rgba(0,0,0,0.06),
+                12px 12px 0 rgba(0,0,0,0.04),
+                15px 15px 30px rgba(0,0,0,0.3);
+        }
+        
+        .panel-header {
+            background: linear-gradient(135deg, #f5e8e8 0%, #f0f0f0 100%);
+        }
+        
+        .panel-playback {
+            background: linear-gradient(135deg, #e8e8f5 0%, #f0f0f0 100%);
+        }
+        
+        .panel-metrics {
+            background: linear-gradient(135deg, #e8e8f0 0%, #f0f0f0 100%);
+        }
+        
+        h1 {
+            color: #fff;
+            margin-bottom: 0px;
+            font-size: 1.75em;
+            text-align: center;
+            text-shadow: 
+                2px 2px 0 rgba(0,0,0,0.15),
+                4px 4px 0 rgba(0,0,0,0.12),
+                6px 6px 0 rgba(0,0,0,0.09),
+                8px 8px 0 rgba(0,0,0,0.06),
+                10px 10px 20px rgba(0,0,0,0.4);
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px 20px; /* 15px vertical, 20px horizontal */
+            margin-bottom: 0px;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            font-weight: 600;
+            margin-bottom: 3px;
+            color: #222;
+        }
+        
+        select, input[type="range"] {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        select:focus, input[type="range"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        select option:disabled {
+            color: #555;
+            font-style: italic;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        #streamBtn:not(:disabled):not(.streaming) {
+            animation: pulseBrightness 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulseBrightness {
+            0%, 100% {
+                filter: brightness(1);
+            }
+            50% {
+                filter: brightness(1.3);
+            }
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.pause-active {
+            background: linear-gradient(135deg, #ee6766 0%, #c44ba2 100%);
+        }
+        
+        button.pause-active:hover:not(:disabled) {
+            box-shadow: 0 5px 15px rgba(238, 103, 102, 0.4);
+        }
+        
+        button.play-active {
+            background: linear-gradient(135deg, #66ee9a 0%, #4ba27c 100%);
+        }
+        
+        button.play-active:hover:not(:disabled) {
+            box-shadow: 0 5px 15px rgba(102, 238, 154, 0.4);
+        }
+        
+        button.loop-active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        button.loop-active:hover:not(:disabled) {
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        #playPauseBtn {
+            min-width: 150px;
+        }
+        
+        #loopBtn {
+            min-width: 150px;
+        }
+        
+        .status {
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            margin-bottom: 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .status.info {
+            background: #e7f3ff;
+            color: #004085;
+            border-left: 4px solid #004085;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #155724;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #721c24;
+        }
+        
+        canvas {
+            width: 100%;
+            max-width: 100%;
+            display: block;
+            border-radius: 10px;
+            margin-bottom: 0;
+            background: #000000;
+        }
+        
+        canvas:not(:last-child) {
+            margin-bottom: 20px;
+        }
+        
+        canvas:first-of-type {
+            margin-top: 0px;
+        }
+        
+        #waveform {
+            height: 100px;
+        }
+        
+        /* NOTE: Canvas height in CSS must match canvas height attribute in HTML for crisp rendering */
+        #spectrogram {
+            height: 350px;
+            background: #000;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 0px;
+        }
+        
+        .metric {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Volcano Audio Streaming</h1>
+        
+        <!-- Panel 1: Header, Pipeline, and All Data Selection -->
+        <div class="panel panel-header">
+            <div class="control-group" style="margin-bottom: 20px;">
+                <label for="pipeline">🔬 Pipeline Architecture:</label>
+                <select id="pipeline" onchange="updatePipelineInfo()" style="font-weight: bold; border-color: #667eea;">
+                    <option value="simple-iris" selected>🚀 Render Audio Stream (ObsPy processed)</option>
+                    <option value="worker-stream">🌩️ Cloudflare Worker Stream Pipeline (REAL DATA)</option>
+                    <option value="local-file">Local (File)</option>
+                    <option value="local-backend-r2">Local Backend → R2 "Cache" → IRIS</option>
+                    <option value="local-backend-local-cache">Local Backend → Local Cache → IRIS</option>
+                    <option value="r2-render">Production → R2 Cache → IRIS</option>
+                </select>
+                <div id="pipelineInfo" style="margin-top: 8px; padding: 10px; background: #f0f4ff; border-radius: 5px; font-size: 13px; color: #555; white-space: pre-wrap;"></div>
+            </div>
+            
+            <!-- Local file dropdown for local mode -->
+            <div id="localFileDropdown" class="control-group" style="margin-bottom: 0px; display: none;">
+                <label for="localFile">📁 Local MiniSEED File:</label>
+                <select id="localFile" style="max-width: 400px;">
+                    <option value="">Loading files...</option>
+                </select>
+            </div>
+            
+            <!-- Worker stream controls -->
+            <div id="workerControls" class="controls" style="display: none; margin-bottom: 0px;">
+                <div class="control-group">
+                    <label for="workerSize">Dataset Size:</label>
+                    <select id="workerSize">
+                        <option value="small">Small (90k samples)</option>
+                        <option value="medium">Medium (540k samples)</option>
+                        <option value="large">Large (1.44M samples)</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="workerGzip">Source Format:</label>
+                    <select id="workerGzip">
+                        <option value="true">Gzipped int32</option>
+                        <option value="false">Raw int32</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <div class="control-group">
+                    <label for="volcano">Volcano:</label>
+                    <select id="volcano" onchange="loadStations()">
+                        <option value="kilauea">Kīlauea (HI)</option>
+                        <option value="maunaloa">Mauna Loa (HI)</option>
+                        <option value="greatsitkin">Great Sitkin (AK)</option>
+                        <option value="shishaldin">Shishaldin (AK)</option>
+                        <option value="spurr">Mount Spurr (AK)</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="dataType">Data Type:</label>
+                    <select id="dataType" onchange="updateStationList()">
+                        <option value="seismic">Seismic (Z-component)</option>
+                        <option value="infrasound">Infrasound</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="station">Station (by distance):</label>
+                    <select id="station" style="max-width: 310px;">
+                        <option value="">Loading stations...</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="duration">Duration:</label>
+                    <select id="duration" style="max-width: 100px;">
+                        <option value="1">1 hour</option>
+                        <option value="2">2 hours</option>
+                        <option value="4">4 hours</option>
+                        <option value="6">6 hours</option>
+                        <option value="12">12 hours</option>
+                        <option value="24">24 hours</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="sampleRate">Output Sample Rate:</label>
+                    <select id="sampleRate">
+                        <option value="11025">11,025 Hz</option>
+                        <option value="22050">22,050 Hz</option>
+                        <option value="44100" selected>44,100 Hz</option>
+                    </select>
+                </div>
+                
+                <div id="formatControlGroup" class="control-group">
+                    <label for="format">File Format:</label>
+                    <select id="format" style="max-width: 155px;">
+                        <option value="int16" selected>Int16</option>
+                        <option value="int32" disabled>Int32</option>
+                        <option value="mseed" disabled>MiniSEED</option>
+                    </select>
+                </div>
+                
+                <!-- Server-side processing controls (only shown for simple-iris mode) -->
+                <div id="serverProcessingControls" class="controls" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 2px solid #ddd;">
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="enableHighpass" style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="enableHighpass" style="margin-bottom: 0; cursor: pointer;">Enable High-Pass Filter (0.5 Hz)</label>
+                    </div>
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="enableNormalize" style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer;">Enable Normalization</label>
+                    </div>
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="sendRaw" style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="sendRaw" style="margin-bottom: 0; cursor: pointer;">Send Raw (int32 instead of float32)</label>
+                    </div>
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="bypassCompression" style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="bypassCompression" style="margin-bottom: 0; cursor: pointer;">Bypass Zstd Compression (debug)</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Panel 2: Playback Controls and Visualizations -->
+        <div class="panel panel-playback">
+            <div class="button-group">
+                <button onclick="startStreaming()" id="streamBtn">🎵 Start Streaming</button>
+                <button onclick="togglePlayPause()" id="playPauseBtn" class="secondary" disabled>⏸️ Pause</button>
+                <button onclick="toggleLoop()" id="loopBtn" class="secondary" disabled>🔁 Loop</button>
+                <div style="display: flex; align-items: center; margin-left: 20px; gap: 15px; flex: 1;">
+                    <div style="display: flex; align-items: center; flex: 1; min-width: 150px;">
+                        <label for="playbackSpeed" style="font-weight: 600; margin-right: 5px; white-space: nowrap;">Speed: <span id="speedValue">1.0</span>x</label>
+                        <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="500" oninput="changePlaybackSpeed()" onmouseup="this.blur()" ontouchend="this.blur()" style="flex: 1;">
+                    </div>
+                    <div style="display: flex; align-items: center; flex: 1; min-width: 150px;">
+                        <label for="volumeSlider" style="font-weight: 600; margin-right: 5px; white-space: nowrap;">Volume: <span id="volumeValue">1.0</span></label>
+                        <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" oninput="changeVolume()" onmouseup="this.blur()" ontouchend="this.blur()" style="flex: 1;">
+                    </div>
+                </div>
+            </div>
+            
+            <canvas id="waveform" width="1200" height="150"></canvas>
+            <!-- NOTE: Canvas height must match CSS height for crisp rendering (see CSS #spectrogram) -->
+            <canvas id="spectrogram" width="1200" height="350"></canvas>
+        </div>
+        
+        <!-- Panel 3: Metrics (Data Displays) -->
+        <div class="panel panel-metrics">
+
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-label">Total Downloaded</div>
+                    <div class="metric-value" id="totalDownloaded">0 KB</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Time to First Audio</div>
+                    <div class="metric-value" id="ttfa">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Chunks Received</div>
+                    <div class="metric-value" id="chunksReceived">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Playing Chunk</div>
+                    <div class="metric-value" id="playingChunk">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Playback Progress</div>
+                    <div class="metric-value" id="playbackProgress">0%</div>
+                </div>
+            </div>
+            
+            <div id="status" class="status info">
+                Ready to stream. Select your parameters and click "Start Streaming".
+            </div>
+            
+            <button onclick="downloadAudioFile()" id="downloadBtn" class="secondary" disabled style="margin-top: 20px; width: 100%;">💾 Download Audio File</button>
+        </div>
+    </div>
+    
+    <script>
+        // Configuration
+        const AUDIO_FADE_TIME = 0.15; // seconds - fade in/out time to prevent clicking (150ms)
+        const AUDIO_FADE_BUFFER = 0.05; // seconds - extra buffer after fade (50ms safety margin)
+        const SEEK_CROSSFADE_TIME = 0.025; // seconds - crossfade time when seeking (25ms)
+        
+        // Global state
+        let audioContext = null;
+        let spectrogramAnalyser = null;
+        let spectrogramAnimationId = null;
+        let spectrogramCanvas = null; // ✅ OPTIMIZATION: Cache canvas element
+        let spectrogramCtx = null; // ✅ OPTIMIZATION: Cache canvas context
+        let cachedWaveformCanvas = null; // ✅ OPTIMIZATION: Offscreen canvas for waveform caching
+        let currentGainNode = null;
+        let scheduledSources = [];
+        let currentPlaybackRate = 1.0;
+        let isPaused = false;
+        let isLooping = false;
+        let playbackStartTime = 0;
+        let pauseStartTime = 0;
+        let totalAudioDuration = 0;
+        let nextChunkStartTime = 0; // For gapless chunk scheduling
+        let currentAudioPosition = 0; // Current position in audio (seconds)
+        let lastUpdateTime = 0; // Last time we updated position
+        let pauseFadeTimeout = null; // Timeout for pending pause fade completion
+        
+        // DJ Deck system for smooth seeking
+        let isStreamComplete = false; // Flag: all chunks received and combined
+        let combinedAudioData = null; // Float32Array of complete audio
+        let deckA = { source: null, gain: null, stopTimeout: null, manualStop: false, fadeoutTimeout: null }; // DJ Deck A
+        let deckB = { source: null, gain: null, stopTimeout: null, manualStop: false, fadeoutTimeout: null }; // DJ Deck B
+        let activeDeck = null; // 'A' or 'B' - which deck is currently playing
+        let isDeckMode = false; // Flag: switched from chunks to deck mode (prevents chunk callbacks)
+        
+        // Streaming state
+        let allChunksData = [];
+        let metadata = null;
+        let audioRate = 0; // Sample rate for audio playback (seismic rate * speedup)
+        let streamStartTime = 0;
+        let firstAudioTime = 0;
+        let totalBytesReceived = 0;
+        let chunksReceived = 0;
+        let cacheHitForMetrics = false; // Track if current stream was a cache hit
+        let partialChunkBuffer = null; // Buffer for incomplete int16 samples
+        
+        // Just-in-time chunk scheduling (for gapless playback)
+        let nextChunkScheduleTimeout = null; // Timeout to schedule next chunk before current ends
+        let currentChunkPlaybackPosition = 0; // Sample-accurate position tracking (in seconds)
+        
+        // Dynamic chunk scheduling (accounts for playback rate changes)
+        let scheduleLeadSamples = 256; // Schedule next chunk 256 samples before current ends (~5.8ms at 44.1kHz)
+        let currentChunkStartTime = 0; // When current chunk started (audioContext time)
+        let currentChunkDurationSamples = 0; // Duration of current chunk in samples
+        
+        // Station data
+        let availableStations = null;
+        
+        // Playback queue
+        let chunkQueue = [];
+        let isPlaying = false;
+        let currentSource = null;
+        
+        // Embedded station data (active stations within 20km of top 5 volcanoes)
+        const EMBEDDED_STATIONS = {"greatsitkin":{"name":"Great Sitkin","lat":52.0765,"lon":-176.1109,"seismic":[{"network":"AV","station":"GSTD","location":"","channel":"BHZ","distance_km":3.3,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSTR","location":"","channel":"BHZ","distance_km":4.1,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSSP","location":"","channel":"BHZ","distance_km":4.9,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSMY","location":"","channel":"BHZ","distance_km":5.2,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSCK","location":"","channel":"BHZ","distance_km":7.7,"sample_rate":50.0,"priority":0},{"network":"AV","station":"GSIG","location":"","channel":"BHZ","distance_km":16.2,"sample_rate":50.0,"priority":0}],"infrasound":[{"network":"AV","station":"GSMY","location":"","channel":"BDF","distance_km":5.2,"sample_rate":50.0}]},"shishaldin":{"name":"Shishaldin","lat":54.7554,"lon":-163.9711,"seismic":[{"network":"AV","station":"SSLS","location":"","channel":"BHZ","distance_km":5.4,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SSLN","location":"","channel":"BHZ","distance_km":6.5,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SSBA","location":"","channel":"BHZ","distance_km":10.1,"sample_rate":50.0,"priority":0},{"network":"AV","station":"ISNN","location":"","channel":"BHZ","distance_km":14.9,"sample_rate":50.0,"priority":0},{"network":"AV","station":"ISLZ","location":"","channel":"BHZ","distance_km":16.9,"sample_rate":50.0,"priority":0},{"network":"AV","station":"BRPK","location":"","channel":"BHZ","distance_km":19.2,"sample_rate":50.0,"priority":0}],"infrasound":[{"network":"AV","station":"SSLS","location":"","channel":"BDF","distance_km":5.4,"sample_rate":50.0},{"network":"AV","station":"SSLN","location":"","channel":"BDF","distance_km":6.5,"sample_rate":50.0},{"network":"AV","station":"SSBA","location":"","channel":"BDF","distance_km":10.1,"sample_rate":50.0}]},"spurr":{"name":"Spurr","lat":61.2989,"lon":-152.2539,"seismic":[{"network":"AV","station":"SPCP","location":"","channel":"BHZ","distance_km":6.4,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPBG","location":"","channel":"BHZ","distance_km":7.7,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPCN","location":"","channel":"BHZ","distance_km":9.2,"sample_rate":50.0,"priority":0},{"network":"AV","station":"N20K","location":"","channel":"BHZ","distance_km":11.2,"sample_rate":40.0,"priority":0},{"network":"AV","station":"SPCG","location":"","channel":"BHZ","distance_km":12.4,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPCL","location":"","channel":"BHZ","distance_km":12.4,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPWE","location":"","channel":"BHZ","distance_km":16.5,"sample_rate":50.0,"priority":0},{"network":"AV","station":"SPU","location":"","channel":"BHZ","distance_km":16.8,"sample_rate":50.0,"priority":0}],"infrasound":[{"network":"AV","station":"SPCP","location":"","channel":"BDF","distance_km":6.4,"sample_rate":50.0},{"network":"AV","station":"N20K","location":"20","channel":"BDF","distance_km":11.2,"sample_rate":20.0},{"network":"AV","station":"N20K","location":"EP","channel":"BDF","distance_km":11.2,"sample_rate":40.0},{"network":"AV","station":"N20K","location":"EP","channel":"BDO","distance_km":11.2,"sample_rate":40.0},{"network":"AV","station":"SPWE","location":"","channel":"BDF","distance_km":16.5,"sample_rate":50.0},{"network":"AV","station":"SPU","location":"","channel":"BDF","distance_km":16.8,"sample_rate":50.0}]},"kilauea":{"name":"Kilauea","lat":19.421,"lon":-155.287,"seismic":[{"network":"HV","station":"UWE","location":"","channel":"HHZ","distance_km":0.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"UWE","location":"QC","channel":"EHZ","distance_km":0.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"UWE","location":"QC","channel":"HHZ","distance_km":0.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"OBL","location":"","channel":"HHZ","distance_km":0.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"UWB","location":"","channel":"HHZ","distance_km":1.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"SBL","location":"","channel":"HHZ","distance_km":2.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"WRM","location":"","channel":"HHZ","distance_km":2.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"HAT","location":"","channel":"HHZ","distance_km":2.7,"sample_rate":100.0,"priority":0},{"network":"HV","station":"BYL","location":"","channel":"HHZ","distance_km":3.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"RIMD","location":"","channel":"HHZ","distance_km":3.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"KKO","location":"","channel":"HHZ","distance_km":3.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"SDH","location":"","channel":"HHZ","distance_km":3.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"OTLD","location":"","channel":"HHZ","distance_km":3.9,"sample_rate":100.0,"priority":0},{"network":"HV","station":"RSDD","location":"01","channel":"HHZ","distance_km":4.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"CPKD","location":"","channel":"HHZ","distance_km":5.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"NAHU","location":"","channel":"HHZ","distance_km":5.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"PUHI","location":"","channel":"HHZ","distance_km":5.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"PUHI","location":"00","channel":"HHZ","distance_km":5.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"AHUD","location":"","channel":"EHZ","distance_km":6.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"AHUD","location":"00","channel":"HHZ","distance_km":6.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"KOSM","location":"","channel":"HHZ","distance_km":7.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"DEVL","location":"","channel":"HHZ","distance_km":7.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"PAUD","location":"","channel":"HHZ","distance_km":9.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"MITD","location":"","channel":"HHZ","distance_km":9.6,"sample_rate":100.0,"priority":0},{"network":"HV","station":"MLOD","location":"","channel":"HHZ","distance_km":13.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"KNHD","location":"","channel":"EHZ","distance_km":13.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"HLPD","location":"","channel":"HHZ","distance_km":14.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"DESD","location":"","channel":"EHZ","distance_km":14.2,"sample_rate":100.0,"priority":0},{"network":"HV","station":"POLD","location":"","channel":"EHZ","distance_km":16.9,"sample_rate":100.0,"priority":0},{"network":"HV","station":"STCD","location":"","channel":"HHZ","distance_km":17.4,"sample_rate":100.0,"priority":0},{"network":"HV","station":"AIND","location":"","channel":"HHZ","distance_km":18.7,"sample_rate":100.0,"priority":0},{"network":"HV","station":"NPOC","location":"","channel":"HHZ","distance_km":18.9,"sample_rate":100.0,"priority":0},{"network":"HV","station":"JCUZ","location":"","channel":"HHZ","distance_km":19.9,"sample_rate":100.0,"priority":0}],"infrasound":[{"network":"UH","station":"MENE2","location":"01","channel":"BDF","distance_km":7.0,"sample_rate":40.0},{"network":"UH","station":"MENE4","location":"01","channel":"BDF","distance_km":7.0,"sample_rate":40.0},{"network":"UH","station":"MENE1","location":"01","channel":"BDF","distance_km":7.1,"sample_rate":40.0},{"network":"UH","station":"MENE3","location":"01","channel":"BDF","distance_km":7.1,"sample_rate":40.0},{"network":"UH","station":"MENE5","location":"01","channel":"BDF","distance_km":7.1,"sample_rate":40.0}]},"maunaloa":{"name":"Mauna Loa","lat":19.475,"lon":-155.608,"seismic":[{"network":"HV","station":"MOKD","location":"","channel":"HHZ","distance_km":1.6,"sample_rate":100.0,"priority":0},{"network":"HV","station":"SWRD","location":"","channel":"EHZ","distance_km":2.6,"sample_rate":100.0,"priority":0},{"network":"HV","station":"WILD","location":"","channel":"EHZ","distance_km":3.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"ALEP","location":"","channel":"EHZ","distance_km":8.3,"sample_rate":100.0,"priority":0},{"network":"HV","station":"RCOD","location":"","channel":"EHZ","distance_km":8.3,"sample_rate":100.0,"priority":0},{"network":"HV","station":"ELEP","location":"","channel":"EHZ","distance_km":9.1,"sample_rate":100.0,"priority":0},{"network":"HV","station":"TRAD","location":"","channel":"EHZ","distance_km":9.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"TOUO","location":"","channel":"HHZ","distance_km":10.5,"sample_rate":100.0,"priority":0},{"network":"HV","station":"DAND","location":"","channel":"EHZ","distance_km":14.7,"sample_rate":100.0,"priority":0},{"network":"HV","station":"PLAD","location":"","channel":"EHZ","distance_km":17.0,"sample_rate":100.0,"priority":0},{"network":"HV","station":"HSSD","location":"","channel":"HHZ","distance_km":19.3,"sample_rate":100.0,"priority":0},{"network":"HV","station":"AIND","location":"","channel":"HHZ","distance_km":19.5,"sample_rate":100.0,"priority":0}],"infrasound":[]}};
+        
+        // Pipeline configuration
+        const PIPELINE_CONFIGS = {
+            'simple-iris': {
+                name: 'Railway Audio Stream (ObsPy processed)',
+                description: '🚀 Railway Backend: ObsPy decodes miniSEED → optional high-pass/normalize → zstd compressed → browser plays',
+                color: '#28a745',
+                useEmbeddedStations: true,
+                audioStreamUrl: 'http://localhost:5001/api/stream-audio'
+            },
+            'local-file': {
+                name: 'Local (File)',
+                localFilesUrl: 'http://localhost:5001/api/local-files',
+                localStreamUrl: 'http://localhost:5001/api/local-file',
+                description: '💾 Local file: Load audio data from local mseed_files directory',
+                color: '#4caf50'
+            },
+            'local-backend-r2': {
+                name: 'Local Backend → R2 "Cache" → IRIS',
+                stationsUrl: 'http://localhost:5001/api/stations',
+                streamUrl: 'http://localhost:5001/api/progressive-test',
+                description: '🧪 Local backend: R2 "cache" that only works within the same hour (broken timestamp logic)',
+                color: '#667eea'
+            },
+            'local-backend-local-cache': {
+                name: 'Local Backend → Local Cache → IRIS',
+                stationsUrl: 'http://localhost:5001/api/stations',
+                streamUrl: 'http://localhost:5001/api/local-cache-test',
+                description: '🔧 Dev mode: Uses local file cache (backend/cache/) instead of R2',
+                color: '#9c27b0'
+            },
+            'r2-render': {
+                name: 'Production → R2 Cache → IRIS',
+                stationsUrl: 'https://volcano-audio-production.up.railway.app/api/stations',
+                streamUrl: 'https://volcano-audio-production.up.railway.app/api/progressive-test',
+                description: '🌐 Production Railway: Checks R2 cache first, fetches from IRIS if needed',
+                color: '#764ba2'
+            },
+            'worker-stream': {
+                name: 'Cloudflare Worker Stream Pipeline',
+                workerStreamUrl: 'https://volcano-audio-test.robertalexander-music.workers.dev/stream',
+                description: '🌩️ REAL DATA: R2 (gzipped int32 or raw int32) → Worker → decompress → high-pass (20Hz) → normalize → int16 → browser',
+                color: '#ff6b35'
+            }
+        };
+        
+        function getPipelineConfig() {
+            const pipeline = document.getElementById('pipeline').value;
+            return PIPELINE_CONFIGS[pipeline];
+        }
+        
+        function updatePipelineInfo() {
+            const config = getPipelineConfig();
+            const info = document.getElementById('pipelineInfo');
+            const localFileDropdown = document.getElementById('localFileDropdown');
+            const controls = document.querySelector('.controls');
+            const streamBtn = document.getElementById('streamBtn');
+            
+            if (config.useEmbeddedStations) {
+                // Render audio stream mode - uses embedded station data
+                info.innerHTML = `${config.description}  |  🌐 Endpoint: ${config.audioStreamUrl || 'http://localhost:5001/api/stream-audio'}`;
+                localFileDropdown.style.display = 'none';
+                controls.style.display = 'flex';
+                streamBtn.textContent = '🎵 Start Streaming';
+                
+                // Hide format dropdown (not needed for simple IRIS mode - always miniSEED)
+                const formatControlGroup = document.getElementById('formatControlGroup');
+                if (formatControlGroup) {
+                    formatControlGroup.style.display = 'none';
+                }
+                
+                // Show server processing controls
+                const serverProcessingControls = document.getElementById('serverProcessingControls');
+                if (serverProcessingControls) {
+                    serverProcessingControls.style.display = 'flex';
+                }
+                
+                // Hide worker controls
+                const workerControls = document.getElementById('workerControls');
+                if (workerControls) {
+                    workerControls.style.display = 'none';
+                }
+                
+                loadStations(); // Uses embedded data
+            } else if (config.localFilesUrl) {
+                // Local file mode
+                info.innerHTML = `${config.description}`;
+                localFileDropdown.style.display = 'flex';
+                controls.style.display = 'none';
+                streamBtn.textContent = '🎵 Start';
+                
+                // Hide server processing controls
+                const serverProcessingControls = document.getElementById('serverProcessingControls');
+                if (serverProcessingControls) {
+                    serverProcessingControls.style.display = 'none';
+                }
+                
+                loadLocalFiles();
+            } else if (config.workerStreamUrl) {
+                // Worker stream mode - simple size selector
+                info.innerHTML = `${config.description}  |  🌩️ Worker: ${config.workerStreamUrl}`;
+                localFileDropdown.style.display = 'none';
+                controls.style.display = 'none';
+                streamBtn.textContent = '🎵 Test Pipeline';
+                
+                // Hide server processing controls
+                const serverProcessingControls = document.getElementById('serverProcessingControls');
+                if (serverProcessingControls) {
+                    serverProcessingControls.style.display = 'none';
+                }
+                
+                // Show simple controls for worker stream (size + gzip toggle)
+                const workerControls = document.getElementById('workerControls');
+                if (workerControls) {
+                    workerControls.style.display = 'flex';
+                }
+            } else if (config.stationsUrl && config.streamUrl) {
+                // Backend modes
+                info.innerHTML = `${config.description}  |  🕋 Stations: ${config.stationsUrl}  |  ➡️ Stream: ${config.streamUrl}`;
+                localFileDropdown.style.display = 'none';
+                controls.style.display = 'flex';
+                streamBtn.textContent = '🎵 Start Streaming';
+                
+                // Show format dropdown (needed for backend modes)
+                const formatControlGroup = document.getElementById('formatControlGroup');
+                if (formatControlGroup) {
+                    formatControlGroup.style.display = 'flex';
+                }
+                
+                // Hide worker controls
+                const workerControls = document.getElementById('workerControls');
+                if (workerControls) {
+                    workerControls.style.display = 'none';
+                }
+                
+                // Hide server processing controls (not for backend modes)
+                const serverProcessingControls = document.getElementById('serverProcessingControls');
+                if (serverProcessingControls) {
+                    serverProcessingControls.style.display = 'none';
+                }
+                
+                loadStations();
+            }
+        }
+        
+        // Calculate slider value for 1.0x speed (reversing the log function)
+        function calculateSliderForSpeed(targetSpeed) {
+            const minSpeed = 0.01;
+            const maxSpeed = 10;
+            const minPos = 0;
+            const maxPos = 1000;
+            const minLog = Math.log(minSpeed);
+            const maxLog = Math.log(maxSpeed);
+            const logRange = maxLog - minLog;
+            const sliderValue = ((Math.log(targetSpeed) - minLog) / logRange) * (maxPos - minPos) + minPos;
+            return Math.round(sliderValue);
+        }
+        
+        // Enable stream button when data parameters change
+        function enableStreamButton() {
+            const streamBtn = document.getElementById('streamBtn');
+            streamBtn.disabled = false;
+            console.log('✅ Stream button re-enabled due to parameter change');
+        }
+        
+        // Interactive waveform scrubbing
+        let isDragging = false;
+        let scrubTargetPosition = null; // Position to seek to when user releases mouse
+        
+        function setupWaveformInteraction() {
+            const canvas = document.getElementById('waveform');
+            
+            // Calculate position from mouse event
+            function getPositionFromMouse(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const progress = Math.max(0, Math.min(1, x / rect.width));
+                const targetPosition = progress * totalAudioDuration;
+                return { targetPosition, progress, x, width: rect.width };
+            }
+            
+            // Update visual preview of scrub position
+            function updateScrubPreview(event) {
+                if (!isStreamComplete || !combinedAudioData || !totalAudioDuration) return;
+                
+                const { targetPosition, progress, x, width } = getPositionFromMouse(event);
+                scrubTargetPosition = targetPosition;
+                
+                // Draw preview line
+                const ctx = canvas.getContext('2d');
+                const canvasHeight = canvas.height;
+                
+                // Convert progress to canvas coordinate space (not rendered size)
+                const canvasX = progress * canvas.width;
+                
+                // Redraw waveform
+                if (cachedWaveformCanvas) {
+                    ctx.clearRect(0, 0, canvas.width, canvasHeight);
+                    ctx.drawImage(cachedWaveformCanvas, 0, 0);
+                }
+                
+                // Draw preview line (different color for scrubbing)
+                ctx.strokeStyle = isDragging ? '#bbbbbb' : '#ff0000'; // Light grey while scrubbing, red normally
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(canvasX, 0);
+                ctx.lineTo(canvasX, canvasHeight);
+                ctx.stroke();
+                
+                if (isDragging) {
+                    console.log(`🎯 Scrub preview: mouseX=${x.toFixed(0)}px, canvasX=${canvasX.toFixed(0)}px, renderedWidth=${width.toFixed(0)}px, canvasWidth=${canvas.width}, progress=${(progress*100).toFixed(1)}%, target=${targetPosition.toFixed(2)}s`);
+                }
+            }
+            
+            // Actually perform the seek
+            function performSeek() {
+                if (!isStreamComplete || !combinedAudioData) {
+                    console.log('⏸️ Seeking disabled - stream not complete yet');
+                    return;
+                }
+                
+                if (scrubTargetPosition !== null) {
+                    console.log(`🖱️ Mouse released - seeking to ${scrubTargetPosition.toFixed(2)}s`);
+                    seekToPosition(scrubTargetPosition);
+                    scrubTargetPosition = null;
+                }
+            }
+            
+            canvas.addEventListener('mousedown', (e) => {
+                if (!isStreamComplete) return;
+                isDragging = true;
+                canvas.style.cursor = 'grabbing';
+                updateScrubPreview(e);
+                console.log('🖱️ Scrub started (drag to preview, release to seek)');
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    updateScrubPreview(e); // Just preview, don't seek yet!
+                }
+            });
+            
+            canvas.addEventListener('mouseup', (e) => {
+                if (isDragging) {
+                    isDragging = false;
+                    canvas.style.cursor = 'pointer';
+                    updateScrubPreview(e); // Final preview position
+                    performSeek(); // NOW actually seek!
+                    
+                    // Restart playback indicator after scrubbing
+                    if (isPlaying && !isPaused) {
+                        requestAnimationFrame(updatePlaybackIndicator);
+                    }
+                    
+                    console.log('🖱️ Scrub ended');
+                }
+            });
+            
+            canvas.addEventListener('mouseleave', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    canvas.style.cursor = isStreamComplete ? 'pointer' : 'default';
+                    performSeek(); // Seek even if mouse leaves canvas
+                    
+                    // Restart playback indicator after scrubbing
+                    if (isPlaying && !isPaused) {
+                        requestAnimationFrame(updatePlaybackIndicator);
+                    }
+                    
+                    console.log('🖱️ Scrub ended (mouse left canvas)');
+                }
+            });
+            
+            // Add hover cursor to indicate interactivity (only when stream complete)
+            canvas.addEventListener('mouseenter', () => {
+                if (isStreamComplete && totalAudioDuration > 0) {
+                    canvas.style.cursor = 'pointer';
+                }
+            });
+        }
+        
+        // Load stations on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            // Set initial slider position for 1.0x speed
+            const sliderValueFor1x = calculateSliderForSpeed(1.0);
+            document.getElementById('playbackSpeed').value = sliderValueFor1x;
+            console.log(`Initialized slider at position ${sliderValueFor1x} for 1.0x speed`);
+            
+            // Ensure volcano dropdown has a selected value before loading stations
+            const volcanoSelect = document.getElementById('volcano');
+            if (volcanoSelect && (!volcanoSelect.value || volcanoSelect.value === '')) {
+                volcanoSelect.value = volcanoSelect.options[0]?.value || 'kilauea';
+                console.log(`✅ Initialized volcano dropdown to: ${volcanoSelect.value}`);
+            }
+            
+            // Initialize pipeline (will load files or stations as needed)
+            updatePipelineInfo();
+            
+            // Setup interactive waveform scrubbing
+            setupWaveformInteraction();
+            
+            // Add event listeners to data selection controls to re-enable stream button
+            document.getElementById('pipeline').addEventListener('change', enableStreamButton);
+            document.getElementById('volcano').addEventListener('change', enableStreamButton);
+            document.getElementById('dataType').addEventListener('change', enableStreamButton);
+            document.getElementById('station').addEventListener('change', enableStreamButton);
+            document.getElementById('duration').addEventListener('change', enableStreamButton);
+            document.getElementById('sampleRate').addEventListener('change', enableStreamButton);
+            document.getElementById('format').addEventListener('change', enableStreamButton);
+            document.getElementById('localFile').addEventListener('change', enableStreamButton);
+            document.getElementById('workerSize').addEventListener('change', enableStreamButton);
+            document.getElementById('workerGzip').addEventListener('change', enableStreamButton);
+            document.getElementById('enableHighpass').addEventListener('change', enableStreamButton);
+            document.getElementById('enableNormalize').addEventListener('change', enableStreamButton);
+            document.getElementById('sendRaw').addEventListener('change', enableStreamButton);
+            document.getElementById('bypassCompression').addEventListener('change', enableStreamButton);
+            
+            // Add spacebar support for play/pause
+            document.addEventListener('keydown', (e) => {
+                // Only trigger if spacebar and not focused on an input/select element
+                if (e.code === 'Space' && !['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(e.target.tagName)) {
+                    e.preventDefault(); // Prevent page scroll
+                    const playPauseBtn = document.getElementById('playPauseBtn');
+                    if (!playPauseBtn.disabled && audioContext) {
+                        console.log('⌨️ Spacebar pressed - toggling play/pause');
+                        togglePlayPause();
+                    }
+                }
+            });
+            
+            console.log('⌨️ Spacebar control enabled for play/pause');
+        });
+        
+        async function loadStations() {
+            const config = getPipelineConfig();
+            const stationSelect = document.getElementById('station');
+            
+            // Use embedded stations for simple-iris mode
+            if (config.useEmbeddedStations) {
+                const volcanoSelect = document.getElementById('volcano');
+                let volcano = volcanoSelect.value;
+                
+                // If no volcano selected, default to first option
+                if (!volcano || volcano === '') {
+                    volcano = volcanoSelect.options[0]?.value || 'kilauea';
+                    volcanoSelect.value = volcano;
+                }
+                
+                if (!EMBEDDED_STATIONS[volcano]) {
+                    stationSelect.innerHTML = '<option value="">Volcano not found in embedded data</option>';
+                    console.warn(`⚠️ Volcano '${volcano}' not found in embedded data`);
+                    return;
+                }
+                
+                // Convert embedded format to match backend format
+                const volcanoData = EMBEDDED_STATIONS[volcano];
+                availableStations = {
+                    seismic: volcanoData.seismic.map(s => ({
+                        network: s.network,
+                        station: s.station,
+                        location: s.location,
+                        channel: s.channel,
+                        label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
+                    })),
+                    infrasound: volcanoData.infrasound.map(s => ({
+                        network: s.network,
+                        station: s.station,
+                        location: s.location,
+                        channel: s.channel,
+                        label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
+                    }))
+                };
+                
+                updateStationList();
+                console.log(`✅ Loaded ${Object.values(availableStations).flat().length} embedded stations for ${volcanoData.name}`);
+                return;
+            }
+            
+            // Backend mode - fetch from API
+            if (!config.stationsUrl) {
+                return;
+            }
+            
+            const volcano = document.getElementById('volcano').value;
+            stationSelect.innerHTML = '<option value="">Loading stations...</option>';
+            
+            const url = `${config.stationsUrl}/${volcano}`;
+            
+            console.log(`📡 Loading stations from: ${url}`);
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                availableStations = await response.json();
+                updateStationList();
+                console.log(`✅ Loaded ${Object.values(availableStations).flat().length} stations`);
+            } catch (error) {
+                console.error('Failed to load stations:', error);
+                stationSelect.innerHTML = '<option value="">Error loading stations</option>';
+            }
+        }
+        
+        async function loadLocalFiles() {
+            const config = getPipelineConfig();
+            const localFileSelect = document.getElementById('localFile');
+            
+            if (!config.localFilesUrl) {
+                return;
+            }
+            
+            localFileSelect.innerHTML = '<option value="">Loading files...</option>';
+            
+            console.log(`📁 Loading local files from: ${config.localFilesUrl}`);
+            
+            try {
+                const response = await fetch(config.localFilesUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const files = data.files || [];
+                
+                if (files.length === 0) {
+                    localFileSelect.innerHTML = '<option value="">No files found</option>';
+                    return;
+                }
+                
+                localFileSelect.innerHTML = '';
+                files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file;
+                    option.textContent = file;
+                    localFileSelect.appendChild(option);
+                });
+                
+                console.log(`✅ Loaded ${files.length} local files`);
+            } catch (error) {
+                console.error('Failed to load local files:', error);
+                localFileSelect.innerHTML = '<option value="">Error loading files</option>';
+            }
+        }
+        
+        function updateStationList() {
+            if (!availableStations) return;
+            
+            const dataType = document.getElementById('dataType').value;
+            const stationSelect = document.getElementById('station');
+            const stations = availableStations[dataType] || [];
+            
+            if (stations.length === 0) {
+                stationSelect.innerHTML = '<option value="">No stations available</option>';
+                return;
+            }
+            
+            stationSelect.innerHTML = '';
+            stations.forEach(station => {
+                const option = document.createElement('option');
+                option.value = JSON.stringify({
+                    network: station.network,
+                    station: station.station,
+                    location: station.location,
+                    channel: station.channel
+                });
+                option.textContent = station.label;
+                stationSelect.appendChild(option);
+            });
+        }
+        
+        function stopAllAudio() {
+            // Clear just-in-time scheduling timeout
+            if (nextChunkScheduleTimeout) {
+                clearTimeout(nextChunkScheduleTimeout);
+                nextChunkScheduleTimeout = null;
+                console.log('🛑 stopAllAudio: cleared pending chunk schedule timeout');
+            }
+            
+            // Stop current source
+            if (currentSource) {
+                try { currentSource.stop(); } catch (e) {}
+                currentSource = null;
+            }
+            
+            // Stop all scheduled sources
+            for (const source of scheduledSources) {
+                try { source.stop(); } catch (e) {}
+            }
+            scheduledSources = [];
+            
+            // Clear the queue
+            chunkQueue = [];
+            
+            // Only change playing state if NOT in deck mode
+            if (!isDeckMode) {
+                isPlaying = false;
+                console.log('🛑 stopAllAudio: set isPlaying=false (chunk mode)');
+                
+                // Stop spectrogram animation (only in chunk mode)
+                if (spectrogramAnimationId) {
+                    cancelAnimationFrame(spectrogramAnimationId);
+                    spectrogramAnimationId = null;
+                    console.log('🛑 stopAllAudio: stopped spectrogram (chunk mode)');
+                }
+            } else {
+                console.log('🛑 stopAllAudio: preserving isPlaying state and spectrogram (deck mode)');
+            }
+        }
+        
+        function togglePlayPause() {
+            if (!audioContext) return;
+            
+            console.log(`⏯️ togglePlayPause BEFORE: isPlaying=${isPlaying}, isPaused=${isPaused}, queue=${chunkQueue.length}`);
+            
+            const btn = document.getElementById('playPauseBtn');
+            
+            // ✅ If audio has finished, clicking play button should restart from beginning
+            if (!isPlaying && isPaused && chunkQueue.length === 0 && allChunksData.length > 0) {
+                console.log('🔄 Restarting playback from beginning...');
+                
+                // Check if we're in deck mode or chunk mode
+                if (isDeckMode && isStreamComplete && combinedAudioData) {
+                    // Deck mode: Use seek to restart
+                    console.log('🎚️ Restarting in deck mode (seeking to 0)');
+                    
+                    // Reset state
+                    isPaused = false;
+                    isPlaying = true;
+                    btn.textContent = '⏸️ Pause';
+                    btn.classList.remove('play-active', 'secondary');
+                    btn.classList.add('pause-active');
+                    
+                    // Resume audio context
+                    if (audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                    
+                    // Start spectrogram
+                    if (!spectrogramAnimationId && spectrogramAnalyser) {
+                        spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                    }
+                    
+                    // Seek to beginning using deck system
+                    seekToPosition(0);
+                } else {
+                    // Chunk mode: Re-populate queue
+                    console.log('🎵 Restarting in chunk mode (replaying chunks)');
+                    
+                    // Re-populate the queue from stored chunk data
+                    chunkQueue = [];
+                    allChunksData.forEach((chunkData, index) => {
+                        chunkQueue.push({ data: chunkData, index: index });
+                    });
+                    
+                    // Reset state
+                    isPaused = false;
+                    isPlaying = false;
+                    btn.textContent = '⏸️ Pause';
+                    btn.classList.remove('play-active', 'secondary');
+                    btn.classList.add('pause-active');
+                    
+                    // Resume audio context
+                    if (audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                    
+                    // Start spectrogram
+                    if (!spectrogramAnimationId && spectrogramAnalyser) {
+                        spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                    }
+                    
+                    // Reset playback indicator
+                    playbackStartTime = audioContext.currentTime;
+                    currentAudioPosition = 0; // Reset to beginning
+                    lastUpdateTime = audioContext.currentTime;
+                    
+                    // Fade in from restart
+                    if (currentGainNode) {
+                        const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                        currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                        currentGainNode.gain.linearRampToValueAtTime(targetVolume, audioContext.currentTime + AUDIO_FADE_TIME);
+                    }
+                    
+                    // Start playing from the beginning
+                    playNextChunk();
+                    
+                    // Restart playback indicator
+                    updatePlaybackIndicator();
+                }
+                return;
+            }
+            
+            isPaused = !isPaused;
+            
+            if (isPaused) {
+                // Pause - fade out first
+                let gainNode = null;
+                
+                // Get the correct gain node (deck mode or chunk mode)
+                if (isDeckMode && activeDeck) {
+                    const deck = (activeDeck === 'A') ? deckA : deckB;
+                    gainNode = deck.gain;
+                    
+                    // Cancel scheduled fadeout since we're manually pausing/fading
+                    if (deck.fadeoutTimeout) {
+                        clearTimeout(deck.fadeoutTimeout);
+                        deck.fadeoutTimeout = null;
+                        console.log(`⏰ Cancelled scheduled fadeout for Deck ${activeDeck} (pausing)`);
+                    }
+                    
+                    console.log(`⏸️ Pausing Deck ${activeDeck}`);
+                } else {
+                    gainNode = currentGainNode;
+                    console.log('⏸️ Pausing chunk playback');
+                }
+                
+                if (gainNode) {
+                    // Cancel any pending fade
+                    gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                    
+                    // Wait for fade to complete before suspending
+                    pauseFadeTimeout = setTimeout(() => {
+                        pauseStartTime = audioContext.currentTime;
+                        audioContext.suspend();
+                        pauseFadeTimeout = null;
+                        console.log('⏸️ AudioContext suspended after fade');
+                    }, AUDIO_FADE_TIME * 1000);
+                } else {
+                    pauseStartTime = audioContext.currentTime;
+                    audioContext.suspend();
+                }
+                
+                btn.textContent = '▶️ Resume';
+                btn.classList.remove('pause-active');
+                btn.classList.add('play-active');
+                
+                // ✅ OPTIMIZATION: Stop spectrogram animation when paused to save CPU
+                if (spectrogramAnimationId) {
+                    cancelAnimationFrame(spectrogramAnimationId);
+                    spectrogramAnimationId = null;
+                }
+                
+                console.log('⏸️ Audio fading out to pause...');
+            } else {
+                // Resume - fade in
+                
+                // Cancel pending pause suspend if it hasn't fired yet
+                if (pauseFadeTimeout) {
+                    clearTimeout(pauseFadeTimeout);
+                    pauseFadeTimeout = null;
+                    console.log('⏰ Cancelled pending pause suspend (resuming before fade completed)');
+                }
+                
+                audioContext.resume();
+                lastUpdateTime = audioContext.currentTime; // Reset time tracking to prevent jump
+                
+                let gainNode = null;
+                
+                // Get the correct gain node (deck mode or chunk mode)
+                if (isDeckMode && activeDeck) {
+                    const deck = (activeDeck === 'A') ? deckA : deckB;
+                    gainNode = deck.gain;
+                    
+                    // Reschedule fadeout based on remaining time
+                    if (deck.source && totalAudioDuration > 0) {
+                        const remainingTime = totalAudioDuration - currentAudioPosition;
+                        const fadeoutStartTime = Math.max(0, remainingTime - AUDIO_FADE_TIME - AUDIO_FADE_BUFFER);
+                        
+                        if (fadeoutStartTime > 0) {
+                            deck.fadeoutTimeout = setTimeout(() => {
+                                if (deck.gain && !deck.manualStop) {
+                                    console.log(`🌅 Fading out Deck ${activeDeck} (${AUDIO_FADE_TIME}s before natural end)`);
+                                    deck.gain.gain.setValueAtTime(deck.gain.gain.value, audioContext.currentTime);
+                                    deck.gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                                }
+                                deck.fadeoutTimeout = null;
+                            }, fadeoutStartTime * 1000);
+                            console.log(`⏰ Rescheduled fadeout for Deck ${activeDeck} in ${fadeoutStartTime.toFixed(2)}s (remaining: ${remainingTime.toFixed(2)}s)`);
+                        }
+                    }
+                    
+                    console.log(`▶️ Resuming Deck ${activeDeck}`);
+                } else {
+                    gainNode = currentGainNode;
+                    console.log('▶️ Resuming chunk playback');
+                }
+                
+                if (gainNode) {
+                    // Cancel any scheduled ramps (like the pause fadeout)
+                    gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                    // Start from current value and ramp to target volume
+                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                    gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(targetVolume, audioContext.currentTime + AUDIO_FADE_TIME);
+                    console.log(`🎚️ Resuming from gain=${gainNode.gain.value.toFixed(3)}, ramping to ${targetVolume.toFixed(2)}`);
+                }
+                
+                btn.textContent = '⏸️ Pause';
+                btn.classList.remove('play-active');
+                btn.classList.add('pause-active');
+                
+                // ✅ OPTIMIZATION: Restart spectrogram animation when resumed
+                if (!spectrogramAnimationId && spectrogramAnalyser && isPlaying) {
+                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                }
+                
+                // ✅ Restart playback indicator
+                if (isPlaying) {
+                    requestAnimationFrame(updatePlaybackIndicator);
+                }
+                
+                console.log('▶️ Audio fading in from resume...');
+            }
+        }
+        
+        function toggleLoop() {
+            isLooping = !isLooping;
+            const btn = document.getElementById('loopBtn');
+            
+            if (isLooping) {
+                btn.classList.remove('secondary');
+                btn.classList.add('loop-active');
+                btn.textContent = '🔁 Loop ON';
+            } else {
+                btn.classList.remove('loop-active');
+                btn.classList.add('secondary');
+                btn.textContent = '🔁 Loop';
+            }
+        }
+        
+        // Seek to a specific position using DJ deck crossfading
+        function seekToPosition(targetPosition) {
+            if (!audioContext || !combinedAudioData || !isStreamComplete) {
+                console.log('❌ Cannot seek: stream not complete');
+                return;
+            }
+            
+            // Clamp position to valid range
+            targetPosition = Math.max(0, Math.min(targetPosition, totalAudioDuration));
+            
+            const targetMinutes = Math.floor(targetPosition / 60);
+            const targetSeconds = (targetPosition % 60).toFixed(1);
+            console.log(`🎯 Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')} (${targetPosition.toFixed(2)}s / ${totalAudioDuration.toFixed(2)}s)`);
+            
+            // If we're paused (manually or audio finished), seeking should resume playback
+            if (isPaused) {
+                console.log(`▶️ Seeking while paused - auto-resuming playback (was: isPlaying=${isPlaying}, isPaused=${isPaused})`);
+                isPaused = false;
+                isPlaying = true;
+                
+                // Update button state
+                const btn = document.getElementById('playPauseBtn');
+                btn.textContent = '⏸️ Pause';
+                btn.classList.remove('play-active', 'secondary');
+                btn.classList.add('pause-active');
+                
+                // Resume audio context if suspended
+                if (audioContext.state === 'suspended') {
+                    console.log('▶️ Resuming suspended AudioContext');
+                    audioContext.resume();
+                }
+                
+                // Start spectrogram
+                if (!spectrogramAnimationId && spectrogramAnalyser) {
+                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                    console.log('🎨 Restarting spectrogram');
+                }
+                
+                console.log('✅ Auto-resume complete: isPlaying=true, isPaused=false');
+            }
+            
+            // Determine which deck to use (alternate between A and B)
+            const targetDeck = (activeDeck === 'A') ? 'B' : 'A';
+            const deck = (targetDeck === 'A') ? deckA : deckB;
+            console.log(`🎚️ Loading Deck ${targetDeck} (crossfading from ${activeDeck || 'chunk-mode'})`);
+            
+            // Update status message
+            const status = document.getElementById('status');
+            status.className = 'status info';
+            status.textContent = `🔀 Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')} (Source ${targetDeck})`;
+            
+            // Prepare crossfade timing
+            const now = audioContext.currentTime;
+            const fadeTime = SEEK_CROSSFADE_TIME;
+            
+            // Clear any pending timeouts for this deck
+            if (deck.stopTimeout) {
+                clearTimeout(deck.stopTimeout);
+                deck.stopTimeout = null;
+                console.log(`⏰ Cleared pending stop timeout for Deck ${targetDeck}`);
+            }
+            if (deck.fadeoutTimeout) {
+                clearTimeout(deck.fadeoutTimeout);
+                deck.fadeoutTimeout = null;
+                console.log(`⏰ Cleared pending fadeout timeout for Deck ${targetDeck}`);
+            }
+            
+            // Stop current deck source if exists
+            if (deck.source) {
+                deck.manualStop = true; // Mark as manual stop so onended doesn't change state
+                try { deck.source.stop(); } catch (e) {}
+                deck.source = null;
+                console.log(`🛑 Manually stopped Deck ${targetDeck} source`);
+            }
+            
+            // If this is the first seek, stop chunk-based playback with crossfade
+            if (!activeDeck) {
+                console.log('🛑 Stopping chunk-based playback, switching to deck mode');
+                isDeckMode = true; // Prevent chunk callbacks from changing state
+                
+                // Fade out chunk-based audio
+                if (currentGainNode) {
+                    currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, now);
+                    currentGainNode.gain.linearRampToValueAtTime(0, now + fadeTime);
+                    console.log(`📉 Chunk audio fading OUT (${(fadeTime*1000).toFixed(0)}ms)`);
+                    
+                    // Stop chunks after fade
+                    setTimeout(() => {
+                        stopAllAudio();
+                        console.log('🛑 Chunk playback stopped after fadeout');
+                    }, fadeTime * 1000 + 10);
+                } else {
+                    stopAllAudio(); // No gain node, just stop immediately
+                }
+                
+                isPlaying = true; // Keep playing flag true
+                isPaused = false; // Ensure we're not paused
+                console.log('✅ Deck mode activated: isDeckMode=true, isPlaying=true, isPaused=false');
+            }
+            
+            // Calculate sample position
+            const startSample = Math.floor(targetPosition * audioRate);
+            const remainingSamples = combinedAudioData.length - startSample;
+            
+            if (remainingSamples <= 0) {
+                console.log('❌ Target position beyond audio end');
+                return;
+            }
+            
+            console.log(`📊 Start sample: ${startSample.toLocaleString()} / ${combinedAudioData.length.toLocaleString()}`);
+            
+            // Create audio buffer from combined data
+            const buffer = audioContext.createBuffer(1, remainingSamples, audioRate);
+            const channelData = buffer.getChannelData(0);
+            channelData.set(combinedAudioData.subarray(startSample));
+            
+            // Create source
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.playbackRate.value = currentPlaybackRate;
+            
+            // Create or reuse gain node for this deck
+            if (!deck.gain) {
+                deck.gain = audioContext.createGain();
+                deck.gain.connect(audioContext.destination);
+                deck.gain.connect(spectrogramAnalyser);
+            }
+            
+            source.connect(deck.gain);
+            deck.source = source;
+            deck.manualStop = false; // Reset flag for this new source
+            
+            // Handle deck playback ending
+            source.onended = () => {
+                // Check if this source is still the active one for this deck
+                if (deck.source !== source) {
+                    console.log(`🚫 Old Deck ${targetDeck} source ended - ignoring (new source active)`);
+                    return;
+                }
+                
+                // Check if this was a manual stop (seeking to new position)
+                if (deck.manualStop) {
+                    console.log(`🚫 Deck ${targetDeck} ended but was manually stopped - ignoring`);
+                    deck.manualStop = false; // Reset flag
+                    return;
+                }
+                
+                console.log(`🏁 Deck ${targetDeck} finished playing naturally`);
+                
+                // Handle looping
+                if (isLooping && combinedAudioData) {
+                    console.log('🔁 Looping - restarting from beginning...');
+                    seekToPosition(0);
+                } else {
+                    // Stop playback
+                    isPlaying = false;
+                    isPaused = true;
+                    const btn = document.getElementById('playPauseBtn');
+                    if (!btn.disabled) {
+                        btn.textContent = '▶️ Play';
+                        btn.classList.remove('pause-active');
+                        btn.classList.add('play-active');
+                    }
+                    console.log(`🏁 Deck playback finished: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                }
+            };
+            
+            // Fade in new deck
+            const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+            deck.gain.gain.setValueAtTime(0, now);
+            deck.gain.gain.linearRampToValueAtTime(targetVolume, now + fadeTime);
+            console.log(`📈 Deck ${targetDeck} fading IN to ${targetVolume.toFixed(2)} (${(fadeTime*1000).toFixed(0)}ms)`);
+            
+            // Fade out old deck
+            if (activeDeck) {
+                const oldDeck = (activeDeck === 'A') ? deckA : deckB;
+                if (oldDeck.gain) {
+                    // Mark as manual stop NOW (before natural end can occur)
+                    if (oldDeck.source) {
+                        oldDeck.manualStop = true;
+                        console.log(`🎚️ Marked Deck ${activeDeck} for manual stop (crossfading)`);
+                    }
+                    
+                    // Cancel scheduled fadeout since we're manually fading
+                    if (oldDeck.fadeoutTimeout) {
+                        clearTimeout(oldDeck.fadeoutTimeout);
+                        oldDeck.fadeoutTimeout = null;
+                        console.log(`⏰ Cancelled scheduled fadeout for Deck ${activeDeck} (crossfading manually)`);
+                    }
+                    
+                    oldDeck.gain.gain.setValueAtTime(oldDeck.gain.gain.value, now);
+                    oldDeck.gain.gain.linearRampToValueAtTime(0, now + fadeTime);
+                    console.log(`📉 Deck ${activeDeck} fading OUT (${(fadeTime*1000).toFixed(0)}ms)`);
+                    
+                    // Stop old source after fade completes
+                    if (oldDeck.source) {
+                        oldDeck.stopTimeout = setTimeout(() => {
+                            try { oldDeck.source.stop(); } catch (e) {}
+                            oldDeck.source = null;
+                            oldDeck.stopTimeout = null;
+                            console.log(`🛑 Deck ${activeDeck} stopped after fadeout`);
+                        }, fadeTime * 1000 + 50);
+                    }
+                }
+            }
+            
+            // Calculate duration and schedule fadeout before natural end
+            const bufferDuration = remainingSamples / audioRate / currentPlaybackRate;
+            const fadeoutStartTime = Math.max(0, bufferDuration - AUDIO_FADE_TIME - AUDIO_FADE_BUFFER);
+            
+            // Schedule fadeout before audio ends naturally
+            if (fadeoutStartTime > 0) {
+                deck.fadeoutTimeout = setTimeout(() => {
+                    if (deck.gain && !deck.manualStop) {
+                        console.log(`🌅 Fading out Deck ${targetDeck} (${AUDIO_FADE_TIME}s before natural end)`);
+                        deck.gain.gain.setValueAtTime(deck.gain.gain.value, audioContext.currentTime);
+                        deck.gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                    }
+                    deck.fadeoutTimeout = null;
+                }, fadeoutStartTime * 1000);
+                console.log(`⏰ Scheduled fadeout for Deck ${targetDeck} in ${fadeoutStartTime.toFixed(2)}s (buffer duration: ${bufferDuration.toFixed(2)}s)`);
+            }
+            
+            // Start playback
+            source.start(0);
+            activeDeck = targetDeck;
+            console.log(`▶️ Deck ${targetDeck} playing from ${targetPosition.toFixed(2)}s`);
+            
+            // Update position tracking
+            currentAudioPosition = targetPosition;
+            lastUpdateTime = audioContext.currentTime;
+            
+            // Update visual indicator immediately
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            const progress = targetPosition / totalAudioDuration;
+            const x = progress * width;
+            
+            // Redraw waveform with new indicator position
+            if (cachedWaveformCanvas) {
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(cachedWaveformCanvas, 0, 0);
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            
+            // Ensure spectrogram is running
+            if (!spectrogramAnimationId && !isPaused) {
+                console.log('🎨 Restarting spectrogram after seek');
+                spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+            }
+            
+            // Ensure playback indicator is running
+            if (!isPaused) {
+                console.log('🎬 Restarting playback indicator after seek');
+                requestAnimationFrame(updatePlaybackIndicator);
+            }
+        }
+        
+        // Combine all chunks into a single Float32Array when streaming completes
+        function combineChunksIntoSingleBuffer() {
+            console.log('🔗 Combining chunks into single audio buffer...');
+            const t0 = performance.now();
+            
+            // Calculate total samples
+            const totalSamples = allChunksData.reduce((sum, chunk) => sum + chunk.length, 0);
+            console.log(`📊 Total samples: ${totalSamples.toLocaleString()}`);
+            
+            // Create combined array
+            combinedAudioData = new Float32Array(totalSamples);
+            let offset = 0;
+            
+            for (let i = 0; i < allChunksData.length; i++) {
+                combinedAudioData.set(allChunksData[i], offset);
+                offset += allChunksData[i].length;
+            }
+            
+            const t1 = performance.now();
+            console.log(`✅ Combined ${allChunksData.length} chunks in ${(t1-t0).toFixed(1)}ms`);
+            console.log(`💾 Combined buffer size: ${(combinedAudioData.byteLength / 1024 / 1024).toFixed(2)} MB`);
+            
+            // Mark stream as complete
+            isStreamComplete = true;
+            
+            // Redraw waveform in color
+            drawWaveform();
+            
+            // Enable download button
+            document.getElementById('downloadBtn').disabled = false;
+            
+            // Update status
+            const status = document.getElementById('status');
+            status.className = 'status success';
+            status.textContent = `✅ Stream complete! Switching to deck mode for smooth playback...`;
+            
+            console.log('🎉 Stream complete - seeking now enabled!');
+            
+            // ✅ AUTO-CROSSFADE TO DECK MODE: Switch from chunk scheduling to continuous playback
+            // This enables smooth playback rate changes and seeking
+            if (isPlaying && !isPaused) {
+                console.log('🎚️ Stream complete - auto-crossfading to deck mode for seamless playback rate changes...');
+                
+                // ✅ Use sample-accurate position instead of wall-clock estimate
+                // This prevents audio overlap/skip during crossfade
+                const accuratePosition = currentChunkPlaybackPosition;
+                
+                console.log(`📍 Sample-accurate position for crossfade: ${accuratePosition.toFixed(3)}s / ${totalAudioDuration.toFixed(2)}s (${(accuratePosition/totalAudioDuration*100).toFixed(1)}%)`);
+                
+                // Wait a tiny bit for current chunk to finish its fade-in (if any)
+                setTimeout(() => {
+                    seekToPosition(accuratePosition);
+                    status.textContent = `✅ Stream complete! Now in deck mode - smooth speed changes enabled. Click waveform to seek.`;
+                }, 50);
+            } else {
+                status.textContent = `✅ Stream complete! Click waveform to seek anywhere`;
+            }
+        }
+        
+        function drawWaveform() {
+            const canvas = document.getElementById('waveform');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // ✅ OPTIMIZATION: Create offscreen canvas for caching if not exists
+            if (!cachedWaveformCanvas) {
+                cachedWaveformCanvas = document.createElement('canvas');
+                cachedWaveformCanvas.width = width;
+                cachedWaveformCanvas.height = height;
+            }
+            
+            const ctx = cachedWaveformCanvas.getContext('2d', { alpha: false });
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            if (allChunksData.length === 0) return;
+            
+            // Combine all chunks into one array
+            const totalSamples = allChunksData.reduce((sum, chunk) => sum + chunk.length, 0);
+            const combinedData = new Float32Array(totalSamples);
+            let offset = 0;
+            for (const chunk of allChunksData) {
+                combinedData.set(chunk, offset);
+                offset += chunk.length;
+            }
+            
+            // Draw waveform to cached canvas
+            // Grey during streaming, colored when complete
+            ctx.strokeStyle = isStreamComplete ? '#667eea' : '#999999';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            
+            const samplesPerPixel = Math.ceil(combinedData.length / width);
+            const midY = height / 2;
+            
+            for (let x = 0; x < width; x++) {
+                const startSample = x * samplesPerPixel;
+                const endSample = Math.min(startSample + samplesPerPixel, combinedData.length);
+                
+                // Find min and max in this pixel's range
+                let min = 0;
+                let max = 0;
+                for (let i = startSample; i < endSample; i++) {
+                    if (combinedData[i] < min) min = combinedData[i];
+                    if (combinedData[i] > max) max = combinedData[i];
+                }
+                
+                // Draw vertical line for this pixel
+                if (x === 0) {
+                    ctx.moveTo(x, midY - max * midY);
+                } else {
+                    ctx.lineTo(x, midY - max * midY);
+                }
+                ctx.lineTo(x, midY - min * midY);
+            }
+            
+            ctx.stroke();
+            
+            // ✅ OPTIMIZATION: Copy cached waveform to visible canvas
+            const visibleCtx = canvas.getContext('2d');
+            visibleCtx.clearRect(0, 0, width, height);
+            visibleCtx.drawImage(cachedWaveformCanvas, 0, 0);
+            
+            // Save total audio duration for playback indicator
+            totalAudioDuration = combinedData.length / audioRate;
+        }
+        
+        function updatePlaybackIndicator() {
+            // Don't update during scrubbing - let the scrub preview show instead
+            if (isDragging) {
+                requestAnimationFrame(updatePlaybackIndicator); // Keep loop alive
+                return;
+            }
+            
+            if (!isPlaying || isPaused || totalAudioDuration === 0) {
+                console.log(`⏸️ Playback indicator paused: isPlaying=${isPlaying}, isPaused=${isPaused}, duration=${totalAudioDuration}`);
+                return;
+            }
+            
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Update current audio position based on elapsed real time and playback rate
+            const now = audioContext.currentTime;
+            const realTimeElapsed = now - lastUpdateTime;
+            currentAudioPosition += realTimeElapsed * currentPlaybackRate;
+            lastUpdateTime = now;
+            
+            // Calculate progress
+            const progress = Math.min(currentAudioPosition / totalAudioDuration, 1.0);
+            
+            // Calculate x position
+            const x = progress * width;
+            
+            // ✅ OPTIMIZATION: Use cached waveform instead of redrawing
+            if (cachedWaveformCanvas) {
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(cachedWaveformCanvas, 0, 0);
+            }
+            
+            // Draw playback indicator line
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+            
+            // Continue updating
+            if (isPlaying && !isPaused) {
+                requestAnimationFrame(updatePlaybackIndicator);
+            }
+        }
+        
+        function changePlaybackSpeed() {
+            // Map slider value (0-1000) to logarithmic speed (0.01-10)
+            const sliderValue = parseFloat(document.getElementById('playbackSpeed').value);
+            // Logarithmic mapping: slider 0-1000 -> speed 0.01-10
+            const minSpeed = 0.01;
+            const maxSpeed = 10;
+            const minPos = 0;
+            const maxPos = 1000;
+            const minLog = Math.log(minSpeed);
+            const maxLog = Math.log(maxSpeed);
+            const logRange = maxLog - minLog;
+            const newRate = Math.exp(minLog + (logRange * (sliderValue - minPos)) / (maxPos - minPos));
+            
+            const oldRate = currentPlaybackRate;
+            currentPlaybackRate = newRate;
+            document.getElementById('speedValue').textContent = newRate.toFixed(2);
+            
+            // Update currently playing source immediately (chunk mode)
+            if (currentSource) {
+                currentSource.playbackRate.value = newRate;
+            }
+            
+            // Update all scheduled sources (chunk mode)
+            for (const source of scheduledSources) {
+                try {
+                    source.playbackRate.value = newRate;
+                } catch (e) {}
+            }
+            
+            // 🎯 CRITICAL: Reschedule next chunk based on NEW playback rate! (chunk mode)
+            if (nextChunkScheduleTimeout && chunkQueue.length > 0 && currentChunkStartTime > 0 && !isDeckMode) {
+                // Cancel old timeout
+                clearTimeout(nextChunkScheduleTimeout);
+                nextChunkScheduleTimeout = null;
+                
+                // Calculate how much time has elapsed since chunk started
+                const now = audioContext.currentTime;
+                const elapsedRealTime = now - currentChunkStartTime;
+                
+                // Calculate how many samples have been played at old rate
+                const samplesPlayedAtOldRate = elapsedRealTime * audioRate * oldRate;
+                
+                // Calculate remaining samples in chunk
+                const remainingSamples = currentChunkDurationSamples - samplesPlayedAtOldRate;
+                
+                // Calculate when chunk will end at NEW rate
+                const remainingRealTime = remainingSamples / audioRate / newRate;
+                
+                // Calculate lead time at new rate
+                const leadTimeAudioSeconds = scheduleLeadSamples / audioRate;
+                const leadTimeRealSeconds = leadTimeAudioSeconds / newRate;
+                
+                // Reschedule
+                const newScheduleDelay = Math.max(0, remainingRealTime - leadTimeRealSeconds);
+                
+                console.log(`🔄 Chunk mode speed ${oldRate.toFixed(2)}x → ${newRate.toFixed(2)}x: Rescheduling next chunk in ${(newScheduleDelay * 1000).toFixed(2)}ms (${scheduleLeadSamples} samples lead)`);
+                
+                const chunkEndTime = now + remainingRealTime;
+                nextChunkScheduleTimeout = setTimeout(() => {
+                    nextChunkScheduleTimeout = null;
+                    if (chunkQueue.length > 0 && isPlaying && !isPaused && !isDeckMode) {
+                        playNextChunk(chunkEndTime);
+                    }
+                }, newScheduleDelay * 1000);
+            }
+            
+            // Update DJ deck sources (deck mode)
+            if (deckA.source) {
+                try { deckA.source.playbackRate.value = newRate; } catch (e) {}
+                
+                // ✅ CRITICAL: Reschedule fadeout based on new playback rate
+                // Cancel old fadeout timeout
+                if (deckA.fadeoutTimeout) {
+                    clearTimeout(deckA.fadeoutTimeout);
+                    deckA.fadeoutTimeout = null;
+                    console.log(`⏰ Cancelled Deck A fadeout (speed changed)`);
+                }
+                
+                // Calculate remaining time at new playback rate
+                if (totalAudioDuration > 0 && currentAudioPosition < totalAudioDuration) {
+                    const remainingTime = (totalAudioDuration - currentAudioPosition) / newRate;
+                    const fadeoutStartTime = Math.max(0, remainingTime - AUDIO_FADE_TIME - AUDIO_FADE_BUFFER);
+                    
+                    if (fadeoutStartTime > 0) {
+                        deckA.fadeoutTimeout = setTimeout(() => {
+                            if (deckA.gain && !deckA.manualStop) {
+                                console.log(`🌅 Fading out Deck A (${AUDIO_FADE_TIME}s before natural end)`);
+                                deckA.gain.gain.setValueAtTime(deckA.gain.gain.value, audioContext.currentTime);
+                                deckA.gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                            }
+                            deckA.fadeoutTimeout = null;
+                        }, fadeoutStartTime * 1000);
+                        console.log(`⏰ Rescheduled Deck A fadeout in ${fadeoutStartTime.toFixed(2)}s (remaining: ${remainingTime.toFixed(2)}s at ${newRate.toFixed(2)}x)`);
+                    }
+                }
+            }
+            if (deckB.source) {
+                try { deckB.source.playbackRate.value = newRate; } catch (e) {}
+                
+                // ✅ CRITICAL: Reschedule fadeout based on new playback rate
+                // Cancel old fadeout timeout
+                if (deckB.fadeoutTimeout) {
+                    clearTimeout(deckB.fadeoutTimeout);
+                    deckB.fadeoutTimeout = null;
+                    console.log(`⏰ Cancelled Deck B fadeout (speed changed)`);
+                }
+                
+                // Calculate remaining time at new playback rate
+                if (totalAudioDuration > 0 && currentAudioPosition < totalAudioDuration) {
+                    const remainingTime = (totalAudioDuration - currentAudioPosition) / newRate;
+                    const fadeoutStartTime = Math.max(0, remainingTime - AUDIO_FADE_TIME - AUDIO_FADE_BUFFER);
+                    
+                    if (fadeoutStartTime > 0) {
+                        deckB.fadeoutTimeout = setTimeout(() => {
+                            if (deckB.gain && !deckB.manualStop) {
+                                console.log(`🌅 Fading out Deck B (${AUDIO_FADE_TIME}s before natural end)`);
+                                deckB.gain.gain.setValueAtTime(deckB.gain.gain.value, audioContext.currentTime);
+                                deckB.gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                            }
+                            deckB.fadeoutTimeout = null;
+                        }, fadeoutStartTime * 1000);
+                        console.log(`⏰ Rescheduled Deck B fadeout in ${fadeoutStartTime.toFixed(2)}s (remaining: ${remainingTime.toFixed(2)}s at ${newRate.toFixed(2)}x)`);
+                    }
+                }
+            }
+            
+            console.log(`🎚️ Playback speed changed to ${newRate.toFixed(2)}x (real-time update)`);
+        }
+        
+        function changeVolume() {
+            // Map slider value (0-200) to volume (0.0-2.0)
+            const sliderValue = parseFloat(document.getElementById('volumeSlider').value);
+            const volume = sliderValue / 100; // 0-200 -> 0.0-2.0
+            
+            document.getElementById('volumeValue').textContent = volume.toFixed(2);
+            
+            // Update gain node if it exists
+            if (currentGainNode) {
+                currentGainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+            }
+            
+            // Update deck gain nodes
+            if (deckA.gain) {
+                deckA.gain.gain.setValueAtTime(volume, audioContext.currentTime);
+            }
+            if (deckB.gain) {
+                deckB.gain.gain.setValueAtTime(volume, audioContext.currentTime);
+            }
+            
+            console.log(`🔊 Volume changed to ${volume.toFixed(2)}`);
+        }
+        
+        async function startStreaming() {
+            const config = getPipelineConfig();
+            const outputSampleRate = parseInt(document.getElementById('sampleRate').value);
+            
+            // Check if we're in worker stream mode
+            const isWorkerStreamMode = !!config.workerStreamUrl;
+            // Check if we're in local file mode
+            const isLocalFileMode = !!config.localFilesUrl;
+            // Check if we're in simple IRIS direct mode
+            const isSimpleIrisMode = !!config.useEmbeddedStations;
+            
+            // Format is always 'mseed' for simple IRIS mode, otherwise from dropdown
+            const format = isSimpleIrisMode ? 'mseed' : document.getElementById('format').value;
+            
+            let stationLabel, url, hours;
+            
+            if (isSimpleIrisMode) {
+                // Render Audio Stream mode - server processes miniSEED with ObsPy
+                const volcano = document.getElementById('volcano').value;
+                hours = parseInt(document.getElementById('duration').value);
+                const stationSelect = document.getElementById('station');
+                
+                if (!stationSelect.value) {
+                    alert('Please select a station');
+                    return;
+                }
+                
+                const stationData = JSON.parse(stationSelect.value);
+                stationLabel = stationSelect.options[stationSelect.selectedIndex].text;
+                
+                // Calculate time window (hours ago to now, accounting for latency)
+                const now = Date.now();
+                const latencyMinutes = 15; // Account for IRIS data latency
+                const endTime = new Date(now - latencyMinutes * 60 * 1000);
+                const startTime = new Date(endTime.getTime() - hours * 60 * 60 * 1000);
+                
+                // Format time in ISO format: "YYYY-MM-DDTHH:MM:SS"
+                const formatTime = (date) => {
+                    const year = date.getUTCFullYear();
+                    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                    const day = String(date.getUTCDate()).padStart(2, '0');
+                    const hours = String(date.getUTCHours()).padStart(2, '0');
+                    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+                };
+                
+                const startStr = formatTime(startTime);
+                const duration_seconds = hours * 3600;
+                
+                // Build Render audio stream URL
+                const audioStreamUrl = config.audioStreamUrl || 'http://localhost:5001/api/stream-audio';
+                url = audioStreamUrl; // Will use POST with body
+                
+                console.log(`🚀 Render Audio Stream: Fetching from ${audioStreamUrl}`);
+                console.log(`   Network: ${stationData.network}, Station: ${stationData.station}, Location: ${stationData.location || '--'}, Channel: ${stationData.channel}`);
+                console.log(`   Start: ${startStr}, Duration: ${duration_seconds}s`);
+            } else if (isWorkerStreamMode) {
+                // Worker stream mode
+                const size = document.getElementById('workerSize').value;
+                const useGzip = document.getElementById('workerGzip').value;
+                stationLabel = `Worker Pipeline Test (${size}, ${useGzip === 'true' ? 'gzipped' : 'raw'})`;
+                url = `${config.workerStreamUrl}?size=${size}&gzip=${useGzip}`;
+            } else if (isLocalFileMode) {
+                // Local file mode
+                const localFileSelect = document.getElementById('localFile');
+                if (!localFileSelect.value) {
+                    alert('Please select a local file');
+                    return;
+                }
+                const filename = localFileSelect.value;
+                stationLabel = filename;
+                url = `${config.localStreamUrl}?filename=${encodeURIComponent(filename)}&sample_rate=${outputSampleRate}`;
+            } else {
+                // Backend mode (IRIS or R2)
+                const volcano = document.getElementById('volcano').value;
+                hours = parseInt(document.getElementById('duration').value);
+                const stationSelect = document.getElementById('station');
+                
+                if (!stationSelect.value) {
+                    alert('Please select a station');
+                    return;
+                }
+                
+                const stationData = JSON.parse(stationSelect.value);
+                stationLabel = stationSelect.options[stationSelect.selectedIndex].text;
+                url = `${config.streamUrl}?` + 
+                    `volcano=${volcano}&duration=${hours}&` +
+                    `format=${format}&` +
+                    `network=${stationData.network}&station=${stationData.station}&` +
+                    `location=${stationData.location}&channel=${stationData.channel}`;
+            }
+            
+            const status = document.getElementById('status');
+            const streamBtn = document.getElementById('streamBtn');
+            
+            console.log(`🎬 START STREAMING CLICKED: isPlaying=${isPlaying}, isPaused=${isPaused}, queue=${chunkQueue.length}`);
+            
+            // Stop pulsing animation
+            streamBtn.classList.add('streaming');
+            
+            // Fade out existing audio before stopping
+            if (isPlaying && currentGainNode) {
+                console.log('🔊 Fading out current audio...');
+                currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, audioContext.currentTime);
+                currentGainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                
+                // Wait for fade to complete
+                await new Promise(resolve => setTimeout(resolve, AUDIO_FADE_TIME * 1000));
+            }
+            
+            stopAllAudio();
+            console.log(`🛑 After stopAllAudio: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+            allChunksData = [];
+            metadata = null;
+            totalBytesReceived = 0;
+            chunksReceived = 0;
+            streamStartTime = performance.now();
+            firstAudioTime = 0;
+            cacheHitForMetrics = false; // Reset cache hit status
+            partialChunkBuffer = null; // Reset partial chunk buffer
+            chunkQueue = [];
+            isPlaying = false;
+            isPaused = false; // ✅ Reset pause state for new stream
+            currentSource = null;
+            playbackStartTime = 0;
+            pauseStartTime = 0;
+            totalAudioDuration = 0;
+            currentAudioPosition = 0;
+            lastUpdateTime = 0;
+            currentChunkPlaybackPosition = 0; // Reset sample-accurate position
+            currentChunkStartTime = 0; // Reset chunk timing tracking
+            currentChunkDurationSamples = 0;
+            
+            // Reset DJ deck state
+            isStreamComplete = false;
+            combinedAudioData = null;
+            activeDeck = null;
+            isDeckMode = false; // Back to chunk mode for new stream
+            if (deckA.source) { try { deckA.source.stop(); } catch(e) {} }
+            if (deckB.source) { try { deckB.source.stop(); } catch(e) {} }
+            if (deckA.stopTimeout) { clearTimeout(deckA.stopTimeout); }
+            if (deckB.stopTimeout) { clearTimeout(deckB.stopTimeout); }
+            if (deckA.fadeoutTimeout) { clearTimeout(deckA.fadeoutTimeout); }
+            if (deckB.fadeoutTimeout) { clearTimeout(deckB.fadeoutTimeout); }
+            deckA = { source: null, gain: null, stopTimeout: null, manualStop: false, fadeoutTimeout: null };
+            deckB = { source: null, gain: null, stopTimeout: null, manualStop: false, fadeoutTimeout: null };
+            console.log('🔄 DJ deck state reset (back to chunk mode)');
+            
+            // Clear playing chunk indicator
+            document.getElementById('playingChunk').textContent = '--';
+            
+            // Clear waveform canvas
+            const waveformCanvas = document.getElementById('waveform');
+            waveformCanvas.getContext('2d').clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+            
+            // ✅ OPTIMIZATION: Clear cached waveform for new stream
+            cachedWaveformCanvas = null;
+            
+            // ✅ Clear spectrogram canvas for new stream
+            if (spectrogramCanvas && spectrogramCtx) {
+                spectrogramCtx.clearRect(0, 0, spectrogramCanvas.width, spectrogramCanvas.height);
+            }
+            
+            // ✅ Just disable buttons in their current state (don't change appearance)
+            document.getElementById('playPauseBtn').disabled = true;
+            document.getElementById('loopBtn').disabled = true;
+            
+            streamBtn.disabled = true;
+            status.className = 'status info';
+            status.textContent = `Connecting to ${stationLabel}...`;
+            
+            try {
+                // Initialize audio context
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                await audioContext.resume();
+                
+                if (!spectrogramAnalyser) {
+                    spectrogramAnalyser = audioContext.createAnalyser();
+                    spectrogramAnalyser.fftSize = 2048;
+                    spectrogramAnalyser.smoothingTimeConstant = 0.8;
+                }
+                
+                if (!currentGainNode) {
+                    currentGainNode = audioContext.createGain();
+                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                    currentGainNode.gain.value = targetVolume;
+                    currentGainNode.connect(audioContext.destination);
+                }
+                
+                // Start streaming
+                console.log(`📡 Streaming from: ${url}`);
+                console.log(`📦 Requesting format: ${format}`);
+                
+                // Build fetch options based on mode
+                let fetchOptions = {};
+                if (isSimpleIrisMode) {
+                    // Render audio stream - POST with JSON body
+                    const stationData = JSON.parse(document.getElementById('station').value);
+                    const now = Date.now();
+                    const latencyMinutes = 15;
+                    const endTime = new Date(now - latencyMinutes * 60 * 1000);
+                    const startTime = new Date(endTime.getTime() - hours * 60 * 60 * 1000);
+                    const formatTime = (date) => {
+                        const year = date.getUTCFullYear();
+                        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                        const day = String(date.getUTCDate()).padStart(2, '0');
+                        const hours = String(date.getUTCHours()).padStart(2, '0');
+                        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                        const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+                    };
+                    
+                    fetchOptions = {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            network: stationData.network,
+                            station: stationData.station,
+                            location: stationData.location || '',
+                            channel: stationData.channel,
+                            starttime: formatTime(startTime),
+                            duration: hours * 3600,
+                            speedup: Math.round(outputSampleRate / 100), // Rough speedup estimate
+                            highpass_hz: document.getElementById('enableHighpass').checked ? 0.5 : 0,  // User-controlled filtering
+                            normalize: document.getElementById('enableNormalize').checked,  // User-controlled normalization
+                            send_raw: document.getElementById('sendRaw').checked,  // User-controlled format (int32 vs float32)
+                            bypass_compression: document.getElementById('bypassCompression').checked  // Debug: skip compression
+                        })
+                    };
+                }
+                
+                const response = await fetch(url, fetchOptions);
+                
+                // Check response
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => '');
+                    throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+                }
+                
+                // Handle worker-stream mode differently (already processed data)
+                let metadata;
+                if (isSimpleIrisMode) {
+                    // Simple IRIS mode - metadata will be parsed from miniSEED file
+                    // Skip header parsing, will parse from data below
+                    metadata = null; // Will be set after parsing
+                } else if (isWorkerStreamMode) {
+                    // Worker returns processed int16 data with sample rate in header
+                    const sampleRate = parseInt(response.headers.get('X-Sample-Rate') || '100');
+                    const sampleCount = parseInt(response.headers.get('X-Sample-Count') || '0');
+                    audioRate = outputSampleRate; // Use selected output sample rate for audification
+                    metadata = {
+                        sample_rate: sampleRate,
+                        total_samples: sampleCount,
+                        duration_seconds: sampleCount / sampleRate
+                    };
+                    console.log(`🌩️ Worker stream: ${sampleCount} samples @ ${sampleRate}Hz, playing @ ${audioRate}Hz`);
+                } else {
+                    // Read metadata from HTTP header
+                    const metadataHeader = response.headers.get('X-Metadata');
+                    if (!metadataHeader) {
+                        throw new Error('Missing X-Metadata header');
+                    }
+                    
+                    metadata = JSON.parse(metadataHeader);
+                    audioRate = outputSampleRate; // Use selected output sample rate for audification
+                }
+                const metadataTime = performance.now() - streamStartTime;
+                
+                // Read cache status headers (not applicable for simple IRIS mode)
+                if (!isSimpleIrisMode) {
+                    const cacheHit = response.headers.get('X-Cache-Hit') === 'true';
+                    cacheHitForMetrics = cacheHit; // Store for TTFA metric
+                    const dataReadyMs = parseInt(response.headers.get('X-Data-Ready-Ms') || '0');
+                    
+                    console.log('📊 Metadata received:', metadata);
+                    const speedupFactor = Math.round(audioRate / metadata.sample_rate);
+                    console.log(`🎵 Audio rate: ${audioRate} Hz (${metadata.sample_rate} Hz seismic → ${speedupFactor}x speedup)`);
+                    console.log(`⏱️ Time to metadata: ${metadataTime.toFixed(0)}ms`);
+                    console.log(`💾 Cache status: ${cacheHit ? '✅ HIT (from R2)' : '❌ MISS (fetched from IRIS)'}`);
+                    console.log(`⚡ Backend data ready: ${dataReadyMs}ms ${cacheHit ? '(pure R2 perf!)' : '(includes IRIS fetch)'}`);
+                }
+                
+                if (isWorkerStreamMode) {
+                    const durationMins = Math.round(metadata.duration_seconds / 60);
+                    status.textContent = `🌩️ Worker Pipeline: ${stationLabel} (${durationMins} min, ${metadata.sample_rate} Hz → ${audioRate} Hz playback)`;
+                } else if (isLocalFileMode) {
+                    const durationMins = Math.round(metadata.duration_seconds / 60);
+                    const speedupFactor = Math.round(audioRate / metadata.sample_rate);
+                    status.textContent = `Loading ${stationLabel} (${durationMins} min, ${metadata.sample_rate} Hz → ${audioRate} Hz audio, ${speedupFactor}x) - seeking disabled until complete...`;
+                } else if (!isSimpleIrisMode) {
+                    const speedupFactor = Math.round(audioRate / metadata.sample_rate);
+                    status.textContent = `Streaming ${hours}h from ${stationLabel} (${metadata.sample_rate} Hz seismic → ${audioRate} Hz audio, ${speedupFactor}x) - seeking disabled until complete...`;
+                }
+                
+                if (isSimpleIrisMode) {
+                    // Render Audio Stream mode - optionally compressed float32/int32 samples
+                    const receivedBlob = await response.arrayBuffer();
+                    totalBytesReceived = receivedBlob.byteLength;
+                    document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                    
+                    const loadTime = performance.now() - streamStartTime;
+                    console.log(`📦 Received data: ${receivedBlob.byteLength} bytes (${loadTime.toFixed(0)}ms)`);
+                    
+                    // Check for empty response
+                    if (receivedBlob.byteLength === 0) {
+                        throw new Error('Server returned 0 bytes - no data available.');
+                    }
+                    
+                    let decompressed;
+                    const bypassCompression = document.getElementById('bypassCompression').checked;
+                    
+                    if (bypassCompression) {
+                        // No compression - use data directly
+                        console.log('⏭️  Bypassing decompression (data not compressed)');
+                        decompressed = new Uint8Array(receivedBlob);
+                    } else {
+                        // Decompress with fzstd (tested and working in worker/src/index.js!)
+                        console.log('🗜️  Decompressing with zstd (fzstd)...');
+                        if (typeof fzstd === 'undefined') {
+                            throw new Error('fzstd not loaded - please refresh the page');
+                        }
+                        
+                        // Decompress - fzstd.decompress expects Uint8Array
+                        const compressedArray = new Uint8Array(receivedBlob);
+                        decompressed = fzstd.decompress(compressedArray);
+                        console.log(`✅ Decompressed: ${(decompressed.length / 1024 / 1024).toFixed(2)} MB`);
+                    }
+                    
+                    // Parse blob: [metadata_length (4 bytes)] [metadata_json] [float32_samples]
+                    // Handle byteOffset if decompressed is a view into a larger buffer (like test script does)
+                    const view = new DataView(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength);
+                    const metadataLength = view.getUint32(0, true); // little-endian
+                    
+                    console.log(`📋 Metadata length: ${metadataLength} bytes`);
+                    
+                    const metadataBytes = decompressed.slice(4, 4 + metadataLength);
+                    const metadataJson = new TextDecoder().decode(metadataBytes);
+                    
+                    // Debug: log first/last chars of JSON to catch corruption
+                    if (metadataJson.length > 150) {
+                        console.log(`📋 Metadata JSON preview: ${metadataJson.substring(0, 100)}...${metadataJson.substring(metadataJson.length - 50)}`);
+                    } else {
+                        console.log(`📋 Metadata JSON: ${metadataJson}`);
+                    }
+                    console.log(`📋 Metadata JSON length: ${metadataJson.length} chars`);
+                    
+                    const serverMetadata = JSON.parse(metadataJson);
+                    
+                    console.log('📋 Server metadata:', serverMetadata);
+                    
+                    // Extract samples (float32 or int32 based on format)
+                    const samplesOffset = 4 + metadataLength;
+                    const samplesBytes = decompressed.slice(samplesOffset);
+                    let allSamples;
+                    
+                    if (serverMetadata.format === 'int32') {
+                        // Raw int32 counts - convert to float32
+                        const int32Data = new Int32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
+                        allSamples = Float32Array.from(int32Data, v => v / 2147483648.0);
+                        console.log(`✅ Converted ${int32Data.length} int32 samples to float32`);
+                    } else {
+                        // Already float32
+                        allSamples = new Float32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
+                        console.log(`✅ Extracted ${allSamples.length} float32 samples`);
+                    }
+                    
+                    // 🔍 DEBUG: Log sample statistics
+                    let min = Infinity, max = -Infinity, sum = 0;
+                    for (let i = 0; i < allSamples.length; i++) {
+                        const v = allSamples[i];
+                        if (v < min) min = v;
+                        if (v > max) max = v;
+                        sum += v;
+                    }
+                    const mean = sum / allSamples.length;
+                    console.log(`🔍 Sample stats: min=${min.toFixed(6)}, max=${max.toFixed(6)}, mean=${mean.toFixed(6)}`);
+                    console.log(`🔍 First 10 samples: ${Array.from(allSamples.slice(0, 10)).map(v => v.toFixed(6)).join(', ')}`);
+                    console.log(`🔍 Last 10 samples: ${Array.from(allSamples.slice(-10)).map(v => v.toFixed(6)).join(', ')}`);
+                    
+                    const parseStart = performance.now();
+                    
+                    // Get sample rate from server metadata
+                    const sampleRate = serverMetadata.original_sample_rate;
+                    
+                    const parseTime = performance.now() - parseStart;
+                    console.log(`✅ Got ${allSamples.length} samples @ ${sampleRate}Hz (ObsPy processed on server)`);
+                    
+                    if (allSamples.length === 0) {
+                        throw new Error('No samples received from server.');
+                    }
+                    
+                    // Samples are already Float32 (-1 to 1)
+                    const float32Data = allSamples;
+                    
+                    // Set metadata
+                    metadata = {
+                        sample_rate: sampleRate,
+                        total_samples: allSamples.length,
+                        duration_seconds: allSamples.length / sampleRate
+                    };
+                    audioRate = outputSampleRate;
+                    totalAudioDuration = float32Data.length / audioRate;
+                    
+                    const speedupFactor = Math.round(audioRate / sampleRate);
+                    const durationMins = Math.round(metadata.duration_seconds / 60);
+                    status.textContent = `✅ Loaded ${stationLabel} (${durationMins} min, ${sampleRate} Hz → ${audioRate} Hz audio, ${speedupFactor}x)`;
+                    
+                    // ✅ SIMPLE IRIS MODE: Direct playback (no chunking)
+                    // Store combined audio for deck mode
+                    combinedAudioData = float32Data;
+                    isStreamComplete = true;
+                    
+                    // Store for download button
+                    allChunksData = [float32Data];
+                    chunksReceived = 1;
+                    document.getElementById('chunksReceived').textContent = chunksReceived;
+                    
+                    // Draw waveform
+                    drawWaveform();
+                    
+                    // Enable download button
+                    document.getElementById('downloadBtn').disabled = false;
+                    
+                    // Start playback automatically using deck mode (simpler than chunks)
+                    firstAudioTime = performance.now() - streamStartTime;
+                    document.getElementById('ttfa').textContent = `${firstAudioTime.toFixed(0)}ms`;
+                    
+                    // Enable controls
+                    const playPauseBtn = document.getElementById('playPauseBtn');
+                    playPauseBtn.disabled = false;
+                    playPauseBtn.textContent = '⏸️ Pause';
+                    playPauseBtn.classList.remove('secondary', 'play-active');
+                    playPauseBtn.classList.add('pause-active');
+                    
+                    document.getElementById('loopBtn').disabled = false;
+                    
+                    // Set playing state
+                    isPlaying = true;
+                    isPaused = false;
+                    isDeckMode = true; // Use deck mode for simple IRIS (single file)
+                    console.log(`🎬 Simple IRIS mode: Starting direct playback (deck mode)`);
+                    
+                    // Start spectrogram
+                    if (spectrogramAnimationId) {
+                        cancelAnimationFrame(spectrogramAnimationId);
+                    }
+                    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                    
+                    // Initialize deck A
+                    deckA.gain = audioContext.createGain();
+                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                    deckA.gain.gain.value = 0;
+                    deckA.gain.connect(audioContext.destination);
+                    deckA.gain.connect(spectrogramAnalyser);
+                    
+                    // Create audio buffer
+                    const buffer = audioContext.createBuffer(1, float32Data.length, audioRate);
+                    buffer.copyToChannel(float32Data, 0);
+                    
+                    // Create and play source
+                    const source = audioContext.createBufferSource();
+                    source.buffer = buffer;
+                    source.playbackRate.value = currentPlaybackRate;
+                    source.connect(deckA.gain);
+                    deckA.source = source;
+                    activeDeck = 'A';
+                    
+                    // Fade in
+                    const now = audioContext.currentTime;
+                    deckA.gain.gain.setValueAtTime(0, now);
+                    deckA.gain.gain.linearRampToValueAtTime(targetVolume, now + AUDIO_FADE_TIME);
+                    
+                    // Schedule fadeout before end
+                    const fadeoutStartTime = Math.max(0, totalAudioDuration - AUDIO_FADE_TIME - AUDIO_FADE_BUFFER);
+                    if (fadeoutStartTime > 0) {
+                        deckA.fadeoutTimeout = setTimeout(() => {
+                            if (deckA.gain && !deckA.manualStop) {
+                                deckA.gain.gain.setValueAtTime(deckA.gain.gain.value, audioContext.currentTime);
+                                deckA.gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + AUDIO_FADE_TIME);
+                            }
+                            deckA.fadeoutTimeout = null;
+                        }, fadeoutStartTime * 1000);
+                    }
+                    
+                    // Handle playback end
+                    source.onended = () => {
+                        if (isLooping && combinedAudioData) {
+                            console.log('🔁 Looping - restarting from beginning...');
+                            seekToPosition(0);
+                        } else {
+                            isPlaying = false;
+                            isPaused = true;
+                            playPauseBtn.textContent = '▶️ Play';
+                            playPauseBtn.classList.remove('pause-active');
+                            playPauseBtn.classList.add('play-active');
+                            console.log(`🏁 Playback finished: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                        }
+                    };
+                    
+                    // Start playback
+                    source.start(0);
+                    console.log(`▶️ Playing ${float32Data.length.toLocaleString()} samples @ ${audioRate}Hz (${totalAudioDuration.toFixed(2)}s)`);
+                    
+                    // Record playback start time for indicator
+                    playbackStartTime = audioContext.currentTime;
+                    currentAudioPosition = 0;
+                    lastUpdateTime = audioContext.currentTime;
+                    
+                    // Start playback indicator
+                    updatePlaybackIndicator();
+                } else if (isLocalFileMode) {
+                    // For local files, read entire response at once (no progressive streaming)
+                    const arrayBuffer = await response.arrayBuffer();
+                    totalBytesReceived = arrayBuffer.byteLength;
+                    document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                    
+                    const loadTime = performance.now() - streamStartTime;
+                    console.log(`📦 Loaded entire file: ${arrayBuffer.byteLength} bytes (${loadTime.toFixed(0)}ms)`);
+                    
+                    // Process entire file
+                    await processChunk(new Uint8Array(arrayBuffer), format);
+                    
+                    console.log('✅ File loaded!');
+                    
+                    // Combine chunks into single buffer for seeking
+                    combineChunksIntoSingleBuffer();
+                    
+                    // Restart playback indicator now that we have total duration
+                    if (isPlaying && !isPaused) {
+                        console.log('🎬 Restarting playback indicator with duration:', totalAudioDuration);
+                        updatePlaybackIndicator();
+                    }
+                } else {
+                    // Progressive streaming for IRIS/backend modes
+                    const reader = response.body.getReader();
+                    
+                    // ✅ LENGTH-PREFIX FRAME READER: Extract exact chunks from network stream
+                    // Format: [4-byte length][chunk data][4-byte length][chunk data]...
+                    let frameBuffer = new Uint8Array(0); // Accumulate bytes until we have complete frames
+                    let networkChunkIndex = 0;
+                    let logicalChunkIndex = 0; // Actual chunk count (after deframing)
+                    
+                    while (true) {
+                        const {done, value} = await reader.read();
+                        
+                        if (done) {
+                            console.log('✅ Stream complete!');
+                            
+                            // Check for leftover bytes (shouldn't happen with proper framing)
+                            if (frameBuffer.length > 0) {
+                                console.warn(`⚠️ Warning: ${frameBuffer.length} leftover bytes after stream end`);
+                            }
+                            
+                            // Combine chunks into single buffer for seeking
+                            combineChunksIntoSingleBuffer();
+                            
+                            // Restart playback indicator now that we have total duration
+                            if (isPlaying && !isPaused) {
+                                console.log('🎬 Restarting playback indicator with duration:', totalAudioDuration);
+                                updatePlaybackIndicator();
+                            }
+                            
+                            break;
+                        }
+                        
+                        networkChunkIndex++;
+                        totalBytesReceived += value.length;
+                        document.getElementById('totalDownloaded').textContent = `${(totalBytesReceived / 1024).toFixed(1)} KB`;
+                        
+                        console.log(`📡 Network chunk ${networkChunkIndex}: ${value.length} bytes`);
+                        
+                        // Append to frame buffer
+                        const newBuffer = new Uint8Array(frameBuffer.length + value.length);
+                        newBuffer.set(frameBuffer, 0);
+                        newBuffer.set(value, frameBuffer.length);
+                        frameBuffer = newBuffer;
+                        
+                        // Extract complete frames from buffer
+                        while (frameBuffer.length >= 4) {
+                            // Read 4-byte length prefix
+                            const lengthView = new DataView(frameBuffer.buffer, frameBuffer.byteOffset, 4);
+                            const chunkLength = lengthView.getUint32(0, true); // Little-endian
+                            
+                            // Check if we have the complete frame
+                            if (frameBuffer.length >= 4 + chunkLength) {
+                                // Extract frame data (skip 4-byte header)
+                                const frameData = frameBuffer.slice(4, 4 + chunkLength);
+                                
+                                logicalChunkIndex++;
+                                
+                                if (logicalChunkIndex === 1) {
+                                    const firstChunkTime = performance.now() - streamStartTime;
+                                    console.log(`📦 Deframed chunk 1: ${frameData.length} bytes (${firstChunkTime.toFixed(0)}ms from click)`);
+                                } else if (logicalChunkIndex <= 10 || logicalChunkIndex % 10 === 0) {
+                                    // Log first 10 chunks, then every 10th
+                                    console.log(`📦 Deframed chunk ${logicalChunkIndex}: ${frameData.length} bytes`);
+                                }
+                                
+                                // Process this complete chunk
+                                await processChunk(frameData, format);
+                                
+                                // Remove this frame from buffer
+                                frameBuffer = frameBuffer.slice(4 + chunkLength);
+                            } else {
+                                // Not enough data yet, wait for next network chunk
+                                console.log(`⏳ Partial frame: have ${frameBuffer.length} bytes, need ${4 + chunkLength} (waiting for ${4 + chunkLength - frameBuffer.length} more)`);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Streaming error:', error);
+                status.className = 'status error';
+                status.textContent = `❌ Error: ${error.message}`;
+                // Re-enable button on error so user can try again
+                streamBtn.disabled = false;
+            }
+        }
+        
+        async function processChunk(rawData, format) {
+            const t0 = performance.now();
+            
+            // Process based on format
+            let float32Data;
+            
+            if (format === 'int16') {
+                // ✅ NOTE: With length-prefix framing, chunks are guaranteed to be int16-aligned!
+                // The partial buffer logic below is now redundant for framed streams,
+                // but kept for compatibility with non-framed backends
+                
+                let completeData = rawData;
+                
+                // If we have a partial sample from previous chunk, prepend it
+                if (partialChunkBuffer) {
+                    const combined = new Uint8Array(partialChunkBuffer.length + rawData.length);
+                    combined.set(partialChunkBuffer, 0);
+                    combined.set(rawData, partialChunkBuffer.length);
+                    completeData = combined;
+                    partialChunkBuffer = null;
+                }
+                
+                // Check if we have an odd number of bytes (incomplete int16)
+                const extraByte = completeData.length % 2;
+                let processableData = completeData;
+                
+                if (extraByte !== 0) {
+                    // Save the last byte for next chunk (shouldn't happen with framed streams!)
+                    console.warn(`⚠️ Odd byte count detected: ${completeData.length} bytes (partial int16 sample)`);
+                    partialChunkBuffer = completeData.slice(-1);
+                    processableData = completeData.slice(0, -1);
+                }
+                
+                // Convert to int16 array (guaranteed to be aligned with framing)
+                const int16Data = new Int16Array(processableData.buffer, processableData.byteOffset, processableData.length / 2);
+                float32Data = Float32Array.from(int16Data, v => v / 32768.0);
+            } else if (format === 'int32') {
+                // Data is raw int32 bytes - vectorized conversion
+                const int32Data = new Int32Array(rawData.buffer);
+                float32Data = Float32Array.from(int32Data, v => v / 2147483648.0);
+            } else if (format === 'mseed') {
+                // Data is miniSEED format - parse with seisplotjs
+                if (!window.seisplotjsMiniseed) {
+                    throw new Error('seisplotjs not loaded - please refresh the page');
+                }
+                
+                console.log('🔍 Parsing miniSEED chunk...');
+                const parseStart = performance.now();
+                
+                // Convert Uint8Array to ArrayBuffer
+                const arrayBuffer = rawData.buffer.slice(rawData.byteOffset, rawData.byteOffset + rawData.byteLength);
+                
+                // Parse records
+                const records = window.seisplotjsMiniseed.parseDataRecords(arrayBuffer);
+                
+                if (!records || records.length === 0) {
+                    console.warn('⚠️ No data records found in miniSEED chunk');
+                    float32Data = new Float32Array(0);
+                } else {
+                    // Decompress and collect all samples
+                    let allSamples = [];
+                    for (let i = 0; i < records.length; i++) {
+                        const rec = records[i];
+                        const samples = rec.decompress();
+                        if (samples && samples.length > 0) {
+                            allSamples = allSamples.concat(Array.from(samples));
+                        }
+                    }
+                    
+                    const parseTime = performance.now() - parseStart;
+                    console.log(`✅ Parsed ${allSamples.length} samples in ${parseTime.toFixed(0)}ms`);
+                    
+                    // Convert Int32 samples to Float32 normalized (-1 to 1)
+                    float32Data = Float32Array.from(allSamples, v => v / 2147483648.0);
+                }
+            } else {
+                throw new Error(`Unknown format: ${format}`);
+            }
+            
+            const t1 = performance.now();
+            const t2 = performance.now();
+            
+            // Store chunk
+            allChunksData.push(float32Data);
+            chunksReceived++;
+            document.getElementById('chunksReceived').textContent = chunksReceived;
+            
+            // Add to queue
+            chunkQueue.push({data: float32Data, index: chunksReceived - 1});
+            
+            // Play first chunk immediately!
+            if (chunksReceived === 1) {
+                firstAudioTime = performance.now() - streamStartTime;
+                document.getElementById('ttfa').textContent = `${firstAudioTime.toFixed(0)}ms`;
+                
+                const t3 = performance.now();
+                console.log(`⚡ CHUNK 1 PROCESSING: Format=${format} | Time=${(t1-t0).toFixed(1)}ms`);
+                
+                const ttfaLabel = cacheHitForMetrics ? '🚀 CACHE HIT' : '📡 CACHE MISS (includes IRIS)';
+                console.log(`⏱️ TIME TO FIRST AUDIO: ${firstAudioTime.toFixed(0)}ms ${ttfaLabel}`);
+                console.log(`   ${cacheHitForMetrics ? '✨ This is the <300ms production experience!' : '⏳ Would be <300ms with cron job pre-caching'}`);
+                
+                // Enable controls
+                const playPauseBtn = document.getElementById('playPauseBtn');
+                playPauseBtn.disabled = false;
+                playPauseBtn.textContent = '⏸️ Pause';
+                playPauseBtn.classList.remove('secondary', 'play-active');
+                playPauseBtn.classList.add('pause-active');
+                
+                document.getElementById('loopBtn').disabled = false;
+                
+                // ✅ Set playing state BEFORE starting spectrogram so it doesn't immediately stop
+                isPlaying = true;
+                isPaused = false; // ✅ CRITICAL: Reset pause state in case old audio set it to true
+                console.log(`🎬 Starting first chunk playback: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                
+                // ✅ ALWAYS restart spectrogram for new stream (force restart even if already running)
+                if (spectrogramAnimationId) {
+                    console.log('🎨 Canceling existing spectrogram animation');
+                    cancelAnimationFrame(spectrogramAnimationId);
+                }
+                spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+                console.log(`🎨 Spectrogram started: animId=${spectrogramAnimationId}`);
+                
+                // Record playback start time for indicator
+                playbackStartTime = audioContext.currentTime;
+                currentAudioPosition = 0; // Reset audio position
+                lastUpdateTime = audioContext.currentTime; // Start tracking time
+                currentChunkPlaybackPosition = 0; // Reset sample-accurate position
+                
+                // Fade in from start
+                if (currentGainNode) {
+                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                    currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                    currentGainNode.gain.linearRampToValueAtTime(targetVolume, audioContext.currentTime + AUDIO_FADE_TIME);
+                }
+                
+                // Start playing from queue
+                playNextChunk();
+                
+                // Start playback indicator animation
+                updatePlaybackIndicator();
+            }
+        }
+        
+        function playNextChunk(startTime = null) {
+            console.log(`▶️ playNextChunk: queue=${chunkQueue.length}, isPlaying=${isPlaying}, isPaused=${isPaused}, startTime=${startTime ? startTime.toFixed(3) : 'immediate'}`);
+            
+            // Clear any pending schedule timeout
+            if (nextChunkScheduleTimeout) {
+                clearTimeout(nextChunkScheduleTimeout);
+                nextChunkScheduleTimeout = null;
+            }
+            
+            if (chunkQueue.length === 0) {
+                currentSource = null;
+                
+                // ✅ Handle looping or stopping
+                if (isLooping && allChunksData.length > 0) {
+                    console.log('🔁 Looping - restarting from beginning...');
+                    
+                    // Re-populate the queue from stored chunk data
+                    allChunksData.forEach((chunkData, index) => {
+                        chunkQueue.push({ data: chunkData, index: index });
+                    });
+                    
+                    // Reset playback indicator for loop
+                    playbackStartTime = audioContext.currentTime;
+                    currentAudioPosition = 0; // Reset to beginning
+                    lastUpdateTime = audioContext.currentTime;
+                    nextChunkStartTime = audioContext.currentTime; // Reset precise timing
+                    currentChunkPlaybackPosition = 0; // Reset sample-accurate position
+                    currentChunkStartTime = 0; // Reset chunk timing tracking
+                    currentChunkDurationSamples = 0;
+                    
+                    // Keep playing (don't set isPlaying = false)
+                    // Immediately play the next chunk (which is now the first chunk again)
+                    playNextChunk();
+                    return;
+                } else {
+                    // Not looping - stop playback
+                    // BUT: Don't change state if we've switched to deck mode!
+                    if (isDeckMode) {
+                        console.log(`🚫 Chunk playback ended but we're in deck mode - ignoring state change`);
+                        return;
+                    }
+                    
+                    isPlaying = false;
+                    const btn = document.getElementById('playPauseBtn');
+                    
+                    // ✅ Only update button if it's enabled (don't interfere with new stream loading)
+                    if (!btn.disabled) {
+                        btn.textContent = '▶️ Play';
+                        btn.classList.remove('pause-active');
+                        btn.classList.add('play-active');
+                    }
+                    isPaused = true;
+                    console.log(`🏁 Audio finished playing: isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                    return;
+                }
+            }
+            
+            const {data, index} = chunkQueue.shift();
+            isPlaying = true;
+            
+            // Create audio buffer
+            const buffer = audioContext.createBuffer(1, data.length, audioRate);
+            buffer.copyToChannel(data, 0);
+            
+            // Create and play source
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.playbackRate.value = currentPlaybackRate;
+            source.connect(currentGainNode);
+            source.connect(spectrogramAnalyser);
+            
+            currentSource = source;
+            scheduledSources.push(source);
+            
+            // ✅ GAPLESS SCHEDULING: Calculate exact timing
+            const now = audioContext.currentTime;
+            const actualStartTime = startTime || now; // Use provided start time or start immediately
+            const chunkDuration = buffer.length / buffer.sampleRate; // Duration in seconds (at 1.0x speed)
+            const chunkDurationSamples = buffer.length; // Duration in samples
+            const adjustedDuration = chunkDuration / currentPlaybackRate; // Adjust for current playback rate
+            const chunkEndTime = actualStartTime + adjustedDuration;
+            
+            // 🎯 TRACK CURRENT CHUNK for dynamic rescheduling
+            currentChunkStartTime = actualStartTime;
+            currentChunkDurationSamples = chunkDurationSamples;
+            
+            // Start chunk at precise time
+            source.start(actualStartTime);
+            console.log(`🎵 Chunk ${index + 1} scheduled: start=${actualStartTime.toFixed(3)}s, end=${chunkEndTime.toFixed(3)}s, duration=${adjustedDuration.toFixed(3)}s (${chunkDurationSamples.toLocaleString()} samples), rate=${currentPlaybackRate.toFixed(2)}x`);
+            
+            // ✅ SAMPLE-ACCURATE POSITION TRACKING: Track actual audio duration scheduled
+            currentChunkPlaybackPosition += chunkDuration; // Add chunk duration (at 1.0x speed)
+            console.log(`📍 Sample-accurate position: ${currentChunkPlaybackPosition.toFixed(3)}s (${(currentChunkPlaybackPosition/totalAudioDuration*100).toFixed(1)}%)`);
+            
+            // Update playing chunk indicator with flash
+            const playingChunkElement = document.getElementById('playingChunk');
+            playingChunkElement.textContent = index + 1;
+            playingChunkElement.style.color = 'red';
+            playingChunkElement.style.transition = 'color 0.2s';
+            setTimeout(() => {
+                playingChunkElement.style.color = '';
+            }, 200);
+            
+            // Update progress
+            if (allChunksData.length > 0) {
+                const progress = Math.round(((index + 1) / allChunksData.length) * 100);
+                document.getElementById('playbackProgress').textContent = `${progress}%`;
+            }
+            
+            // ✅ DYNAMIC SCHEDULING: Schedule next chunk with playback-rate-aware lead time
+            if (chunkQueue.length > 0) {
+                // Convert lead time from samples to REAL TIME (accounting for playback rate!)
+                const leadTimeAudioSeconds = scheduleLeadSamples / audioRate; // Audio time at 1.0x
+                const leadTimeRealSeconds = leadTimeAudioSeconds / currentPlaybackRate; // Real time at current speed
+                const timeUntilSchedule = Math.max(0, adjustedDuration - leadTimeRealSeconds);
+                
+                console.log(`⏰ Scheduling next chunk in ${(timeUntilSchedule * 1000).toFixed(2)}ms (${scheduleLeadSamples} samples = ${(leadTimeAudioSeconds * 1000).toFixed(2)}ms audio, ${(leadTimeRealSeconds * 1000).toFixed(2)}ms real @ ${currentPlaybackRate.toFixed(2)}x)`);
+                
+                nextChunkScheduleTimeout = setTimeout(() => {
+                    nextChunkScheduleTimeout = null;
+                    
+                    // ✅ CRITICAL: Check if we've switched to deck mode (auto-crossfade happened)
+                    if (isDeckMode) {
+                        console.log(`🚫 Chunk scheduling aborted - already in deck mode`);
+                        return;
+                    }
+                    
+                    if (chunkQueue.length > 0 && isPlaying && !isPaused) {
+                        playNextChunk(chunkEndTime); // Schedule to start exactly when current chunk ends
+                    }
+                }, timeUntilSchedule * 1000);
+            } else {
+                // This is the LAST chunk - use onended to handle cleanup
+                console.log(`🏁 Last chunk ${index + 1} - will handle end via onended`);
+                source.onended = () => {
+                    // Don't process if we've switched to deck mode
+                    if (isDeckMode) {
+                        console.log(`🚫 Last chunk onended ignored - already in deck mode`);
+                        return;
+                    }
+                    playNextChunk(); // Handle end of queue (looping or stopping)
+                };
+            }
+        }
+        
+        
+        function downloadAudioFile() {
+            if (!combinedAudioData || combinedAudioData.length === 0) {
+                alert('No audio data available. Please stream some data first.');
+                return;
+            }
+            
+            console.log('💾 Creating WAV file for download...');
+            
+            // Create WAV file
+            const numChannels = 1;
+            const sampleRate = audioRate;
+            const bitsPerSample = 16;
+            const bytesPerSample = bitsPerSample / 8;
+            const blockAlign = numChannels * bytesPerSample;
+            const byteRate = sampleRate * blockAlign;
+            const dataSize = combinedAudioData.length * bytesPerSample;
+            const fileSize = 44 + dataSize;
+            
+            const buffer = new ArrayBuffer(fileSize);
+            const view = new DataView(buffer);
+            
+            // WAV header
+            let offset = 0;
+            const writeString = (str) => {
+                for (let i = 0; i < str.length; i++) {
+                    view.setUint8(offset++, str.charCodeAt(i));
+                }
+            };
+            
+            writeString('RIFF');
+            view.setUint32(offset, fileSize - 8, true); offset += 4;
+            writeString('WAVE');
+            writeString('fmt ');
+            view.setUint32(offset, 16, true); offset += 4; // fmt chunk size
+            view.setUint16(offset, 1, true); offset += 2; // audio format (PCM)
+            view.setUint16(offset, numChannels, true); offset += 2;
+            view.setUint32(offset, sampleRate, true); offset += 4;
+            view.setUint32(offset, byteRate, true); offset += 4;
+            view.setUint16(offset, blockAlign, true); offset += 2;
+            view.setUint16(offset, bitsPerSample, true); offset += 2;
+            writeString('data');
+            view.setUint32(offset, dataSize, true); offset += 4;
+            
+            // Convert float32 to int16 and write
+            for (let i = 0; i < combinedAudioData.length; i++) {
+                const sample = Math.max(-1, Math.min(1, combinedAudioData[i]));
+                view.setInt16(offset, sample * 0x7FFF, true);
+                offset += 2;
+            }
+            
+            // Create blob and download
+            const blob = new Blob([buffer], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `volcano_audio_${Date.now()}.wav`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            console.log(`✅ Downloaded ${(fileSize / 1024 / 1024).toFixed(2)} MB WAV file`);
+        }
+        
+        function drawSpectrogramFrame() {
+            // ✅ OPTIMIZATION: Stop animation if no audio is playing or paused
+            if (!spectrogramAnimationId || !spectrogramAnalyser || !isPlaying || isPaused) {
+                console.log(`🎨 Spectrogram stopped: animId=${!!spectrogramAnimationId}, analyser=${!!spectrogramAnalyser}, isPlaying=${isPlaying}, isPaused=${isPaused}`);
+                spectrogramAnimationId = null;
+                return;
+            }
+            
+            // ✅ OPTIMIZATION: Cache canvas element and context (avoid repeated DOM lookups)
+            if (!spectrogramCanvas) {
+                spectrogramCanvas = document.getElementById('spectrogram');
+            }
+            if (!spectrogramCtx) {
+                spectrogramCtx = spectrogramCanvas.getContext('2d', { alpha: false });
+            }
+            const ctx = spectrogramCtx;
+            const width = spectrogramCanvas.width;
+            const height = spectrogramCanvas.height;
+            
+            const bufferLength = spectrogramAnalyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            spectrogramAnalyser.getByteFrequencyData(dataArray);
+            
+            // Scroll left (GPU-only operation - no CPU readback)
+            ctx.drawImage(spectrogramCanvas, -1, 0);
+            
+            // Draw new column
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const percent = value / 255;
+                const y = height - (i / bufferLength) * height;
+                const barHeight = height / bufferLength;
+                
+                const r = Math.min(255, percent * 255 * 1.5);
+                const g = Math.min(255, Math.max(0, (percent - 0.3) * 255 * 2));
+                const b = Math.min(255, Math.max(0, (percent - 0.7) * 255 * 3));
+                
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fillRect(width - 1, y - barHeight, 1, barHeight);
+            }
+            
+            // ✅ OPTIMIZATION: Only continue if still playing
+            if (isPlaying) {
+                spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+            } else {
+                spectrogramAnimationId = null;
+            }
+        }
+    </script>
+</body>
+</html>
+

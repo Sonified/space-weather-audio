@@ -52,6 +52,8 @@ python test_audio_stream_local.py
   "currently_running": false,
   "deployed_at": "2025-11-05T04:54:44.726511+00:00",
   "failed_runs": 0,
+  "last_failure": null,
+  "recent_failures": [],
   "last_run": "2025-11-05T05:32:01.116769+00:00",
   "next_run": "2025-11-05T05:42:00.116789+00:00",
   "collection_stats": {
@@ -125,6 +127,15 @@ python test_audio_stream_local.py
 - `OK`: Count matches or exceeds expected
 - `MISSING`: Files missing or non-uniform
 - `INCOMPLETE`: Below expected count
+
+**Failure Tracking:**
+- `last_failure`: Most recent failure info (null if no failures)
+  - `timestamp`: ISO 8601 timestamp of failure
+  - `error`: Error message (up to 500 chars)
+  - `exit_code`: Process exit code (null for exceptions)
+  - `type`: `"subprocess_failure"` or `"exception"`
+- `recent_failures`: Array of last 10 failures (most recent last), same structure as `last_failure`
+- **Persistence**: Failures are saved to R2 at `collector_logs/failures.json` (survives deployments, keeps all failures forever)
 
 #### GET /stations
 **Purpose:** List active stations being collected  
@@ -233,6 +244,9 @@ python test_audio_stream_local.py
                               ├─ 6h/
                               │   └─ HV_OBL_--_HHZ_100Hz_2025-11-04-06-00-00_to_2025-11-04-11-59-59.bin.zst
                               └─ HV_OBL_--_HHZ_100Hz_2025-11-04.json
+
+/collector_logs/
+  └─ failures.json        # Complete failure history with timestamps (all failures)
 ```
 
 ### Filename Format
@@ -495,10 +509,33 @@ samples = np.frombuffer(decompressed, dtype=np.int32)
 **Cause:** Files created outside normal workflow  
 **Solution:** Run `/repair/<period>` to adopt them
 
+**Issue:** `failed_runs` > 0  
+**Cause:** Collection job failed (check `last_failure` for details)  
+**Solution:** Check `last_failure.error` and `last_failure.exit_code` to diagnose. Review `recent_failures` array for patterns.
+
+**Example failure in status:**
+```json
+"last_failure": {
+  "timestamp": "2025-11-05T05:52:01.312695+00:00",
+  "error": "Exit code 1: Traceback (most recent call last): ...",
+  "exit_code": 1,
+  "type": "subprocess_failure"
+},
+"recent_failures": [
+  {
+    "timestamp": "2025-11-05T05:52:01.312695+00:00",
+    "error": "Exit code 1: ...",
+    "exit_code": 1,
+    "type": "subprocess_failure"
+  }
+]
+```
+
 ---
 
 ## Version History
 
+**v1.07** - Failure tracking (timestamp, error messages, exit codes, recent failures history)  
 **v1.06** - Coverage depth metrics (hours/days back tracking)  
 **v1.05** - Status endpoint improvements (runtime fields, per-station tracking)  
 **v1.04** - Expected vs actual validation for all file types  

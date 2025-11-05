@@ -244,22 +244,38 @@ function normalize(data) {
 - `fflate` - zstd decompression (loaded from CDN)
 - Web Audio API (built-in)
 
+## Processing Division: Server vs Browser
+
+### Server (audio_stream.py)
+✅ **IRIS data fetching** - Handles miniSEED download  
+✅ **ObsPy decoding** - STEIM2, STEIM1, etc.  
+✅ **Gap filling** - Linear interpolation for missing samples  
+✅ **High-pass filtering** - Butterworth filter at original sample rate  
+✅ **Data conversion** - int32 → float32  
+✅ **Compression** - Zstd level 3  
+
+### Browser (index.html)
+✅ **Decompression** - fzstd.js  
+✅ **Normalization** - Scale to [-1, 1]  
+✅ **Playback** - AudioWorklet + Web Audio API  
+✅ **Visualization** - Real-time waveform + spectrogram  
+
 ## Benefits
 
-✅ **No STEIM2 parsing in JavaScript**  
-✅ **Server does all the heavy lifting**  
-✅ **Better compression (zstd > gzip)**  
-✅ **Pre-filtered and normalized**  
-✅ **Simple browser code**  
-✅ **Doesn't interfere with chunk pipeline**  
+✅ **No STEIM2 parsing in JavaScript** - ObsPy handles it perfectly  
+✅ **Automatic gap filling** - Linear interpolation for seamless playback  
+✅ **Flexible normalization** - Browser-side allows future adjustability  
+✅ **Better compression** - Zstd level 3 (2-3x better than gzip)  
+✅ **Simple browser code** - Just decompress, normalize, play  
+✅ **Separate from data collector** - Doesn't interfere with cron pipeline  
 
 ## Notes
 
-- This does NOT touch the existing `/api/request` or `/api/request-stream-v2` endpoints
-- This does NOT create or modify R2 cache
-- This is purely for on-demand audio streaming
-- Server applies high-pass filter and normalization before sending
-- Browser just decompresses and plays
+- This does NOT touch the data collection pipeline (`cron_loop.py` / `cron_job.py`)
+- This does NOT create or modify R2 cached files
+- This is purely for **on-demand audio streaming**
+- Server applies high-pass filter, browser applies normalization
+- Gap filling uses ObsPy's `merge(fill_value='interpolate')`
 
 
 

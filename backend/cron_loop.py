@@ -4,7 +4,7 @@ Continuous cron loop for Railway deployment
 Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
 Version: v1.00
 """
-__version__ = "2025_11_04_v1.09"
+__version__ = "2025_11_04_v1.10"
 import time
 import subprocess
 import sys
@@ -27,6 +27,69 @@ else:
     with open(deploy_time_file, 'w') as f:
         f.write(deploy_time)
 
+# R2 Configuration for failure logs
+R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
+R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+FAILURE_LOG_KEY = 'collector_logs/failures.json'
+
+def get_s3_client():
+    """Get S3 client for R2"""
+    import boto3
+    return boto3.client(
+        's3',
+        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        region_name='auto'
+    )
+
+def load_failures():
+    """Load failures from R2"""
+    try:
+        import json
+        s3 = get_s3_client()
+        response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=FAILURE_LOG_KEY)
+        failures = json.loads(response['Body'].read())
+        # Return last 10 for recent_failures
+        return failures[-10:] if len(failures) > 10 else failures
+    except s3.exceptions.NoSuchKey:
+        # File doesn't exist yet
+        return []
+    except Exception as e:
+        print(f"Warning: Could not load failure log from R2: {e}")
+        return []
+
+def save_failure(failure_info):
+    """Append failure to R2 log (keeps all failures forever)"""
+    try:
+        import json
+        s3 = get_s3_client()
+        
+        # Load existing failures
+        try:
+            response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=FAILURE_LOG_KEY)
+            failures = json.loads(response['Body'].read())
+        except s3.exceptions.NoSuchKey:
+            failures = []
+        
+        # Append new failure (no limit - storage is cheap!)
+        failures.append(failure_info)
+        
+        # Save back to R2
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=FAILURE_LOG_KEY,
+            Body=json.dumps(failures, indent=2),
+            ContentType='application/json'
+        )
+    except Exception as e:
+        print(f"Warning: Could not save failure log to R2: {e}")
+
+# Load previous failures on startup
+previous_failures = load_failures()
+
 # Shared state
 status = {
     'version': __version__,
@@ -37,7 +100,9 @@ status = {
     'total_runs': 0,
     'successful_runs': 0,
     'failed_runs': 0,
-    'currently_running': False
+    'currently_running': False,
+    'last_failure': previous_failures[-1] if previous_failures else None,
+    'recent_failures': previous_failures  # Last 10 from disk
 }
 
 def get_dates_in_period(start_time, end_time):
@@ -357,6 +422,8 @@ def get_status():
         'currently_running': status['currently_running'],
         'deployed_at': status['deployed_at'],
         'failed_runs': status['failed_runs'],
+        'last_failure': status['last_failure'],
+        'recent_failures': status['recent_failures'],
         'last_run': status['last_run'],
         'next_run': status['next_run'],
         'collection_stats': collection_stats,
@@ -1196,7 +1263,7 @@ def run_cron_job():
         
         result = subprocess.run(
             [sys.executable, cron_job_path],
-            capture_output=False,
+            capture_output=True,
             text=True
         )
         
@@ -1204,11 +1271,54 @@ def run_cron_job():
             print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ✅ Cron job completed successfully")
             status['successful_runs'] += 1
         else:
+            failure_time = datetime.now(timezone.utc).isoformat()
+            error_msg = f"Exit code {result.returncode}"
+            if result.stderr:
+                error_msg += f": {result.stderr[:500]}"  # Limit to 500 chars
+            elif result.stdout:
+                # Sometimes errors go to stdout
+                error_msg += f": {result.stdout[-500:]}"  # Last 500 chars
+            
             print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ Cron job failed with exit code {result.returncode}")
+            if result.stderr:
+                print(f"Stderr: {result.stderr}")
+            
+            # Record failure
+            failure_info = {
+                'timestamp': failure_time,
+                'error': error_msg,
+                'exit_code': result.returncode,
+                'type': 'subprocess_failure'
+            }
+            status['last_failure'] = failure_info
+            status['recent_failures'].append(failure_info)
+            # Keep only last 10 failures in memory
+            if len(status['recent_failures']) > 10:
+                status['recent_failures'] = status['recent_failures'][-10:]
+            # Save to persistent log
+            save_failure(failure_info)
             status['failed_runs'] += 1
     
     except Exception as e:
+        failure_time = datetime.now(timezone.utc).isoformat()
+        error_msg = f"Exception: {str(e)}"
+        
         print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ Error running cron job: {e}")
+        
+        # Record failure
+        failure_info = {
+            'timestamp': failure_time,
+            'error': error_msg,
+            'exit_code': None,
+            'type': 'exception'
+        }
+        status['last_failure'] = failure_info
+        status['recent_failures'].append(failure_info)
+        # Keep only last 10 failures in memory
+        if len(status['recent_failures']) > 10:
+            status['recent_failures'] = status['recent_failures'][-10:]
+        # Save to persistent log
+        save_failure(failure_info)
         status['failed_runs'] += 1
     
     finally:

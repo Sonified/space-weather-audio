@@ -513,6 +513,20 @@ v1.00 Add: Observability endpoints (health, status, validate, repair) with multi
 - Flexible period format: 24h, 2d, 1h, etc.
 ```
 
+**Version:** v1.01 (Commit: `d5eb38b`)
+
+**Commit Message:**
+```
+v1.01 Refactor: Reorganize test files into dedicated test directories
+
+- Moved all test_*.py files to /tests/ and /backend/tests/
+- Moved all test_*.html files to /tests/
+- Moved TEST_NEW_AUDIO_ENDPOINT.md to /tests/
+- Moved test_output/ to backend/tests/test_output/
+- Updated README documentation
+- Cleaner project structure for better organization
+```
+
 ---
 
 ## Folder Structure Reorganization
@@ -769,6 +783,40 @@ data/2025/11/HV/kilauea/OBL/--/HHZ/
 // When not uniform (stations have different counts):
 "10m": { "avg": 9.4, "is_uniform": false, "min": 9, "max": 10 }
 ```
+
+---
+
+### 2025-11-04 - Failure Tracking (v1.10)
+
+**Version:** v1.10  
+**Commit:** v1.10 Add: Detailed failure tracking with timestamps, error messages, exit codes, and failure history
+
+**Changes:**
+- Added `last_failure` to status dict: captures timestamp, error message, exit code, and failure type
+- Added `recent_failures` array: stores last 10 failures for pattern analysis
+- Changed `capture_output` from `False` to `True` in subprocess.run() to capture stderr/stdout
+- Failure types: `"subprocess_failure"` (exit code != 0) or `"exception"` (Python error)
+- Error messages limited to 500 chars to prevent overwhelming responses
+- Both `last_failure` and `recent_failures` included in `/status` endpoint
+- Updated `README_MACHINE_READABLE.md` with failure tracking documentation
+
+**Problem:** Railway server showed `failed_runs: 1` but no details about what failed or when.
+
+**Solution:** Now captures detailed failure information including:
+- Timestamp of failure (ISO 8601)
+- Error message from stderr/stdout (up to 500 chars)
+- Exit code (for subprocess failures) or None (for exceptions)
+- Failure type (subprocess_failure vs exception)
+- History of last 10 failures for pattern detection
+
+**Use Case:** When a collection run fails, check `last_failure` to see exactly what went wrong. Review `recent_failures` to identify recurring issues or patterns.
+
+**Persistence:** Failures are saved to R2 storage at `collector_logs/failures.json`. This means:
+- Survives all Railway deployments (not ephemeral)
+- Keeps ALL failures forever (last 10 shown in status endpoint)
+- Can download/view the file directly from R2 for full history
+- Loads on startup to show historical failures
+- Storage cost: negligible (JSON text is tiny, even 10,000 failures = ~5MB)
 
 ---
 
