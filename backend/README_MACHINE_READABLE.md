@@ -45,17 +45,58 @@ python test_audio_stream_local.py
 
 #### GET /status
 **Purpose:** Detailed system status with collection metrics  
-**Response:**
+
+**Query Parameters:**
+- `timezone` (optional): Timezone name for timestamp conversion
+  - Examples: `America/Los_Angeles`, `US/Pacific`, `Europe/London`, `US/Eastern`, `Asia/Tokyo`
+  - Default: `UTC` (if not specified)
+  - Uses IANA timezone database (pytz)
+  - Invalid timezones fall back to UTC with warning
+
+**Usage Examples:**
+```bash
+# UTC times (default)
+GET /status
+
+# Pacific Time
+GET /status?timezone=America/Los_Angeles
+GET /status?timezone=US/Pacific
+
+# Eastern Time
+GET /status?timezone=US/Eastern
+
+# London Time
+GET /status?timezone=Europe/London
+```
+
+**Response (UTC - default):**
 ```json
 {
   "version": "2025_11_05_v1.51",  // Example only - do not update
+  "started_at": "2025-11-05 05:03:07 UTC",
   "currently_running": false,
-  "deployed_at": "2025-11-05T04:54:44.726511+00:00",
+  "deployed_at": "2025-11-05 04:54:44 UTC",
   "failed_runs": 0,
   "last_failure": null,
   "recent_failures": [],
-  "last_run": "2025-11-05T05:32:01.116769+00:00",
-  "next_run": "2025-11-05T05:42:00.116789+00:00",
+  "last_run_started": "2025-11-05 05:32:01 UTC",
+  "last_run_completed": "2025-11-05 05:32:15 UTC",
+  "next_run": "2025-11-05 05:42:00 UTC",
+  "collection_stats": { ... },
+  "r2_storage": { ... },
+  "failure_summary": { ... }
+}
+```
+
+**Response (with timezone=America/Los_Angeles):**
+```json
+{
+  "version": "2025_11_05_v1.51",
+  "started_at": "2025-11-04 21:03:07 PST",
+  "deployed_at": "2025-11-04 20:54:44 PST",
+  "last_run_started": "2025-11-04 21:32:01 PST",
+  "last_run_completed": "2025-11-04 21:32:15 PST",
+  "next_run": "2025-11-04 21:42:00 PST",
   "collection_stats": {
     "active_stations": 5,
     "stations_with_files": 5,
@@ -120,6 +161,13 @@ python test_audio_stream_local.py
   "successful_runs": 9
 }
 ```
+
+**Timezone Conversion:**
+- When `timezone` parameter is provided, ALL timestamp fields are converted and formatted
+- Format: `YYYY-MM-DD HH:MM:SS TZ` (e.g., `2025-11-04 21:32:01 PST`)
+- Includes: `started_at`, `deployed_at`, `last_run_started`, `last_run_completed`, `next_run`, failure timestamps
+- Timezone abbreviations shown: PST, EST, GMT, JST, etc.
+- Invalid timezone names fall back to UTC with note in timestamp
 
 **Status Values:**
 - `PERFECT`: Exact match, uniform distribution, all stations
@@ -475,7 +523,8 @@ python test_iris_latency.py
 1. **Check /health first** before heavy operations
 2. **Use /status** for monitoring and metrics
 3. **Poll /status** max once per minute (avoid rate limiting)
-4. **Parse status values** programmatically:
+4. **Use timezone parameter** for local time display (e.g., `?timezone=America/Los_Angeles`)
+5. **Parse status values** programmatically:
    - `PERFECT` = no action needed
    - `RUNNING` = wait for completion
    - `MISSING`/`INCOMPLETE` = investigate

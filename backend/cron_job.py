@@ -145,11 +145,12 @@ def process_station_window(network, station, location, channel, volcano, sample_
         if s3_client:
             year = start_time.year
             month = f"{start_time.month:02d}"
+            day = f"{start_time.day:02d}"
             date_str = start_time.strftime("%Y-%m-%d")
             location_str = location if location and location != '--' else '--'
             rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
             metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
-            metadata_key = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
+            metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
             
             try:
                 response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
@@ -232,6 +233,7 @@ def process_station_window(network, station, location, channel, volcano, sample_
         # Generate paths
         year = trace.stats.starttime.datetime.year
         month = f"{trace.stats.starttime.datetime.month:02d}"
+        day = f"{trace.stats.starttime.datetime.day:02d}"
         date_str = trace.stats.starttime.datetime.strftime("%Y-%m-%d")
         
         # Metadata filename
@@ -239,9 +241,9 @@ def process_station_window(network, station, location, channel, volcano, sample_
         
         # Step 5: Upload to R2 (or save locally if no credentials)
         if s3_client:
-            # New structure: files organized by chunk type in subfolders
-            r2_key = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{chunk_type}/{filename}"
-            metadata_key = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
+            # New structure: files organized by day, then chunk type in subfolders
+            r2_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{chunk_type}/{filename}"
+            metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
             
             # Upload chunk file
             s3_client.put_object(
@@ -277,7 +279,7 @@ def process_station_window(network, station, location, channel, volcano, sample_
                 }
                 logger.info(f"  📝 Creating new metadata")
             
-            # Append chunk metadata
+            # Build chunk metadata
             chunk_meta = {
                 'start': trace.stats.starttime.datetime.strftime("%H:%M:%S"),
                 'end': trace.stats.endtime.datetime.strftime("%H:%M:%S"),
@@ -288,6 +290,16 @@ def process_station_window(network, station, location, channel, volcano, sample_
                 'gap_samples_filled': sum(g['samples_filled'] for g in gaps)
             }
             
+            # CRITICAL: Check again for duplicates AFTER loading fresh metadata
+            # This prevents race conditions where multiple processes pass the first check
+            start_time_str = chunk_meta['start']
+            existing_chunks = metadata['chunks'].get(chunk_type, [])
+            for existing_chunk in existing_chunks:
+                if existing_chunk['start'] == start_time_str:
+                    logger.info(f"  ⏭️  Chunk already exists (race condition detected), skipping append")
+                    return 'skipped', None
+            
+            # Safe to append now
             metadata['chunks'][chunk_type].append(chunk_meta)
             
             # SORT by start time (chronological)

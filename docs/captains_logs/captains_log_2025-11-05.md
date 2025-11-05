@@ -1,5 +1,65 @@
 # Captain's Log - November 5, 2025
 
+## Critical Bug Fixes: Day-Level Folders + Deduplication (v1.56)
+
+**Version:** v1.56  
+**Commit:** v1.56 Fix: Added day-level folder structure and fixed deduplication race condition
+
+### Problems Discovered:
+
+**Bug #1: Deduplication Race Condition**
+- The deduplication check happened BEFORE uploading the binary file (line 156-164)
+- Then metadata was loaded AGAIN from R2 (line 257)
+- Then blindly appended without re-checking (line 291)
+- Result: Multiple processes could pass the first check, then both append duplicates
+- Evidence: Metadata files had 2-4x duplicate entries for the same timestamps
+
+**Bug #2: No Day-Level Folder Structure**
+- All files for a month went into same folder: `data/2025/11/HV/...`
+- After 30 days: 30+ metadata files in one folder
+- Hard to browse by day, inefficient R2 listings
+- No logical day-level organization
+
+**Bug #3 (False Alarm):** 
+- Initially thought chunks spanning midnight were assigned to wrong day
+- Actually CORRECT behavior: chunk from 18:00-00:00 belongs to the START day
+- No fix needed - the original analysis in CRITICAL_BUGS.md was wrong
+
+### Solutions Applied:
+
+**Fix #1: Deduplication Check After Metadata Load**
+- Added second deduplication check AFTER loading fresh metadata (line 293-300)
+- Prevents race conditions where multiple processes pass the first check
+- Now checks again right before appending to metadata
+- Logs "race condition detected" if duplicate found at append time
+
+**Fix #2: Day-Level Folder Structure**
+- Changed from: `data/{year}/{month}/{network}/...`
+- Changed to: `data/{year}/{month}/{day}/{network}/...`
+- Example: `data/2025/11/05/HV/kilauea/OBL/--/HHZ/`
+- Each day gets its own folder with its own metadata file
+- Clean separation of data by day
+
+### Files Modified:
+- `backend/cron_job.py` - Added day folder to paths (lines 148, 235, 244)
+- `backend/cron_job.py` - Added deduplication check after metadata load (lines 293-300)
+- `backend/collector_loop.py` - Updated 4 locations with day-level paths (lines 660, 2396, 2654, 2943)
+- `backend/CRITICAL_BUGS.md` - Updated with correct analysis
+
+### Data Reset:
+- Nuked all existing R2 data (757 objects deleted)
+- Started fresh with correct folder structure
+- No more duplicates, clean day-level organization
+
+### Impact:
+- ✅ No more duplicate metadata entries
+- ✅ Clean day-level folder organization
+- ✅ Easier to browse data by specific date
+- ✅ More efficient R2 listings
+- ✅ Proper handling of concurrent collection processes
+
+---
+
 ## Fixed Status Calculation for New Stations (v1.55)
 
 **Version:** v1.55  

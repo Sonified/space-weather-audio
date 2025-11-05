@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_05_v1.55"
+__version__ = "2025_11_05_v1.56"
 import time
 import subprocess
 import sys
@@ -34,6 +34,7 @@ R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c5287885
 R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
 R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
 FAILURE_LOG_KEY = 'collector_logs/failures.json'
+STATION_ACTIVATION_LOG_KEY = 'collector_logs/station_activations.json'
 
 def get_s3_client():
     """Get S3 client for R2"""
@@ -157,10 +158,12 @@ def load_failures():
             }
             summaries.append(summary)
         return summaries
-    except s3.exceptions.NoSuchKey:
-        # File doesn't exist yet
-        return []
     except Exception as e:
+        # Check if it's a NoSuchKey exception (file doesn't exist yet)
+        error_code = getattr(e, 'response', {}).get('Error', {}).get('Code', '')
+        if error_code == 'NoSuchKey':
+            return []
+        # Otherwise print warning and return empty list
         print(f"Warning: Could not load failure log from R2: {e}")
         return []
 
@@ -174,8 +177,13 @@ def save_failure(failure_info):
         try:
             response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=FAILURE_LOG_KEY)
             failures = json.loads(response['Body'].read())
-        except s3.exceptions.NoSuchKey:
-            failures = []
+        except Exception as load_error:
+            # Check if it's a NoSuchKey exception (file doesn't exist yet)
+            error_code = getattr(load_error, 'response', {}).get('Error', {}).get('Code', '')
+            if error_code == 'NoSuchKey':
+                failures = []
+            else:
+                raise  # Re-raise if it's not a NoSuchKey error
         
         # Append new failure (no limit - storage is cheap!)
         failures.append(failure_info)
@@ -189,6 +197,343 @@ def save_failure(failure_info):
         )
     except Exception as e:
         print(f"Warning: Could not save failure log to R2: {e}")
+
+def load_station_activations():
+    """
+    Load station activation log from R2.
+    
+    Returns:
+        dict: {
+            'stations': {
+                'NETWORK_STATION_LOCATION_CHANNEL': {
+                    'network': 'HV',
+                    'station': 'OBL',
+                    'location': '--',
+                    'channel': 'HHZ',
+                    'activated_at': '2025-10-01T00:00:00Z',
+                    'deactivated_at': None or '2025-11-05T12:00:00Z'
+                },
+                ...
+            },
+            'changes': [
+                {
+                    'timestamp': '2025-11-05T12:00:00Z',
+                    'type': 'activated' or 'deactivated',
+                    'station_key': 'HV_OBL_--_HHZ',
+                    'station_info': {...}
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        s3 = get_s3_client()
+        response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=STATION_ACTIVATION_LOG_KEY)
+        return json.loads(response['Body'].read())
+    except s3.exceptions.NoSuchKey:
+        # File doesn't exist yet - return empty structure
+        return {
+            'stations': {},
+            'changes': []
+        }
+    except Exception as e:
+        # Check if it's a NoSuchKey exception (boto3 uses ClientError)
+        error_code = getattr(e, 'response', {}).get('Error', {}).get('Code', '')
+        if error_code == 'NoSuchKey':
+            return {
+                'stations': {},
+                'changes': []
+            }
+        print(f"Warning: Could not load station activation log from R2: {e}")
+        return {
+            'stations': {},
+            'changes': []
+        }
+
+def save_station_activations(activation_log):
+    """Save station activation log to R2"""
+    try:
+        s3 = get_s3_client()
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=STATION_ACTIVATION_LOG_KEY,
+            Body=json.dumps(activation_log, indent=2),
+            ContentType='application/json'
+        )
+    except Exception as e:
+        print(f"Warning: Could not save station activation log to R2: {e}")
+
+def find_station_first_file_timestamp(s3_client, network, station, location, channel):
+    """
+    Find the timestamp of the first file collected for a station by reading metadata files.
+    This is much faster and more accurate than scanning binary files.
+    
+    Returns:
+        datetime: First file timestamp, or None if no files found
+    """
+    try:
+        location_str = location if location and location != '--' else '--'
+        
+        # Find sample_rate for this station (needed for metadata filename)
+        active_stations = get_active_stations_list()
+        sample_rate = None
+        for s in active_stations:
+            if (s['network'] == network and s['station'] == station and 
+                s.get('location', '--') in [location, location_str] and s['channel'] == channel):
+                sample_rate = s['sample_rate']
+                break
+        
+        if not sample_rate:
+            print(f"Warning: Could not find sample_rate for {network}.{station}.{location_str}.{channel}")
+            return None
+        
+        rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+        
+        # Find volcano for this station (needed for path)
+        volcano = None
+        for s in active_stations:
+            if (s['network'] == network and s['station'] == station):
+                volcano = s.get('volcano')
+                break
+        
+        if not volcano:
+            print(f"Warning: Could not find volcano for {network}.{station}")
+            return None
+        
+        # List all metadata files for this station
+        # Path format: data/{YEAR}/{MONTH}/{NETWORK}/{VOLCANO}/{STATION}/{LOCATION}/{CHANNEL}/
+        # Metadata format: {NETWORK}_{STATION}_{LOCATION}_{CHANNEL}_{RATE}Hz_{DATE}.json
+        prefix = f"data/"
+        paginator = s3_client.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix=prefix)
+        
+        earliest_timestamp = None
+        
+        for page in pages:
+            if 'Contents' not in page:
+                continue
+            
+            for obj in page['Contents']:
+                key = obj['Key']
+                
+                # Check if this is a metadata file for our station
+                if not key.endswith('.json'):
+                    continue
+                
+                # Path format: data/YYYY/MM/NETWORK/VOLCANO/STATION/LOCATION/CHANNEL/filename.json
+                path_parts = key.split('/')
+                if len(path_parts) < 9:
+                    continue
+                
+                file_network = path_parts[3]
+                file_volcano = path_parts[4]
+                file_station = path_parts[5]
+                file_location = path_parts[6]
+                file_channel = path_parts[7]
+                filename = path_parts[8]
+                
+                # Check if this metadata file matches our station
+                if (file_network == network and file_station == station and 
+                    file_location == location_str and file_channel == channel and
+                    file_volcano == volcano):
+                    
+                    # Read the metadata file
+                    try:
+                        response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=key)
+                        metadata = json.loads(response['Body'].read().decode('utf-8'))
+                        
+                        # Extract date from metadata
+                        date_str = metadata.get('date')  # Format: YYYY-MM-DD
+                        if not date_str:
+                            continue
+                        
+                        # Find earliest chunk start time from all chunk types
+                        for chunk_type in ['10m', '1h', '6h']:
+                            chunks = metadata.get('chunks', {}).get(chunk_type, [])
+                            for chunk in chunks:
+                                start_time_str = chunk.get('start')  # Format: HH:MM:SS
+                                if start_time_str:
+                                    # Combine date and time
+                                    timestamp_str = f"{date_str}T{start_time_str}"
+                                    chunk_timestamp = datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
+                                    
+                                    if earliest_timestamp is None or chunk_timestamp < earliest_timestamp:
+                                        earliest_timestamp = chunk_timestamp
+                    
+                    except Exception as e:
+                        # Skip this metadata file if there's an error reading it
+                        continue
+        
+        return earliest_timestamp
+    except Exception as e:
+        print(f"Warning: Error finding first file timestamp for {network}.{station}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def detect_and_log_station_changes():
+    """
+    Detect changes in active stations and update activation log.
+    Called periodically to track when stations are added/removed.
+    
+    Returns:
+        dict: {
+            'new_stations': [...],
+            'removed_stations': [...],
+            'log_updated': bool
+        }
+    """
+    try:
+        s3 = get_s3_client()
+        activation_log = load_station_activations()
+        current_stations = get_active_stations_list()
+        
+        # If log hasn't been initialized yet (empty), skip detection to avoid expensive scans
+        # Auto-init endpoint should be called first to populate the log
+        if len(activation_log.get('stations', {})) == 0:
+            return {
+                'new_stations': [],
+                'reactivated_stations': [],
+                'removed_stations': [],
+                'log_updated': False,
+                'skipped': 'Log not initialized - run /auto-init-station-activations first'
+            }
+        
+        # Build set of current station keys
+        current_keys = set()
+        for station_config in current_stations:
+            network = station_config['network']
+            station = station_config['station']
+            location = station_config.get('location', '')
+            channel = station_config['channel']
+            location_str = location if location and location != '--' else '--'
+            station_key = f"{network}_{station}_{location_str}_{channel}"
+            current_keys.add(station_key)
+        
+        # Build set of logged station keys (only active ones)
+        logged_active_keys = set()
+        all_logged_keys = set()
+        for station_key, station_info in activation_log.get('stations', {}).items():
+            all_logged_keys.add(station_key)
+            if station_info.get('deactivated_at') is None:
+                logged_active_keys.add(station_key)
+        
+        # Find new stations (in current but not in log, or deactivated but now active again)
+        new_stations = []
+        reactivated_stations = []
+        now = datetime.now(timezone.utc).isoformat()
+        
+        for station_config in current_stations:
+            network = station_config['network']
+            station = station_config['station']
+            location = station_config.get('location', '')
+            channel = station_config['channel']
+            location_str = location if location and location != '--' else '--'
+            station_key = f"{network}_{station}_{location_str}_{channel}"
+            
+            if station_key not in logged_active_keys:
+                # Check if this station was previously deactivated (reactivation)
+                was_deactivated = False
+                if station_key in all_logged_keys:
+                    old_info = activation_log['stations'][station_key]
+                    if old_info.get('deactivated_at'):
+                        was_deactivated = True
+                        # Reactivate - use original activation time
+                        activated_at = old_info.get('activated_at', now)
+                        station_info = {
+                            'network': network,
+                            'station': station,
+                            'location': location_str,
+                            'channel': channel,
+                            'volcano': station_config.get('volcano'),
+                            'sample_rate': station_config.get('sample_rate'),
+                            'activated_at': activated_at,
+                            'deactivated_at': None
+                        }
+                        activation_log['stations'][station_key] = station_info
+                        activation_log['changes'].append({
+                            'timestamp': now,
+                            'type': 'reactivated',
+                            'station_key': station_key,
+                            'station_info': station_info.copy()
+                        })
+                        reactivated_stations.append(station_info)
+                        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔄 Station reactivated: {station_key}")
+                        continue
+                
+                # New station - find its first file timestamp
+                # (We only get here if log has been initialized, thanks to early return above)
+                first_file_time = find_station_first_file_timestamp(s3, network, station, location, channel)
+                
+                # Use first file time if found, otherwise use now (just activated)
+                activated_at = first_file_time.isoformat() if first_file_time else now
+                
+                station_info = {
+                    'network': network,
+                    'station': station,
+                    'location': location_str,
+                    'channel': channel,
+                    'volcano': station_config.get('volcano'),
+                    'sample_rate': station_config.get('sample_rate'),
+                    'activated_at': activated_at,
+                    'deactivated_at': None
+                }
+                
+                activation_log['stations'][station_key] = station_info
+                activation_log['changes'].append({
+                    'timestamp': now,
+                    'type': 'activated',
+                    'station_key': station_key,
+                    'station_info': station_info.copy()
+                })
+                
+                new_stations.append(station_info)
+                print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📍 New station activated: {station_key} (first file: {activated_at})")
+        
+        # Find removed stations (in log but not in current)
+        removed_stations = []
+        for station_key in logged_active_keys:
+            if station_key not in current_keys:
+                # Station was deactivated
+                station_info = activation_log['stations'][station_key]
+                station_info['deactivated_at'] = now
+                
+                activation_log['changes'].append({
+                    'timestamp': now,
+                    'type': 'deactivated',
+                    'station_key': station_key,
+                    'station_info': station_info.copy()
+                })
+                
+                removed_stations.append(station_info)
+                print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚫 Station deactivated: {station_key}")
+        
+        # Save updated log if there were changes
+        if new_stations or reactivated_stations or removed_stations:
+            save_station_activations(activation_log)
+            return {
+                'new_stations': new_stations,
+                'reactivated_stations': reactivated_stations,
+                'removed_stations': removed_stations,
+                'log_updated': True
+            }
+        
+        return {
+            'new_stations': [],
+            'reactivated_stations': [],
+            'removed_stations': [],
+            'log_updated': False
+        }
+    except Exception as e:
+        print(f"Warning: Error detecting station changes: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            'new_stations': [],
+            'reactivated_stations': [],
+            'removed_stations': [],
+            'log_updated': False
+        }
 
 # Load previous failures on startup
 previous_failures = load_failures()
@@ -312,10 +657,11 @@ def build_metadata_key(network, volcano, station, location, channel, sample_rate
     """
     year = date.year
     month = f"{date.month:02d}"
+    day = f"{date.day:02d}"
     location_str = location if location and location != '--' else '--'
     rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
     filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date.strftime('%Y-%m-%d')}.json"
-    return f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{filename}"
+    return f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{filename}"
 
 
 def load_metadata_for_date(s3_client, network, volcano, station, location, channel, sample_rate, date):
@@ -1083,6 +1429,9 @@ def get_status():
             region_name='auto'
         )
         
+        # Detect and log any station changes (new stations added or removed)
+        detect_and_log_station_changes()
+        
         # Count files and calculate storage
         paginator = s3.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
@@ -1224,13 +1573,16 @@ def get_status():
         stations_with_files = len(station_file_counts)
         missing_stations = active_station_count - stations_with_files if active_station_count > stations_with_files else 0
         
-        # Calculate expected files PER STATION based on each station's earliest data timestamp
+        # Calculate expected files PER STATION based on activation log (source of truth)
         # This handles stations that were added later - they shouldn't be expected to have
         # files going back to when the first station started collecting
         now = datetime.now(timezone.utc)
         expected_10m_total = 0
         expected_1h_total = 0
         expected_6h_total = 0
+        
+        # Load activation log to get when each station was activated
+        activation_log = load_station_activations()
         
         # Get active stations list to match against file counts
         active_stations_list = get_active_stations_list()
@@ -1243,30 +1595,42 @@ def get_status():
             location_str = location if location and location != '--' else '--'
             station_key = f"{network}_{station}_{location_str}_{channel}"
             
-            # Find earliest timestamp for this station
-            station_start = station_earliest_timestamps.get(station_key)
-            
-            if station_start:
-                # Calculate how many cycles this station should have based on its start time
-                time_diff = now - station_start
-                total_minutes = time_diff.total_seconds() / 60
-                
-                # Collection runs every 10 minutes, so cycles = minutes / 10
-                # Round down to nearest cycle (stations don't get partial cycles)
-                station_cycles = int(total_minutes // 10)
-                
-                # Expected files for this station
-                # 10m files: 1 per cycle
-                # 1h files: 1 per 6 cycles (every hour)
-                # 6h files: 1 per 36 cycles (every 6 hours)
-                station_expected_10m = station_cycles
-                station_expected_1h = station_cycles // 6 if station_cycles >= 6 else 0
-                station_expected_6h = station_cycles // 36 if station_cycles >= 36 else 0
-                
-                expected_10m_total += station_expected_10m
-                expected_1h_total += station_expected_1h
-                expected_6h_total += station_expected_6h
-            # If station has no files yet, don't add to expected (it's brand new)
+            # Get activation time from log (source of truth)
+            station_info = activation_log.get('stations', {}).get(station_key)
+            if station_info and station_info.get('activated_at'):
+                try:
+                    # Parse activation timestamp
+                    activated_at_str = station_info['activated_at']
+                    if activated_at_str.endswith('Z'):
+                        activated_at_str = activated_at_str[:-1] + '+00:00'
+                    station_start = datetime.fromisoformat(activated_at_str)
+                    
+                    # Only calculate expected if station is still active (not deactivated)
+                    if station_info.get('deactivated_at') is None:
+                        # Calculate how many cycles this station should have based on its activation time
+                        time_diff = now - station_start
+                        total_minutes = time_diff.total_seconds() / 60
+                        
+                        # Collection runs every 10 minutes, so cycles = minutes / 10
+                        # Round down to nearest cycle (stations don't get partial cycles)
+                        station_cycles = int(total_minutes // 10)
+                        
+                        # Expected files for this station
+                        # 10m files: 1 per cycle
+                        # 1h files: 1 per 6 cycles (every hour)
+                        # 6h files: 1 per 36 cycles (every 6 hours)
+                        station_expected_10m = station_cycles
+                        station_expected_1h = station_cycles // 6 if station_cycles >= 6 else 0
+                        station_expected_6h = station_cycles // 36 if station_cycles >= 36 else 0
+                        
+                        expected_10m_total += station_expected_10m
+                        expected_1h_total += station_expected_1h
+                        expected_6h_total += station_expected_6h
+                except (ValueError, TypeError) as e:
+                    # If activation time is invalid, skip this station
+                    print(f"Warning: Invalid activation time for {station_key}: {e}")
+                    pass
+            # If station not in log yet, don't add to expected (will be logged on next check)
         
         expected_10m = expected_10m_total
         expected_1h = expected_1h_total
@@ -1319,25 +1683,31 @@ def get_status():
                 return f"{hours}h"
             return f"{hours}h {minutes}m"
         
+        # Calculate coverage based on MINIMUM files per station (limiting factor)
+        # This ensures new stations don't inflate coverage numbers
         coverage_hours_by_type = {}
-        if active_station_count > 0:
-            files_per_station_10m = file_counts['10m'] / active_station_count
-            files_per_station_1h = file_counts['1h'] / active_station_count
-            files_per_station_6h = file_counts['6h'] / active_station_count
+        if station_file_counts and len(station_file_counts) > 0:
+            # Get minimum files per station for each type (the limiting factor)
+            min_files_10m = min(counts['10m'] for counts in station_file_counts.values()) if station_file_counts else 0
+            min_files_1h = min(counts['1h'] for counts in station_file_counts.values()) if station_file_counts else 0
+            min_files_6h = min(counts['6h'] for counts in station_file_counts.values()) if station_file_counts else 0
             
-            coverage_hours_by_type['10m'] = format_hours_minutes(files_per_station_10m * (10/60))  # 10 min each
-            coverage_hours_by_type['1h'] = format_hours_minutes(files_per_station_1h * 1)  # 1 hour each
-            coverage_hours_by_type['6h'] = format_hours_minutes(files_per_station_6h * 6)  # 6 hours each
+            # Calculate hours based on minimum files (limiting station)
+            hours_10m = min_files_10m * (10/60)  # 10 min each
+            hours_1h = min_files_1h * 1  # 1 hour each
+            hours_6h = min_files_6h * 6  # 6 hours each
+            
+            coverage_hours_by_type['10m'] = format_hours_minutes(hours_10m)
+            coverage_hours_by_type['1h'] = format_hours_minutes(hours_1h)
+            coverage_hours_by_type['6h'] = format_hours_minutes(hours_6h)
         else:
             coverage_hours_by_type = {'10m': '0h', '1h': '0h', '6h': '0h'}
+            hours_10m = 0
+            hours_1h = 0
+            hours_6h = 0
         
         # Full coverage = minimum across ALL types (if ANY type has 0, full coverage = 0)
         # Must have 10m, 1h, AND 6h files for full coverage
-        hours_10m = files_per_station_10m * (10/60) if active_station_count > 0 else 0
-        hours_1h = files_per_station_1h * 1 if active_station_count > 0 else 0
-        hours_6h = files_per_station_6h * 6 if active_station_count > 0 else 0
-        
-        # Full coverage requires ALL types
         if hours_10m > 0 and hours_1h > 0 and hours_6h > 0:
             full_coverage_hours = min(hours_10m, hours_1h, hours_6h)
         else:
@@ -1530,6 +1900,370 @@ def get_stations():
         'stations': active_stations
     })
 
+@app.route('/per-station-files')
+def per_station_files():
+    """
+    Return detailed per-station file breakdown showing actual vs expected files.
+    Shows which stations are missing files and by how much.
+    """
+    try:
+        # Initialize R2 client
+        s3 = get_s3_client()
+        
+        # Get active stations and activation log
+        active_stations_list = get_active_stations_list()
+        activation_log = load_station_activations()
+        
+        # Count files per station in R2
+        station_file_counts = {}  # {station_key: {'10m': count, '1h': count, '6h': count}}
+        
+        paginator = s3.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
+        
+        for page in pages:
+            if 'Contents' not in page:
+                continue
+            
+            for obj in page['Contents']:
+                key = obj['Key']
+                
+                # Parse station info from key
+                # Format: data/YYYY/MM/NETWORK/VOLCANO/STATION/LOCATION/CHANNEL/CHUNK_TYPE/filename.bin.zst
+                parts = key.split('/')
+                if len(parts) < 9:
+                    continue
+                
+                network = parts[3]
+                station = parts[5]
+                location = parts[6]
+                channel = parts[7]
+                
+                # Determine file type from path (10m, 1h, or 6h folder)
+                file_type = None
+                if '.bin.zst' in key:
+                    # Check which chunk type folder it's in
+                    if '/10m/' in key:
+                        file_type = '10m'
+                    elif '/1h/' in key:
+                        file_type = '1h'
+                    elif '/6h/' in key:
+                        file_type = '6h'
+                
+                if file_type:
+                    station_key = f"{network}_{station}_{location}_{channel}"
+                    
+                    if station_key not in station_file_counts:
+                        station_file_counts[station_key] = {'10m': 0, '1h': 0, '6h': 0}
+                    
+                    station_file_counts[station_key][file_type] += 1
+        
+        # Calculate expected files per station
+        now = datetime.now(timezone.utc)
+        station_breakdown = []
+        
+        for station_config in active_stations_list:
+            network = station_config['network']
+            station = station_config['station']
+            location = station_config.get('location', '')
+            channel = station_config['channel']
+            volcano = station_config.get('volcano', '')
+            location_str = location if location and location != '--' else '--'
+            station_key = f"{network}_{station}_{location_str}_{channel}"
+            
+            # Get actual file counts
+            actual_counts = station_file_counts.get(station_key, {'10m': 0, '1h': 0, '6h': 0})
+            
+            # Get activation time from log
+            station_info = activation_log.get('stations', {}).get(station_key)
+            activated_at = None
+            activated_at_str = None
+            expected_10m = 0
+            expected_1h = 0
+            expected_6h = 0
+            time_since_activation = None
+            
+            if station_info and station_info.get('activated_at'):
+                try:
+                    activated_at_str = station_info['activated_at']
+                    if activated_at_str.endswith('Z'):
+                        activated_at_str = activated_at_str[:-1] + '+00:00'
+                    activated_at = datetime.fromisoformat(activated_at_str)
+                    
+                    # Only calculate expected if station is still active (not deactivated)
+                    if station_info.get('deactivated_at') is None:
+                        time_diff = now - activated_at
+                        total_minutes = time_diff.total_seconds() / 60
+                        station_cycles = int(total_minutes // 10)
+                        
+                        expected_10m = station_cycles
+                        expected_1h = station_cycles // 6 if station_cycles >= 6 else 0
+                        expected_6h = station_cycles // 36 if station_cycles >= 36 else 0
+                        
+                        # Calculate time since activation (human readable)
+                        hours = int(time_diff.total_seconds() // 3600)
+                        minutes = int((time_diff.total_seconds() % 3600) // 60)
+                        if hours > 0:
+                            time_since_activation = f"{hours}h {minutes}m"
+                        else:
+                            time_since_activation = f"{minutes}m"
+                except (ValueError, TypeError) as e:
+                    pass
+            
+            # Determine status
+            missing_10m = expected_10m - actual_counts['10m']
+            missing_1h = expected_1h - actual_counts['1h']
+            missing_6h = expected_6h - actual_counts['6h']
+            
+            if missing_10m == 0 and missing_1h == 0 and missing_6h == 0:
+                status_text = 'PERFECT'
+            elif missing_10m > 0 or missing_1h > 0 or missing_6h > 0:
+                status_text = 'MISSING'
+            else:
+                status_text = 'OK'
+            
+            station_breakdown.append({
+                'station_key': station_key,
+                'network': network,
+                'station': station,
+                'location': location_str,
+                'channel': channel,
+                'volcano': volcano,
+                'activated_at': station_info.get('activated_at') if station_info else None,
+                'time_since_activation': time_since_activation,
+                'actual': {
+                    '10m': actual_counts['10m'],
+                    '1h': actual_counts['1h'],
+                    '6h': actual_counts['6h']
+                },
+                'expected': {
+                    '10m': expected_10m,
+                    '1h': expected_1h,
+                    '6h': expected_6h
+                },
+                'missing': {
+                    '10m': missing_10m if missing_10m > 0 else 0,
+                    '1h': missing_1h if missing_1h > 0 else 0,
+                    '6h': missing_6h if missing_6h > 0 else 0
+                },
+                'status': status_text
+            })
+        
+        # Sort by status (MISSING first, then PERFECT, then OK)
+        status_order = {'MISSING': 0, 'OK': 1, 'PERFECT': 2}
+        station_breakdown.sort(key=lambda x: (status_order.get(x['status'], 99), x['station_key']))
+        
+        # Calculate summary
+        total_missing_10m = sum(s['missing']['10m'] for s in station_breakdown)
+        total_missing_1h = sum(s['missing']['1h'] for s in station_breakdown)
+        total_missing_6h = sum(s['missing']['6h'] for s in station_breakdown)
+        stations_with_missing = sum(1 for s in station_breakdown if s['status'] == 'MISSING')
+        
+        return jsonify({
+            'timestamp': now.isoformat(),
+            'total_stations': len(station_breakdown),
+            'summary': {
+                'stations_with_missing_files': stations_with_missing,
+                'stations_perfect': sum(1 for s in station_breakdown if s['status'] == 'PERFECT'),
+                'total_missing': {
+                    '10m': total_missing_10m,
+                    '1h': total_missing_1h,
+                    '6h': total_missing_6h
+                }
+            },
+            'stations': station_breakdown
+        })
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc() if os.getenv('DEBUG', '').lower() == 'true' else None
+        }), 500
+
+@app.route('/init-station-activations', methods=['POST'])
+def init_station_activations():
+    """
+    Manually initialize station activation times for original stations.
+    
+    Expects JSON body with format:
+    {
+        "stations": [
+            {
+                "network": "HV",
+                "station": "OBL",
+                "location": "--",
+                "channel": "HHZ",
+                "activated_at": "2025-10-01T00:00:00Z"  // ISO 8601 timestamp
+            },
+            ...
+        ]
+    }
+    
+    This should be called once to set the start times for the original stations.
+    New stations will be auto-detected and logged automatically.
+    """
+    from flask import request
+    
+    try:
+        data = request.get_json()
+        if not data or 'stations' not in data:
+            return jsonify({'error': 'Missing "stations" array in request body'}), 400
+        
+        activation_log = load_station_activations()
+        now = datetime.now(timezone.utc).isoformat()
+        initialized = []
+        
+        for station_data in data['stations']:
+            network = station_data.get('network')
+            station = station_data.get('station')
+            location = station_data.get('location', '--')
+            channel = station_data.get('channel')
+            activated_at = station_data.get('activated_at')
+            
+            if not all([network, station, channel, activated_at]):
+                return jsonify({
+                    'error': f'Missing required fields for station: {station_data}'
+                }), 400
+            
+            location_str = location if location and location != '--' else '--'
+            station_key = f"{network}_{station}_{location_str}_{channel}"
+            
+            # Validate timestamp format
+            try:
+                if activated_at.endswith('Z'):
+                    activated_at = activated_at[:-1] + '+00:00'
+                datetime.fromisoformat(activated_at)
+            except ValueError:
+                return jsonify({
+                    'error': f'Invalid timestamp format for {station_key}: {activated_at}. Use ISO 8601 format (e.g., "2025-10-01T00:00:00Z")'
+                }), 400
+            
+            # Update or create station entry
+            station_info = {
+                'network': network,
+                'station': station,
+                'location': location_str,
+                'channel': channel,
+                'activated_at': activated_at,
+                'deactivated_at': None
+            }
+            
+            # Check if this is a new initialization or update
+            if station_key not in activation_log.get('stations', {}):
+                activation_log['changes'].append({
+                    'timestamp': now,
+                    'type': 'initialized',
+                    'station_key': station_key,
+                    'station_info': station_info.copy()
+                })
+            
+            activation_log['stations'][station_key] = station_info
+            initialized.append(station_key)
+        
+        # Save updated log
+        save_station_activations(activation_log)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Initialized {len(initialized)} stations',
+            'initialized': initialized,
+            'log_location': f'R2: {STATION_ACTIVATION_LOG_KEY}'
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Failed to initialize station activations: {str(e)}',
+            'traceback': traceback.format_exc() if os.getenv('DEBUG', '').lower() == 'true' else None
+        }), 500
+
+@app.route('/station-activations')
+def get_station_activations():
+    """Return current station activation log"""
+    try:
+        activation_log = load_station_activations()
+        return jsonify(activation_log)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/regenerate-station-activations', methods=['POST'])
+def regenerate_station_activations():
+    """
+    Regenerate station activation log by scanning existing files in R2.
+    Finds the earliest file timestamp for each active station and populates the log.
+    Regenerates entries for all stations, even if they already exist.
+    """
+    try:
+        s3 = get_s3_client()
+        activation_log = load_station_activations()
+        active_stations = get_active_stations_list()
+        now = datetime.now(timezone.utc).isoformat()
+        
+        initialized = []
+        skipped = []
+        
+        for station_config in active_stations:
+            network = station_config['network']
+            station = station_config['station']
+            location = station_config.get('location', '')
+            channel = station_config['channel']
+            location_str = location if location and location != '--' else '--'
+            station_key = f"{network}_{station}_{location_str}_{channel}"
+            
+            # Find first file timestamp for this station (regenerate for all stations)
+            first_file_time = find_station_first_file_timestamp(s3, network, station, location, channel)
+            
+            if first_file_time:
+                activated_at = first_file_time.isoformat()
+                
+                # Check if this is a regeneration or new entry
+                is_regeneration = station_key in activation_log.get('stations', {})
+                
+                station_info = {
+                    'network': network,
+                    'station': station,
+                    'location': location_str,
+                    'channel': channel,
+                    'volcano': station_config.get('volcano'),
+                    'sample_rate': station_config.get('sample_rate'),
+                    'activated_at': activated_at,
+                    'deactivated_at': None
+                }
+                
+                activation_log['stations'][station_key] = station_info
+                activation_log['changes'].append({
+                    'timestamp': now,
+                    'type': 'regenerated' if is_regeneration else 'auto_initialized',
+                    'station_key': station_key,
+                    'station_info': station_info.copy()
+                })
+                
+                initialized.append({
+                    'station_key': station_key,
+                    'activated_at': activated_at,
+                    'regenerated': is_regeneration
+                })
+            else:
+                # No files found - skip this station
+                skipped.append(f"{station_key} (no files found)")
+        
+        # Save updated log (always save if there are any stations)
+        if initialized:
+            save_station_activations(activation_log)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Initialized {len(initialized)} stations from existing files',
+            'initialized': initialized,
+            'skipped': skipped,
+            'log_location': f'R2: {STATION_ACTIVATION_LOG_KEY}'
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Failed to auto-initialize station activations: {str(e)}',
+            'traceback': traceback.format_exc() if os.getenv('DEBUG', '').lower() == 'true' else None
+        }), 500
+
 @app.route('/validate/<period>/report')
 def validate_report(period='24h'):
     """Generate human-readable text report from validation"""
@@ -1657,8 +2391,9 @@ def validate(period='24h'):
                 for check_date in dates_to_check:
                     year = check_date.year
                     month = f"{check_date.month:02d}"
+                    day = f"{check_date.day:02d}"
                     date_str = check_date.strftime("%Y-%m-%d")
-                    prefix = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/"
+                    prefix = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/"
                     metadata_key = f"{prefix}{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
                     
                     # Get metadata for this date
@@ -1913,9 +2648,10 @@ def repair(period='24h'):
                 year = check_date.year
                 month = f"{check_date.month:02d}"
                 date_str = check_date.strftime("%Y-%m-%d")
+                day = f"{check_date.day:02d}"
                 
                 # Build paths for THIS date's folder
-                prefix = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/"
+                prefix = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/"
                 metadata_key = f"{prefix}{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
                 
                 # Load or create metadata for this date
@@ -2202,8 +2938,9 @@ def deduplicate(period='24h'):
         for check_date in dates_to_check:
             year = check_date.year
             month = f"{check_date.month:02d}"
+            day = f"{check_date.day:02d}"
             date_str = check_date.strftime("%Y-%m-%d")
-            prefix = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/"
+            prefix = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/"
             metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
             metadata_key = f"{prefix}{metadata_filename}"
             
@@ -2297,34 +3034,38 @@ def nuke():
         region_name='auto'
     )
     
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔥 NUKE INITIATED - Deleting all data from R2...")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔥 NUKE INITIATED - Deleting all data and logs from R2...")
     
     deleted_count = 0
     deleted_files = []
     
     try:
-        # List all objects with data/ prefix
+        # Delete both data/ and collector_logs/ prefixes
+        prefixes_to_delete = ['data/', 'collector_logs/']
         paginator = s3.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
         
-        for page in pages:
-            if 'Contents' not in page:
-                continue
+        for prefix in prefixes_to_delete:
+            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🗑️  Deleting {prefix}...")
+            pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix=prefix)
             
-            # Delete in batches of 1000 (R2 limit)
-            objects_to_delete = [{'Key': obj['Key']} for obj in page['Contents']]
-            
-            if objects_to_delete:
-                response = s3.delete_objects(
-                    Bucket=R2_BUCKET_NAME,
-                    Delete={'Objects': objects_to_delete}
-                )
+            for page in pages:
+                if 'Contents' not in page:
+                    continue
                 
-                deleted = response.get('Deleted', [])
-                deleted_count += len(deleted)
-                deleted_files.extend([obj['Key'] for obj in deleted])
+                # Delete in batches of 1000 (R2 limit)
+                objects_to_delete = [{'Key': obj['Key']} for obj in page['Contents']]
                 
-                print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🗑️  Deleted {len(deleted)} objects (total: {deleted_count})")
+                if objects_to_delete:
+                    response = s3.delete_objects(
+                        Bucket=R2_BUCKET_NAME,
+                        Delete={'Objects': objects_to_delete}
+                    )
+                    
+                    deleted = response.get('Deleted', [])
+                    deleted_count += len(deleted)
+                    deleted_files.extend([obj['Key'] for obj in deleted])
+                    
+                    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🗑️  Deleted {len(deleted)} objects from {prefix} (total: {deleted_count})")
         
         print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ✅ NUKE COMPLETE - Deleted {deleted_count} objects")
         
@@ -2612,8 +3353,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.55 Fix: Status calculation now uses per-station earliest timestamps instead of global start time")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.55 Fix: Status calculation now uses per-station earliest timestamps instead of global start time")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.56 Fix: Coverage calculation now uses minimum files per station instead of average")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.56 Fix: Coverage calculation now uses minimum files per station instead of average")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

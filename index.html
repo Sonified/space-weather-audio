@@ -2203,14 +2203,14 @@
         // Calculate slider value for 1.0x speed (reversing the log function)
         function calculateSliderForSpeed(targetSpeed) {
             // Inverse of changePlaybackSpeed() logarithmic mapping
-            // 0.1-10 -> 0-1000, with 1.0 = 667
+            // 0.1-15 -> 0-1000, with 1.0 = 667
             if (targetSpeed <= 1.0) {
                 // Range: 0.1 to 1.0 maps to 0 to 667
                 const normalized = Math.log(targetSpeed / 0.1) / Math.log(10);
                 return Math.round(normalized * 667);
             } else {
-                // Range: 1.0 to 10.0 maps to 667 to 1000
-                const normalized = Math.log(targetSpeed) / Math.log(10);
+                // Range: 1.0 to 15.0 maps to 667 to 1000
+                const normalized = Math.log(targetSpeed) / Math.log(15);
                 return Math.round(667 + normalized * 333);
             }
         }
@@ -2288,14 +2288,14 @@
             const slider = document.getElementById('playbackSpeed');
             const value = parseFloat(slider.value);
             
-            // Logarithmic mapping: 0-1000 -> 0.1-10, with 667 = 1.0
+            // Logarithmic mapping: 0-1000 -> 0.1-15, with 667 = 1.0
             let baseSpeed;
             if (value <= 667) {
                 const normalized = value / 667;
                 baseSpeed = 0.1 * Math.pow(10, normalized);
             } else {
                 const normalized = (value - 667) / 333;
-                baseSpeed = Math.pow(10, normalized);
+                baseSpeed = Math.pow(15, normalized);
             }
             
             // Display shows ONLY the slider value (not multiplied)
@@ -2370,7 +2370,7 @@
                 baseSpeed = 0.1 * Math.pow(10, normalized);
             } else {
                 const normalized = (sliderValue - 667) / 333;
-                baseSpeed = Math.pow(10, normalized);
+                baseSpeed = Math.pow(15, normalized);
             }
             
             // Get multiplier from base sampling rate

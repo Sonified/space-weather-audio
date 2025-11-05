@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.55"
+__version__ = "1.56"
 __commit_message__ = (
-    "v1.55 Fix: Status calculation now uses per-station earliest timestamps instead of global start time"
+    "v1.56 Fix: Coverage calculation now uses minimum files per station instead of average"
 )
 
 # Import key modules to make them available when importing the package

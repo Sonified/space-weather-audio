@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Use @start_local_collector.sh any time we need to test something on the local server. It restarts and uses correct ports. The script handles everything - cleanup, setup, and starting, do not manually run kill commands. It starts immediately so there is no need to use sleep in your subsequent command.
