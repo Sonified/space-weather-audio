@@ -48,56 +48,49 @@ python test_audio_stream_local.py
 **Response:**
 ```json
 {
-  "version": "2025_11_04_v1.06",
+  "version": "2025_11_04_v1.09",
   "currently_running": false,
   "deployed_at": "2025-11-05T04:54:44.726511+00:00",
   "failed_runs": 0,
-  "last_run": null,
-  "next_run": "2025-11-05T05:02:00.732858+00:00",
+  "last_run": "2025-11-05T05:32:01.116769+00:00",
+  "next_run": "2025-11-05T05:42:00.116789+00:00",
   "collection_stats": {
     "active_stations": 5,
     "stations_with_files": 5,
     "missing_stations": null,
-    "collection_cycles": 6,
+    "collection_cycles": 10,
     "coverage_depth": {
-      "full_coverage_hours_back": 6.0,
-      "full_coverage_days_back": 0.25,
+      "full_coverage": "0h (need 6h files)",
       "by_type": {
-        "10m": 6.0,
-        "1h": 5.0,
-        "6h": 0.0
+        "10m": "1h 40m",
+        "1h": "2h",
+        "6h": "0h"
       }
     },
     "files_per_station": {
       "10m": {
-        "min": 6,
-        "max": 6,
-        "avg": 6.0,
+        "avg": 10.0,
         "is_uniform": true
       },
       "1h": {
-        "min": 1,
-        "max": 1,
-        "avg": 1.0,
+        "avg": 2.0,
         "is_uniform": true
       },
       "6h": {
-        "min": 0,
-        "max": 0,
         "avg": 0.0,
         "is_uniform": true
       }
     },
     "expected_vs_actual": {
       "10m": {
-        "actual": 30,
-        "expected": 30,
+        "actual": 50,
+        "expected": 50,
         "status": "PERFECT"
       },
       "1h": {
-        "actual": 5,
+        "actual": 10,
         "expected": 5,
-        "status": "PERFECT"
+        "status": "OK"
       },
       "6h": {
         "actual": 0,
@@ -108,21 +101,21 @@ python test_audio_stream_local.py
     }
   },
   "r2_storage": {
-    "total_files": 40,
+    "total_files": 60,
     "file_counts": {
-      "10m": 30,
-      "1h": 5,
+      "10m": 50,
+      "1h": 10,
       "6h": 0,
       "metadata": 5,
       "other": 0
     },
-    "total_size_mb": 5.51,
-    "total_size_gb": 0.005,
-    "latest_file": "2025-11-05T04:52:11.738000+00:00"
+    "total_size_mb": 9.51,
+    "total_size_gb": 0.009,
+    "latest_file": "2025-11-05T05:32:11.738000+00:00"
   },
   "started_at": "2025-11-05T04:54:44.729596+00:00",
-  "total_runs": 0,
-  "successful_runs": 0
+  "total_runs": 10,
+  "successful_runs": 9
 }
 ```
 
