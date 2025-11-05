@@ -192,7 +192,7 @@ python test_audio_stream_local.py
   "health": {
     "status": "HEALTHY",
     "icon": "✅",
-    "message": "All stations validated successfully",
+    "message": "All stations validated successfully - no missing files, orphans, or duplicates",
     "stations_checked": 5,
     "stations_ok": 5,
     "stations_with_issues": 0
@@ -201,15 +201,43 @@ python test_audio_stream_local.py
     "missing_files": 0,
     "orphaned_files": 0,
     "total_missing": 0,
-    "total_orphaned": 0
+    "total_orphaned": 0,
+    "total_duplicates": 0
   },
-  "stations": [...]
+  "stations": [{
+    "duplicates_found": {
+      "10m": 0,
+      "1h": 0,
+      "6h": 0
+    }
+  }]
 }
 ```
 
+**New in v1.10:** Now detects duplicate metadata entries (same start time appearing multiple times)
+
 #### GET /validate/<period>/report
 **Purpose:** Human-readable text report  
-**Response:** Plain text summary
+**Response:** Plain text summary including duplicate count
+
+#### GET /deduplicate/<period>
+**Purpose:** Remove duplicate metadata entries  
+**Parameters:**
+- `period`: `24h`, `2d`, `1h`, etc.
+
+**Response:**
+```json
+{
+  "period_hours": 24,
+  "deduplicate_time": "2025-11-05T06:00:00Z",
+  "total_duplicates_removed": 0,
+  "stations_cleaned": 0,
+  "message": "✅ No duplicates found - metadata is clean!",
+  "details": []
+}
+```
+
+**Usage:** Cleans up duplicate entries in metadata (keeps first occurrence, removes rest)
 
 ---
 
@@ -325,6 +353,8 @@ python test_audio_stream_local.py
 - **6h:** Every 36 runs (at 00:02, 06:02, 12:02, 18:02)
 
 **IRIS Delay:** 2 minutes (fetches data ending 2 minutes ago)
+
+**Deduplication:** Checks metadata before fetching - skips if chunk already exists (prevents duplicate files and metadata entries)
 
 ---
 
@@ -553,6 +583,7 @@ samples = np.frombuffer(decompressed, dtype=np.int32)
 
 ## Version History
 
+**v1.10** - Duplicate detection & deduplication (prevents and fixes duplicate metadata entries, adds /deduplicate endpoint, skipped counter in cron summary)  
 **v1.07** - Failure tracking (timestamp, error messages, exit codes, recent failures history)  
 **v1.06** - Coverage depth metrics (hours/days back tracking)  
 **v1.05** - Status endpoint improvements (runtime fields, per-station tracking)  
