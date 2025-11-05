@@ -133,13 +133,40 @@ def process_station_window(network, station, location, channel, volcano, sample_
                            start_time, end_time, chunk_type):
     """
     Fetch and process data for one station and one time window.
-    Returns (success, error_info) tuple.
-    error_info is dict with 'step', 'station', 'error' on failure, None on success.
+    Returns (status, error_info) tuple.
+    status: 'success', 'skipped', or 'failed'
+    error_info is dict with 'step', 'station', 'error' on failure, None otherwise.
     """
     station_id = f"{network}.{station}.{location}.{channel}"
     logger.info(f"[{volcano}] {station_id} - {chunk_type} {start_time} to {end_time}")
     
     try:
+        # Step 0: Check if this chunk already exists in metadata (skip if so)
+        if s3_client:
+            year = start_time.year
+            month = f"{start_time.month:02d}"
+            date_str = start_time.strftime("%Y-%m-%d")
+            location_str = location if location and location != '--' else '--'
+            rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+            metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+            metadata_key = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
+            
+            try:
+                response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                metadata = json.loads(response['Body'].read().decode('utf-8'))
+                
+                # Check if this time window already exists
+                start_time_str = start_time.strftime("%H:%M:%S")
+                existing_chunks = metadata['chunks'].get(chunk_type, [])
+                for chunk in existing_chunks:
+                    if chunk['start'] == start_time_str:
+                        logger.info(f"  ⏭️  Chunk already exists, skipping")
+                        return 'skipped', None
+                
+            except s3_client.exceptions.NoSuchKey:
+                # No metadata yet, proceed with fetch
+                pass
+        
         # Step 1: Fetch from IRIS
         client = Client("IRIS")
         st = client.get_waveforms(
@@ -159,7 +186,7 @@ def process_station_window(network, station, location, channel, volcano, sample_
                 'error': 'No data returned from IRIS'
             }
             logger.warning(f"  ❌ No data returned from IRIS")
-            return False, error_info
+            return 'failed', error_info
         
         logger.info(f"  ✅ Got {len(st)} trace(s)")
         
@@ -356,7 +383,7 @@ def process_station_window(network, station, location, channel, volcano, sample_
             'gap_samples_filled': sum(g['samples_filled'] for g in gaps)
         }
         
-        return True, None  # Success, no error
+        return 'success', None  # Success, no error
         
     except Exception as e:
         error_info = {
@@ -366,7 +393,7 @@ def process_station_window(network, station, location, channel, volcano, sample_
             'error': str(e)
         }
         logger.error(f"  ❌ Error: {e}")
-        return False, error_info
+        return 'failed', error_info
 
 
 def main():
@@ -404,6 +431,7 @@ def main():
     total_tasks = len(active_stations) * len(windows)
     current_task = 0
     successful = 0
+    skipped = 0
     failed = 0
     failure_details = []  # Collect detailed failure info
     
@@ -419,14 +447,16 @@ def main():
             current_task += 1
             logger.info(f"[{current_task}/{total_tasks}] Processing...")
             
-            success, error_info = process_station_window(
+            status, error_info = process_station_window(
                 network, station, location, channel, volcano, sample_rate,
                 start, end, chunk_type
             )
             
-            if success:
+            if status == 'success':
                 successful += 1
-            else:
+            elif status == 'skipped':
+                skipped += 1
+            elif status == 'failed':
                 failed += 1
                 if error_info:
                     failure_details.append(error_info)
@@ -442,6 +472,7 @@ def main():
     logger.info("=" * 100)
     logger.info(f"Total tasks: {total_tasks}")
     logger.info(f"Successful: {successful}")
+    logger.info(f"Skipped: {skipped}")
     logger.info(f"Failed: {failed}")
     logger.info("=" * 100)
     

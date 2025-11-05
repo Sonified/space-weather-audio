@@ -839,3 +839,60 @@ Failure 1:
 
 ---
 
+
+### 2025-11-04 - Railway Fix: Missing zstandard + Major Improvements (v1.11)
+
+**Version:** v1.11  
+**Commit:** v1.11 Fix: Added zstandard to root requirements.txt, validation bug fixes, local timezone display, concise error summaries
+
+**Critical Fix:**
+- Railway deployment was failing with `ModuleNotFoundError: No module named 'zstandard'`
+- Root cause: Railway auto-detects Python and installs from root `requirements.txt`
+- Root `requirements.txt` was missing `zstandard>=0.21.0` (only in `backend/requirements.txt`)
+- **Fix:** Added `zstandard>=0.21.0` to root requirements.txt
+- Now both local dev and Railway deployments have all required dependencies
+
+**Major Improvements:**
+
+1. **Validation Endpoint Bug Fix**
+   - Missing `duplicates_found` dict initialization caused KeyError crashes
+   - Added proper initialization: `'duplicates_found': {'10m': 0, '1h': 0, '6h': 0}`
+   - Added comprehensive error handling to prevent server crashes
+   - Wrapped entire validation logic in try/except blocks
+
+2. **Concise Error Summaries**
+   - Error messages were showing full tracebacks (500+ chars) in status endpoint
+   - Created `extract_error_summary()` function to create short summaries
+   - Example: "Exit code 1: Traceback..." → "Missing module: zstandard"
+   - Full errors still saved to R2 (`collector_logs/failures.json`)
+   - Status endpoint now shows clean summaries with `log_location` pointer
+   - Added `failure_summary` section with counts and overview
+
+3. **Local Timezone Display**
+   - All timestamps now auto-convert to local timezone
+   - Created `convert_to_local_time()` function
+   - Format: `"2025-11-04 22:42:00 PDT"` (human-readable with timezone abbrev)
+   - Perfect for digital nomads - auto-adjusts when traveling
+   - UTC still used for storage (best practice)
+   - Works for: `deployed_at`, `started_at`, `last_run`, `next_run`, `failure timestamps`
+
+4. **Status Endpoint Cleanup**
+   - Moved `recent_failures` array out of main status response (too verbose)
+   - Only shows `last_failure` and `failure_summary` now
+   - `failure_summary` includes:
+     - `total_failures`: Count
+     - `has_failures`: Boolean
+     - `last_failure`: Most recent with concise summary
+     - `recent_failures_count`: Number in history
+     - `log_location`: Where to find full details
+
+**Key Learnings:**
+- Always check BOTH root and subfolder requirements.txt files
+- Railway auto-detection uses root-level configs
+- Error summaries >> full tracebacks for monitoring dashboards
+- Local timezone display makes international dev much easier
+- Proper dict initialization prevents KeyError crashes
+
+**System Status:** 🚀 READY FOR RAILWAY REDEPLOYMENT
+
+The missing `zstandard` dependency will now install correctly, and all validation/error handling improvements are in place.

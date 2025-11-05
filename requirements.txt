@@ -18,4 +18,5 @@ s3fs>=2023.10.0
 xarray>=2023.10.0
 zarr>=2.16.0
 numcodecs>=0.11.0
+zstandard>=0.21.0
 jupyter>=1.0.0 

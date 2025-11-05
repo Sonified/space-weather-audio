@@ -4,7 +4,7 @@ Continuous cron loop for Railway deployment
 Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
 Version: v1.00
 """
-__version__ = "2025_11_04_v1.10"
+__version__ = "2025_11_05_v1.11"
 import time
 import subprocess
 import sys
@@ -45,15 +45,102 @@ def get_s3_client():
         region_name='auto'
     )
 
+def convert_to_local_time(utc_timestamp_str):
+    """
+    Convert UTC timestamp string to local time string.
+    Returns formatted string like '2025-11-05 10:32:01 PST' (with timezone name)
+    """
+    if not utc_timestamp_str:
+        return None
+    
+    try:
+        from datetime import datetime
+        import time
+        
+        # Parse UTC timestamp
+        if utc_timestamp_str.endswith('Z'):
+            utc_timestamp_str = utc_timestamp_str[:-1] + '+00:00'
+        
+        utc_dt = datetime.fromisoformat(utc_timestamp_str)
+        
+        # Convert to local time
+        local_dt = utc_dt.astimezone()
+        
+        # Get timezone abbreviation (PST, EST, etc.)
+        tz_name = time.tzname[time.daylight]
+        
+        # Format: YYYY-MM-DD HH:MM:SS TZ
+        return f"{local_dt.strftime('%Y-%m-%d %H:%M:%S')} {tz_name}"
+    except Exception as e:
+        # If conversion fails, return original
+        return utc_timestamp_str
+
+def extract_error_summary(error_msg):
+    """
+    Extract a concise error summary from a full error message.
+    Returns a short description (max 100 chars) suitable for status display.
+    """
+    if not error_msg:
+        return "Unknown error"
+    
+    # Try to extract the key error information
+    error_lower = error_msg.lower()
+    
+    # Check for common patterns
+    if "modulenotfounderror" in error_lower or "no module named" in error_lower:
+        # Extract module name
+        if "no module named" in error_lower:
+            module_match = error_msg.split("No module named")[-1].strip().split()[0].strip("'\"")
+            return f"Missing module: {module_match}"
+        return "Missing Python module"
+    
+    if "import" in error_lower and "error" in error_lower:
+        return "Import error"
+    
+    if "exit code" in error_lower:
+        # Extract exit code
+        parts = error_msg.split("Exit code")
+        if len(parts) > 1:
+            exit_code = parts[1].split()[0] if parts[1].strip() else "unknown"
+            return f"Process failed (exit code {exit_code})"
+        return "Process failed"
+    
+    if "exception:" in error_lower:
+        # Extract exception type
+        parts = error_msg.split("Exception:")
+        if len(parts) > 1:
+            exc_msg = parts[1].strip().split('\n')[0][:80]
+            return f"Exception: {exc_msg}"
+        return "Exception occurred"
+    
+    # Fallback: return first line or first 100 chars
+    first_line = error_msg.split('\n')[0]
+    if len(first_line) > 100:
+        return first_line[:97] + "..."
+    return first_line
+
 def load_failures():
-    """Load failures from R2"""
+    """Load failures from R2 and convert to summaries for display"""
     try:
         import json
         s3 = get_s3_client()
         response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=FAILURE_LOG_KEY)
         failures = json.loads(response['Body'].read())
-        # Return last 10 for recent_failures
-        return failures[-10:] if len(failures) > 10 else failures
+        # Get last 10 failures
+        recent = failures[-10:] if len(failures) > 10 else failures
+        # Convert to summaries for status display
+        summaries = []
+        for failure in recent:
+            error_msg = failure.get('error', 'Unknown error')
+            summary = {
+                'timestamp': failure.get('timestamp'),
+                'summary': extract_error_summary(error_msg),
+                'exit_code': failure.get('exit_code'),
+                'type': failure.get('type', 'unknown'),
+                'log_location': f'R2: {FAILURE_LOG_KEY}'
+            }
+            summaries.append(summary)
+        return summaries
     except s3.exceptions.NoSuchKey:
         # File doesn't exist yet
         return []
@@ -417,20 +504,45 @@ def get_status():
     import json as json_module
     from flask import Response
     
+    # Build failure summary
+    failure_summary = {
+        'total_failures': status['failed_runs'],
+        'has_failures': status['failed_runs'] > 0,
+        'last_failure': status['last_failure'],
+        'recent_failures_count': len(status['recent_failures']),
+        'log_location': f'R2: {FAILURE_LOG_KEY}' if status['failed_runs'] > 0 else None
+    }
+    
+    # Convert timestamps to local time for display
+    def convert_failure_timestamps(failure_obj):
+        """Convert timestamps in failure object to local time"""
+        if not failure_obj:
+            return None
+        converted = failure_obj.copy()
+        if 'timestamp' in converted:
+            converted['timestamp'] = convert_to_local_time(converted['timestamp'])
+        return converted
+    
     final_response = {
         'version': status['version'],
         'currently_running': status['currently_running'],
-        'deployed_at': status['deployed_at'],
-        'failed_runs': status['failed_runs'],
-        'last_failure': status['last_failure'],
-        'recent_failures': status['recent_failures'],
-        'last_run': status['last_run'],
-        'next_run': status['next_run'],
+        'deployed_at': convert_to_local_time(status['deployed_at']),
+        'last_run': convert_to_local_time(status['last_run']),
+        'next_run': convert_to_local_time(status['next_run']),
         'collection_stats': collection_stats,
         'r2_storage': r2_storage,
-        'started_at': status['started_at'],
+        'started_at': convert_to_local_time(status['started_at']),
         'total_runs': status['total_runs'],
-        'successful_runs': status['successful_runs']
+        'successful_runs': status['successful_runs'],
+        'failed_runs': status['failed_runs'],
+        'failure_summary': {
+            'total_failures': failure_summary['total_failures'],
+            'has_failures': failure_summary['has_failures'],
+            'last_failure': convert_failure_timestamps(failure_summary['last_failure']),
+            'recent_failures_count': failure_summary['recent_failures_count'],
+            'log_location': failure_summary['log_location']
+        },
+        'last_failure': convert_failure_timestamps(status['last_failure'])
     }
     
     return Response(
@@ -444,17 +556,27 @@ def test_failure():
     import random
     
     # Create a fake failure
+    error_msg = f"TEST FAILURE: Simulated error for testing (random={random.randint(1000, 9999)})"
     test_failure_info = {
         'timestamp': datetime.now(timezone.utc).isoformat(),
-        'error': f"TEST FAILURE: Simulated error for testing (random={random.randint(1000, 9999)})",
+        'error': error_msg,
         'exit_code': 99,
         'type': 'test_simulation'
     }
     
-    # Save to R2 and update in-memory state
+    # Create summary version for status display
+    test_failure_summary = {
+        'timestamp': test_failure_info['timestamp'],
+        'summary': extract_error_summary(error_msg),
+        'exit_code': 99,
+        'type': 'test_simulation',
+        'log_location': f'R2: {FAILURE_LOG_KEY}'
+    }
+    
+    # Save full error to R2 and update in-memory state with summary
     save_failure(test_failure_info)
-    status['last_failure'] = test_failure_info
-    status['recent_failures'].append(test_failure_info)
+    status['last_failure'] = test_failure_summary
+    status['recent_failures'].append(test_failure_summary)
     if len(status['recent_failures']) > 10:
         status['recent_failures'] = status['recent_failures'][-10:]
     status['failed_runs'] += 1
@@ -462,8 +584,8 @@ def test_failure():
     return jsonify({
         'success': True,
         'message': 'Test failure recorded',
-        'failure': test_failure_info,
-        'note': 'Check /status to see the failure appear, or download collector_logs/failures.json from R2'
+        'failure': test_failure_summary,
+        'note': f'Check /status to see the failure summary, or download {FAILURE_LOG_KEY} from R2 for full details'
     })
 
 @app.route('/stations')
@@ -563,222 +685,250 @@ def validate(period='24h'):
     from pathlib import Path
     from datetime import timedelta
     
-    # Parse period
-    if period.endswith('d'):
-        hours = int(period[:-1]) * 24
-    elif period.endswith('h'):
-        hours = int(period[:-1])
-    else:
-        hours = int(period)
+    try:
+        # Parse period
+        if period.endswith('d'):
+            hours = int(period[:-1]) * 24
+        elif period.endswith('h'):
+            hours = int(period[:-1])
+        else:
+            hours = int(period)
+    except (ValueError, AttributeError):
+        return jsonify({'error': f'Invalid period format: {period}. Use format like "24h" or "2d"'}), 400
     
-    # Initialize R2 client
-    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
-    
-    s3 = boto3.client(
-        's3',
-        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
-        aws_access_key_id=R2_ACCESS_KEY_ID,
-        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-        region_name='auto'
-    )
-    
-    # Load active stations
-    config_path = Path(__file__).parent / 'stations_config.json'
-    with open(config_path) as f:
-        config = json.load(f)
-    
-    active_stations = []
-    for network, volcanoes in config['networks'].items():
-        for volcano, stations in volcanoes.items():
-            for station in stations:
-                if station.get('active', False):
-                    active_stations.append({
-                        'network': network,
-                        'volcano': volcano,
-                        **station
-                    })
-    
-    # Calculate time range
-    now = datetime.now(timezone.utc)
-    start_time = now - timedelta(hours=hours)
-    dates_to_check = get_dates_in_period(start_time, now)
-    
-    # Results (health will be added at the end, but we initialize structure)
-    results = {
-        'validation_time': now.isoformat(),
-        'period_hours': hours,
-        'start_time': start_time.isoformat(),
-        'end_time': now.isoformat(),
-        'days_checked': len(dates_to_check),
-        'total_stations': len(active_stations),
-        'stations': []
-    }
-    
-    # Validate each station across all dates
-    for station_config in active_stations:
-        network = station_config['network']
-        volcano = station_config['volcano']
-        station = station_config['station']
-        location = station_config['location']
-        channel = station_config['channel']
-        sample_rate = station_config['sample_rate']
-        location_str = location if location and location != '--' else '--'
-        rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+    try:
+        # Initialize R2 client
+        R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
+        R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
+        R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
+        R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
         
-        station_result = {
-            'network': network,
-            'volcano': volcano,
-            'station': station,
-            'location': location_str,
-            'channel': channel,
-            'sample_rate': sample_rate,
-            'metadata_chunks': {'10m': 0, '1h': 0, '6h': 0},
-            'actual_files': {'10m': 0, '1h': 0, '6h': 0},
-            'missing_files': [],
-            'orphaned_files': [],
-            'issues': []
+        s3 = boto3.client(
+            's3',
+            endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            region_name='auto'
+        )
+        
+        # Load active stations
+        config_path = Path(__file__).parent / 'stations_config.json'
+        with open(config_path) as f:
+            config = json.load(f)
+    except Exception as e:
+        return jsonify({'error': f'Failed to initialize: {str(e)}'}), 500
+    
+    try:
+        active_stations = []
+        for network, volcanoes in config['networks'].items():
+            for volcano, stations in volcanoes.items():
+                for station in stations:
+                    if station.get('active', False):
+                        active_stations.append({
+                            'network': network,
+                            'volcano': volcano,
+                            **station
+                        })
+        
+        # Calculate time range
+        now = datetime.now(timezone.utc)
+        start_time = now - timedelta(hours=hours)
+        dates_to_check = get_dates_in_period(start_time, now)
+        
+        # Results (health will be added at the end, but we initialize structure)
+        results = {
+            'validation_time': now.isoformat(),
+            'period_hours': hours,
+            'start_time': start_time.isoformat(),
+            'end_time': now.isoformat(),
+            'days_checked': len(dates_to_check),
+            'total_stations': len(active_stations),
+            'stations': []
         }
         
-        try:
-            # Validate across all dates in the period
-            for check_date in dates_to_check:
-                year = check_date.year
-                month = f"{check_date.month:02d}"
-                date_str = check_date.strftime("%Y-%m-%d")
-                prefix = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/"
-                metadata_key = f"{prefix}{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
-                
-                # Get metadata for this date
-                metadata = None
-                try:
-                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
-                    metadata = json.loads(response['Body'].read().decode('utf-8'))
-                except s3.exceptions.NoSuchKey:
-                    # No metadata for this date - skip
-                    continue
-                
-                # Build expected filenames from metadata for this date
-                expected_files = set()
-                for chunk_type in ['10m', '1h', '6h']:
-                    station_result['metadata_chunks'][chunk_type] += len(metadata['chunks'].get(chunk_type, []))
-                    for chunk in metadata['chunks'].get(chunk_type, []):
-                        # Construct filename
-                        start_time_str = chunk['start'].replace(':', '-')
-                        end_time_str = chunk['end'].replace(':', '-')
-                        filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{chunk_type}_{date_str}-{start_time_str}_to_{date_str}-{end_time_str}.bin.zst"
-                        expected_files.add(filename)
-                
-                # List actual files in R2 for this date (now in subfolders by chunk type)
-                actual_files = set()
-                for chunk_type in ['10m', '1h', '6h']:
-                    chunk_prefix = f"{prefix}{chunk_type}/"
-                    response = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=chunk_prefix)
+        # Validate each station across all dates
+        for station_config in active_stations:
+            network = station_config['network']
+            volcano = station_config['volcano']
+            station = station_config['station']
+            location = station_config['location']
+            channel = station_config['channel']
+            sample_rate = station_config['sample_rate']
+            location_str = location if location and location != '--' else '--'
+            rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+            
+            station_result = {
+                'network': network,
+                'volcano': volcano,
+                'station': station,
+                'location': location_str,
+                'channel': channel,
+                'sample_rate': sample_rate,
+                'metadata_chunks': {'10m': 0, '1h': 0, '6h': 0},
+                'actual_files': {'10m': 0, '1h': 0, '6h': 0},
+                'missing_files': [],
+                'orphaned_files': [],
+                'duplicates_found': {'10m': 0, '1h': 0, '6h': 0},
+                'issues': []
+            }
+            
+            try:
+                # Validate across all dates in the period
+                for check_date in dates_to_check:
+                    year = check_date.year
+                    month = f"{check_date.month:02d}"
+                    date_str = check_date.strftime("%Y-%m-%d")
+                    prefix = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/"
+                    metadata_key = f"{prefix}{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
                     
-                    if 'Contents' in response:
-                        for obj in response['Contents']:
-                            filename = obj['Key'].split('/')[-1]
-                            if filename.endswith('.bin.zst'):
-                                actual_files.add(filename)
-                                station_result['actual_files'][chunk_type] += 1
+                    # Get metadata for this date
+                    metadata = None
+                    try:
+                        response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                        metadata = json.loads(response['Body'].read().decode('utf-8'))
+                    except s3.exceptions.NoSuchKey:
+                        # No metadata for this date - skip
+                        continue
+                    
+                    # Check for duplicate metadata entries
+                    for chunk_type in ['10m', '1h', '6h']:
+                        chunks = metadata['chunks'].get(chunk_type, [])
+                        start_times = [c['start'] for c in chunks]
+                        duplicates = [st for st in start_times if start_times.count(st) > 1]
+                        if duplicates:
+                            unique_dupes = list(set(duplicates))
+                            num_duplicates = len(duplicates)
+                            station_result['duplicates_found'][chunk_type] = num_duplicates
+                            station_result['issues'].append(f"Duplicate {chunk_type} metadata entries: {', '.join(unique_dupes)} ({num_duplicates} total duplicates)")
+                    
+                    # Build expected filenames from metadata for this date
+                    expected_files = set()
+                    for chunk_type in ['10m', '1h', '6h']:
+                        station_result['metadata_chunks'][chunk_type] += len(metadata['chunks'].get(chunk_type, []))
+                        for chunk in metadata['chunks'].get(chunk_type, []):
+                            # Construct filename
+                            start_time_str = chunk['start'].replace(':', '-')
+                            end_time_str = chunk['end'].replace(':', '-')
+                            filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{chunk_type}_{date_str}-{start_time_str}_to_{date_str}-{end_time_str}.bin.zst"
+                            expected_files.add(filename)
+                    
+                    # List actual files in R2 for this date (now in subfolders by chunk type)
+                    actual_files = set()
+                    for chunk_type in ['10m', '1h', '6h']:
+                        chunk_prefix = f"{prefix}{chunk_type}/"
+                        response = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=chunk_prefix)
+                        
+                        if 'Contents' in response:
+                            for obj in response['Contents']:
+                                filename = obj['Key'].split('/')[-1]
+                                if filename.endswith('.bin.zst'):
+                                    actual_files.add(filename)
+                                    station_result['actual_files'][chunk_type] += 1
+                    
+                    # Find missing files (in metadata but not in R2) for this date
+                    missing = expected_files - actual_files
+                    station_result['missing_files'].extend(sorted(list(missing)))
+                    
+                    # Find orphaned files (in R2 but not in metadata) for this date
+                    orphaned = actual_files - expected_files
+                    station_result['orphaned_files'].extend(sorted(list(orphaned)))
                 
-                # Find missing files (in metadata but not in R2) for this date
-                missing = expected_files - actual_files
-                station_result['missing_files'].extend(sorted(list(missing)))
+                # Report issues (after all dates checked)
+                if len(station_result['missing_files']) > 0:
+                    station_result['issues'].append(f"{len(station_result['missing_files'])} files listed in metadata but missing in R2")
+                if len(station_result['orphaned_files']) > 0:
+                    station_result['issues'].append(f"{len(station_result['orphaned_files'])} orphaned files in R2 (not in metadata)")
                 
-                # Find orphaned files (in R2 but not in metadata) for this date
-                orphaned = actual_files - expected_files
-                station_result['orphaned_files'].extend(sorted(list(orphaned)))
+                # Determine status
+                if len(station_result['missing_files']) == 0 and len(station_result['orphaned_files']) == 0:
+                    station_result['status'] = 'OK'
+                elif len(station_result['missing_files']) > 0:
+                    station_result['status'] = 'MISSING_FILES'
+                elif len(station_result['orphaned_files']) > 0:
+                    station_result['status'] = 'ORPHANED_FILES'
             
-            # Report issues (after all dates checked)
-            if len(station_result['missing_files']) > 0:
-                station_result['issues'].append(f"{len(station_result['missing_files'])} files listed in metadata but missing in R2")
-            if len(station_result['orphaned_files']) > 0:
-                station_result['issues'].append(f"{len(station_result['orphaned_files'])} orphaned files in R2 (not in metadata)")
+            except Exception as e:
+                station_result['issues'].append(f"Validation error: {str(e)}")
+                station_result['status'] = 'ERROR'
             
-            # Determine status
-            if len(station_result['missing_files']) == 0 and len(station_result['orphaned_files']) == 0:
-                station_result['status'] = 'OK'
-            elif len(station_result['missing_files']) > 0:
-                station_result['status'] = 'MISSING_FILES'
-            elif len(station_result['orphaned_files']) > 0:
-                station_result['status'] = 'ORPHANED_FILES'
-            
-        except Exception as e:
-            station_result['issues'].append(f"Validation error: {str(e)}")
-            station_result['status'] = 'ERROR'
+            results['stations'].append(station_result)
         
-        results['stations'].append(station_result)
-    
-    # Summary
-    ok_count = sum(1 for s in results['stations'] if s.get('status') == 'OK')
-    missing_count = sum(1 for s in results['stations'] if s.get('status') == 'MISSING_FILES')
-    orphaned_count = sum(1 for s in results['stations'] if s.get('status') == 'ORPHANED_FILES')
-    no_metadata_count = sum(1 for s in results['stations'] if s.get('status') == 'NO_METADATA')
-    error_count = sum(1 for s in results['stations'] if s.get('status') == 'ERROR')
-    total_missing = sum(len(s.get('missing_files', [])) for s in results['stations'])
-    total_orphaned = sum(len(s.get('orphaned_files', [])) for s in results['stations'])
-    
-    # Determine overall health
-    all_healthy = (ok_count == len(active_stations) and 
-                   missing_count == 0 and 
-                   orphaned_count == 0 and 
-                   no_metadata_count == 0 and 
-                   error_count == 0)
-    
-    results['summary'] = {
-        'ok': ok_count,
-        'missing_files': missing_count,
-        'orphaned_files': orphaned_count,
-        'no_metadata': no_metadata_count,
-        'error': error_count,
-        'total_missing': total_missing,
-        'total_orphaned': total_orphaned
-    }
-    
-    # Human-readable report
-    if all_healthy:
-        status_icon = '✅'
-        status_text = 'HEALTHY'
-        status_message = f'All {len(active_stations)} stations are healthy. Metadata matches files perfectly.'
-    else:
-        status_icon = '⚠️'
-        status_text = 'ISSUES DETECTED'
-        issues = []
-        if missing_count > 0:
-            issues.append(f'{missing_count} stations with missing files ({total_missing} files)')
-        if orphaned_count > 0:
-            issues.append(f'{orphaned_count} stations with orphaned files ({total_orphaned} files)')
-        if no_metadata_count > 0:
-            issues.append(f'{no_metadata_count} stations without metadata')
-        if error_count > 0:
-            issues.append(f'{error_count} stations with errors')
-        status_message = ' | '.join(issues)
-    
-    # Build final response with health at the top
-    response = {
-        'health': {
-            'status': status_text,
-            'healthy': all_healthy,
-            'icon': status_icon,
-            'message': status_message,
-            'stations_checked': len(active_stations),
-            'stations_ok': ok_count,
-            'stations_with_issues': len(active_stations) - ok_count
-        },
-        'summary': results['summary'],
-        'validation_time': results['validation_time'],
-        'period_hours': results['period_hours'],
-        'days_checked': results['days_checked'],
-        'start_time': results['start_time'],
-        'end_time': results['end_time'],
-        'total_stations': results['total_stations'],
-        'stations': results['stations']
-    }
-    
-    return jsonify(response)
+        # Summary
+        ok_count = sum(1 for s in results['stations'] if s.get('status') == 'OK')
+        missing_count = sum(1 for s in results['stations'] if s.get('status') == 'MISSING_FILES')
+        orphaned_count = sum(1 for s in results['stations'] if s.get('status') == 'ORPHANED_FILES')
+        no_metadata_count = sum(1 for s in results['stations'] if s.get('status') == 'NO_METADATA')
+        error_count = sum(1 for s in results['stations'] if s.get('status') == 'ERROR')
+        total_missing = sum(len(s.get('missing_files', [])) for s in results['stations'])
+        total_orphaned = sum(len(s.get('orphaned_files', [])) for s in results['stations'])
+        total_duplicates = sum(sum(s.get('duplicates_found', {}).values()) for s in results['stations'])
+        
+        # Determine overall health
+        all_healthy = (ok_count == len(active_stations) and 
+                       missing_count == 0 and 
+                       orphaned_count == 0 and 
+                       no_metadata_count == 0 and 
+                       error_count == 0 and
+                       total_duplicates == 0)
+        
+        results['summary'] = {
+            'ok': ok_count,
+            'missing_files': missing_count,
+            'orphaned_files': orphaned_count,
+            'no_metadata': no_metadata_count,
+            'error': error_count,
+            'total_missing': total_missing,
+            'total_orphaned': total_orphaned,
+            'total_duplicates': total_duplicates
+        }
+        
+        # Human-readable report
+        if all_healthy:
+            status_icon = '✅'
+            status_text = 'HEALTHY'
+            status_message = f'All {len(active_stations)} stations are healthy. Metadata matches files perfectly.'
+        else:
+            status_icon = '⚠️'
+            status_text = 'ISSUES DETECTED'
+            issues = []
+            if missing_count > 0:
+                issues.append(f'{missing_count} stations with missing files ({total_missing} files)')
+            if orphaned_count > 0:
+                issues.append(f'{orphaned_count} stations with orphaned files ({total_orphaned} files)')
+            if no_metadata_count > 0:
+                issues.append(f'{no_metadata_count} stations without metadata')
+            if error_count > 0:
+                issues.append(f'{error_count} stations with errors')
+            status_message = ' | '.join(issues)
+        
+        # Build final response with health at the top
+        response = {
+            'health': {
+                'status': status_text,
+                'healthy': all_healthy,
+                'icon': status_icon,
+                'message': status_message,
+                'stations_checked': len(active_stations),
+                'stations_ok': ok_count,
+                'stations_with_issues': len(active_stations) - ok_count
+            },
+            'summary': results['summary'],
+            'validation_time': results['validation_time'],
+            'period_hours': results['period_hours'],
+            'days_checked': results['days_checked'],
+            'start_time': results['start_time'],
+            'end_time': results['end_time'],
+            'total_stations': results['total_stations'],
+            'stations': results['stations']
+        }
+        
+        return jsonify(response)
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Validation failed: {str(e)}',
+            'traceback': traceback.format_exc() if os.getenv('DEBUG', '').lower() == 'true' else None
+        }), 500
 
 @app.route('/repair/<period>/report')
 def repair_report(period='24h'):
@@ -1166,6 +1316,152 @@ def repair(period='24h'):
     
     return jsonify(response)
 
+@app.route('/deduplicate/<period>')
+def deduplicate(period='24h'):
+    """
+    Deduplicate metadata entries - removes duplicate start times
+    Examples: /deduplicate/24h, /deduplicate/2d
+    """
+    import json
+    import boto3
+    from pathlib import Path
+    from datetime import timedelta
+    
+    # Parse period
+    if period.endswith('d'):
+        hours = int(period[:-1]) * 24
+    elif period.endswith('h'):
+        hours = int(period[:-1])
+    else:
+        hours = int(period)
+    
+    # Initialize R2 client
+    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
+    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
+    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
+    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+    
+    s3 = boto3.client(
+        's3',
+        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        region_name='auto'
+    )
+    
+    # Load active stations
+    config_path = Path(__file__).parent / 'stations_config.json'
+    with open(config_path) as f:
+        config = json.load(f)
+    
+    active_stations = []
+    for network, volcanoes in config['networks'].items():
+        for volcano, stations in volcanoes.items():
+            for station in stations:
+                if station.get('active', False):
+                    active_stations.append({
+                        'network': network,
+                        'volcano': volcano,
+                        **station
+                    })
+    
+    # Calculate time range
+    now = datetime.now(timezone.utc)
+    start_time = now - timedelta(hours=hours)
+    dates_to_check = get_dates_in_period(start_time, now)
+    
+    total_duplicates_removed = 0
+    stations_cleaned = []
+    
+    for station_info in active_stations:
+        network = station_info['network']
+        volcano = station_info['volcano']
+        station = station_info['station']
+        location = station_info['location']
+        channel = station_info['channel']
+        sample_rate = station_info['sample_rate']
+        
+        location_str = location if location and location != '--' else '--'
+        rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+        
+        station_id = f"{network}.{station}.{location_str}.{channel}"
+        station_dupes_removed = 0
+        
+        for check_date in dates_to_check:
+            year = check_date.year
+            month = f"{check_date.month:02d}"
+            date_str = check_date.strftime("%Y-%m-%d")
+            prefix = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/"
+            metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+            metadata_key = f"{prefix}{metadata_filename}"
+            
+            try:
+                # Load metadata
+                response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                metadata = json.loads(response['Body'].read().decode('utf-8'))
+                
+                metadata_changed = False
+                
+                # Deduplicate each chunk type
+                for chunk_type in ['10m', '1h', '6h']:
+                    chunks = metadata['chunks'].get(chunk_type, [])
+                    original_count = len(chunks)
+                    
+                    # Remove duplicates (keep first occurrence)
+                    seen_starts = set()
+                    deduplicated = []
+                    for chunk in chunks:
+                        if chunk['start'] not in seen_starts:
+                            deduplicated.append(chunk)
+                            seen_starts.add(chunk['start'])
+                    
+                    # Sort chronologically
+                    deduplicated.sort(key=lambda c: c['start'])
+                    
+                    # Update metadata
+                    metadata['chunks'][chunk_type] = deduplicated
+                    
+                    dupes_removed = original_count - len(deduplicated)
+                    if dupes_removed > 0:
+                        metadata_changed = True
+                        station_dupes_removed += dupes_removed
+                
+                # Upload cleaned metadata if changed
+                if metadata_changed:
+                    s3.put_object(
+                        Bucket=R2_BUCKET_NAME,
+                        Key=metadata_key,
+                        Body=json.dumps(metadata, indent=2).encode('utf-8'),
+                        ContentType='application/json'
+                    )
+            
+            except s3.exceptions.NoSuchKey:
+                # No metadata for this date
+                pass
+        
+        if station_dupes_removed > 0:
+            stations_cleaned.append({
+                'station': station_id,
+                'duplicates_removed': station_dupes_removed
+            })
+            total_duplicates_removed += station_dupes_removed
+    
+    result = {
+        'period_hours': hours,
+        'deduplicate_time': datetime.now(timezone.utc).isoformat(),
+        'total_duplicates_removed': total_duplicates_removed,
+        'stations_cleaned': len(stations_cleaned),
+        'details': stations_cleaned
+    }
+    
+    # Add friendly message
+    if total_duplicates_removed == 0:
+        result['message'] = '✅ No duplicates found - metadata is clean!'
+    else:
+        result['message'] = f'✅ Removed {total_duplicates_removed} duplicate entries from {len(stations_cleaned)} stations'
+    
+    return jsonify(result)
+
 @app.route('/nuke')
 def nuke():
     """
@@ -1311,15 +1607,23 @@ def run_cron_job():
             if result.stderr:
                 print(f"Stderr: {result.stderr}")
             
-            # Record failure
+            # Record failure (full error stored, summary for display)
             failure_info = {
                 'timestamp': failure_time,
-                'error': error_msg,
+                'error': error_msg,  # Full error stored in R2
                 'exit_code': result.returncode,
                 'type': 'subprocess_failure'
             }
-            status['last_failure'] = failure_info
-            status['recent_failures'].append(failure_info)
+            # Create summary version for status display
+            failure_summary = {
+                'timestamp': failure_time,
+                'summary': extract_error_summary(error_msg),
+                'exit_code': result.returncode,
+                'type': 'subprocess_failure',
+                'log_location': f'R2: {FAILURE_LOG_KEY}'
+            }
+            status['last_failure'] = failure_summary
+            status['recent_failures'].append(failure_summary)
             # Keep only last 10 failures in memory
             if len(status['recent_failures']) > 10:
                 status['recent_failures'] = status['recent_failures'][-10:]
@@ -1333,15 +1637,23 @@ def run_cron_job():
         
         print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ Error running cron job: {e}")
         
-        # Record failure
+        # Record failure (full error stored, summary for display)
         failure_info = {
             'timestamp': failure_time,
-            'error': error_msg,
+            'error': error_msg,  # Full error stored in R2
             'exit_code': None,
             'type': 'exception'
         }
-        status['last_failure'] = failure_info
-        status['recent_failures'].append(failure_info)
+        # Create summary version for status display
+        failure_summary = {
+            'timestamp': failure_time,
+            'summary': extract_error_summary(error_msg),
+            'exit_code': None,
+            'type': 'exception',
+            'log_location': f'R2: {FAILURE_LOG_KEY}'
+        }
+        status['last_failure'] = failure_summary
+        status['recent_failures'].append(failure_summary)
         # Keep only last 10 failures in memory
         if len(status['recent_failures']) > 10:
             status['recent_failures'] = status['recent_failures'][-10:]
@@ -1366,8 +1678,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.08 Fix: Coverage calculated from file counts, human-readable time format (1h40m)")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.08 Fix: Coverage calculated from file counts, human-readable time format (1h40m)")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.11 Fix: Added zstandard to root requirements.txt, validation bug fixes, local timezone display, concise error summaries")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.11 Fix: Added zstandard to root requirements.txt, validation bug fixes, local timezone display, concise error summaries")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
