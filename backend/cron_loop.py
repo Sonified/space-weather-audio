@@ -49,8 +49,79 @@ def health():
 
 @app.route('/status')
 def get_status():
-    """Return detailed status"""
-    return jsonify(status)
+    """Return detailed status with R2 file counts and storage info"""
+    import boto3
+    import json
+    from pathlib import Path
+    
+    # Get basic status
+    response = dict(status)
+    
+    # Add R2 statistics
+    try:
+        # Initialize R2 client
+        R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
+        R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
+        R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
+        R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+        
+        s3 = boto3.client(
+            's3',
+            endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            region_name='auto'
+        )
+        
+        # Count files and calculate storage
+        paginator = s3.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
+        
+        file_counts = {'10m': 0, '1h': 0, '6h': 0, 'metadata': 0, 'other': 0}
+        total_size = 0
+        latest_modified = None
+        
+        for page in pages:
+            if 'Contents' not in page:
+                continue
+                
+            for obj in page['Contents']:
+                total_size += obj['Size']
+                
+                # Track latest modified
+                if latest_modified is None or obj['LastModified'] > latest_modified:
+                    latest_modified = obj['LastModified']
+                
+                # Count by type
+                key = obj['Key']
+                if '/10m/' in key:
+                    file_counts['10m'] += 1
+                elif '/1h/' in key:
+                    file_counts['1h'] += 1
+                elif '/6h/' in key:
+                    file_counts['6h'] += 1
+                elif key.endswith('.json'):
+                    file_counts['metadata'] += 1
+                else:
+                    file_counts['other'] += 1
+        
+        total_files = sum(file_counts.values())
+        storage_mb = total_size / (1024 * 1024)
+        
+        response['r2_storage'] = {
+            'total_files': total_files,
+            'file_counts': file_counts,
+            'total_size_mb': round(storage_mb, 2),
+            'total_size_gb': round(storage_mb / 1024, 3),
+            'latest_file': latest_modified.isoformat() if latest_modified else None
+        }
+        
+    except Exception as e:
+        response['r2_storage'] = {
+            'error': str(e)
+        }
+    
+    return jsonify(response)
 
 @app.route('/stations')
 def get_stations():
