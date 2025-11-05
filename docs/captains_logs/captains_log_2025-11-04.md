@@ -683,3 +683,19 @@ data/2025/11/HV/kilauea/OBL/--/HHZ/
 
 ---
 
+### 2025-11-04 - Status Endpoint Improvements (v1.05)
+
+**Version:** v1.05  
+**Commit:** v1.05 Fix: Status endpoint improvements - runtime fields at top, per-station file tracking, RUNNING status during active collection
+
+**Changes:**
+- Fixed `expected_vs_actual` format inconsistency - all time periods (10m, 1h, 6h) now show consistent `expected`/`actual`/`status` structure
+- Added per-station file tracking to detect missing files - `files_per_station` now shows `min`, `max`, `avg`, and `is_uniform` instead of just average
+- Reorganized status endpoint response - version and runtime fields (`version`, `currently_running`, `deployed_at`, `failed_runs`, `last_run`, `next_run`) now appear at the top
+- Added "RUNNING" status - when system is actively collecting and files are still being created (fractional averages), shows "RUNNING" instead of "MISSING"
+- Better detection of missing files - can now identify which stations are missing files vs. just seeing fractional averages
+
+**Key Fix:** Previously, fractional averages (like 3.6 files per station) looked like errors, but were actually just files in the process of being created. Now shows "RUNNING" status during active collection.
+
+---
+

@@ -4,7 +4,7 @@ Continuous cron loop for Railway deployment
 Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
 Version: v1.00
 """
-__version__ = "2025_11_04_v1.04"
+__version__ = "2025_11_04_v1.05"
 import time
 import subprocess
 import sys
@@ -67,8 +67,15 @@ def get_status():
     import json
     from pathlib import Path
     
-    # Get basic status
-    response = dict(status)
+    # Build response with version first, then runtime status fields
+    response = {
+        'version': status['version'],
+        'currently_running': status['currently_running'],
+        'deployed_at': status['deployed_at'],
+        'failed_runs': status['failed_runs'],
+        'last_run': status['last_run'],
+        'next_run': status['next_run'],
+    }
     
     # Add R2 statistics
     try:
@@ -91,6 +98,7 @@ def get_status():
         pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
         
         file_counts = {'10m': 0, '1h': 0, '6h': 0, 'metadata': 0, 'other': 0}
+        station_file_counts = {}  # Track files per station: {station_key: {'10m': count, '1h': count, '6h': count}}
         total_size = 0
         latest_modified = None
         
@@ -105,18 +113,44 @@ def get_status():
                 if latest_modified is None or obj['LastModified'] > latest_modified:
                     latest_modified = obj['LastModified']
                 
-                # Count by type
+                # Count by type and extract station from path
+                # Path format: data/{YEAR}/{MONTH}/{NETWORK}/{VOLCANO}/{STATION}/{LOCATION}/{CHANNEL}/...
                 key = obj['Key']
+                path_parts = key.split('/')
+                
+                # Extract station identifier (network-station-location-channel)
+                # Find station in path (should be 5th element: data/YEAR/MONTH/NETWORK/VOLCANO/STATION/...)
+                station_key = None
+                if len(path_parts) >= 6:
+                    # Format: network_station_location_channel (for tracking)
+                    network = path_parts[3] if len(path_parts) > 3 else None
+                    station = path_parts[5] if len(path_parts) > 5 else None
+                    location = path_parts[6] if len(path_parts) > 6 else None
+                    channel = path_parts[7] if len(path_parts) > 7 else None
+                    if network and station and location and channel:
+                        station_key = f"{network}_{station}_{location}_{channel}"
+                
+                # Count by type
+                file_type = None
                 if '/10m/' in key:
                     file_counts['10m'] += 1
+                    file_type = '10m'
                 elif '/1h/' in key:
                     file_counts['1h'] += 1
+                    file_type = '1h'
                 elif '/6h/' in key:
                     file_counts['6h'] += 1
+                    file_type = '6h'
                 elif key.endswith('.json'):
                     file_counts['metadata'] += 1
                 else:
                     file_counts['other'] += 1
+                
+                # Track per-station counts for data files (not metadata)
+                if station_key and file_type:
+                    if station_key not in station_file_counts:
+                        station_file_counts[station_key] = {'10m': 0, '1h': 0, '6h': 0}
+                    station_file_counts[station_key][file_type] += 1
         
         total_files = sum(file_counts.values())
         storage_mb = total_size / (1024 * 1024)
@@ -132,28 +166,87 @@ def get_status():
             for volcano, stations in volcanoes.items():
                 active_station_count += sum(1 for s in stations if s.get('active', False))
         
+        # Calculate per-station statistics
+        station_10m_counts = [counts['10m'] for counts in station_file_counts.values()] if station_file_counts else []
+        station_1h_counts = [counts['1h'] for counts in station_file_counts.values()] if station_file_counts else []
+        station_6h_counts = [counts['6h'] for counts in station_file_counts.values()] if station_file_counts else []
+        
+        # Calculate stats for each period
+        def calc_stats(counts, active_count):
+            if not counts or active_count == 0:
+                return {'min': 0, 'max': 0, 'avg': 0.0, 'is_uniform': True}
+            min_count = min(counts) if counts else 0
+            max_count = max(counts) if counts else 0
+            avg_count = sum(counts) / len(counts) if counts else 0
+            # Check if all stations have same count (uniform distribution)
+            is_uniform = len(set(counts)) <= 1 if counts else True
+            return {
+                'min': min_count,
+                'max': max_count,
+                'avg': round(avg_count, 1),
+                'is_uniform': is_uniform
+            }
+        
+        stats_10m = calc_stats(station_10m_counts, active_station_count)
+        stats_1h = calc_stats(station_1h_counts, active_station_count)
+        stats_6h = calc_stats(station_6h_counts, active_station_count)
+        
+        # If we have fewer station counts than active stations, some stations are missing files
+        stations_with_files = len(station_file_counts)
+        missing_stations = active_station_count - stations_with_files if active_station_count > stations_with_files else 0
+        
         collection_cycles = file_counts['10m'] // active_station_count if active_station_count > 0 else 0
-        files_per_station = file_counts['10m'] / active_station_count if active_station_count > 0 else 0
         
-        # Expected 10m files (reliable - based on collection cycles)
+        # Expected files based on collection cycles
+        # Each cycle = 10 minutes
+        # 1h files created every 6 cycles (60 minutes)
+        # 6h files created every 36 cycles (360 minutes)
         expected_10m = collection_cycles * active_station_count
+        expected_1h = (collection_cycles // 6) * active_station_count if collection_cycles >= 6 else 0
+        expected_6h = (collection_cycles // 36) * active_station_count if collection_cycles >= 36 else 0
         
-        # For 1h and 6h, just validate we have SOME files per station
-        # Don't try to calculate expected based on time since deployment
-        # (files may exist from before this deployment)
-        status_10m = 'PERFECT' if file_counts['10m'] == expected_10m else 'MISSING'
-        status_1h = 'OK' if file_counts['1h'] >= active_station_count or file_counts['1h'] == 0 else 'INCOMPLETE'
-        status_6h = 'OK' if file_counts['6h'] >= active_station_count or file_counts['6h'] == 0 else 'INCOMPLETE'
+        # Status checks - account for currently_running
+        is_running = status['currently_running']
         
-        all_perfect = (file_counts['10m'] == expected_10m)
+        # For 10m files: if running and (not uniform or missing files), it's actively being created
+        if is_running and (not stats_10m['is_uniform'] or file_counts['10m'] < expected_10m):
+            status_10m = 'RUNNING'
+        elif file_counts['10m'] == expected_10m and stats_10m['is_uniform']:
+            status_10m = 'PERFECT'
+        else:
+            status_10m = 'MISSING'
+        
+        # For 1h files
+        if is_running and (not stats_1h['is_uniform'] or (expected_1h > 0 and file_counts['1h'] < expected_1h)):
+            status_1h = 'RUNNING'
+        elif file_counts['1h'] == expected_1h and stats_1h['is_uniform']:
+            status_1h = 'PERFECT'
+        elif file_counts['1h'] >= expected_1h or expected_1h == 0:
+            status_1h = 'OK'
+        else:
+            status_1h = 'INCOMPLETE'
+        
+        # For 6h files
+        if is_running and (not stats_6h['is_uniform'] or (expected_6h > 0 and file_counts['6h'] < expected_6h)):
+            status_6h = 'RUNNING'
+        elif file_counts['6h'] == expected_6h and stats_6h['is_uniform']:
+            status_6h = 'PERFECT'
+        elif file_counts['6h'] >= expected_6h or expected_6h == 0:
+            status_6h = 'OK'
+        else:
+            status_6h = 'INCOMPLETE'
+        
+        all_perfect = (file_counts['10m'] == expected_10m and stats_10m['is_uniform'] and not is_running)
         
         response['collection_stats'] = {
             'active_stations': active_station_count,
+            'stations_with_files': stations_with_files,
+            'missing_stations': missing_stations if missing_stations > 0 else None,
             'collection_cycles': collection_cycles,
             'files_per_station': {
-                '10m': round(files_per_station, 1),
-                '1h': round(file_counts['1h'] / active_station_count, 1) if active_station_count > 0 else 0,
-                '6h': round(file_counts['6h'] / active_station_count, 1) if active_station_count > 0 else 0
+                '10m': stats_10m,
+                '1h': stats_1h,
+                '6h': stats_6h
             },
             'expected_vs_actual': {
                 '10m': {
@@ -162,13 +255,13 @@ def get_status():
                     'status': status_10m
                 },
                 '1h': {
-                    'count': file_counts['1h'],
-                    'per_station': round(file_counts['1h'] / active_station_count, 1) if active_station_count > 0 else 0,
+                    'actual': file_counts['1h'],
+                    'expected': expected_1h,
                     'status': status_1h
                 },
                 '6h': {
-                    'count': file_counts['6h'],
-                    'per_station': round(file_counts['6h'] / active_station_count, 1) if active_station_count > 0 else 0,
+                    'actual': file_counts['6h'],
+                    'expected': expected_6h,
                     'status': status_6h
                 },
                 'overall': 'PERFECT' if all_perfect else 'OK'
@@ -187,6 +280,11 @@ def get_status():
         response['r2_storage'] = {
             'error': str(e)
         }
+    
+    # Add remaining status fields
+    response['started_at'] = status['started_at']
+    response['total_runs'] = status['total_runs']
+    response['successful_runs'] = status['successful_runs']
     
     return jsonify(response)
 
@@ -1047,7 +1145,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.04 Add: Expected vs actual validation for all file types")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.05 Fix: Status endpoint improvements - runtime fields at top, per-station file tracking, RUNNING status during active collection")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.05 Fix: Status endpoint improvements - runtime fields at top, per-station file tracking, RUNNING status during active collection")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
