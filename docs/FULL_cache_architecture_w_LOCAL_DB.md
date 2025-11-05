@@ -807,9 +807,40 @@ Progressive Chunking and Streaming
 
 **Goal:** Start audio playback within 50-100ms, not after downloading entire file.
 
+### The Key Insight: Sequential Streaming with Progressive Resolution
+
+**EVERY request uses ALL resolutions in sequence** - not "recent data uses small chunks, old data uses big chunks"!
+
+**Example: User requests ANY day (Nov 3, Oct 15, last Tuesday, etc.)**
+
+```
+Request: "Play Nov 3, 2025 starting at 14:30"
+
+Sequential streaming response:
+1. Send 1st 10m file (14:30-14:40) → 200 KB → 50ms download → AUDIO STARTS! 🎵
+   ↓ (user is now listening to 14:30-14:40)
+   
+2. While playing, send 2nd 10m file (14:40-14:50) → 200 KB → 50ms
+   ↓ (seamless transition, now playing through 14:50)
+   
+3. While playing, send 3rd-6th 10m files (fills first hour)
+   ↓ (now playing through 15:30, total ~300ms elapsed)
+   
+4. While playing, send 1h files (fill more of timeline)
+   ↓ (extends playback buffer)
+   
+5. While playing, send 6h files (completes rest of day)
+   ↓ (full day ready, user never waited!)
+
+Result: Audio started in 50ms, full day loaded seamlessly during playback!
+```
+
+**NOT:** "Recent data gets small chunks, old data gets big chunks"  
+**YES:** "Every request gets smallest chunks FIRST (instant start), larger chunks DURING playback (progressive loading)"
+
 ### How Progressive Chunking Works
 
-We store multiple chunk sizes on R2 (1h, 6h, 24h) to optimize for different playback scenarios. Browser fetches the appropriate chunk size based on requested duration, prioritizing smaller chunks for fast start.
+We store multiple chunk sizes on R2 (10m, 1h, 6h) for EVERY day, not just recent days. Every request - whether from today or 7 days ago - uses the same progressive streaming strategy.
 
 **Browser Fetch Strategy:**
 
@@ -856,28 +887,39 @@ function determineChunksToFetch(startTime, duration) {
   return chunks;
 }
 
-// Fetch in parallel for speed
+// Fetch SEQUENTIALLY for fast first-byte (NOT parallel!)
 const chunkFiles = determineChunksToFetch(startTime, duration);
-const compressed = await Promise.all(
-  chunkFiles.map(chunk => fetch(chunk.url).then(r => r.arrayBuffer()))
-  );
+
+// Process chunks ONE AT A TIME (smallest first)
+for (const chunkInfo of chunkFiles) {
+  // Fetch this chunk
+  const compressed = await fetch(chunkInfo.url).then(r => r.arrayBuffer());
   
-// Decompress each chunk locally
-const decompressed = await Promise.all(
-  compressed.map(data => decompressZstd(data))  // Browser-side decompression
-);
+  // Decompress and start playback IMMEDIATELY (don't wait for other chunks)
+  const decompressed = await decompressZstd(compressed);  // 2-36ms
+  
+  // If this is the first chunk, START PLAYBACK NOW!
+  if (chunkInfo.index === 0) {
+    startPlayback(decompressed);  // Audio starts within 50-100ms!
+  } else {
+    // Extend existing playback buffer
+    appendToPlayback(decompressed);
+  }
+}
 ```
 
 **Why Multi-Size Chunks?**
-- **1-hour chunks (hours 0-6)**: Fast start, playback begins in ~100ms
-- **6-hour chunks (hours 7-24)**: Fewer requests, efficient for typical playback
-- **Daily chunks (beyond)**: Minimal overhead for long-term storage/playback
-- **Parallel fetches**: All chunks download simultaneously (not sequential)
-- **Progressive storage**: R2 stores ALL sizes, browser picks optimal
+- **10-minute chunks**: FIRST file sent (tiny ~200 KB) → playback starts in 50ms!
+- **1-hour chunks**: Sent while 10m plays → fills timeline progressively
+- **6-hour chunks**: Sent while earlier files play → completes rest of day
+- **Sequential streaming**: Files sent ONE AT A TIME (smallest first for fast start)
+- **Progressive delivery**: Browser starts playing immediately, larger files arrive during playback
 
-**Browser Processing:**
-1. Fetches compressed .zst chunks from R2 (parallel)
-2. Decompresses Zstd locally (2-36ms per chunk)
+**Browser Processing (Sequential Pipeline):**
+1. Receives 1st 10m file (200 KB) → Decompresses in 10ms → **PLAYBACK STARTS!**
+2. While playing, receives 2nd 10m file → Decompresses → Buffers
+3. While playing, receives 1h files → Decompresses → Extends timeline
+4. While playing, receives 6h files → Completes day
 3. High-pass filters each chunk (0.1 Hz cutoff)
 4. Normalizes using metadata range
 5. Stitches chunks (with filter "warm-up" for seamless transitions)
@@ -1136,7 +1178,7 @@ Summary Table
 |-------|------|-----|-------------|-----------|
 | IndexedDB (Browser) | Local cache for user-accessed chunks | `/.../{START}_to_{END}.bin` | None | Immediate access, low CPU, full fidelity |
 | R2 Storage | Persistent cloud cache | same | **Zstd level 3** | 56% smaller, fast browser decompress (2-36ms), multi-size chunks (1h/6h/24h) |
-| Browser | Fetches, decompresses, processes | same | Decompresses locally | Parallel fetches, fast zstd decompress, flexible filtering |
+| Browser | Fetches, decompresses, processes | same | Decompresses locally | Sequential streaming (smallest first), fast zstd decompress, flexible filtering |
 | Render | IRIS fetcher + preprocessor | same | Compresses for upload | Dedupe, gaps, multi-size chunking, sends metadata early to browser |
 
 
@@ -1913,9 +1955,9 @@ Summary
 This architecture provides:
 - **Fast playback start** via early metadata delivery + per-chunk min/max normalization
 - **Multi-size chunking** (10min/1h/6h/24h) optimizes for different playback scenarios
+- **Sequential streaming** from R2 (smallest chunks first) → playback starts in 50-100ms, larger chunks load during playback
 - **Dynamic normalization** with smooth AudioWorklet transitions (partial cache support)
 - **Browser-side decompression** (2-36ms) + filtering for maximum flexibility
-- **Parallel fetches** from R2 (no sequential bottleneck)
 - **56% cost savings** via Zstd compression (storage + egress)
 - **Instant replay** via IndexedDB caching (uncompressed for speed)
 - **Lossless int32 fidelity** preserved throughout pipeline
