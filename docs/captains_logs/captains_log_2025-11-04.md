@@ -1043,3 +1043,53 @@ The collector now automatically maintains data continuity by detecting and filli
 **Key Learning:**
 - Always use `round()` for time display, not `int()` (truncation loses precision)
 - Floating point math requires careful handling for human-readable output
+
+---
+
+### 2025-11-04 - Smart Gap Detection with Collection State Tracking (v1.15)
+
+**Version:** v1.15  
+**Commit:** v1.15 Feature: Smart gap detection using last_run timestamps, collection duration tracking
+
+**Major Improvements:**
+
+1. **Added Collection Start/End Tracking**
+   - `last_run_started`: When collection began
+   - `last_run_completed`: When collection finished
+   - `last_run_duration`: Formatted duration (e.g., "1m 32.5s")
+   - Removed `last_run` (was ambiguous - replaced with explicit start/end times)
+
+2. **Smart Gap Detection Logic**
+   - Replaced arbitrary time buffers (3 min, 5 min) with actual collection state
+   - Uses `last_run_completed` as cutoff timestamp
+   - Windows ending AFTER `last_run_completed` = too recent (exclude)
+   - Windows ending BEFORE `last_run_completed` = fair game (should exist)
+   - No more guessing - uses actual system state!
+
+3. **Renamed Function for Clarity**
+   - `is_too_recent()` → `is_window_being_collected()`
+   - More descriptive name reflects what it actually does
+   - Takes `last_run_completed` instead of `currently_running` flag
+
+**Example Timeline:**
+```
+12:02:00 - Collection starts (last_run_started set)
+12:03:30 - Collection finishes (last_run_completed set, duration = 1m 30.0s)
+12:04:00 - Gap detection runs:
+  - Checks windows ending before 12:03:30 ✅
+  - Excludes windows ending after 12:03:30 ⏭️
+  - Window 11:50-12:00 ended at 12:00 < 12:03:30 → Checked ✅
+  - Window 12:00-12:10 ended at 12:10 > 12:03:30 → Excluded ⏭️
+```
+
+**Benefits:**
+- ✅ No arbitrary buffers - uses actual collection completion time
+- ✅ Can monitor collection duration (for performance tracking)
+- ✅ Gap detection knows exactly when last collection finished
+- ✅ Works perfectly with collector schedule (:02, :12, :22, etc.)
+- ✅ Handles "currently running" case elegantly
+
+**Key Learning:**
+- Using actual system state (timestamps) >> arbitrary time buffers
+- Explicit start/end tracking >> single ambiguous "last_run"
+- Collection duration is valuable metric for monitoring

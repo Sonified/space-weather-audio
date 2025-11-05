@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.50"
+__version__ = "1.51"
 __commit_message__ = (
-    "v1.14 Fix: Coverage time display rounding (4h 9m → 4h 10m)"
+    "v1.15 Feature: Smart gap detection using last_run timestamps, collection duration tracking"
 )
 
 # Import key modules to make them available when importing the package

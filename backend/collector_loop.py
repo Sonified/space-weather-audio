@@ -183,7 +183,9 @@ status = {
     'version': __version__,
     'deployed_at': deploy_time,
     'started_at': datetime.now(timezone.utc).isoformat(),
-    'last_run': None,
+    'last_run_started': None,  # When current/last collection started
+    'last_run_completed': None,  # When last collection finished
+    'last_run_duration_seconds': None,  # How long last collection took
     'next_run': None,
     'total_runs': 0,
     'successful_runs': 0,
@@ -388,36 +390,37 @@ def generate_expected_windows(date, chunk_type):
     return windows
 
 
-def is_too_recent(window_end, currently_running=False):
+def is_window_being_collected(window_end, last_run_completed):
     """
-    Check if a window is too recent to be considered a gap.
+    Check if a window is from the collection currently in progress.
     
-    Accounts for IRIS delay and active collection. Recent windows are excluded
-    from gap detection because they might not be available yet from IRIS or
-    are currently being collected.
+    Smart logic: If collector just finished, exclude the window(s) it just created.
+    Uses actual last_run_completed timestamp instead of arbitrary buffers.
     
     Args:
         window_end: datetime when window ends
-        currently_running: bool, is collector currently running?
+        last_run_completed: ISO timestamp of last completed collection (or None)
     
     Returns:
-        bool: True if window is too recent (should be excluded from gap detection)
+        bool: True if window might be from current/recent collection (exclude it)
     
     Logic:
-        - If collector is running: 5-minute buffer (extra conservative)
-        - Otherwise: 3-minute buffer (IRIS 2-min delay + 1-min processing)
+        - Windows ending AFTER last_run_completed are too recent (either being collected now or just finished)
+        - Windows ending BEFORE last_run_completed are fair game (should exist if collection succeeded)
     """
-    from datetime import timedelta
+    if not last_run_completed:
+        # No collections have completed yet - exclude everything recent
+        now = datetime.now(timezone.utc)
+        from datetime import timedelta
+        return window_end > (now - timedelta(minutes=10))
     
-    now = datetime.now(timezone.utc)
-    
-    # If collector is running, give it extra buffer
-    if currently_running:
-        buffer_minutes = 5
-    else:
-        buffer_minutes = 3  # Normal IRIS delay + processing
-    
-    return window_end > (now - timedelta(minutes=buffer_minutes))
+    try:
+        last_completed = datetime.fromisoformat(last_run_completed.replace('Z', '+00:00'))
+        # If window ended after last completion, it's too recent
+        return window_end > last_completed
+    except:
+        # Parse error - be conservative
+        return True
 
 
 def find_earliest_data_timestamp(s3_client):
@@ -453,7 +456,7 @@ def find_earliest_data_timestamp(s3_client):
 
 def detect_gaps_for_station(s3_client, network, volcano, station, location, channel, sample_rate, 
                             start_datetime, end_datetime, chunk_types=['10m', '1h', '6h'], 
-                            currently_running=False):
+                            last_run_completed=None):
     """
     Detect gaps (missing windows) for a station across a datetime range.
     
@@ -470,7 +473,7 @@ def detect_gaps_for_station(s3_client, network, volcano, station, location, chan
         start_datetime: datetime object (inclusive) - exact time to start checking
         end_datetime: datetime object (inclusive) - exact time to stop checking
         chunk_types: list of chunk types to check (default: ['10m', '1h', '6h'])
-        currently_running: bool, is collector running? (affects recent window exclusion)
+        last_run_completed: ISO timestamp of last completed collection (excludes windows after this)
     
     Returns:
         dict: {
@@ -521,8 +524,8 @@ def detect_gaps_for_station(s3_client, network, volcano, station, location, chan
                 if window_start < start_datetime or window_start >= end_datetime:
                     continue
                 
-                # Skip if too recent (IRIS delay + processing buffer)
-                if is_too_recent(window_end, currently_running):
+                # Skip if window is from current/recent collection
+                if is_window_being_collected(window_end, last_run_completed):
                     continue
                 
                 # Check if this window exists in metadata
@@ -679,7 +682,7 @@ def gaps_detection(mode):
                 s3, network, volcano, station, location, channel, sample_rate,
                 start_time, end_time,  # Pass full datetimes, not just dates
                 chunk_types=['10m', '1h', '6h'],
-                currently_running=status['currently_running']
+                last_run_completed=status['last_run_completed']  # Use actual completion time!
             )
             
             # Count gaps
@@ -1337,11 +1340,24 @@ def get_status():
             converted['timestamp'] = convert_to_local_time(converted['timestamp'])
         return converted
     
+    # Format last run duration
+    def format_duration(seconds):
+        if seconds is None:
+            return None
+        minutes = int(seconds // 60)
+        secs = seconds % 60
+        if minutes > 0:
+            return f"{minutes}m {secs:.1f}s"
+        else:
+            return f"{secs:.1f}s"
+    
     final_response = {
         'version': status['version'],
         'currently_running': status['currently_running'],
         'deployed_at': convert_to_local_time(status['deployed_at']),
-        'last_run': convert_to_local_time(status['last_run']),
+        'last_run_started': convert_to_local_time(status['last_run_started']),
+        'last_run_completed': convert_to_local_time(status['last_run_completed']),
+        'last_run_duration': format_duration(status['last_run_duration_seconds']),
         'next_run': convert_to_local_time(status['next_run']),
         'collection_stats': collection_stats,
         'r2_storage': r2_storage,
@@ -2324,7 +2340,7 @@ def auto_heal_gaps():
                 station_info['sample_rate'],
                 start_time, now,
                 chunk_types=['10m', '1h', '6h'],
-                currently_running=False  # Auto-heal runs between collections
+                last_run_completed=None  # Auto-heal: check everything (runs after collection finishes)
             )
             
             station_gap_count = sum(len(gaps[ct]) for ct in ['10m', '1h', '6h'])
@@ -2390,13 +2406,15 @@ def auto_heal_gaps():
 
 def run_cron_job():
     """Execute the cron job"""
+    now = datetime.now(timezone.utc)
+    
     status['currently_running'] = True
+    status['last_run_started'] = now.isoformat()
     status['total_runs'] += 1
     
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ========== Starting data collection ==========")
+    print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] ========== Starting data collection ==========")
     
     # Check if this is a 6-hour checkpoint (will trigger auto-heal AFTER collection)
-    now = datetime.now(timezone.utc)
     should_auto_heal = (now.hour % 6 == 0 and now.minute in [0, 1, 2, 3, 4])
     
     try:
@@ -2485,8 +2503,18 @@ def run_cron_job():
         status['failed_runs'] += 1
     
     finally:
+        completion_time = datetime.now(timezone.utc)
         status['currently_running'] = False
-        status['last_run'] = datetime.now(timezone.utc).isoformat()
+        status['last_run_completed'] = completion_time.isoformat()
+        
+        # Calculate run duration
+        if status['last_run_started']:
+            try:
+                start_time = datetime.fromisoformat(status['last_run_started'])
+                duration_seconds = (completion_time - start_time).total_seconds()
+                status['last_run_duration_seconds'] = round(duration_seconds, 2)
+            except:
+                status['last_run_duration_seconds'] = None
 
 
 def run_scheduler():
@@ -2501,8 +2529,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.14 Fix: Coverage time display rounding (4h 9m → 4h 10m)")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.14 Fix: Coverage time display rounding (4h 9m → 4h 10m)")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.15 Feature: Smart gap detection using last_run timestamps, collection duration tracking")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.15 Feature: Smart gap detection using last_run timestamps, collection duration tracking")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
