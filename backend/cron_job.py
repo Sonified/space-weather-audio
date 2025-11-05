@@ -133,12 +133,14 @@ def process_station_window(network, station, location, channel, volcano, sample_
                            start_time, end_time, chunk_type):
     """
     Fetch and process data for one station and one time window.
-    Returns (success, metadata) tuple.
+    Returns (success, error_info) tuple.
+    error_info is dict with 'step', 'station', 'error' on failure, None on success.
     """
-    logger.info(f"[{volcano}] {network}.{station}.{location}.{channel} - {chunk_type} {start_time} to {end_time}")
+    station_id = f"{network}.{station}.{location}.{channel}"
+    logger.info(f"[{volcano}] {station_id} - {chunk_type} {start_time} to {end_time}")
     
     try:
-        # Fetch from IRIS
+        # Step 1: Fetch from IRIS
         client = Client("IRIS")
         st = client.get_waveforms(
             network=network,
@@ -150,21 +152,26 @@ def process_station_window(network, station, location, channel, volcano, sample_
         )
         
         if not st or len(st) == 0:
+            error_info = {
+                'step': 'IRIS_FETCH',
+                'station': station_id,
+                'chunk_type': chunk_type,
+                'error': 'No data returned from IRIS'
+            }
             logger.warning(f"  ❌ No data returned from IRIS")
-            return False, None
+            return False, error_info
         
         logger.info(f"  ✅ Got {len(st)} trace(s)")
         
-        # Detect gaps BEFORE merging
+        # Step 2: Detect gaps and merge
         gaps = detect_gaps(st, sample_rate)
         if gaps:
             logger.info(f"  ⚠️  {len(gaps)} gaps detected")
         
-        # Merge and interpolate
         st.merge(method=1, fill_value='interpolate', interpolation_samples=0)
         trace = st[0]
         
-        # Round to second boundaries
+        # Step 3: Process data (round, convert, compress)
         original_end = trace.stats.endtime
         rounded_end = UTCDateTime(int(original_end.timestamp))
         duration_seconds = int(rounded_end.timestamp - trace.stats.starttime.timestamp)
@@ -174,14 +181,13 @@ def process_station_window(network, station, location, channel, volcano, sample_
         data = trace.data[:full_second_samples]
         trace.data = data
         
-        # Convert to int32
         data_int32 = data.astype(np.int32)
         min_val = int(np.min(data_int32))
         max_val = int(np.max(data_int32))
         
         logger.info(f"  ✅ Processed {len(data_int32):,} samples, min/max={min_val}/{max_val}")
         
-        # Compress with Zstd
+        # Step 4: Compress
         compressor = zstd.ZstdCompressor(level=3)
         compressed = compressor.compress(data_int32.tobytes())
         
@@ -204,7 +210,7 @@ def process_station_window(network, station, location, channel, volcano, sample_
         # Metadata filename
         metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
         
-        # Upload to R2 (or save locally if no credentials)
+        # Step 5: Upload to R2 (or save locally if no credentials)
         if s3_client:
             # New structure: files organized by chunk type in subfolders
             r2_key = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{chunk_type}/{filename}"
@@ -350,11 +356,17 @@ def process_station_window(network, station, location, channel, volcano, sample_
             'gap_samples_filled': sum(g['samples_filled'] for g in gaps)
         }
         
-        return True, chunk_metadata
+        return True, None  # Success, no error
         
     except Exception as e:
+        error_info = {
+            'step': 'UNKNOWN',
+            'station': station_id,
+            'chunk_type': chunk_type,
+            'error': str(e)
+        }
         logger.error(f"  ❌ Error: {e}")
-        return False, None
+        return False, error_info
 
 
 def main():
@@ -393,6 +405,7 @@ def main():
     current_task = 0
     successful = 0
     failed = 0
+    failure_details = []  # Collect detailed failure info
     
     for station_config in active_stations:
         network = station_config['network']
@@ -406,16 +419,17 @@ def main():
             current_task += 1
             logger.info(f"[{current_task}/{total_tasks}] Processing...")
             
-            success, chunk_meta = process_station_window(
+            success, error_info = process_station_window(
                 network, station, location, channel, volcano, sample_rate,
                 start, end, chunk_type
             )
             
             if success:
                 successful += 1
-                # TODO: Update metadata JSON in R2
             else:
                 failed += 1
+                if error_info:
+                    failure_details.append(error_info)
             
             # Small delay between requests
             if current_task < total_tasks:
@@ -430,6 +444,21 @@ def main():
     logger.info(f"Successful: {successful}")
     logger.info(f"Failed: {failed}")
     logger.info("=" * 100)
+    
+    # Print detailed failure information to stderr (captured by cron_loop.py)
+    if failure_details:
+        import sys as _sys
+        _sys.stderr.write("\n" + "=" * 100 + "\n")
+        _sys.stderr.write("FAILURE DETAILS:\n")
+        _sys.stderr.write("=" * 100 + "\n")
+        for i, failure in enumerate(failure_details, 1):
+            _sys.stderr.write(f"\nFailure {i}:\n")
+            _sys.stderr.write(f"  Station: {failure['station']}\n")
+            _sys.stderr.write(f"  Chunk Type: {failure['chunk_type']}\n")
+            _sys.stderr.write(f"  Step: {failure['step']}\n")
+            _sys.stderr.write(f"  Error: {failure['error']}\n")
+        _sys.stderr.write("=" * 100 + "\n")
+        _sys.stderr.flush()
     
     sys.exit(0 if failed == 0 else 1)
 

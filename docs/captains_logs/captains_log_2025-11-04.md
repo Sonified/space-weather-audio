@@ -818,5 +818,24 @@ data/2025/11/HV/kilauea/OBL/--/HHZ/
 - Loads on startup to show historical failures
 - Storage cost: negligible (JSON text is tiny, even 10,000 failures = ~5MB)
 
+**Enhanced Error Detail:** `cron_job.py` now captures structured failure information:
+- **Station**: Which station was being processed (network.station.location.channel)
+- **Chunk Type**: Which file type was being created (10m, 1h, 6h)
+- **Step**: Which processing step failed (IRIS_FETCH, COMPRESS, R2_UPLOAD, etc.)
+- **Error**: Detailed error message
+
+Example stderr output on failure:
+```
+================================================================================
+FAILURE DETAILS:
+================================================================================
+
+Failure 1:
+  Station: HV.OBL.--.HHZ
+  Chunk Type: 6h
+  Step: IRIS_FETCH
+  Error: HTTP 500 Server Error
+```
+
 ---
 
