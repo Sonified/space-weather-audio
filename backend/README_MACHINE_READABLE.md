@@ -156,6 +156,24 @@ python test_audio_stream_local.py
 }
 ```
 
+#### GET /test/failure
+**Purpose:** Simulate a failure to test tracking system  
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Test failure recorded",
+  "failure": {
+    "timestamp": "2025-11-05T06:00:00Z",
+    "error": "TEST FAILURE: Simulated error for testing (random=1234)",
+    "exit_code": 99,
+    "type": "test_simulation"
+  },
+  "note": "Check /status to see the failure appear, or download collector_logs/failures.json from R2"
+}
+```
+**Usage:** Call this endpoint to inject a test failure and verify the tracking/persistence system works
+
 ---
 
 ### Data Validation

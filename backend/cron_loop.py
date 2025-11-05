@@ -438,6 +438,34 @@ def get_status():
         mimetype='application/json'
     )
 
+@app.route('/test/failure')
+def test_failure():
+    """TEST ENDPOINT: Simulate a failure to test tracking system"""
+    import random
+    
+    # Create a fake failure
+    test_failure_info = {
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'error': f"TEST FAILURE: Simulated error for testing (random={random.randint(1000, 9999)})",
+        'exit_code': 99,
+        'type': 'test_simulation'
+    }
+    
+    # Save to R2 and update in-memory state
+    save_failure(test_failure_info)
+    status['last_failure'] = test_failure_info
+    status['recent_failures'].append(test_failure_info)
+    if len(status['recent_failures']) > 10:
+        status['recent_failures'] = status['recent_failures'][-10:]
+    status['failed_runs'] += 1
+    
+    return jsonify({
+        'success': True,
+        'message': 'Test failure recorded',
+        'failure': test_failure_info,
+        'note': 'Check /status to see the failure appear, or download collector_logs/failures.json from R2'
+    })
+
 @app.route('/stations')
 def get_stations():
     """Return currently active stations"""
