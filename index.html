@@ -1647,6 +1647,15 @@
                     } else {
                         // Not looping - playback finished
                         isPlaying = false;
+                        
+                        // Update playhead to final position (calculated from totalSamples)
+                        if (totalSamples && totalAudioDuration > 0) {
+                            const finalPosition = totalSamples / 44100; // AudioWorklet sample rate
+                            currentAudioPosition = Math.min(finalPosition, totalAudioDuration);
+                            // Draw waveform once more to show playhead at end
+                            drawWaveformWithSelection();
+                        }
+                        
                         stopPositionTracking();
                         const playBtn = document.getElementById('playPauseBtn');
                         playBtn.disabled = false;

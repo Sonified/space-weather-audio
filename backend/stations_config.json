@@ -1,0 +1,96 @@
+{
+  "config": {
+    "max_distance_km": 20.0,
+    "data_types": ["seismic"]
+  },
+  
+  "networks": {
+    
+    "HV": {                                              
+      
+      "kilauea": [                                      
+        {"station": "UWE",   "location": "--", "channel": "HHZ", "distance_km": 0.4,  "sample_rate": 100.0, "active": false},
+        {"station": "UWE",   "location": "QC", "channel": "EHZ", "distance_km": 0.4,  "sample_rate": 100.0, "active": false},
+        {"station": "UWE",   "location": "QC", "channel": "HHZ", "distance_km": 0.4,  "sample_rate": 100.0, "active": false},
+        {"station": "OBL",   "location": "--", "channel": "HHZ", "distance_km": 0.5,  "sample_rate": 100.0, "active": true},
+        {"station": "UWB",   "location": "--", "channel": "HHZ", "distance_km": 1.1,  "sample_rate": 100.0, "active": true},
+        {"station": "SBL",   "location": "--", "channel": "HHZ", "distance_km": 2.1,  "sample_rate": 100.0, "active": true},
+        {"station": "WRM",   "location": "--", "channel": "HHZ", "distance_km": 2.1,  "sample_rate": 100.0, "active": true},
+        {"station": "HAT",   "location": "--", "channel": "HHZ", "distance_km": 2.7,  "sample_rate": 100.0, "active": false},
+        {"station": "BYL",   "location": "--", "channel": "HHZ", "distance_km": 3.0,  "sample_rate": 100.0, "active": false},
+        {"station": "RIMD",  "location": "--", "channel": "HHZ", "distance_km": 3.2,  "sample_rate": 100.0, "active": false},
+        {"station": "KKO",   "location": "--", "channel": "HHZ", "distance_km": 3.4,  "sample_rate": 100.0, "active": false},
+        {"station": "SDH",   "location": "--", "channel": "HHZ", "distance_km": 3.5,  "sample_rate": 100.0, "active": false},
+        {"station": "OTLD",  "location": "--", "channel": "HHZ", "distance_km": 3.9,  "sample_rate": 100.0, "active": false},
+        {"station": "RSDD",  "location": "01", "channel": "HHZ", "distance_km": 4.5,  "sample_rate": 100.0, "active": false},
+        {"station": "CPKD",  "location": "--", "channel": "HHZ", "distance_km": 5.1,  "sample_rate": 100.0, "active": false},
+        {"station": "NAHU",  "location": "--", "channel": "HHZ", "distance_km": 5.1,  "sample_rate": 100.0, "active": false},
+        {"station": "PUHI",  "location": "--", "channel": "HHZ", "distance_km": 5.4,  "sample_rate": 100.0, "active": false},
+        {"station": "PUHI",  "location": "00", "channel": "HHZ", "distance_km": 5.4,  "sample_rate": 100.0, "active": false},
+        {"station": "AHUD",  "location": "--", "channel": "EHZ", "distance_km": 6.0,  "sample_rate": 100.0, "active": false},
+        {"station": "AHUD",  "location": "00", "channel": "HHZ", "distance_km": 6.0,  "sample_rate": 100.0, "active": false},
+        {"station": "KOSM",  "location": "--", "channel": "HHZ", "distance_km": 7.1,  "sample_rate": 100.0, "active": false},
+        {"station": "DEVL",  "location": "--", "channel": "HHZ", "distance_km": 7.2,  "sample_rate": 100.0, "active": false},
+        {"station": "PAUD",  "location": "--", "channel": "HHZ", "distance_km": 9.2,  "sample_rate": 100.0, "active": false},
+        {"station": "MITD",  "location": "--", "channel": "HHZ", "distance_km": 9.6,  "sample_rate": 100.0, "active": false},
+        {"station": "MLOD",  "location": "--", "channel": "HHZ", "distance_km": 13.1, "sample_rate": 100.0, "active": false},
+        {"station": "KNHD",  "location": "--", "channel": "EHZ", "distance_km": 13.2, "sample_rate": 100.0, "active": false},
+        {"station": "HLPD",  "location": "--", "channel": "HHZ", "distance_km": 14.0, "sample_rate": 100.0, "active": false},
+        {"station": "DESD",  "location": "--", "channel": "EHZ", "distance_km": 14.2, "sample_rate": 100.0, "active": false},
+        {"station": "POLD",  "location": "--", "channel": "EHZ", "distance_km": 16.9, "sample_rate": 100.0, "active": false},
+        {"station": "STCD",  "location": "--", "channel": "HHZ", "distance_km": 17.4, "sample_rate": 100.0, "active": false},
+        {"station": "AIND",  "location": "--", "channel": "HHZ", "distance_km": 18.7, "sample_rate": 100.0, "active": false},
+        {"station": "NPOC",  "location": "--", "channel": "HHZ", "distance_km": 18.9, "sample_rate": 100.0, "active": false},
+        {"station": "JCUZ",  "location": "--", "channel": "HHZ", "distance_km": 19.9, "sample_rate": 100.0, "active": false}
+      ],
+      
+      "maunaloa": [                                     
+        {"station": "MOKD",  "location": "--", "channel": "HHZ", "distance_km": 1.6,  "sample_rate": 100.0, "active": false},
+        {"station": "SWRD",  "location": "--", "channel": "EHZ", "distance_km": 2.6,  "sample_rate": 100.0, "active": false},
+        {"station": "WILD",  "location": "--", "channel": "EHZ", "distance_km": 3.0,  "sample_rate": 100.0, "active": false},
+        {"station": "ALEP",  "location": "--", "channel": "EHZ", "distance_km": 8.3,  "sample_rate": 100.0, "active": false},
+        {"station": "RCOD",  "location": "--", "channel": "EHZ", "distance_km": 8.3,  "sample_rate": 100.0, "active": false},
+        {"station": "ELEP",  "location": "--", "channel": "EHZ", "distance_km": 9.1,  "sample_rate": 100.0, "active": false},
+        {"station": "TRAD",  "location": "--", "channel": "EHZ", "distance_km": 9.5,  "sample_rate": 100.0, "active": false},
+        {"station": "TOUO",  "location": "--", "channel": "HHZ", "distance_km": 10.5, "sample_rate": 100.0, "active": false},
+        {"station": "DAND",  "location": "--", "channel": "EHZ", "distance_km": 14.7, "sample_rate": 100.0, "active": false},
+        {"station": "PLAD",  "location": "--", "channel": "EHZ", "distance_km": 17.0, "sample_rate": 100.0, "active": false},
+        {"station": "HSSD",  "location": "--", "channel": "HHZ", "distance_km": 19.3, "sample_rate": 100.0, "active": false},
+        {"station": "AIND",  "location": "--", "channel": "HHZ", "distance_km": 19.5, "sample_rate": 100.0, "active": false}
+      ]
+    },
+    
+    "AV": {                                              
+      
+      "greatsitkin": [                                  
+        {"station": "GSTD",  "location": "--", "channel": "BHZ", "distance_km": 3.3,  "sample_rate": 50.0, "active": false},
+        {"station": "GSTR",  "location": "--", "channel": "BHZ", "distance_km": 4.1,  "sample_rate": 50.0, "active": false},
+        {"station": "GSSP",  "location": "--", "channel": "BHZ", "distance_km": 4.9,  "sample_rate": 50.0, "active": false},
+        {"station": "GSMY",  "location": "--", "channel": "BHZ", "distance_km": 5.2,  "sample_rate": 50.0, "active": false},
+        {"station": "GSCK",  "location": "--", "channel": "BHZ", "distance_km": 7.7,  "sample_rate": 50.0, "active": false},
+        {"station": "GSIG",  "location": "--", "channel": "BHZ", "distance_km": 16.2, "sample_rate": 50.0, "active": false}
+      ],
+      
+      "shishaldin": [                                   
+        {"station": "SSLS",  "location": "--", "channel": "BHZ", "distance_km": 5.4,  "sample_rate": 50.0, "active": false},
+        {"station": "SSLN",  "location": "--", "channel": "BHZ", "distance_km": 6.5,  "sample_rate": 50.0, "active": false},
+        {"station": "SSBA",  "location": "--", "channel": "BHZ", "distance_km": 10.1, "sample_rate": 50.0, "active": false},
+        {"station": "ISNN",  "location": "--", "channel": "BHZ", "distance_km": 14.9, "sample_rate": 50.0, "active": false},
+        {"station": "ISLZ",  "location": "--", "channel": "BHZ", "distance_km": 16.9, "sample_rate": 50.0, "active": false},
+        {"station": "BRPK",  "location": "--", "channel": "BHZ", "distance_km": 19.2, "sample_rate": 50.0, "active": false}
+      ],
+      
+      "spurr": [                                        
+        {"station": "SPCP",  "location": "--", "channel": "BHZ", "distance_km": 6.4,  "sample_rate": 50.0, "active": true},
+        {"station": "SPBG",  "location": "--", "channel": "BHZ", "distance_km": 7.7,  "sample_rate": 50.0, "active": false},
+        {"station": "SPCN",  "location": "--", "channel": "BHZ", "distance_km": 9.2,  "sample_rate": 50.0, "active": false},
+        {"station": "N20K",  "location": "--", "channel": "BHZ", "distance_km": 11.2, "sample_rate": 40.0, "active": false},
+        {"station": "SPCG",  "location": "--", "channel": "BHZ", "distance_km": 12.4, "sample_rate": 50.0, "active": false},
+        {"station": "SPCL",  "location": "--", "channel": "BHZ", "distance_km": 12.4, "sample_rate": 50.0, "active": false},
+        {"station": "SPWE",  "location": "--", "channel": "BHZ", "distance_km": 16.5, "sample_rate": 50.0, "active": false},
+        {"station": "SPU",   "location": "--", "channel": "BHZ", "distance_km": 16.8, "sample_rate": 50.0, "active": false}
+      ]
+    }
+  }
+}
+

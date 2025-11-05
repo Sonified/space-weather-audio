@@ -1,0 +1,362 @@
+{
+  "result": {
+    "id": "SV_3EOvx4jDUEVIACy",
+    "name": "Intake Survey: Audification for event detection in near-real-time volcano seismic data",
+    "ownerId": "UR_72SYen6jTTSIaFf",
+    "organizationId": "oregon",
+    "isActive": false,
+    "creationDate": "2025-10-28T15:53:57Z",
+    "lastModifiedDate": "2025-11-04T17:43:26Z",
+    "expiration": {
+      "startDate": null,
+      "endDate": null
+    },
+    "questions": {
+      "QID3": {
+        "questionType": {
+          "type": "DB",
+          "selector": "TB",
+          "subSelector": null
+        },
+        "questionText": "Thank you for your interest in participating in this research. <br><br>Using sound to interpret seismic data is an emerging area of study. This project explores audification (turning seismic data into sound) and how people engage with and interpret these sounds. Your participation will help us understand what listeners notice in seismic data collected near volcanoes and how the experience of listening unfolds over time.<br><br>This research is conducted by Leif Karlstrom, University of Oregon, and Robert Alexander, University of Maryland. <br><br>On the next page you'll find details about what's involved, how your responses will be used, and how to participate. ",
+        "questionLabel": null,
+        "validation": {
+          "doesForceResponse": false
+        },
+        "questionName": " "
+      },
+      "QID4": {
+        "questionType": {
+          "type": "DB",
+          "selector": "TB",
+          "subSelector": null
+        },
+        "questionText": "Your participation is voluntary and separate from any course requirements. Your decision not to participate or to withdraw from the study will not impact your grades, relationship with your instructor, or your standing at the University of Oregon. You may skip any questions or stop at any time.",
+        "questionLabel": null,
+        "validation": {
+          "doesForceResponse": false
+        },
+        "questionName": " "
+      },
+      "QID1": {
+        "choices": {
+          "1": {
+            "recode": "1",
+            "description": "I consent to participate in this research",
+            "imageDescription": null,
+            "choiceText": "I consent to participate in this research",
+            "variableName": null,
+            "analyze": true
+          }
+        },
+        "questionType": {
+          "type": "MC",
+          "selector": "SAVR",
+          "subSelector": "TX"
+        },
+        "questionText": "<br>What this study involves: <br><br>1. Completion of this consent form will add your contact to an anonymized email list. On Monday, November 10, 2025 you will receive an email with a link to fill out a short pre-experiment survey and a link to a web-application that you will interact with over 4 weeks as part of the experiment. <br><br>2. Interactions with the web-app will consist of listening to an audification of the data from the last 24 hours at two active volcanoes and selecting 'events' by clicking on the displayed audio and uploading automatically generated data to the Qualtrics survey. Each interaction should take no more than 15 minutes and a user tutorial will be available. You will be reminded every week via email to complete 2 sessions at each volcano per week.<br><br>3. The study ends Friday Dec 5, 2025. At this time you will be invited to complete a post-experiment survey and a further opportunity to identify events. <br><br>Age requirement: <br>You must be 18 years or older to participate. <br><br>Data use: <br>Your anonymous responses will be used for research purposes. No identifying information is collected. <br><br>Questions? <br>Contact Leif Karlstrom leif@uoregon.edu or UO Research Compliance Services at ResearchCompliance@uoregon.edu. <br><br>After checking the box below stating \"I consent to participate in this research\" you can enter a valid email address below to receive instructions for participation, or visit https://volcanolisteningproject.org/ for an anonymous link on November 10. ",
+        "questionLabel": null,
+        "validation": {
+          "doesForceResponse": false
+        },
+        "questionName": "Question 1",
+        "choiceOrder": [
+          "1"
+        ]
+      },
+      "QID2": {
+        "questionType": {
+          "type": "TE",
+          "selector": "FORM",
+          "subSelector": null
+        },
+        "questionText": "Please enter a valid email address below to receive instructions for participating. This information will be used to send you infrequent reminder emails while participating and will not be saved after the study is complete. <br><br>This is a voluntary and optional step. If you wish to participate in the study without entering an email, an anonymous link to the study will be posted at https://volcanolisteningproject.org/ on November 10th, 2025",
+        "questionLabel": null,
+        "validation": {
+          "doesForceResponse": false
+        },
+        "questionName": "Question 2",
+        "choices": {
+          "1": {
+            "description": "Email address",
+            "imageDescription": null,
+            "choiceText": "Email address",
+            "variableName": null,
+            "analyze": true
+          }
+        },
+        "choiceOrder": [
+          "1"
+        ]
+      },
+      "QID5": {
+        "choices": {
+          "1": {
+            "recode": "1",
+            "description": "Answer1",
+            "imageDescription": null,
+            "choiceText": "Answer1",
+            "variableName": null,
+            "analyze": true
+          },
+          "2": {
+            "recode": "2",
+            "description": "Answer2",
+            "imageDescription": null,
+            "choiceText": "Answer2",
+            "variableName": null,
+            "analyze": true
+          },
+          "3": {
+            "recode": "3",
+            "description": "Answer3",
+            "imageDescription": null,
+            "choiceText": "Answer3",
+            "variableName": null,
+            "analyze": true
+          }
+        },
+        "questionType": {
+          "type": "MC",
+          "selector": "SAVR",
+          "subSelector": "TX"
+        },
+        "questionText": "Test question",
+        "questionLabel": null,
+        "validation": {
+          "doesForceResponse": false
+        },
+        "questionName": "Q5",
+        "choiceOrder": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "QID6": {
+        "subQuestions": {
+          "1": {
+            "recode": "1",
+            "description": "Click to write Statement 1",
+            "imageDescription": null,
+            "choiceText": "Click to write Statement 1",
+            "variableName": null
+          },
+          "2": {
+            "recode": "2",
+            "description": "Click to write Statement 2",
+            "imageDescription": null,
+            "choiceText": "Click to write Statement 2",
+            "variableName": null
+          },
+          "3": {
+            "recode": "3",
+            "description": "Click to write Statement 3",
+            "imageDescription": null,
+            "choiceText": "Click to write Statement 3",
+            "variableName": null
+          },
+          "4": {
+            "recode": "4",
+            "description": "Click to write Statement 4",
+            "imageDescription": null,
+            "choiceText": "Click to write Statement 4",
+            "variableName": null
+          },
+          "5": {
+            "recode": "5",
+            "description": "Click to write Statement 5",
+            "imageDescription": null,
+            "choiceText": "Click to write Statement 5",
+            "variableName": null
+          },
+          "6": {
+            "recode": "6",
+            "description": "Click to write Statement 6",
+            "imageDescription": null,
+            "choiceText": "Click to write Statement 6",
+            "variableName": null
+          }
+        },
+        "choices": {
+          "1": {
+            "recode": "1",
+            "description": "Click to write Scale Point 1",
+            "imageDescription": null,
+            "choiceText": "Click to write Scale Point 1",
+            "analyze": true
+          },
+          "2": {
+            "recode": "2",
+            "description": "Click to write Scale Point 2",
+            "imageDescription": null,
+            "choiceText": "Click to write Scale Point 2",
+            "analyze": true
+          },
+          "3": {
+            "recode": "3",
+            "description": "Click to write Scale Point 3",
+            "imageDescription": null,
+            "choiceText": "Click to write Scale Point 3",
+            "analyze": true
+          },
+          "4": {
+            "recode": "4",
+            "description": "Click to write Scale Point 4",
+            "imageDescription": null,
+            "choiceText": "Click to write Scale Point 4",
+            "analyze": true
+          },
+          "5": {
+            "recode": "5",
+            "description": "Click to write Scale Point 5",
+            "imageDescription": null,
+            "choiceText": "Click to write Scale Point 5",
+            "analyze": true
+          }
+        },
+        "questionType": {
+          "type": "Matrix",
+          "selector": "Likert",
+          "subSelector": "SingleAnswer"
+        },
+        "questionText": "PrePost",
+        "questionLabel": null,
+        "validation": {
+          "doesForceResponse": false
+        },
+        "questionName": "Q6",
+        "subQuestionOrder": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ],
+        "answerOrder": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ]
+      }
+    },
+    "exportColumnMap": {
+      " ": {
+        "question": "QID4"
+      },
+      "Q5": {
+        "question": "QID5"
+      },
+      "Q6_1": {
+        "question": "QID6",
+        "subQuestion": "QID6.subQuestions.1"
+      },
+      "Q6_2": {
+        "question": "QID6",
+        "subQuestion": "QID6.subQuestions.2"
+      },
+      "Q6_3": {
+        "question": "QID6",
+        "subQuestion": "QID6.subQuestions.3"
+      },
+      "Q6_4": {
+        "question": "QID6",
+        "subQuestion": "QID6.subQuestions.4"
+      },
+      "Q6_5": {
+        "question": "QID6",
+        "subQuestion": "QID6.subQuestions.5"
+      },
+      "Q6_6": {
+        "question": "QID6",
+        "subQuestion": "QID6.subQuestions.6"
+      },
+      "Question 1": {
+        "question": "QID1"
+      },
+      "Question 2_1_TEXT": {
+        "choice": "QID2.choices.1",
+        "question": "QID2"
+      }
+    },
+    "blocks": {
+      "BL_4Yl0v95Np8wK88S": {
+        "description": "Introduction\u00a0",
+        "elements": [
+          {
+            "type": "Question",
+            "questionId": "QID3"
+          }
+        ]
+      },
+      "BL_9HPiMQofOc33T8O": {
+        "description": "Block 3",
+        "elements": [
+          {
+            "type": "Question",
+            "questionId": "QID6"
+          }
+        ]
+      },
+      "BL_e4LFf8rZGWKdqku": {
+        "description": "Consent statement",
+        "elements": [
+          {
+            "type": "Question",
+            "questionId": "QID4"
+          }
+        ]
+      },
+      "BL_enh2aSuZBwW5GrI": {
+        "description": "Question block",
+        "elements": [
+          {
+            "type": "Question",
+            "questionId": "QID1"
+          },
+          {
+            "type": "Question",
+            "questionId": "QID2"
+          },
+          {
+            "type": "Question",
+            "questionId": "QID5"
+          }
+        ]
+      }
+    },
+    "flow": [
+      {
+        "id": "BL_4Yl0v95Np8wK88S",
+        "type": "Block"
+      },
+      {
+        "id": "BL_e4LFf8rZGWKdqku",
+        "type": "Block"
+      },
+      {
+        "id": "BL_enh2aSuZBwW5GrI",
+        "type": "Block"
+      },
+      {
+        "id": "BL_9HPiMQofOc33T8O",
+        "type": "Block"
+      }
+    ],
+    "embeddedData": [],
+    "comments": {},
+    "loopAndMerge": {},
+    "responseCounts": {
+      "auditable": 0,
+      "generated": 3,
+      "deleted": 0
+    }
+  },
+  "meta": {
+    "httpStatus": "200 - OK",
+    "requestId": "e0ebeca2-dcdd-4323-a2d8-0457df13e43f"
+  }
+}

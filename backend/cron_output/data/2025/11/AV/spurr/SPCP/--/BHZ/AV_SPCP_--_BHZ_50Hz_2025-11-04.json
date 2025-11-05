@@ -1,0 +1,46 @@
+{
+  "date": "2025-11-04",
+  "network": "AV",
+  "volcano": "spurr",
+  "station": "SPCP",
+  "location": "",
+  "channel": "BHZ",
+  "sample_rate": 50.0,
+  "created_at": "2025-11-05T02:27:51.431971Z",
+  "complete_day": false,
+  "chunks": {
+    "10m": [
+      {
+        "start": "11:50:00",
+        "end": "11:59:59",
+        "min": 129,
+        "max": 501,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "1h": [
+      {
+        "start": "11:00:00",
+        "end": "11:59:59",
+        "min": -446,
+        "max": 956,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "6h": [
+      {
+        "start": "06:00:00",
+        "end": "11:59:59",
+        "min": -515,
+        "max": 1060,
+        "samples": 1080000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "date": "2025-11-05",
+  "network": "AV",
+  "volcano": "spurr",
+  "station": "SPCP",
+  "location": "",
+  "channel": "BHZ",
+  "sample_rate": 50.0,
+  "created_at": "2025-11-05T02:26:32.365674Z",
+  "complete_day": false,
+  "chunks": {
+    "10m": [],
+    "1h": [
+      {
+        "start": "02:00:00",
+        "end": "02:25:36",
+        "min": 52,
+        "max": 646,
+        "samples": 76850,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "6h": []
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "date": "2025-11-04",
+  "network": "HV",
+  "volcano": "kilauea",
+  "station": "UWB",
+  "location": "",
+  "channel": "HHZ",
+  "sample_rate": 100.0,
+  "created_at": "2025-11-05T02:26:46.321259Z",
+  "complete_day": false,
+  "chunks": {
+    "10m": [
+      {
+        "start": "11:50:00",
+        "end": "11:59:59",
+        "min": 7923933,
+        "max": 7935502,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "1h": [
+      {
+        "start": "11:00:00",
+        "end": "11:59:59",
+        "min": 7917928,
+        "max": 7935502,
+        "samples": 360000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "6h": [
+      {
+        "start": "06:00:00",
+        "end": "11:59:59",
+        "min": -7923253,
+        "max": 7965289,
+        "samples": 2160000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ]
+  }
+}

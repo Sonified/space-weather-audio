@@ -1,0 +1,797 @@
+#!/usr/bin/env python3
+"""
+Continuous cron loop for Railway deployment
+Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
+Version: v1.00
+"""
+__version__ = "2025_11_04_v1.00"
+import time
+import subprocess
+import sys
+import os
+import threading
+from datetime import datetime, timezone
+from flask import Flask, jsonify
+
+# Simple Flask app for health/status endpoint
+app = Flask(__name__)
+
+# Shared state
+status = {
+    'started_at': datetime.now(timezone.utc).isoformat(),
+    'last_run': None,
+    'next_run': None,
+    'total_runs': 0,
+    'successful_runs': 0,
+    'failed_runs': 0,
+    'currently_running': False
+}
+
+def get_dates_in_period(start_time, end_time):
+    """
+    Helper: Generate all dates between start_time and end_time (inclusive)
+    Returns list of date objects
+    Handles month/year boundaries naturally
+    """
+    from datetime import timedelta
+    dates = []
+    current = start_time.date()
+    end = end_time.date()
+    while current <= end:
+        dates.append(current)
+        current += timedelta(days=1)
+    return dates
+
+@app.route('/health')
+def health():
+    """Simple health check endpoint"""
+    return jsonify({'status': 'healthy', 'uptime_seconds': (datetime.now(timezone.utc) - datetime.fromisoformat(status['started_at'])).total_seconds()})
+
+@app.route('/status')
+def get_status():
+    """Return detailed status"""
+    return jsonify(status)
+
+@app.route('/stations')
+def get_stations():
+    """Return currently active stations"""
+    import json
+    from pathlib import Path
+    
+    config_path = Path(__file__).parent / 'stations_config.json'
+    with open(config_path) as f:
+        config = json.load(f)
+    
+    active_stations = []
+    for network, volcanoes in config['networks'].items():
+        for volcano, stations in volcanoes.items():
+            for station in stations:
+                if station.get('active', False):
+                    active_stations.append({
+                        'network': network,
+                        'volcano': volcano,
+                        'station': station['station'],
+                        'location': station['location'],
+                        'channel': station['channel'],
+                        'sample_rate': station['sample_rate']
+                    })
+    
+    return jsonify({
+        'total': len(active_stations),
+        'stations': active_stations
+    })
+
+@app.route('/validate')
+@app.route('/validate/<period>')
+def validate(period='24h'):
+    """
+    Validate R2 data integrity using metadata
+    Checks: metadata vs actual files, orphaned files, missing files
+    Examples: /validate/24h, /validate/2d, /validate/12h
+    """
+    import json
+    import boto3
+    from pathlib import Path
+    from datetime import timedelta
+    
+    # Parse period
+    if period.endswith('d'):
+        hours = int(period[:-1]) * 24
+    elif period.endswith('h'):
+        hours = int(period[:-1])
+    else:
+        hours = int(period)
+    
+    # Initialize R2 client
+    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
+    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
+    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
+    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+    
+    s3 = boto3.client(
+        's3',
+        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        region_name='auto'
+    )
+    
+    # Load active stations
+    config_path = Path(__file__).parent / 'stations_config.json'
+    with open(config_path) as f:
+        config = json.load(f)
+    
+    active_stations = []
+    for network, volcanoes in config['networks'].items():
+        for volcano, stations in volcanoes.items():
+            for station in stations:
+                if station.get('active', False):
+                    active_stations.append({
+                        'network': network,
+                        'volcano': volcano,
+                        **station
+                    })
+    
+    # Calculate time range
+    now = datetime.now(timezone.utc)
+    start_time = now - timedelta(hours=hours)
+    dates_to_check = get_dates_in_period(start_time, now)
+    
+    # Results (health will be added at the end, but we initialize structure)
+    results = {
+        'validation_time': now.isoformat(),
+        'period_hours': hours,
+        'start_time': start_time.isoformat(),
+        'end_time': now.isoformat(),
+        'days_checked': len(dates_to_check),
+        'total_stations': len(active_stations),
+        'stations': []
+    }
+    
+    # Validate each station across all dates
+    for station_config in active_stations:
+        network = station_config['network']
+        volcano = station_config['volcano']
+        station = station_config['station']
+        location = station_config['location']
+        channel = station_config['channel']
+        sample_rate = station_config['sample_rate']
+        location_str = location if location and location != '--' else '--'
+        rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+        
+        station_result = {
+            'network': network,
+            'volcano': volcano,
+            'station': station,
+            'location': location_str,
+            'channel': channel,
+            'sample_rate': sample_rate,
+            'metadata_chunks': {'10m': 0, '1h': 0, '6h': 0},
+            'actual_files': {'10m': 0, '1h': 0, '6h': 0},
+            'missing_files': [],
+            'orphaned_files': [],
+            'issues': []
+        }
+        
+        try:
+            # Validate across all dates in the period
+            for check_date in dates_to_check:
+                year = check_date.year
+                month = f"{check_date.month:02d}"
+                date_str = check_date.strftime("%Y-%m-%d")
+                prefix = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/"
+                metadata_key = f"{prefix}{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                
+                # Get metadata for this date
+                metadata = None
+                try:
+                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                    metadata = json.loads(response['Body'].read().decode('utf-8'))
+                except s3.exceptions.NoSuchKey:
+                    # No metadata for this date - skip
+                    continue
+                
+                # Build expected filenames from metadata for this date
+                expected_files = set()
+                for chunk_type in ['10m', '1h', '6h']:
+                    station_result['metadata_chunks'][chunk_type] += len(metadata['chunks'].get(chunk_type, []))
+                    for chunk in metadata['chunks'].get(chunk_type, []):
+                        # Construct filename
+                        start_time_str = chunk['start'].replace(':', '-')
+                        end_time_str = chunk['end'].replace(':', '-')
+                        filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{chunk_type}_{date_str}-{start_time_str}_to_{date_str}-{end_time_str}.bin.zst"
+                        expected_files.add(filename)
+                
+                # List actual files in R2 for this date
+                response = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=prefix)
+                actual_files = set()
+                
+                if 'Contents' in response:
+                    for obj in response['Contents']:
+                        filename = obj['Key'].split('/')[-1]
+                        if filename.endswith('.bin.zst'):
+                            actual_files.add(filename)
+                            
+                            # Count by type
+                            if '_10m_' in filename:
+                                station_result['actual_files']['10m'] += 1
+                            elif '_1h_' in filename:
+                                station_result['actual_files']['1h'] += 1
+                            elif '_6h_' in filename:
+                                station_result['actual_files']['6h'] += 1
+                
+                # Find missing files (in metadata but not in R2) for this date
+                missing = expected_files - actual_files
+                station_result['missing_files'].extend(sorted(list(missing)))
+                
+                # Find orphaned files (in R2 but not in metadata) for this date
+                orphaned = actual_files - expected_files
+                station_result['orphaned_files'].extend(sorted(list(orphaned)))
+            
+            # Report issues (after all dates checked)
+            if len(station_result['missing_files']) > 0:
+                station_result['issues'].append(f"{len(station_result['missing_files'])} files listed in metadata but missing in R2")
+            if len(station_result['orphaned_files']) > 0:
+                station_result['issues'].append(f"{len(station_result['orphaned_files'])} orphaned files in R2 (not in metadata)")
+            
+            # Determine status
+            if len(station_result['missing_files']) == 0 and len(station_result['orphaned_files']) == 0:
+                station_result['status'] = 'OK'
+            elif len(station_result['missing_files']) > 0:
+                station_result['status'] = 'MISSING_FILES'
+            elif len(station_result['orphaned_files']) > 0:
+                station_result['status'] = 'ORPHANED_FILES'
+            
+        except Exception as e:
+            station_result['issues'].append(f"Validation error: {str(e)}")
+            station_result['status'] = 'ERROR'
+        
+        results['stations'].append(station_result)
+    
+    # Summary
+    ok_count = sum(1 for s in results['stations'] if s.get('status') == 'OK')
+    missing_count = sum(1 for s in results['stations'] if s.get('status') == 'MISSING_FILES')
+    orphaned_count = sum(1 for s in results['stations'] if s.get('status') == 'ORPHANED_FILES')
+    no_metadata_count = sum(1 for s in results['stations'] if s.get('status') == 'NO_METADATA')
+    error_count = sum(1 for s in results['stations'] if s.get('status') == 'ERROR')
+    total_missing = sum(len(s.get('missing_files', [])) for s in results['stations'])
+    total_orphaned = sum(len(s.get('orphaned_files', [])) for s in results['stations'])
+    
+    # Determine overall health
+    all_healthy = (ok_count == len(active_stations) and 
+                   missing_count == 0 and 
+                   orphaned_count == 0 and 
+                   no_metadata_count == 0 and 
+                   error_count == 0)
+    
+    results['summary'] = {
+        'ok': ok_count,
+        'missing_files': missing_count,
+        'orphaned_files': orphaned_count,
+        'no_metadata': no_metadata_count,
+        'error': error_count,
+        'total_missing': total_missing,
+        'total_orphaned': total_orphaned
+    }
+    
+    # Human-readable report
+    if all_healthy:
+        status_icon = '✅'
+        status_text = 'HEALTHY'
+        status_message = f'All {len(active_stations)} stations are healthy. Metadata matches files perfectly.'
+    else:
+        status_icon = '⚠️'
+        status_text = 'ISSUES DETECTED'
+        issues = []
+        if missing_count > 0:
+            issues.append(f'{missing_count} stations with missing files ({total_missing} files)')
+        if orphaned_count > 0:
+            issues.append(f'{orphaned_count} stations with orphaned files ({total_orphaned} files)')
+        if no_metadata_count > 0:
+            issues.append(f'{no_metadata_count} stations without metadata')
+        if error_count > 0:
+            issues.append(f'{error_count} stations with errors')
+        status_message = ' | '.join(issues)
+    
+    # Build final response with health at the top
+    response = {
+        'health': {
+            'status': status_text,
+            'healthy': all_healthy,
+            'icon': status_icon,
+            'message': status_message,
+            'stations_checked': len(active_stations),
+            'stations_ok': ok_count,
+            'stations_with_issues': len(active_stations) - ok_count
+        },
+        'summary': results['summary'],
+        'validation_time': results['validation_time'],
+        'period_hours': results['period_hours'],
+        'days_checked': results['days_checked'],
+        'start_time': results['start_time'],
+        'end_time': results['end_time'],
+        'total_stations': results['total_stations'],
+        'stations': results['stations']
+    }
+    
+    return jsonify(response)
+
+@app.route('/validate/<period>/report')
+def validate_report(period='24h'):
+    """Generate human-readable text report from validation"""
+    from flask import Response
+    
+    # Get JSON data from validate endpoint
+    with app.test_client() as client:
+        resp = client.get(f'/validate/{period}')
+        data = resp.get_json()
+    
+    health = data.get('health', {})
+    
+    # Build text report
+    lines = []
+    lines.append("=" * 60)
+    lines.append(f"  {health.get('icon', '❓')} STATUS: {health.get('status', 'UNKNOWN')}")
+    lines.append("=" * 60)
+    lines.append("")
+    lines.append(f"Period: {data.get('period_hours', '?')} hours ({data.get('days_checked', '?')} days)")
+    lines.append(f"Validation Time: {data.get('validation_time', 'N/A')[:19]}")
+    lines.append("")
+    lines.append(f"Message: {health.get('message', 'N/A')}")
+    lines.append("")
+    lines.append(f"Stations Checked: {health.get('stations_checked', 0)}")
+    lines.append(f"  ✅ OK: {health.get('stations_ok', 0)}")
+    lines.append(f"  ⚠️  With Issues: {health.get('stations_with_issues', 0)}")
+    lines.append("")
+    
+    summary = data.get('summary', {})
+    lines.append("Summary:")
+    lines.append(f"  Missing Files: {summary.get('total_missing', 0)} files across {summary.get('missing_files', 0)} stations")
+    lines.append(f"  Orphaned Files: {summary.get('total_orphaned', 0)} files across {summary.get('orphaned_files', 0)} stations")
+    lines.append(f"  No Metadata: {summary.get('no_metadata', 0)} stations")
+    lines.append(f"  Errors: {summary.get('error', 0)} stations")
+    lines.append("")
+    
+    if not health.get('healthy', True):
+        lines.append("Stations with Issues:")
+        for station in data.get('stations', []):
+            if station['status'] != 'OK':
+                lines.append(f"  • {station['network']}.{station['station']} - {station['status']}")
+                if station.get('orphaned_files'):
+                    lines.append(f"      Orphaned: {len(station['orphaned_files'])} files")
+                if station.get('missing_files'):
+                    lines.append(f"      Missing: {len(station['missing_files'])} files")
+                if station.get('issues'):
+                    for issue in station['issues']:
+                        lines.append(f"      {issue}")
+        lines.append("")
+    
+    lines.append("=" * 60)
+    lines.append("")
+    
+    return Response('\n'.join(lines), mimetype='text/plain')
+
+@app.route('/repair')
+@app.route('/repair/<period>')
+def repair(period='24h'):
+    """
+    Repair metadata by adopting valid orphaned files
+    Validates orphans: correct samples, proper naming, then adds to metadata
+    Examples: /repair/24h, /repair/2d, /repair/1h
+    """
+    import json
+    import boto3
+    from pathlib import Path
+    from datetime import timedelta
+    
+    # Parse period
+    if period.endswith('d'):
+        hours = int(period[:-1]) * 24
+    elif period.endswith('h'):
+        hours = int(period[:-1])
+    else:
+        hours = int(period)
+    
+    # Initialize R2 client
+    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
+    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
+    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
+    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+    
+    s3 = boto3.client(
+        's3',
+        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        region_name='auto'
+    )
+    
+    # Load active stations
+    config_path = Path(__file__).parent / 'stations_config.json'
+    with open(config_path) as f:
+        config = json.load(f)
+    
+    active_stations = []
+    for network, volcanoes in config['networks'].items():
+        for volcano, stations in volcanoes.items():
+            for station in stations:
+                if station.get('active', False):
+                    active_stations.append({
+                        'network': network,
+                        'volcano': volcano,
+                        **station
+                    })
+    
+    now = datetime.now(timezone.utc)
+    start_time = now - timedelta(hours=hours)
+    dates_to_check = get_dates_in_period(start_time, now)
+    
+    results = {
+        'repair_time': now.isoformat(),
+        'period_hours': hours,
+        'start_time': start_time.isoformat(),
+        'days_checked': len(dates_to_check),
+        'stations_repaired': 0,
+        'files_adopted': 0,
+        'files_rejected': 0,
+        'stations': []
+    }
+    
+    # Process each station
+    for station_config in active_stations:
+        network = station_config['network']
+        volcano = station_config['volcano']
+        station = station_config['station']
+        location = station_config['location']
+        channel = station_config['channel']
+        sample_rate = station_config['sample_rate']
+        location_str = location if location and location != '--' else '--'
+        rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+        
+        station_result = {
+            'network': network,
+            'station': station,
+            'adopted': [],
+            'rejected': [],
+            'issues': []
+        }
+        
+        try:
+            # Process each date in the period
+            for check_date in dates_to_check:
+                year = check_date.year
+                month = f"{check_date.month:02d}"
+                date_str = check_date.strftime("%Y-%m-%d")
+                
+                # Build paths for THIS date's folder
+                prefix = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/"
+                metadata_key = f"{prefix}{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                
+                # Load or create metadata for this date
+                metadata = None
+                try:
+                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                    metadata = json.loads(response['Body'].read().decode('utf-8'))
+                except s3.exceptions.NoSuchKey:
+                    # Create new metadata structure
+                    metadata = {
+                        'date': date_str,
+                        'network': network,
+                        'volcano': volcano,
+                        'station': station,
+                        'location': location if location != '--' else '',
+                        'channel': channel,
+                        'sample_rate': sample_rate,
+                        'created_at': now.isoformat().replace('+00:00', 'Z'),
+                        'complete_day': False,
+                        'chunks': {
+                            '10m': [],
+                            '1h': [],
+                            '6h': []
+                        }
+                    }
+                    station_result['issues'].append(f'Created new metadata for {date_str}')
+                
+                # Build set of existing files in metadata
+                existing_entries = set()
+                for chunk_type in ['10m', '1h', '6h']:
+                    for chunk in metadata['chunks'].get(chunk_type, []):
+                        start_time_str = chunk['start'].replace(':', '-')
+                        end_time_str = chunk['end'].replace(':', '-')
+                        filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{chunk_type}_{date_str}-{start_time_str}_to_{date_str}-{end_time_str}.bin.zst"
+                        existing_entries.add(filename)
+                
+                # List files in this date's folder
+                response = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=prefix)
+                if 'Contents' not in response:
+                    continue  # No files for this date
+                
+                # Find orphans for this date
+                orphans = []
+                for obj in response['Contents']:
+                    filename = obj['Key'].split('/')[-1]
+                    if filename.endswith('.bin.zst') and filename not in existing_entries:
+                        orphans.append({'filename': filename, 'size': obj['Size']})
+                
+                # Validate and adopt orphans for this date
+                date_adopted = False
+                for orphan in orphans:
+                    filename = orphan['filename']
+                    
+                    # Parse filename
+                    try:
+                        parts = filename.replace('.bin.zst', '').split('_')
+                        
+                        # Find chunk type
+                        chunk_type = None
+                        time_idx = None
+                        for i, part in enumerate(parts):
+                            if part in ['10m', '1h', '6h']:
+                                chunk_type = part
+                                time_idx = i + 1
+                                break
+                        
+                        if not chunk_type or not time_idx:
+                            station_result['rejected'].append(f"{filename} (invalid format)")
+                            results['files_rejected'] += 1
+                            continue
+                        
+                        # Extract timestamps
+                        time_part = '_'.join(parts[time_idx:])
+                        times = time_part.split('_to_')
+                        if len(times) != 2:
+                            station_result['rejected'].append(f"{filename} (invalid time format)")
+                            results['files_rejected'] += 1
+                            continue
+                        
+                        start_str = times[0].replace(date_str + '-', '')
+                        end_str = times[1].replace(date_str + '-', '')
+                        
+                        # Convert to HH:MM:SS format
+                        start_parts = start_str.split('-')
+                        end_parts = end_str.split('-')
+                        
+                        if len(start_parts) != 3 or len(end_parts) != 3:
+                            station_result['rejected'].append(f"{filename} (invalid timestamp)")
+                            results['files_rejected'] += 1
+                            continue
+                        
+                        start_time_hms = f"{start_parts[0]}:{start_parts[1]}:{start_parts[2]}"
+                        end_time_hms = f"{end_parts[0]}:{end_parts[1]}:{end_parts[2]}"
+                        
+                        # Validate sample count based on chunk type and sample rate
+                        expected_samples = {
+                            '10m': 10 * 60 * sample_rate,
+                            '1h': 60 * 60 * sample_rate,
+                            '6h': 6 * 60 * 60 * sample_rate
+                        }
+                        
+                        expected_size = expected_samples[chunk_type] * 4  # int32 = 4 bytes
+                        # Allow 30-60% size due to compression (typical zstd ratio)
+                        min_size = expected_size * 0.25
+                        max_size = expected_size * 0.65
+                        
+                        if not (min_size <= orphan['size'] <= max_size):
+                            station_result['rejected'].append(f"{filename} (unexpected size: {orphan['size']} bytes, expected ~{int(expected_size * 0.5)} bytes)")
+                            results['files_rejected'] += 1
+                            continue
+                        
+                        # Looks valid - adopt it!
+                        chunk_meta = {
+                            'start': start_time_hms,
+                            'end': end_time_hms,
+                            'min': 0,  # Unknown (file not decompressed)
+                            'max': 0,  # Unknown
+                            'samples': int(expected_samples[chunk_type]),
+                            'gap_count': 0,  # Unknown
+                            'gap_samples_filled': 0  # Unknown
+                        }
+                        
+                        metadata['chunks'][chunk_type].append(chunk_meta)
+                        station_result['adopted'].append(filename)
+                        results['files_adopted'] += 1
+                        date_adopted = True
+                        
+                    except Exception as e:
+                        station_result['rejected'].append(f"{filename} (parse error: {str(e)})")
+                        results['files_rejected'] += 1
+                        continue
+                
+                # Sort chunks chronologically and save metadata if we adopted any files for this date
+                if date_adopted:
+                    metadata['chunks']['10m'].sort(key=lambda c: c['start'])
+                    metadata['chunks']['1h'].sort(key=lambda c: c['start'])
+                    metadata['chunks']['6h'].sort(key=lambda c: c['start'])
+                    
+                    # Update complete_day flag
+                    if len(metadata['chunks']['10m']) >= 144:
+                        metadata['complete_day'] = True
+                    
+                    # Upload updated metadata
+                    s3.put_object(
+                        Bucket=R2_BUCKET_NAME,
+                        Key=metadata_key,
+                        Body=json.dumps(metadata, indent=2).encode('utf-8'),
+                        ContentType='application/json'
+                    )
+            
+            # Set station status
+            if len(station_result['adopted']) > 0:
+                results['stations_repaired'] += 1
+                station_result['status'] = 'REPAIRED'
+            else:
+                station_result['status'] = 'NO_ORPHANS'
+        
+        except Exception as e:
+            station_result['issues'].append(f"Repair error: {str(e)}")
+            station_result['status'] = 'ERROR'
+        
+        results['stations'].append(station_result)
+    
+    # Summary
+    response = {
+        'health': {
+            'status': '✅ REPAIR COMPLETE' if results['files_adopted'] > 0 else 'ℹ️ NO REPAIRS NEEDED',
+            'repaired': results['stations_repaired'] > 0,
+            'message': f"Adopted {results['files_adopted']} files, rejected {results['files_rejected']} files across {results['stations_repaired']} stations"
+        },
+        'repair_time': results['repair_time'],
+        'period_hours': results['period_hours'],
+        'days_checked': results['days_checked'],
+        'start_time': results['start_time'],
+        'stations_repaired': results['stations_repaired'],
+        'files_adopted': results['files_adopted'],
+        'files_rejected': results['files_rejected'],
+        'stations': results['stations']
+    }
+    
+    return jsonify(response)
+
+@app.route('/repair/<period>/report')
+def repair_report(period='24h'):
+    """Generate human-readable text report from repair"""
+    from flask import Response
+    
+    # Get JSON data from repair endpoint
+    with app.test_client() as client:
+        resp = client.get(f'/repair/{period}')
+        data = resp.get_json()
+    
+    health = data.get('health', {})
+    
+    # Build text report
+    lines = []
+    lines.append("=" * 60)
+    lines.append(f"  {health.get('status', 'UNKNOWN')}")
+    lines.append("=" * 60)
+    lines.append("")
+    lines.append(f"Period: {data.get('period_hours', '?')} hours ({data.get('days_checked', '?')} days)")
+    lines.append(f"Repair Time: {data.get('repair_time', 'N/A')[:19]}")
+    lines.append("")
+    lines.append(f"Message: {health.get('message', 'N/A')}")
+    lines.append("")
+    lines.append(f"Files Adopted: {data.get('files_adopted', 0)}")
+    lines.append(f"Files Rejected: {data.get('files_rejected', 0)}")
+    lines.append(f"Stations Repaired: {data.get('stations_repaired', 0)}")
+    lines.append("")
+    
+    if data.get('stations_repaired', 0) > 0:
+        lines.append("Repaired Stations:")
+        for station in data.get('stations', []):
+            if station['status'] == 'REPAIRED':
+                lines.append(f"  • {station['network']}.{station['station']}")
+                lines.append(f"      Adopted: {len(station['adopted'])} files")
+                if station.get('rejected'):
+                    lines.append(f"      Rejected: {len(station['rejected'])} files")
+                if station.get('issues'):
+                    for issue in station['issues']:
+                        lines.append(f"      {issue}")
+        lines.append("")
+    
+    lines.append("=" * 60)
+    lines.append("")
+    
+    return Response('\n'.join(lines), mimetype='text/plain')
+
+def wait_until_next_run():
+    """Wait until the next scheduled run time (:02, :12, :22, etc.)"""
+    now = datetime.now(timezone.utc)
+    current_minute = now.minute
+    
+    # Find next run minute (2, 12, 22, 32, 42, 52)
+    run_minutes = [2, 12, 22, 32, 42, 52]
+    next_minute = None
+    
+    for minute in run_minutes:
+        if minute > current_minute:
+            next_minute = minute
+            break
+    
+    if next_minute is None:
+        # Next run is in the next hour
+        next_minute = run_minutes[0]
+        next_hour = now.hour + 1
+        if next_hour >= 24:
+            next_hour = 0
+        
+        # Calculate seconds until next run
+        seconds_until_next_hour = 3600 - (now.minute * 60 + now.second)
+        seconds_until_next_run = seconds_until_next_hour + (next_minute * 60)
+        
+        # Update next run time
+        from datetime import timedelta
+        status['next_run'] = (now + timedelta(seconds=seconds_until_next_run)).isoformat()
+    else:
+        # Next run is in the current hour
+        minutes_until = next_minute - current_minute
+        seconds_until_next_run = minutes_until * 60 - now.second
+        
+        # Update next run time
+        from datetime import timedelta
+        status['next_run'] = (now + timedelta(seconds=seconds_until_next_run)).isoformat()
+    
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Next run in {seconds_until_next_run} seconds")
+    time.sleep(seconds_until_next_run)
+
+
+def run_cron_job():
+    """Execute the cron job"""
+    status['currently_running'] = True
+    status['total_runs'] += 1
+    
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ========== Starting cron job ==========")
+    
+    try:
+        # Get the directory where this script is located
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        cron_job_path = os.path.join(script_dir, 'cron_job.py')
+        
+        result = subprocess.run(
+            [sys.executable, cron_job_path],
+            capture_output=False,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ✅ Cron job completed successfully")
+            status['successful_runs'] += 1
+        else:
+            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ Cron job failed with exit code {result.returncode}")
+            status['failed_runs'] += 1
+    
+    except Exception as e:
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ Error running cron job: {e}")
+        status['failed_runs'] += 1
+    
+    finally:
+        status['currently_running'] = False
+        status['last_run'] = datetime.now(timezone.utc).isoformat()
+
+
+def run_scheduler():
+    """Run the scheduler loop"""
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Schedule: Every 10 minutes at :02, :12, :22, :32, :42, :52")
+    
+    while True:
+        wait_until_next_run()
+        run_cron_job()
+
+def main():
+    """Main entry point - starts Flask server and scheduler"""
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.00 Add: Observability endpoints (health, status, validate, repair) with multi-day support")
+    
+    # Start Flask server in background thread
+    port = int(os.getenv('PORT', 5000))
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Starting health API on port {port}")
+    flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False))
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    # Run scheduler in main thread
+    run_scheduler()
+
+
+if __name__ == "__main__":
+    main()
+

@@ -1,0 +1,46 @@
+{
+  "date": "2025-11-04",
+  "network": "HV",
+  "volcano": "maunaloa",
+  "station": "MOKD",
+  "location": "",
+  "channel": "HHZ",
+  "sample_rate": 100.0,
+  "created_at": "2025-11-05T02:27:29.877293Z",
+  "complete_day": false,
+  "chunks": {
+    "10m": [
+      {
+        "start": "11:50:00",
+        "end": "11:59:59",
+        "min": 13640,
+        "max": 24259,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "1h": [
+      {
+        "start": "11:00:00",
+        "end": "11:59:59",
+        "min": 12306,
+        "max": 25211,
+        "samples": 360000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "6h": [
+      {
+        "start": "06:00:00",
+        "end": "11:59:59",
+        "min": 7722,
+        "max": 25211,
+        "samples": 2160000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ]
+  }
+}
