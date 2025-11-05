@@ -4,7 +4,7 @@ Continuous cron loop for Railway deployment
 Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
 Version: v1.00
 """
-__version__ = "2025_11_04_v1.08"
+__version__ = "2025_11_04_v1.09"
 import time
 import subprocess
 import sys
@@ -191,18 +191,22 @@ def get_status():
         # Calculate stats for each period
         def calc_stats(counts, active_count):
             if not counts or active_count == 0:
-                return {'min': 0, 'max': 0, 'avg': 0.0, 'is_uniform': True}
+                return {'avg': 0.0, 'is_uniform': True}
             min_count = min(counts) if counts else 0
             max_count = max(counts) if counts else 0
             avg_count = sum(counts) / len(counts) if counts else 0
             # Check if all stations have same count (uniform distribution)
             is_uniform = len(set(counts)) <= 1 if counts else True
-            return {
-                'min': min_count,
-                'max': max_count,
+            
+            result = {
                 'avg': round(avg_count, 1),
                 'is_uniform': is_uniform
             }
+            # Only include min/max if not uniform
+            if not is_uniform:
+                result['min'] = min_count
+                result['max'] = max_count
+            return result
         
         stats_10m = calc_stats(station_10m_counts, active_station_count)
         stats_1h = calc_stats(station_1h_counts, active_station_count)

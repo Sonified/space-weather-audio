@@ -751,3 +751,24 @@ data/2025/11/HV/kilauea/OBL/--/HHZ/
 
 ---
 
+### 2025-11-04 - Clean Status Output (v1.09)
+
+**Version:** v1.09  
+**Commit:** v1.09 Clean: Hide min/max when uniform distribution
+
+**Changes:**
+- `files_per_station` now only shows `min` and `max` when `is_uniform: false`
+- When uniform, only shows `avg` and `is_uniform` (cleaner output)
+- Reduces visual clutter when everything is working correctly
+
+**Example:**
+```json
+// When uniform (all stations have same count):
+"10m": { "avg": 10.0, "is_uniform": true }
+
+// When not uniform (stations have different counts):
+"10m": { "avg": 9.4, "is_uniform": false, "min": 9, "max": 10 }
+```
+
+---
+
