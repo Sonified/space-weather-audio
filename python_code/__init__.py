@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.54"
+__version__ = "1.55"
 __commit_message__ = (
-    "v1.54 Feature: Added closest 2 Shishaldin stations (SSLS, SSLN) to active collection set"
+    "v1.55 Fix: Status calculation now uses per-station earliest timestamps instead of global start time"
 )
 
 # Import key modules to make them available when importing the package

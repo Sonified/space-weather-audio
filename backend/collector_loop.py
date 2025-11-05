@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_05_v1.54"
+__version__ = "2025_11_05_v1.55"
 import time
 import subprocess
 import sys
@@ -1089,6 +1089,7 @@ def get_status():
         
         file_counts = {'10m': 0, '1h': 0, '6h': 0, 'metadata': 0, 'other': 0}
         station_file_counts = {}  # Track files per station: {station_key: {'10m': count, '1h': count, '6h': count}}
+        station_earliest_timestamps = {}  # Track earliest file timestamp per station: {station_key: datetime}
         oldest_files = {'10m': None, '1h': None, '6h': None}  # Track oldest file timestamp by type
         total_size = 0
         latest_modified = None
@@ -1138,6 +1139,7 @@ def get_status():
                     file_counts['other'] += 1
                 
                 # Extract timestamp from filename to find oldest files
+                file_timestamp = None  # Initialize outside try block
                 if file_type and '.bin.zst' in key:
                     # Filename format: NETWORK_STATION_LOCATION_CHANNEL_RATEHz_YYYY-MM-DD-HH-MM-SS_to_YYYY-MM-DD-HH-MM-SS.bin.zst
                     filename = key.split('/')[-1]
@@ -1163,11 +1165,17 @@ def get_status():
                         # Skip if we can't parse the timestamp
                         pass
                 
-                # Track per-station counts for data files (not metadata)
+                # Track per-station counts and earliest timestamps for data files (not metadata)
                 if station_key and file_type:
                     if station_key not in station_file_counts:
                         station_file_counts[station_key] = {'10m': 0, '1h': 0, '6h': 0}
+                        station_earliest_timestamps[station_key] = None
                     station_file_counts[station_key][file_type] += 1
+                    
+                    # Track earliest timestamp for this station
+                    if file_timestamp:
+                        if station_earliest_timestamps[station_key] is None or file_timestamp < station_earliest_timestamps[station_key]:
+                            station_earliest_timestamps[station_key] = file_timestamp
         
         total_files = sum(file_counts.values())
         storage_mb = total_size / (1024 * 1024)
@@ -1216,15 +1224,53 @@ def get_status():
         stations_with_files = len(station_file_counts)
         missing_stations = active_station_count - stations_with_files if active_station_count > stations_with_files else 0
         
-        collection_cycles = file_counts['10m'] // active_station_count if active_station_count > 0 else 0
+        # Calculate expected files PER STATION based on each station's earliest data timestamp
+        # This handles stations that were added later - they shouldn't be expected to have
+        # files going back to when the first station started collecting
+        now = datetime.now(timezone.utc)
+        expected_10m_total = 0
+        expected_1h_total = 0
+        expected_6h_total = 0
         
-        # Expected files based on collection cycles
-        # Each cycle = 10 minutes
-        # 1h files created every 6 cycles (60 minutes)
-        # 6h files created every 36 cycles (360 minutes)
-        expected_10m = collection_cycles * active_station_count
-        expected_1h = (collection_cycles // 6) * active_station_count if collection_cycles >= 6 else 0
-        expected_6h = (collection_cycles // 36) * active_station_count if collection_cycles >= 36 else 0
+        # Get active stations list to match against file counts
+        active_stations_list = get_active_stations_list()
+        
+        for station_config in active_stations_list:
+            network = station_config['network']
+            station = station_config['station']
+            location = station_config.get('location', '')
+            channel = station_config['channel']
+            location_str = location if location and location != '--' else '--'
+            station_key = f"{network}_{station}_{location_str}_{channel}"
+            
+            # Find earliest timestamp for this station
+            station_start = station_earliest_timestamps.get(station_key)
+            
+            if station_start:
+                # Calculate how many cycles this station should have based on its start time
+                time_diff = now - station_start
+                total_minutes = time_diff.total_seconds() / 60
+                
+                # Collection runs every 10 minutes, so cycles = minutes / 10
+                # Round down to nearest cycle (stations don't get partial cycles)
+                station_cycles = int(total_minutes // 10)
+                
+                # Expected files for this station
+                # 10m files: 1 per cycle
+                # 1h files: 1 per 6 cycles (every hour)
+                # 6h files: 1 per 36 cycles (every 6 hours)
+                station_expected_10m = station_cycles
+                station_expected_1h = station_cycles // 6 if station_cycles >= 6 else 0
+                station_expected_6h = station_cycles // 36 if station_cycles >= 36 else 0
+                
+                expected_10m_total += station_expected_10m
+                expected_1h_total += station_expected_1h
+                expected_6h_total += station_expected_6h
+            # If station has no files yet, don't add to expected (it's brand new)
+        
+        expected_10m = expected_10m_total
+        expected_1h = expected_1h_total
+        expected_6h = expected_6h_total
         
         # Status checks - account for currently_running
         is_running = status['currently_running']
@@ -1299,11 +1345,17 @@ def get_status():
         
         full_coverage_days = round(full_coverage_hours / 24, 2) if full_coverage_hours > 0 else 0
         
+        # Calculate average collection cycles for reporting (based on stations with files)
+        avg_collection_cycles = 0
+        if stations_with_files > 0:
+            # Average cycles = average 10m files per station
+            avg_collection_cycles = int(sum(counts['10m'] for counts in station_file_counts.values()) / stations_with_files) if station_file_counts else 0
+        
         collection_stats = {
             'active_stations': active_station_count,
             'stations_with_files': stations_with_files,
             'missing_stations': missing_stations if missing_stations > 0 else None,
-            'collection_cycles': collection_cycles,
+            'collection_cycles': avg_collection_cycles,
             'coverage_depth': {
                 'full_coverage': format_hours_minutes(full_coverage_hours) if full_coverage_hours > 0 else "0h (need 6h files)",
                 'by_type': coverage_hours_by_type
@@ -2560,8 +2612,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.54 Feature: Added closest 2 Shishaldin stations (SSLS, SSLN) to active collection set")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.54 Feature: Added closest 2 Shishaldin stations (SSLS, SSLN) to active collection set")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.55 Fix: Status calculation now uses per-station earliest timestamps instead of global start time")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.55 Fix: Status calculation now uses per-station earliest timestamps instead of global start time")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

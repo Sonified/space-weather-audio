@@ -1,5 +1,31 @@
 # Captain's Log - November 5, 2025
 
+## Fixed Status Calculation for New Stations (v1.55)
+
+**Version:** v1.55  
+**Commit:** v1.55 Fix: Status calculation now uses per-station earliest timestamps instead of global start time
+
+### Problem:
+After adding new Shishaldin stations (SSLS, SSLN), the status endpoint was calculating expected files based on when the FIRST station started collecting, not when each individual station started. This caused it to think the new stations should have files going back to the beginning of time.
+
+### Solution:
+- Modified `/status` endpoint to track earliest file timestamp **per station**
+- Expected file counts are now calculated **per station** based on each station's individual start time
+- New stations that just started collecting won't be expected to have historical files
+- Status calculation properly handles stations added at different times
+
+### Changes:
+- Added `station_earliest_timestamps` dictionary to track when each station first started collecting
+- Changed expected file calculation from global (total files / total stations) to per-station (sum of each station's expected files based on its start time)
+- Each station's expected files = cycles since that station's first file × files per cycle
+
+### Impact:
+- Status endpoint now correctly reports expected vs actual files when stations are added dynamically
+- No more false "MISSING" alerts for new stations that just started collecting
+- System properly adapts to adding/removing stations over time
+
+---
+
 ## Added Shishaldin Stations to Collection (v1.54)
 
 **Version:** v1.54  
