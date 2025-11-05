@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.56"
+__version__ = "1.57"
 __commit_message__ = (
-    "v1.56 Fix: Coverage calculation now uses minimum files per station instead of average"
+    "v1.57 Fix: Added day-level folder structure and fixed deduplication race condition"
 )
 
 # Import key modules to make them available when importing the package
