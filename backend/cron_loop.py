@@ -4,7 +4,7 @@ Continuous cron loop for Railway deployment
 Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
 Version: v1.00
 """
-__version__ = "2025_11_04_v1.07"
+__version__ = "2025_11_04_v1.08"
 import time
 import subprocess
 import sys
@@ -255,29 +255,45 @@ def get_status():
         
         all_perfect = (file_counts['10m'] == expected_10m and stats_10m['is_uniform'] and not is_running)
         
-        # Calculate coverage depth - how far back we have files
-        now = datetime.now(timezone.utc)
-        coverage_by_type = {}
-        for file_type in ['10m', '1h', '6h']:
-            if oldest_files[file_type] is not None:
-                hours_back = (now - oldest_files[file_type]).total_seconds() / 3600
-                coverage_by_type[file_type] = f"{round(hours_back, 1)}h"
-            else:
-                coverage_by_type[file_type] = "0h"
+        # Calculate coverage from file counts (files per station × duration)
+        # 10m files: each file = 10 minutes
+        # 1h files: each file = 1 hour
+        # 6h files: each file = 6 hours
+        def format_hours_minutes(total_hours):
+            """Format hours as '1h 40m' or '0h' or '2h'"""
+            if total_hours == 0:
+                return "0h"
+            hours = int(total_hours)
+            minutes = int((total_hours - hours) * 60)
+            if minutes == 0:
+                return f"{hours}h"
+            return f"{hours}h {minutes}m"
+        
+        coverage_hours_by_type = {}
+        if active_station_count > 0:
+            files_per_station_10m = file_counts['10m'] / active_station_count
+            files_per_station_1h = file_counts['1h'] / active_station_count
+            files_per_station_6h = file_counts['6h'] / active_station_count
+            
+            coverage_hours_by_type['10m'] = format_hours_minutes(files_per_station_10m * (10/60))  # 10 min each
+            coverage_hours_by_type['1h'] = format_hours_minutes(files_per_station_1h * 1)  # 1 hour each
+            coverage_hours_by_type['6h'] = format_hours_minutes(files_per_station_6h * 6)  # 6 hours each
+        else:
+            coverage_hours_by_type = {'10m': '0h', '1h': '0h', '6h': '0h'}
         
         # Full coverage = minimum across ALL types (if ANY type has 0, full coverage = 0)
         # Must have 10m, 1h, AND 6h files for full coverage
-        hours_10m = (now - oldest_files['10m']).total_seconds() / 3600 if oldest_files['10m'] else 0
-        hours_1h = (now - oldest_files['1h']).total_seconds() / 3600 if oldest_files['1h'] else 0
-        hours_6h = (now - oldest_files['6h']).total_seconds() / 3600 if oldest_files['6h'] else 0
+        hours_10m = files_per_station_10m * (10/60) if active_station_count > 0 else 0
+        hours_1h = files_per_station_1h * 1 if active_station_count > 0 else 0
+        hours_6h = files_per_station_6h * 6 if active_station_count > 0 else 0
         
         # Full coverage requires ALL types
         if hours_10m > 0 and hours_1h > 0 and hours_6h > 0:
-            full_coverage_hours_back = min(hours_10m, hours_1h, hours_6h)
+            full_coverage_hours = min(hours_10m, hours_1h, hours_6h)
         else:
-            full_coverage_hours_back = 0
+            full_coverage_hours = 0
         
-        full_coverage_days_back = round(full_coverage_hours_back / 24, 2) if full_coverage_hours_back > 0 else 0
+        full_coverage_days = round(full_coverage_hours / 24, 2) if full_coverage_hours > 0 else 0
         
         collection_stats = {
             'active_stations': active_station_count,
@@ -285,9 +301,8 @@ def get_status():
             'missing_stations': missing_stations if missing_stations > 0 else None,
             'collection_cycles': collection_cycles,
             'coverage_depth': {
-                'full_coverage_hours_back': round(full_coverage_hours_back, 1),
-                'full_coverage_days_back': full_coverage_days_back,
-                'by_type': coverage_by_type
+                'full_coverage': format_hours_minutes(full_coverage_hours) if full_coverage_hours > 0 else "0h (need 6h files)",
+                'by_type': coverage_hours_by_type
             },
             'files_per_station': {
                 '10m': stats_10m,
@@ -1209,8 +1224,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.07 Fix: Coverage depth requires ALL types, JSON order preservation, startup scripts, machine-readable docs")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.07 Fix: Coverage depth requires ALL types, JSON order preservation, startup scripts, machine-readable docs")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.08 Fix: Coverage calculated from file counts, human-readable time format (1h40m)")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.08 Fix: Coverage calculated from file counts, human-readable time format (1h40m)")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

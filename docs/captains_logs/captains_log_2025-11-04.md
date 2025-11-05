@@ -734,3 +734,20 @@ data/2025/11/HV/kilauea/OBL/--/HHZ/
 
 ---
 
+### 2025-11-04 - Coverage Calculation Simplification (v1.08)
+
+**Version:** v1.08  
+**Commit:** v1.08 Fix: Coverage calculated from file counts, human-readable time format (1h 40m)
+
+**Changes:**
+- Simplified coverage calculation: now based on file counts instead of timestamp parsing
+- Formula: `files_per_station × duration_per_file = coverage hours`
+- Example: 2 files per station × 1h each = 2h coverage
+- Human-readable time format: `"1h 40m"` instead of `"1.7h"`
+- Simplified `coverage_depth`: single `full_coverage` field instead of separate hours/days
+- Created `start_local_collector.sh`: startup script for local collector testing (port 5005)
+
+**Key Fix:** Coverage is now crystal clear - count the files, multiply by duration. Much simpler than parsing timestamps from filenames.
+
+---
+
