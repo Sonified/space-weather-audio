@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_05_v1.53"
+__version__ = "2025_11_05_v1.54"
 import time
 import subprocess
 import sys
@@ -2560,8 +2560,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.53 Refactor: Removed deprecated packages (xarray, zarr, numcodecs, s3fs) and broken imports, created function audit")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.53 Refactor: Removed deprecated packages (xarray, zarr, numcodecs, s3fs) and broken imports, created function audit")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.54 Feature: Added closest 2 Shishaldin stations (SSLS, SSLN) to active collection set")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.54 Feature: Added closest 2 Shishaldin stations (SSLS, SSLN) to active collection set")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

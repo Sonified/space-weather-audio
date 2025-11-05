@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.53"
+__version__ = "1.54"
 __commit_message__ = (
-    "v1.53 Refactor: Removed deprecated packages (xarray, zarr, numcodecs, s3fs) and broken imports, created function audit"
+    "v1.54 Feature: Added closest 2 Shishaldin stations (SSLS, SSLN) to active collection set"
 )
 
 # Import key modules to make them available when importing the package

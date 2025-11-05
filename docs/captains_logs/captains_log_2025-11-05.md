@@ -1,5 +1,21 @@
 # Captain's Log - November 5, 2025
 
+## Added Shishaldin Stations to Collection (v1.54)
+
+**Version:** v1.54  
+**Commit:** v1.54 Feature: Added closest 2 Shishaldin stations (SSLS, SSLN) to active collection set
+
+### Changes:
+- Activated SSLS station (5.4 km from Shishaldin) in `backend/stations_config.json`
+- Activated SSLN station (6.5 km from Shishaldin) in `backend/stations_config.json`
+- These are the two closest stations to Shishaldin volcano
+
+### Impact:
+- Collector will now start collecting data from these two Shishaldin stations
+- Data will be available for audio generation and analysis
+
+---
+
 ## Package Cleanup and Function Audit (v1.53)
 
 **Version:** v1.53  

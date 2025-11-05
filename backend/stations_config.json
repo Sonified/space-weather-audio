@@ -72,8 +72,8 @@
       ],
       
       "shishaldin": [                                   
-        {"station": "SSLS",  "location": "--", "channel": "BHZ", "distance_km": 5.4,  "sample_rate": 50.0, "active": false},
-        {"station": "SSLN",  "location": "--", "channel": "BHZ", "distance_km": 6.5,  "sample_rate": 50.0, "active": false},
+        {"station": "SSLS",  "location": "--", "channel": "BHZ", "distance_km": 5.4,  "sample_rate": 50.0, "active": true},
+        {"station": "SSLN",  "location": "--", "channel": "BHZ", "distance_km": 6.5,  "sample_rate": 50.0, "active": true},
         {"station": "SSBA",  "location": "--", "channel": "BHZ", "distance_km": 10.1, "sample_rate": 50.0, "active": false},
         {"station": "ISNN",  "location": "--", "channel": "BHZ", "distance_km": 14.9, "sample_rate": 50.0, "active": false},
         {"station": "ISLZ",  "location": "--", "channel": "BHZ", "distance_km": 16.9, "sample_rate": 50.0, "active": false},
