@@ -495,5 +495,96 @@ The data collector now has full visibility and self-healing capabilities:
 2. Deploy updated collector to Railway
 3. Set up monitoring alerts based on /health endpoint
 
+### Pushed to GitHub:
+
+**Version:** v1.00 (Commit: `d2cf61b`)
+
+**Commit Message:**
+```
+v1.00 Add: Observability endpoints (health, status, validate, repair) with multi-day support
+
+- Added /health, /status, /stations endpoints for service monitoring
+- Created /validate/<period> endpoint to compare metadata vs R2 files
+- Created /repair/<period> endpoint to adopt orphaned files
+- Added /validate/<period>/report and /repair/<period>/report for human-readable text output
+- Created master helper function get_dates_in_period() for date iteration
+- Fixed CRITICAL bug: metadata now properly uploads to R2 (was only saving locally)
+- Multi-day support with automatic month/year boundary handling
+- Flexible period format: 24h, 2d, 1h, etc.
+```
+
+---
+
+## Folder Structure Reorganization
+
+### Problem:
+Files from different resolutions (10m, 1h, 6h) were all stored in the same folder, making it difficult to:
+- Browse files by resolution
+- List files efficiently (had to filter by filename pattern)
+- Set different caching policies per resolution
+
+### Solution: Chunk Type Subfolders
+
+**Old structure:**
+```
+data/2025/11/HV/kilauea/OBL/--/HHZ/
+  ├─ HV_OBL_--_HHZ_100Hz_10m_*.bin.zst  (144 files)
+  ├─ HV_OBL_--_HHZ_100Hz_1h_*.bin.zst   (24 files)
+  ├─ HV_OBL_--_HHZ_100Hz_6h_*.bin.zst   (4 files)
+  └─ HV_OBL_--_HHZ_100Hz_2025-11-05.json
+```
+
+**New structure:**
+```
+data/2025/11/HV/kilauea/OBL/--/HHZ/
+  ├─ 10m/
+  │   └─ HV_OBL_--_HHZ_100Hz_10m_*.bin.zst  (144 files)
+  ├─ 1h/
+  │   └─ HV_OBL_--_HHZ_100Hz_1h_*.bin.zst   (24 files)
+  ├─ 6h/
+  │   └─ HV_OBL_--_HHZ_100Hz_6h_*.bin.zst   (4 files)
+  └─ HV_OBL_--_HHZ_100Hz_2025-11-05.json    (metadata at parent)
+```
+
+### Changes Made:
+
+1. **Updated `cron_job.py`**
+   - R2 upload path now includes chunk type subfolder: `.../HHZ/10m/filename.bin.zst`
+   - Local save path also includes chunk type subfolder
+   - Metadata still saves at parent channel directory level
+
+2. **Updated `cron_loop.py`**
+   - `/validate` endpoint now checks subfolders for each chunk type
+   - `/repair` endpoint now looks in subfolders when adopting orphans
+   - Fixed route ordering bug: `/validate/<period>/report` now works correctly
+
+3. **Fixed Timestamp Parsing Bug in Repair Endpoint**
+   - Issue: Files dated 2025-11-05 were rejected when checking date 2025-11-04
+   - Root cause: String replace didn't match, leaving full date in timestamp
+   - Fix: Extract date from filename, load correct metadata for file's date
+   - Now: Files are adopted to their own date's metadata regardless of which date iteration found them
+
+### Benefits:
+
+- ✅ Easier to browse files by resolution
+- ✅ Faster R2 listings (no filtering needed)
+- ✅ Cleaner organization
+- ✅ Can set different caching rules per resolution
+- ✅ Metadata clearly describes all resolutions at parent level
+
+### Migration:
+
+- Old files remain at root level (still referenced correctly by metadata)
+- New files automatically go into proper subfolders
+- No data loss - both old and new files work correctly
+- Can migrate old files later if needed with a script
+
+### Test Results:
+
+- ✅ Cron job successfully uploaded to new structure
+- ✅ Files verified in R2: `data/2025/11/HV/kilauea/OBL/--/HHZ/10m/`
+- ✅ Metadata still at parent: `data/2025/11/HV/kilauea/OBL/--/HHZ/HV_OBL_--_HHZ_100Hz_2025-11-05.json`
+- ✅ All 5 stations processed successfully
+
 ---
 

@@ -206,7 +206,8 @@ def process_station_window(network, station, location, channel, volcano, sample_
         
         # Upload to R2 (or save locally if no credentials)
         if s3_client:
-            r2_key = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{filename}"
+            # New structure: files organized by chunk type in subfolders
+            r2_key = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{chunk_type}/{filename}"
             metadata_key = f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
             
             # Upload chunk file
@@ -275,9 +276,10 @@ def process_station_window(network, station, location, channel, volcano, sample_
             logger.info(f"  💾 Updated metadata: {len(metadata['chunks']['10m'])} 10m, {len(metadata['chunks'].get('1h', []))} 1h, {len(metadata['chunks']['6h'])} 6h (sorted)")
             
         else:
-            # Save locally with proper folder hierarchy
+            # Save locally with proper folder hierarchy (organized by chunk type)
             base_dir = Path(__file__).parent / 'cron_output'
-            chunk_dir = base_dir / 'data' / str(year) / month / network / volcano / station / location_str / channel
+            channel_dir = base_dir / 'data' / str(year) / month / network / volcano / station / location_str / channel
+            chunk_dir = channel_dir / chunk_type
             chunk_dir.mkdir(parents=True, exist_ok=True)
             
             chunk_path = chunk_dir / filename
@@ -285,8 +287,8 @@ def process_station_window(network, station, location, channel, volcano, sample_
                 f.write(compressed)
             logger.info(f"  💾 Saved chunk: {chunk_path}")
             
-            # Load or create metadata
-            metadata_path = chunk_dir / metadata_filename
+            # Load or create metadata (at parent channel directory)
+            metadata_path = channel_dir / metadata_filename
             if metadata_path.exists():
                 with open(metadata_path, 'r') as f:
                     metadata = json.load(f)

@@ -4,7 +4,7 @@ Continuous cron loop for Railway deployment
 Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
 Version: v1.00
 """
-__version__ = "2025_11_04_v1.00"
+__version__ = "2025_11_04_v1.01"
 import time
 import subprocess
 import sys
@@ -80,6 +80,61 @@ def get_stations():
         'total': len(active_stations),
         'stations': active_stations
     })
+
+@app.route('/validate/<period>/report')
+def validate_report(period='24h'):
+    """Generate human-readable text report from validation"""
+    from flask import Response
+    
+    # Get JSON data from validate endpoint
+    with app.test_client() as client:
+        resp = client.get(f'/validate/{period}')
+        data = resp.get_json()
+    
+    health = data.get('health', {})
+    
+    # Build text report
+    lines = []
+    lines.append("=" * 60)
+    lines.append(f"  {health.get('icon', '❓')} STATUS: {health.get('status', 'UNKNOWN')}")
+    lines.append("=" * 60)
+    lines.append("")
+    lines.append(f"Period: {data.get('period_hours', '?')} hours ({data.get('days_checked', '?')} days)")
+    lines.append(f"Validation Time: {data.get('validation_time', 'N/A')[:19]}")
+    lines.append("")
+    lines.append(f"Message: {health.get('message', 'N/A')}")
+    lines.append("")
+    lines.append(f"Stations Checked: {health.get('stations_checked', 0)}")
+    lines.append(f"  ✅ OK: {health.get('stations_ok', 0)}")
+    lines.append(f"  ⚠️  With Issues: {health.get('stations_with_issues', 0)}")
+    lines.append("")
+    
+    summary = data.get('summary', {})
+    lines.append("Summary:")
+    lines.append(f"  Missing Files: {summary.get('total_missing', 0)} files across {summary.get('missing_files', 0)} stations")
+    lines.append(f"  Orphaned Files: {summary.get('total_orphaned', 0)} files across {summary.get('orphaned_files', 0)} stations")
+    lines.append(f"  No Metadata: {summary.get('no_metadata', 0)} stations")
+    lines.append(f"  Errors: {summary.get('error', 0)} stations")
+    lines.append("")
+    
+    if not health.get('healthy', True):
+        lines.append("Stations with Issues:")
+        for station in data.get('stations', []):
+            if station['status'] != 'OK':
+                lines.append(f"  • {station['network']}.{station['station']} - {station['status']}")
+                if station.get('orphaned_files'):
+                    lines.append(f"      Orphaned: {len(station['orphaned_files'])} files")
+                if station.get('missing_files'):
+                    lines.append(f"      Missing: {len(station['missing_files'])} files")
+                if station.get('issues'):
+                    for issue in station['issues']:
+                        lines.append(f"      {issue}")
+        lines.append("")
+    
+    lines.append("=" * 60)
+    lines.append("")
+    
+    return Response('\n'.join(lines), mimetype='text/plain')
 
 @app.route('/validate')
 @app.route('/validate/<period>')
@@ -202,23 +257,18 @@ def validate(period='24h'):
                         filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{chunk_type}_{date_str}-{start_time_str}_to_{date_str}-{end_time_str}.bin.zst"
                         expected_files.add(filename)
                 
-                # List actual files in R2 for this date
-                response = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=prefix)
+                # List actual files in R2 for this date (now in subfolders by chunk type)
                 actual_files = set()
-                
-                if 'Contents' in response:
-                    for obj in response['Contents']:
-                        filename = obj['Key'].split('/')[-1]
-                        if filename.endswith('.bin.zst'):
-                            actual_files.add(filename)
-                            
-                            # Count by type
-                            if '_10m_' in filename:
-                                station_result['actual_files']['10m'] += 1
-                            elif '_1h_' in filename:
-                                station_result['actual_files']['1h'] += 1
-                            elif '_6h_' in filename:
-                                station_result['actual_files']['6h'] += 1
+                for chunk_type in ['10m', '1h', '6h']:
+                    chunk_prefix = f"{prefix}{chunk_type}/"
+                    response = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=chunk_prefix)
+                    
+                    if 'Contents' in response:
+                        for obj in response['Contents']:
+                            filename = obj['Key'].split('/')[-1]
+                            if filename.endswith('.bin.zst'):
+                                actual_files.add(filename)
+                                station_result['actual_files'][chunk_type] += 1
                 
                 # Find missing files (in metadata but not in R2) for this date
                 missing = expected_files - actual_files
@@ -316,14 +366,14 @@ def validate(period='24h'):
     
     return jsonify(response)
 
-@app.route('/validate/<period>/report')
-def validate_report(period='24h'):
-    """Generate human-readable text report from validation"""
+@app.route('/repair/<period>/report')
+def repair_report(period='24h'):
+    """Generate human-readable text report from repair"""
     from flask import Response
     
-    # Get JSON data from validate endpoint
+    # Get JSON data from repair endpoint
     with app.test_client() as client:
-        resp = client.get(f'/validate/{period}')
+        resp = client.get(f'/repair/{period}')
         data = resp.get_json()
     
     health = data.get('health', {})
@@ -331,36 +381,27 @@ def validate_report(period='24h'):
     # Build text report
     lines = []
     lines.append("=" * 60)
-    lines.append(f"  {health.get('icon', '❓')} STATUS: {health.get('status', 'UNKNOWN')}")
+    lines.append(f"  {health.get('status', 'UNKNOWN')}")
     lines.append("=" * 60)
     lines.append("")
     lines.append(f"Period: {data.get('period_hours', '?')} hours ({data.get('days_checked', '?')} days)")
-    lines.append(f"Validation Time: {data.get('validation_time', 'N/A')[:19]}")
+    lines.append(f"Repair Time: {data.get('repair_time', 'N/A')[:19]}")
     lines.append("")
     lines.append(f"Message: {health.get('message', 'N/A')}")
     lines.append("")
-    lines.append(f"Stations Checked: {health.get('stations_checked', 0)}")
-    lines.append(f"  ✅ OK: {health.get('stations_ok', 0)}")
-    lines.append(f"  ⚠️  With Issues: {health.get('stations_with_issues', 0)}")
+    lines.append(f"Files Adopted: {data.get('files_adopted', 0)}")
+    lines.append(f"Files Rejected: {data.get('files_rejected', 0)}")
+    lines.append(f"Stations Repaired: {data.get('stations_repaired', 0)}")
     lines.append("")
     
-    summary = data.get('summary', {})
-    lines.append("Summary:")
-    lines.append(f"  Missing Files: {summary.get('total_missing', 0)} files across {summary.get('missing_files', 0)} stations")
-    lines.append(f"  Orphaned Files: {summary.get('total_orphaned', 0)} files across {summary.get('orphaned_files', 0)} stations")
-    lines.append(f"  No Metadata: {summary.get('no_metadata', 0)} stations")
-    lines.append(f"  Errors: {summary.get('error', 0)} stations")
-    lines.append("")
-    
-    if not health.get('healthy', True):
-        lines.append("Stations with Issues:")
+    if data.get('stations_repaired', 0) > 0:
+        lines.append("Repaired Stations:")
         for station in data.get('stations', []):
-            if station['status'] != 'OK':
-                lines.append(f"  • {station['network']}.{station['station']} - {station['status']}")
-                if station.get('orphaned_files'):
-                    lines.append(f"      Orphaned: {len(station['orphaned_files'])} files")
-                if station.get('missing_files'):
-                    lines.append(f"      Missing: {len(station['missing_files'])} files")
+            if station['status'] == 'REPAIRED':
+                lines.append(f"  • {station['network']}.{station['station']}")
+                lines.append(f"      Adopted: {len(station['adopted'])} files")
+                if station.get('rejected'):
+                    lines.append(f"      Rejected: {len(station['rejected'])} files")
                 if station.get('issues'):
                     for issue in station['issues']:
                         lines.append(f"      {issue}")
@@ -501,20 +542,19 @@ def repair(period='24h'):
                         filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{chunk_type}_{date_str}-{start_time_str}_to_{date_str}-{end_time_str}.bin.zst"
                         existing_entries.add(filename)
                 
-                # List files in this date's folder
-                response = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=prefix)
-                if 'Contents' not in response:
-                    continue  # No files for this date
-                
-                # Find orphans for this date
+                # List files in this date's folder (now in subfolders by chunk type)
                 orphans = []
-                for obj in response['Contents']:
-                    filename = obj['Key'].split('/')[-1]
-                    if filename.endswith('.bin.zst') and filename not in existing_entries:
-                        orphans.append({'filename': filename, 'size': obj['Size']})
+                for chunk_type in ['10m', '1h', '6h']:
+                    chunk_prefix = f"{prefix}{chunk_type}/"
+                    response = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=chunk_prefix)
+                    
+                    if 'Contents' in response:
+                        for obj in response['Contents']:
+                            filename = obj['Key'].split('/')[-1]
+                            if filename.endswith('.bin.zst') and filename not in existing_entries:
+                                orphans.append({'filename': filename, 'size': obj['Size'], 'chunk_type': chunk_type})
                 
-                # Validate and adopt orphans for this date
-                date_adopted = False
+                # Validate and adopt orphans (may belong to any date in the period)
                 for orphan in orphans:
                     filename = orphan['filename']
                     
@@ -544,16 +584,78 @@ def repair(period='24h'):
                             results['files_rejected'] += 1
                             continue
                         
-                        start_str = times[0].replace(date_str + '-', '')
-                        end_str = times[1].replace(date_str + '-', '')
+                        # Extract date from filename (first timestamp contains YYYY-MM-DD-HH-MM-SS)
+                        # Format: YYYY-MM-DD-HH-MM-SS_to_YYYY-MM-DD-HH-MM-SS
+                        start_full = times[0].split('-')
+                        end_full = times[1].split('-')
                         
-                        # Convert to HH:MM:SS format
-                        start_parts = start_str.split('-')
-                        end_parts = end_str.split('-')
+                        if len(start_full) < 6 or len(end_full) < 6:
+                            station_result['rejected'].append(f"{filename} (invalid timestamp format)")
+                            results['files_rejected'] += 1
+                            continue
+                        
+                        # Extract date from filename (first 3 parts: YYYY-MM-DD)
+                        file_date_str = '-'.join(start_full[:3])
+                        
+                        # Extract time parts (last 3 parts: HH-MM-SS)
+                        start_parts = start_full[3:6]
+                        end_parts = end_full[3:6]
                         
                         if len(start_parts) != 3 or len(end_parts) != 3:
                             station_result['rejected'].append(f"{filename} (invalid timestamp)")
                             results['files_rejected'] += 1
+                            continue
+                        
+                        # Skip files outside our date range (they'll be processed in their own date iteration)
+                        if file_date_str not in [d.strftime("%Y-%m-%d") for d in dates_to_check]:
+                            continue
+                        
+                        # Use existing metadata if file belongs to date being checked, otherwise load/create for file's date
+                        if file_date_str == date_str:
+                            # File belongs to date we're checking - use existing metadata variable
+                            file_metadata = metadata
+                            file_metadata_key = metadata_key
+                        else:
+                            # File belongs to different date - load/create metadata for that date
+                            file_year = int(file_date_str.split('-')[0])
+                            file_month = f"{int(file_date_str.split('-')[1]):02d}"
+                            file_prefix = f"data/{file_year}/{file_month}/{network}/{volcano}/{station}/{location_str}/{channel}/"
+                            file_metadata_key = f"{file_prefix}{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{file_date_str}.json"
+                            
+                            try:
+                                response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=file_metadata_key)
+                                file_metadata = json.loads(response['Body'].read().decode('utf-8'))
+                            except s3.exceptions.NoSuchKey:
+                                # Create new metadata for this file's date
+                                file_metadata = {
+                                    'date': file_date_str,
+                                    'network': network,
+                                    'volcano': volcano,
+                                    'station': station,
+                                    'location': location if location != '--' else '',
+                                    'channel': channel,
+                                    'sample_rate': sample_rate,
+                                    'created_at': now.isoformat().replace('+00:00', 'Z'),
+                                    'complete_day': False,
+                                    'chunks': {
+                                        '10m': [],
+                                        '1h': [],
+                                        '6h': []
+                                    }
+                                }
+                                station_result['issues'].append(f'Created new metadata for {file_date_str} (while checking {date_str})')
+                        
+                        # Check if file already in metadata for its date
+                        file_existing_entries = set()
+                        for ct in ['10m', '1h', '6h']:
+                            for chunk in file_metadata['chunks'].get(ct, []):
+                                start_time_str = chunk['start'].replace(':', '-')
+                                end_time_str = chunk['end'].replace(':', '-')
+                                expected_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{ct}_{file_date_str}-{start_time_str}_to_{file_date_str}-{end_time_str}.bin.zst"
+                                file_existing_entries.add(expected_filename)
+                        
+                        if filename in file_existing_entries:
+                            # Already in metadata, skip
                             continue
                         
                         start_time_hms = f"{start_parts[0]}:{start_parts[1]}:{start_parts[2]}"
@@ -576,7 +678,7 @@ def repair(period='24h'):
                             results['files_rejected'] += 1
                             continue
                         
-                        # Looks valid - adopt it!
+                        # Looks valid - adopt it to its own date's metadata!
                         chunk_meta = {
                             'start': start_time_hms,
                             'end': end_time_hms,
@@ -587,33 +689,36 @@ def repair(period='24h'):
                             'gap_samples_filled': 0  # Unknown
                         }
                         
-                        metadata['chunks'][chunk_type].append(chunk_meta)
+                        file_metadata['chunks'][chunk_type].append(chunk_meta)
+                        
+                        # Sort chunks chronologically
+                        file_metadata['chunks']['10m'].sort(key=lambda c: c['start'])
+                        file_metadata['chunks']['1h'].sort(key=lambda c: c['start'])
+                        file_metadata['chunks']['6h'].sort(key=lambda c: c['start'])
+                        
+                        # Update complete_day flag
+                        if len(file_metadata['chunks']['10m']) >= 144:
+                            file_metadata['complete_day'] = True
+                        
+                        # Upload metadata for this file's date
+                        s3.put_object(
+                            Bucket=R2_BUCKET_NAME,
+                            Key=file_metadata_key,
+                            Body=json.dumps(file_metadata, indent=2).encode('utf-8'),
+                            ContentType='application/json'
+                        )
+                        
                         station_result['adopted'].append(filename)
                         results['files_adopted'] += 1
-                        date_adopted = True
+                        
+                        # Track if we modified metadata for the date being checked
+                        if file_date_str == date_str:
+                            date_adopted = True
                         
                     except Exception as e:
                         station_result['rejected'].append(f"{filename} (parse error: {str(e)})")
                         results['files_rejected'] += 1
                         continue
-                
-                # Sort chunks chronologically and save metadata if we adopted any files for this date
-                if date_adopted:
-                    metadata['chunks']['10m'].sort(key=lambda c: c['start'])
-                    metadata['chunks']['1h'].sort(key=lambda c: c['start'])
-                    metadata['chunks']['6h'].sort(key=lambda c: c['start'])
-                    
-                    # Update complete_day flag
-                    if len(metadata['chunks']['10m']) >= 144:
-                        metadata['complete_day'] = True
-                    
-                    # Upload updated metadata
-                    s3.put_object(
-                        Bucket=R2_BUCKET_NAME,
-                        Key=metadata_key,
-                        Body=json.dumps(metadata, indent=2).encode('utf-8'),
-                        ContentType='application/json'
-                    )
             
             # Set station status
             if len(station_result['adopted']) > 0:
@@ -647,51 +752,75 @@ def repair(period='24h'):
     
     return jsonify(response)
 
-@app.route('/repair/<period>/report')
-def repair_report(period='24h'):
-    """Generate human-readable text report from repair"""
-    from flask import Response
+@app.route('/nuke')
+def nuke():
+    """
+    🔥 DANGER: Delete ALL data from R2 storage
+    Deletes everything under data/ prefix
+    Use for development/testing only!
+    """
+    import boto3
     
-    # Get JSON data from repair endpoint
-    with app.test_client() as client:
-        resp = client.get(f'/repair/{period}')
-        data = resp.get_json()
+    # Initialize R2 client
+    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
+    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
+    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
+    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
     
-    health = data.get('health', {})
+    s3 = boto3.client(
+        's3',
+        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        region_name='auto'
+    )
     
-    # Build text report
-    lines = []
-    lines.append("=" * 60)
-    lines.append(f"  {health.get('status', 'UNKNOWN')}")
-    lines.append("=" * 60)
-    lines.append("")
-    lines.append(f"Period: {data.get('period_hours', '?')} hours ({data.get('days_checked', '?')} days)")
-    lines.append(f"Repair Time: {data.get('repair_time', 'N/A')[:19]}")
-    lines.append("")
-    lines.append(f"Message: {health.get('message', 'N/A')}")
-    lines.append("")
-    lines.append(f"Files Adopted: {data.get('files_adopted', 0)}")
-    lines.append(f"Files Rejected: {data.get('files_rejected', 0)}")
-    lines.append(f"Stations Repaired: {data.get('stations_repaired', 0)}")
-    lines.append("")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔥 NUKE INITIATED - Deleting all data from R2...")
     
-    if data.get('stations_repaired', 0) > 0:
-        lines.append("Repaired Stations:")
-        for station in data.get('stations', []):
-            if station['status'] == 'REPAIRED':
-                lines.append(f"  • {station['network']}.{station['station']}")
-                lines.append(f"      Adopted: {len(station['adopted'])} files")
-                if station.get('rejected'):
-                    lines.append(f"      Rejected: {len(station['rejected'])} files")
-                if station.get('issues'):
-                    for issue in station['issues']:
-                        lines.append(f"      {issue}")
-        lines.append("")
+    deleted_count = 0
+    deleted_files = []
     
-    lines.append("=" * 60)
-    lines.append("")
-    
-    return Response('\n'.join(lines), mimetype='text/plain')
+    try:
+        # List all objects with data/ prefix
+        paginator = s3.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
+        
+        for page in pages:
+            if 'Contents' not in page:
+                continue
+            
+            # Delete in batches of 1000 (R2 limit)
+            objects_to_delete = [{'Key': obj['Key']} for obj in page['Contents']]
+            
+            if objects_to_delete:
+                response = s3.delete_objects(
+                    Bucket=R2_BUCKET_NAME,
+                    Delete={'Objects': objects_to_delete}
+                )
+                
+                deleted = response.get('Deleted', [])
+                deleted_count += len(deleted)
+                deleted_files.extend([obj['Key'] for obj in deleted])
+                
+                print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🗑️  Deleted {len(deleted)} objects (total: {deleted_count})")
+        
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ✅ NUKE COMPLETE - Deleted {deleted_count} objects")
+        
+        return jsonify({
+            'status': 'nuked',
+            'deleted_count': deleted_count,
+            'message': f'Successfully deleted {deleted_count} objects from R2',
+            'deleted_files': deleted_files[:100] if len(deleted_files) > 100 else deleted_files,
+            'truncated': len(deleted_files) > 100
+        })
+        
+    except Exception as e:
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ NUKE FAILED: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'deleted_count': deleted_count
+        }), 500
 
 def wait_until_next_run():
     """Wait until the next scheduled run time (:02, :12, :22, etc.)"""
@@ -779,7 +908,7 @@ def run_scheduler():
 def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.00 Add: Observability endpoints (health, status, validate, repair) with multi-day support")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.01 Refactor: Reorganized R2 storage with chunk type subfolders (10m/, 1h/, 6h/)")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
