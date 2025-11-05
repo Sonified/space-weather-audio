@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_05_v1.13"
+__version__ = "2025_11_05_v1.14"
 import time
 import subprocess
 import sys
@@ -1234,7 +1234,7 @@ def get_status():
             if total_hours == 0:
                 return "0h"
             hours = int(total_hours)
-            minutes = int((total_hours - hours) * 60)
+            minutes = round((total_hours - hours) * 60)  # Use round, not int (fixes 9.999 → 10)
             if minutes == 0:
                 return f"{hours}h"
             return f"{hours}h {minutes}m"
@@ -2501,8 +2501,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.13 Feature: Added /backfill endpoint and automated self-healing (runs every 6h)")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.13 Feature: Added /backfill endpoint and automated self-healing (runs every 6h)")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.14 Fix: Coverage time display rounding (4h 9m → 4h 10m)")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.14 Fix: Coverage time display rounding (4h 9m → 4h 10m)")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

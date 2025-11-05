@@ -842,6 +842,8 @@ Result: Audio started in 50ms, full day loaded seamlessly during playback!
 
 We store multiple chunk sizes on R2 (10m, 1h, 6h) for EVERY day, not just recent days. Every request - whether from today or 7 days ago - uses the same progressive streaming strategy.
 
+**(24h chunks planned for future - not yet implemented)**
+
 **Browser Fetch Strategy:**
 
 ```javascript
@@ -914,6 +916,8 @@ for (const chunkInfo of chunkFiles) {
 - **6-hour chunks**: Sent while earlier files play → completes rest of day
 - **Sequential streaming**: Files sent ONE AT A TIME (smallest first for fast start)
 - **Progressive delivery**: Browser starts playing immediately, larger files arrive during playback
+
+**Note:** Currently implementing 10m, 1h, and 6h chunks. 24h chunks are future enhancement.
 
 **Browser Processing (Sequential Pipeline):**
 1. Receives 1st 10m file (200 KB) → Decompresses in 10ms → **PLAYBACK STARTS!**
@@ -1954,7 +1958,7 @@ Summary
 
 This architecture provides:
 - **Fast playback start** via early metadata delivery + per-chunk min/max normalization
-- **Multi-size chunking** (10min/1h/6h/24h) optimizes for different playback scenarios
+- **Multi-size chunking** (10m/1h/6h currently, 24h future) optimizes for different playback scenarios
 - **Sequential streaming** from R2 (smallest chunks first) → playback starts in 50-100ms, larger chunks load during playback
 - **Dynamic normalization** with smooth AudioWorklet transitions (partial cache support)
 - **Browser-side decompression** (2-36ms) + filtering for maximum flexibility

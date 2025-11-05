@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.49"
+__version__ = "1.50"
 __commit_message__ = (
-    "v1.13 Feature: Added /backfill endpoint and automated self-healing (runs every 6h)"
+    "v1.14 Fix: Coverage time display rounding (4h 9m → 4h 10m)"
 )
 
 # Import key modules to make them available when importing the package

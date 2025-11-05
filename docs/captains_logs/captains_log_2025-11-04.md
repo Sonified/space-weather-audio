@@ -1021,3 +1021,25 @@ The missing `zstandard` dependency will now install correctly, and all validatio
 **System Status:** 🚀 SELF-HEALING COLLECTOR - PRODUCTION READY
 
 The collector now automatically maintains data continuity by detecting and filling gaps every 6 hours.
+
+---
+
+### 2025-11-04 - Coverage Display Rounding Fix (v1.14)
+
+**Version:** v1.14  
+**Commit:** v1.14 Fix: Coverage time display rounding (4h 9m → 4h 10m)
+
+**Bug Fixed:**
+- Coverage time display showed "4h 9m" for 250 minutes of data
+- Actual: 25 files × 10 min = 250 min = 4h 10m
+- Issue: `int((total_hours - hours) * 60)` truncates: `int(9.999...)` = 9
+- **Fix:** Changed to `round((total_hours - hours) * 60)` → `round(9.999...)` = 10
+
+**Impact:**
+- All fractional minute displays now round correctly
+- Example: 4.166666 hours → "4h 10m" (not "4h 9m")
+- More accurate status reporting
+
+**Key Learning:**
+- Always use `round()` for time display, not `int()` (truncation loses precision)
+- Floating point math requires careful handling for human-readable output
