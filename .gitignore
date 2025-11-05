@@ -9,4 +9,4 @@ Logic_Pro/
 Plot_Files/*
 Video_Renders/
 mseed_files/*
-Audio_Files/*
+Audio_Files/*.deploy_time

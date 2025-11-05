@@ -588,3 +588,98 @@ data/2025/11/HV/kilauea/OBL/--/HHZ/
 
 ---
 
+## Production Deployment and Enhanced Monitoring
+
+### Changes Made:
+
+1. **Added `/nuke` Endpoint**
+   - Deletes all data from R2 storage (for dev/testing)
+   - Uses pagination for large datasets
+   - Batch deletion (1000 files at a time)
+   - Returns JSON with deleted count and file list
+   - Console logging with progress updates
+
+2. **Enhanced `/status` Endpoint (v1.02)**
+   - Added R2 storage statistics
+   - File counts by type (10m, 1h, 6h, metadata)
+   - Total storage size (MB and GB)
+   - Latest file timestamp
+   - Real-time inventory of collected data
+
+3. **Added Collection Metrics (v1.03)**
+   - **Collection cycles:** Number of 10-minute runs completed
+   - **Files per station:** Breakdown by resolution (10m, 1h, 6h)
+   - **Expected vs actual:** Validates all stations collected successfully
+   - **Active stations count:** Shows how many stations are being monitored
+   - Makes it easier to understand system health at a glance
+
+### Production Deployment:
+
+**Railway Service:** `volcano-audio-collector-production.up.railway.app`
+
+- ✅ Cron job running every 10 minutes
+- ✅ Auto-deployment from GitHub working
+- ✅ Health API exposed on port 8080
+- ✅ New folder structure (10m/, 1h/, 6h/) deployed
+- ✅ All 5 stations collecting data
+
+**Test Results:**
+
+- Nuked R2 storage: 319 old files deleted successfully
+- First collection run at 04:02 UTC: 5 stations × 2 files = 10 files
+- Second run at 04:12 UTC: 5 stations × 1 file = 5 files  
+- Third run at 04:22 UTC: 5 stations × 1 file = 5 files
+- Data organized in new subfolder structure
+- Download speed: ~187ms for 117KB file (5.1 Mbps)
+- Compression ratio: 2.0x (50% savings)
+
+**Status Endpoint Output:**
+```json
+{
+  "collection_stats": {
+    "active_stations": 5,
+    "collection_cycles": 3,
+    "files_per_station": {
+      "10m": 3.0,
+      "1h": 1.0,
+      "6h": 0.0
+    },
+    "expected_vs_actual": {
+      "10m": "15/15",
+      "status": "✓ Perfect"
+    }
+  },
+  "r2_storage": {
+    "total_files": 25,
+    "file_counts": {
+      "10m": 15,
+      "1h": 5,
+      "6h": 0,
+      "metadata": 5
+    },
+    "total_size_mb": 4.04
+  }
+}
+```
+
+### Key Learnings:
+
+- **Railway auto-deploys:** Push to GitHub triggers immediate deployment
+- **Service discovery:** Used `volcano-audio-collector` URL (with "collector" spelling)
+- **R2 performance:** Sub-200ms downloads from California to Cloudflare edge
+- **Metrics matter:** Human-readable stats (cycles, per-station) much easier to parse than raw file counts
+- **Clean slate approach:** Nuking old data and starting fresh with new structure was the right call
+- **5 stations = 5 files per cycle:** Important to remember for capacity planning
+
+### System Status:
+
+**🚀 PRODUCTION - FULLY OPERATIONAL**
+
+- Data collection: 5 stations every 10 minutes
+- Storage: New organized folder structure  
+- Monitoring: Enhanced status endpoint with collection metrics
+- Performance: Fast downloads, good compression
+- Next milestone: 24 hours of continuous operation
+
+---
+

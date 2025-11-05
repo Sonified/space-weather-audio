@@ -4,7 +4,7 @@ Continuous cron loop for Railway deployment
 Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
 Version: v1.00
 """
-__version__ = "2025_11_04_v1.01"
+__version__ = "2025_11_04_v1.04"
 import time
 import subprocess
 import sys
@@ -12,12 +12,25 @@ import os
 import threading
 from datetime import datetime, timezone
 from flask import Flask, jsonify
+from pathlib import Path
 
 # Simple Flask app for health/status endpoint
 app = Flask(__name__)
 
+# Get or create deployment time
+deploy_time_file = Path(__file__).parent / '.deploy_time'
+if deploy_time_file.exists():
+    with open(deploy_time_file, 'r') as f:
+        deploy_time = f.read().strip()
+else:
+    deploy_time = datetime.now(timezone.utc).isoformat()
+    with open(deploy_time_file, 'w') as f:
+        f.write(deploy_time)
+
 # Shared state
 status = {
+    'version': __version__,
+    'deployed_at': deploy_time,
     'started_at': datetime.now(timezone.utc).isoformat(),
     'last_run': None,
     'next_run': None,
@@ -122,6 +135,37 @@ def get_status():
         collection_cycles = file_counts['10m'] // active_station_count if active_station_count > 0 else 0
         files_per_station = file_counts['10m'] / active_station_count if active_station_count > 0 else 0
         
+        # Calculate expected files for each type based on time elapsed
+        from datetime import datetime, timezone
+        started = datetime.fromisoformat(status['started_at'])
+        now = datetime.now(timezone.utc)
+        elapsed_hours = (now - started).total_seconds() / 3600
+        
+        # Expected hourly files: one per hour boundary crossed
+        # Cron runs at :02, so we get 1h files at top of each hour
+        expected_1h = int(elapsed_hours) * active_station_count
+        
+        # Expected 6h files: one per 6-hour boundary (00:02, 06:02, 12:02, 18:02)
+        # Count how many 6h boundaries we've crossed since start
+        start_hour = started.hour
+        current_hour = now.hour
+        boundaries_6h = [0, 6, 12, 18]
+        crossed_6h = 0
+        for boundary in boundaries_6h:
+            if start_hour < boundary <= current_hour or (current_hour < start_hour and boundary <= current_hour):
+                crossed_6h += 1
+        expected_6h = crossed_6h * active_station_count
+        
+        # Expected 10m files
+        expected_10m = collection_cycles * active_station_count
+        
+        # Status for each type
+        all_perfect = (
+            file_counts['10m'] == expected_10m and
+            file_counts['1h'] == expected_1h and
+            file_counts['6h'] == expected_6h
+        )
+        
         response['collection_stats'] = {
             'active_stations': active_station_count,
             'collection_cycles': collection_cycles,
@@ -131,8 +175,22 @@ def get_status():
                 '6h': round(file_counts['6h'] / active_station_count, 1) if active_station_count > 0 else 0
             },
             'expected_vs_actual': {
-                '10m': f"{file_counts['10m']}/{collection_cycles * active_station_count}",
-                'status': '✓ Perfect' if file_counts['10m'] == collection_cycles * active_station_count else '⚠ Missing files'
+                '10m': {
+                    'actual': file_counts['10m'],
+                    'expected': expected_10m,
+                    'status': '✓' if file_counts['10m'] == expected_10m else '⚠'
+                },
+                '1h': {
+                    'actual': file_counts['1h'],
+                    'expected': expected_1h,
+                    'status': '✓' if file_counts['1h'] == expected_1h else '⚠'
+                },
+                '6h': {
+                    'actual': file_counts['6h'],
+                    'expected': expected_6h,
+                    'status': '✓' if file_counts['6h'] == expected_6h else '⚠'
+                },
+                'overall': '✓ All Perfect' if all_perfect else '⚠ Some Missing'
             }
         }
         
@@ -1007,7 +1065,8 @@ def run_scheduler():
 def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.01 Refactor: Reorganized R2 storage with chunk type subfolders (10m/, 1h/, 6h/)")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.04 Add: Expected vs actual validation for all file types")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
