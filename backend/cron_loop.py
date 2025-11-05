@@ -108,6 +108,34 @@ def get_status():
         total_files = sum(file_counts.values())
         storage_mb = total_size / (1024 * 1024)
         
+        # Calculate collection cycles (based on 10m files divided by number of stations)
+        # Each cycle creates 1 file per station
+        config_path = Path(__file__).parent / 'stations_config.json'
+        with open(config_path) as f:
+            config = json.load(f)
+        
+        active_station_count = 0
+        for network, volcanoes in config['networks'].items():
+            for volcano, stations in volcanoes.items():
+                active_station_count += sum(1 for s in stations if s.get('active', False))
+        
+        collection_cycles = file_counts['10m'] // active_station_count if active_station_count > 0 else 0
+        files_per_station = file_counts['10m'] / active_station_count if active_station_count > 0 else 0
+        
+        response['collection_stats'] = {
+            'active_stations': active_station_count,
+            'collection_cycles': collection_cycles,
+            'files_per_station': {
+                '10m': round(files_per_station, 1),
+                '1h': round(file_counts['1h'] / active_station_count, 1) if active_station_count > 0 else 0,
+                '6h': round(file_counts['6h'] / active_station_count, 1) if active_station_count > 0 else 0
+            },
+            'expected_vs_actual': {
+                '10m': f"{file_counts['10m']}/{collection_cycles * active_station_count}",
+                'status': '✓ Perfect' if file_counts['10m'] == collection_cycles * active_station_count else '⚠ Missing files'
+            }
+        }
+        
         response['r2_storage'] = {
             'total_files': total_files,
             'file_counts': file_counts,
