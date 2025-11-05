@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.47"
+__version__ = "1.48"
 __commit_message__ = (
-    "v1.47 Fix: Prevented clicks when creating new selection while looping - temporarily clear selection bounds during seek to prevent worklet from looping immediately"
+    "v1.12 Feature: Renamed cron_loop.py to collector_loop.py, added /gaps endpoint for gap detection, 7 reusable helper functions"
 )
 
 # Import key modules to make them available when importing the package

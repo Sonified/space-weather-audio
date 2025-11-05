@@ -17,7 +17,7 @@ cd backend
 # Start local Flask API server (main.py)
 ./start_local_server.sh  # Port 5001
 
-# Start data collector with status endpoint (cron_loop.py)
+# Start data collector with status endpoint (collector_loop.py)
 ./start_local_collector.sh  # Port 5005
 
 # Run tests

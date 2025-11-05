@@ -896,3 +896,70 @@ Failure 1:
 **System Status:** 🚀 READY FOR RAILWAY REDEPLOYMENT
 
 The missing `zstandard` dependency will now install correctly, and all validation/error handling improvements are in place.
+
+---
+
+### 2025-11-04 - Gap Detection System & Code Cleanup (v1.12)
+
+**Version:** v1.12  
+**Commit:** v1.12 Feature: Renamed cron_loop.py to collector_loop.py, added /gaps endpoint for gap detection, 7 reusable helper functions
+
+**Major Features:**
+
+1. **Renamed `cron_loop.py` → `collector_loop.py`**
+   - Consistent "collector" terminology throughout codebase
+   - Updated RAILWAY_COLLECTOR_SETUP.md with new start command
+   - Updated all documentation references
+   - Clearer purpose - it's a data collector service, not just a cron scheduler
+
+2. **Added `/gaps/<mode>` Endpoint - Intelligent Gap Detection**
+   - `/gaps/24h` - Detect missing data in last 24 hours
+   - `/gaps/4h` - Last 4 hours
+   - `/gaps/1h` - Last hour  
+   - `/gaps/complete` - From first file ever collected to now
+   - `/gaps/custom?start=ISO&end=ISO` - Custom time range
+   - **Smart features:**
+     - Automatically finds first file timestamp and clamps start time
+     - Checks `currently_running` status for intelligent buffer timing
+     - Excludes recent windows (3-5 min buffer for IRIS delay)
+     - Returns gaps in ISO 8601 UTC format
+     - Saves reports to R2: `collector_logs/gap_report_*.json` + `gap_report_latest.json`
+
+3. **Created 7 Reusable Helper Functions**
+   - `parse_period()` - Converts "24h"/"2d" to hours (eliminated 3x duplication)
+   - `get_active_stations_list()` - Loads stations from config (eliminated 3x duplication)
+   - `build_metadata_key()` - Constructs R2 metadata path
+   - `load_metadata_for_date()` - Loads metadata JSON from R2
+   - `generate_expected_windows()` - Generates expected windows for a date/chunk_type
+   - `is_too_recent()` - Excludes recent windows from gap detection
+   - `detect_gaps_for_station()` - High-level gap detection (the core algorithm)
+   - `find_earliest_data_timestamp()` - Finds first file in R2
+
+4. **Refactored Existing Endpoints**
+   - Eliminated ~120 lines of duplicated initialization code
+   - `/validate`, `/repair`, `/deduplicate` now use shared helpers
+   - Much cleaner, more maintainable code
+
+5. **Time Format Handling (Critical Detail)**
+   - External API: Full ISO 8601 UTC (`"2025-11-04T20:30:00Z"`)
+   - Internal comparison: Time-only strings (`"20:30:00"`) to match metadata
+   - Metadata storage: Time-only format (per-day files)
+   - Gap detection handles conversion automatically
+
+**Testing Results:**
+- ✅ `/gaps/24h` working correctly
+- ✅ Finds 0 gaps when collection is perfect
+- ✅ Automatically clamps to first file timestamp (prevents false positives)
+- ✅ All modes tested: 24h, 4h, 1h work correctly
+- ✅ Time range shows actual collection period: 3.4 hours (not false 24h)
+
+**Key Learnings:**
+- Gap detection must filter by DATETIME not just DATE (avoids checking windows before collection started)
+- `currently_running` flag enables smart buffer timing (5min vs 3min)
+- Reusable helpers eliminate duplication and make code much more maintainable
+- Finding earliest file timestamp prevents false gap positives
+
+**Next Steps:**
+- Build `/backfill` endpoint to automatically fill detected gaps
+- Test complete gap → backfill → verify workflow
+- Deploy v1.12 to Railway

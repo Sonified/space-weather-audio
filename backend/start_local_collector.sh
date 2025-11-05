@@ -25,7 +25,7 @@ echo ""
 echo "=================================="
 echo ""
 
-# Run cron loop on port 5005
+# Run collector loop on port 5005
 cd "$(dirname "$0")"
-PORT=5005 python cron_loop.py
+PORT=5005 python collector_loop.py
 

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Continuous cron loop for Railway deployment
-Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
-Version: v1.00
+Seismic Data Collector Service for Railway Deployment
+Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
+Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_05_v1.11"
+__version__ = "2025_11_05_v1.12"
 import time
 import subprocess
 import sys
 import os
+import json
 import threading
 from datetime import datetime, timezone
 from flask import Flask, jsonify
@@ -206,6 +207,569 @@ def get_dates_in_period(start_time, end_time):
         dates.append(current)
         current += timedelta(days=1)
     return dates
+
+
+# ============================================================================
+# Reusable Helper Functions for Gaps/Backfill System
+# ============================================================================
+
+def parse_period(period):
+    """
+    Parse period string to hours.
+    
+    Args:
+        period: String like '24h', '2d', '1h', or just '24'
+    
+    Returns:
+        int: Number of hours
+    
+    Raises:
+        ValueError: If invalid format
+    
+    Examples:
+        parse_period('24h') -> 24
+        parse_period('2d') -> 48
+        parse_period('1h') -> 1
+    """
+    if period.endswith('d'):
+        return int(period[:-1]) * 24
+    elif period.endswith('h'):
+        return int(period[:-1])
+    else:
+        return int(period)
+
+
+def get_active_stations_list():
+    """
+    Load active stations from stations_config.json.
+    
+    Returns:
+        list: List of dicts with keys: network, volcano, station, location, channel, sample_rate
+    
+    Examples:
+        [
+            {
+                'network': 'HV',
+                'volcano': 'kilauea',
+                'station': 'OBL',
+                'location': '',
+                'channel': 'HHZ',
+                'sample_rate': 100.0
+            },
+            ...
+        ]
+    """
+    config_path = Path(__file__).parent / 'stations_config.json'
+    with open(config_path) as f:
+        config = json.load(f)
+    
+    active_stations = []
+    for network, volcanoes in config['networks'].items():
+        for volcano, stations in volcanoes.items():
+            for station in stations:
+                if station.get('active', False):
+                    active_stations.append({
+                        'network': network,
+                        'volcano': volcano,
+                        **station
+                    })
+    
+    return active_stations
+
+
+def build_metadata_key(network, volcano, station, location, channel, sample_rate, date):
+    """
+    Build R2 metadata key for a given station and date.
+    
+    Args:
+        network: Network code (e.g., 'HV')
+        volcano: Volcano name (e.g., 'kilauea')
+        station: Station code (e.g., 'OBL')
+        location: Location code (e.g., '' or '--')
+        channel: Channel code (e.g., 'HHZ')
+        sample_rate: Sample rate (e.g., 100.0)
+        date: date object or datetime
+    
+    Returns:
+        str: R2 key like "data/2025/11/HV/kilauea/OBL/--/HHZ/HV_OBL_--_HHZ_100Hz_2025-11-05.json"
+    """
+    year = date.year
+    month = f"{date.month:02d}"
+    location_str = location if location and location != '--' else '--'
+    rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+    filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date.strftime('%Y-%m-%d')}.json"
+    return f"data/{year}/{month}/{network}/{volcano}/{station}/{location_str}/{channel}/{filename}"
+
+
+def load_metadata_for_date(s3_client, network, volcano, station, location, channel, sample_rate, date):
+    """
+    Load metadata JSON for a station and date from R2.
+    
+    Args:
+        s3_client: boto3 S3 client
+        network, volcano, station, location, channel, sample_rate: Station identifiers
+        date: date object or datetime
+    
+    Returns:
+        dict: Metadata dict with 'chunks' key, or None if not found
+    
+    Example return:
+        {
+            'date': '2025-11-05',
+            'network': 'HV',
+            'chunks': {
+                '10m': [{'start': '00:00:00', 'end': '00:09:59', ...}, ...],
+                '1h': [...],
+                '6h': [...]
+            }
+        }
+    """
+    metadata_key = build_metadata_key(network, volcano, station, location, channel, sample_rate, date)
+    try:
+        response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+        return json.loads(response['Body'].read().decode('utf-8'))
+    except s3_client.exceptions.NoSuchKey:
+        return None
+
+
+def generate_expected_windows(date, chunk_type):
+    """
+    Generate expected time windows for a date and chunk type.
+    
+    This tells us what windows SHOULD exist for a given date based on our collection schedule.
+    
+    Args:
+        date: date object (not datetime)
+        chunk_type: '10m', '1h', or '6h'
+    
+    Returns:
+        list of (start_datetime, end_datetime) tuples in UTC
+    
+    Examples:
+        For date=Nov 5, 2025, chunk_type='10m':
+            Returns 144 windows: (2025-11-05 00:00:00, 2025-11-05 00:10:00), 
+                                 (2025-11-05 00:10:00, 2025-11-05 00:20:00), ...
+        
+        For date=Nov 5, 2025, chunk_type='1h':
+            Returns 24 windows: (2025-11-05 00:00:00, 2025-11-05 01:00:00),
+                                (2025-11-05 01:00:00, 2025-11-05 02:00:00), ...
+        
+        For date=Nov 5, 2025, chunk_type='6h':
+            Returns 4 windows: (2025-11-05 00:00:00, 2025-11-05 06:00:00),
+                               (2025-11-05 06:00:00, 2025-11-05 12:00:00), ...
+    """
+    from datetime import datetime, timedelta, timezone
+    
+    windows = []
+    day_start = datetime.combine(date, datetime.min.time()).replace(tzinfo=timezone.utc)
+    
+    if chunk_type == '10m':
+        # Every 10 minutes (144 windows per day)
+        for hour in range(24):
+            for minute in range(0, 60, 10):
+                start = day_start + timedelta(hours=hour, minutes=minute)
+                end = start + timedelta(minutes=10)
+                windows.append((start, end))
+    
+    elif chunk_type == '1h':
+        # Every hour (24 windows per day)
+        for hour in range(24):
+            start = day_start + timedelta(hours=hour)
+            end = start + timedelta(hours=1)
+            windows.append((start, end))
+    
+    elif chunk_type == '6h':
+        # Every 6 hours (4 windows per day)
+        for hour in range(0, 24, 6):
+            start = day_start + timedelta(hours=hour)
+            end = start + timedelta(hours=6)
+            windows.append((start, end))
+    
+    return windows
+
+
+def is_too_recent(window_end, currently_running=False):
+    """
+    Check if a window is too recent to be considered a gap.
+    
+    Accounts for IRIS delay and active collection. Recent windows are excluded
+    from gap detection because they might not be available yet from IRIS or
+    are currently being collected.
+    
+    Args:
+        window_end: datetime when window ends
+        currently_running: bool, is collector currently running?
+    
+    Returns:
+        bool: True if window is too recent (should be excluded from gap detection)
+    
+    Logic:
+        - If collector is running: 5-minute buffer (extra conservative)
+        - Otherwise: 3-minute buffer (IRIS 2-min delay + 1-min processing)
+    """
+    from datetime import timedelta
+    
+    now = datetime.now(timezone.utc)
+    
+    # If collector is running, give it extra buffer
+    if currently_running:
+        buffer_minutes = 5
+    else:
+        buffer_minutes = 3  # Normal IRIS delay + processing
+    
+    return window_end > (now - timedelta(minutes=buffer_minutes))
+
+
+def find_earliest_data_timestamp(s3_client):
+    """
+    Find the timestamp of the earliest data file in R2.
+    Scans all files in data/ prefix to find the earliest one.
+    
+    Returns:
+        datetime: Timestamp of earliest file, or None if no files found
+    """
+    try:
+        paginator = s3_client.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
+        
+        earliest_timestamp = None
+        
+        for page in pages:
+            if 'Contents' not in page:
+                continue
+            
+            for obj in page['Contents']:
+                # Use LastModified as the file timestamp
+                file_timestamp = obj['LastModified']
+                
+                if earliest_timestamp is None or file_timestamp < earliest_timestamp:
+                    earliest_timestamp = file_timestamp
+        
+        return earliest_timestamp
+    except Exception as e:
+        print(f"Error finding earliest timestamp: {e}")
+        return None
+
+
+def detect_gaps_for_station(s3_client, network, volcano, station, location, channel, sample_rate, 
+                            start_datetime, end_datetime, chunk_types=['10m', '1h', '6h'], 
+                            currently_running=False):
+    """
+    Detect gaps (missing windows) for a station across a datetime range.
+    
+    This is the HIGH-LEVEL gap detection function. It:
+    1. Gets all dates in range
+    2. For each date, loads metadata
+    3. Generates expected windows
+    4. Compares expected vs actual (filters by start_datetime/end_datetime)
+    5. Returns missing windows (gaps)
+    
+    Args:
+        s3_client: boto3 S3 client
+        network, volcano, station, location, channel, sample_rate: Station identifiers
+        start_datetime: datetime object (inclusive) - exact time to start checking
+        end_datetime: datetime object (inclusive) - exact time to stop checking
+        chunk_types: list of chunk types to check (default: ['10m', '1h', '6h'])
+        currently_running: bool, is collector running? (affects recent window exclusion)
+    
+    Returns:
+        dict: {
+            '10m': [{'start': 'ISO8601', 'end': 'ISO8601', 'duration_minutes': int}, ...],
+            '1h': [...],
+            '6h': [...]
+        }
+    
+    Example:
+        gaps = detect_gaps_for_station(s3, 'HV', 'kilauea', 'OBL', '', 'HHZ', 100.0,
+                                        datetime(2025, 11, 4, 20, 0), datetime(2025, 11, 5, 23, 59))
+        # Returns:
+        {
+            '10m': [
+                {'start': '2025-11-04T20:30:00Z', 'end': '2025-11-04T20:40:00Z', 'duration_minutes': 10},
+                {'start': '2025-11-04T21:10:00Z', 'end': '2025-11-04T21:20:00Z', 'duration_minutes': 10}
+            ],
+            '1h': [],
+            '6h': []
+        }
+    """
+    gaps = {ct: [] for ct in chunk_types}
+    
+    # Get all dates in range (need to check each date's metadata)
+    current_date = start_datetime.date()
+    end_date = end_datetime.date()
+    from datetime import timedelta
+    while current_date <= end_date:
+        # Load metadata for this date
+        metadata = load_metadata_for_date(s3_client, network, volcano, station, location, 
+                                          channel, sample_rate, current_date)
+        
+        # Check each chunk type
+        for chunk_type in chunk_types:
+            # Generate expected windows for this date
+            expected_windows = generate_expected_windows(current_date, chunk_type)
+            
+            # Get actual windows from metadata (if exists)
+            actual_starts = set()
+            if metadata and 'chunks' in metadata and chunk_type in metadata['chunks']:
+                # Metadata stores times as "HH:MM:SS", need to match against full datetime
+                for chunk in metadata['chunks'][chunk_type]:
+                    actual_starts.add(chunk['start'])  # e.g., "20:30:00"
+            
+            # Find missing windows
+            for window_start, window_end in expected_windows:
+                # FILTER: Only check windows within our exact datetime range
+                if window_start < start_datetime or window_start >= end_datetime:
+                    continue
+                
+                # Skip if too recent (IRIS delay + processing buffer)
+                if is_too_recent(window_end, currently_running):
+                    continue
+                
+                # Check if this window exists in metadata
+                # Convert window_start to time-only string for comparison
+                time_str = window_start.strftime("%H:%M:%S")
+                
+                if time_str not in actual_starts:
+                    # It's a gap!
+                    duration_minutes = int((window_end - window_start).total_seconds() / 60)
+                    gaps[chunk_type].append({
+                        'start': window_start.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'end': window_end.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'duration_minutes': duration_minutes
+                    })
+        
+        # Move to next date
+        current_date += timedelta(days=1)
+    
+    return gaps
+
+
+# ============================================================================
+# Gaps Detection & Backfill Endpoints
+# ============================================================================
+
+@app.route('/gaps/<mode>')
+def gaps_detection(mode):
+    """
+    Detect missing data windows (gaps) in collected seismic data.
+    
+    Modes:
+        /gaps/complete - From first file ever collected to now
+        /gaps/24h - Last 24 hours
+        /gaps/4h - Last 4 hours
+        /gaps/1h - Last 1 hour
+        /gaps/custom?start=<ISO>&end=<ISO> - Specific time range
+    
+    Returns:
+        JSON report with gaps for all stations, saved to R2
+    """
+    from datetime import timedelta
+    from flask import request
+    
+    try:
+        # Determine time range based on mode
+        now = datetime.now(timezone.utc)
+        
+        if mode == 'custom':
+            # Custom time range from query params
+            start_str = request.args.get('start')
+            end_str = request.args.get('end')
+            if not start_str or not end_str:
+                return jsonify({'error': 'Custom mode requires start and end query parameters (ISO 8601 format)'}), 400
+            
+            # Parse ISO 8601 timestamps
+            start_time = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+            end_time = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+        
+        elif mode == 'complete':
+            # From first file ever to now
+            # We'll scan R2 to find the earliest file
+            s3 = get_s3_client()
+            
+            # List all files in data/ prefix to find earliest
+            paginator = s3.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
+            
+            earliest_date = now.date()
+            for page in pages:
+                if 'Contents' not in page:
+                    break
+                for obj in page['Contents']:
+                    # Extract date from key (data/YYYY/MM/...)
+                    parts = obj['Key'].split('/')
+                    if len(parts) >= 3:
+                        try:
+                            year = int(parts[1])
+                            month = int(parts[2])
+                            file_date = datetime(year, month, 1, tzinfo=timezone.utc).date()
+                            if file_date < earliest_date:
+                                earliest_date = file_date
+                        except (ValueError, IndexError):
+                            continue
+            
+            start_time = datetime.combine(earliest_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            end_time = now
+        
+        elif mode.endswith('h'):
+            # Hours mode (24h, 4h, 1h, etc.)
+            hours = int(mode[:-1])
+            start_time = now - timedelta(hours=hours)
+            end_time = now
+        
+        elif mode.endswith('d'):
+            # Days mode (2d, 7d, etc.)
+            days = int(mode[:-1])
+            start_time = now - timedelta(days=days)
+            end_time = now
+        
+        else:
+            return jsonify({'error': f'Invalid mode: {mode}. Use 24h, 4h, 1h, complete, or custom'}), 400
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to parse time range: {str(e)}'}), 400
+    
+    try:
+        # Get R2 client and active stations
+        s3 = get_s3_client()
+        active_stations = get_active_stations_list()
+        
+        # Find when collection actually started (earliest file in R2)
+        # Don't check for gaps before data collection began!
+        earliest_file = find_earliest_data_timestamp(s3)
+        if earliest_file:
+            # Clamp start_time to when collection actually started
+            if start_time < earliest_file:
+                original_start = start_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                start_time = earliest_file
+                print(f"Clamped start time from {original_start} to {start_time.strftime('%Y-%m-%dT%H:%M:%SZ')} (first file)")
+        else:
+            # No files in R2 yet - no point checking for gaps
+            return jsonify({
+                'error': 'No data files found in R2. Collection has not started yet.',
+                'suggestion': 'Wait for the collector to run and create some files first.'
+            }), 404
+        
+        # Generate report ID and timestamp
+        report_timestamp = now.strftime('%Y-%m-%dT%H-%M-%SZ')
+        report_id = f"gap_report_{report_timestamp}"
+        
+        # Calculate time range in hours
+        time_range_hours = (end_time - start_time).total_seconds() / 3600
+        
+        # Track statistics
+        total_gaps = 0
+        gaps_by_type = {'10m': 0, '1h': 0, '6h': 0}
+        total_missing_minutes = 0
+        recent_windows_excluded = 0
+        stations_with_gaps = 0
+        
+        # Collect gaps for all stations
+        station_results = []
+        
+        for station_info in active_stations:
+            network = station_info['network']
+            volcano = station_info['volcano']
+            station = station_info['station']
+            location = station_info.get('location', '')
+            channel = station_info['channel']
+            sample_rate = station_info['sample_rate']
+            
+            # Detect gaps for this station
+            gaps = detect_gaps_for_station(
+                s3, network, volcano, station, location, channel, sample_rate,
+                start_time, end_time,  # Pass full datetimes, not just dates
+                chunk_types=['10m', '1h', '6h'],
+                currently_running=status['currently_running']
+            )
+            
+            # Count gaps
+            station_gap_count = sum(len(gaps[ct]) for ct in ['10m', '1h', '6h'])
+            
+            if station_gap_count > 0:
+                stations_with_gaps += 1
+            
+            # Add to totals
+            for chunk_type in ['10m', '1h', '6h']:
+                gaps_by_type[chunk_type] += len(gaps[chunk_type])
+                total_gaps += len(gaps[chunk_type])
+                
+                # Calculate missing minutes
+                for gap in gaps[chunk_type]:
+                    total_missing_minutes += gap['duration_minutes']
+            
+            # Build station result
+            station_results.append({
+                'network': network,
+                'station': station,
+                'location': location if location else '--',
+                'channel': channel,
+                'volcano': volcano,
+                'gaps': gaps,
+                'gaps_count': {
+                    '10m': len(gaps['10m']),
+                    '1h': len(gaps['1h']),
+                    '6h': len(gaps['6h']),
+                    'total': station_gap_count
+                }
+            })
+        
+        # Build complete report
+        report = {
+            'report_id': report_id,
+            'generated_at': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'mode': mode,
+            'time_range': {
+                'start': start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'end': end_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'hours': round(time_range_hours, 2),
+                'first_file_at': earliest_file.strftime('%Y-%m-%dT%H:%M:%SZ') if earliest_file else None
+            },
+            'collector_status': {
+                'currently_running': status['currently_running'],
+                'last_run': status.get('last_run')
+            },
+            'stations': station_results,
+            'summary': {
+                'total_stations': len(active_stations),
+                'stations_with_gaps': stations_with_gaps,
+                'total_gaps': total_gaps,
+                'gaps_by_type': gaps_by_type,
+                'total_missing_minutes': total_missing_minutes,
+                'recent_windows_excluded': recent_windows_excluded  # TODO: track this in detect_gaps
+            }
+        }
+        
+        # Save report to R2
+        report_key = f"collector_logs/{report_id}.json"
+        latest_key = "collector_logs/gap_report_latest.json"
+        
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=report_key,
+            Body=json.dumps(report, indent=2).encode('utf-8'),
+            ContentType='application/json'
+        )
+        
+        # Also save as latest
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=latest_key,
+            Body=json.dumps(report, indent=2).encode('utf-8'),
+            ContentType='application/json'
+        )
+        
+        # Add save info to response
+        report['saved_to'] = report_key
+        
+        return jsonify(report)
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Gap detection failed: {str(e)}',
+            'traceback': traceback.format_exc()
+        }), 500
+
 
 @app.route('/health')
 def health():
@@ -680,55 +1244,22 @@ def validate(period='24h'):
     Checks: metadata vs actual files, orphaned files, missing files
     Examples: /validate/24h, /validate/2d, /validate/12h
     """
-    import json
-    import boto3
-    from pathlib import Path
     from datetime import timedelta
     
     try:
-        # Parse period
-        if period.endswith('d'):
-            hours = int(period[:-1]) * 24
-        elif period.endswith('h'):
-            hours = int(period[:-1])
-        else:
-            hours = int(period)
+        # Parse period using helper
+        hours = parse_period(period)
     except (ValueError, AttributeError):
         return jsonify({'error': f'Invalid period format: {period}. Use format like "24h" or "2d"'}), 400
     
     try:
-        # Initialize R2 client
-        R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-        R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-        R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-        R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
-        
-        s3 = boto3.client(
-            's3',
-            endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
-            aws_access_key_id=R2_ACCESS_KEY_ID,
-            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-            region_name='auto'
-        )
-        
-        # Load active stations
-        config_path = Path(__file__).parent / 'stations_config.json'
-        with open(config_path) as f:
-            config = json.load(f)
+        # Get R2 client and active stations using helpers
+        s3 = get_s3_client()
+        active_stations = get_active_stations_list()
     except Exception as e:
         return jsonify({'error': f'Failed to initialize: {str(e)}'}), 500
     
     try:
-        active_stations = []
-        for network, volcanoes in config['networks'].items():
-            for volcano, stations in volcanoes.items():
-                for station in stations:
-                    if station.get('active', False):
-                        active_stations.append({
-                            'network': network,
-                            'volcano': volcano,
-                            **station
-                        })
         
         # Calculate time range
         now = datetime.now(timezone.utc)
@@ -984,48 +1515,14 @@ def repair(period='24h'):
     Validates orphans: correct samples, proper naming, then adds to metadata
     Examples: /repair/24h, /repair/2d, /repair/1h
     """
-    import json
-    import boto3
-    from pathlib import Path
     from datetime import timedelta
     
-    # Parse period
-    if period.endswith('d'):
-        hours = int(period[:-1]) * 24
-    elif period.endswith('h'):
-        hours = int(period[:-1])
-    else:
-        hours = int(period)
+    # Parse period using helper
+    hours = parse_period(period)
     
-    # Initialize R2 client
-    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
-    
-    s3 = boto3.client(
-        's3',
-        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
-        aws_access_key_id=R2_ACCESS_KEY_ID,
-        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-        region_name='auto'
-    )
-    
-    # Load active stations
-    config_path = Path(__file__).parent / 'stations_config.json'
-    with open(config_path) as f:
-        config = json.load(f)
-    
-    active_stations = []
-    for network, volcanoes in config['networks'].items():
-        for volcano, stations in volcanoes.items():
-            for station in stations:
-                if station.get('active', False):
-                    active_stations.append({
-                        'network': network,
-                        'volcano': volcano,
-                        **station
-                    })
+    # Get R2 client and active stations using helpers
+    s3 = get_s3_client()
+    active_stations = get_active_stations_list()
     
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(hours=hours)
@@ -1322,48 +1819,14 @@ def deduplicate(period='24h'):
     Deduplicate metadata entries - removes duplicate start times
     Examples: /deduplicate/24h, /deduplicate/2d
     """
-    import json
-    import boto3
-    from pathlib import Path
     from datetime import timedelta
     
-    # Parse period
-    if period.endswith('d'):
-        hours = int(period[:-1]) * 24
-    elif period.endswith('h'):
-        hours = int(period[:-1])
-    else:
-        hours = int(period)
+    # Parse period using helper
+    hours = parse_period(period)
     
-    # Initialize R2 client
-    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
-    
-    s3 = boto3.client(
-        's3',
-        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
-        aws_access_key_id=R2_ACCESS_KEY_ID,
-        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-        region_name='auto'
-    )
-    
-    # Load active stations
-    config_path = Path(__file__).parent / 'stations_config.json'
-    with open(config_path) as f:
-        config = json.load(f)
-    
-    active_stations = []
-    for network, volcanoes in config['networks'].items():
-        for volcano, stations in volcanoes.items():
-            for station in stations:
-                if station.get('active', False):
-                    active_stations.append({
-                        'network': network,
-                        'volcano': volcano,
-                        **station
-                    })
+    # Get R2 client and active stations using helpers
+    s3 = get_s3_client()
+    active_stations = get_active_stations_list()
     
     # Calculate time range
     now = datetime.now(timezone.utc)
@@ -1676,10 +2139,10 @@ def run_scheduler():
 
 def main():
     """Main entry point - starts Flask server and scheduler"""
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.11 Fix: Added zstandard to root requirements.txt, validation bug fixes, local timezone display, concise error summaries")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.11 Fix: Added zstandard to root requirements.txt, validation bug fixes, local timezone display, concise error summaries")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.12 Feature: Renamed cron_loop.py to collector_loop.py, added /gaps endpoint for gap detection, 7 reusable helper functions")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.12 Feature: Renamed cron_loop.py to collector_loop.py, added /gaps endpoint for gap detection, 7 reusable helper functions")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

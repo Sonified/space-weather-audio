@@ -2,12 +2,14 @@
 
 ## Overview
 
-This service runs continuously on Railway and fetches seismic data from IRIS every 10 minutes at :02, :12, :22, :32, :42, :52 past each hour.
+This service runs continuously on Railway as a data collector that fetches seismic data from IRIS every 10 minutes at :02, :12, :22, :32, :42, :52 past each hour.
+
+The collector also provides HTTP endpoints for health monitoring, status checks, data validation, gap detection, and backfilling missing data.
 
 ## Files
 
-- **`cron_loop.py`** - Main scheduler daemon (runs forever)
-- **`cron_job.py`** - Data collection logic (called every 10 min)
+- **`collector_loop.py`** - Main collector service (scheduler + HTTP API)
+- **`cron_job.py`** - Data collection logic (fetches from IRIS, processes, uploads to R2)
 - **`stations_config.json`** - Active stations configuration
 
 ## Railway Setup Steps
@@ -30,10 +32,12 @@ In **Settings** → **Deploy**:
 
 **Start Command:**
 ```bash
-python backend/cron_loop.py
+python backend/collector_loop.py
 ```
 
 **Root Directory:** (leave empty or set to `/`)
+
+**Port:** Railway will auto-assign (defaults to 5000 in production)
 
 ### 4. Environment Variables (Optional)
 
@@ -54,41 +58,90 @@ Click **Deploy** (or push to GitHub to trigger auto-deploy)
 ### 6. Monitor Logs
 
 Watch the logs to verify:
-- ✅ "🚀 Cron loop started"
+- ✅ "🚀 Collector service started"
 - ✅ "Next run in X seconds"
-- ✅ Cron job executes every 10 minutes
+- ✅ Collection executes every 10 minutes
 - ✅ "💾 Uploaded to R2: ..." messages
-- ✅ "✅ Cron job completed successfully"
+- ✅ "✅ Collection completed successfully"
+
+## HTTP API Endpoints
+
+The collector service provides several HTTP endpoints for monitoring and management:
+
+### Health & Status
+
+**`GET /health`** - Simple health check
+```json
+{"status": "healthy", "uptime_seconds": 1234.5}
+```
+
+**`GET /status`** - Detailed system status
+- Current collection status
+- File counts by type (10m, 1h, 6h)
+- R2 storage info
+- Coverage depth
+- Recent failures (if any)
+
+**`GET /stations`** - List active stations being collected
+
+### Data Validation
+
+**`GET /validate/24h`** - Validate last 24 hours of data
+- Checks for missing files
+- Detects orphaned files
+- Finds duplicate metadata entries
+
+**`GET /deduplicate/24h`** - Remove duplicate metadata entries
+
+### Gap Detection & Backfill
+
+**`GET /gaps/24h`** - Detect missing data windows in last 24 hours
+**`GET /gaps/4h`** - Detect missing data windows in last 4 hours
+**`GET /gaps/complete`** - Detect gaps from first file to now
+**`GET /gaps/custom?start=ISO&end=ISO`** - Detect gaps in custom time range
+
+Returns JSON report with all missing time windows, saved to R2 at `collector_logs/gap_report_*.json`
+
+**`POST /backfill`** - *(Coming soon)* Fill detected gaps by fetching from IRIS
+
+### Production URL
+
+Once deployed, access endpoints at:
+```
+https://your-app-name.up.railway.app/health
+https://your-app-name.up.railway.app/status
+https://your-app-name.up.railway.app/gaps/24h
+```
 
 ## Expected Behavior
 
 ### First Run
 ```
-[2025-11-05 02:50:00 UTC] 🚀 Cron loop started
+[2025-11-05 02:50:00 UTC] 🚀 Collector service started
 [2025-11-05 02:50:00 UTC] Schedule: Every 10 minutes at :02, :12, :22, :32, :42, :52
+[2025-11-05 02:50:00 UTC] Starting health API on port 5000
 [2025-11-05 02:50:00 UTC] Next run in 720 seconds
 ```
 
 ### At :02 past the hour
 ```
-[2025-11-05 03:02:00 UTC] ========== Starting cron job ==========
-[2025-11-05 03:02:00 UTC] CRON JOB START
+[2025-11-05 03:02:00 UTC] ========== Starting data collection ==========
 [2025-11-05 03:02:00 UTC] Active stations: 5
 [2025-11-05 03:02:00 UTC] Windows to fetch: 2
 [2025-11-05 03:02:00 UTC]   10m: 2025-11-05 02:50:00 to 03:00:00
 [2025-11-05 03:02:00 UTC]   1h: 2025-11-05 02:00:00 to 03:00:00
 ... (fetching and uploading)
-[2025-11-05 03:03:30 UTC] ✅ Cron job completed successfully
+[2025-11-05 03:03:30 UTC] ✅ Collection completed successfully
 [2025-11-05 03:03:30 UTC] Next run in 510 seconds
 ```
 
 ### At :12 past the hour (regular 10-min)
 ```
-[2025-11-05 03:12:00 UTC] ========== Starting cron job ==========
+[2025-11-05 03:12:00 UTC] ========== Starting data collection ==========
 [2025-11-05 03:12:00 UTC] Windows to fetch: 1
 [2025-11-05 03:12:00 UTC]   10m: 2025-11-05 03:00:00 to 03:10:00
 ... (fetching and uploading)
-[2025-11-05 03:13:00 UTC] ✅ Cron job completed successfully
+[2025-11-05 03:13:00 UTC] ✅ Collection completed successfully
 ```
 
 ## Active Stations
@@ -162,10 +215,26 @@ boto3
 
 ## Monitoring
 
-Check Railway logs daily for:
-- ✅ Successful runs every 10 minutes
-- ❌ Any failed uploads
-- ⚠️ Gap warnings (normal, just informational)
+### Via HTTP API (Recommended)
+```bash
+# Check health
+curl https://your-app.up.railway.app/health
+
+# Get detailed status
+curl https://your-app.up.railway.app/status
+
+# Check for gaps in last 24 hours
+curl https://your-app.up.railway.app/gaps/24h
+
+# Validate data integrity
+curl https://your-app.up.railway.app/validate/24h
+```
+
+### Via Railway Logs
+Check logs daily for:
+- ✅ Successful collection runs every 10 minutes
+- ❌ Any failed uploads or IRIS errors
+- ⚠️ Gap detection results (run `/gaps/24h` endpoint)
 
 ## Stopping the Service
 
@@ -177,8 +246,11 @@ To pause data collection:
 ## Next Steps
 
 After deployment:
-1. Monitor for 24 hours to verify stability
-2. Add metadata JSON generation (currently only .bin.zst files)
-3. Expand to more stations as needed
-4. Build status API to query cached data
+1. ✅ Monitor for 24 hours to verify stability (use `/status` endpoint)
+2. ✅ Metadata JSON files are automatically generated
+3. ✅ Status API is live at `/health` and `/status`
+4. ✅ Gap detection available at `/gaps/<mode>`
+5. 🚧 Backfill endpoint coming soon at `/backfill`
+6. Expand to more stations as needed (edit `stations_config.json`)
+7. Set up automated daily gap checks and repairs
 
