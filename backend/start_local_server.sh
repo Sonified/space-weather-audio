@@ -4,6 +4,12 @@
 echo "🚀 Starting local Flask server..."
 echo "=================================="
 echo ""
+
+# Clean up any existing process on port 5001
+echo "🧹 Cleaning up existing processes on port 5001..."
+lsof -ti:5001 | xargs kill -9 2>/dev/null || true
+sleep 1
+
 echo "Server will run on: http://localhost:5001"
 echo ""
 echo "To test:"

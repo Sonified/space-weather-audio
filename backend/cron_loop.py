@@ -4,7 +4,7 @@ Continuous cron loop for Railway deployment
 Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
 Version: v1.00
 """
-__version__ = "2025_11_04_v1.06"
+__version__ = "2025_11_04_v1.07"
 import time
 import subprocess
 import sys
@@ -67,17 +67,7 @@ def get_status():
     import json
     from pathlib import Path
     
-    # Build response with version first, then runtime status fields
-    response = {
-        'version': status['version'],
-        'currently_running': status['currently_running'],
-        'deployed_at': status['deployed_at'],
-        'failed_runs': status['failed_runs'],
-        'last_run': status['last_run'],
-        'next_run': status['next_run'],
-    }
-    
-    # Add R2 statistics
+    # Collect data for response (build final response at the end)
     try:
         # Initialize R2 client
         R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
@@ -271,16 +261,25 @@ def get_status():
         for file_type in ['10m', '1h', '6h']:
             if oldest_files[file_type] is not None:
                 hours_back = (now - oldest_files[file_type]).total_seconds() / 3600
-                coverage_by_type[file_type] = round(hours_back, 1)
+                coverage_by_type[file_type] = f"{round(hours_back, 1)}h"
             else:
-                coverage_by_type[file_type] = 0
+                coverage_by_type[file_type] = "0h"
         
-        # Full coverage = minimum across all types (limiting factor)
-        coverage_values = [v for v in coverage_by_type.values() if v > 0]
-        full_coverage_hours_back = min(coverage_values) if coverage_values else 0
+        # Full coverage = minimum across ALL types (if ANY type has 0, full coverage = 0)
+        # Must have 10m, 1h, AND 6h files for full coverage
+        hours_10m = (now - oldest_files['10m']).total_seconds() / 3600 if oldest_files['10m'] else 0
+        hours_1h = (now - oldest_files['1h']).total_seconds() / 3600 if oldest_files['1h'] else 0
+        hours_6h = (now - oldest_files['6h']).total_seconds() / 3600 if oldest_files['6h'] else 0
+        
+        # Full coverage requires ALL types
+        if hours_10m > 0 and hours_1h > 0 and hours_6h > 0:
+            full_coverage_hours_back = min(hours_10m, hours_1h, hours_6h)
+        else:
+            full_coverage_hours_back = 0
+        
         full_coverage_days_back = round(full_coverage_hours_back / 24, 2) if full_coverage_hours_back > 0 else 0
         
-        response['collection_stats'] = {
+        collection_stats = {
             'active_stations': active_station_count,
             'stations_with_files': stations_with_files,
             'missing_stations': missing_stations if missing_stations > 0 else None,
@@ -315,7 +314,7 @@ def get_status():
             }
         }
         
-        response['r2_storage'] = {
+        r2_storage = {
             'total_files': total_files,
             'file_counts': file_counts,
             'total_size_mb': round(storage_mb, 2),
@@ -324,16 +323,34 @@ def get_status():
         }
         
     except Exception as e:
-        response['r2_storage'] = {
+        r2_storage = {
             'error': str(e)
         }
+        collection_stats = {}  # Empty on error
     
-    # Add remaining status fields
-    response['started_at'] = status['started_at']
-    response['total_runs'] = status['total_runs']
-    response['successful_runs'] = status['successful_runs']
+    # Build final response in explicit order: runtime fields FIRST, then data
+    # Use json.dumps with sort_keys=False to preserve order
+    import json as json_module
+    from flask import Response
     
-    return jsonify(response)
+    final_response = {
+        'version': status['version'],
+        'currently_running': status['currently_running'],
+        'deployed_at': status['deployed_at'],
+        'failed_runs': status['failed_runs'],
+        'last_run': status['last_run'],
+        'next_run': status['next_run'],
+        'collection_stats': collection_stats,
+        'r2_storage': r2_storage,
+        'started_at': status['started_at'],
+        'total_runs': status['total_runs'],
+        'successful_runs': status['successful_runs']
+    }
+    
+    return Response(
+        json_module.dumps(final_response, indent=2, sort_keys=False),
+        mimetype='application/json'
+    )
 
 @app.route('/stations')
 def get_stations():
@@ -1192,8 +1209,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.06 Add: Coverage depth metrics - full coverage hours/days back tracking")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.06 Add: Coverage depth metrics - full coverage hours/days back tracking")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.07 Fix: Coverage depth requires ALL types, JSON order preservation, startup scripts, machine-readable docs")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.07 Fix: Coverage depth requires ALL types, JSON order preservation, startup scripts, machine-readable docs")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

@@ -716,3 +716,21 @@ data/2025/11/HV/kilauea/OBL/--/HHZ/
 
 ---
 
+### 2025-11-04 - Coverage Fixes & Documentation (v1.07)
+
+**Version:** v1.07  
+**Commit:** v1.07 Fix: Coverage depth requires ALL types, JSON order preservation, startup scripts, machine-readable docs
+
+**Changes:**
+- Fixed coverage depth logic: `full_coverage` now requires ALL file types (10m, 1h, AND 6h) - returns 0 if any type is missing
+- Added units to `by_type` coverage values: now shows `"1.6h"` instead of `1.6`
+- Fixed JSON response ordering: switched from `jsonify()` to `json.dumps(sort_keys=False)` to preserve field order
+- Created `start_local_collector.sh`: startup script for data collector (port 5005 locally, avoids macOS AirPlay conflict)
+- Updated `start_local_server.sh`: added port cleanup on startup
+- Deleted `start_server_5005.sh`: consolidated to single Flask API startup script
+- Created `README_MACHINE_READABLE.md`: comprehensive API reference optimized for programmatic access
+
+**Key Fix:** "Full coverage" now truly means full coverage - if 6h files don't exist, full coverage = 0. Previously showed misleading values based on 10m/1h files alone.
+
+---
+
