@@ -699,3 +699,20 @@ data/2025/11/HV/kilauea/OBL/--/HHZ/
 
 ---
 
+### 2025-11-04 - Coverage Depth Metrics (v1.06)
+
+**Version:** v1.06  
+**Commit:** v1.06 Add: Coverage depth metrics - full coverage hours/days back tracking
+
+**Changes:**
+- Added coverage depth tracking to status endpoint
+- Calculates how far back we have files for each type (10m, 1h, 6h)
+- Reports `full_coverage_hours_back` - minimum across all types (limiting factor)
+- Reports `full_coverage_days_back` - same metric in days
+- Reports `by_type` breakdown showing hours back for each file type
+- Scans all files in R2 across all folders to find oldest timestamps
+
+**Use Case:** Shows how far back we have complete data coverage - useful for knowing historical data availability and identifying when 6h files start being created (which determines full coverage depth).
+
+---
+

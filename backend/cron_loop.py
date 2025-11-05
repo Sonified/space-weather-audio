@@ -4,7 +4,7 @@ Continuous cron loop for Railway deployment
 Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
 Version: v1.00
 """
-__version__ = "2025_11_04_v1.05"
+__version__ = "2025_11_04_v1.06"
 import time
 import subprocess
 import sys
@@ -99,6 +99,7 @@ def get_status():
         
         file_counts = {'10m': 0, '1h': 0, '6h': 0, 'metadata': 0, 'other': 0}
         station_file_counts = {}  # Track files per station: {station_key: {'10m': count, '1h': count, '6h': count}}
+        oldest_files = {'10m': None, '1h': None, '6h': None}  # Track oldest file timestamp by type
         total_size = 0
         latest_modified = None
         
@@ -130,7 +131,7 @@ def get_status():
                     if network and station and location and channel:
                         station_key = f"{network}_{station}_{location}_{channel}"
                 
-                # Count by type
+                # Count by type and track oldest files
                 file_type = None
                 if '/10m/' in key:
                     file_counts['10m'] += 1
@@ -145,6 +146,32 @@ def get_status():
                     file_counts['metadata'] += 1
                 else:
                     file_counts['other'] += 1
+                
+                # Extract timestamp from filename to find oldest files
+                if file_type and '.bin.zst' in key:
+                    # Filename format: NETWORK_STATION_LOCATION_CHANNEL_RATEHz_YYYY-MM-DD-HH-MM-SS_to_YYYY-MM-DD-HH-MM-SS.bin.zst
+                    filename = key.split('/')[-1]
+                    try:
+                        # Extract start timestamp (before "_to_")
+                        if '_to_' in filename:
+                            start_part = filename.split('_to_')[0]
+                            # The timestamp is in format YYYY-MM-DD-HH-MM-SS (19 chars with dashes)
+                            # Split by underscore and find the part that matches this pattern
+                            parts = start_part.split('_')
+                            for part in parts:
+                                # Check if this part matches YYYY-MM-DD-HH-MM-SS pattern (19 chars, 5 dashes)
+                                if len(part) == 19 and part.count('-') == 5:
+                                    # Parse: YYYY-MM-DD-HH-MM-SS
+                                    file_timestamp = datetime.strptime(part, '%Y-%m-%d-%H-%M-%S')
+                                    file_timestamp = file_timestamp.replace(tzinfo=timezone.utc)
+                                    
+                                    # Track oldest file for this type
+                                    if oldest_files[file_type] is None or file_timestamp < oldest_files[file_type]:
+                                        oldest_files[file_type] = file_timestamp
+                                    break
+                    except (ValueError, IndexError):
+                        # Skip if we can't parse the timestamp
+                        pass
                 
                 # Track per-station counts for data files (not metadata)
                 if station_key and file_type:
@@ -238,11 +265,31 @@ def get_status():
         
         all_perfect = (file_counts['10m'] == expected_10m and stats_10m['is_uniform'] and not is_running)
         
+        # Calculate coverage depth - how far back we have files
+        now = datetime.now(timezone.utc)
+        coverage_by_type = {}
+        for file_type in ['10m', '1h', '6h']:
+            if oldest_files[file_type] is not None:
+                hours_back = (now - oldest_files[file_type]).total_seconds() / 3600
+                coverage_by_type[file_type] = round(hours_back, 1)
+            else:
+                coverage_by_type[file_type] = 0
+        
+        # Full coverage = minimum across all types (limiting factor)
+        coverage_values = [v for v in coverage_by_type.values() if v > 0]
+        full_coverage_hours_back = min(coverage_values) if coverage_values else 0
+        full_coverage_days_back = round(full_coverage_hours_back / 24, 2) if full_coverage_hours_back > 0 else 0
+        
         response['collection_stats'] = {
             'active_stations': active_station_count,
             'stations_with_files': stations_with_files,
             'missing_stations': missing_stations if missing_stations > 0 else None,
             'collection_cycles': collection_cycles,
+            'coverage_depth': {
+                'full_coverage_hours_back': round(full_coverage_hours_back, 1),
+                'full_coverage_days_back': full_coverage_days_back,
+                'by_type': coverage_by_type
+            },
             'files_per_station': {
                 '10m': stats_10m,
                 '1h': stats_1h,
@@ -1145,8 +1192,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.05 Fix: Status endpoint improvements - runtime fields at top, per-station file tracking, RUNNING status during active collection")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.05 Fix: Status endpoint improvements - runtime fields at top, per-station file tracking, RUNNING status during active collection")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.06 Add: Coverage depth metrics - full coverage hours/days back tracking")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.06 Add: Coverage depth metrics - full coverage hours/days back tracking")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
