@@ -135,36 +135,17 @@ def get_status():
         collection_cycles = file_counts['10m'] // active_station_count if active_station_count > 0 else 0
         files_per_station = file_counts['10m'] / active_station_count if active_station_count > 0 else 0
         
-        # Calculate expected files for each type based on time elapsed
-        from datetime import datetime, timezone
-        started = datetime.fromisoformat(status['started_at'])
-        now = datetime.now(timezone.utc)
-        elapsed_hours = (now - started).total_seconds() / 3600
-        
-        # Expected hourly files: one per hour boundary crossed
-        # Cron runs at :02, so we get 1h files at top of each hour
-        expected_1h = int(elapsed_hours) * active_station_count
-        
-        # Expected 6h files: one per 6-hour boundary (00:02, 06:02, 12:02, 18:02)
-        # Count how many 6h boundaries we've crossed since start
-        start_hour = started.hour
-        current_hour = now.hour
-        boundaries_6h = [0, 6, 12, 18]
-        crossed_6h = 0
-        for boundary in boundaries_6h:
-            if start_hour < boundary <= current_hour or (current_hour < start_hour and boundary <= current_hour):
-                crossed_6h += 1
-        expected_6h = crossed_6h * active_station_count
-        
-        # Expected 10m files
+        # Expected 10m files (reliable - based on collection cycles)
         expected_10m = collection_cycles * active_station_count
         
-        # Status for each type
-        all_perfect = (
-            file_counts['10m'] == expected_10m and
-            file_counts['1h'] == expected_1h and
-            file_counts['6h'] == expected_6h
-        )
+        # For 1h and 6h, just validate we have SOME files per station
+        # Don't try to calculate expected based on time since deployment
+        # (files may exist from before this deployment)
+        status_10m = 'PERFECT' if file_counts['10m'] == expected_10m else 'MISSING'
+        status_1h = 'OK' if file_counts['1h'] >= active_station_count or file_counts['1h'] == 0 else 'INCOMPLETE'
+        status_6h = 'OK' if file_counts['6h'] >= active_station_count or file_counts['6h'] == 0 else 'INCOMPLETE'
+        
+        all_perfect = (file_counts['10m'] == expected_10m)
         
         response['collection_stats'] = {
             'active_stations': active_station_count,
@@ -178,19 +159,19 @@ def get_status():
                 '10m': {
                     'actual': file_counts['10m'],
                     'expected': expected_10m,
-                    'status': '✓' if file_counts['10m'] == expected_10m else '⚠'
+                    'status': status_10m
                 },
                 '1h': {
-                    'actual': file_counts['1h'],
-                    'expected': expected_1h,
-                    'status': '✓' if file_counts['1h'] == expected_1h else '⚠'
+                    'count': file_counts['1h'],
+                    'per_station': round(file_counts['1h'] / active_station_count, 1) if active_station_count > 0 else 0,
+                    'status': status_1h
                 },
                 '6h': {
-                    'actual': file_counts['6h'],
-                    'expected': expected_6h,
-                    'status': '✓' if file_counts['6h'] == expected_6h else '⚠'
+                    'count': file_counts['6h'],
+                    'per_station': round(file_counts['6h'] / active_station_count, 1) if active_station_count > 0 else 0,
+                    'status': status_6h
                 },
-                'overall': '✓ All Perfect' if all_perfect else '⚠ Some Missing'
+                'overall': 'PERFECT' if all_perfect else 'OK'
             }
         }
         
