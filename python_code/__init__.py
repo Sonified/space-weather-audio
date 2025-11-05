@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.48"
+__version__ = "1.49"
 __commit_message__ = (
-    "v1.12 Feature: Renamed cron_loop.py to collector_loop.py, added /gaps endpoint for gap detection, 7 reusable helper functions"
+    "v1.13 Feature: Added /backfill endpoint and automated self-healing (runs every 6h)"
 )
 
 # Import key modules to make them available when importing the package

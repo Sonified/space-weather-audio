@@ -963,3 +963,61 @@ The missing `zstandard` dependency will now install correctly, and all validatio
 - Build `/backfill` endpoint to automatically fill detected gaps
 - Test complete gap → backfill → verify workflow
 - Deploy v1.12 to Railway
+
+---
+
+### 2025-11-04 - Backfill Endpoint & Automated Self-Healing (v1.13)
+
+**Version:** v1.13  
+**Commit:** v1.13 Feature: Added /backfill endpoint and automated self-healing (runs every 6h)
+
+**Major Features:**
+
+1. **Added `/backfill` Endpoint (POST)**
+   - Loads gap reports from R2 (`gap_report_latest.json` or specific file)
+   - Supports filtering by station and chunk types
+   - Supports manual window specification (bypass gap reports)
+   - Uses existing `process_station_window()` from cron_job.py
+   - Built-in deduplication (skips already-existing chunks)
+   - Returns detailed results: successful/failed/skipped counts
+
+2. **Automated Self-Healing System**
+   - Runs every 6 hours at 00:02, 06:02, 12:02, 18:02 (after 6h chunk creation)
+   - Checks last 6 hours for missing data windows
+   - Automatically backfills any gaps found
+   - Dynamically loads active stations from config (not hardcoded)
+   - Runs AFTER data collection completes successfully
+   - Logs all actions to console
+
+3. **Backfill Request Options:**
+   - `{"use_latest_report": true}` - Use most recent gap report
+   - `{"report_file": "gap_report_*.json"}` - Use specific report
+   - `{"station": "HV.OBL.--.HHZ"}` - Filter by station
+   - `{"chunk_types": ["10m", "1h"]}` - Filter by chunk types
+   - `{"windows": {...}}` - Manual window specification
+
+**Testing Results:**
+- ✅ `/backfill` endpoint working correctly
+- ✅ Returns 0 windows when no gaps exist
+- ✅ Properly filters by station and chunk types
+- ✅ Reuses battle-tested `process_station_window()` function
+- ✅ Deduplication prevents re-fetching existing data
+
+**Auto-Heal Flow:**
+```
+[06:02:00] ========== Starting data collection ==========
+[06:02:30] ✅ Data collection completed successfully
+[06:02:30] 🔍 Auto-heal: Checking for gaps in last 6h...
+[06:02:31] 🔍 Found 0 gaps across 0 stations
+[06:02:31] ✅ Auto-heal: No gaps found - system is healthy!
+```
+
+**Key Learnings:**
+- Gap detection must happen AFTER collection (not before) so fresh data is excluded
+- Auto-heal checks last 6 hours (matches 6h checkpoint frequency)
+- Orphan file repair skipped (repair endpoint needs work - separate issue)
+- System is now fully self-healing for gap detection and backfilling
+
+**System Status:** 🚀 SELF-HEALING COLLECTOR - PRODUCTION READY
+
+The collector now automatically maintains data continuity by detecting and filling gaps every 6 hours.

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Seismic Data Collector Service for Railway Deployment
-Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
-Provides HTTP API for health monitoring, status, validation, and gap detection
+Continuous cron loop for Railway deployment
+Runs cron_job.py every 10 minutes at :02, :12, :22, :32, :42, :52
+Version: v1.00
 """
-__version__ = "2025_11_05_v1.13"
+__version__ = "2025_11_05_v1.11"
 import time
 import subprocess
 import sys
@@ -767,256 +767,6 @@ def gaps_detection(mode):
         import traceback
         return jsonify({
             'error': f'Gap detection failed: {str(e)}',
-            'traceback': traceback.format_exc()
-        }), 500
-
-
-@app.route('/backfill', methods=['POST'])
-def backfill():
-    """
-    Backfill missing data windows by fetching from IRIS.
-    
-    Request body options:
-        {"use_latest_report": true}  - Use latest gap report
-        {"report_file": "gap_report_*.json"}  - Use specific report
-        {"station": "HV.OBL.--.HHZ"}  - Filter by station
-        {"chunk_types": ["10m", "1h"]}  - Filter by chunk types
-        {"windows": {...}}  - Manual windows (override)
-    
-    Returns:
-        JSON report with backfill results
-    """
-    from flask import request
-    from datetime import timedelta
-    import sys
-    
-    # Import process_station_window from cron_job.py
-    sys.path.insert(0, str(Path(__file__).parent))
-    from cron_job import process_station_window
-    
-    try:
-        data = request.get_json() or {}
-        
-        # Get R2 client
-        s3 = get_s3_client()
-        
-        # Determine what to backfill
-        if 'windows' in data:
-            # Manual windows mode
-            station_id = data.get('station')
-            if not station_id:
-                return jsonify({'error': 'Manual windows mode requires "station" parameter'}), 400
-            
-            # Parse station ID (e.g., "HV.OBL.--.HHZ")
-            parts = station_id.split('.')
-            if len(parts) != 4:
-                return jsonify({'error': 'Invalid station format. Use: NETWORK.STATION.LOCATION.CHANNEL'}), 400
-            
-            network, station, location, channel = parts
-            
-            # Find station config for volcano and sample_rate
-            active_stations = get_active_stations_list()
-            station_config = None
-            for st in active_stations:
-                if (st['network'] == network and st['station'] == station and 
-                    st['channel'] == channel and st.get('location', '') == location.replace('--', '')):
-                    station_config = st
-                    break
-            
-            if not station_config:
-                return jsonify({'error': f'Station {station_id} not found in active stations'}), 404
-            
-            volcano = station_config['volcano']
-            sample_rate = station_config['sample_rate']
-            
-            # Build backfill tasks from manual windows
-            backfill_tasks = []
-            for chunk_type, windows in data['windows'].items():
-                for window in windows:
-                    start_time = datetime.fromisoformat(window['start'].replace('Z', '+00:00'))
-                    end_time = datetime.fromisoformat(window['end'].replace('Z', '+00:00'))
-                    backfill_tasks.append({
-                        'network': network,
-                        'volcano': volcano,
-                        'station': station,
-                        'location': location.replace('--', ''),
-                        'channel': channel,
-                        'sample_rate': sample_rate,
-                        'chunk_type': chunk_type,
-                        'start_time': start_time,
-                        'end_time': end_time
-                    })
-            
-            source = 'manual_windows'
-        
-        else:
-            # Report-based mode
-            report_file = data.get('report_file', 'gap_report_latest.json')
-            if data.get('use_latest_report', True):
-                report_file = 'gap_report_latest.json'
-            
-            # Load gap report from R2
-            try:
-                response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=f'collector_logs/{report_file}')
-                gap_report = json.loads(response['Body'].read().decode('utf-8'))
-            except s3.exceptions.NoSuchKey:
-                return jsonify({'error': f'Gap report not found: {report_file}. Run /gaps first.'}), 404
-            
-            # Apply filters
-            station_filter = data.get('station')
-            chunk_type_filter = data.get('chunk_types', ['10m', '1h', '6h'])
-            
-            # Build backfill tasks from gap report
-            backfill_tasks = []
-            for station_info in gap_report['stations']:
-                station_id = f"{station_info['network']}.{station_info['station']}.{station_info['location']}.{station_info['channel']}"
-                
-                # Apply station filter
-                if station_filter and station_id != station_filter:
-                    continue
-                
-                # Get station config for volcano and sample_rate
-                active_stations = get_active_stations_list()
-                station_config = None
-                for st in active_stations:
-                    loc = st.get('location', '').replace('', '--')
-                    if loc == '':
-                        loc = '--'
-                    if (st['network'] == station_info['network'] and 
-                        st['station'] == station_info['station'] and 
-                        st['channel'] == station_info['channel'] and 
-                        loc == station_info['location']):
-                        station_config = st
-                        break
-                
-                if not station_config:
-                    continue
-                
-                # Process gaps for this station
-                for chunk_type in chunk_type_filter:
-                    if chunk_type not in station_info['gaps']:
-                        continue
-                    
-                    for gap in station_info['gaps'][chunk_type]:
-                        start_time = datetime.fromisoformat(gap['start'].replace('Z', '+00:00'))
-                        end_time = datetime.fromisoformat(gap['end'].replace('Z', '+00:00'))
-                        
-                        backfill_tasks.append({
-                            'network': station_info['network'],
-                            'volcano': station_config['volcano'],
-                            'station': station_info['station'],
-                            'location': station_info['location'].replace('--', ''),
-                            'channel': station_info['channel'],
-                            'sample_rate': station_config['sample_rate'],
-                            'chunk_type': chunk_type,
-                            'start_time': start_time,
-                            'end_time': end_time
-                        })
-            
-            source = report_file
-        
-        # Execute backfill
-        now = datetime.now(timezone.utc)
-        backfill_timestamp = now.strftime('%Y-%m-%dT%H-%M-%SZ')
-        backfill_id = f"backfill_{backfill_timestamp}"
-        
-        results = {
-            'successful': 0,
-            'failed': 0,
-            'skipped': 0
-        }
-        
-        details = []
-        
-        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] Starting backfill: {len(backfill_tasks)} windows")
-        
-        for i, task in enumerate(backfill_tasks):
-            start_time = time.time()
-            
-            station_id = f"{task['network']}.{task['station']}.{task['location'] or '--'}.{task['channel']}"
-            print(f"[{i+1}/{len(backfill_tasks)}] {station_id} {task['chunk_type']} {task['start_time']} to {task['end_time']}")
-            
-            # Call process_station_window from cron_job.py
-            status_result, error_info = process_station_window(
-                network=task['network'],
-                station=task['station'],
-                location=task['location'],
-                channel=task['channel'],
-                volcano=task['volcano'],
-                sample_rate=task['sample_rate'],
-                start_time=task['start_time'],
-                end_time=task['end_time'],
-                chunk_type=task['chunk_type']
-            )
-            
-            elapsed = time.time() - start_time
-            
-            # Track result
-            if status_result == 'success':
-                results['successful'] += 1
-                detail = {
-                    'station': station_id,
-                    'chunk_type': task['chunk_type'],
-                    'window': {
-                        'start': task['start_time'].strftime('%Y-%m-%dT%H:%M:%SZ'),
-                        'end': task['end_time'].strftime('%Y-%m-%dT%H:%M:%SZ')
-                    },
-                    'status': 'success',
-                    'elapsed_seconds': round(elapsed, 2)
-                }
-            elif status_result == 'skipped':
-                results['skipped'] += 1
-                detail = {
-                    'station': station_id,
-                    'chunk_type': task['chunk_type'],
-                    'window': {
-                        'start': task['start_time'].strftime('%Y-%m-%dT%H:%M:%SZ'),
-                        'end': task['end_time'].strftime('%Y-%m-%dT%H:%M:%SZ')
-                    },
-                    'status': 'skipped',
-                    'reason': 'already_exists'
-                }
-            else:  # failed
-                results['failed'] += 1
-                detail = {
-                    'station': station_id,
-                    'chunk_type': task['chunk_type'],
-                    'window': {
-                        'start': task['start_time'].strftime('%Y-%m-%dT%H:%M:%SZ'),
-                        'end': task['end_time'].strftime('%Y-%m-%dT%H:%M:%SZ')
-                    },
-                    'status': 'failed',
-                    'error': error_info.get('error') if error_info else 'Unknown error'
-                }
-            
-            details.append(detail)
-        
-        # Build response
-        response = {
-            'backfill_id': backfill_id,
-            'started_at': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'source': source,
-            'filters': {
-                'station': data.get('station'),
-                'chunk_types': data.get('chunk_types', ['10m', '1h', '6h'])
-            },
-            'total_windows': len(backfill_tasks),
-            'progress': results,
-            'details': details,
-            'summary': {
-                'duration_seconds': round(time.time() - now.timestamp(), 2),
-                'success_rate': round(results['successful'] / len(backfill_tasks) * 100, 1) if backfill_tasks else 0
-            }
-        }
-        
-        print(f"Backfill complete: {results['successful']} success, {results['failed']} failed, {results['skipped']} skipped")
-        
-        return jsonify(response)
-    
-    except Exception as e:
-        import traceback
-        return jsonify({
-            'error': f'Backfill failed: {str(e)}',
             'traceback': traceback.format_exc()
         }), 500
 
@@ -2286,118 +2036,12 @@ def wait_until_next_run():
     time.sleep(seconds_until_next_run)
 
 
-def auto_heal_gaps():
-    """
-    Automated self-healing: Detect and backfill gaps from last 6 hours.
-    Runs every 6 hours (at 00:02, 06:02, 12:02, 18:02).
-    Checks all active stations from stations_config.json.
-    """
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔍 Auto-heal: Checking for gaps in last 6h...")
-    
-    try:
-        # Get R2 client and active stations
-        s3 = get_s3_client()
-        active_stations = get_active_stations_list()  # Dynamically loads all active stations
-        
-        # Detect gaps in last 6 hours
-        now = datetime.now(timezone.utc)
-        from datetime import timedelta
-        start_time = now - timedelta(hours=6)
-        
-        # Find earliest file to clamp start time
-        earliest_file = find_earliest_data_timestamp(s3)
-        if earliest_file and start_time < earliest_file:
-            start_time = earliest_file
-        
-        # Run gap detection for all stations
-        total_gaps = 0
-        gaps_by_station = []
-        
-        for station_info in active_stations:
-            gaps = detect_gaps_for_station(
-                s3, 
-                station_info['network'], 
-                station_info['volcano'], 
-                station_info['station'],
-                station_info.get('location', ''), 
-                station_info['channel'], 
-                station_info['sample_rate'],
-                start_time, now,
-                chunk_types=['10m', '1h', '6h'],
-                currently_running=False  # Auto-heal runs between collections
-            )
-            
-            station_gap_count = sum(len(gaps[ct]) for ct in ['10m', '1h', '6h'])
-            if station_gap_count > 0:
-                total_gaps += station_gap_count
-                gaps_by_station.append({
-                    'station_info': station_info,
-                    'gaps': gaps
-                })
-        
-        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔍 Found {total_gaps} gaps across {len(gaps_by_station)} stations")
-        
-        # If gaps found, auto-backfill
-        if total_gaps > 0:
-            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔧 Auto-heal: Backfilling {total_gaps} gaps...")
-            
-            # Import process_station_window
-            import sys
-            sys.path.insert(0, str(Path(__file__).parent))
-            from cron_job import process_station_window
-            
-            healed = 0
-            failed = 0
-            skipped = 0
-            
-            for station_data in gaps_by_station:
-                station_info = station_data['station_info']
-                gaps = station_data['gaps']
-                
-                for chunk_type in ['10m', '1h', '6h']:
-                    for gap in gaps[chunk_type]:
-                        start_time = datetime.fromisoformat(gap['start'].replace('Z', '+00:00'))
-                        end_time = datetime.fromisoformat(gap['end'].replace('Z', '+00:00'))
-                        
-                        status_result, error_info = process_station_window(
-                            network=station_info['network'],
-                            station=station_info['station'],
-                            location=station_info.get('location', ''),
-                            channel=station_info['channel'],
-                            volcano=station_info['volcano'],
-                            sample_rate=station_info['sample_rate'],
-                            start_time=start_time,
-                            end_time=end_time,
-                            chunk_type=chunk_type
-                        )
-                        
-                        if status_result == 'success':
-                            healed += 1
-                        elif status_result == 'skipped':
-                            skipped += 1
-                        else:
-                            failed += 1
-            
-            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ✅ Auto-heal complete: {healed} healed, {failed} failed, {skipped} skipped")
-        else:
-            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ✅ Auto-heal: No gaps found - system is healthy!")
-    
-    except Exception as e:
-        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ Auto-heal failed: {e}")
-        import traceback
-        traceback.print_exc()
-
-
 def run_cron_job():
     """Execute the cron job"""
     status['currently_running'] = True
     status['total_runs'] += 1
     
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ========== Starting data collection ==========")
-    
-    # Check if this is a 6-hour checkpoint (will trigger auto-heal AFTER collection)
-    now = datetime.now(timezone.utc)
-    should_auto_heal = (now.hour % 6 == 0 and now.minute in [0, 1, 2, 3, 4])
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ========== Starting cron job ==========")
     
     try:
         # Get the directory where this script is located
@@ -2411,12 +2055,8 @@ def run_cron_job():
         )
         
         if result.returncode == 0:
-            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ✅ Data collection completed successfully")
+            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ✅ Cron job completed successfully")
             status['successful_runs'] += 1
-            
-            # Run auto-heal AFTER successful collection at 6-hour checkpoints
-            if should_auto_heal:
-                auto_heal_gaps()
         else:
             failure_time = datetime.now(timezone.utc).isoformat()
             error_msg = f"Exit code {result.returncode}"
@@ -2499,10 +2139,10 @@ def run_scheduler():
 
 def main():
     """Main entry point - starts Flask server and scheduler"""
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Cron loop started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.13 Feature: Added /backfill endpoint and automated self-healing (runs every 6h)")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.13 Feature: Added /backfill endpoint and automated self-healing (runs every 6h)")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.11 Fix: Added zstandard to root requirements.txt, validation bug fixes, local timezone display, concise error summaries")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.11 Fix: Added zstandard to root requirements.txt, validation bug fixes, local timezone display, concise error summaries")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
