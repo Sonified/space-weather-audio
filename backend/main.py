@@ -840,9 +840,8 @@ def stream_zarr(volcano, hours):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Register progressive chunk test endpoint
-from progressive_test_endpoint import create_progressive_test_endpoint
-app = create_progressive_test_endpoint(app)
+# NOTE: Progressive test endpoint removed - it's in backend/tests/ folder
+# If needed for testing, run backend/tests/progressive_test_endpoint.py separately
 
 @app.route('/test_iris_to_r2', methods=['GET'])
 def test_iris_to_r2():

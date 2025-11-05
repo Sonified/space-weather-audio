@@ -48,7 +48,7 @@ python test_audio_stream_local.py
 **Response:**
 ```json
 {
-  "version": "2025_11_04_v1.09",
+  "version": "2025_11_05_v1.51",  // Example only - do not update
   "currently_running": false,
   "deployed_at": "2025-11-05T04:54:44.726511+00:00",
   "failed_runs": 0,

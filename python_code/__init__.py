@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.51"
+__version__ = "1.52"
 __commit_message__ = (
-    "v1.15 Feature: Smart gap detection using last_run timestamps, collection duration tracking"
+    "v1.52 Fix: Removed test endpoint import causing Railway crash, unified all versions to v1.52"
 )
 
 # Import key modules to make them available when importing the package
