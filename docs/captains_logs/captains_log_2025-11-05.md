@@ -1,5 +1,61 @@
 # Captain's Log - November 5, 2025
 
+## Package Cleanup and Function Audit (v1.53)
+
+**Version:** v1.53  
+**Commit:** v1.53 Refactor: Removed deprecated packages (xarray, zarr, numcodecs, s3fs) and broken imports, created function audit
+
+### Major Cleanup:
+
+**Packages Removed from `backend/requirements.txt`:**
+- ❌ `xarray>=2023.10.0` - Only used by deprecated `/api/zarr` endpoint
+- ❌ `zarr>=2.16.0` - Only used by deprecated zarr endpoints
+- ❌ `numcodecs>=0.11.0` - Only used by deprecated compression experiments
+- ❌ `s3fs>=2023.10.0` - Not used anywhere in production
+
+**Broken Imports Removed from `backend/main.py`:**
+- Removed `import xarray as xr`
+- Removed `import zarr`
+- Removed `from numcodecs import Blosc, Zstd, Zlib`
+
+### Function Audit Created:
+
+**File:** `backend/FUNCTION_AUDIT.md`
+
+Comprehensive audit of all functions and endpoints in `backend/main.py`:
+- **13 items to DELETE** (850+ lines of dead code)
+  - 5 helper functions (old cache system, zarr-specific)
+  - 8 unused endpoints (including broken `/api/zarr`)
+- **7 items to KEEP**
+  - 2 core functions (CORS, config loading)
+  - 1 health check
+  - 2 production endpoints used by R2 Worker
+  - Audio streaming blueprint
+
+### Production Verification:
+
+✅ **Confirmed working paths:**
+- `index.html` → `/api/stream-audio` (in `audio_stream.py`)
+- R2 Worker → `/api/request` and `/api/request-stream` (in `main.py`)
+- Collector → R2 via boto3 (in `collector_loop.py`)
+
+All use **only** the packages we kept: flask, numpy, scipy, obspy, zstandard, boto3, requests, pytz
+
+### Discovery:
+
+While auditing, discovered architectural questions about R2 Worker necessity:
+- Collector already uploads everything to R2 with perfect metadata
+- R2 authentication prevents direct browser access
+- Options: Make R2 public, use presigned URLs, or keep Worker proxy
+- **Deferred for future architectural review**
+
+### Next Steps:
+1. Push cleanup changes (this commit)
+2. After breakfast: Decide on R2 access architecture
+3. Delete 13 unused functions/endpoints (~850 lines, 59% reduction)
+
+---
+
 ## Version Unification and Railway Crash Fix (v1.52)
 
 **Version:** v1.52  

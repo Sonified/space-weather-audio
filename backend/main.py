@@ -4,14 +4,11 @@ from obspy.clients.fdsn import Client
 from obspy import UTCDateTime
 import numpy as np
 from scipy.io import wavfile
-import xarray as xr
 import io
 import os
 import tempfile
 import shutil
 import json
-import zarr
-from numcodecs import Blosc, Zstd, Zlib
 from pathlib import Path
 import time
 import gzip

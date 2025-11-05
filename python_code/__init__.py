@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.52"
+__version__ = "1.53"
 __commit_message__ = (
-    "v1.52 Fix: Removed test endpoint import causing Railway crash, unified all versions to v1.52"
+    "v1.53 Refactor: Removed deprecated packages (xarray, zarr, numcodecs, s3fs) and broken imports, created function audit"
 )
 
 # Import key modules to make them available when importing the package

@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_05_v1.52"
+__version__ = "2025_11_05_v1.53"
 import time
 import subprocess
 import sys
@@ -46,9 +46,15 @@ def get_s3_client():
         region_name='auto'
     )
 
-def convert_to_local_time(utc_timestamp_str):
+def convert_to_local_time(utc_timestamp_str, target_timezone=None):
     """
-    Convert UTC timestamp string to local time string.
+    Convert UTC timestamp string to local/target time string.
+    
+    Args:
+        utc_timestamp_str: UTC timestamp string
+        target_timezone: Optional timezone name (e.g. 'America/Los_Angeles', 'US/Pacific', 'UTC')
+                        If None, returns UTC
+    
     Returns formatted string like '2025-11-05 10:32:01 PST' (with timezone name)
     """
     if not utc_timestamp_str:
@@ -56,7 +62,7 @@ def convert_to_local_time(utc_timestamp_str):
     
     try:
         from datetime import datetime
-        import time
+        import pytz
         
         # Parse UTC timestamp
         if utc_timestamp_str.endswith('Z'):
@@ -64,14 +70,23 @@ def convert_to_local_time(utc_timestamp_str):
         
         utc_dt = datetime.fromisoformat(utc_timestamp_str)
         
-        # Convert to local time
-        local_dt = utc_dt.astimezone()
+        # If no target timezone specified, return UTC
+        if not target_timezone:
+            return f"{utc_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC"
         
-        # Get timezone abbreviation (PST, EST, etc.)
-        tz_name = time.tzname[time.daylight]
-        
-        # Format: YYYY-MM-DD HH:MM:SS TZ
-        return f"{local_dt.strftime('%Y-%m-%d %H:%M:%S')} {tz_name}"
+        # Convert to target timezone
+        try:
+            tz = pytz.timezone(target_timezone)
+            local_dt = utc_dt.astimezone(tz)
+            
+            # Get timezone abbreviation (PST, EST, etc.)
+            tz_name = local_dt.strftime('%Z')
+            
+            # Format: YYYY-MM-DD HH:MM:SS TZ
+            return f"{local_dt.strftime('%Y-%m-%d %H:%M:%S')} {tz_name}"
+        except pytz.exceptions.UnknownTimeZoneError:
+            # Invalid timezone - return UTC with note
+            return f"{utc_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC (invalid timezone: {target_timezone})"
     except Exception as e:
         # If conversion fails, return original
         return utc_timestamp_str
@@ -1031,10 +1046,26 @@ def health():
 
 @app.route('/status')
 def get_status():
-    """Return detailed status with R2 file counts and storage info"""
+    """
+    Return detailed status with R2 file counts and storage info
+    
+    Query params:
+        timezone: Optional timezone name (e.g. 'America/Los_Angeles', 'US/Pacific', 'Europe/London')
+                  Default: UTC
+                  
+    Examples:
+        /status                                    # Returns times in UTC
+        /status?timezone=America/Los_Angeles       # Returns times in Pacific Time
+        /status?timezone=US/Pacific                # Same as above
+        /status?timezone=Europe/London             # Returns times in GMT/BST
+    """
     import boto3
     import json
     from pathlib import Path
+    from flask import request
+    
+    # Get timezone from query parameter (default to None = UTC)
+    target_timezone = request.args.get('timezone', None)
     
     # Collect data for response (build final response at the end)
     try:
@@ -1330,14 +1361,14 @@ def get_status():
         'log_location': f'R2: {FAILURE_LOG_KEY}' if status['failed_runs'] > 0 else None
     }
     
-    # Convert timestamps to local time for display
+    # Convert timestamps to target timezone for display
     def convert_failure_timestamps(failure_obj):
-        """Convert timestamps in failure object to local time"""
+        """Convert timestamps in failure object to target timezone"""
         if not failure_obj:
             return None
         converted = failure_obj.copy()
         if 'timestamp' in converted:
-            converted['timestamp'] = convert_to_local_time(converted['timestamp'])
+            converted['timestamp'] = convert_to_local_time(converted['timestamp'], target_timezone)
         return converted
     
     # Format last run duration
@@ -1353,18 +1384,18 @@ def get_status():
     
     final_response = {
         'version': status['version'],
-        'currently_running': status['currently_running'],
-        'deployed_at': convert_to_local_time(status['deployed_at']),
-        'last_run_started': convert_to_local_time(status['last_run_started']),
-        'last_run_completed': convert_to_local_time(status['last_run_completed']),
-        'last_run_duration': format_duration(status['last_run_duration_seconds']),
-        'next_run': convert_to_local_time(status['next_run']),
-        'collection_stats': collection_stats,
-        'r2_storage': r2_storage,
-        'started_at': convert_to_local_time(status['started_at']),
+        'started_at': convert_to_local_time(status['started_at'], target_timezone),
         'total_runs': status['total_runs'],
         'successful_runs': status['successful_runs'],
         'failed_runs': status['failed_runs'],
+        'currently_running': status['currently_running'],
+        'deployed_at': convert_to_local_time(status['deployed_at'], target_timezone),
+        'last_run_started': convert_to_local_time(status['last_run_started'], target_timezone),
+        'last_run_completed': convert_to_local_time(status['last_run_completed'], target_timezone),
+        'last_run_duration': format_duration(status['last_run_duration_seconds']),
+        'next_run': convert_to_local_time(status['next_run'], target_timezone),
+        'collection_stats': collection_stats,
+        'r2_storage': r2_storage,
         'failure_summary': {
             'total_failures': failure_summary['total_failures'],
             'has_failures': failure_summary['has_failures'],
@@ -2529,8 +2560,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.52 Fix: Removed test endpoint import causing Railway crash, unified all versions to v1.52")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.52 Fix: Removed test endpoint import causing Railway crash, unified all versions to v1.52")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.53 Refactor: Removed deprecated packages (xarray, zarr, numcodecs, s3fs) and broken imports, created function audit")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.53 Refactor: Removed deprecated packages (xarray, zarr, numcodecs, s3fs) and broken imports, created function audit")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
