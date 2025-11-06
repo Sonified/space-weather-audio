@@ -1,9 +1,55 @@
 # Captain's Log - November 5, 2025
 
-## Critical Bug Fixes: Day-Level Folders + Deduplication (v1.56)
+## Fixed boto3 Import Issue in Status Endpoint (v1.58)
 
-**Version:** v1.56  
-**Commit:** v1.56 Fix: Added day-level folder structure and fixed deduplication race condition
+**Version:** v1.58  
+**Commit:** v1.58 Fix: Move boto3 import to top level to fix /status endpoint crash
+
+### Problem:
+The `/status` endpoint was returning 500 Internal Server Error because boto3 was imported inside the function instead of at the module level. When the endpoint tried to import boto3, it hit a permission error with botocore's CRT (Common Runtime) extensions in the sandbox environment, causing the entire endpoint to crash.
+
+### Solution:
+- Moved `import boto3` from inside functions to the top of `collector_loop.py` (line 14)
+- Removed duplicate `import boto3` statements from inside functions:
+  - `get_s3_client()` (line 41)
+  - `/status` endpoint (line 1408)
+  - `/nuke` endpoint (line 3021)
+- boto3 now imports once at module load time, avoiding repeated import attempts
+
+### Additional Improvements:
+- **Improved `start_local_collector.sh`:**
+  - Added proper wait loop with 10-second timeout for port to be released
+  - Shows progress: "Still waiting... (Xs)"
+  - Verifies port is actually free before starting
+  - Prevents race conditions where port wasn't released yet
+
+- **Added workspace rule:** `script-running-with-permissions.mdc`
+  - Documents that boto3 scripts need `required_permissions: ['all']`
+  - Prevents future sandbox permission issues
+
+### Files Modified:
+- `backend/collector_loop.py` - Moved boto3 import to top level
+- `backend/start_local_collector.sh` - Added port wait loop with timeout
+- `.cursor/rules/script-running-with-permissions.mdc` - New rule for boto3 permissions
+
+### Impact:
+- ✅ `/status` endpoint now works correctly
+- ✅ Can monitor collection progress and R2 storage stats
+- ✅ No more 500 errors when querying status
+- ✅ Better process cleanup prevents zombie collectors
+
+### Debugging Journey:
+- Discovered 14 zombie collector processes running simultaneously (oops!)
+- Found that clicking too fast in R2 dashboard triggers rate limits (not our code!)
+- Created diagnostic script to test boto3 components
+- Identified that boto3 import fails in sandbox but works with full permissions
+
+---
+
+## Critical Bug Fixes: Day-Level Folders + Deduplication (v1.57)
+
+**Version:** v1.57  
+**Commit:** v1.57 Fix: Added day-level folder structure and fixed deduplication race condition
 
 ### Problems Discovered:
 
