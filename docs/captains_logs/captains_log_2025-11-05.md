@@ -1,5 +1,25 @@
 # Captain's Log - November 5, 2025
 
+## UI Improvements: Moved Simulate Buttons and Fixed Panel Styling (v1.60)
+
+**Version:** v1.60  
+**Commit:** v1.60 Fix: Moved simulate buttons to bottom and fixed panel background styling
+
+### Changes:
+- Moved "Simulate" panel (Participant Setup and Pre/Post Survey buttons) from top of page to bottom
+- Fixed CSS `nth-child` selectors that were targeting wrong panels after reordering
+- Updated panel backgrounds to match new order: volcano selection, playback controls, visualizations (dark), metrics, simulate buttons
+
+### Files Modified:
+- `index.html` - Reordered panels, updated CSS nth-child selectors (2nd through 6th panels)
+
+### Impact:
+- ✅ Simulate buttons now appear at bottom of interface
+- ✅ Panel backgrounds display correctly with new ordering
+- ✅ Visual hierarchy improved with simulate controls at bottom
+
+---
+
 ## Added Adaptive Anti-Aliasing Filter (v1.59)
 
 **Version:** v1.59  

@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.59"
+__version__ = "1.60"
 __commit_message__ = (
-    "v1.59 Feature: Added adaptive anti-aliasing filter for smooth slow-motion playback"
+    "v1.60 Fix: Moved simulate buttons to bottom and fixed panel background styling"
 )
 
 # Import key modules to make them available when importing the package

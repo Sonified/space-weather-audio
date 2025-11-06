@@ -55,53 +55,52 @@
             transform: translateZ(0);
         }
         
-        .panel:first-child {
-            padding-top: 12px;
-            padding-bottom: 12px;
-        }
-        
-        .panel:first-child label {
-            font-size: 18px;
-        }
-        
-        .panel:first-child select,
-        .panel:first-child input {
-            font-size: 16px;
-        }
-        
         .panel:nth-child(2) {
-            background: linear-gradient(135deg, rgba(255, 240, 240, 0.95) 0%, rgba(245, 210, 205, 0.95) 100%);
             padding-top: 12px;
             padding-bottom: 12px;
         }
         
         .panel:nth-child(2) label {
-            font-size: 15px;
+            font-size: 18px;
         }
         
         .panel:nth-child(2) select,
         .panel:nth-child(2) input {
-            font-size: 15px;
-        }
-        
-        .panel:nth-child(2) h2 {
-            font-size: calc(1.5em + 1px);
+            font-size: 16px;
         }
         
         .panel:nth-child(3) {
-            background: linear-gradient(135deg, rgba(255, 245, 245, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
-        }
-        
-        .panel:nth-child(4) {
-            background: linear-gradient(135deg, rgba(255, 245, 245, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
+            background: linear-gradient(135deg, rgba(255, 240, 240, 0.95) 0%, rgba(245, 210, 205, 0.95) 100%);
             padding-top: 12px;
             padding-bottom: 12px;
         }
         
-        .panel:nth-child(5) {
+        .panel:nth-child(3) label {
+            font-size: 15px;
+        }
+        
+        .panel:nth-child(3) select,
+        .panel:nth-child(3) input {
+            font-size: 15px;
+        }
+        
+        .panel:nth-child(3) h2 {
+            font-size: calc(1.5em + 1px);
+        }
+        
+        .panel:nth-child(4) {
             background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
             border: 1px solid rgba(200, 100, 100, 0.3);
             padding-top: 20px;
+        }
+        
+        .panel:nth-child(5) {
+            background: linear-gradient(135deg, rgba(255, 245, 245, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
+        }
+        
+        .panel:nth-child(6) {
+            padding-top: 12px;
+            padding-bottom: 12px;
         }
         
         .controls {
@@ -769,15 +768,6 @@
     <div class="container">
         <h1>IRIS Data Audification (Beta) 🚧</h1>
         
-        <!-- Simulate Row -->
-        <div class="panel" style="padding: 15px 20px;">
-            <div style="display: flex; gap: 15px; align-items: center;">
-                <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Simulate:</label>
-                <button type="button" onclick="openParticipantModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👤 Participant Setup</button>
-                <button type="button" onclick="openPrePostSurveyModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Pre/Post Survey</button>
-            </div>
-        </div>
-        
         <div class="panel">
             <div class="controls">
                 <div class="control-group">
@@ -907,6 +897,15 @@
                     <div class="metric-label">Playback Duration</div>
                     <div class="metric-value" id="playbackDuration">--</div>
                 </div>
+            </div>
+        </div>
+        
+        <!-- Simulate Row -->
+        <div class="panel" style="padding: 15px 20px;">
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Simulate:</label>
+                <button type="button" onclick="openParticipantModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👤 Participant Setup</button>
+                <button type="button" onclick="openPrePostSurveyModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Pre/Post Survey</button>
             </div>
         </div>
     </div>
