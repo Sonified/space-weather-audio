@@ -290,16 +290,16 @@ def process_station_window(network, station, location, channel, volcano, sample_
                 'gap_samples_filled': sum(g['samples_filled'] for g in gaps)
             }
             
-            # CRITICAL: Check again for duplicates AFTER loading fresh metadata
-            # This prevents race conditions where multiple processes pass the first check
-            start_time_str = chunk_meta['start']
-            existing_chunks = metadata['chunks'].get(chunk_type, [])
-            for existing_chunk in existing_chunks:
-                if existing_chunk['start'] == start_time_str:
-                    logger.info(f"  ⏭️  Chunk already exists (race condition detected), skipping append")
-                    return 'skipped', None
+            # DISABLED: Check again for duplicates AFTER loading fresh metadata
+            # TEMPORARILY DISABLED TO REDUCE R2 REQUESTS
+            # start_time_str = chunk_meta['start']
+            # existing_chunks = metadata['chunks'].get(chunk_type, [])
+            # for existing_chunk in existing_chunks:
+            #     if existing_chunk['start'] == start_time_str:
+            #         logger.info(f"  ⏭️  Chunk already exists (race condition detected), skipping append")
+            #         return 'skipped', None
             
-            # Safe to append now
+            # Append without checking (deduplication disabled)
             metadata['chunks'][chunk_type].append(chunk_meta)
             
             # SORT by start time (chronological)

@@ -7,16 +7,42 @@ echo ""
 
 # Clean up any existing process on port 5005
 echo "🧹 Cleaning up existing processes on port 5005..."
+
 # Kill any collector_loop.py processes first
-pgrep -f "python.*collector_loop.py" | xargs kill -9 2>/dev/null || true
+if pgrep -f "python.*collector_loop.py" >/dev/null 2>&1; then
+    echo "   Killing collector_loop.py processes..."
+    pkill -9 -f "python.*collector_loop.py" 
+    sleep 1
+fi
+
 # Kill by port
 if lsof -ti:5005 >/dev/null 2>&1; then
+    echo "   Killing process on port 5005..."
     lsof -ti:5005 | xargs kill -9 2>/dev/null
-    echo "   Killed process on port 5005"
+    sleep 1
 fi
-sleep 2
-echo "   Cleanup complete"
 
+# Wait for port to actually be free (with timeout)
+echo "   Waiting for port 5005 to be free..."
+MAX_WAIT=10
+WAITED=0
+while lsof -ti:5005 >/dev/null 2>&1; do
+    if [ $WAITED -ge $MAX_WAIT ]; then
+        echo "   ⚠️  Warning: Port still in use after ${MAX_WAIT}s, trying anyway..."
+        break
+    fi
+    sleep 1
+    WAITED=$((WAITED + 1))
+    echo "   Still waiting... (${WAITED}s)"
+done
+
+if ! lsof -ti:5005 >/dev/null 2>&1; then
+    echo "   ✅ Port 5005 is free"
+else
+    echo "   ⚠️  Port may still be in use"
+fi
+
+echo ""
 echo "Server will run on: http://localhost:5005"
 echo ""
 echo "Endpoints:"
@@ -27,12 +53,9 @@ echo "  - http://localhost:5005/validate/24h"
 echo ""
 echo "Press Ctrl+C to stop"
 echo ""
-echo "Note: Using port 5005 (port 5000 blocked by macOS AirPlay)"
-echo ""
 echo "=================================="
 echo ""
 
 # Run collector loop on port 5005
 cd "$(dirname "$0")"
 PORT=5005 python3 collector_loop.py
-

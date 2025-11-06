@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+When running Python scripts in the volcano-audio project that use boto3 (like collector_loop.py, cron_job.py, or any backend scripts), always use required_permissions: ['all'] because boto3's CRT extensions fail with permission errors in the sandbox.

@@ -11,6 +11,7 @@ import sys
 import os
 import json
 import threading
+import boto3
 from datetime import datetime, timezone
 from flask import Flask, jsonify
 from pathlib import Path
@@ -38,7 +39,6 @@ STATION_ACTIVATION_LOG_KEY = 'collector_logs/station_activations.json'
 
 def get_s3_client():
     """Get S3 client for R2"""
-    import boto3
     return boto3.client(
         's3',
         endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
@@ -1405,9 +1405,6 @@ def get_status():
         /status?timezone=US/Pacific                # Same as above
         /status?timezone=Europe/London             # Returns times in GMT/BST
     """
-    import boto3
-    import json
-    from pathlib import Path
     from flask import request
     
     # Get timezone from query parameter (default to None = UTC)
@@ -3018,8 +3015,6 @@ def nuke():
     Deletes everything under data/ prefix
     Use for development/testing only!
     """
-    import boto3
-    
     # Initialize R2 client
     R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
     R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
@@ -3084,6 +3079,26 @@ def nuke():
             'message': str(e),
             'deleted_count': deleted_count
         }), 500
+
+@app.route('/trigger')
+def trigger_collection():
+    """
+    🚀 Manually trigger a data collection cycle immediately
+    Bypasses the scheduler and runs collection right now
+    """
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🎯 Manual trigger requested")
+    
+    # Run collection in a background thread so we can return immediately
+    import threading
+    thread = threading.Thread(target=run_cron_job)
+    thread.start()
+    
+    return jsonify({
+        'status': 'triggered',
+        'message': 'Collection cycle started',
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'note': 'Check /status to monitor progress'
+    })
 
 def wait_until_next_run():
     """Wait until the next scheduled run time (:02, :12, :22, etc.)"""
@@ -3353,8 +3368,8 @@ def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.56 Fix: Coverage calculation now uses minimum files per station instead of average")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.56 Fix: Coverage calculation now uses minimum files per station instead of average")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.57 Fix: Added day-level folder structure and fixed deduplication race condition")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.57 Fix: Added day-level folder structure and fixed deduplication race condition")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
