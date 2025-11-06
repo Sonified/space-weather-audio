@@ -820,12 +820,432 @@ export default {
       }
     }
     
+    // ===== NEW: PROGRESSIVE STREAMING ENDPOINTS =====
+    
+    // Helper: Get volcano name for a station by listing R2 directories
+    async function findVolcanoForStation(bucket, network, station, location, channel, year, month, day) {
+      // Try common volcano names first (fast path)
+      const commonVolcanoes = ['kilauea', 'spurr', 'greatsitkin', 'shishaldin', 'maunaloa'];
+      
+      for (const volcano of commonVolcanoes) {
+        const testPath = `data/${year}/${month}/${day}/${network}/${volcano}/${station}/${location}/${channel}/`;
+        const listed = await bucket.list({ prefix: testPath, limit: 1 });
+        if (listed.objects.length > 0) {
+          console.log(`[Worker] Found volcano: ${volcano} for ${network}.${station}`);
+          return volcano;
+        }
+      }
+      
+      // Not found in common names - scan all possible volcanoes
+      const volcanoPrefix = `data/${year}/${month}/${day}/${network}/`;
+      const listed = await bucket.list({ prefix: volcanoPrefix, delimiter: '/' });
+      
+      for (const prefix of (listed.delimitedPrefixes || [])) {
+        const volcano = prefix.split('/')[4];  // Extract volcano name
+        const testPath = `data/${year}/${month}/${day}/${network}/${volcano}/${station}/${location}/${channel}/`;
+        const stationListed = await bucket.list({ prefix: testPath, limit: 1 });
+        if (stationListed.objects.length > 0) {
+          console.log(`[Worker] Found volcano: ${volcano} for ${network}.${station}`);
+          return volcano;
+        }
+      }
+      
+      return null;
+    }
+    
+    // Progressive Metadata endpoint - Smart chunk selection with correct min/max
+    if (url.pathname === '/progressive-metadata') {
+      try {
+        const network = url.searchParams.get('network');
+        const station = url.searchParams.get('station');
+        const location = url.searchParams.get('location') || '--';
+        const channel = url.searchParams.get('channel');
+        const startTime = url.searchParams.get('start_time'); // ISO timestamp
+        const durationMinutes = parseInt(url.searchParams.get('duration_minutes') || '30');
+        
+        if (!network || !station || !channel || !startTime) {
+          return jsonError('Missing required parameters (network, station, channel, start_time)', 400);
+        }
+        
+        console.log(`[Worker] Progressive metadata: ${network}.${station}.${location}.${channel}, start=${startTime}, duration=${durationMinutes}m`);
+        
+        // Parse start time
+        const start = new Date(startTime);
+        const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+        
+        // Determine chunk selection strategy based on duration
+        // Pattern: First hour = 10m chunks, Next 5 hours = 1h chunks, Beyond 6h = 6h chunks
+        let strategy;
+        if (durationMinutes <= 60) {
+          strategy = 'all_10m';
+        } else if (durationMinutes <= 360) {
+          // 1-6 hours: First hour in 10m, rest in 1h
+          strategy = 'first_hour_10m_then_1h';
+        } else {
+          // 6+ hours: First hour in 10m, next 5 hours in 1h, rest in 6h
+          strategy = 'first_hour_10m_then_1h_then_6h';
+        }
+        
+        console.log(`[Worker] Strategy for ${durationMinutes}m: ${strategy}`);
+        
+        // Get all dates in range (handle cross-day boundaries)
+        const dates = [];
+        let currentDate = new Date(start);
+        currentDate.setUTCHours(0, 0, 0, 0);
+        const endDate = new Date(end);
+        endDate.setUTCHours(0, 0, 0, 0);
+        
+        while (currentDate <= endDate) {
+          dates.push(new Date(currentDate));
+          currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+        }
+        
+        console.log(`[Worker] Date range spans ${dates.length} day(s)`);
+        
+        // Load metadata from all dates
+        const allMetadata = [];
+        for (const date of dates) {
+          const year = date.getUTCFullYear();
+          const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(date.getUTCDate()).padStart(2, '0');
+          const dateStr = `${year}-${month}-${day}`;
+          
+          // Find volcano
+          const volcano = await findVolcanoForStation(env.R2_BUCKET, network, station, location, channel, year, month, day);
+          if (!volcano) {
+            console.log(`[Worker] No data found for ${dateStr}`);
+            continue;
+          }
+          
+          // Load metadata
+          const metadataPrefix = `data/${year}/${month}/${day}/${network}/${volcano}/${station}/${location}/${channel}/`;
+          const listed = await env.R2_BUCKET.list({ prefix: metadataPrefix });
+          const metadataFile = listed.objects.find(obj => 
+            obj.key.endsWith(`${dateStr}.json`)
+          );
+          
+          if (metadataFile) {
+            const object = await env.R2_BUCKET.get(metadataFile.key);
+            const metadata = await object.json();
+            allMetadata.push({ date: dateStr, metadata, volcano });
+            const num10m = metadata.chunks['10m']?.length || 0;
+            const num1h = metadata.chunks['1h']?.length || 0;
+            const num6h = metadata.chunks['6h']?.length || 0;
+            console.log(`[Worker] Loaded metadata for ${dateStr}: ${num10m} x 10m, ${num1h} x 1h, ${num6h} x 6h chunks`);
+          }
+        }
+        
+        if (allMetadata.length === 0) {
+          return jsonError('No metadata found for requested time range', 404);
+        }
+        
+        // Build chunk list based on time grid (NO LOOPS, NO OVERLAPS!)
+        const selectedChunks = [];
+        
+        // Helper: Find chunk at exact time
+        function findChunkAtTime(timeStr, chunkType) {
+          const [dateStr, time] = timeStr.split('T');
+          
+          for (const { date, metadata, volcano } of allMetadata) {
+            if (date !== dateStr) continue;
+            
+            const chunks = metadata.chunks[chunkType] || [];
+            for (const chunk of chunks) {
+              if (chunk.start === time) {
+                return { ...chunk, date, volcano, sample_rate: metadata.sample_rate, network, station, location, channel };
+              }
+            }
+          }
+          return null;
+        }
+        
+        // Build time grid based on strategy
+        const timeGrid = [];
+        let gridTime = new Date(start);
+        
+        // Round down to nearest 10m boundary
+        gridTime.setUTCMinutes(Math.floor(gridTime.getUTCMinutes() / 10) * 10, 0, 0);
+        
+        while (gridTime < end) {
+          const minutesFromStart = (gridTime - start) / (60 * 1000);
+          const currentHour = gridTime.getUTCHours();
+          const currentMinute = gridTime.getUTCMinutes();
+          let chunkType, chunkDuration;
+          
+          if (strategy === 'all_10m') {
+            chunkType = '10m';
+            chunkDuration = 10;
+          } else if (strategy === 'first_hour_10m_then_1h') {
+            if (minutesFromStart < 60) {
+              // First hour: always 10m
+              chunkType = '10m';
+              chunkDuration = 10;
+            } else if (currentMinute === 0) {
+              // After first hour AND at hour boundary: use 1h
+              chunkType = '1h';
+              chunkDuration = 60;
+            } else {
+              // After first hour but NOT at hour boundary: keep using 10m until boundary
+              chunkType = '10m';
+              chunkDuration = 10;
+            }
+          } else if (strategy === 'first_hour_10m_then_1h_then_6h') {
+            if (minutesFromStart < 60) {
+              // First hour: always 10m
+              chunkType = '10m';
+              chunkDuration = 10;
+            } else if (minutesFromStart < 360) {
+              // 1-6 hours region
+              if (currentMinute === 0) {
+                // At hour boundary: use 1h
+                chunkType = '1h';
+                chunkDuration = 60;
+              } else {
+                // Not at hour boundary: keep using 10m
+                chunkType = '10m';
+                chunkDuration = 10;
+              }
+            } else {
+              // 6+ hours region
+              if (currentHour % 6 === 0 && currentMinute === 0) {
+                // At 6h boundary: use 6h
+                chunkType = '6h';
+                chunkDuration = 360;
+              } else if (currentMinute === 0) {
+                // At hour boundary but not 6h boundary: use 1h
+                chunkType = '1h';
+                chunkDuration = 60;
+              } else {
+                // Not at hour boundary: use 10m
+                chunkType = '10m';
+                chunkDuration = 10;
+              }
+            }
+          }
+          
+          const dateStr = gridTime.toISOString().split('T')[0];
+          const timeStr = gridTime.toTimeString().split(' ')[0]; // HH:MM:SS
+          timeGrid.push({ dateStr, timeStr, chunkType });
+          
+          // Advance by chunk duration
+          gridTime = new Date(gridTime.getTime() + chunkDuration * 60 * 1000);
+        }
+        
+        console.log(`[Worker] Generated time grid with ${timeGrid.length} chunks`);
+        
+        // Look up each chunk from metadata
+        for (const { dateStr, timeStr, chunkType } of timeGrid) {
+          const chunk = findChunkAtTime(`${dateStr}T${timeStr}`, chunkType);
+          if (chunk) {
+            selectedChunks.push({ ...chunk, chunk_type: chunkType });
+            console.log(`[Worker] ✅ Selected ${chunkType} chunk: ${chunk.start} → ${chunk.end} (${chunk.samples} samples)`);
+          } else {
+            console.warn(`[Worker] ⚠️  Missing ${chunkType} chunk at ${dateStr} ${timeStr}`);
+          }
+        }
+        
+        // Calculate min/max from ONLY the chunks that will actually be fetched (non-overlapping)
+        // This ensures normalization matches the actual data that will be played
+        let minVal = null;
+        let maxVal = null;
+        
+        console.log(`[Worker] Calculating normalization from ${selectedChunks.length} non-overlapping chunks:`);
+        for (const chunk of selectedChunks) {
+          const chunkMin = chunk.min;
+          const chunkMax = chunk.max;
+          if (minVal === null || chunkMin < minVal) minVal = chunkMin;
+          if (maxVal === null || chunkMax > maxVal) maxVal = chunkMax;
+          
+          console.log(`[Worker]   ${chunk.chunk_type} ${chunk.start}→${chunk.end}: min=${chunkMin}, max=${chunkMax} (global: [${minVal}, ${maxVal}])`);
+        }
+        
+        console.log(`[Worker] ✅ Final normalization range: [${minVal}, ${maxVal}] (from ${selectedChunks.length} chunks that will be fetched)`);
+        
+        // Calculate total samples and check for gaps
+        const totalSamples = selectedChunks.reduce((sum, c) => sum + (c.samples || 0), 0);
+        const expectedDuration = durationMinutes * 60; // seconds
+        const expectedSamples = (selectedChunks[0]?.sample_rate || 100) * expectedDuration;
+        const actualSamples = totalSamples;
+        const coverage = (actualSamples / expectedSamples * 100).toFixed(1);
+        
+        console.log(`[Worker] 📊 Coverage: ${actualSamples.toLocaleString()} / ${expectedSamples.toLocaleString()} samples (${coverage}%)`);
+        if (actualSamples < expectedSamples * 0.95) {
+          console.warn(`[Worker] ⚠️  Low coverage! Missing approximately ${Math.round((expectedSamples - actualSamples) / (selectedChunks[0]?.sample_rate || 100))} seconds of data`);
+        }
+        
+        // Log chunk summary
+        const chunkSummary = {};
+        selectedChunks.forEach(c => {
+          chunkSummary[c.chunk_type] = (chunkSummary[c.chunk_type] || 0) + 1;
+        });
+        console.log(`[Worker] 📦 Chunk summary:`, chunkSummary);
+        
+        // Return response
+        return new Response(JSON.stringify({
+          station: `${network}.${station}.${location}.${channel}`,
+          start_time: startTime,
+          end_time: end.toISOString(),
+          duration_minutes: durationMinutes,
+          sample_rate: selectedChunks[0]?.sample_rate || 100,
+          normalization: {
+            min: minVal,
+            max: maxVal,
+            range: maxVal - minVal
+          },
+          chunks: selectedChunks.map(c => ({
+            type: c.chunk_type,
+            date: c.date,
+            start: c.start,
+            end: c.end,
+            samples: c.samples,
+            min: c.min,
+            max: c.max
+          })),
+          total_samples: totalSamples,
+          total_chunks: selectedChunks.length,
+          strategy: strategy
+        }, null, 2), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=300', // Cache for 5 minutes
+          }
+        });
+        
+      } catch (error) {
+        console.error('[Worker] Progressive metadata error:', error);
+        return jsonError(`Progressive metadata failed: ${error.message}`, 500);
+      }
+    }
+    
+    // Metadata endpoint - Returns JSON metadata for a station/date
+    if (url.pathname === '/metadata') {
+      const network = url.searchParams.get('network');
+      const station = url.searchParams.get('station');
+      const location = url.searchParams.get('location') || '--';
+      const channel = url.searchParams.get('channel');
+      const date = url.searchParams.get('date'); // YYYY-MM-DD
+      
+      if (!network || !station || !channel || !date) {
+        return jsonError('Missing required parameters (network, station, channel, date)', 400);
+      }
+      
+      // Parse date
+      const [year, month, day] = date.split('-');
+      
+      // Find volcano name by scanning R2
+      const volcano = await findVolcanoForStation(env.R2_BUCKET, network, station, location, channel, year, month, day);
+      if (!volcano) {
+        return jsonError(`Could not find volcano for station ${network}.${station}`, 404);
+      }
+      
+      // Construct metadata path - CORRECT FORMAT with day folder!
+      // Format: data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location}/{channel}/{filename}.json
+      // List files to find the metadata file with sample rate
+      const metadataPrefix = `data/${year}/${month}/${day}/${network}/${volcano}/${station}/${location}/${channel}/`;
+      const listed = await env.R2_BUCKET.list({ prefix: metadataPrefix });
+      
+      // Find the .json file for this date
+      const metadataFile = listed.objects.find(obj => 
+        obj.key.endsWith(`${date}.json`) && obj.key.includes(`${network}_${station}_${location}_${channel}`)
+      );
+      
+      if (!metadataFile) {
+        return jsonError(`Metadata not found for ${network}.${station}.${location}.${channel} on ${date}`, 404);
+      }
+      
+      console.log(`[Worker] Metadata request: ${metadataFile.key}`);
+      
+      const object = await env.R2_BUCKET.get(metadataFile.key);
+      if (!object) {
+        return jsonError('Metadata file not found in R2', 404);
+      }
+      
+      return new Response(object.body, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+        }
+      });
+    }
+    
+    // Chunk endpoint - Streams compressed .zst chunk directly
+    if (url.pathname === '/chunk') {
+      const network = url.searchParams.get('network');
+      const station = url.searchParams.get('station');
+      const location = url.searchParams.get('location') || '--';
+      const channel = url.searchParams.get('channel');
+      const date = url.searchParams.get('date'); // YYYY-MM-DD
+      const start = url.searchParams.get('start'); // HH:MM:SS
+      const end = url.searchParams.get('end'); // HH:MM:SS
+      const chunkType = url.searchParams.get('chunk_type') || '10m'; // Chunk type: 10m, 1h, 6h
+      
+      if (!network || !station || !channel || !date || !start || !end) {
+        return jsonError('Missing required parameters', 400);
+      }
+      
+      // Parse date
+      const [year, month, day] = date.split('-');
+      
+      // Find volcano name
+      const volcano = await findVolcanoForStation(env.R2_BUCKET, network, station, location, channel, year, month, day);
+      if (!volcano) {
+        return jsonError(`Could not find volcano for station ${network}.${station}`, 404);
+      }
+      
+      // Get sample rate from metadata
+      const metadataPrefix = `data/${year}/${month}/${day}/${network}/${volcano}/${station}/${location}/${channel}/`;
+      const metadataListed = await env.R2_BUCKET.list({ prefix: metadataPrefix });
+      const metadataFile = metadataListed.objects.find(obj => 
+        obj.key.endsWith(`${date}.json`) && obj.key.includes(`${network}_${station}_${location}_${channel}`)
+      );
+      
+      let sampleRate = 100; // Default
+      if (metadataFile) {
+        const metadataObj = await env.R2_BUCKET.get(metadataFile.key);
+        const metadata = await metadataObj.json();
+        sampleRate = metadata.sample_rate || 100;
+      }
+      
+      // Construct chunk filename
+      // Format: {NETWORK}_{STATION}_{LOCATION}_{CHANNEL}_{RATE}Hz_{CHUNK_TYPE}_{START}_to_{END}.bin.zst
+      const startISO = `${date}-${start.replace(/:/g, '-')}`;
+      const endISO = `${date}-${end.replace(/:/g, '-')}`;
+      const rateStr = sampleRate % 1 === 0 ? sampleRate.toFixed(0) : sampleRate.toString();
+      const filename = `${network}_${station}_${location}_${channel}_${rateStr}Hz_${chunkType}_${startISO}_to_${endISO}.bin.zst`;
+      
+      // Full path with chunk type subfolder
+      const chunkPath = `data/${year}/${month}/${day}/${network}/${volcano}/${station}/${location}/${channel}/${chunkType}/${filename}`;
+      
+      console.log(`[Worker] Chunk request: ${chunkPath}`);
+      
+      const object = await env.R2_BUCKET.get(chunkPath);
+      if (!object) {
+        return jsonError(`Chunk not found: ${filename}`, 404);
+      }
+      
+      // Stream chunk directly (no decompression!)
+      return new Response(object.body, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=31536000', // Cache forever (immutable)
+          'X-Chunk-Size': object.size.toString(),
+        }
+      });
+    }
+    
     // Info endpoint
     if (url.pathname === '/') {
       return new Response(JSON.stringify({
         service: 'Seismic Data Streaming Worker',
         endpoints: {
+          '/progressive-metadata': 'Smart metadata with chunk selection (params: network, station, location, channel, start_time, duration_minutes)',
+          '/metadata': 'Get metadata JSON for single date (params: network, station, location, channel, date)',
+          '/chunk': 'Stream compressed chunk (params: network, station, location, channel, date, start, end, chunk_type)',
           '/request': 'Request seismic data (checks R2 cache, forwards to Render if miss)',
+          '/request-stream': 'SSE stream with cache check and Render forwarding',
           '/stream': 'Stream processed data (params: size=small|medium|large, gzip=true|false)',
           '/test': 'Test decompression (params: size=small|medium|large, format=zstd3|gzip3)',
           '/compress-test': 'Test compression (params: size=small|medium|large)',

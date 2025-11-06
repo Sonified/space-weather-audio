@@ -11,3 +11,19 @@ bucket_name = "hearts-data-cache"
 # Environment variables
 [vars]
 RENDER_URL = "http://localhost:5001"
+
+# Observability settings
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1

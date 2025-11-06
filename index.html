@@ -860,6 +860,14 @@
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" oninput="changeVolume()" style="flex: 1; min-width: 0;">
                 </div>
+                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(500px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="removeDCOffset" onchange="changeWaveformFilter()" checked style="width: 20px; height: 20px; cursor: pointer;">
+                        <span style="font-weight: 600; white-space: nowrap; font-size: 18px;">Drift Removal:</span>
+                    </label>
+                    <label for="waveformFilterSlider" id="waveformFilterLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Adjust drift removal aggressiveness"><span id="waveformFilterValue">0.995</span></label>
+                    <input type="range" id="waveformFilterSlider" min="0" max="100" step="1" value="50" oninput="changeWaveformFilter()" style="flex: 1; min-width: 0;">
+                </div>
             </div>
         </div>
         
@@ -1173,12 +1181,13 @@
                     this.samplesInBuffer = 0;
                     this.isPlaying = false;
                     this.hasStarted = false;
-                    this.minBufferBeforePlay = 44100 * 1; // 1 second
+                    this.minBufferBeforePlay = 0; // YOLO - start immediately!
                     this.speed = 1.0;
                     this.finishSent = false;
                     this.loopWarningShown = false;
                     this.dataLoadingComplete = false;
                     this.totalSamples = 0;
+                    this.processStartLogged = false; // For debugging TTFA
                     
                     // Selection and looping (worklet owns this state)
                     this.selectionStart = null; // in seconds
@@ -1189,6 +1198,16 @@
                     // Throttle position updates
                     this.samplesSinceLastPositionUpdate = 0;
                     this.positionUpdateIntervalSamples = 1323; // ~30ms at 44.1kHz
+                    
+                    // High-pass filter state (IIR, 1st order)
+                    // FIXED at 9 Hz (audio domain) regardless of playback speed!
+                    // This removes low-frequency drift from seismic data
+                    this.enableHighPass = true;
+                    this.highPassCutoff = 9.0; // 9 Hz in audio domain (44.1 kHz)
+                    this.highPassPrevX = 0;
+                    this.highPassPrevY = 0;
+                    this.highPassAlpha = 0;
+                    this.updateHighPassFilter();
                     
                     // Anti-aliasing filter state (biquad low-pass)
                     this.enableAntiAliasing = true;
@@ -1225,9 +1244,16 @@
                                 this.filterY1 = 0;
                                 this.filterY2 = 0;
                             }
+                        } else if (type === 'start-immediately') {
+                            // 🎯 FORCE IMMEDIATE PLAYBACK - drop buffer requirements to ZERO
+                            this.hasStarted = true;
+                            this.minBuffer = 0;
+                            console.log('🚀 WORKLET: Forced immediate start! minBuffer=0, hasStarted=true');
                         } else if (type === 'data-complete') {
                             this.dataLoadingComplete = true;
-                            this.totalSamples = this.samplesInBuffer;
+                            // Use the totalSamples from the message if provided, otherwise fall back to samplesInBuffer
+                            this.totalSamples = event.data.totalSamples || this.samplesInBuffer;
+                            console.log('🎵 WORKLET: Data complete. Total samples set to ' + this.totalSamples + ' (samplesInBuffer=' + this.samplesInBuffer + ')');
                         } else if (type === 'reset') {
                             this.buffer.fill(0);
                             this.readIndex = 0;
@@ -1283,6 +1309,15 @@
                             console.log('🎯 WORKLET SELECTION: Start=' + this.selectionStart + 's, End=' + this.selectionEnd + 's, Loop=' + this.isLooping);
                         }
                     };
+                }
+                
+                updateHighPassFilter() {
+                    // Calculate high-pass filter coefficient
+                    // This is a 1st-order IIR high-pass filter (same as browser version)
+                    const sampleRate = 44100; // AudioWorklet sample rate
+                    const RC = 1.0 / (2 * Math.PI * this.highPassCutoff);
+                    this.highPassAlpha = RC / (RC + 1 / sampleRate);
+                    console.log('🎛️ High-pass filter updated: cutoff=' + this.highPassCutoff + 'Hz, alpha=' + this.highPassAlpha.toFixed(6));
                 }
                 
                 updateAntiAliasingFilter() {
@@ -1353,6 +1388,7 @@
                     }
                     
                     if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
+                        console.log('🎵 WORKLET addSamples: Threshold reached! samplesInBuffer=' + this.samplesInBuffer + ', minBuffer=' + this.minBufferBeforePlay);
                         this.readIndex = 0;
                         this.isPlaying = true;
                         this.hasStarted = true;
@@ -1363,6 +1399,12 @@
                 process(inputs, outputs, parameters) {
                     const output = outputs[0];
                     const channel = output[0];
+                    
+                    // Log first time process() is called after starting
+                    if (this.hasStarted && !this.processStartLogged) {
+                        console.log('🎵 WORKLET process() FIRST CALL after hasStarted=true');
+                        this.processStartLogged = true;
+                    }
                     
                     if (!this.isPlaying) {
                         channel.fill(0);
@@ -1433,7 +1475,17 @@
                     if (this.samplesInBuffer < samplesToRead) {
                         const availableForOutput = Math.min(this.samplesInBuffer, channel.length);
                         for (let i = 0; i < availableForOutput; i++) {
-                            channel[i] = this.buffer[this.readIndex];
+                            let sample = this.buffer[this.readIndex];
+                            
+                            // Apply high-pass filter if enabled
+                            if (this.enableHighPass) {
+                                const y = this.highPassAlpha * (this.highPassPrevY + sample - this.highPassPrevX);
+                                this.highPassPrevX = sample;
+                                this.highPassPrevY = y;
+                                sample = y;
+                            }
+                            
+                            channel[i] = sample;
                             this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
                             this.samplesInBuffer--;
                         }
@@ -1459,12 +1511,22 @@
                     } else {
                         if (this.speed === 1.0) {
                             for (let i = 0; i < channel.length; i++) {
-                                channel[i] = this.buffer[this.readIndex];
+                                let sample = this.buffer[this.readIndex];
+                                
+                                // Apply high-pass filter if enabled
+                                if (this.enableHighPass) {
+                                    const y = this.highPassAlpha * (this.highPassPrevY + sample - this.highPassPrevX);
+                                    this.highPassPrevX = sample;
+                                    this.highPassPrevY = y;
+                                    sample = y;
+                                }
+                                
+                                channel[i] = sample;
                                 this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
                                 this.samplesInBuffer--;
                             }
                         } else {
-                            // Linear interpolation with optional anti-aliasing filter
+                            // Linear interpolation with high-pass + anti-aliasing filters
                             let sourcePos = 0;
                             for (let i = 0; i < channel.length; i++) {
                                 const readPos = Math.floor(sourcePos);
@@ -1477,6 +1539,14 @@
                                     sample = this.buffer[idx1] * (1 - frac) + this.buffer[idx2] * frac;
                                 } else {
                                     sample = this.buffer[(this.readIndex + readPos) % this.maxBufferSize];
+                                }
+                                
+                                // Apply high-pass filter FIRST (before anti-aliasing)
+                                if (this.enableHighPass) {
+                                    const y = this.highPassAlpha * (this.highPassPrevY + sample - this.highPassPrevX);
+                                    this.highPassPrevX = sample;
+                                    this.highPassPrevY = y;
+                                    sample = y;
                                 }
                                 
                                 // Apply anti-aliasing filter if enabled
@@ -1495,11 +1565,6 @@
                                     this.filterY1 = filtered;
                                     
                                     channel[i] = filtered;
-                                    
-                                    // Debug logging (occasional)
-                                    if (i === 0 && Math.random() < 0.001) {
-                                        console.log('🎛️ Filter active: in=' + sample.toFixed(3) + ', out=' + filtered.toFixed(3) + ', cutoff=' + this.currentFilterCutoff.toFixed(0) + 'Hz');
-                                    }
                                 } else {
                                     channel[i] = sample;
                                 }
@@ -1548,6 +1613,7 @@
                 audioContext = new AudioContext({ sampleRate: 44100 });
                 const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
                 await audioContext.audioWorklet.addModule(URL.createObjectURL(workletBlob));
+                console.log(`🎵 Created new AudioContext (sampleRate: 44100 Hz)`);
             }
             
             workletNode = new AudioWorkletNode(audioContext, 'seismic-processor');
@@ -1665,28 +1731,11 @@
                         updateCurrentPositionFromSamples(samplesConsumed, totalSamples);
                     }
                 } else if (type === 'started') {
+                    // Just update TTFA display - fade and tracking already started!
                     const ttfa = performance.now() - streamStartTime;
                     document.getElementById('ttfa').textContent = `${ttfa.toFixed(0)}ms`;
-                    console.log(`⏱️ TIME TO FIRST AUDIO: ${ttfa.toFixed(0)}ms`);
-                    
-                    // Start position tracking
-                    startPositionTracking();
-                    
-                    // Initialize playback indicator
-                    currentAudioPosition = 0;
-                    lastWorkletPosition = 0;
-                    lastWorkletUpdateTime = audioContext.currentTime;
-                    lastUpdateTime = audioContext.currentTime;
-                    if (totalAudioDuration > 0) {
-                        requestAnimationFrame(updatePlaybackIndicator);
-                    }
-                    
-                    // Fade in using exponential ramp (sounds more natural)
-                    if (gainNode) {
-                        const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                        gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime); // Start near-zero
-                        gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), audioContext.currentTime + 0.05); // 50ms exponential fade-in
-                    }
+                    console.log(`⏱️ Worklet confirmed playback at ${ttfa.toFixed(0)}ms`);
+                    // Fade-in and position tracking already started when first chunk was sent!
                 } else if (type === 'loop-soon') {
                     // Full-buffer loop warning (only for non-selection loops)
                     const { samplesRemaining, secondsRemaining, speed } = event.data;
@@ -1768,61 +1817,38 @@
             startVisualization();
         }
         
-        // High-pass filter function (IIR) - EXACT COPY from test_audioworklet_browser_processing.html
-        function applyHighPassFilter(data, sampleRate = 100, cutoffHz = 0.5) {
-            const RC = 1.0 / (2 * Math.PI * cutoffHz);
-            const alpha = RC / (RC + 1 / sampleRate);
-            
-            const filtered = new Float32Array(data.length);
-            
-            // Local filter state (starts fresh for entire array)
-            let prevX = 0;
-            let prevY = 0;
-            
+        // Remove DC offset and drift using exponential moving average (high-pass DC blocker)
+        function removeDCOffset(data, alpha = 0.995) {
+            let mean = data[0];
+            const y = new Float32Array(data.length);
             for (let i = 0; i < data.length; i++) {
-                const x = data[i];
-                
-                // Check for non-finite values
-                if (!Number.isFinite(x)) {
-                    console.warn(`Non-finite input at filter sample ${i}: ${x}`);
-                    filtered[i] = 0;
-                    prevX = 0;
-                    prevY = 0;
-                    continue;
-                }
-                
-                const y = alpha * (prevY + x - prevX);
-                
-                // Check output
-                if (!Number.isFinite(y)) {
-                    console.warn(`Non-finite output at filter sample ${i}: ${y}`);
-                    filtered[i] = 0;
-                    prevX = 0;
-                    prevY = 0;
-                    continue;
-                }
-                
-                filtered[i] = y;
-                prevX = x;
-                prevY = y;
+                mean = alpha * mean + (1 - alpha) * data[i];
+                y[i] = data[i] - mean;
             }
-            
-            return filtered;
+            return y;
         }
         
-        // Normalize function - EXACT COPY from test_audioworklet_browser_processing.html
+        // Normalize function - scales data to [-1, 1] range using min/max
         function normalize(data) {
-            let max = 0;
-            for (let i = 0; i < data.length; i++) {
-                const absVal = Math.abs(data[i]);
-                if (absVal > max) max = absVal;
+            // Find min and max
+            let min = data[0];
+            let max = data[0];
+            for (let i = 1; i < data.length; i++) {
+                if (data[i] < min) min = data[i];
+                if (data[i] > max) max = data[i];
             }
             
-            if (max === 0) return data;
+            // If all values are the same, return zeros
+            if (max === min) {
+                return new Float32Array(data.length);
+            }
             
+            // Scale to [-1, 1] range
             const normalized = new Float32Array(data.length);
+            const range = max - min;
             for (let i = 0; i < data.length; i++) {
-                normalized[i] = data[i] / max;
+                // Map [min, max] to [-1, 1]
+                normalized[i] = 2 * (data[i] - min) / range - 1;
             }
             
             return normalized;
@@ -1837,6 +1863,24 @@
                 }
                 
                 console.log('🎬 startStreaming() called');
+                
+                // 🎯 CREATE WORKER IMMEDIATELY (before even fetching metadata!)
+                if (window.audioWorker) {
+                    window.audioWorker.terminate();
+                    console.log('🏭 Terminated old worker');
+                }
+                window.audioWorker = new Worker('audio-processor-worker.js');
+                
+                // Wait for worker to be ready
+                await new Promise(resolve => {
+                    window.audioWorker.addEventListener('message', function onReady(e) {
+                        if (e.data === 'ready') {
+                            window.audioWorker.removeEventListener('message', onReady);
+                            resolve();
+                        }
+                    });
+                });
+                console.log('🏭 Worker ready!');
                 
                 // Get selected station
                 const stationValue = document.getElementById('station').value;
@@ -1857,8 +1901,7 @@
                 spectrogramInitialized = false;
                 
                 // Immediately update status to show fetching (don't wait for fade-out)
-                const useLocal = false; // Always use Railway backend
-                const baseMessage = 'Fetching data from Railway backend';
+                const baseMessage = 'Fetching data from R2 via progressive streaming';
                 document.getElementById('status').className = 'status info loading';
                 document.getElementById('status').textContent = baseMessage;
                 
@@ -1945,226 +1988,58 @@
                     return date.toISOString().slice(0, 19);
                 };
                 
-                // Request data from backend (backend will apply high-pass filter)
-                const highpassValue = highpassFreq === 'none' ? 0 : parseFloat(highpassFreq);
-                const requestBody = {
-                    network: stationData.network,
-                    station: stationData.station,
-                    location: stationData.location || '',
-                    channel: stationData.channel,
-                    starttime: formatTime(startTime),
-                    duration: duration * 3600,
-                    highpass_hz: highpassValue,  // Backend will apply high-pass filter
-                    normalize: false,  // NO server-side normalization (done in browser)
-                    send_raw: false  // Send float32
-                };
+                // ===== CHECK IF STATION IS ACTIVE (uses R2) or INACTIVE (uses Railway) =====
                 
-                console.log('📡 Requesting:', requestBody);
+                // Fetch stations_config.json to check if this station is active
+                console.log('🔍 Checking station active status...');
+                const configResponse = await fetch('backend/stations_config.json');
+                const stationsConfig = await configResponse.json();
                 
-                // Determine backend URL based on checkbox (useLocal already defined above)
-                const backendUrl = useLocal 
-                    ? 'http://localhost:5001/api/stream-audio'
-                    : 'https://volcano-audio-backend-production.up.railway.app/api/stream-audio';
+                // Find this station in the config
+                let isActiveStation = false;
+                const volcano = document.getElementById('volcano').value;
                 
-                const backendType = useLocal ? 'local' : 'Railway';
-                console.log(`🌐 Using ${backendType} backend: ${backendUrl}`);
+                if (stationsConfig.networks[stationData.network] && 
+                    stationsConfig.networks[stationData.network][volcano]) {
+                    const volcanoStations = stationsConfig.networks[stationData.network][volcano];
+                    const stationConfig = volcanoStations.find(s => 
+                        s.station === stationData.station && 
+                        s.location === (stationData.location || '--') &&
+                        s.channel === stationData.channel
+                    );
+                    
+                    if (stationConfig) {
+                        isActiveStation = stationConfig.active === true;
+                        console.log(`📋 Station ${stationData.network}.${stationData.station}: active=${isActiveStation}`);
+                    }
+                }
                 
-                // Start animated loading indicator with growing periods (2 per second)
-                // (baseMessage already defined above)
-                
+                // Start animated loading indicator
                 let dotCount = 0;
                 loadingInterval = setInterval(() => {
-                    dotCount++; // Keep growing dots continuously
+                    dotCount++;
                     const statusEl = document.getElementById('status');
                     statusEl.textContent = baseMessage + '.'.repeat(dotCount);
-                    // Ensure loading class is maintained
                     if (!statusEl.classList.contains('loading')) {
                         statusEl.classList.add('loading');
                     }
-                }, 500); // Update every 500ms (2 per second)
+                }, 500);
                 
-                console.log('🔄 About to fetch from:', backendUrl);
+                // ===== ROUTE TO APPROPRIATE BACKEND =====
                 
-                const response = await fetch(backendUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody),
-                    mode: 'cors',  // Explicitly set CORS mode
-                    credentials: 'omit'  // Don't send credentials
-                }).catch(fetchError => {
-                    console.error('🚫 Fetch failed:', fetchError);
-                    console.error('🚫 Fetch error details:', {
-                        message: fetchError.message,
-                        name: fetchError.name,
-                        stack: fetchError.stack
-                    });
-                    throw fetchError;  // Re-throw to be caught by outer try-catch
-                });
-                
-                console.log('✅ Fetch succeeded, response:', response);
-                console.log('✅ Response status:', response.status, response.statusText);
-                console.log('✅ Response headers:', [...response.headers.entries()]);
-                
-                if (!response.ok) {
-                    // Try to get error message from response
-                    let errorMsg = `HTTP ${response.status}`;
-                    try {
-                        const errorData = await response.json();
-                        if (errorData.error) {
-                            errorMsg = errorData.error;
-                        }
-                    } catch (e) {
-                        // Response might not be JSON, use status text
-                        errorMsg = response.statusText || `HTTP ${response.status}`;
-                    }
-                    throw new Error(errorMsg);
-                }
-                
-                // Get response
-                const receivedBlob = await response.arrayBuffer();
-                const downloadSize = (receivedBlob.byteLength / 1024 / 1024).toFixed(2);
-                document.getElementById('downloadSize').textContent = `${downloadSize} MB`;
-                console.log(`📦 Received: ${downloadSize} MB`);
-                
-                // Decompress if needed
-                let decompressed;
-                const compression = response.headers.get('X-Compression');
-                if (compression === 'zstd') {
-                    console.log('🗜️ Decompressing with zstd...');
-                    decompressed = fzstd.decompress(new Uint8Array(receivedBlob));
-                    console.log(`✅ Decompressed: ${(decompressed.length / 1024 / 1024).toFixed(2)} MB`);
+                if (isActiveStation) {
+                    // ===== MODE 1: R2 PROGRESSIVE STREAMING (for active stations) =====
+                    console.log('🌐 Using R2 Worker (active station)');
+                    await fetchFromR2Worker(stationData, startTime, endTime, duration, highpassFreq);
                 } else {
-                    console.log('⏭️ No compression');
-                    decompressed = new Uint8Array(receivedBlob);
+                    // ===== MODE 2: RAILWAY BACKEND (for inactive stations) =====
+                    console.log('🚂 Using Railway backend (inactive station)');
+                    await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
                 }
-                
-                // Parse: [metadata_length (4 bytes)] [metadata_json] [float32_samples]
-                const view = new DataView(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength);
-                const metadataLength = view.getUint32(0, true);
-                const metadataBytes = decompressed.slice(4, 4 + metadataLength);
-                const metadataJson = new TextDecoder().decode(metadataBytes);
-                const metadata = JSON.parse(metadataJson);
-                
-                console.log('📋 Metadata:', metadata);
-                
-                // Store metadata for duration calculation
-                currentMetadata = metadata;
-                
-                // Update high-pass filter display with correct original sample rate
-                updateHighPassFilterDisplay();
-                
-                // Log backend filtering info
-                if (metadata.highpass_hz && metadata.highpass_hz > 0) {
-                    console.log(`🎛️ Backend applied ${metadata.highpass_hz} Hz high-pass filter`);
-                } else {
-                    console.log('🎛️ No high-pass filter applied by backend');
-                }
-                
-                // Extract samples
-                const samplesOffset = 4 + metadataLength;
-                const samplesBytes = decompressed.slice(samplesOffset);
-                let samples = new Float32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
-                
-                console.log(`✅ Got ${samples.length.toLocaleString()} samples @ ${metadata.original_sample_rate} Hz`);
-                
-                // Calculate min/max without spread operator (avoids stack overflow)
-                let min = Infinity, max = -Infinity;
-                for (let i = 0; i < samples.length; i++) {
-                    if (samples[i] < min) min = samples[i];
-                    if (samples[i] > max) max = samples[i];
-                }
-                console.log(`🔍 Sample range: [${min.toFixed(3)}, ${max.toFixed(3)}]`);
-                document.getElementById('sampleCount').textContent = samples.length.toLocaleString();
-                
-                // ===== BROWSER-SIDE PROCESSING =====
-                
-                // Note: High-pass filtering is done by the backend (already applied)
-                // Backend used highpass_hz parameter from request
-                
-                // Normalize
-                if (enableNormalize) {
-                    console.log('📏 Normalizing...');
-                    const normStart = performance.now();
-                    samples = normalize(samples);
-                    const normTime = performance.now() - normStart;
-                    let minN = Infinity, maxN = -Infinity;
-                    for (let i = 0; i < samples.length; i++) {
-                        if (samples[i] < minN) minN = samples[i];
-                        if (samples[i] > maxN) maxN = samples[i];
-                    }
-                    console.log(`✅ Normalized in ${normTime.toFixed(2)}ms | Range: [${minN.toFixed(3)}, ${maxN.toFixed(3)}]`);
-                }
-                
-                // Store complete samples array for waveform drawing
-                completeSamplesArray = samples;
-                
-                // Send to AudioWorklet in chunks (prevents blocking audio thread)
-                console.log('🎵 Sending to AudioWorklet in 1024-sample chunks...');
-                const WORKLET_CHUNK_SIZE = 1024;
-                allReceivedData = [];
-                
-                for (let i = 0; i < samples.length; i += WORKLET_CHUNK_SIZE) {
-                    const chunkSize = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
-                    const chunk = samples.slice(i, i + chunkSize);
-                    
-                    workletNode.port.postMessage({
-                        type: 'audio-data',
-                        data: chunk
-                    });
-                    
-                    allReceivedData.push(chunk);
-                }
-                
-                // Draw complete waveform once after data is loaded
-                drawWaveform();
-                
-                console.log(`✅ Sent ${allReceivedData.length} chunks to AudioWorklet`);
-                
-                // Signal that all data has been sent
-                workletNode.port.postMessage({ type: 'data-complete' });
-                
-                // Set playback speed to current setting (with multiplier applied)
-                updatePlaybackSpeed();
-                console.log(`🎚️ Set playback speed for new data: ${currentPlaybackRate.toFixed(2)}x (base slider speed × multiplier)`);
-                
-                // Set anti-aliasing filter to current setting
-                if (workletNode) {
-                    workletNode.port.postMessage({
-                        type: 'set-anti-aliasing',
-                        enabled: antiAliasingEnabled
-                    });
-                    console.log(`🎛️ Set anti-aliasing filter for new data: ${antiAliasingEnabled ? 'ON' : 'OFF'}`);
-                }
-                
-                // Update playback duration display
-                updatePlaybackDuration();
-                
-                // Clear the fetching flag - new data is loaded and ready
-                isFetchingNewData = false;
-                
-                // Stop loading animation
-                if (loadingInterval) {
-                    clearInterval(loadingInterval);
-                    loadingInterval = null;
-                }
-                
-                // Re-enable playback controls after data is fetched
-                playPauseBtn.disabled = false;
-                playPauseBtn.textContent = '⏸️ Pause';
-                playPauseBtn.classList.remove('play-active', 'secondary');
-                playPauseBtn.classList.add('pause-active');
-                
-                document.getElementById('loopBtn').disabled = false;
-                
-                document.getElementById('status').className = 'status success';
-                document.getElementById('status').textContent = '✅ Playing!';
-                console.log('✅ Streaming complete');
-                
             } catch (error) {
-                // Clear the fetching flag on error too
+                // Error handling stays the same
                 isFetchingNewData = false;
                 
-                // Stop loading animation
                 if (loadingInterval) {
                     clearInterval(loadingInterval);
                     loadingInterval = null;
@@ -2182,6 +2057,498 @@
                 document.getElementById('playPauseBtn').disabled = true;
                 document.getElementById('loopBtn').disabled = true;
             }
+        }
+        
+        // ===== MODE 1: R2 WORKER PROGRESSIVE STREAMING =====
+        async function fetchFromR2Worker(stationData, startTime, endTime, duration, highpassFreq) {
+            const formatTime = (date) => {
+                return date.toISOString().slice(0, 19);
+            };
+            
+            // R2 Worker URL
+            const R2_WORKER_URL = 'https://volcano-audio-test.robertalexander-music.workers.dev';
+            
+            // Get high-pass filter setting from UI (same as Railway)
+            const highpassValue = highpassFreq === 'none' ? 0 : parseFloat(highpassFreq);
+            
+            const durationMinutes = duration * 60; // Convert hours to minutes
+            
+            console.log('📡 Requesting from R2 Worker:', {
+                network: stationData.network,
+                station: stationData.station,
+                location: stationData.location || '--',
+                channel: stationData.channel,
+                start_time: startTime.toISOString(),
+                duration_minutes: durationMinutes
+            });
+                
+                // STEP 1: Fetch progressive metadata (smart chunk selection + correct min/max)
+                console.log('📋 Step 1: Fetching progressive metadata from R2 Worker...');
+                const metadataUrl = `${R2_WORKER_URL}/progressive-metadata?` + new URLSearchParams({
+                    network: stationData.network,
+                    station: stationData.station,
+                    location: stationData.location || '--',
+                    channel: stationData.channel,
+                    start_time: startTime.toISOString(),
+                    duration_minutes: durationMinutes.toString()
+                });
+                
+                // Add timeout for large requests (240 minutes = 4 hours might timeout)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+                
+                let metadataResponse;
+                try {
+                    metadataResponse = await fetch(metadataUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        throw new Error(`⏱️ Request timeout: Worker didn't respond within 60 seconds. Large requests (${durationMinutes} minutes) may exceed worker limits. Try a shorter duration.`);
+                    } else if (fetchError.message.includes('Failed to fetch') || fetchError.message.includes('ERR_CONNECTION_CLOSED')) {
+                        throw new Error(`🔌 Connection error: Worker connection was closed. This may happen with very large requests (${durationMinutes} minutes). Try a shorter duration or check if the worker is running.`);
+                    } else {
+                        throw new Error(`Network error: ${fetchError.message}`);
+                    }
+                }
+                
+                if (!metadataResponse.ok) {
+                    throw new Error(`Progressive metadata fetch failed: ${metadataResponse.status} ${metadataResponse.statusText}`);
+                }
+                
+                const progressiveMetadata = await metadataResponse.json();
+                console.log('📋 Progressive metadata received:', progressiveMetadata);
+                console.log(`📋 Strategy: ${progressiveMetadata.strategy}`);
+                console.log(`📋 Total chunks: ${progressiveMetadata.total_chunks} (${progressiveMetadata.chunks.map(c => c.type).join(', ')})`);
+                console.log(`📋 Normalization: [${progressiveMetadata.normalization.min}, ${progressiveMetadata.normalization.max}]`);
+                
+                // Store metadata for duration calculation
+                currentMetadata = {
+                    original_sample_rate: progressiveMetadata.sample_rate,
+                    npts: progressiveMetadata.total_samples
+                };
+                
+                // Get normalization range from progressive metadata
+                const normMin = progressiveMetadata.normalization.min;
+                const normMax = progressiveMetadata.normalization.max;
+                const chunksToFetch = progressiveMetadata.chunks;
+                
+                if (chunksToFetch.length === 0) {
+                    throw new Error('No chunks found in progressive metadata!');
+                }
+                
+                console.log(`🚀 Starting WORKER-BASED progressive streaming (${chunksToFetch.length} chunks)...`);
+                
+                // 🎯 USE WORKER CREATED AT START OF startStreaming()
+                const worker = window.audioWorker;
+                
+                // Track chunks and state
+                const processedChunks = [];
+                let chunksReceived = 0;
+                let firstChunkSent = false;
+                let ttfaTime = null;
+                const progressiveT0 = performance.now();
+                let totalBytesDownloaded = 0;
+                
+                // Initialize arrays
+                allReceivedData = [];
+                
+                // Promise to wait for first chunk to be processed
+                let firstChunkProcessedResolve = null;
+                const firstChunkProcessed = new Promise(resolve => {
+                    firstChunkProcessedResolve = resolve;
+                });
+                
+                // Initialize waveform canvas
+                const waveformCanvas = document.getElementById('waveform');
+                const waveformCtx = waveformCanvas.getContext('2d');
+                const waveformWidth = waveformCanvas.width = waveformCanvas.offsetWidth * window.devicePixelRatio;
+                const waveformHeight = waveformCanvas.height = waveformCanvas.offsetHeight * window.devicePixelRatio;
+                waveformCtx.fillStyle = '#000';
+                waveformCtx.fillRect(0, 0, waveformWidth, waveformHeight);
+                
+                // Draw center line
+                waveformCtx.strokeStyle = '#333';
+                waveformCtx.lineWidth = 1;
+                waveformCtx.beginPath();
+                waveformCtx.moveTo(0, waveformHeight / 2);
+                waveformCtx.lineTo(waveformWidth, waveformHeight / 2);
+                waveformCtx.stroke();
+                
+                // 🎯 WORKER MESSAGE HANDLER (runs on main thread, but doesn't block!)
+                worker.onmessage = (e) => {
+                    if (e.data.type === 'chunk-ready') {
+                        const { chunkIndex, samples, rawSamples, sampleCount } = e.data;
+                        
+                        chunksReceived++;
+                        processedChunks[chunkIndex] = { samples, rawSamples };
+                        
+                        // 🎯 SEND TO WORKLET IMMEDIATELY (main thread is free!)
+                        const WORKLET_CHUNK_SIZE = 1024;
+                        for (let i = 0; i < samples.length; i += WORKLET_CHUNK_SIZE) {
+                            const size = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
+                            const workletChunk = samples.slice(i, i + size);
+                            
+                            workletNode.port.postMessage({
+                                type: 'audio-data',
+                                data: workletChunk
+                            });
+                            
+                            allReceivedData.push(workletChunk);
+                            
+                            // 🎯 FIRST CHUNK = START FADE-IN (main thread isn't blocked!)
+                            if (!firstChunkSent && i === 0) {
+                                firstChunkSent = true;
+                                ttfaTime = performance.now() - progressiveT0;
+                                console.log(`⚡ FIRST CHUNK SENT in ${ttfaTime.toFixed(0)}ms - starting playback!`);
+                                
+                                // 🎯 FORCE IMMEDIATE PLAYBACK
+                                workletNode.port.postMessage({
+                                    type: 'start-immediately'
+                                });
+                                console.log(`🚀 Sent 'start-immediately' to worklet`);
+                                
+                                // 🎯 RESOLVE PROMISE - fetch loop can now continue to chunk 2!
+                                if (firstChunkProcessedResolve) {
+                                    firstChunkProcessedResolve();
+                                    console.log(`✅ First chunk processed and sent - allowing fetch of chunk 2+`);
+                                }
+                                
+                                if (gainNode && audioContext) {
+                                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                                    gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                                    gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+                                    gainNode.gain.exponentialRampToValueAtTime(
+                                        Math.max(0.01, targetVolume), 
+                                        audioContext.currentTime + 0.05
+                                    );
+                                    console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
+                                }
+                                
+                                startPositionTracking();
+                                currentAudioPosition = 0;
+                                lastWorkletPosition = 0;
+                                lastWorkletUpdateTime = audioContext.currentTime;
+                                lastUpdateTime = audioContext.currentTime;
+                                if (totalAudioDuration > 0) {
+                                    requestAnimationFrame(updatePlaybackIndicator);
+                                }
+                            }
+                        }
+                        
+                        // 🎯 ALL CHUNKS RECEIVED = SIGNAL COMPLETE
+                        if (chunksReceived === chunksToFetch.length) {
+                            const totalTime = performance.now() - progressiveT0;
+                            console.log(`✅ All ${chunksToFetch.length} chunks processed in ${totalTime.toFixed(0)}ms total`);
+                            
+                            // Signal worklet
+                            const totalWorkletSamples = allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
+                        workletNode.port.postMessage({
+                                type: 'data-complete',
+                                totalSamples: totalWorkletSamples
+                            });
+                            
+                            // Terminate worker (we're done!)
+                            worker.terminate();
+                            console.log('🏭 Worker terminated');
+                
+                // Update download size
+                document.getElementById('downloadSize').textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+                
+                            // 🎯 BUILD WAVEFORM WHEN BROWSER IS IDLE
+                            requestIdleCallback(() => {
+                                buildCompleteWaveform(processedChunks, chunksToFetch, normMin, normMax, progressiveMetadata.total_samples);
+                            }, { timeout: 2000 });
+                            
+                            // Update UI
+                            updatePlaybackSpeed();
+                            updatePlaybackDuration();
+                            isFetchingNewData = false;
+                            
+                            if (loadingInterval) {
+                                clearInterval(loadingInterval);
+                                loadingInterval = null;
+                            }
+                            
+                            document.getElementById('playPauseBtn').disabled = false;
+                            document.getElementById('playPauseBtn').textContent = '⏸️ Pause';
+                            document.getElementById('playPauseBtn').classList.add('pause-active');
+                            document.getElementById('loopBtn').disabled = false;
+                            document.getElementById('status').className = 'status success';
+                            document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
+                        }
+                    }
+                };
+                
+                // Helper function to build complete waveform (called in idle callback)
+                function buildCompleteWaveform(processedChunks, chunksToFetch, normMin, normMax, totalSamples) {
+                    console.log('🎨 Building complete waveform (idle callback)...');
+                    const t0 = performance.now();
+                    
+                    // Stitch all chunks together
+                    let totalLength = 0;
+                    for (let i = 0; i < processedChunks.length; i++) {
+                        if (processedChunks[i]) {
+                            totalLength += processedChunks[i].samples.length;
+                        }
+                    }
+                    
+                    const stitchedFloat32 = new Float32Array(totalLength);
+                    const stitchedRaw = new Float32Array(totalLength);
+                    
+                    let offset = 0;
+                    for (let i = 0; i < processedChunks.length; i++) {
+                        if (processedChunks[i]) {
+                            const { samples, rawSamples } = processedChunks[i];
+                            stitchedFloat32.set(samples, offset);
+                            stitchedRaw.set(rawSamples, offset);
+                            offset += samples.length;
+                        }
+                    }
+                    
+                    // Store for waveform drawing
+                    completeSamplesArray = stitchedFloat32;
+                    window.rawWaveformData = stitchedRaw;
+                    
+                    // Update UI metrics
+                    document.getElementById('sampleCount').textContent = stitchedFloat32.length.toLocaleString();
+                    
+                    // Apply filtering if enabled
+                    const removeDC = document.getElementById('removeDCOffset').checked;
+                    if (removeDC) {
+                        const slider = document.getElementById('waveformFilterSlider');
+                        const sliderValue = parseInt(slider.value);
+                        const alpha = 0.95 + (sliderValue / 100) * (0.9999 - 0.95);
+                        const filtered = removeDCOffset(stitchedRaw, alpha);
+                        completeSamplesArray = normalize(filtered);
+                    }
+                    
+                    // Draw waveform
+                            drawWaveform();
+                    
+                    const buildTime = performance.now() - t0;
+                    console.log(`✅ Waveform built in ${buildTime.toFixed(0)}ms (idle)`);
+                }
+                
+                // 🎯 FETCH AND SEND TO WORKER (main thread just coordinates!)
+                
+                for (let chunkIdx = 0; chunkIdx < chunksToFetch.length; chunkIdx++) {
+                    const chunk = chunksToFetch[chunkIdx];
+                    const chunkUrl = `${R2_WORKER_URL}/chunk?` + new URLSearchParams({
+                        network: stationData.network,
+                        station: stationData.station,
+                        location: stationData.location || '--',
+                        channel: stationData.channel,
+                        date: chunk.date,
+                        start: chunk.start,
+                        end: chunk.end,
+                        chunk_type: chunk.type
+                    });
+                    
+                    const response = await fetch(chunkUrl);
+                    if (!response.ok) {
+                        throw new Error(`Chunk ${chunkIdx + 1} fetch failed: ${response.status}`);
+                    }
+                    
+                    const compressed = await response.arrayBuffer();
+                    const chunkSize = compressed.byteLength; // Save before transfer!
+                    totalBytesDownloaded += chunkSize;
+                    
+                    // Send to worker with ZERO-COPY transfer
+                    worker.postMessage({
+                        type: 'process-chunk',
+                        compressed: compressed,
+                        normMin: normMin,
+                        normMax: normMax,
+                        chunkIndex: chunkIdx
+                    }, [compressed]); // Transfer ownership to worker!
+                    
+                    console.log(`📤 Sent chunk ${chunkIdx + 1}/${chunksToFetch.length} to worker (${(chunkSize / 1024).toFixed(1)} KB)`);
+                    
+                    // 🎯 WAIT for first chunk to be processed before fetching chunk 2!
+                    if (chunkIdx === 0) {
+                        console.log(`⏳ Waiting for worker to process first chunk before fetching chunk 2...`);
+                        await firstChunkProcessed;
+                        console.log(`✅ First chunk ready - now fetching remaining chunks...`);
+                    }
+                }
+                
+                // Main thread done fetching! Worker will process chunks and send results back.
+                console.log(`📡 All ${chunksToFetch.length} chunks sent to worker - waiting for processing...`);
+                
+                // Worker will handle:
+                // 1. Decompression (off main thread)
+                // 2. Normalization (off main thread)
+                // 3. Sending to AudioWorklet (with immediate fade-in)
+                // 4. Building waveform (in idle callback)
+                // All UI updates happen in worker.onmessage handler above!
+                
+        }
+        
+        // ===== MODE 2: RAILWAY BACKEND (ORIGINAL PATH) =====
+        async function fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize) {
+            const formatTime = (date) => {
+                return date.toISOString().slice(0, 19);
+            };
+            
+            // Request data from backend (backend will apply high-pass filter)
+            const highpassValue = highpassFreq === 'none' ? 0 : parseFloat(highpassFreq);
+            const requestBody = {
+                network: stationData.network,
+                station: stationData.station,
+                location: stationData.location || '',
+                channel: stationData.channel,
+                starttime: formatTime(startTime),
+                duration: duration * 3600,
+                highpass_hz: highpassValue,  // Backend will apply high-pass filter
+                normalize: false,  // NO server-side normalization (done in browser)
+                send_raw: false  // Send float32
+            };
+            
+            console.log('📡 Requesting from Railway:', requestBody);
+            
+            // Determine backend URL
+            const backendUrl = 'https://volcano-audio-backend-production.up.railway.app/api/stream-audio';
+            console.log(`🌐 Using Railway backend: ${backendUrl}`);
+            
+            const response = await fetch(backendUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+                mode: 'cors',
+                credentials: 'omit'
+            });
+            
+            console.log('✅ Fetch succeeded, response:', response);
+            
+            if (!response.ok) {
+                let errorMsg = `HTTP ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    if (errorData.error) {
+                        errorMsg = errorData.error;
+                    }
+                } catch (e) {
+                    errorMsg = response.statusText || `HTTP ${response.status}`;
+                }
+                throw new Error(errorMsg);
+            }
+            
+            // Get response
+            const receivedBlob = await response.arrayBuffer();
+            const downloadSize = (receivedBlob.byteLength / 1024 / 1024).toFixed(2);
+            document.getElementById('downloadSize').textContent = `${downloadSize} MB`;
+            console.log(`📦 Received: ${downloadSize} MB`);
+            
+            // Decompress if needed
+            let decompressed;
+            const compression = response.headers.get('X-Compression');
+            if (compression === 'zstd') {
+                console.log('🗜️ Decompressing with zstd...');
+                decompressed = fzstd.decompress(new Uint8Array(receivedBlob));
+                console.log(`✅ Decompressed: ${(decompressed.length / 1024 / 1024).toFixed(2)} MB`);
+            } else {
+                console.log('⏭️ No compression');
+                decompressed = new Uint8Array(receivedBlob);
+            }
+            
+            // Parse: [metadata_length (4 bytes)] [metadata_json] [float32_samples]
+            const view = new DataView(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength);
+            const metadataLength = view.getUint32(0, true);
+            const metadataBytes = decompressed.slice(4, 4 + metadataLength);
+            const metadataJson = new TextDecoder().decode(metadataBytes);
+            const metadata = JSON.parse(metadataJson);
+            
+            console.log('📋 Metadata:', metadata);
+            
+            // Store metadata for duration calculation
+            currentMetadata = metadata;
+            
+            // Extract samples
+            const samplesOffset = 4 + metadataLength;
+            const samplesBytes = decompressed.slice(samplesOffset);
+            let samples = new Float32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
+            
+            console.log(`✅ Got ${samples.length.toLocaleString()} samples @ ${metadata.original_sample_rate} Hz`);
+            
+            // Calculate min/max
+            let min = Infinity, max = -Infinity;
+            for (let i = 0; i < samples.length; i++) {
+                if (samples[i] < min) min = samples[i];
+                if (samples[i] > max) max = samples[i];
+            }
+            console.log(`🔍 Sample range: [${min.toFixed(3)}, ${max.toFixed(3)}]`);
+            document.getElementById('sampleCount').textContent = samples.length.toLocaleString();
+            
+            // Normalize if enabled
+            if (enableNormalize) {
+                console.log('📏 Normalizing...');
+                samples = normalize(samples);
+            }
+            
+            // Store complete samples array for waveform drawing
+            completeSamplesArray = samples;
+            
+            // Send to AudioWorklet in chunks
+            console.log('🎵 Sending to AudioWorklet in 1024-sample chunks...');
+            const WORKLET_CHUNK_SIZE = 1024;
+            allReceivedData = [];
+            
+            for (let i = 0; i < samples.length; i += WORKLET_CHUNK_SIZE) {
+                const chunkSize = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
+                const chunk = samples.slice(i, i + chunkSize);
+                
+                workletNode.port.postMessage({
+                    type: 'audio-data',
+                    data: chunk
+                });
+                
+                allReceivedData.push(chunk);
+            }
+            
+            // Draw complete waveform
+            drawWaveform();
+            
+            console.log(`✅ Sent ${allReceivedData.length} chunks to AudioWorklet`);
+            
+            // Signal that all data has been sent
+            workletNode.port.postMessage({ type: 'data-complete' });
+            
+            // Set playback speed
+            updatePlaybackSpeed();
+            
+            // Set anti-aliasing filter
+            if (workletNode) {
+                workletNode.port.postMessage({
+                    type: 'set-anti-aliasing',
+                    enabled: antiAliasingEnabled
+                });
+            }
+            
+            // Update playback duration
+            updatePlaybackDuration();
+            
+            // Clear fetching flag
+            isFetchingNewData = false;
+            
+            // Stop loading animation
+            if (loadingInterval) {
+                clearInterval(loadingInterval);
+                loadingInterval = null;
+            }
+            
+            // Re-enable playback controls
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            playPauseBtn.disabled = false;
+            playPauseBtn.textContent = '⏸️ Pause';
+            playPauseBtn.classList.remove('play-active', 'secondary');
+            playPauseBtn.classList.add('pause-active');
+            
+            document.getElementById('loopBtn').disabled = false;
+            
+            document.getElementById('status').className = 'status success';
+            document.getElementById('status').textContent = '✅ Playing! (Railway backend)';
+            console.log('✅ Streaming complete from Railway backend');
         }
         
         function togglePlayPause() {
@@ -2443,6 +2810,67 @@
             updatePlaybackDuration();
         }
         
+        function changeWaveformFilter() {
+            const slider = document.getElementById('waveformFilterSlider');
+            const value = parseInt(slider.value);
+            
+            // Map slider value (0-100) to alpha (0.95 to 0.9999)
+            // Lower alpha = more aggressive drift removal (removes slower frequencies)
+            // Higher alpha = less aggressive (only removes very slow drift)
+            // 0 -> 0.95 (aggressive), 50 -> 0.995 (moderate), 100 -> 0.9999 (gentle)
+            const alpha = 0.95 + (value / 100) * (0.9999 - 0.95);
+            
+            // Update display
+            document.getElementById('waveformFilterValue').textContent = `${alpha.toFixed(4)}`;
+            
+            // Re-filter and redraw waveform if we have data
+            if (window.rawWaveformData && window.rawWaveformData.length > 0) {
+                // Check if drift removal is enabled
+                const removeDC = document.getElementById('removeDCOffset').checked;
+                
+                console.log(`🎛️ changeWaveformFilter called: removeDC=${removeDC}, alpha=${alpha.toFixed(4)}`);
+                
+                // Start with raw data
+                let processedData = window.rawWaveformData;
+                
+                // Apply drift removal if enabled
+                if (removeDC) {
+                    console.log(`🎛️ Removing drift with alpha=${alpha.toFixed(4)}...`);
+                    processedData = removeDCOffset(processedData, alpha);
+                    
+                    // Log processed data range
+                    let minProc = processedData[0], maxProc = processedData[0];
+                    for (let i = 1; i < processedData.length; i++) {
+                        if (processedData[i] < minProc) minProc = processedData[i];
+                        if (processedData[i] > maxProc) maxProc = processedData[i];
+                    }
+                    console.log(`  📊 Drift-removed range: [${minProc.toFixed(1)}, ${maxProc.toFixed(1)}]`);
+                } else {
+                    console.log(`🎛️ No drift removal (showing raw data)`);
+                }
+                
+                // Normalize
+                const normalized = normalize(processedData);
+                
+                // Update the display waveform
+                window.displayWaveformData = normalized;
+                completeSamplesArray = normalized;
+                
+                // Redraw waveform
+                console.log(`  🎨 Redrawing waveform...`);
+                drawWaveform();
+            } else {
+                console.log(`⚠️ No raw waveform data available yet - load data first`);
+            }
+        }
+        
+        // Click label to reset to Railway default (0.5 Hz)
+        document.getElementById('waveformFilterLabel').addEventListener('click', function() {
+            const slider = document.getElementById('waveformFilterSlider');
+            slider.value = 50; // 0.5 Hz
+            changeWaveformFilter();
+        });
+        
         function changeBaseSampleRate() {
             // When base sample rate changes, update playback speed immediately
             // This does NOT trigger a new fetch - just updates the playing audio speed
@@ -2687,10 +3115,17 @@
         }
         
         function drawWaveform() {
+            console.log(`🎨 drawWaveform() called, completeSamplesArray length: ${completeSamplesArray ? completeSamplesArray.length : 'null'}`);
+            
             // Draw complete waveform from stored samples array (static, not live)
             if (!completeSamplesArray || completeSamplesArray.length === 0) {
+                console.log(`⚠️ drawWaveform() aborted: no data`);
                 return;
             }
+            
+            // Clear cached canvas to force redraw
+            cachedWaveformCanvas = null;
+            console.log(`🎨 Cleared cached canvas, redrawing...`);
             
             const canvas = document.getElementById('waveform');
             if (!canvas) return;
@@ -2702,6 +3137,7 @@
             // Calculate total audio duration
             const sampleRate = 44100; // AudioWorklet sample rate
             totalAudioDuration = completeSamplesArray.length / sampleRate;
+            console.log(`📏 Total audio duration: ${totalAudioDuration.toFixed(2)}s (${completeSamplesArray.length.toLocaleString()} samples @ 44100 Hz)`);
             
             // Clear canvas
             ctx.fillStyle = '#000';
@@ -3213,17 +3649,19 @@
                 return;
             }
             
-            if (!isPlaying || isPaused || totalAudioDuration === 0) {
-                return;
+            // Continue animation loop even if we can't draw yet
+            if (!isPlaying || isPaused) {
+                return; // Stop the loop if paused or stopped
             }
             
+            // Only draw if we have duration
+            if (totalAudioDuration > 0) {
             // Position comes from worklet - just draw
             drawWaveformWithSelection();
+            }
             
             // Continue animation loop
-            if (isPlaying && !isPaused) {
                 requestAnimationFrame(updatePlaybackIndicator);
-            }
         }
         
         function drawSpectrogram() {
@@ -3251,9 +3689,8 @@
             analyserNode.getByteFrequencyData(dataArray);
             
             // Control scroll speed:
-            // Display scale: what shows as 0.5x should scroll at what was previously 1.0x speed
-            // So we multiply by 4 to get actual scroll speed (twice as fast overall)
-            const actualScrollSpeed = spectrogramScrollSpeed * 4.0;
+            // Use the display speed directly (1:1 mapping)
+            const actualScrollSpeed = spectrogramScrollSpeed;
             
             if (actualScrollSpeed <= 0) {
                 // Speed is 0, don't scroll
@@ -3343,7 +3780,7 @@
                 }
             }
             
-            // Store the display speed (will be multiplied by 4 for actual speed)
+            // Store the display speed (used directly as actual speed)
             spectrogramScrollSpeed = displaySpeed;
             
             // Update display - remove unnecessary zeros
