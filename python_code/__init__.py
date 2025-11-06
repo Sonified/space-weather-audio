@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.57"
+__version__ = "1.59"
 __commit_message__ = (
-    "v1.57 Fix: Added day-level folder structure and fixed deduplication race condition"
+    "v1.59 Feature: Added adaptive anti-aliasing filter for smooth slow-motion playback"
 )
 
 # Import key modules to make them available when importing the package

@@ -1,5 +1,42 @@
 # Captain's Log - November 5, 2025
 
+## Added Adaptive Anti-Aliasing Filter (v1.59)
+
+**Version:** v1.59  
+**Commit:** v1.59 Feature: Added adaptive anti-aliasing filter for smooth slow-motion playback
+
+### Feature:
+Implemented adaptive anti-aliasing low-pass filter in the AudioWorklet to prevent harsh artifacts when slowing down playback.
+
+### How It Works:
+- **Filter cutoff automatically adjusts** based on playback speed
+- Formula: `cutoff = 22050 Hz × playback_speed`
+- At 1.0x speed: 22,050 Hz cutoff (no filtering - above human hearing)
+- At 0.5x speed: 11,025 Hz cutoff (filters out half the frequencies)
+- At 0.1x speed: 2,205 Hz cutoff (aggressive filtering for very slow playback)
+
+### Implementation:
+- **Biquad Butterworth 2nd-order low-pass filter** in AudioWorklet
+- Only activates when `speed < 1.0` (no overhead at normal/fast speeds)
+- Updates filter coefficients dynamically as speed changes
+- Very efficient: 6 multiply-adds per sample
+
+### UI Changes:
+- Hidden anti-aliasing toggle button (enabled by default)
+- Hidden high-pass filter dropdown (still works in background)
+- Cleaner interface focused on essential controls
+
+### Impact:
+- ✅ Smooth, clean audio when slowing down playback
+- ✅ Eliminates harsh "digital" artifacts from linear interpolation
+- ✅ Automatic - no user configuration needed
+- ✅ Minimal CPU overhead (only runs when slowing down)
+
+### Files Modified:
+- `index.html` - Added biquad filter to AudioWorklet, hidden controls
+
+---
+
 ## Fixed boto3 Import Issue in Status Endpoint (v1.58)
 
 **Version:** v1.58  
