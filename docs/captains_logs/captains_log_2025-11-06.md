@@ -521,3 +521,178 @@ setTimeout(() => {
 
 **Conclusion**: Worker architecture is solid, but browser audio thread scheduling needs investigation.
 
+---
+
+### Session 3: Waveform Optimization & Chunked Parallel Fetching (v1.61)
+
+#### Performance Optimization: Waveform Worker
+
+**Problem**: 12-hour waveform took **17 seconds** to build, blocking UI
+
+**Root Cause**:
+- Drawing 3.84M samples when canvas is only 1200px wide
+- Processing on main thread via `requestIdleCallback` (waited too long)
+- Inefficient `lineTo()` drawing for millions of points
+
+**Solution**: Min/Max Waveform Worker
+1. **Screen-space downsampling**: Calculate min/max for each pixel column
+   - 3.84M samples → 1200 min/max pairs (3200x reduction!)
+2. **Dedicated worker**: `waveform-worker.js` processes off main thread
+3. **Efficient rendering**: Use `fillRect()` instead of `lineTo()`
+4. **Zero-copy transfer**: Transfer min/max arrays with Transferable objects
+
+**Results**:
+- **Before**: 17,000ms (17 seconds!) - blocked main thread
+- **After**: ~50-100ms (170x faster!) - main thread stays responsive
+
+**Files Created**:
+- `waveform-worker.js` - Dedicated waveform processing worker
+- `WAVEFORM_OPTIMIZATION.md` - Detailed documentation
+
+**Files Modified**:
+- `index.html` - Worker integration, min/max rendering, progressive waveform
+
+---
+
+#### Bug Fix: Red Playhead Line Not Drawing
+
+**Problem**: Playhead line wouldn't appear after first data load
+
+**Root Cause**: `drawWaveformWithSelection()` required `cachedWaveformCanvas` which wasn't ready yet
+
+**Fix**: Handle missing cached canvas gracefully
+```javascript
+if (!cachedWaveformCanvas) {
+    // Draw playhead on blank canvas if waveform not ready yet
+    if (totalAudioDuration > 0 && currentAudioPosition >= 0) {
+        const progress = Math.min(currentAudioPosition / totalAudioDuration, 1.0);
+        const x = progress * width;
+        ctx.strokeStyle = '#ff0000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+    }
+    return;
+}
+```
+
+Also ensured playback indicator starts immediately and draws when waveform is ready.
+
+---
+
+#### Performance Optimization: Chunked Parallel Fetching
+
+**Problem**: Sequential chunk fetching was slow (2x slower than possible)
+
+**Solution**: Fetch chunks in parallel batches by type
+1. Fetch all 10m chunks in parallel → process
+2. Then fetch all 1h chunks in parallel → process
+3. Then fetch all 6h chunks in parallel → process
+
+**Implementation**:
+```javascript
+// Group chunks by type
+const chunksByType = {};
+for (const chunk of chunksToFetch) {
+    if (!chunksByType[chunk.type]) chunksByType[chunk.type] = [];
+    chunksByType[chunk.type].push(chunk);
+}
+
+// Process in batches
+for (const type of ['10m', '1h', '6h']) {
+    const batch = chunksByType[type];
+    const results = await Promise.all(batch.map(fetchChunk));
+    // Send all to worker
+}
+```
+
+**Expected Results** (from performance test):
+- **Sequential**: 1638ms TTFA
+- **Parallel**: 789ms TTFA (2.08x faster!)
+
+---
+
+#### Performance Testing Framework
+
+Created `backend/test_progressive_performance.py` to measure different optimization strategies:
+
+**Tests**:
+1. Baseline: Sequential fetch + main thread processing
+2. Pipelined: Overlap fetch N+1 with process N
+3. Parallel Fetch: All chunks in parallel, then process
+4. First Chunk Priority: Process chunk 1 ASAP, then parallel
+5. Streaming Decompression: Decompress while downloading
+
+**Key Findings**:
+- **Parallel fetching is huge**: 2.08x faster than sequential
+- **Processing is negligible**: <2ms per chunk (not the bottleneck!)
+- **Network latency dominates**: Download is 99% of load time
+- **Decompression is fast**: zstd decompression < 10ms per chunk
+
+**Winner**: Parallel Fetch + Sequential Process (789ms TTFA)
+
+---
+
+#### Infrastructure: Wrangler Configuration Cleanup
+
+**Problem**: Warnings about unsupported observability fields
+
+**Fix**: Removed deprecated `persist` and `traces` fields from `wrangler.toml`
+```toml
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+```
+
+---
+
+### Technical Learnings
+
+1. **Screen-Space Rendering is Critical**:
+   - Only render what the screen can display
+   - Min/max per pixel column is perfect for waveforms
+   - 3200x reduction in data → 170x speedup
+
+2. **Workers for Heavy Processing**:
+   - Move expensive operations off main thread
+   - Use Transferable objects for zero-copy
+   - Main thread stays responsive during processing
+
+3. **Parallel Fetching Wins**:
+   - Network latency is the real bottleneck
+   - Fetch in parallel, process sequentially
+   - 2x speedup with simple `Promise.all()`
+
+4. **Measure Before Optimizing**:
+   - Performance test framework revealed network is 99% of time
+   - Decompression optimization wouldn't help much
+   - Focus on parallel fetching instead
+
+---
+
+### Files Modified This Session
+
+**Frontend**:
+- `index.html` - Waveform worker integration, chunked parallel fetching, playhead fix
+
+**New Files**:
+- `waveform-worker.js` - Dedicated waveform processing worker
+- `WAVEFORM_OPTIMIZATION.md` - Performance optimization documentation
+- `backend/test_progressive_performance.py` - Performance testing framework
+
+**Worker**:
+- `worker/wrangler.toml` - Cleaned up observability configuration
+
+---
+
+### Version: v1.61
+
+**Commit Message**: v1.61 Performance: Waveform worker (170x faster), chunked parallel fetching (2x faster), playhead fix, performance testing framework
+

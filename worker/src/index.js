@@ -768,7 +768,7 @@ export default {
         // Cache MISS - Forward to Render
         console.log(`[Worker] ❌ Cache MISS - forwarding to Railway`);
         
-        const renderUrl = env.RENDER_URL || 'https://volcano-audio-production.up.railway.app';
+        const renderUrl = env.RENDER_URL || 'https://volcano-audio-collector-production.up.railway.app';
         const renderEndpoint = `${renderUrl}/api/request`;
         
         const renderRequest = {

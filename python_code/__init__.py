@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.60"
+__version__ = "1.61"
 __commit_message__ = (
-    "v1.60 Fix: Moved simulate buttons to bottom and fixed panel background styling"
+    "v1.61 Performance: Waveform worker (170x faster), chunked parallel fetching (2x faster), playhead fix, performance testing framework"
 )
 
 # Import key modules to make them available when importing the package

@@ -1156,6 +1156,8 @@
         let playbackDurationSeconds = null; // Store calculated playback duration in seconds
         let completeSamplesArray = null; // Store complete samples array for waveform drawing
         let cachedWaveformCanvas = null; // Cached waveform canvas for performance
+        let waveformMinMaxData = null; // Min/max waveform data from worker (for efficient rendering)
+        let waveformWorker = null; // Dedicated worker for waveform processing
         let isDragging = false; // Flag for scrubbing drag state
         let scrubTargetPosition = null; // Position to seek to when user releases mouse
         let totalAudioDuration = 0; // Total audio duration in seconds
@@ -1933,6 +1935,7 @@
                     allReceivedData = [];
                     completeSamplesArray = null; // Clear stored samples for waveform
                     cachedWaveformCanvas = null; // Clear cached waveform
+                    waveformMinMaxData = null; // Clear min/max data
                     currentMetadata = null; // Clear metadata for duration calculation
                     totalAudioDuration = 0; // Reset duration
                     currentAudioPosition = 0; // Reset position
@@ -1940,6 +1943,11 @@
                     window.playbackDurationSeconds = null; // Clear stored duration
                     stopPositionTracking(); // Stop position tracking
                     document.getElementById('currentPosition').textContent = '0m 0s'; // Reset position display
+                    
+                    // Reset waveform worker
+                    if (waveformWorker) {
+                        waveformWorker.postMessage({ type: 'reset' });
+                    }
                     
                     // Clear waveform canvas
                     const waveformCanvas = document.getElementById('waveform');
@@ -2230,9 +2238,9 @@
                                 lastWorkletPosition = 0;
                                 lastWorkletUpdateTime = audioContext.currentTime;
                                 lastUpdateTime = audioContext.currentTime;
-                                if (totalAudioDuration > 0) {
-                                    requestAnimationFrame(updatePlaybackIndicator);
-                                }
+                                
+                                // Start playback indicator (will draw when waveform is ready)
+                                requestAnimationFrame(updatePlaybackIndicator);
                             }
                         }
                         
@@ -2282,7 +2290,7 @@
                 
                 // Helper function to build complete waveform (called in idle callback)
                 function buildCompleteWaveform(processedChunks, chunksToFetch, normMin, normMax, totalSamples) {
-                    console.log('🎨 Building complete waveform (idle callback)...');
+                    console.log('🎨 Building complete waveform...');
                     const t0 = performance.now();
                     
                     // Stitch all chunks together
@@ -2313,27 +2321,37 @@
                     // Update UI metrics
                     document.getElementById('sampleCount').textContent = stitchedFloat32.length.toLocaleString();
                     
-                    // Apply filtering if enabled
-                    const removeDC = document.getElementById('removeDCOffset').checked;
-                    if (removeDC) {
-                        const slider = document.getElementById('waveformFilterSlider');
-                        const sliderValue = parseInt(slider.value);
-                        const alpha = 0.95 + (sliderValue / 100) * (0.9999 - 0.95);
-                        const filtered = removeDCOffset(stitchedRaw, alpha);
-                        completeSamplesArray = normalize(filtered);
-                    }
+                    // Send samples to waveform worker (it will handle filtering and drawing)
+                    waveformWorker.postMessage({
+                        type: 'add-samples',
+                        samples: stitchedFloat32,
+                        rawSamples: stitchedRaw
+                    });
                     
-                    // Draw waveform
-                            drawWaveform();
+                    // Trigger waveform build
+                    drawWaveform();
                     
-                    const buildTime = performance.now() - t0;
-                    console.log(`✅ Waveform built in ${buildTime.toFixed(0)}ms (idle)`);
+                    const stitchTime = performance.now() - t0;
+                    console.log(`✅ Samples stitched in ${stitchTime.toFixed(0)}ms, sent to waveform worker`);
                 }
                 
-                // 🎯 FETCH AND SEND TO WORKER (main thread just coordinates!)
+                // 🎯 CHUNKED PARALLEL FETCHING (fetch by type in parallel batches)
+                // Group chunks by type (10m, 1h, 6h)
+                const chunksByType = {};
+                for (let i = 0; i < chunksToFetch.length; i++) {
+                    const chunk = chunksToFetch[i];
+                    const type = chunk.type;
+                    if (!chunksByType[type]) {
+                        chunksByType[type] = [];
+                    }
+                    chunksByType[type].push({ chunk, index: i });
+                }
                 
-                for (let chunkIdx = 0; chunkIdx < chunksToFetch.length; chunkIdx++) {
-                    const chunk = chunksToFetch[chunkIdx];
+                console.log(`📦 Chunk groups: ${Object.keys(chunksByType).map(t => `${chunksByType[t].length}×${t}`).join(', ')}`);
+                
+                // Fetch function
+                async function fetchChunk(chunkData) {
+                    const { chunk, index } = chunkData;
                     const chunkUrl = `${R2_WORKER_URL}/chunk?` + new URLSearchParams({
                         network: stationData.network,
                         station: stationData.station,
@@ -2347,30 +2365,53 @@
                     
                     const response = await fetch(chunkUrl);
                     if (!response.ok) {
-                        throw new Error(`Chunk ${chunkIdx + 1} fetch failed: ${response.status}`);
+                        throw new Error(`Chunk ${index + 1} fetch failed: ${response.status}`);
                     }
                     
                     const compressed = await response.arrayBuffer();
-                    const chunkSize = compressed.byteLength; // Save before transfer!
+                    const chunkSize = compressed.byteLength;
                     totalBytesDownloaded += chunkSize;
                     
-                    // Send to worker with ZERO-COPY transfer
-                    worker.postMessage({
-                        type: 'process-chunk',
-                        compressed: compressed,
-                        normMin: normMin,
-                        normMax: normMax,
-                        chunkIndex: chunkIdx
-                    }, [compressed]); // Transfer ownership to worker!
+                    return { compressed, chunkSize, index };
+                }
+                
+                // Process chunks in batches by type
+                const typeOrder = ['10m', '1h', '6h']; // Process in order of priority
+                
+                for (const type of typeOrder) {
+                    if (!chunksByType[type]) continue;
                     
-                    console.log(`📤 Sent chunk ${chunkIdx + 1}/${chunksToFetch.length} to worker (${(chunkSize / 1024).toFixed(1)} KB)`);
+                    const batch = chunksByType[type];
+                    console.log(`🚀 Fetching ${batch.length}×${type} chunks in parallel...`);
                     
-                    // 🎯 WAIT for first chunk to be processed before fetching chunk 2!
-                    if (chunkIdx === 0) {
-                        console.log(`⏳ Waiting for worker to process first chunk before fetching chunk 2...`);
-                        await firstChunkProcessed;
-                        console.log(`✅ First chunk ready - now fetching remaining chunks...`);
+                    // Fetch all chunks of this type in parallel
+                    const fetchPromises = batch.map(chunkData => fetchChunk(chunkData));
+                    const results = await Promise.all(fetchPromises);
+                    
+                    // Send all to worker (worker will process them)
+                    for (const result of results) {
+                        const { compressed, chunkSize, index } = result;
+                        
+                        // Send to worker with ZERO-COPY transfer
+                        worker.postMessage({
+                            type: 'process-chunk',
+                            compressed: compressed,
+                            normMin: normMin,
+                            normMax: normMax,
+                            chunkIndex: index
+                        }, [compressed]); // Transfer ownership to worker!
+                        
+                        console.log(`📤 Sent chunk ${index + 1}/${chunksToFetch.length} (${type}) to worker (${(chunkSize / 1024).toFixed(1)} KB)`);
+                        
+                        // 🎯 WAIT for first chunk to be processed before continuing
+                        if (index === 0 && !firstChunkSent) {
+                            console.log(`⏳ Waiting for worker to process first chunk...`);
+                            await firstChunkProcessed;
+                            console.log(`✅ First chunk ready - continuing with remaining batches...`);
+                        }
                     }
+                    
+                    console.log(`✅ ${batch.length}×${type} chunks sent to worker`);
                 }
                 
                 // Main thread done fetching! Worker will process chunks and send results back.
@@ -3123,9 +3164,41 @@
                 return;
             }
             
-            // Clear cached canvas to force redraw
-            cachedWaveformCanvas = null;
-            console.log(`🎨 Cleared cached canvas, redrawing...`);
+            // Get canvas dimensions
+            const canvas = document.getElementById('waveform');
+            if (!canvas) return;
+            
+            const width = canvas.offsetWidth * window.devicePixelRatio;
+            const height = canvas.offsetHeight * window.devicePixelRatio;
+            
+            // Calculate total audio duration
+            const sampleRate = 44100; // AudioWorklet sample rate
+            totalAudioDuration = completeSamplesArray.length / sampleRate;
+            console.log(`📏 Total audio duration: ${totalAudioDuration.toFixed(2)}s (${completeSamplesArray.length.toLocaleString()} samples @ 44100 Hz)`);
+            
+            // Send to waveform worker for processing
+            const removeDC = document.getElementById('removeDCOffset').checked;
+            const slider = document.getElementById('waveformFilterSlider');
+            const sliderValue = parseInt(slider.value);
+            const alpha = 0.95 + (sliderValue / 100) * (0.9999 - 0.95);
+            
+            console.log(`🎨 Sending to waveform worker: ${width}px wide, ${completeSamplesArray.length.toLocaleString()} samples`);
+            
+            waveformWorker.postMessage({
+                type: 'build-waveform',
+                canvasWidth: width,
+                canvasHeight: height,
+                removeDC: removeDC,
+                alpha: alpha
+            });
+        }
+        
+        // Draw waveform from min/max data (called when worker sends back data)
+        function drawWaveformFromMinMax() {
+            if (!waveformMinMaxData) {
+                console.log(`⚠️ drawWaveformFromMinMax() aborted: no min/max data`);
+                return;
+            }
             
             const canvas = document.getElementById('waveform');
             if (!canvas) return;
@@ -3134,36 +3207,28 @@
             const width = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
             const height = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
             
-            // Calculate total audio duration
-            const sampleRate = 44100; // AudioWorklet sample rate
-            totalAudioDuration = completeSamplesArray.length / sampleRate;
-            console.log(`📏 Total audio duration: ${totalAudioDuration.toFixed(2)}s (${completeSamplesArray.length.toLocaleString()} samples @ 44100 Hz)`);
-            
             // Clear canvas
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, width, height);
             
-            // Draw waveform line
-            ctx.strokeStyle = '#e8c0c0';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            
-            const step = Math.floor(completeSamplesArray.length / width);
+            // Draw waveform using min/max data (MUCH faster than line drawing!)
+            ctx.fillStyle = '#e8c0c0';
             const mid = height / 2;
             
-            for (let i = 0; i < width; i++) {
-                const index = i * step;
-                const value = completeSamplesArray[index] || 0;
-                const y = mid + (value * mid * 0.9);
-                
-                if (i === 0) {
-                    ctx.moveTo(i, y);
-                } else {
-                    ctx.lineTo(i, y);
-                }
-            }
+            const { mins, maxs } = waveformMinMaxData;
             
-            ctx.stroke();
+            for (let x = 0; x < mins.length && x < width; x++) {
+                const min = mins[x];
+                const max = maxs[x];
+                
+                // Convert normalized values [-1, 1] to canvas coordinates
+                const yMin = mid + (min * mid * 0.9);
+                const yMax = mid + (max * mid * 0.9);
+                
+                // Draw vertical line from min to max
+                const lineHeight = Math.max(1, yMax - yMin);
+                ctx.fillRect(x, yMin, 1, lineHeight);
+            }
             
             // Draw center line
             ctx.strokeStyle = '#666';
@@ -3179,12 +3244,35 @@
             cachedWaveformCanvas.height = height;
             const cacheCtx = cachedWaveformCanvas.getContext('2d');
             cacheCtx.drawImage(canvas, 0, 0);
+            
+            console.log(`✅ Waveform drawn from min/max data (${mins.length} pixels)`);
         }
         
         // Draw waveform with selection highlight
         function drawWaveformWithSelection() {
             const canvas = document.getElementById('waveform');
-            if (!canvas || !cachedWaveformCanvas) return;
+            if (!canvas) return;
+            
+            // If no cached canvas yet, just draw a blank canvas with playhead
+            if (!cachedWaveformCanvas) {
+                const ctx = canvas.getContext('2d');
+                const width = canvas.width;
+                const height = canvas.height;
+                
+                // Draw playhead on blank canvas
+                if (totalAudioDuration > 0 && currentAudioPosition >= 0) {
+                    const progress = Math.min(currentAudioPosition / totalAudioDuration, 1.0);
+                    const x = progress * width;
+                    
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                }
+                return;
+            }
             
             const ctx = canvas.getContext('2d');
             const width = canvas.width;
@@ -3800,8 +3888,44 @@
             document.getElementById('spectrogramScrollSpeedValue').textContent = displayText;
         }
         
+        // Initialize waveform worker
+        function initWaveformWorker() {
+            if (waveformWorker) {
+                waveformWorker.terminate();
+            }
+            
+            waveformWorker = new Worker('waveform-worker.js');
+            
+            waveformWorker.onmessage = (e) => {
+                const { type } = e.data;
+                
+                if (type === 'waveform-ready') {
+                    const { waveformData, totalSamples, buildTime } = e.data;
+                    console.log(`🎨 Waveform ready: ${totalSamples.toLocaleString()} samples → ${waveformData.mins.length} pixels in ${buildTime.toFixed(0)}ms`);
+                    
+                    // Store min/max data for rendering
+                    waveformMinMaxData = waveformData;
+                    
+                    // Draw waveform using min/max data
+                    drawWaveformFromMinMax();
+                    
+                    // Draw playhead immediately if we're playing
+                    if (isPlaying || totalAudioDuration > 0) {
+                        drawWaveformWithSelection();
+                    }
+                } else if (type === 'reset-complete') {
+                    console.log('🎨 Waveform worker reset complete');
+                }
+            };
+            
+            console.log('🎨 Waveform worker initialized');
+        }
+        
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
+            // Initialize waveform worker
+            initWaveformWorker();
+            
             // Set initial slider position for 1.0x speed
             const sliderValueFor1x = calculateSliderForSpeed(1.0);
             document.getElementById('playbackSpeed').value = sliderValueFor1x;

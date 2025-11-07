@@ -1,28 +1,47 @@
-# Volcano Audio - Cloudflare Worker
+# Volcano Audio - Cloudflare R2 Worker
 
-Streams seismic audio data from R2 with on-demand processing (detrend + normalize).
+Progressive streaming of seismic audio chunks from R2 storage directly to browser.
 
-## Why Cloudflare Worker?
+## Why Cloudflare Worker + R2?
 
 **Performance:**
-- Co-located with R2 (1-5ms latency vs 100-150ms via Railway)
+- Co-located with R2 (sub-millisecond latency, same datacenter)
 - Global edge network (fast for all users)
-- Expected TTFA: ~50-80ms (vs 355ms via Railway)
+- **Direct streaming** (no presigned URLs = no extra round trip)
+- Expected TTFA: ~50-80ms total
 
 **Cost:**
-- FREE R2 egress (vs Railway bandwidth costs)
+- **FREE R2 egress** when accessed from Workers
 - 100k requests/day FREE on Workers
-- ~$5/month even if viral (1M requests)
+- ~$5/month even at scale (1M requests)
 
-## Architecture
+**Architecture Benefits:**
+- Single request per chunk = minimal latency
+- Worker runs at edge closest to user
+- R2 data cached at edge (or pulled there on first access)
+- Connection stays hot for sequential chunks
+
+## New Architecture (Progressive Streaming)
 
 ```
-Client → Cloudflare Worker (edge) → R2 (same datacenter)
+Client → Worker /metadata → R2 Metadata JSON
          ↓
-         Detrend + Normalize (on-demand)
+         Get normalization range from metadata
          ↓
-         Stream progressive chunks
+Client → Worker /chunk (sequential) → R2 .zst chunk → Stream to browser
+         ↓
+Browser decompresses locally (2-36ms per chunk)
+         ↓
+Browser normalizes & stitches chunks
+         ↓
+Audio playback starts!
 ```
+
+**Key insight:** Streaming through worker is **faster** than presigned URLs because:
+1. No DNS lookup for R2 domain
+2. No redirect overhead
+3. Worker can add caching headers
+4. Connection stays hot for sequential chunks
 
 ## Setup
 
@@ -38,57 +57,115 @@ npm install -g wrangler
 wrangler login
 ```
 
-### 3. Deploy Worker
+### 3. Create R2 Bucket
+
+```bash
+wrangler r2 bucket create volcano-seismic-data
+```
+
+### 4. Configure Worker
+
+Edit `wrangler-r2-example.toml`:
+- Add your Cloudflare account ID (find at dash.cloudflare.com)
+- Update bucket name if different
+- Rename to `wrangler.toml`
+
+### 5. Deploy Worker
 
 ```bash
 cd worker
-wrangler deploy
+cp wrangler-r2-example.toml wrangler.toml
+# Edit wrangler.toml with your account ID
+wrangler deploy r2-worker-example.js
 ```
 
-### 4. Test
+### 6. Update Frontend
 
-```bash
-# Your worker will be live at:
-https://volcano-audio-worker.YOUR-SUBDOMAIN.workers.dev
+In `index.html`, update the R2 Worker URL:
 
-# Test endpoint:
-curl "https://volcano-audio-worker.YOUR-SUBDOMAIN.workers.dev/stream/kilauea/4?hours_ago=12"
+```javascript
+// Line ~1950
+const R2_WORKER_URL = 'https://your-worker.your-subdomain.workers.dev';
 ```
 
-## API
+Replace with your actual worker URL (shown after `wrangler deploy`).
 
-### Stream Endpoint
+## API Endpoints
 
-```
-GET /stream/{volcano}/{duration_hours}?hours_ago={hours}
-```
+### 1. GET /metadata
+
+Fetches metadata JSON for a station/date (includes normalization ranges).
 
 **Parameters:**
-- `volcano`: Volcano name (kilauea, spurr, etc.)
-- `duration_hours`: Duration in hours (1-24)
-- `hours_ago`: How many hours ago to start (default: 12)
-
-**Response:**
-- Streams raw int16 audio data (detrended + normalized)
-- Progressive chunks: 8→16→32→64→128→256→512 KB
-- Headers include profiling info (X-Worker-*-MS)
+- `network`: Network code (e.g., HV, AV)
+- `station`: Station code (e.g., NPOC, SPCP)
+- `location`: Location code (e.g., --, 01)
+- `channel`: Channel code (e.g., HHZ, BHZ)
+- `date`: Date in YYYY-MM-DD format
 
 **Example:**
 ```bash
-curl "https://volcano-audio-worker.YOUR-SUBDOMAIN.workers.dev/stream/kilauea/4?hours_ago=12" \
-  --output kilauea_4h.bin
+curl "https://your-worker.workers.dev/metadata?network=HV&station=NPOC&location=--&channel=HHZ&date=2025-11-06"
 ```
 
-## Processing
+**Response:**
+```json
+{
+  "date": "2025-11-06",
+  "network": "HV",
+  "station": "NPOC",
+  "channel": "HHZ",
+  "sample_rate": 100.0,
+  "chunks": {
+    "10min": [
+      {"start": "00:00:00", "end": "00:10:00", "min": -1523, "max": 1891, ...},
+      {"start": "00:10:00", "end": "00:20:00", "min": -1432, "max": 1765, ...}
+    ]
+  }
+}
+```
 
-The worker performs on-demand processing:
+### 2. GET /chunk
 
-1. **Fetch raw int16 from R2** (~50ms)
-2. **Detrend**: Subtract mean (~1ms)
-3. **Normalize**: Scale by max absolute value (~1ms)
-4. **Stream**: Progressive chunks to client
+Streams compressed .zst chunk directly from R2.
 
-**Total TTFA: ~50-80ms** (10x faster than Railway!)
+**Parameters:**
+- `network`: Network code
+- `station`: Station code  
+- `location`: Location code
+- `channel`: Channel code
+- `date`: Date in YYYY-MM-DD format
+- `start`: Start time (HH:MM:SS)
+- `end`: End time (HH:MM:SS)
+
+**Example:**
+```bash
+curl "https://your-worker.workers.dev/chunk?network=HV&station=NPOC&location=--&channel=HHZ&date=2025-11-06&start=00:00:00&end=00:10:00" \
+  --output chunk.bin.zst
+```
+
+**Response:**
+- Binary zstd-compressed int32 data
+- Headers: `Content-Type: application/octet-stream`
+- Cached for 1 year (immutable chunks)
+
+## How It Works
+
+### Progressive Streaming Flow
+
+1. **Browser requests metadata** → Worker fetches JSON from R2 → Browser gets normalization range
+2. **Browser requests 3 chunks sequentially** (for 30-minute request):
+   - Chunk 1: 00:00:00 - 00:10:00
+   - Chunk 2: 00:10:00 - 00:20:00  
+   - Chunk 3: 00:20:00 - 00:30:00
+3. **Worker streams each chunk directly** (no decompression!)
+4. **Browser receives .zst data** → decompresses locally → normalizes → stitches → plays!
+
+**Key advantages:**
+- ✅ Metadata first = browser knows normalization range before downloading chunks
+- ✅ Sequential streaming = first chunk starts playing while others download
+- ✅ Worker just passes through data = minimal compute/latency
+- ✅ Browser controls decompression timing = no worker memory pressure
 
 ## Cache Key Format
 

@@ -245,16 +245,8 @@ def process_station_window(network, station, location, channel, volcano, sample_
             r2_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{chunk_type}/{filename}"
             metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
             
-            # Upload chunk file
-            s3_client.put_object(
-                Bucket=R2_BUCKET_NAME,
-                Key=r2_key,
-                Body=compressed,
-                ContentType='application/octet-stream'
-            )
-            logger.info(f"  💾 Uploaded to R2: {r2_key}")
-            
-            # Load or create metadata
+            # CRITICAL: Load metadata FIRST to check for duplicates BEFORE uploading binary
+            # This prevents uploading orphaned files when race conditions occur
             try:
                 response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
                 metadata = json.loads(response['Body'].read().decode('utf-8'))
@@ -290,16 +282,25 @@ def process_station_window(network, station, location, channel, volcano, sample_
                 'gap_samples_filled': sum(g['samples_filled'] for g in gaps)
             }
             
-            # DISABLED: Check again for duplicates AFTER loading fresh metadata
-            # TEMPORARILY DISABLED TO REDUCE R2 REQUESTS
-            # start_time_str = chunk_meta['start']
-            # existing_chunks = metadata['chunks'].get(chunk_type, [])
-            # for existing_chunk in existing_chunks:
-            #     if existing_chunk['start'] == start_time_str:
-            #         logger.info(f"  ⏭️  Chunk already exists (race condition detected), skipping append")
-            #         return 'skipped', None
+            # CRITICAL: Check for duplicates BEFORE uploading binary file
+            # This prevents race conditions AND avoids creating orphaned files
+            start_time_str = chunk_meta['start']
+            existing_chunks = metadata['chunks'].get(chunk_type, [])
+            for existing_chunk in existing_chunks:
+                if existing_chunk['start'] == start_time_str:
+                    logger.info(f"  ⏭️  Chunk already exists in metadata (race condition detected), skipping upload")
+                    return 'skipped', None
             
-            # Append without checking (deduplication disabled)
+            # Safe to upload binary now (duplicate check passed)
+            s3_client.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=r2_key,
+                Body=compressed,
+                ContentType='application/octet-stream'
+            )
+            logger.info(f"  💾 Uploaded to R2: {r2_key}")
+            
+            # Safe to append now
             metadata['chunks'][chunk_type].append(chunk_meta)
             
             # SORT by start time (chronological)
