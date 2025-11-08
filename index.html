@@ -805,6 +805,7 @@
                         <option value="4">4 hours</option>
                         <option value="6">6 hours</option>
                         <option value="12">12 hours</option>
+                        <option value="24">24 hours</option>
                     </select>
                 </div>
                 
@@ -865,8 +866,8 @@
                         <input type="checkbox" id="removeDCOffset" onchange="changeWaveformFilter()" checked style="width: 20px; height: 20px; cursor: pointer;">
                         <span style="font-weight: 600; white-space: nowrap; font-size: 18px;">Drift Removal:</span>
                     </label>
-                    <label for="waveformFilterSlider" id="waveformFilterLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Adjust drift removal aggressiveness"><span id="waveformFilterValue">0.995</span></label>
-                    <input type="range" id="waveformFilterSlider" min="0" max="100" step="1" value="50" oninput="changeWaveformFilter()" style="flex: 1; min-width: 0;">
+                    <label for="waveformFilterSlider" id="waveformFilterLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Adjust drift removal aggressiveness"><span id="waveformFilterValue">0.9974</span></label>
+                    <input type="range" id="waveformFilterSlider" min="0" max="100" step="1" value="95" oninput="changeWaveformFilter()" style="flex: 1; min-width: 0;">
                 </div>
             </div>
         </div>
@@ -2251,12 +2252,18 @@
                 
                 // Determine actual end time based on metadata
                 let endTime;
+                let adjustedStartTime = startTime;
+                
                 if (actualMostRecentChunk) {
                     console.log(`✅ Most recent chunk in metadata: ${actualMostRecentChunk.date} ${actualMostRecentChunk.chunk.start}`);
                     // Adjust endTime if our estimate was too optimistic
                     if (actualMostRecentChunk.time < estimatedEndTime) {
                         console.log(`⚠️ Adjusted end time from ${estimatedEndTime.toISOString()} to ${actualMostRecentChunk.time.toISOString()}`);
                         endTime = actualMostRecentChunk.time;
+                        
+                        // CRITICAL: Adjust startTime to maintain requested duration!
+                        adjustedStartTime = new Date(endTime.getTime() - duration * 3600 * 1000);
+                        console.log(`⚠️ Adjusted start time from ${startTime.toISOString()} to ${adjustedStartTime.toISOString()} to maintain ${duration}h duration`);
                     } else {
                         endTime = estimatedEndTime;
                     }
@@ -2265,7 +2272,7 @@
                 }
                 
                 // Calculate which chunks we need across all days
-                const chunksNeeded = calculateChunksNeededMultiDay(startTime, endTime, validMetadata);
+                const chunksNeeded = calculateChunksNeededMultiDay(adjustedStartTime, endTime, validMetadata);
                 console.log(`📋 Calculated chunks needed: ${chunksNeeded.length} chunks`);
                 console.log(`📋 Chunk types: ${chunksNeeded.map(c => c.type).join(', ')}`);
                 
@@ -2532,47 +2539,48 @@
                     return { compressed, chunkSize, index };
                 }
                 
-                // Process chunks in batches by type
-                const typeOrder = ['10m', '1h', '6h']; // Process in order of priority
+                // 🚀 START ALL DOWNLOADS IMMEDIATELY (don't wait for batches!)
+                console.log(`🚀 Starting download of ALL ${chunksToFetch.length} chunks in parallel...`);
+                console.log(`📦 Breakdown: ${Object.keys(chunksByType).map(t => `${chunksByType[t].length}×${t}`).join(', ')}`);
                 
-                for (const type of typeOrder) {
-                    if (!chunksByType[type]) continue;
-                    
-                    const batch = chunksByType[type];
-                    console.log(`🚀 Fetching ${batch.length}×${type} chunks in parallel...`);
-                    
-                    // Fetch all chunks of this type in parallel
-                    const fetchPromises = batch.map(chunkData => fetchChunk(chunkData));
-                    const results = await Promise.all(fetchPromises);
-                    
-                    // Send all to worker (worker will process them)
-                    for (const result of results) {
+                // Start fetching ALL chunks immediately
+                const allFetchPromises = chunksToFetch.map((chunk, index) => 
+                    fetchChunk({chunk, index})
+                );
+                
+                // Process chunks as they arrive (don't wait for all!)
+                let chunksDownloaded = 0;
+                
+                // Process each chunk as soon as it's downloaded
+                for (const fetchPromise of allFetchPromises) {
+                    fetchPromise.then(result => {
                         const { compressed, chunkSize, index } = result;
-                    
-                    // Send to worker with ZERO-COPY transfer
-                    worker.postMessage({
-                        type: 'process-chunk',
-                        compressed: compressed,
-                        normMin: normMin,
-                        normMax: normMax,
+                        chunksDownloaded++;
+                        
+                        // Send to worker with ZERO-COPY transfer
+                        worker.postMessage({
+                            type: 'process-chunk',
+                            compressed: compressed,
+                            normMin: normMin,
+                            normMax: normMax,
                             chunkIndex: index
-                    }, [compressed]); // Transfer ownership to worker!
-                    
-                        console.log(`📤 Sent chunk ${index + 1}/${chunksToFetch.length} (${type}) to worker (${(chunkSize / 1024).toFixed(1)} KB)`);
-                    
-                        // 🎯 WAIT for first chunk to be processed before continuing
-                        if (index === 0 && !firstChunkSent) {
-                            console.log(`⏳ Waiting for worker to process first chunk...`);
-                        await firstChunkProcessed;
-                            console.log(`✅ First chunk ready - continuing with remaining batches...`);
-                    }
-                    }
-                    
-                    console.log(`✅ ${batch.length}×${type} chunks sent to worker`);
+                        }, [compressed]); // Transfer ownership to worker!
+                        
+                        const chunkType = chunksToFetch[index].type;
+                        console.log(`📥 Downloaded chunk ${index + 1}/${chunksToFetch.length} (${chunkType}) - ${(chunkSize / 1024).toFixed(1)} KB (${chunksDownloaded} total)`);
+                    }).catch(error => {
+                        console.error(`❌ Failed to fetch chunk ${index + 1}:`, error);
+                    });
                 }
                 
-                // Main thread done fetching! Worker will process chunks and send results back.
-                console.log(`📡 All ${chunksToFetch.length} chunks sent to worker - waiting for processing...`);
+                // Wait for first chunk to be processed, then start playback
+                console.log(`⏳ Waiting for first chunk to process...`);
+                await firstChunkProcessed;
+                console.log(`✅ First chunk ready - AUDIO PLAYING! (remaining chunks downloading in background)`);
+                
+                // Wait for all chunks to finish downloading
+                await Promise.all(allFetchPromises);
+                console.log(`📡 All ${chunksToFetch.length} chunks downloaded and sent to worker`);
                 
                 // Worker will handle:
                 // 1. Decompression (off main thread)
@@ -4081,8 +4089,8 @@
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
             // Version logging
-            console.log('🌋 volcano-audio v1.62 - CDN Direct Access');
-            console.log('📦 v1.62 Performance: CDN direct access (7.8x faster), eliminate worker overhead, multi-day support, precise time calculation (2:30 buffer + verification), normalization from chunks');
+            console.log('🌋 volcano-audio v1.63 - True Progressive Streaming');
+            console.log('📦 v1.63 Performance: True progressive streaming - parallel chunk downloads, 30ms TTFA for any duration, maintain requested duration when adjusting end time');
             
             // Initialize waveform worker
             initWaveformWorker();

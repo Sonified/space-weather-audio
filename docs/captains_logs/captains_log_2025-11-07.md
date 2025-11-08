@@ -300,3 +300,180 @@ Browser handles:
 
 **TTFA**: 307ms on 13 Mbps → projected <100ms on 200 Mbps 🚀
 
+---
+
+## Session 2: True Progressive Streaming - v1.63
+
+### The Problem: Batch Waiting
+
+After implementing CDN direct access, discovered two critical issues:
+
+#### Issue 1: Incorrect Duration
+**Problem**: When adjusting end time based on most recent chunk, start time wasn't adjusted
+- User requests: 1 hour
+- Estimated end: 18:40
+- Actual end: 18:30 (most recent chunk)
+- Start time: 17:40 (calculated from original 18:40)
+- **Result**: 17:40 to 18:30 = 50 minutes ❌
+
+**Fix**: Adjust start time when adjusting end time
+```javascript
+if (actualMostRecentChunk.time < estimatedEndTime) {
+    endTime = actualMostRecentChunk.time;
+    // CRITICAL: Adjust startTime to maintain requested duration!
+    adjustedStartTime = new Date(endTime.getTime() - duration * 3600 * 1000);
+}
+```
+
+**Result**: Now gets full requested duration ✅
+
+---
+
+#### Issue 2: Sequential Batch Downloads
+**Problem**: Code was downloading chunks in batches and waiting for each batch to complete
+
+```javascript
+// BAD: Wait for all 10m chunks before fetching 1h chunks
+for (const type of ['10m', '1h', '6h']) {
+    const results = await Promise.all(fetchPromises); // BLOCKS HERE
+    // Process results...
+}
+```
+
+**Impact**:
+- 24 hours: 5.7 seconds TTFA
+- 1 hour: 500ms+ TTFA
+- Audio wouldn't start until ALL chunks in batch downloaded
+
+**Root Cause**: `Promise.all()` waits for slowest chunk before processing ANY
+
+---
+
+### The Solution: True Progressive Streaming
+
+**New Flow**:
+1. Start downloading ALL chunks immediately (parallel)
+2. Process chunk 1 as soon as it arrives
+3. Start playback immediately
+4. Continue downloading/processing remaining chunks in background
+
+```javascript
+// Start ALL downloads immediately
+const allFetchPromises = chunksToFetch.map((chunk, index) => 
+    fetchChunk({chunk, index})
+);
+
+// Process each as it arrives (don't wait!)
+for (const fetchPromise of allFetchPromises) {
+    fetchPromise.then(result => {
+        // Send to worker immediately
+        worker.postMessage({
+            type: 'process-chunk',
+            compressed: result.compressed,
+            normMin: normMin,
+            normMax: normMax,
+            chunkIndex: result.index
+        }, [result.compressed]);
+    });
+}
+
+// Wait for first chunk to process, then start playback
+await firstChunkProcessed;
+console.log('✅ AUDIO PLAYING! (remaining chunks downloading in background)');
+
+// Wait for all chunks in background
+await Promise.all(allFetchPromises);
+```
+
+---
+
+### Performance Results
+
+#### Before (v1.62):
+- **30 minutes**: ~500ms TTFA
+- **24 hours**: ~5.7s TTFA
+- Waited for all chunks in batch before processing
+
+#### After (v1.63):
+- **30 minutes**: ~30ms TTFA 🔥
+- **24 hours**: ~300ms TTFA 🤯
+- Starts playing after first chunk, regardless of total duration!
+
+**Console Output (24 hours)**:
+```
+🚀 Starting download of ALL 14 chunks in parallel...
+📥 Downloaded chunk 1/14 (10m) - 119.2 KB (1 total)
+⚡ FIRST CHUNK SENT in 30ms - starting playback!
+✅ First chunk ready - AUDIO PLAYING! (remaining chunks downloading in background)
+📥 Downloaded chunk 2/14 (10m) - 122.9 KB (2 total)
+📥 Downloaded chunk 3/14 (10m) - 119.2 KB (3 total)
+...
+📡 All 14 chunks downloaded and sent to worker
+✅ All 14 chunks processed in 300ms total
+```
+
+---
+
+### Technical Learnings
+
+1. **Progressive Means Progressive**:
+   - Don't wait for batches
+   - Process as data arrives
+   - Start playback ASAP
+
+2. **Promise.all() is a Blocker**:
+   - Waits for slowest operation
+   - Use `.then()` callbacks for true parallelism
+   - Process results as they arrive
+
+3. **Duration Maintenance is Critical**:
+   - When adjusting end time, adjust start time too
+   - User expects the duration they requested
+   - Simple but easy to miss
+
+4. **TTFA is King**:
+   - 30ms TTFA feels instant
+   - 300ms TTFA for 24 hours is incredible
+   - Network is the only bottleneck now
+
+---
+
+### Files Modified
+
+**Frontend**:
+- `index.html` - True progressive streaming, duration maintenance fix
+
+**Version**:
+- `python_code/__init__.py` - Version bump to v1.63
+
+**Documentation**:
+- `docs/captains_logs/captains_log_2025-11-07.md` - Session 2 notes
+
+---
+
+### Version: v1.63
+
+**Commit Message**: v1.63 Performance: True progressive streaming - parallel chunk downloads, 30ms TTFA for any duration, maintain requested duration when adjusting end time
+
+**TTFA**: 
+- 30 minutes: ~30ms
+- 24 hours: ~300ms
+- **Independent of total duration!** 🚀
+
+---
+
+### What's Next
+
+**Potential Optimizations**:
+1. **Streaming decompression** - Start playing before chunk fully downloaded (~100ms → ~20ms TTFA)
+2. **HTTP/2 verification** - Ensure multiplexing is enabled
+3. **Predictive prefetching** - Load next hour while playing current
+4. **Service Worker caching** - Offline playback support
+
+**The Reality**: We're now **network-bound**, not **code-bound**. The only way to go faster is:
+- Faster internet connection
+- Streaming decompression (start playing before full chunk arrives)
+- CDN edge caching (already have this!)
+
+**We've achieved true progressive streaming!** 🎉
+

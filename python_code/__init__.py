@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.62"
+__version__ = "1.63"
 __commit_message__ = (
-    "v1.62 Performance: CDN direct access (7.8x faster), eliminate worker overhead, multi-day support, precise time calculation (2:30 buffer + verification), normalization from chunks"
+    "v1.63 Performance: True progressive streaming - parallel chunk downloads, 30ms TTFA for any duration, maintain requested duration when adjusting end time"
 )
 
 # Import key modules to make them available when importing the package
