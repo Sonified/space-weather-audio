@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.61"
+__version__ = "1.62"
 __commit_message__ = (
-    "v1.61 Performance: Waveform worker (170x faster), chunked parallel fetching (2x faster), playhead fix, performance testing framework"
+    "v1.62 Performance: CDN direct access (7.8x faster), eliminate worker overhead, multi-day support, precise time calculation (2:30 buffer + verification), normalization from chunks"
 )
 
 # Import key modules to make them available when importing the package

@@ -1989,8 +1989,33 @@
                 streamStartTime = performance.now();
                 
                 // Calculate time range (most recent data)
-                const endTime = new Date();
-                const startTime = new Date(endTime.getTime() - duration * 3600 * 1000);
+                // Railway collector runs at :02, :12, :22, :32, :42, :52 (2 min past each 10-min mark)
+                // Use 2:30 safety buffer, then verify against actual metadata
+                const now = new Date();
+                const currentMinute = now.getUTCMinutes();
+                const currentSecond = now.getUTCSeconds();
+                
+                // Calculate minutes into current 10-minute period
+                const minutesIntoPeriod = currentMinute % 10;
+                const secondsIntoPeriod = minutesIntoPeriod * 60 + currentSecond;
+                
+                // If we're past 2:30 in this 10-min period (150 seconds), this chunk should be done
+                // Otherwise, use the previous 10-min chunk
+                let estimatedEndTime;
+                if (secondsIntoPeriod >= 150) { // Past 2:30 mark (2 min 30 sec for processing)
+                    // Current 10-min chunk should be complete - round down to start of this period
+                    estimatedEndTime = new Date(now.getTime());
+                    estimatedEndTime.setUTCMinutes(currentMinute - minutesIntoPeriod, 0, 0);
+                } else {
+                    // Current chunk not done yet - use previous 10-min chunk
+                    estimatedEndTime = new Date(now.getTime());
+                    estimatedEndTime.setUTCMinutes(currentMinute - minutesIntoPeriod - 10, 0, 0);
+                }
+                
+                console.log(`🕐 Estimated most recent chunk: ${estimatedEndTime.toISOString()}`);
+                
+                // We'll verify this against metadata after fetching it
+                const startTime = new Date(estimatedEndTime.getTime() - duration * 3600 * 1000);
                 
                 const formatTime = (date) => {
                     return date.toISOString().slice(0, 19);
@@ -2038,7 +2063,7 @@
                 if (isActiveStation) {
                     // ===== MODE 1: R2 PROGRESSIVE STREAMING (for active stations) =====
                     console.log('🌐 Using R2 Worker (active station)');
-                    await fetchFromR2Worker(stationData, startTime, endTime, duration, highpassFreq);
+                    await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq);
                 } else {
                     // ===== MODE 2: RAILWAY BACKEND (for inactive stations) =====
                     console.log('🚂 Using Railway backend (inactive station)');
@@ -2067,14 +2092,85 @@
             }
         }
         
-        // ===== MODE 1: R2 WORKER PROGRESSIVE STREAMING =====
-        async function fetchFromR2Worker(stationData, startTime, endTime, duration, highpassFreq) {
+        // Calculate which chunks are needed across multiple days
+        function calculateChunksNeededMultiDay(startTime, endTime, allDayMetadata) {
+            const chunks = [];
+            
+            // Helper to format time as HH:MM:SS
+            const formatTime = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+            
+            // Walk through time from start to end
+            let currentTime = new Date(startTime);
+            currentTime.setUTCMinutes(Math.floor(currentTime.getUTCMinutes() / 10) * 10, 0, 0); // Round to 10m
+            
+            while (currentTime < endTime) {
+                const currentDate = currentTime.toISOString().split('T')[0];
+                const currentHour = currentTime.getUTCHours();
+                const currentMinute = currentTime.getUTCMinutes();
+                const timeStr = formatTime(currentHour, currentMinute);
+                
+                // Find metadata for this date
+                const dayMetadata = allDayMetadata.find(m => m.date === currentDate);
+                
+                if (dayMetadata) {
+                    let chunkType = '10m';
+                    let chunkData = null;
+                    
+                    // Try 10m first
+                    if (dayMetadata.chunks['10m']) {
+                        chunkData = dayMetadata.chunks['10m'].find(c => c.start === timeStr);
+                    }
+                    
+                    // If not found and we're at hour boundary, try 1h
+                    if (!chunkData && currentMinute === 0 && dayMetadata.chunks['1h']) {
+                        chunkData = dayMetadata.chunks['1h'].find(c => c.start === timeStr);
+                        chunkType = '1h';
+                    }
+                    
+                    // If not found and we're at 6h boundary, try 6h
+                    if (!chunkData && currentMinute === 0 && currentHour % 6 === 0 && dayMetadata.chunks['6h']) {
+                        chunkData = dayMetadata.chunks['6h'].find(c => c.start === timeStr);
+                        chunkType = '6h';
+                    }
+                    
+                    if (chunkData) {
+                        chunks.push({
+                            type: chunkType,
+                            start: chunkData.start,
+                            end: chunkData.end,
+                            min: chunkData.min,
+                            max: chunkData.max,
+                            samples: chunkData.samples,
+                            date: currentDate
+                        });
+                    }
+                    
+                    // Advance time based on chunk type
+                    if (chunkType === '6h') {
+                        currentTime.setUTCHours(currentTime.getUTCHours() + 6);
+                    } else if (chunkType === '1h') {
+                        currentTime.setUTCHours(currentTime.getUTCHours() + 1);
+                    } else {
+                        currentTime.setUTCMinutes(currentTime.getUTCMinutes() + 10);
+                    }
+                } else {
+                    // No metadata for this date, skip to next day
+                    currentTime.setUTCDate(currentTime.getUTCDate() + 1);
+                    currentTime.setUTCHours(0, 0, 0, 0);
+                }
+            }
+            
+            return chunks;
+        }
+        
+        // ===== MODE 1: CDN DIRECT STREAMING (7.8x faster than worker!) =====
+        async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq) {
             const formatTime = (date) => {
                 return date.toISOString().slice(0, 19);
             };
             
-            // R2 Worker URL
-            const R2_WORKER_URL = 'https://volcano-audio-test.robertalexander-music.workers.dev';
+            // CDN URL (direct R2 access via Cloudflare CDN - 7.8x faster than worker!)
+            const CDN_BASE_URL = 'https://cdn.now.audio/data';
             
             // Get high-pass filter setting from UI (same as Railway)
             const highpassValue = highpassFreq === 'none' ? 0 : parseFloat(highpassFreq);
@@ -2090,62 +2186,116 @@
                 duration_minutes: durationMinutes
             });
                 
-                // STEP 1: Fetch progressive metadata (smart chunk selection + correct min/max)
-                console.log('📋 Step 1: Fetching progressive metadata from R2 Worker...');
-                const metadataUrl = `${R2_WORKER_URL}/progressive-metadata?` + new URLSearchParams({
-                    network: stationData.network,
-                    station: stationData.station,
-                    location: stationData.location || '--',
-                    channel: stationData.channel,
-                    start_time: startTime.toISOString(),
-                    duration_minutes: durationMinutes.toString()
+                // STEP 1: Fetch metadata directly from CDN (7.8x faster than worker!)
+                console.log('📋 Step 1: Fetching metadata from CDN...');
+                
+                // Map station codes to volcano names for CDN URL
+                const volcanoMap = {
+                    'kilauea': 'kilauea',
+                    'maunaloa': 'maunaloa',
+                    'greatsitkin': 'greatsitkin',
+                    'shishaldin': 'shishaldin',
+                    'spurr': 'spurr'
+                };
+                const volcanoName = volcanoMap[document.getElementById('volcano').value] || 'kilauea';
+                
+                // Determine which days we need (request might span midnight UTC!)
+                const startDate = startTime.toISOString().split('T')[0]; // YYYY-MM-DD
+                const endDate = estimatedEndTime.toISOString().split('T')[0];
+                const daysNeeded = [];
+                
+                // Generate list of dates between start and end
+                let currentDate = new Date(startTime);
+                currentDate.setUTCHours(0, 0, 0, 0); // Start of day
+                
+                while (currentDate <= estimatedEndTime) {
+                    daysNeeded.push(currentDate.toISOString().split('T')[0]);
+                    currentDate.setUTCDate(currentDate.getUTCDate() + 1); // Next day
+                }
+                
+                console.log(`📋 Days needed: ${daysNeeded.join(', ')}`);
+                
+                // Fetch metadata for all days in parallel
+                const metadataPromises = daysNeeded.map(async (date) => {
+                    // Convert YYYY-MM-DD to YYYY/MM/DD for CDN path
+                    const [year, month, day] = date.split('-');
+                    const datePath = `${year}/${month}/${day}`;
+                    
+                    const metadataUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${stationData.location || '--'}/${stationData.channel}/${stationData.network}_${stationData.station}_${stationData.location || '--'}_${stationData.channel}_${Math.round(stationData.sample_rate || 100)}Hz_${date}.json`;
+                    
+                    const response = await fetch(metadataUrl);
+                    if (!response.ok) {
+                        console.warn(`⚠️ Metadata for ${date} not found (${response.status})`);
+                        return null;
+                    }
+                    return response.json();
                 });
                 
-                // Add timeout for large requests (240 minutes = 4 hours might timeout)
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+                const allDayMetadata = await Promise.all(metadataPromises);
+                const validMetadata = allDayMetadata.filter(m => m !== null);
                 
-                let metadataResponse;
-                try {
-                    metadataResponse = await fetch(metadataUrl, { signal: controller.signal });
-                    clearTimeout(timeoutId);
-                } catch (fetchError) {
-                    clearTimeout(timeoutId);
-                    if (fetchError.name === 'AbortError') {
-                        throw new Error(`⏱️ Request timeout: Worker didn't respond within 60 seconds. Large requests (${durationMinutes} minutes) may exceed worker limits. Try a shorter duration.`);
-                    } else if (fetchError.message.includes('Failed to fetch') || fetchError.message.includes('ERR_CONNECTION_CLOSED')) {
-                        throw new Error(`🔌 Connection error: Worker connection was closed. This may happen with very large requests (${durationMinutes} minutes). Try a shorter duration or check if the worker is running.`);
-                    } else {
-                        throw new Error(`Network error: ${fetchError.message}`);
+                console.log(`📋 Fetched metadata for ${validMetadata.length}/${daysNeeded.length} days`);
+                
+                // 🎯 VERIFY: Find the actual most recent chunk in metadata
+                let actualMostRecentChunk = null;
+                for (const dayMeta of validMetadata) {
+                    if (dayMeta.chunks['10m']) {
+                        for (const chunk of dayMeta.chunks['10m']) {
+                            const chunkTime = new Date(`${dayMeta.date}T${chunk.start}Z`);
+                            if (!actualMostRecentChunk || chunkTime > actualMostRecentChunk.time) {
+                                actualMostRecentChunk = { time: chunkTime, chunk: chunk, date: dayMeta.date };
+                            }
+                        }
                     }
                 }
                 
-                if (!metadataResponse.ok) {
-                    throw new Error(`Progressive metadata fetch failed: ${metadataResponse.status} ${metadataResponse.statusText}`);
+                // Determine actual end time based on metadata
+                let endTime;
+                if (actualMostRecentChunk) {
+                    console.log(`✅ Most recent chunk in metadata: ${actualMostRecentChunk.date} ${actualMostRecentChunk.chunk.start}`);
+                    // Adjust endTime if our estimate was too optimistic
+                    if (actualMostRecentChunk.time < estimatedEndTime) {
+                        console.log(`⚠️ Adjusted end time from ${estimatedEndTime.toISOString()} to ${actualMostRecentChunk.time.toISOString()}`);
+                        endTime = actualMostRecentChunk.time;
+                    } else {
+                        endTime = estimatedEndTime;
+                    }
+                } else {
+                    endTime = estimatedEndTime;
                 }
                 
-                const progressiveMetadata = await metadataResponse.json();
-                console.log('📋 Progressive metadata received:', progressiveMetadata);
-                console.log(`📋 Strategy: ${progressiveMetadata.strategy}`);
-                console.log(`📋 Total chunks: ${progressiveMetadata.total_chunks} (${progressiveMetadata.chunks.map(c => c.type).join(', ')})`);
-                console.log(`📋 Normalization: [${progressiveMetadata.normalization.min}, ${progressiveMetadata.normalization.max}]`);
+                // Calculate which chunks we need across all days
+                const chunksNeeded = calculateChunksNeededMultiDay(startTime, endTime, validMetadata);
+                console.log(`📋 Calculated chunks needed: ${chunksNeeded.length} chunks`);
+                console.log(`📋 Chunk types: ${chunksNeeded.map(c => c.type).join(', ')}`);
+                
+                if (chunksNeeded.length === 0) {
+                    throw new Error('No data available for this time range!');
+                }
+                
+                // Calculate total samples and normalization range from chunks
+                const firstDayMeta = validMetadata[0];
+                const totalSamples = chunksNeeded.reduce((sum, chunk) => sum + chunk.samples, 0);
+                
+                // Calculate global min/max from all chunks we're fetching
+                let normMin = Infinity;
+                let normMax = -Infinity;
+                for (const chunk of chunksNeeded) {
+                    if (chunk.min < normMin) normMin = chunk.min;
+                    if (chunk.max > normMax) normMax = chunk.max;
+                }
+                
+                console.log(`📊 Normalization range: ${normMin} to ${normMax}`);
                 
                 // Store metadata for duration calculation
                 currentMetadata = {
-                    original_sample_rate: progressiveMetadata.sample_rate,
-                    npts: progressiveMetadata.total_samples
+                    original_sample_rate: firstDayMeta.sample_rate,
+                    npts: totalSamples
                 };
                 
-                // Get normalization range from progressive metadata
-                const normMin = progressiveMetadata.normalization.min;
-                const normMax = progressiveMetadata.normalization.max;
-                const chunksToFetch = progressiveMetadata.chunks;
+                const chunksToFetch = chunksNeeded; // Use our calculated chunks!
                 
-                if (chunksToFetch.length === 0) {
-                    throw new Error('No chunks found in progressive metadata!');
-                }
-                
-                console.log(`🚀 Starting WORKER-BASED progressive streaming (${chunksToFetch.length} chunks)...`);
+                console.log(`🚀 Starting CDN DIRECT streaming (${chunksToFetch.length} chunks)...`);
                 
                 // 🎯 USE WORKER CREATED AT START OF startStreaming()
                 const worker = window.audioWorker;
@@ -2240,7 +2390,7 @@
                                 lastUpdateTime = audioContext.currentTime;
                                 
                                 // Start playback indicator (will draw when waveform is ready)
-                                requestAnimationFrame(updatePlaybackIndicator);
+                                    requestAnimationFrame(updatePlaybackIndicator);
                             }
                         }
                         
@@ -2265,7 +2415,7 @@
                 
                             // 🎯 BUILD WAVEFORM WHEN BROWSER IS IDLE
                             requestIdleCallback(() => {
-                                buildCompleteWaveform(processedChunks, chunksToFetch, normMin, normMax, progressiveMetadata.total_samples);
+                                buildCompleteWaveform(processedChunks, chunksToFetch, normMin, normMax, totalSamples);
                             }, { timeout: 2000 });
                             
                             // Update UI
@@ -2329,7 +2479,7 @@
                     });
                     
                     // Trigger waveform build
-                    drawWaveform();
+                            drawWaveform();
                     
                     const stitchTime = performance.now() - t0;
                     console.log(`✅ Samples stitched in ${stitchTime.toFixed(0)}ms, sent to waveform worker`);
@@ -2349,19 +2499,26 @@
                 
                 console.log(`📦 Chunk groups: ${Object.keys(chunksByType).map(t => `${chunksByType[t].length}×${t}`).join(', ')}`);
                 
-                // Fetch function
+                // Fetch function - DIRECT FROM CDN (7.8x faster!)
                 async function fetchChunk(chunkData) {
                     const { chunk, index } = chunkData;
-                    const chunkUrl = `${R2_WORKER_URL}/chunk?` + new URLSearchParams({
-                        network: stationData.network,
-                        station: stationData.station,
-                        location: stationData.location || '--',
-                        channel: stationData.channel,
-                        date: chunk.date,
-                        start: chunk.start,
-                        end: chunk.end,
-                        chunk_type: chunk.type
-                    });
+                    
+                    // Build CDN URL directly
+                    // Format: https://cdn.now.audio/data/2025/11/06/HV/kilauea/OBL/--/HHZ/10m/HV_OBL_--_HHZ_100Hz_10m_2025-11-06-00-00-00_to_2025-11-06-00-09-59.bin.zst
+                    const location = stationData.location || '--';
+                    const sampleRate = Math.round(stationData.sample_rate || 100);
+                    
+                    // Convert YYYY-MM-DD to YYYY/MM/DD for CDN path
+                    const [year, month, day] = chunk.date.split('-');
+                    const datePath = `${year}/${month}/${day}`;
+                    
+                    // Convert start/end times to filename format
+                    const startFormatted = chunk.start.replace(/:/g, '-'); // HH:MM:SS -> HH-MM-SS
+                    const endFormatted = chunk.end.replace(/:/g, '-');
+                    
+                    const filename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${chunk.date}-${endFormatted}.bin.zst`;
+                    
+                    const chunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${filename}`;
                     
                     const response = await fetch(chunkUrl);
                     if (!response.ok) {
@@ -2391,24 +2548,24 @@
                     // Send all to worker (worker will process them)
                     for (const result of results) {
                         const { compressed, chunkSize, index } = result;
-                        
-                        // Send to worker with ZERO-COPY transfer
-                        worker.postMessage({
-                            type: 'process-chunk',
-                            compressed: compressed,
-                            normMin: normMin,
-                            normMax: normMax,
+                    
+                    // Send to worker with ZERO-COPY transfer
+                    worker.postMessage({
+                        type: 'process-chunk',
+                        compressed: compressed,
+                        normMin: normMin,
+                        normMax: normMax,
                             chunkIndex: index
-                        }, [compressed]); // Transfer ownership to worker!
-                        
+                    }, [compressed]); // Transfer ownership to worker!
+                    
                         console.log(`📤 Sent chunk ${index + 1}/${chunksToFetch.length} (${type}) to worker (${(chunkSize / 1024).toFixed(1)} KB)`);
-                        
+                    
                         // 🎯 WAIT for first chunk to be processed before continuing
                         if (index === 0 && !firstChunkSent) {
                             console.log(`⏳ Waiting for worker to process first chunk...`);
-                            await firstChunkProcessed;
+                        await firstChunkProcessed;
                             console.log(`✅ First chunk ready - continuing with remaining batches...`);
-                        }
+                    }
                     }
                     
                     console.log(`✅ ${batch.length}×${type} chunks sent to worker`);
@@ -3228,7 +3385,7 @@
                 // Draw vertical line from min to max
                 const lineHeight = Math.max(1, yMax - yMin);
                 ctx.fillRect(x, yMin, 1, lineHeight);
-            }
+                }
             
             // Draw center line
             ctx.strokeStyle = '#666';
@@ -3923,6 +4080,10 @@
         
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
+            // Version logging
+            console.log('🌋 volcano-audio v1.62 - CDN Direct Access');
+            console.log('📦 v1.62 Performance: CDN direct access (7.8x faster), eliminate worker overhead, multi-day support, precise time calculation (2:30 buffer + verification), normalization from chunks');
+            
             // Initialize waveform worker
             initWaveformWorker();
             
