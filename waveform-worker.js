@@ -36,7 +36,7 @@ self.addEventListener('message', (e) => {
         
     } else if (type === 'build-waveform') {
         // Build optimized waveform for display
-        const { canvasWidth, canvasHeight, removeDC, alpha } = e.data;
+        const { canvasWidth, canvasHeight, removeDC, alpha, isComplete, totalExpectedSamples } = e.data;
         
         const t0 = performance.now();
         console.log(`🎨 Building waveform: ${canvasWidth}px wide, ${allSamples.length.toLocaleString()} samples, removeDC=${removeDC}, alpha=${alpha}`);
@@ -44,7 +44,7 @@ self.addEventListener('message', (e) => {
         // Determine which samples to use
         let displaySamples = allSamples;
         
-        // Apply drift removal if requested
+        // Apply drift removal if requested (for final complete waveform)
         if (removeDC && rawSamples.length > 0) {
             console.log(`  🎛️ Applying drift removal (alpha=${alpha.toFixed(4)})...`);
             const filtered = removeDCOffset(rawSamples, alpha);
@@ -53,18 +53,23 @@ self.addEventListener('message', (e) => {
         }
         
         // Build min/max arrays for efficient rendering
-        // Each pixel column gets a min and max value
-        const waveformData = buildMinMaxWaveform(displaySamples, canvasWidth);
+        // For progressive rendering: only fill the LEFT portion based on samples received so far
+        const effectiveWidth = totalExpectedSamples 
+            ? Math.floor((displaySamples.length / totalExpectedSamples) * canvasWidth)
+            : canvasWidth;
+        
+        const waveformData = buildMinMaxWaveform(displaySamples, effectiveWidth);
         
         const elapsed = performance.now() - t0;
-        console.log(`✅ Waveform built in ${elapsed.toFixed(0)}ms (${canvasWidth} pixels from ${allSamples.length.toLocaleString()} samples)`);
+        console.log(`✅ Waveform built in ${elapsed.toFixed(0)}ms (${effectiveWidth} pixels from ${allSamples.length.toLocaleString()} samples)`);
         
         // Send back to main thread
         self.postMessage({
             type: 'waveform-ready',
             waveformData: waveformData,
             totalSamples: allSamples.length,
-            buildTime: elapsed
+            buildTime: elapsed,
+            isComplete: isComplete || false  // Flag to indicate if this is the final detrended waveform
         }, [waveformData.mins.buffer, waveformData.maxs.buffer]); // Transfer ownership for zero-copy
         
     } else if (type === 'reset') {

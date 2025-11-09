@@ -809,6 +809,15 @@
                     </select>
                 </div>
                 
+                <div class="control-group">
+                    <button type="button" id="purgeCacheBtn" onclick="purgeCloudflareCache()" style="padding: 8px 16px; font-size: 14px; min-width: auto;">🗑️ Purge CDN Cache</button>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="bypassCache" style="width: 20px; height: 20px; cursor: pointer;">
+                    <label for="bypassCache" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #333;">Bypass CDN Cache</label>
+                </div>
+                
                 <div class="control-group" style="display: none;">
                     <label for="baseSampleRate">Base Sampling Rate:</label>
                     <select id="baseSampleRate">
@@ -1616,7 +1625,7 @@
                 audioContext = new AudioContext({ sampleRate: 44100 });
                 const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
                 await audioContext.audioWorklet.addModule(URL.createObjectURL(workletBlob));
-                console.log(`🎵 Created new AudioContext (sampleRate: 44100 Hz)`);
+                console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: 44100 Hz)`);
             }
             
             workletNode = new AudioWorkletNode(audioContext, 'seismic-processor');
@@ -1735,9 +1744,9 @@
                     }
                 } else if (type === 'started') {
                     // Just update TTFA display - fade and tracking already started!
-                    const ttfa = performance.now() - streamStartTime;
+                    const ttfa = performance.now() - window.streamingStartTime;
                     document.getElementById('ttfa').textContent = `${ttfa.toFixed(0)}ms`;
-                    console.log(`⏱️ Worklet confirmed playback at ${ttfa.toFixed(0)}ms`);
+                    console.log(`⏱️ [${ttfa.toFixed(0)}ms] Worklet confirmed playback`);
                     // Fade-in and position tracking already started when first chunk was sent!
                 } else if (type === 'loop-soon') {
                     // Full-buffer loop warning (only for non-selection loops)
@@ -1865,27 +1874,16 @@
                     event.stopPropagation();
                 }
                 
-                console.log('🎬 startStreaming() called');
+                // Reset progressive waveform state
+                isShowingFinalWaveform = false;
                 
-                // 🎯 CREATE WORKER IMMEDIATELY (before even fetching metadata!)
-                if (window.audioWorker) {
-                    window.audioWorker.terminate();
-                    console.log('🏭 Terminated old worker');
-                }
-                window.audioWorker = new Worker('audio-processor-worker.js');
+                // Start global timer for this streaming session
+                window.streamingStartTime = performance.now();
+                const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
                 
-                // Wait for worker to be ready
-                await new Promise(resolve => {
-                    window.audioWorker.addEventListener('message', function onReady(e) {
-                        if (e.data === 'ready') {
-                            window.audioWorker.removeEventListener('message', onReady);
-                            resolve();
-                        }
-                    });
-                });
-                console.log('🏭 Worker ready!');
+                console.log('🎬 [0ms] startStreaming() called');
                 
-                // Get selected station
+                // ===== GET ALL FORM INPUTS IMMEDIATELY (0ms) =====
                 const stationValue = document.getElementById('station').value;
                 if (!stationValue) {
                     alert('Please select a station');
@@ -1896,73 +1894,241 @@
                 const duration = parseFloat(document.getElementById('duration').value);
                 const highpassFreq = document.getElementById('highpassFreq').value;
                 const enableNormalize = document.getElementById('enableNormalize').checked;
+                const volcano = document.getElementById('volcano').value;
+                
+                // ===== CALCULATE ESTIMATED END TIME (0ms) =====
+                // Find the most recent COMPLETE 10-minute chunk
+                // Collector runs at :02, :12, :22, :32, :42, :52 (2 min past each 10-min period start)
+                // Files are uploaded by :02:15 (2 min 15 sec safety buffer = 15 sec after collector finishes)
+                const now = new Date();
+                const currentMinute = now.getUTCMinutes();
+                const currentSecond = now.getUTCSeconds();
+                
+                // Round current time DOWN to nearest 10-minute boundary
+                const currentPeriodStart = Math.floor(currentMinute / 10) * 10;
+                
+                // Calculate how long since this period started
+                const minutesSincePeriodStart = currentMinute - currentPeriodStart;
+                const secondsSincePeriodStart = minutesSincePeriodStart * 60 + currentSecond;
+                
+                // Most recent COMPLETED chunk ended at currentPeriodStart (start of current period)
+                // Its file uploads by currentPeriodStart + 2:15 (135 seconds into current period)
+                // If we're past 2:15, the PREVIOUS period's chunk file is ready
+                // Otherwise, go back TWO periods
+                let estimatedEndTime;
+                if (secondsSincePeriodStart >= 135) { // 2:15 into current period = file from previous chunk uploaded
+                    // Previous period (just completed) should be ready
+                    estimatedEndTime = new Date(now.getTime());
+                    estimatedEndTime.setUTCMinutes(currentPeriodStart, 0, 0); // Start of current period = end of previous
+                } else {
+                    // Too soon! File from previous chunk might not be uploaded yet
+                    // Go back one more period
+                    estimatedEndTime = new Date(now.getTime());
+                    estimatedEndTime.setUTCMinutes(currentPeriodStart - 10, 0, 0);
+                }
+                
+                const startTime = new Date(estimatedEndTime.getTime() - duration * 3600 * 1000);
+                
+                console.log(`🕐 ${logTime()} Estimated latest chunk ends at: ${estimatedEndTime.toISOString()}`);
+                
+                // ===== START EVERYTHING IN PARALLEL (0ms)! =====
+                console.log(`🚀 ${logTime()} Starting parallel: worker + audioContext + realistic fetch + station check`);
+                
+                // 1. Worker creation (parallel!)
+                if (window.audioWorker) {
+                    window.audioWorker.terminate();
+                }
+                window.audioWorker = new Worker('audio-processor-worker.js');
+                const workerReadyPromise = new Promise(resolve => {
+                    window.audioWorker.addEventListener('message', function onReady(e) {
+                        if (e.data === 'ready') {
+                            window.audioWorker.removeEventListener('message', onReady);
+                            console.log(`🏭 ${logTime()} Worker ready!`);
+                            resolve();
+                        }
+                    });
+                });
+                
+                // 2. AudioContext creation (parallel!)
+                const audioContextPromise = (async () => {
+                    if (!audioContext) {
+                        audioContext = new AudioContext({ sampleRate: 44100 });
+                        const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
+                        await audioContext.audioWorklet.addModule(URL.createObjectURL(workletBlob));
+                        console.log(`🎵 ${logTime()} AudioContext ready`);
+                    }
+                })();
+                
+                // 3. Check if station is active (parallel!)
+                const stationCheckPromise = (async () => {
+                    const configResponse = await fetch('backend/stations_config.json');
+                    const stationsConfig = await configResponse.json();
+                    
+                    let isActiveStation = false;
+                    if (stationsConfig.networks[stationData.network] && 
+                        stationsConfig.networks[stationData.network][volcano]) {
+                        const volcanoStations = stationsConfig.networks[stationData.network][volcano];
+                        const stationConfig = volcanoStations.find(s => 
+                            s.station === stationData.station && 
+                            s.location === (stationData.location || '--') &&
+                            s.channel === stationData.channel
+                        );
+                        
+                        if (stationConfig) {
+                            isActiveStation = stationConfig.active === true;
+                        }
+                    }
+                    
+                    console.log(`📋 ${logTime()} Station ${stationData.network}.${stationData.station}: active=${isActiveStation}`);
+                    return isActiveStation;
+                })();
+                
+                // 4. Start realistic chunk fetch (parallel!) - TARGET CHUNK 0 (first chronological chunk for instant playback!)
+                // Build realistic chunk URL
+                const volcanoMap = {
+                    'kilauea': 'kilauea',
+                    'maunaloa': 'maunaloa',
+                    'greatsitkin': 'greatsitkin',
+                    'shishaldin': 'shishaldin',
+                    'spurr': 'spurr'
+                };
+                const volcanoName = volcanoMap[volcano] || 'kilauea';
+                const CDN_BASE_URL = 'https://cdn.now.audio/data';
+                
+                // Target FIRST chunk (chunk 0) for instant playback - not the most recent chunk!
+                // startTime = beginning of user's requested time range
+                const firstChunkStart = new Date(startTime.getTime());
+                // Round down to nearest 10-minute boundary
+                firstChunkStart.setUTCMinutes(Math.floor(firstChunkStart.getUTCMinutes() / 10) * 10, 0, 0);
+                
+                const firstChunkDate = firstChunkStart.toISOString().split('T')[0];
+                const firstChunkStartHour = firstChunkStart.getUTCHours();
+                const firstChunkStartMinute = firstChunkStart.getUTCMinutes();
+                const firstChunkStartTime = `${String(firstChunkStartHour).padStart(2, '0')}:${String(firstChunkStartMinute).padStart(2, '0')}:00`;
+                const firstChunkEndTime = `${String(firstChunkStartHour).padStart(2, '0')}:${String(firstChunkStartMinute + 9).padStart(2, '0')}:59`;
+                
+                const location = stationData.location || '--';
+                const sampleRate = Math.round(stationData.sample_rate || 100);
+                const [year, month, day] = firstChunkDate.split('-');
+                const datePath = `${year}/${month}/${day}`;
+                const startFormatted = firstChunkStartTime.replace(/:/g, '-');
+                const endFormatted = firstChunkEndTime.replace(/:/g, '-');
+                const filename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_10m_${firstChunkDate}-${startFormatted}_to_${firstChunkDate}-${endFormatted}.bin.zst`;
+                const firstChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/10m/${filename}`;
+                
+                console.log(`🎯 ${logTime()} Realistic fetch started: CHUNK 0 (${firstChunkDate} ${firstChunkStartTime})`);
+                
+                // Check if cache bypass is enabled (for realistic chunk fetch)
+                const bypassCache = document.getElementById('bypassCache').checked;
+                const cacheBuster = bypassCache ? `?t=${Date.now()}` : '';
+                if (bypassCache) {
+                    console.log(`🚫 ${logTime()} Cache bypass ENABLED - all requests will bypass CDN cache`);
+                }
+                
+                // Cascading fallback: try chunk 0, then go FORWARD in time until one succeeds!
+                // (Older historical data is less likely to exist than newer data)
+                const realisticChunkPromise = (async () => {
+                    // Helper to build chunk URL for a given time offset from chunk 0 start
+                    const buildRealisticUrl = (minuteOffset) => {
+                        // Start from chunk 0 time, then apply offset
+                        const attemptTime = new Date(firstChunkStart.getTime());
+                        attemptTime.setUTCMinutes(attemptTime.getUTCMinutes() + minuteOffset);
+                        
+                        const date = attemptTime.toISOString().split('T')[0];
+                        const hour = attemptTime.getUTCHours();
+                        const minute = Math.floor(attemptTime.getUTCMinutes() / 10) * 10;
+                        const startTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+                        const endTime = `${String(hour).padStart(2, '0')}:${String(minute + 9).padStart(2, '0')}:59`;
+                        
+                        const [y, m, d] = date.split('-');
+                        const path = `${y}/${m}/${d}`;
+                        const fname = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_10m_${date}-${startTime.replace(/:/g, '-')}_to_${date}-${endTime.replace(/:/g, '-')}.bin.zst`;
+                        return {
+                            url: `${CDN_BASE_URL}/${path}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/10m/${fname}${cacheBuster}`,
+                            date: date,
+                            time: startTime
+                        };
+                    };
+                    
+                    // Try chunk 0 first, then go forward in time (newer data more likely to exist)
+                    const attempts = [
+                        { offset: 0, label: 'chunk 0' },      // First chunk (target)
+                        { offset: 10, label: 'chunk +1' },    // 10 minutes later
+                        { offset: 20, label: 'chunk +2' },    // 20 minutes later
+                        { offset: 30, label: 'chunk +3' },    // 30 minutes later
+                        { offset: 40, label: 'chunk +4' },    // 40 minutes later
+                        { offset: 50, label: 'chunk +5' }     // 50 minutes later
+                    ];
+                    
+                    for (const attempt of attempts) {
+                        const { url, date, time } = buildRealisticUrl(attempt.offset);
+                        
+                        try {
+                            const response = await fetch(url);
+                            if (response.ok) {
+                                const compressed = await response.arrayBuffer();
+                                console.log(`📥 ${logTime()} Realistic chunk SUCCESS (${attempt.label}): ${date} ${time} - ${(compressed.byteLength / 1024).toFixed(1)} KB`);
+                                return { compressed, date, time }; // Return metadata too!
+                            } else {
+                                console.warn(`⚠️ ${logTime()} Realistic ${attempt.label} not found (${date} ${time}) - trying next...`);
+                            }
+                        } catch (error) {
+                            console.warn(`⚠️ ${logTime()} Realistic ${attempt.label} fetch error - trying next...`);
+                        }
+                    }
+                    
+                    // All attempts failed
+                    console.warn(`⚠️ ${logTime()} All realistic attempts failed (chunk 0 + 5 forward fallbacks)`);
+                    return null;
+                })();
+                
+                // ===== WAIT FOR WORKER AND AUDIOCONTEXT (in parallel with realistic fetch!) =====
+                await Promise.all([workerReadyPromise, audioContextPromise]);
+                console.log(`✅ ${logTime()} Worker + AudioContext ready!`);
                 
                 // ===== STOP OLD PLAYBACK AND CLEAN UP =====
-                // Set flag to ignore any stale "finished" messages
                 isFetchingNewData = true;
-                // Reset spectrogram initialization flag so canvas clears on new stream
                 spectrogramInitialized = false;
                 
-                // Immediately update status to show fetching (don't wait for fade-out)
                 const baseMessage = 'Fetching data from R2 via progressive streaming';
                 document.getElementById('status').className = 'status info loading';
                 document.getElementById('status').textContent = baseMessage;
                 
                 if (workletNode) {
-                    console.log('🛑 Stopping old playback and cleaning up for new data...');
-                    
-                    // Clear the old worklet's message handler FIRST to prevent queued messages
                     workletNode.port.onmessage = null;
-                    
-                    // Fade out current playback if playing (but don't wait - status already updated)
                     if (gainNode && audioContext && isPlaying) {
                         gainNode.gain.cancelScheduledValues(audioContext.currentTime);
                         gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
                         gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.05);
-                        // Don't await - let fade happen in background while we continue
                     }
-                    
-                    // Disconnect old worklet node (disconnects from gainNode automatically)
                     workletNode.disconnect();
                     workletNode = null;
-                    
-                    // Disconnect old gain node (if it exists)
                     if (gainNode) {
                         gainNode.disconnect();
                         gainNode = null;
                     }
-                    
-                    // Clear old data
                     allReceivedData = [];
-                    completeSamplesArray = null; // Clear stored samples for waveform
-                    cachedWaveformCanvas = null; // Clear cached waveform
-                    waveformMinMaxData = null; // Clear min/max data
-                    currentMetadata = null; // Clear metadata for duration calculation
-                    totalAudioDuration = 0; // Reset duration
-                    currentAudioPosition = 0; // Reset position
-                    document.getElementById('playbackDuration').textContent = '--'; // Reset duration display
-                    window.playbackDurationSeconds = null; // Clear stored duration
-                    stopPositionTracking(); // Stop position tracking
-                    document.getElementById('currentPosition').textContent = '0m 0s'; // Reset position display
-                    
-                    // Reset waveform worker
+                    completeSamplesArray = null;
+                    cachedWaveformCanvas = null;
+                    waveformMinMaxData = null;
+                    currentMetadata = null;
+                    totalAudioDuration = 0;
+                    currentAudioPosition = 0;
+                    document.getElementById('playbackDuration').textContent = '--';
+                    window.playbackDurationSeconds = null;
+                    stopPositionTracking();
+                    document.getElementById('currentPosition').textContent = '0m 0s';
                     if (waveformWorker) {
                         waveformWorker.postMessage({ type: 'reset' });
                     }
-                    
-                    // Clear waveform canvas
                     const waveformCanvas = document.getElementById('waveform');
                     if (waveformCanvas) {
                         const ctx = waveformCanvas.getContext('2d');
                         ctx.fillStyle = '#000';
                         ctx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
                     }
-                    
-                    // Reset playback state
                     isPlaying = false;
                     isPaused = false;
-                    
-                    console.log('✅ Old playback stopped and cleaned up');
                 }
                 
                 // Initialize fresh AudioWorklet (will create new node)
@@ -1989,64 +2155,12 @@
                 isPaused = false;
                 streamStartTime = performance.now();
                 
-                // Calculate time range (most recent data)
-                // Railway collector runs at :02, :12, :22, :32, :42, :52 (2 min past each 10-min mark)
-                // Use 2:30 safety buffer, then verify against actual metadata
-                const now = new Date();
-                const currentMinute = now.getUTCMinutes();
-                const currentSecond = now.getUTCSeconds();
-                
-                // Calculate minutes into current 10-minute period
-                const minutesIntoPeriod = currentMinute % 10;
-                const secondsIntoPeriod = minutesIntoPeriod * 60 + currentSecond;
-                
-                // If we're past 2:30 in this 10-min period (150 seconds), this chunk should be done
-                // Otherwise, use the previous 10-min chunk
-                let estimatedEndTime;
-                if (secondsIntoPeriod >= 150) { // Past 2:30 mark (2 min 30 sec for processing)
-                    // Current 10-min chunk should be complete - round down to start of this period
-                    estimatedEndTime = new Date(now.getTime());
-                    estimatedEndTime.setUTCMinutes(currentMinute - minutesIntoPeriod, 0, 0);
-                } else {
-                    // Current chunk not done yet - use previous 10-min chunk
-                    estimatedEndTime = new Date(now.getTime());
-                    estimatedEndTime.setUTCMinutes(currentMinute - minutesIntoPeriod - 10, 0, 0);
-                }
-                
-                console.log(`🕐 Estimated most recent chunk: ${estimatedEndTime.toISOString()}`);
-                
-                // We'll verify this against metadata after fetching it
-                const startTime = new Date(estimatedEndTime.getTime() - duration * 3600 * 1000);
-                
                 const formatTime = (date) => {
                     return date.toISOString().slice(0, 19);
                 };
                 
-                // ===== CHECK IF STATION IS ACTIVE (uses R2) or INACTIVE (uses Railway) =====
-                
-                // Fetch stations_config.json to check if this station is active
-                console.log('🔍 Checking station active status...');
-                const configResponse = await fetch('backend/stations_config.json');
-                const stationsConfig = await configResponse.json();
-                
-                // Find this station in the config
-                let isActiveStation = false;
-                const volcano = document.getElementById('volcano').value;
-                
-                if (stationsConfig.networks[stationData.network] && 
-                    stationsConfig.networks[stationData.network][volcano]) {
-                    const volcanoStations = stationsConfig.networks[stationData.network][volcano];
-                    const stationConfig = volcanoStations.find(s => 
-                        s.station === stationData.station && 
-                        s.location === (stationData.location || '--') &&
-                        s.channel === stationData.channel
-                    );
-                    
-                    if (stationConfig) {
-                        isActiveStation = stationConfig.active === true;
-                        console.log(`📋 Station ${stationData.network}.${stationData.station}: active=${isActiveStation}`);
-                    }
-                }
+                // ===== WAIT FOR STATION CHECK (already running in parallel) =====
+                const isActiveStation = await stationCheckPromise;
                 
                 // Start animated loading indicator
                 let dotCount = 0;
@@ -2063,11 +2177,11 @@
                 
                 if (isActiveStation) {
                     // ===== MODE 1: R2 PROGRESSIVE STREAMING (for active stations) =====
-                    console.log('🌐 Using R2 Worker (active station)');
-                    await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq);
+                    console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
+                    await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart);
                 } else {
                     // ===== MODE 2: RAILWAY BACKEND (for inactive stations) =====
-                    console.log('🚂 Using Railway backend (inactive station)');
+                    console.log(`🚂 ${logTime()} Using Railway backend (inactive station)`);
                     await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
                 }
             } catch (error) {
@@ -2093,50 +2207,47 @@
             }
         }
         
-        // Calculate which chunks are needed across multiple days
+        // ========== PROGRESSIVE CHUNK BATCHING ALGORITHM ==========
+        // Validated with 10,000+ test cases in tests/test_progressive_batching_simulation.py
+        
+        // Calculate which chunks are needed using progressive algorithm
         function calculateChunksNeededMultiDay(startTime, endTime, allDayMetadata) {
             const chunks = [];
             
             // Helper to format time as HH:MM:SS
             const formatTime = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
             
-            // Walk through time from start to end
+            // Helper to find chunk in metadata
+            const findChunk = (date, time, type) => {
+                const dayMeta = allDayMetadata.find(m => m && m.date === date);
+                if (!dayMeta || !dayMeta.chunks[type]) return null;
+                return dayMeta.chunks[type].find(c => c.start === time);
+            };
+            
+            // Helper to check alignment
+            const isHourAligned = (minute) => minute === 0;
+            const is6hAligned = (hour, minute) => hour % 6 === 0 && minute === 0;
+            
+            // Start from rounded 10m boundary
             let currentTime = new Date(startTime);
-            currentTime.setUTCMinutes(Math.floor(currentTime.getUTCMinutes() / 10) * 10, 0, 0); // Round to 10m
+            currentTime.setUTCMinutes(Math.floor(currentTime.getUTCMinutes() / 10) * 10, 0, 0);
+            
+            let minutesElapsed = 0;
+            let hasUsed1h = false;
             
             while (currentTime < endTime) {
                 const currentDate = currentTime.toISOString().split('T')[0];
                 const currentHour = currentTime.getUTCHours();
                 const currentMinute = currentTime.getUTCMinutes();
                 const timeStr = formatTime(currentHour, currentMinute);
+                const remainingMinutes = (endTime - currentTime) / 1000 / 60;
                 
-                // Find metadata for this date
-                const dayMetadata = allDayMetadata.find(m => m.date === currentDate);
-                
-                if (dayMetadata) {
-                    let chunkType = '10m';
-                    let chunkData = null;
-                    
-                    // Try 10m first
-                    if (dayMetadata.chunks['10m']) {
-                        chunkData = dayMetadata.chunks['10m'].find(c => c.start === timeStr);
-                    }
-                    
-                    // If not found and we're at hour boundary, try 1h
-                    if (!chunkData && currentMinute === 0 && dayMetadata.chunks['1h']) {
-                        chunkData = dayMetadata.chunks['1h'].find(c => c.start === timeStr);
-                        chunkType = '1h';
-                    }
-                    
-                    // If not found and we're at 6h boundary, try 6h
-                    if (!chunkData && currentMinute === 0 && currentHour % 6 === 0 && dayMetadata.chunks['6h']) {
-                        chunkData = dayMetadata.chunks['6h'].find(c => c.start === timeStr);
-                        chunkType = '6h';
-                    }
-                    
+                // FIRST 60 MINUTES: MUST use 10m chunks
+                if (minutesElapsed < 60) {
+                    const chunkData = findChunk(currentDate, timeStr, '10m');
                     if (chunkData) {
                         chunks.push({
-                            type: chunkType,
+                            type: '10m',
                             start: chunkData.start,
                             end: chunkData.end,
                             min: chunkData.min,
@@ -2145,27 +2256,137 @@
                             date: currentDate
                         });
                     }
-                    
-                    // Advance time based on chunk type
-                    if (chunkType === '6h') {
-                        currentTime.setUTCHours(currentTime.getUTCHours() + 6);
-                    } else if (chunkType === '1h') {
-                        currentTime.setUTCHours(currentTime.getUTCHours() + 1);
-                    } else {
-                        currentTime.setUTCMinutes(currentTime.getUTCMinutes() + 10);
-                    }
-                } else {
-                    // No metadata for this date, skip to next day
-                    currentTime.setUTCDate(currentTime.getUTCDate() + 1);
-                    currentTime.setUTCHours(0, 0, 0, 0);
+                    currentTime.setUTCMinutes(currentTime.getUTCMinutes() + 10);
+                    minutesElapsed += 10;
+                    continue;
                 }
+                
+                // AFTER 60 MINUTES: Use LARGEST chunk available at this boundary
+                // Priority: 6h > 1h > 10m
+                
+                // Try 6h chunk (must have used 1h first, be at 6h boundary, have enough time)
+                if (hasUsed1h && is6hAligned(currentHour, currentMinute) && remainingMinutes >= 360) {
+                    const chunkData = findChunk(currentDate, timeStr, '6h');
+                    if (chunkData) {
+                        chunks.push({
+                            type: '6h',
+                            start: chunkData.start,
+                            end: chunkData.end,
+                            min: chunkData.min,
+                            max: chunkData.max,
+                            samples: chunkData.samples,
+                            date: currentDate
+                        });
+                        currentTime.setUTCHours(currentTime.getUTCHours() + 6);
+                        minutesElapsed += 360;
+                        continue;
+                    }
+                }
+                
+                // Try 1h chunk (at hour boundary, have enough time)
+                if (isHourAligned(currentMinute) && remainingMinutes >= 60) {
+                    const chunkData = findChunk(currentDate, timeStr, '1h');
+                    if (chunkData) {
+                        chunks.push({
+                            type: '1h',
+                            start: chunkData.start,
+                            end: chunkData.end,
+                            min: chunkData.min,
+                            max: chunkData.max,
+                            samples: chunkData.samples,
+                            date: currentDate
+                        });
+                        currentTime.setUTCHours(currentTime.getUTCHours() + 1);
+                        minutesElapsed += 60;
+                        hasUsed1h = true; // Mark that we've used a 1h chunk
+                        continue;
+                    }
+                }
+                
+                // Use 10m chunk
+                const chunkData = findChunk(currentDate, timeStr, '10m');
+                if (chunkData) {
+                    chunks.push({
+                        type: '10m',
+                        start: chunkData.start,
+                        end: chunkData.end,
+                        min: chunkData.min,
+                        max: chunkData.max,
+                        samples: chunkData.samples,
+                        date: currentDate
+                    });
+                }
+                currentTime.setUTCMinutes(currentTime.getUTCMinutes() + 10);
+                minutesElapsed += 10;
             }
             
             return chunks;
         }
         
+        // Create progressive download batches
+        function createDownloadBatches(chunks) {
+            if (chunks.length === 0) return [];
+            
+            const batches = [];
+            let currentType = null;
+            let batchSize = 1; // Start at 1 for each type
+            let remainingInType = [];
+            let chunksOfTypeProcessed = 0; // Track chunks processed in current type
+            
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                
+                // Type change → flush and reset
+                if (chunk.type !== currentType) {
+                    // Flush any remaining from previous type
+                    if (remainingInType.length > 0) {
+                        batches.push([...remainingInType]);
+                        remainingInType = [];
+                    }
+                    
+                    currentType = chunk.type;
+                    batchSize = 1; // RESET to 1
+                    chunksOfTypeProcessed = 0; // RESET counter
+                }
+                
+                remainingInType.push(i);
+                
+                // 🎯 SPECIAL: First 3 ten-minute chunks download individually for runway
+                const isFirst3TenMinute = (currentType === '10m' && chunksOfTypeProcessed < 3);
+                
+                if (isFirst3TenMinute) {
+                    // Always flush after 1 chunk for first 3 ten-minute chunks
+                    batches.push([...remainingInType]);
+                    remainingInType = [];
+                    chunksOfTypeProcessed++;
+                    // Keep batchSize = 1 for first 3
+                } else {
+                    // Normal batching logic
+                    if (remainingInType.length === batchSize) {
+                        batches.push([...remainingInType]);
+                        remainingInType = [];
+                        chunksOfTypeProcessed += batchSize;
+                        
+                        // Increment batch size for next batch (with cap for 6h)
+                        if (currentType === '6h') {
+                            batchSize = Math.min(batchSize + 1, 4); // CAP at 4 for 6h chunks
+                        } else {
+                            batchSize++; // No cap for 10m and 1h
+                        }
+                    }
+                }
+            }
+            
+            // Flush any remaining chunks
+            if (remainingInType.length > 0) {
+                batches.push(remainingInType);
+            }
+            
+            return batches;
+        }
+        
         // ===== MODE 1: CDN DIRECT STREAMING (7.8x faster than worker!) =====
-        async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq) {
+        async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart) {
             const formatTime = (date) => {
                 return date.toISOString().slice(0, 19);
             };
@@ -2173,12 +2394,17 @@
             // CDN URL (direct R2 access via Cloudflare CDN - 7.8x faster than worker!)
             const CDN_BASE_URL = 'https://cdn.now.audio/data';
             
+            // Check if cache bypass is enabled
+            const bypassCache = document.getElementById('bypassCache').checked;
+            const cacheBuster = bypassCache ? `?t=${Date.now()}` : '';
+            
             // Get high-pass filter setting from UI (same as Railway)
             const highpassValue = highpassFreq === 'none' ? 0 : parseFloat(highpassFreq);
             
             const durationMinutes = duration * 60; // Convert hours to minutes
             
-            console.log('📡 Requesting from R2 Worker:', {
+            const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
+            console.log(`📡 ${logTime()} Fetching from CDN (direct):`, {
                 network: stationData.network,
                 station: stationData.station,
                 location: stationData.location || '--',
@@ -2187,8 +2413,8 @@
                 duration_minutes: durationMinutes
             });
                 
-                // STEP 1: Fetch metadata directly from CDN (7.8x faster than worker!)
-                console.log('📋 Step 1: Fetching metadata from CDN...');
+                // STEP 1: Fetch metadata (realistic chunk already running!)
+                console.log(`📋 ${logTime()} Fetching metadata from CDN...`);
                 
                 // Map station codes to volcano names for CDN URL
                 const volcanoMap = {
@@ -2214,15 +2440,25 @@
                     currentDate.setUTCDate(currentDate.getUTCDate() + 1); // Next day
                 }
                 
-                console.log(`📋 Days needed: ${daysNeeded.join(', ')}`);
+                console.log(`📋 ${logTime()} Days needed: ${daysNeeded.join(', ')}`);
                 
-                // Fetch metadata for all days in parallel
-                const metadataPromises = daysNeeded.map(async (date) => {
-                    // Convert YYYY-MM-DD to YYYY/MM/DD for CDN path
+                // Helper to build CDN chunk URL
+                function buildChunkUrl(date, startTime, endTime, chunkType) {
+                    const location = stationData.location || '--';
+                    const sampleRate = Math.round(stationData.sample_rate || 100);
                     const [year, month, day] = date.split('-');
                     const datePath = `${year}/${month}/${day}`;
-                    
-                    const metadataUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${stationData.location || '--'}/${stationData.channel}/${stationData.network}_${stationData.station}_${stationData.location || '--'}_${stationData.channel}_${Math.round(stationData.sample_rate || 100)}Hz_${date}.json`;
+                    const startFormatted = startTime.replace(/:/g, '-');
+                    const endFormatted = endTime.replace(/:/g, '-');
+                    const filename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunkType}_${date}-${startFormatted}_to_${date}-${endFormatted}.bin.zst`;
+                    return `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunkType}/${filename}`;
+                }
+                
+                // Fetch metadata (in parallel with realistic chunk that's already running!)
+                const metadataPromises = daysNeeded.map(async (date) => {
+                    const [year, month, day] = date.split('-');
+                    const datePath = `${year}/${month}/${day}`;
+                    const metadataUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${stationData.location || '--'}/${stationData.channel}/${stationData.network}_${stationData.station}_${stationData.location || '--'}_${stationData.channel}_${Math.round(stationData.sample_rate || 100)}Hz_${date}.json${cacheBuster}`;
                     
                     const response = await fetch(metadataUrl);
                     if (!response.ok) {
@@ -2232,12 +2468,23 @@
                     return response.json();
                 });
                 
-                const allDayMetadata = await Promise.all(metadataPromises);
+                // WAIT FOR BOTH: metadata + realistic chunk (passed in as promise)
+                const [allDayMetadata, realisticFirstChunk] = await Promise.all([
+                    Promise.all(metadataPromises),
+                    realisticChunkPromise
+                ]);
+                
                 const validMetadata = allDayMetadata.filter(m => m !== null);
+                console.log(`📋 ${logTime()} Metadata + realistic chunk complete (${validMetadata.length}/${daysNeeded.length} days)`);
                 
-                console.log(`📋 Fetched metadata for ${validMetadata.length}/${daysNeeded.length} days`);
+                // Use our calculated estimatedEndTime as THE TRUTH
+                // Metadata is only for min/max normalization, not for determining time range!
+                const endTime = estimatedEndTime;
+                const adjustedStartTime = startTime;
                 
-                // 🎯 VERIFY: Find the actual most recent chunk in metadata
+                console.log(`✅ ${logTime()} Using calculated time range: ${adjustedStartTime.toISOString()} to ${endTime.toISOString()}`);
+                
+                // Log most recent chunk in metadata for debugging
                 let actualMostRecentChunk = null;
                 for (const dayMeta of validMetadata) {
                     if (dayMeta.chunks['10m']) {
@@ -2249,32 +2496,14 @@
                         }
                     }
                 }
-                
-                // Determine actual end time based on metadata
-                let endTime;
-                let adjustedStartTime = startTime;
-                
                 if (actualMostRecentChunk) {
-                    console.log(`✅ Most recent chunk in metadata: ${actualMostRecentChunk.date} ${actualMostRecentChunk.chunk.start}`);
-                    // Adjust endTime if our estimate was too optimistic
-                    if (actualMostRecentChunk.time < estimatedEndTime) {
-                        console.log(`⚠️ Adjusted end time from ${estimatedEndTime.toISOString()} to ${actualMostRecentChunk.time.toISOString()}`);
-                        endTime = actualMostRecentChunk.time;
-                        
-                        // CRITICAL: Adjust startTime to maintain requested duration!
-                        adjustedStartTime = new Date(endTime.getTime() - duration * 3600 * 1000);
-                        console.log(`⚠️ Adjusted start time from ${startTime.toISOString()} to ${adjustedStartTime.toISOString()} to maintain ${duration}h duration`);
-                    } else {
-                        endTime = estimatedEndTime;
-                    }
-                } else {
-                    endTime = estimatedEndTime;
+                    console.log(`📋 ${logTime()} Most recent chunk in metadata: ${actualMostRecentChunk.date} ${actualMostRecentChunk.chunk.start}`);
                 }
                 
                 // Calculate which chunks we need across all days
                 const chunksNeeded = calculateChunksNeededMultiDay(adjustedStartTime, endTime, validMetadata);
-                console.log(`📋 Calculated chunks needed: ${chunksNeeded.length} chunks`);
-                console.log(`📋 Chunk types: ${chunksNeeded.map(c => c.type).join(', ')}`);
+                console.log(`📋 ${logTime()} Calculated chunks needed: ${chunksNeeded.length} chunks`);
+                console.log(`📋 ${logTime()} Chunk types: ${chunksNeeded.map(c => c.type).join(', ')}`);
                 
                 if (chunksNeeded.length === 0) {
                     throw new Error('No data available for this time range!');
@@ -2292,7 +2521,7 @@
                     if (chunk.max > normMax) normMax = chunk.max;
                 }
                 
-                console.log(`📊 Normalization range: ${normMin} to ${normMax}`);
+                console.log(`📊 ${logTime()} Normalization range: ${normMin} to ${normMax}`);
                 
                 // Store metadata for duration calculation
                 currentMetadata = {
@@ -2302,7 +2531,7 @@
                 
                 const chunksToFetch = chunksNeeded; // Use our calculated chunks!
                 
-                console.log(`🚀 Starting CDN DIRECT streaming (${chunksToFetch.length} chunks)...`);
+                console.log(`🚀 ${logTime()} Starting CDN DIRECT streaming (${chunksToFetch.length} chunks)...`);
                 
                 // 🎯 USE WORKER CREATED AT START OF startStreaming()
                 const worker = window.audioWorker;
@@ -2314,6 +2543,41 @@
                 let ttfaTime = null;
                 const progressiveT0 = performance.now();
                 let totalBytesDownloaded = 0;
+                let realisticChunkIndex = null; // Track which chunk the realistic fetch got
+                
+                // 🚀 Match realistic chunk to actual chunks needed!
+                if (realisticFirstChunk) {
+                    // Extract the actual chunk time from the realistic result
+                    const realisticChunkTime = realisticFirstChunk.time; // HH:MM:SS from successful fetch
+                    const realisticChunkDate = realisticFirstChunk.date; // YYYY-MM-DD from successful fetch
+                    const realisticCompressed = realisticFirstChunk.compressed; // The actual data
+                    
+                    // Find which chunk index this corresponds to in chunksNeeded
+                    const matchIndex = chunksToFetch.findIndex(chunk => 
+                        chunk.date === realisticChunkDate && chunk.start === realisticChunkTime
+                    );
+                    
+                    if (matchIndex >= 0) {
+                        console.log(`⚡ ${logTime()} Realistic chunk matched chunk ${matchIndex}! (${realisticChunkDate} ${realisticChunkTime})`);
+                        realisticChunkIndex = matchIndex;
+                        
+                        // Send it to worker with correct index
+                        worker.postMessage({
+                            type: 'process-chunk',
+                            compressed: realisticCompressed,
+                            normMin: normMin,
+                            normMax: normMax,
+                            chunkIndex: matchIndex
+                        }, [realisticCompressed]);
+                        
+                        console.log(`📥 ${logTime()} Sent realistic chunk ${matchIndex} to worker`);
+                    } else {
+                        console.log(`⚠️ ${logTime()} Realistic chunk (${realisticChunkDate} ${realisticChunkTime}) not in chunks needed - discarding`);
+                        realisticChunkIndex = null;
+                    }
+                } else {
+                    console.log(`⚠️ ${logTime()} Realistic chunk failed - will fetch all chunks normally`);
+                }
                 
                 // Initialize arrays
                 allReceivedData = [];
@@ -2324,31 +2588,17 @@
                     firstChunkProcessedResolve = resolve;
                 });
                 
-                // Initialize waveform canvas
-                const waveformCanvas = document.getElementById('waveform');
-                const waveformCtx = waveformCanvas.getContext('2d');
-                const waveformWidth = waveformCanvas.width = waveformCanvas.offsetWidth * window.devicePixelRatio;
-                const waveformHeight = waveformCanvas.height = waveformCanvas.offsetHeight * window.devicePixelRatio;
-                waveformCtx.fillStyle = '#000';
-                waveformCtx.fillRect(0, 0, waveformWidth, waveformHeight);
+                // Track next chunk to send (to maintain order)
+                let nextChunkToSend = 0;
                 
-                // Draw center line
-                waveformCtx.strokeStyle = '#333';
-                waveformCtx.lineWidth = 1;
-                waveformCtx.beginPath();
-                waveformCtx.moveTo(0, waveformHeight / 2);
-                waveformCtx.lineTo(waveformWidth, waveformHeight / 2);
-                waveformCtx.stroke();
-                
-                // 🎯 WORKER MESSAGE HANDLER (runs on main thread, but doesn't block!)
-                worker.onmessage = (e) => {
-                    if (e.data.type === 'chunk-ready') {
-                        const { chunkIndex, samples, rawSamples, sampleCount } = e.data;
+                // Helper to send chunks to worklet in order
+                function sendChunksInOrder() {
+                    // Send all sequential chunks that are ready
+                    while (processedChunks[nextChunkToSend]) {
+                        const { samples } = processedChunks[nextChunkToSend];
+                        const currentChunkIndex = nextChunkToSend;
                         
-                        chunksReceived++;
-                        processedChunks[chunkIndex] = { samples, rawSamples };
-                        
-                        // 🎯 SEND TO WORKLET IMMEDIATELY (main thread is free!)
+                        // 🎯 SEND TO WORKLET IN ORDER
                         const WORKLET_CHUNK_SIZE = 1024;
                         for (let i = 0; i < samples.length; i += WORKLET_CHUNK_SIZE) {
                             const size = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
@@ -2361,8 +2611,9 @@
                             
                             allReceivedData.push(workletChunk);
                             
-                            // 🎯 FIRST CHUNK = START FADE-IN (main thread isn't blocked!)
-                            if (!firstChunkSent && i === 0) {
+                            // 🎯 FIRST CHUNK (chunk 0) = START FADE-IN
+                            // Only start playback when chunk 0 is ready!
+                            if (!firstChunkSent && i === 0 && currentChunkIndex === 0) {
                                 firstChunkSent = true;
                                 ttfaTime = performance.now() - progressiveT0;
                                 console.log(`⚡ FIRST CHUNK SENT in ${ttfaTime.toFixed(0)}ms - starting playback!`);
@@ -2397,8 +2648,69 @@
                                 lastUpdateTime = audioContext.currentTime;
                                 
                                 // Start playback indicator (will draw when waveform is ready)
-                                    requestAnimationFrame(updatePlaybackIndicator);
+                                requestAnimationFrame(updatePlaybackIndicator);
                             }
+                        }
+                        
+                        nextChunkToSend++;
+                    }
+                }
+                
+                // Track which chunks to send to waveform worker in order
+                let nextWaveformChunk = 0;
+                
+                // 🎯 WORKER MESSAGE HANDLER (runs on main thread, but doesn't block!)
+                worker.onmessage = (e) => {
+                    if (e.data.type === 'chunk-ready') {
+                        const { chunkIndex, samples, rawSamples, sampleCount } = e.data;
+                        
+                        chunksReceived++;
+                        processedChunks[chunkIndex] = { samples, rawSamples };
+                        
+                        // 🎨 PROGRESSIVE WAVEFORM: Send chunks to waveform worker IN ORDER (left to right temporally)
+                        // Send all consecutive chunks that are ready, starting from nextWaveformChunk
+                        while (nextWaveformChunk < chunksToFetch.length && processedChunks[nextWaveformChunk]) {
+                            const chunk = processedChunks[nextWaveformChunk];
+                            waveformWorker.postMessage({
+                                type: 'add-samples',
+                                samples: chunk.samples,
+                                rawSamples: chunk.rawSamples
+                            });
+                            nextWaveformChunk++;
+                            
+                            // Trigger progressive waveform draw every 3 chunks (or first/last)
+                            if (nextWaveformChunk === 1 || nextWaveformChunk === chunksToFetch.length || nextWaveformChunk % 3 === 0) {
+                                const canvas = document.getElementById('waveform');
+                                const width = canvas.offsetWidth * window.devicePixelRatio;
+                                const height = canvas.offsetHeight * window.devicePixelRatio;
+                                
+                                // For first draw, set duration
+                                if (nextWaveformChunk === 1) {
+                                    totalAudioDuration = totalSamples / 44100;
+                                }
+                                
+                                waveformWorker.postMessage({
+                                    type: 'build-waveform',
+                                    canvasWidth: width,
+                                    canvasHeight: height,
+                                    removeDC: false,  // No DC removal until complete
+                                    alpha: 0.995,
+                                    totalExpectedSamples: totalSamples  // For progressive left-to-right filling
+                                });
+                                
+                                console.log(`🎨 Progressive waveform: ${nextWaveformChunk}/${chunksToFetch.length} chunks sent to worker (${(nextWaveformChunk/chunksToFetch.length*100).toFixed(0)}%)`);
+                            }
+                        }
+                        
+                        // Send chunks in order (holds chunks until previous ones are ready)
+                        const beforeSend = nextChunkToSend;
+                        sendChunksInOrder();
+                        const afterSend = nextChunkToSend;
+                        
+                        if (afterSend > beforeSend) {
+                            console.log(`📤 Sent chunks ${beforeSend}-${afterSend-1} to worklet (in order)`);
+                        } else if (chunkIndex > nextChunkToSend - 1) {
+                            console.log(`⏸️ Holding chunk ${chunkIndex} (waiting for chunk ${nextChunkToSend})`);
                         }
                         
                         // 🎯 ALL CHUNKS RECEIVED = SIGNAL COMPLETE
@@ -2408,7 +2720,7 @@
                             
                             // Signal worklet
                             const totalWorkletSamples = allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
-                        workletNode.port.postMessage({
+                            workletNode.port.postMessage({
                                 type: 'data-complete',
                                 totalSamples: totalWorkletSamples
                             });
@@ -2416,14 +2728,16 @@
                             // Terminate worker (we're done!)
                             worker.terminate();
                             console.log('🏭 Worker terminated');
-                
-                // Update download size
-                document.getElementById('downloadSize').textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
-                
-                            // 🎯 BUILD WAVEFORM WHEN BROWSER IS IDLE
+                            
+                            // Update download size
+                            document.getElementById('downloadSize').textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+                            
+                            // 🎯 FINAL WAVEFORM WITH DC REMOVAL (crossfade to pink)
                             requestIdleCallback(() => {
                                 buildCompleteWaveform(processedChunks, chunksToFetch, normMin, normMax, totalSamples);
                             }, { timeout: 2000 });
+                            
+                            console.log(`🎨 All chunks complete - will build final detrended waveform`);
                             
                             // Update UI
                             updatePlaybackSpeed();
@@ -2477,41 +2791,41 @@
                     
                     // Update UI metrics
                     document.getElementById('sampleCount').textContent = stitchedFloat32.length.toLocaleString();
+                    totalAudioDuration = stitchedFloat32.length / 44100;
                     
-                    // Send samples to waveform worker (it will handle filtering and drawing)
-                    waveformWorker.postMessage({
-                        type: 'add-samples',
-                        samples: stitchedFloat32,
-                        rawSamples: stitchedRaw
-                    });
-                    
-                    // Trigger waveform build
-                            drawWaveform();
+                    // 🎨 DON'T re-send samples - worker already has them!
+                    // Just trigger final waveform build with DC removal
+                    drawWaveform();
                     
                     const stitchTime = performance.now() - t0;
-                    console.log(`✅ Samples stitched in ${stitchTime.toFixed(0)}ms, sent to waveform worker`);
+                    console.log(`✅ Samples stitched in ${stitchTime.toFixed(0)}ms, triggering final detrended waveform`);
                 }
                 
-                // 🎯 CHUNKED PARALLEL FETCHING (fetch by type in parallel batches)
-                // Group chunks by type (10m, 1h, 6h)
-                const chunksByType = {};
-                for (let i = 0; i < chunksToFetch.length; i++) {
-                    const chunk = chunksToFetch[i];
-                    const type = chunk.type;
-                    if (!chunksByType[type]) {
-                        chunksByType[type] = [];
-                    }
-                    chunksByType[type].push({ chunk, index: i });
-                }
+                // ========== PROGRESSIVE BATCH DOWNLOADING ==========
+                // Create download batches using our validated algorithm
+                const downloadBatches = createDownloadBatches(chunksToFetch);
                 
-                console.log(`📦 Chunk groups: ${Object.keys(chunksByType).map(t => `${chunksByType[t].length}×${t}`).join(', ')}`);
+                // Log chunk breakdown
+                const typeCount = chunksToFetch.reduce((acc, c) => {
+                    acc[c.type] = (acc[c.type] || 0) + 1;
+                    return acc;
+                }, {});
+                console.log(`📋 ${logTime()} Progressive chunks: ${chunksToFetch.length} total`);
+                console.log(`📋 ${logTime()} Breakdown: ${Object.entries(typeCount).map(([t, c]) => `${c}×${t}`).join(', ')}`);
                 
-                // Fetch function - DIRECT FROM CDN (7.8x faster!)
+                // Show batch plan
+                const batchPlan = downloadBatches.map((batch, i) => {
+                    const type = chunksToFetch[batch[0]].type;
+                    return batch.length === 1 ? `1×${type}` : `${batch.length}×${type}`;
+                }).join(' → ');
+                console.log(`🚀 ${logTime()} Download plan: ${batchPlan}`);
+                console.log(`📦 ${logTime()} Total batches: ${downloadBatches.length}`);
+                
+                // Fetch function - DIRECT FROM CDN
                 async function fetchChunk(chunkData) {
                     const { chunk, index } = chunkData;
                     
-                    // Build CDN URL directly
-                    // Format: https://cdn.now.audio/data/2025/11/06/HV/kilauea/OBL/--/HHZ/10m/HV_OBL_--_HHZ_100Hz_10m_2025-11-06-00-00-00_to_2025-11-06-00-09-59.bin.zst
+                    // Build CDN URL
                     const location = stationData.location || '--';
                     const sampleRate = Math.round(stationData.sample_rate || 100);
                     
@@ -2520,12 +2834,11 @@
                     const datePath = `${year}/${month}/${day}`;
                     
                     // Convert start/end times to filename format
-                    const startFormatted = chunk.start.replace(/:/g, '-'); // HH:MM:SS -> HH-MM-SS
+                    const startFormatted = chunk.start.replace(/:/g, '-');
                     const endFormatted = chunk.end.replace(/:/g, '-');
                     
                     const filename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${chunk.date}-${endFormatted}.bin.zst`;
-                    
-                    const chunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${filename}`;
+                    const chunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${filename}${cacheBuster}`;
                     
                     const response = await fetch(chunkUrl);
                     if (!response.ok) {
@@ -2539,48 +2852,53 @@
                     return { compressed, chunkSize, index };
                 }
                 
-                // 🚀 START ALL DOWNLOADS IMMEDIATELY (don't wait for batches!)
-                console.log(`🚀 Starting download of ALL ${chunksToFetch.length} chunks in parallel...`);
-                console.log(`📦 Breakdown: ${Object.keys(chunksByType).map(t => `${chunksByType[t].length}×${t}`).join(', ')}`);
-                
-                // Start fetching ALL chunks immediately
-                const allFetchPromises = chunksToFetch.map((chunk, index) => 
-                    fetchChunk({chunk, index})
-                );
-                
-                // Process chunks as they arrive (don't wait for all!)
                 let chunksDownloaded = 0;
                 
-                // Process each chunk as soon as it's downloaded
-                for (const fetchPromise of allFetchPromises) {
-                    fetchPromise.then(result => {
-                        const { compressed, chunkSize, index } = result;
-                        chunksDownloaded++;
-                        
-                        // Send to worker with ZERO-COPY transfer
-                        worker.postMessage({
-                            type: 'process-chunk',
-                            compressed: compressed,
-                            normMin: normMin,
-                            normMax: normMax,
-                            chunkIndex: index
-                        }, [compressed]); // Transfer ownership to worker!
-                        
-                        const chunkType = chunksToFetch[index].type;
-                        console.log(`📥 Downloaded chunk ${index + 1}/${chunksToFetch.length} (${chunkType}) - ${(chunkSize / 1024).toFixed(1)} KB (${chunksDownloaded} total)`);
-                    }).catch(error => {
-                        console.error(`❌ Failed to fetch chunk ${index + 1}:`, error);
-                    });
+                // Helper to send chunk to worker
+                const sendToWorker = (result) => {
+                    const { compressed, chunkSize, index } = result;
+                    chunksDownloaded++;
+                    
+                    worker.postMessage({
+                        type: 'process-chunk',
+                        compressed: compressed,
+                        normMin: normMin,
+                        normMax: normMax,
+                        chunkIndex: index
+                    }, [compressed]);
+                    
+                    const chunkType = chunksToFetch[index].type;
+                    console.log(`📥 ${logTime()} Downloaded chunk ${index + 1}/${chunksToFetch.length} (${chunkType}) - ${(chunkSize / 1024).toFixed(1)} KB (${chunksDownloaded}/${chunksToFetch.length})`);
+                };
+                
+                // Execute batches sequentially, chunks within batch in parallel
+                for (let batchIdx = 0; batchIdx < downloadBatches.length; batchIdx++) {
+                    const batchIndices = downloadBatches[batchIdx];
+                    const chunkType = chunksToFetch[batchIndices[0]].type;
+                    const batchLabel = batchIndices.length === 1 ? 
+                        `1×${chunkType} alone` : 
+                        `${batchIndices.length}×${chunkType} parallel`;
+                    
+                    console.log(`📦 ${logTime()} Batch ${batchIdx + 1}/${downloadBatches.length}: ${batchLabel} (chunks ${batchIndices.map(i => i + 1).join(', ')})`);
+                    
+                    // Download all chunks in this batch IN PARALLEL
+                    const batchPromises = batchIndices.map(idx => 
+                        fetchChunk({ chunk: chunksToFetch[idx], index: idx })
+                    );
+                    const batchResults = await Promise.all(batchPromises);
+                    
+                    // Send to worker
+                    batchResults.forEach(sendToWorker);
+                    
+                    // Wait for first batch (chunk 0) to be processed before continuing
+                    if (batchIdx === 0) {
+                        console.log(`⏳ ${logTime()} Waiting for chunk 0 to process...`);
+                        await firstChunkProcessed;
+                        console.log(`✅ ${logTime()} Chunk 0 ready - AUDIO PLAYING! Continuing with next batches...`);
+                    }
                 }
                 
-                // Wait for first chunk to be processed, then start playback
-                console.log(`⏳ Waiting for first chunk to process...`);
-                await firstChunkProcessed;
-                console.log(`✅ First chunk ready - AUDIO PLAYING! (remaining chunks downloading in background)`);
-                
-                // Wait for all chunks to finish downloading
-                await Promise.all(allFetchPromises);
-                console.log(`📡 All ${chunksToFetch.length} chunks downloaded and sent to worker`);
+                console.log(`📡 ${logTime()} All ${chunksToFetch.length} chunks downloaded and sent to worker`);
                 
                 // Worker will handle:
                 // 1. Decompression (off main thread)
@@ -3354,9 +3672,14 @@
                 canvasWidth: width,
                 canvasHeight: height,
                 removeDC: removeDC,
-                alpha: alpha
+                alpha: alpha,
+                isComplete: true  // This is the final complete waveform (pink crossfade!)
             });
         }
+        
+        // Track if we're showing the final detrended waveform
+        let isShowingFinalWaveform = false;
+        let crossfadeAnimation = null;
         
         // Draw waveform from min/max data (called when worker sends back data)
         function drawWaveformFromMinMax() {
@@ -3372,45 +3695,124 @@
             const width = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
             const height = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
             
-            // Clear canvas
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, width, height);
-            
-            // Draw waveform using min/max data (MUCH faster than line drawing!)
-            ctx.fillStyle = '#e8c0c0';
-            const mid = height / 2;
-            
-            const { mins, maxs } = waveformMinMaxData;
-            
-            for (let x = 0; x < mins.length && x < width; x++) {
-                const min = mins[x];
-                const max = maxs[x];
+            // If this is the final detrended waveform, do a crossfade
+            if (isShowingFinalWaveform && cachedWaveformCanvas) {
+                // Store the old gray waveform
+                const oldCanvas = document.createElement('canvas');
+                oldCanvas.width = width;
+                oldCanvas.height = height;
+                oldCanvas.getContext('2d').drawImage(cachedWaveformCanvas, 0, 0);
                 
-                // Convert normalized values [-1, 1] to canvas coordinates
-                const yMin = mid + (min * mid * 0.9);
-                const yMax = mid + (max * mid * 0.9);
+                // Draw new pink waveform to temp canvas
+                const newCanvas = document.createElement('canvas');
+                newCanvas.width = width;
+                newCanvas.height = height;
+                const newCtx = newCanvas.getContext('2d');
                 
-                // Draw vertical line from min to max
-                const lineHeight = Math.max(1, yMax - yMin);
-                ctx.fillRect(x, yMin, 1, lineHeight);
+                // Clear
+                newCtx.fillStyle = '#000';
+                newCtx.fillRect(0, 0, width, height);
+                
+                // Draw pink waveform
+                newCtx.fillStyle = '#e8c0c0';
+                const mid = height / 2;
+                const { mins, maxs } = waveformMinMaxData;
+                
+                for (let x = 0; x < mins.length && x < width; x++) {
+                    const min = mins[x];
+                    const max = maxs[x];
+                    const yMin = mid + (min * mid * 0.9);
+                    const yMax = mid + (max * mid * 0.9);
+                    const lineHeight = Math.max(1, yMax - yMin);
+                    newCtx.fillRect(x, yMin, 1, lineHeight);
                 }
-            
-            // Draw center line
-            ctx.strokeStyle = '#666';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(0, mid);
-            ctx.lineTo(width, mid);
-            ctx.stroke();
-            
-            // Cache the waveform canvas for performance
-            cachedWaveformCanvas = document.createElement('canvas');
-            cachedWaveformCanvas.width = width;
-            cachedWaveformCanvas.height = height;
-            const cacheCtx = cachedWaveformCanvas.getContext('2d');
-            cacheCtx.drawImage(canvas, 0, 0);
-            
-            console.log(`✅ Waveform drawn from min/max data (${mins.length} pixels)`);
+                
+                // Draw center line
+                newCtx.strokeStyle = '#666';
+                newCtx.lineWidth = 1;
+                newCtx.beginPath();
+                newCtx.moveTo(0, mid);
+                newCtx.lineTo(width, mid);
+                newCtx.stroke();
+                
+                // Crossfade animation (300ms)
+                if (crossfadeAnimation) cancelAnimationFrame(crossfadeAnimation);
+                const startTime = performance.now();
+                const duration = 300; // ms
+                
+                const animate = () => {
+                    const elapsed = performance.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1.0);
+                    
+                    // Clear main canvas
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, width, height);
+                    
+                    // Draw old (gray) waveform fading out
+                    ctx.globalAlpha = 1.0 - progress;
+                    ctx.drawImage(oldCanvas, 0, 0);
+                    
+                    // Draw new (pink) waveform fading in
+                    ctx.globalAlpha = progress;
+                    ctx.drawImage(newCanvas, 0, 0);
+                    
+                    ctx.globalAlpha = 1.0;
+                    
+                    if (progress < 1.0) {
+                        crossfadeAnimation = requestAnimationFrame(animate);
+                    } else {
+                        // Crossfade complete - cache the final result
+                        cachedWaveformCanvas = document.createElement('canvas');
+                        cachedWaveformCanvas.width = width;
+                        cachedWaveformCanvas.height = height;
+                        cachedWaveformCanvas.getContext('2d').drawImage(newCanvas, 0, 0);
+                        console.log(`✅ Waveform crossfade complete - pink detrended waveform`);
+                    }
+                };
+                animate();
+                
+            } else {
+                // Normal draw (progressive gray)
+                // Clear canvas
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, width, height);
+                
+                // Gray during progressive loading
+                ctx.fillStyle = '#888888';
+                const mid = height / 2;
+                
+                const { mins, maxs } = waveformMinMaxData;
+                
+                for (let x = 0; x < mins.length && x < width; x++) {
+                    const min = mins[x];
+                    const max = maxs[x];
+                    
+                    // Convert normalized values [-1, 1] to canvas coordinates
+                    const yMin = mid + (min * mid * 0.9);
+                    const yMax = mid + (max * mid * 0.9);
+                    
+                    // Draw vertical line from min to max
+                    const lineHeight = Math.max(1, yMax - yMin);
+                    ctx.fillRect(x, yMin, 1, lineHeight);
+                }
+                
+                // Draw center line
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, mid);
+                ctx.lineTo(width, mid);
+                ctx.stroke();
+                
+                // Cache the waveform canvas for performance
+                cachedWaveformCanvas = document.createElement('canvas');
+                cachedWaveformCanvas.width = width;
+                cachedWaveformCanvas.height = height;
+                const cacheCtx = cachedWaveformCanvas.getContext('2d');
+                cacheCtx.drawImage(canvas, 0, 0);
+                
+                console.log(`✅ Waveform drawn from min/max data (${mins.length} pixels) - progressive`);
+            }
         }
         
         // Draw waveform with selection highlight
@@ -4065,7 +4467,13 @@
                 const { type } = e.data;
                 
                 if (type === 'waveform-ready') {
-                    const { waveformData, totalSamples, buildTime } = e.data;
+                    const { waveformData, totalSamples, buildTime, isComplete } = e.data;
+                    
+                    // Flag for final detrended waveform (crossfade to pink!)
+                    if (isComplete) {
+                        isShowingFinalWaveform = true;
+                    }
+                    
                     console.log(`🎨 Waveform ready: ${totalSamples.toLocaleString()} samples → ${waveformData.mins.length} pixels in ${buildTime.toFixed(0)}ms`);
                     
                     // Store min/max data for rendering
@@ -4089,8 +4497,8 @@
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
             // Version logging
-            console.log('🌋 volcano-audio v1.63 - True Progressive Streaming');
-            console.log('📦 v1.63 Performance: True progressive streaming - parallel chunk downloads, 30ms TTFA for any duration, maintain requested duration when adjusting end time');
+            console.log('🌋 [0ms] volcano-audio v1.68 - Progressive Waveform Drawing');
+            console.log('📦 [0ms] v1.68 Feature: Progressive left-to-right waveform drawing with smooth crossfade to detrended version, first 3 chunks download individually for fast runway');
             
             // Initialize waveform worker
             initWaveformWorker();
@@ -4110,6 +4518,7 @@
             document.getElementById('duration').addEventListener('change', enableFetchButton);
             document.getElementById('highpassFreq').addEventListener('change', enableFetchButton);
             document.getElementById('enableNormalize').addEventListener('change', enableFetchButton);
+            document.getElementById('bypassCache').addEventListener('change', enableFetchButton);
             // Local server checkbox removed - always use Railway backend
             
             // Base sample rate changes playback speed immediately (does NOT trigger new fetch)
@@ -4185,7 +4594,7 @@
             });
             
             // Blur checkboxes after interaction so spacebar works immediately
-            const checkboxes = ['enableNormalize'];
+            const checkboxes = ['enableNormalize', 'bypassCache'];
             checkboxes.forEach(id => {
                 const checkbox = document.getElementById(id);
                 if (checkbox) {
@@ -4201,6 +4610,47 @@
             
             console.log('✅ Event listeners added for fetch button re-enabling');
         });
+        
+        // Purge Cloudflare cache via worker
+        async function purgeCloudflareCache() {
+            const btn = document.getElementById('purgeCacheBtn');
+            const originalText = btn.textContent;
+            
+            try {
+                btn.disabled = true;
+                btn.textContent = '⏳ Purging...';
+                
+                // Call the Cloudflare Worker to purge cache
+                const WORKER_URL = 'https://volcano-audio-cache-purge.robertalexander-music.workers.dev';
+                
+                const response = await fetch(WORKER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    btn.textContent = '✅ Purged!';
+                    console.log('✅ CDN cache purged successfully at:', result.timestamp);
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.disabled = false;
+                    }, 2000);
+                } else {
+                    throw new Error(result.error || 'Purge failed');
+                }
+            } catch (error) {
+                console.error('❌ Cache purge error:', error);
+                btn.textContent = '❌ Failed';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
         
         // Modal control functions
         function openParticipantModal() {
@@ -4297,4 +4747,5 @@
     </script>
 </body>
 </html>
+
 
