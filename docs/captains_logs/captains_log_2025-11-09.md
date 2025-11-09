@@ -162,3 +162,72 @@ if (isFirst3TenMinute) {
 
 ---
 
+## Session: Bug Fixes - v1.69 & v1.70
+
+### v1.69: Critical Bug - Final Waveform Not Building
+
+**Problem**: The final detrended waveform (pink) was never being built, leaving only the progressive gray waveform visible.
+
+**Root Cause**: Race condition in completion detection:
+1. `isFetchingNewData` flag was set to `true` at start of `startStreaming()`
+2. Completion handler checked `!isFetchingNewData` before running
+3. `isFetchingNewData` was only set to `false` INSIDE the completion handler
+4. Catch-22: completion handler couldn't run because flag was true, but flag couldn't be set to false until handler ran
+
+**Additional Issues**:
+- `chunksReceived` counter could exceed `chunksToFetch.length` (e.g., 13/12) due to realistic chunk being processed twice
+- Completion check relied on `chunksReceived === chunksToFetch.length`, which failed when count exceeded expected
+- Missing chunks weren't detected properly
+
+**Solution**:
+1. **Removed `isFetchingNewData` check** from completion condition - `completionHandled` flag is sufficient to prevent duplicates
+2. **Check `allChunksPresent` on every message** - Verify all chunks 0-N are actually in `processedChunks` array
+3. **Added debug logging** - Log completion check status to diagnose issues
+4. **Fixed waveform length mismatch** - Final waveform now uses actual sample count (`completeSamplesArray.length`) instead of theoretical total
+
+**Code Changes**:
+```javascript
+// OLD (broken):
+if (chunksReceived === chunksToFetch.length && allChunksPresent && !isFetchingNewData && !completionHandled)
+
+// NEW (fixed):
+const allChunksPresent = chunksToFetch.every((_, idx) => processedChunks[idx] !== undefined);
+if (allChunksPresent && !completionHandled) {
+    completionHandled = true;
+    // ... completion logic
+}
+```
+
+**Result**: Final detrended waveform now builds correctly and crossfades from gray to pink as intended.
+
+### v1.70: Playback Speed Not Preserved
+
+**Problem**: When starting a new fetch, playback speed always defaulted to 1.0x, ignoring the user's slider setting.
+
+**Root Cause**: When `initAudioWorklet()` created a new worklet node, it didn't apply the current playback speed from the slider. The worklet constructor defaults to `speed = 1.0`, and no code was setting it to the user's preference.
+
+**Solution**: Call `updatePlaybackSpeed()` immediately after creating the worklet node in `initAudioWorklet()`. This reads the current slider value and sends it to the worklet via `set-speed` message.
+
+**Code Change**:
+```javascript
+workletNode.connect(gainNode);
+gainNode.connect(analyserNode);
+gainNode.connect(audioContext.destination);
+
+// Apply current playback speed from slider (preserve user's speed setting)
+updatePlaybackSpeed();
+```
+
+**Result**: Playback speed is now preserved across new fetches - if user sets 2.0x, new fetches will start at 2.0x.
+
+### Version: v1.70
+
+**Commit Message**: v1.70 Fix: Playback speed now preserved when starting new fetch - apply current slider value to new worklet node
+
+**Key Fixes**:
+- ✅ Final detrended waveform builds correctly (v1.69)
+- ✅ Completion handler runs when all chunks are present (v1.69)
+- ✅ Fixed waveform length mismatch (v1.69)
+- ✅ Playback speed preserved across fetches (v1.70)
+
+---

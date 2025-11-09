@@ -1638,6 +1638,9 @@
             gainNode.connect(analyserNode);
             gainNode.connect(audioContext.destination);
             
+            // Apply current playback speed from slider (preserve user's speed setting)
+            updatePlaybackSpeed();
+            
             workletNode.port.onmessage = (event) => {
                 const { type, bufferSize, samplesConsumed, totalSamples, positionSeconds, samplePosition } = event.data;
                 
@@ -2255,6 +2258,9 @@
                             samples: chunkData.samples,
                             date: currentDate
                         });
+                        console.log(`✅ Found 10m chunk: ${currentDate} ${timeStr} (${chunkData.samples.toLocaleString()} samples)`);
+                    } else {
+                        console.warn(`⚠️ MISSING 10m chunk: ${currentDate} ${timeStr} - chunk not found in metadata!`);
                     }
                     currentTime.setUTCMinutes(currentTime.getUTCMinutes() + 10);
                     minutesElapsed += 10;
@@ -2315,6 +2321,9 @@
                         samples: chunkData.samples,
                         date: currentDate
                     });
+                    console.log(`✅ Found 10m chunk: ${currentDate} ${timeStr} (${chunkData.samples.toLocaleString()} samples)`);
+                } else {
+                    console.warn(`⚠️ MISSING 10m chunk: ${currentDate} ${timeStr} - chunk not found in metadata!`);
                 }
                 currentTime.setUTCMinutes(currentTime.getUTCMinutes() + 10);
                 minutesElapsed += 10;
@@ -2509,9 +2518,15 @@
                     throw new Error('No data available for this time range!');
                 }
                 
-                // Calculate total samples and normalization range from chunks
+                // Calculate total samples from duration and sample rate (MUCH simpler!)
                 const firstDayMeta = validMetadata[0];
-                const totalSamples = chunksNeeded.reduce((sum, chunk) => sum + chunk.samples, 0);
+                if (!firstDayMeta.sample_rate) {
+                    throw new Error('Metadata file missing sample_rate!');
+                }
+                const sampleRate = firstDayMeta.sample_rate; // From CDN metadata file (e.g., 100 Hz for HV.OBL)
+                const durationSeconds = (endTime - adjustedStartTime) / 1000; // Convert ms to seconds
+                const totalSamples = Math.floor(durationSeconds * sampleRate); // Use actual sample rate!
+                console.log(`📊 ${logTime()} Total samples: ${totalSamples.toLocaleString()} (${durationSeconds.toFixed(1)}s × ${sampleRate} Hz)`);
                 
                 // Calculate global min/max from all chunks we're fetching
                 let normMin = Infinity;
@@ -2544,6 +2559,7 @@
                 const progressiveT0 = performance.now();
                 let totalBytesDownloaded = 0;
                 let realisticChunkIndex = null; // Track which chunk the realistic fetch got
+                let completionHandled = false; // Prevent multiple completion checks
                 
                 // 🚀 Match realistic chunk to actual chunks needed!
                 if (realisticFirstChunk) {
@@ -2667,6 +2683,10 @@
                         chunksReceived++;
                         processedChunks[chunkIndex] = { samples, rawSamples };
                         
+                        // 🔍 DEBUG: Log each chunk's sample count
+                        const chunkInfo = chunksToFetch[chunkIndex];
+                        console.log(`📊 ${logTime()} Chunk ${chunkIndex} (${chunkInfo?.date} ${chunkInfo?.start}): ${samples.length.toLocaleString()} samples (total received: ${chunksReceived}/${chunksToFetch.length})`);
+                        
                         // 🎨 PROGRESSIVE WAVEFORM: Send chunks to waveform worker IN ORDER (left to right temporally)
                         // Send all consecutive chunks that are ready, starting from nextWaveformChunk
                         while (nextWaveformChunk < chunksToFetch.length && processedChunks[nextWaveformChunk]) {
@@ -2714,12 +2734,48 @@
                         }
                         
                         // 🎯 ALL CHUNKS RECEIVED = SIGNAL COMPLETE
-                        if (chunksReceived === chunksToFetch.length) {
+                        // CRITICAL: Check that ALL chunks are actually in processedChunks on EVERY message
+                        // This prevents race conditions and handles cases where chunksReceived exceeds expected count
+                        const allChunksPresent = chunksToFetch.every((_, idx) => processedChunks[idx] !== undefined);
+                        
+                        // 🔍 DEBUG: Log completion check status
+                        if (chunksReceived >= chunksToFetch.length) {
+                            const missingChunks = [];
+                            for (let i = 0; i < chunksToFetch.length; i++) {
+                                if (!processedChunks[i]) {
+                                    missingChunks.push(i);
+                                }
+                            }
+                            console.log(`🔍 ${logTime()} Completion check: allChunksPresent=${allChunksPresent}, isFetchingNewData=${isFetchingNewData}, completionHandled=${completionHandled}, missingChunks=[${missingChunks.join(', ')}]`);
+                        }
+                        
+                        // Only check for completion if all chunks are present (regardless of chunksReceived count)
+                        // This handles race conditions where chunksReceived might exceed chunksToFetch.length
+                        // Also prevent multiple completion checks with completionHandled flag
+                        // NOTE: Removed !isFetchingNewData check - it was preventing completion (catch-22)
+                        if (allChunksPresent && !completionHandled) {
+                            completionHandled = true; // Mark as handled immediately to prevent race conditions
                             const totalTime = performance.now() - progressiveT0;
                             console.log(`✅ All ${chunksToFetch.length} chunks processed in ${totalTime.toFixed(0)}ms total`);
                             
+                            // 🔍 DEBUG: Calculate actual total samples from processed chunks
+                            let actualTotalSamples = 0;
+                            const chunkSampleCounts = [];
+                            for (let i = 0; i < processedChunks.length; i++) {
+                                if (processedChunks[i]) {
+                                    const count = processedChunks[i].samples.length;
+                                    actualTotalSamples += count;
+                                    chunkSampleCounts.push(`chunk ${i}: ${count.toLocaleString()}`);
+                                } else {
+                                    chunkSampleCounts.push(`chunk ${i}: MISSING`);
+                                }
+                            }
+                            console.log(`📊 ${logTime()} Actual samples per chunk: ${chunkSampleCounts.join(', ')}`);
+                            console.log(`📊 ${logTime()} Total actual samples: ${actualTotalSamples.toLocaleString()} (expected: ${totalSamples.toLocaleString()})`);
+                            
                             // Signal worklet
                             const totalWorkletSamples = allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
+                            console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()} (from allReceivedData)`);
                             workletNode.port.postMessage({
                                 type: 'data-complete',
                                 totalSamples: totalWorkletSamples
@@ -3673,7 +3729,8 @@
                 canvasHeight: height,
                 removeDC: removeDC,
                 alpha: alpha,
-                isComplete: true  // This is the final complete waveform (pink crossfade!)
+                isComplete: true,  // This is the final complete waveform (pink crossfade!)
+                totalExpectedSamples: completeSamplesArray.length  // Use ACTUAL length so final waveform matches progressive width!
             });
         }
         
@@ -3758,6 +3815,19 @@
                     
                     ctx.globalAlpha = 1.0;
                     
+                    // Draw playhead on top (independent of crossfade)
+                    if (totalAudioDuration > 0 && currentAudioPosition >= 0) {
+                        const playheadProgress = Math.min(currentAudioPosition / totalAudioDuration, 1.0);
+                        const playheadX = playheadProgress * width;
+                        
+                        ctx.strokeStyle = '#ff0000';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(playheadX, 0);
+                        ctx.lineTo(playheadX, height);
+                        ctx.stroke();
+                    }
+                    
                     if (progress < 1.0) {
                         crossfadeAnimation = requestAnimationFrame(animate);
                     } else {
@@ -3767,6 +3837,11 @@
                         cachedWaveformCanvas.height = height;
                         cachedWaveformCanvas.getContext('2d').drawImage(newCanvas, 0, 0);
                         console.log(`✅ Waveform crossfade complete - pink detrended waveform`);
+                        
+                        // Redraw with playhead after crossfade completes
+                        if (isPlaying || totalAudioDuration > 0) {
+                            drawWaveformWithSelection();
+                        }
                     }
                 };
                 animate();
@@ -4497,8 +4572,8 @@
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
             // Version logging
-            console.log('🌋 [0ms] volcano-audio v1.68 - Progressive Waveform Drawing');
-            console.log('📦 [0ms] v1.68 Feature: Progressive left-to-right waveform drawing with smooth crossfade to detrended version, first 3 chunks download individually for fast runway');
+            console.log('🌋 [0ms] volcano-audio v1.70 - Progressive Waveform Drawing');
+            console.log('📦 [0ms] v1.70 Fix: Playback speed now preserved when starting new fetch - apply current slider value to new worklet node');
             
             // Initialize waveform worker
             initWaveformWorker();

@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.63"
+__version__ = "1.70"
 __commit_message__ = (
-    "v1.63 Performance: True progressive streaming - parallel chunk downloads, 30ms TTFA for any duration, maintain requested duration when adjusting end time"
+    "v1.70 Fix: Playback speed now preserved when starting new fetch - apply current slider value to new worklet node"
 )
 
 # Import key modules to make them available when importing the package
