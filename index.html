@@ -2458,29 +2458,41 @@
                 
                 console.log(`📋 ${logTime()} Days needed: ${daysNeeded.join(', ')}`);
                 
-                // Helper to build CDN chunk URL
+                // Helper to build CDN chunk URL (NEW format: no sample rate)
                 function buildChunkUrl(date, startTime, endTime, chunkType) {
                     const location = stationData.location || '--';
-                    const sampleRate = Math.round(stationData.sample_rate || 100);
                     const [year, month, day] = date.split('-');
                     const datePath = `${year}/${month}/${day}`;
                     const startFormatted = startTime.replace(/:/g, '-');
                     const endFormatted = endTime.replace(/:/g, '-');
-                    const filename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunkType}_${date}-${startFormatted}_to_${date}-${endFormatted}.bin.zst`;
+                    const filename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${chunkType}_${date}-${startFormatted}_to_${date}-${endFormatted}.bin.zst`;
                     return `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunkType}/${filename}`;
                 }
                 
                 // Fetch metadata (in parallel with realistic chunk that's already running!)
+                // Try NEW format first (no sample rate), fallback to OLD format (with sample rate)
                 const metadataPromises = daysNeeded.map(async (date) => {
                     const [year, month, day] = date.split('-');
                     const datePath = `${year}/${month}/${day}`;
-                    const metadataUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${stationData.location || '--'}/${stationData.channel}/${stationData.network}_${stationData.station}_${stationData.location || '--'}_${stationData.channel}_${Math.round(stationData.sample_rate || 100)}Hz_${date}.json${cacheBuster}`;
+                    const location = stationData.location || '--';
                     
-                    const response = await fetch(metadataUrl);
+                    // NEW format (without sample rate)
+                    const newMetadataUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${date}.json${cacheBuster}`;
+                    
+                    let response = await fetch(newMetadataUrl);
+                    
+                    // If NEW format not found, try OLD format (with sample rate)
                     if (!response.ok) {
-                        console.warn(`⚠️ Metadata for ${date} not found (${response.status})`);
-                        return null;
+                        const oldMetadataUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${Math.round(stationData.sample_rate || 100)}Hz_${date}.json${cacheBuster}`;
+                        response = await fetch(oldMetadataUrl);
+                        
+                        if (!response.ok) {
+                            console.warn(`⚠️ Metadata for ${date} not found in NEW or OLD format (${response.status})`);
+                            return null;
+                        }
+                        console.log(`📋 Using OLD format metadata for ${date} (will auto-migrate on next collection)`);
                     }
+                    
                     return response.json();
                 });
                 
@@ -2900,12 +2912,22 @@
                     const startFormatted = chunk.start.replace(/:/g, '-');
                     const endFormatted = chunk.end.replace(/:/g, '-');
                     
-                    const filename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${chunk.date}-${endFormatted}.bin.zst`;
-                    const chunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${filename}${cacheBuster}`;
+                    // Try NEW format first (no sample rate), fallback to OLD format (with sample rate)
+                    const newFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${chunk.type}_${chunk.date}-${startFormatted}_to_${chunk.date}-${endFormatted}.bin.zst`;
+                    const newChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${newFilename}${cacheBuster}`;
                     
-                    const response = await fetch(chunkUrl);
+                    let response = await fetch(newChunkUrl);
+                    
+                    // If NEW format not found, try OLD format (with sample rate)
                     if (!response.ok) {
-                        throw new Error(`Chunk ${index + 1} fetch failed: ${response.status}`);
+                        const oldFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${chunk.date}-${endFormatted}.bin.zst`;
+                        const oldChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${oldFilename}${cacheBuster}`;
+                        
+                        response = await fetch(oldChunkUrl);
+                        
+                        if (!response.ok) {
+                            throw new Error(`Chunk ${index + 1} fetch failed in both NEW and OLD formats: ${response.status}`);
+                        }
                     }
                     
                     const compressed = await response.arrayBuffer();

@@ -320,20 +320,108 @@ seismic: volcanoData.seismic.map(s => ({
 
 ---
 
+## Session: Metadata & Binary Filename Migration - v1.60
+
+### v1.60: Remove Sample Rate from Filenames (Backend + Frontend)
+
+**Problem**: Sample rate embedded in filenames creates "blind pinging" issue:
+- Frontend can't construct CDN URLs without first downloading metadata to get sample rate
+- Blocks parallel metadata + chunk downloads
+- Circular dependency: need metadata to build chunk URLs
+
+**Solution**: Remove sample rate from ALL filenames, keep in JSON content only
+
+#### Backend Changes (`collector_loop.py`)
+
+**Metadata Filenames**:
+- **OLD**: `HV_OBL_--_HHZ_100Hz_2025-11-10.json`
+- **NEW**: `HV_OBL_--_HHZ_2025-11-10.json` ✅
+
+**Binary Chunk Filenames**:
+- **OLD**: `HV_OBL_--_HHZ_100Hz_10m_2025-11-10-03-20-00_to_2025-11-10-03-29-59.bin.zst`
+- **NEW**: `HV_OBL_--_HHZ_10m_2025-11-10-03-20-00_to_2025-11-10-03-29-59.bin.zst` ✅
+
+**Code Changes**:
+```python
+# Metadata filename (line ~605)
+metadata_filename = f"{network}_{station}_{location_str}_{channel}_{date_str}.json"
+
+# Binary chunk filename (line ~537)
+filename = f"{network}_{station}_{location_str}_{channel}_{chunk_type}_{start_str}_to_{end_str}.bin.zst"
+```
+
+**Automatic Migration**: Backend still **reads** OLD format files, but **saves** in NEW format. This means:
+1. On next collection run, OLD files are read successfully
+2. Updated metadata is saved with NEW filename format
+3. New binary chunks are saved with NEW filename format
+4. Gradual migration happens automatically over 24 hours
+
+#### Frontend Changes (`index.html`)
+
+**Fallback Logic** for both metadata and binary chunks:
+
+**Metadata Fetch** (lines 2473-2498):
+```javascript
+// Try NEW format first
+const newMetadataUrl = `.../HV_OBL_--_HHZ_2025-11-10.json`;
+let response = await fetch(newMetadataUrl);
+
+// Fallback to OLD format if NEW not found
+if (!response.ok) {
+    const oldMetadataUrl = `.../HV_OBL_--_HHZ_100Hz_2025-11-10.json`;
+    response = await fetch(oldMetadataUrl);
+}
+```
+
+**Binary Chunk Fetch** (lines 2916-2932):
+```javascript
+// Try NEW format first
+const newChunkUrl = `.../HV_OBL_--_HHZ_10m_2025-11-10-03-20-00_to_...bin.zst`;
+let response = await fetch(newChunkUrl);
+
+// Fallback to OLD format if NEW not found
+if (!response.ok) {
+    const oldChunkUrl = `.../HV_OBL_--_HHZ_100Hz_10m_2025-11-10-03-20-00_to_...bin.zst`;
+    response = await fetch(oldChunkUrl);
+}
+```
+
+**Benefits of Blind Pinging**:
+- Frontend can construct chunk URLs without metadata
+- Parallel metadata + chunk downloads possible
+- Faster time-to-first-audio
+- Cleaner, simpler URLs
+
+### Version: v1.60
+
+**Commit Message**: v1.60 Refactor: Remove sample rate from metadata and binary chunk filenames for blind pinging capability, frontend fallback to old format for seamless migration
+
+**Key Changes**:
+- ✅ Backend saves NEW format files (no sample rate in filename)
+- ✅ Backend reads OLD format files (automatic migration)
+- ✅ Frontend tries NEW format first, falls back to OLD format
+- ✅ Zero downtime during migration
+- ✅ Blind pinging now possible (construct URLs without metadata)
+- ✅ Sample rate still stored in JSON content
+
+**Migration Path**:
+1. Deploy v1.60 backend to Railway (saves NEW format)
+2. Push v1.60 frontend to GitHub (tries NEW, falls back to OLD)
+3. Over next 24 hours, all active stations migrate to NEW format
+4. Frontend seamlessly handles both formats during transition
+5. After 24 hours, all files use NEW format
+
+---
+
 ## Future Work / TODO
 
 ### Long-term: Metadata Filename Architecture Change
 
-**Current Issue**: Sample rate is in metadata filename, creating circular dependency:
-- Need sample rate to build metadata URL
-- But sample rate is in the metadata file
+**Status**: ✅ **COMPLETE** (v1.60) - Sample rate removed from filenames
 
-**Current Workaround**: Sample rates stored in `EMBEDDED_STATIONS` locally
-
-**Proposed Solution**: Remove sample rate from metadata filenames:
-- **OLD**: `AV_SSLS_--_BHZ_50Hz_2025-11-10.json`
-- **NEW**: `AV_SSLS_--_BHZ_2025-11-10.json`
-- Include `sample_rate` in JSON content instead
-- Maintains backward compatibility during migration
+**Implementation**:
+- Backend saves NEW format, reads OLD format (automatic migration)
+- Frontend tries NEW format first, falls back to OLD format
+- Zero downtime during migration
 
 ---
