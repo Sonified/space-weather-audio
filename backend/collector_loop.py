@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_10_v1.60"
+__version__ = "2025_11_10_v1.61"
 import time
 import sys
 import os
@@ -504,15 +504,28 @@ def process_station_window(network, station, location, channel, volcano, sample_
         st.merge(method=1, fill_value='interpolate', interpolation_samples=0)
         trace = st[0]
         
-        # Step 3: Process data (round to full seconds, convert to int32)
-        original_end = trace.stats.endtime
-        rounded_end = UTCDateTime(int(original_end.timestamp))
-        duration_seconds = int(rounded_end.timestamp - trace.stats.starttime.timestamp)
-        samples_per_second = int(trace.stats.sampling_rate)
-        full_second_samples = duration_seconds * samples_per_second
+        # Step 3: Ensure exact sample count based on requested window (no rounding!)
+        # We requested [start_time, end_time], so we MUST output exactly that many samples
+        requested_duration = end_time - start_time
+        expected_samples = int(requested_duration.total_seconds() * sample_rate)
+        actual_samples = len(trace.data)
         
-        data = trace.data[:full_second_samples]
-        trace.data = data
+        if actual_samples < expected_samples:
+            # Pad: Hold last sample value to fill to expected length
+            missing = expected_samples - actual_samples
+            last_value = trace.data[-1]
+            padding = np.full(missing, last_value, dtype=trace.data.dtype)
+            data = np.concatenate([trace.data, padding])
+            print(f"  ⚠️  Padded {missing} samples (IRIS returned {actual_samples:,}, expected {expected_samples:,})")
+        elif actual_samples > expected_samples:
+            # Truncate: Remove extra samples (shouldn't happen but safeguard)
+            extra = actual_samples - expected_samples
+            data = trace.data[:expected_samples]
+            print(f"  ⚠️  Truncated {extra} extra samples (IRIS returned {actual_samples:,}, expected {expected_samples:,})")
+        else:
+            # Perfect!
+            data = trace.data
+            print(f"  ✅ Perfect sample count: {actual_samples:,}")
         
         data_int32 = data.astype(np.int32)
         
@@ -3914,8 +3927,8 @@ def main():
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.60 Refactor: Remove sample rate from metadata and binary chunk filenames for blind pinging capability, frontend fallback to old format for seamless migration")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.60 Refactor: Remove sample rate from metadata and binary chunk filenames for blind pinging capability, frontend fallback to old format for seamless migration")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.61 Fix: Pad short chunks by holding last sample value to ensure exact sample counts, prevents audio/waveform drift")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.61 Fix: Pad short chunks by holding last sample value to ensure exact sample counts, prevents audio/waveform drift")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

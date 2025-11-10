@@ -413,6 +413,88 @@ if (!response.ok) {
 
 ---
 
+## Session: Chunk Sample Count Fix - v1.61
+
+### v1.61: Pad Short Chunks to Ensure Exact Sample Counts
+
+**Problem**: Audio and waveform drift out of sync during playback, especially on 12-hour pulls.
+
+**Root Cause**: Antiquated rounding logic that discarded samples from IRIS data:
+
+**Old Logic (WRONG)**:
+```python
+# Always rounded DOWN based on what IRIS returned
+rounded_end = UTCDateTime(int(original_end.timestamp))
+duration_seconds = int(rounded_end.timestamp - trace.stats.starttime.timestamp)
+full_second_samples = duration_seconds * samples_per_second
+data = trace.data[:full_second_samples]  # Only truncates, never pads!
+```
+
+**Example of Data Loss**:
+When IRIS returns chunk with timing offset:
+- Start: `03:10:00.009999` (10ms late start)
+- End: `03:19:58.999999` (ends 1 second early)
+- Duration: `598.99 seconds`
+- IRIS samples: `59,900`
+
+Old code did:
+- `rounded_end = int(03:19:58.999999) = 03:19:58`
+- `duration_seconds = int(03:19:58 - 03:10:00.009999) = 598`
+- `full_second_samples = 598 × 100 = 59,800` ← **Discarded 100 samples!**
+- Metadata: `59,800 samples` (200 short of expected 60,000)
+
+**Cumulative Effect**: Multiple short chunks across 12-hour pull caused audio to play faster than waveform, ending before waveform completed.
+
+**New Logic (CORRECT)**:
+```python
+# Calculate expected samples from REQUEST (not what IRIS gave us)
+requested_duration = end_time - start_time
+expected_samples = int(requested_duration.total_seconds() * sample_rate)
+actual_samples = len(trace.data)
+
+if actual_samples < expected_samples:
+    # Pad: Hold last sample value to fill to expected length
+    missing = expected_samples - actual_samples
+    last_value = trace.data[-1]
+    padding = np.full(missing, last_value, dtype=trace.data.dtype)
+    data = np.concatenate([trace.data, padding])
+elif actual_samples > expected_samples:
+    # Truncate: Remove extra samples (shouldn't happen but safeguard)
+    data = trace.data[:expected_samples]
+else:
+    # Perfect!
+    data = trace.data
+```
+
+**Key Philosophy Change**: 
+- **Before**: "Process whatever IRIS gives us, round down to clean seconds"
+- **After**: "We requested X samples, we MUST output X samples, period"
+
+**Benefits**:
+- ✅ Every chunk has **exactly** the expected sample count
+- ✅ No cumulative drift between audio and waveform
+- ✅ Chunks with IRIS timing offsets are padded correctly
+- ✅ Frontend duration calculations remain accurate
+- ✅ Chunks concatenate perfectly without gaps
+
+### Version: v1.61
+
+**Commit Message**: v1.61 Fix: Pad short chunks by holding last sample value to ensure exact sample counts, prevents audio/waveform drift
+
+**Key Changes**:
+- ✅ Removed antiquated rounding logic
+- ✅ Calculate expected samples from request window (not IRIS response)
+- ✅ Pad short chunks by holding last sample value
+- ✅ Truncate long chunks (safeguard, shouldn't happen)
+- ✅ Detailed logging shows padding/truncation when it occurs
+
+**Testing Notes**:
+- Test with stations known to have timing offsets (HV.UWB, HV.SBL)
+- Verify metadata sample counts match expected (60,000 for 10m chunks)
+- Confirm audio and waveform stay in sync for 12+ hour pulls
+
+---
+
 ## Future Work / TODO
 
 ### Long-term: Metadata Filename Architecture Change
