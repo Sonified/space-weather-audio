@@ -1,7 +1,7 @@
 # This file makes the python_code directory a Python package
-__version__ = "1.70"
+__version__ = "1.72"
 __commit_message__ = (
-    "v1.70 Fix: Playback speed now preserved when starting new fetch - apply current slider value to new worklet node"
+    "v1.72 Fix: Realistic chunk filename format - correct end time boundary and NEW/OLD format fallback for instant playback"
 )
 
 # Import key modules to make them available when importing the package

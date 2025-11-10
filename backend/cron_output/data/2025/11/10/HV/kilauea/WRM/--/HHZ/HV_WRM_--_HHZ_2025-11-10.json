@@ -1,0 +1,271 @@
+{
+  "date": "2025-11-10",
+  "network": "HV",
+  "volcano": "kilauea",
+  "station": "WRM",
+  "location": "",
+  "channel": "HHZ",
+  "sample_rate": 100.0,
+  "created_at": "2025-11-10T03:37:50.028353Z",
+  "complete_day": false,
+  "chunks": {
+    "10m": [
+      {
+        "start": "00:30:01",
+        "end": "00:40:00",
+        "min": -26889,
+        "max": 29970,
+        "samples": 60000,
+        "gap_count": 13,
+        "gap_samples_filled": 4751
+      },
+      {
+        "start": "00:40:00",
+        "end": "00:50:00",
+        "min": -28238,
+        "max": 24384,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "00:50:00",
+        "end": "01:00:00",
+        "min": -23771,
+        "max": 25477,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "01:00:00",
+        "end": "01:10:00",
+        "min": -24113,
+        "max": 23812,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "01:10:00",
+        "end": "01:20:00",
+        "min": -26160,
+        "max": 30747,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "01:20:00",
+        "end": "01:30:00",
+        "min": -30922,
+        "max": 31092,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "01:30:00",
+        "end": "01:40:00",
+        "min": -39730,
+        "max": 36817,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "01:40:00",
+        "end": "01:50:00",
+        "min": -21420,
+        "max": 27531,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "03:20:00",
+        "end": "03:29:59",
+        "min": -6471,
+        "max": 7232,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "03:30:00",
+        "end": "03:39:59",
+        "min": -6229,
+        "max": 9728,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "03:40:00",
+        "end": "03:49:59",
+        "min": -10056,
+        "max": 8742,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "03:50:00",
+        "end": "03:59:59",
+        "min": -5865,
+        "max": 6119,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:00:00",
+        "end": "04:09:59",
+        "min": -5698,
+        "max": 7467,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:10:00",
+        "end": "04:20:00",
+        "min": -4901,
+        "max": 6599,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:20:00",
+        "end": "04:30:00",
+        "min": -5708,
+        "max": 5814,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:30:00",
+        "end": "04:40:00",
+        "min": -4489,
+        "max": 5459,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:40:00",
+        "end": "04:50:00",
+        "min": -4834,
+        "max": 6108,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:50:00",
+        "end": "05:00:00",
+        "min": -4978,
+        "max": 6401,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:00:00",
+        "end": "05:10:00",
+        "min": -4813,
+        "max": 6036,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:10:00",
+        "end": "05:20:00",
+        "min": -4728,
+        "max": 5608,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:40:00",
+        "end": "05:50:00",
+        "min": -5910,
+        "max": 5945,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:50:00",
+        "end": "06:00:00",
+        "min": -5634,
+        "max": 5952,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "06:00:00",
+        "end": "06:10:00",
+        "min": -4901,
+        "max": 4880,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "06:10:00",
+        "end": "06:20:00",
+        "min": -4826,
+        "max": 7143,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "1h": [
+      {
+        "start": "03:00:00",
+        "end": "03:59:59",
+        "min": -10056,
+        "max": 9728,
+        "samples": 360000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:00:00",
+        "end": "05:00:00",
+        "min": -5708,
+        "max": 7467,
+        "samples": 360000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:00:00",
+        "end": "06:00:00",
+        "min": -5910,
+        "max": 6521,
+        "samples": 360000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "6h": [
+      {
+        "start": "00:00:00",
+        "end": "06:00:00",
+        "min": -39730,
+        "max": 36817,
+        "samples": 2160000,
+        "gap_count": 50,
+        "gap_samples_filled": 28478
+      }
+    ]
+  }
+}
