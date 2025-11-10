@@ -1,0 +1,20 @@
+---
+alwaysApply: true
+---
+
+Collector Service URLs:
+- Production: https://volcano-audio-collector-production.up.railway.app
+- Local: http://localhost:5005
+
+Always use "collector" not "backend" in the production subdomain.
+
+Available Endpoints (HTTP Method | Path | Description):
+- GET /health - Health check (returns status, version, uptime)
+- GET /status - Detailed collector status with metrics (optional ?timezone= param)
+- GET /stations - List active stations from stations_config.json
+- GET /trigger - Manually trigger collection cycle immediately
+- GET /validate/24h - Validation endpoint
+- POST /api/stream-audio - On-demand audio streaming (requires station/time params)
+- GET /api/stations - List available stations (legacy, same as /stations)
+
+Note: Use required_permissions: ['all'] when accessing these endpoints to avoid SSL certificate errors and ensure proper network access.

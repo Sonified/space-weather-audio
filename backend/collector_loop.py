@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_10_v1.61"
+__version__ = "2025_11_10_v1.62"
 import time
 import sys
 import os
@@ -1724,7 +1724,11 @@ def backfill():
 @app.route('/health')
 def health():
     """Simple health check endpoint"""
-    return jsonify({'status': 'healthy', 'uptime_seconds': (datetime.now(timezone.utc) - datetime.fromisoformat(status['started_at'])).total_seconds()})
+    return jsonify({
+        'status': 'healthy',
+        'version': __version__,
+        'uptime_seconds': (datetime.now(timezone.utc) - datetime.fromisoformat(status['started_at'])).total_seconds()
+    })
 
 @app.route('/status')
 def get_status():
@@ -3927,8 +3931,8 @@ def main():
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.61 Fix: Pad short chunks by holding last sample value to ensure exact sample counts, prevents audio/waveform drift")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.61 Fix: Pad short chunks by holding last sample value to ensure exact sample counts, prevents audio/waveform drift")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.62 Feature: Add version number to /health endpoint for easy deployment verification")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.62 Feature: Add version number to /health endpoint for easy deployment verification")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
