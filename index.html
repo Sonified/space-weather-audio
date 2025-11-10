@@ -3017,7 +3017,7 @@
             console.log('📡 Requesting from Railway:', requestBody);
             
             // Determine backend URL
-            const backendUrl = 'https://volcano-audio-backend-production.up.railway.app/api/stream-audio';
+            const backendUrl = 'https://volcano-audio-collector-production.up.railway.app/api/stream-audio';
             console.log(`🌐 Using Railway backend: ${backendUrl}`);
             
             const response = await fetch(backendUrl, {
@@ -4641,8 +4641,8 @@
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
             // Version logging
-            console.log('🌋 [0ms] volcano-audio v1.71 - Progressive Waveform Drawing');
-            console.log('📦 [0ms] v1.71 Fix: Railway backend playback + sample rate bug - inactive stations (Mauna Loa, etc.) now work correctly');
+            console.log('🌋 [0ms] volcano-audio v1.72 - Progressive Waveform Drawing');
+            console.log('📦 [0ms] v1.72 Fix: Corrected Railway URL from "backend" to "collector" subdomain');
             
             // Initialize waveform worker
             initWaveformWorker();
