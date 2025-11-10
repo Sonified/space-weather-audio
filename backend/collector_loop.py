@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_10_v1.63"
+__version__ = "2025_11_10_v1.64"
 import time
 import sys
 import os
@@ -19,6 +19,10 @@ from pathlib import Path
 # Simple Flask app for health/status endpoint
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# Register audio streaming blueprint (for on-demand IRIS streaming when data not in R2)
+from audio_stream import audio_stream_bp
+app.register_blueprint(audio_stream_bp)
 
 # Detect deployment environment
 # Railway sets RAILWAY_ENVIRONMENT, local dev won't have this
@@ -3933,8 +3937,8 @@ def main():
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.63 Fix: Enable CORS for Railway backend to allow frontend access")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.63 Fix: Enable CORS for Railway backend to allow frontend access")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.64 Feature: Added /api/stream-audio endpoint - unified service for collection + streaming")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.64 Feature: Added /api/stream-audio endpoint - unified service for collection + streaming")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
