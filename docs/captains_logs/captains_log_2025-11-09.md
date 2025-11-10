@@ -231,3 +231,109 @@ updatePlaybackSpeed();
 - ✅ Playback speed preserved across fetches (v1.70)
 
 ---
+
+---
+
+## Session: Railway Backend Fixes - v1.71
+
+### v1.71: Railway Backend Playback + Sample Rate Bug
+
+**Problem 1: Railway Backend Audio Not Playing**
+Inactive stations (Mauna Loa, etc.) using Railway backend had visible waveforms but no audio playback.
+
+**Root Cause**: Railway path was missing playback initialization sequence:
+1. Never sent `start-immediately` message to worklet
+2. Never started audio fade-in
+3. Never started position tracking
+4. Never started playback indicator animation
+
+**Solution**: Added complete playback startup to Railway path (matching R2 path):
+```javascript
+// 🎯 FORCE IMMEDIATE PLAYBACK
+workletNode.port.postMessage({ type: 'start-immediately' });
+
+// Fade-in audio
+gainNode.gain.exponentialRampToValueAtTime(targetVolume, audioContext.currentTime + 0.05);
+
+// Start position tracking
+startPositionTracking();
+requestAnimationFrame(updatePlaybackIndicator);
+```
+
+**Problem 2: Waveform Not Displaying for Railway Backend**
+Waveform worker showed "0 samples" even though 180k samples were fetched.
+
+**Root Cause**: Railway path never sent samples to waveform worker. The worker needs `add-samples` messages before `build-waveform`.
+
+**Solution**: Added sample forwarding before drawing:
+```javascript
+// Send samples to waveform worker BEFORE building waveform
+waveformWorker.postMessage({
+    type: 'add-samples',
+    samples: samples,
+    rawSamples: rawSamples  // For drift removal
+});
+```
+
+**Problem 3: Sample Rate Missing from Station Data**
+Shishaldin (50Hz) and other stations were incorrectly requesting files with "100Hz" in the filename.
+
+**Root Cause**: `loadStations()` function created station objects for dropdown but forgot to include `sample_rate` field:
+```javascript
+// OLD (broken):
+seismic: volcanoData.seismic.map(s => ({
+    network: s.network,
+    station: s.station,
+    // ... missing sample_rate!
+}))
+```
+
+**Solution**: Include `sample_rate` in mapped objects:
+```javascript
+// NEW (fixed):
+seismic: volcanoData.seismic.map(s => ({
+    network: s.network,
+    station: s.station,
+    location: s.location,
+    channel: s.channel,
+    distance_km: s.distance_km,
+    sample_rate: s.sample_rate,  // CRITICAL: Needed for URL construction!
+    label: `${s.network}.${s.station}...`
+}))
+```
+
+### Version: v1.71
+
+**Commit Message**: v1.71 Fix: Railway backend playback + sample rate bug - inactive stations (Mauna Loa, etc.) now work correctly
+
+**Key Fixes**:
+- ✅ Railway backend now triggers playback with fade-in
+- ✅ Railway backend waveforms display correctly
+- ✅ Sample rate properly passed to station data for correct CDN URLs
+- ✅ Shishaldin (50Hz), Mauna Loa (100Hz), and all stations work correctly
+- ✅ Both R2 progressive and Railway fallback paths functional
+
+**Stations Now Working**:
+- Mauna Loa (HV.MOKD, HV.SWRD, HV.WILD) - via Railway backend
+- Great Sitkin (AV.GSTD, etc.) - via Railway backend
+- Shishaldin (AV.SSLS, AV.SSLN) - via R2 progressive (50Hz fixed!)
+
+---
+
+## Future Work / TODO
+
+### Long-term: Metadata Filename Architecture Change
+
+**Current Issue**: Sample rate is in metadata filename, creating circular dependency:
+- Need sample rate to build metadata URL
+- But sample rate is in the metadata file
+
+**Current Workaround**: Sample rates stored in `EMBEDDED_STATIONS` locally
+
+**Proposed Solution**: Remove sample rate from metadata filenames:
+- **OLD**: `AV_SSLS_--_BHZ_50Hz_2025-11-10.json`
+- **NEW**: `AV_SSLS_--_BHZ_2025-11-10.json`
+- Include `sample_rate` in JSON content instead
+- Maintains backward compatibility during migration
+
+---

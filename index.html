@@ -1935,7 +1935,7 @@
                 console.log(`🕐 ${logTime()} Estimated latest chunk ends at: ${estimatedEndTime.toISOString()}`);
                 
                 // ===== START EVERYTHING IN PARALLEL (0ms)! =====
-                console.log(`🚀 ${logTime()} Starting parallel: worker + audioContext + realistic fetch + station check`);
+                console.log(`🚀 ${logTime()} Starting parallel: worker + audioContext + station check`);
                 
                 // 1. Worker creation (parallel!)
                 if (window.audioWorker) {
@@ -1986,114 +1986,124 @@
                     return isActiveStation;
                 })();
                 
-                // 4. Start realistic chunk fetch (parallel!) - TARGET CHUNK 0 (first chronological chunk for instant playback!)
-                // Build realistic chunk URL
-                const volcanoMap = {
-                    'kilauea': 'kilauea',
-                    'maunaloa': 'maunaloa',
-                    'greatsitkin': 'greatsitkin',
-                    'shishaldin': 'shishaldin',
-                    'spurr': 'spurr'
-                };
-                const volcanoName = volcanoMap[volcano] || 'kilauea';
-                const CDN_BASE_URL = 'https://cdn.now.audio/data';
-                
-                // Target FIRST chunk (chunk 0) for instant playback - not the most recent chunk!
-                // startTime = beginning of user's requested time range
-                const firstChunkStart = new Date(startTime.getTime());
-                // Round down to nearest 10-minute boundary
-                firstChunkStart.setUTCMinutes(Math.floor(firstChunkStart.getUTCMinutes() / 10) * 10, 0, 0);
-                
-                const firstChunkDate = firstChunkStart.toISOString().split('T')[0];
-                const firstChunkStartHour = firstChunkStart.getUTCHours();
-                const firstChunkStartMinute = firstChunkStart.getUTCMinutes();
-                const firstChunkStartTime = `${String(firstChunkStartHour).padStart(2, '0')}:${String(firstChunkStartMinute).padStart(2, '0')}:00`;
-                const firstChunkEndTime = `${String(firstChunkStartHour).padStart(2, '0')}:${String(firstChunkStartMinute + 9).padStart(2, '0')}:59`;
-                
-                const location = stationData.location || '--';
-                const sampleRate = Math.round(stationData.sample_rate || 100);
-                const [year, month, day] = firstChunkDate.split('-');
-                const datePath = `${year}/${month}/${day}`;
-                const startFormatted = firstChunkStartTime.replace(/:/g, '-');
-                const endFormatted = firstChunkEndTime.replace(/:/g, '-');
-                const filename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_10m_${firstChunkDate}-${startFormatted}_to_${firstChunkDate}-${endFormatted}.bin.zst`;
-                const firstChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/10m/${filename}`;
-                
-                console.log(`🎯 ${logTime()} Realistic fetch started: CHUNK 0 (${firstChunkDate} ${firstChunkStartTime})`);
-                
-                // Check if cache bypass is enabled (for realistic chunk fetch)
-                const bypassCache = document.getElementById('bypassCache').checked;
-                const cacheBuster = bypassCache ? `?t=${Date.now()}` : '';
-                if (bypassCache) {
-                    console.log(`🚫 ${logTime()} Cache bypass ENABLED - all requests will bypass CDN cache`);
-                }
-                
-                // Cascading fallback: try chunk 0, then go FORWARD in time until one succeeds!
-                // (Older historical data is less likely to exist than newer data)
-                const realisticChunkPromise = (async () => {
-                    // Helper to build chunk URL for a given time offset from chunk 0 start
-                    const buildRealisticUrl = (minuteOffset) => {
-                        // Start from chunk 0 time, then apply offset
-                        const attemptTime = new Date(firstChunkStart.getTime());
-                        attemptTime.setUTCMinutes(attemptTime.getUTCMinutes() + minuteOffset);
-                        
-                        const date = attemptTime.toISOString().split('T')[0];
-                        const hour = attemptTime.getUTCHours();
-                        const minute = Math.floor(attemptTime.getUTCMinutes() / 10) * 10;
-                        const startTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
-                        const endTime = `${String(hour).padStart(2, '0')}:${String(minute + 9).padStart(2, '0')}:59`;
-                        
-                        const [y, m, d] = date.split('-');
-                        const path = `${y}/${m}/${d}`;
-                        const fname = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_10m_${date}-${startTime.replace(/:/g, '-')}_to_${date}-${endTime.replace(/:/g, '-')}.bin.zst`;
-                        return {
-                            url: `${CDN_BASE_URL}/${path}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/10m/${fname}${cacheBuster}`,
-                            date: date,
-                            time: startTime
-                        };
-                    };
-                    
-                    // Try chunk 0 first, then go forward in time (newer data more likely to exist)
-                    const attempts = [
-                        { offset: 0, label: 'chunk 0' },      // First chunk (target)
-                        { offset: 10, label: 'chunk +1' },    // 10 minutes later
-                        { offset: 20, label: 'chunk +2' },    // 20 minutes later
-                        { offset: 30, label: 'chunk +3' },    // 30 minutes later
-                        { offset: 40, label: 'chunk +4' },    // 40 minutes later
-                        { offset: 50, label: 'chunk +5' }     // 50 minutes later
-                    ];
-                    
-                    for (const attempt of attempts) {
-                        const { url, date, time } = buildRealisticUrl(attempt.offset);
-                        
-                        try {
-                            const response = await fetch(url);
-                            if (response.ok) {
-                                const compressed = await response.arrayBuffer();
-                                console.log(`📥 ${logTime()} Realistic chunk SUCCESS (${attempt.label}): ${date} ${time} - ${(compressed.byteLength / 1024).toFixed(1)} KB`);
-                                return { compressed, date, time }; // Return metadata too!
-                            } else {
-                                console.warn(`⚠️ ${logTime()} Realistic ${attempt.label} not found (${date} ${time}) - trying next...`);
-                            }
-                        } catch (error) {
-                            console.warn(`⚠️ ${logTime()} Realistic ${attempt.label} fetch error - trying next...`);
-                        }
-                    }
-                    
-                    // All attempts failed
-                    console.warn(`⚠️ ${logTime()} All realistic attempts failed (chunk 0 + 5 forward fallbacks)`);
-                    return null;
-                })();
-                
-                // ===== WAIT FOR WORKER AND AUDIOCONTEXT (in parallel with realistic fetch!) =====
+                // ===== WAIT FOR WORKER AND AUDIOCONTEXT =====
                 await Promise.all([workerReadyPromise, audioContextPromise]);
                 console.log(`✅ ${logTime()} Worker + AudioContext ready!`);
+                
+                // ===== WAIT FOR STATION CHECK BEFORE DECIDING PATH =====
+                const isActiveStation = await stationCheckPromise;
+                
+                // 4. Start realistic chunk fetch ONLY if station is active - TARGET CHUNK 0 (first chronological chunk for instant playback!)
+                let realisticChunkPromise = Promise.resolve(null); // Default: no chunk (for inactive stations)
+                let firstChunkStart = null; // Will be calculated for active stations
+                
+                if (isActiveStation) {
+                    // Build realistic chunk URL
+                    const volcanoMap = {
+                        'kilauea': 'kilauea',
+                        'maunaloa': 'maunaloa',
+                        'greatsitkin': 'greatsitkin',
+                        'shishaldin': 'shishaldin',
+                        'spurr': 'spurr'
+                    };
+                    const volcanoName = volcanoMap[volcano] || 'kilauea';
+                    const CDN_BASE_URL = 'https://cdn.now.audio/data';
+                    
+                    // Target FIRST chunk (chunk 0) for instant playback - not the most recent chunk!
+                    // startTime = beginning of user's requested time range
+                    firstChunkStart = new Date(startTime.getTime());
+                    // Round down to nearest 10-minute boundary
+                    firstChunkStart.setUTCMinutes(Math.floor(firstChunkStart.getUTCMinutes() / 10) * 10, 0, 0);
+                    
+                    const firstChunkDate = firstChunkStart.toISOString().split('T')[0];
+                    const firstChunkStartHour = firstChunkStart.getUTCHours();
+                    const firstChunkStartMinute = firstChunkStart.getUTCMinutes();
+                    const firstChunkStartTime = `${String(firstChunkStartHour).padStart(2, '0')}:${String(firstChunkStartMinute).padStart(2, '0')}:00`;
+                    const firstChunkEndTime = `${String(firstChunkStartHour).padStart(2, '0')}:${String(firstChunkStartMinute + 9).padStart(2, '0')}:59`;
+                    
+                    const location = stationData.location || '--';
+                    const sampleRate = Math.round(stationData.sample_rate || 100);
+                    const [year, month, day] = firstChunkDate.split('-');
+                    const datePath = `${year}/${month}/${day}`;
+                    const startFormatted = firstChunkStartTime.replace(/:/g, '-');
+                    const endFormatted = firstChunkEndTime.replace(/:/g, '-');
+                    const filename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_10m_${firstChunkDate}-${startFormatted}_to_${firstChunkDate}-${endFormatted}.bin.zst`;
+                    const firstChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/10m/${filename}`;
+                    
+                    console.log(`🎯 ${logTime()} Realistic fetch started: CHUNK 0 (${firstChunkDate} ${firstChunkStartTime})`);
+                    
+                    // Check if cache bypass is enabled (for realistic chunk fetch)
+                    const bypassCache = document.getElementById('bypassCache').checked;
+                    const cacheBuster = bypassCache ? `?t=${Date.now()}` : '';
+                    if (bypassCache) {
+                        console.log(`🚫 ${logTime()} Cache bypass ENABLED - all requests will bypass CDN cache`);
+                    }
+                    
+                    // Cascading fallback: try chunk 0, then go FORWARD in time until one succeeds!
+                    // (Older historical data is less likely to exist than newer data)
+                    realisticChunkPromise = (async () => {
+                        // Helper to build chunk URL for a given time offset from chunk 0 start
+                        const buildRealisticUrl = (minuteOffset) => {
+                            // Start from chunk 0 time, then apply offset
+                            const attemptTime = new Date(firstChunkStart.getTime());
+                            attemptTime.setUTCMinutes(attemptTime.getUTCMinutes() + minuteOffset);
+                            
+                            const date = attemptTime.toISOString().split('T')[0];
+                            const hour = attemptTime.getUTCHours();
+                            const minute = Math.floor(attemptTime.getUTCMinutes() / 10) * 10;
+                            const startTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+                            const endTime = `${String(hour).padStart(2, '0')}:${String(minute + 9).padStart(2, '0')}:59`;
+                            
+                            const [y, m, d] = date.split('-');
+                            const path = `${y}/${m}/${d}`;
+                            const fname = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_10m_${date}-${startTime.replace(/:/g, '-')}_to_${date}-${endTime.replace(/:/g, '-')}.bin.zst`;
+                            return {
+                                url: `${CDN_BASE_URL}/${path}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/10m/${fname}${cacheBuster}`,
+                                date: date,
+                                time: startTime
+                            };
+                        };
+                        
+                        // Try chunk 0 first, then go forward in time (newer data more likely to exist)
+                        const attempts = [
+                            { offset: 0, label: 'chunk 0' },      // First chunk (target)
+                            { offset: 10, label: 'chunk +1' },    // 10 minutes later
+                            { offset: 20, label: 'chunk +2' },    // 20 minutes later
+                            { offset: 30, label: 'chunk +3' },    // 30 minutes later
+                            { offset: 40, label: 'chunk +4' },    // 40 minutes later
+                            { offset: 50, label: 'chunk +5' }     // 50 minutes later
+                        ];
+                        
+                        for (const attempt of attempts) {
+                            const { url, date, time } = buildRealisticUrl(attempt.offset);
+                            
+                            try {
+                                const response = await fetch(url);
+                                if (response.ok) {
+                                    const compressed = await response.arrayBuffer();
+                                    console.log(`📥 ${logTime()} Realistic chunk SUCCESS (${attempt.label}): ${date} ${time} - ${(compressed.byteLength / 1024).toFixed(1)} KB`);
+                                    return { compressed, date, time }; // Return metadata too!
+                                } else {
+                                    console.warn(`⚠️ ${logTime()} Realistic ${attempt.label} not found (${date} ${time}) - trying next...`);
+                                }
+                            } catch (error) {
+                                console.warn(`⚠️ ${logTime()} Realistic ${attempt.label} fetch error - trying next...`);
+                            }
+                        }
+                        
+                        // All attempts failed
+                        console.warn(`⚠️ ${logTime()} All realistic attempts failed (chunk 0 + 5 forward fallbacks)`);
+                        return null;
+                    })();
+                } else {
+                    console.log(`⏭️ ${logTime()} Skipping realistic chunk fetch (inactive station)`);
+                }
                 
                 // ===== STOP OLD PLAYBACK AND CLEAN UP =====
                 isFetchingNewData = true;
                 spectrogramInitialized = false;
                 
-                const baseMessage = 'Fetching data from R2 via progressive streaming';
+                const baseMessage = isActiveStation ? 'Fetching data from R2 via progressive streaming' : 'Fetching data from Railway backend';
                 document.getElementById('status').className = 'status info loading';
                 document.getElementById('status').textContent = baseMessage;
                 
@@ -2161,9 +2171,6 @@
                 const formatTime = (date) => {
                     return date.toISOString().slice(0, 19);
                 };
-                
-                // ===== WAIT FOR STATION CHECK (already running in parallel) =====
-                const isActiveStation = await stationCheckPromise;
                 
                 // Start animated loading indicator
                 let dotCount = 0;
@@ -3060,6 +3067,9 @@
             console.log(`🔍 Sample range: [${min.toFixed(3)}, ${max.toFixed(3)}]`);
             document.getElementById('sampleCount').textContent = samples.length.toLocaleString();
             
+            // Keep raw samples for waveform drift removal
+            const rawSamples = new Float32Array(samples);
+            
             // Normalize if enabled
             if (enableNormalize) {
                 console.log('📏 Normalizing...');
@@ -3068,6 +3078,13 @@
             
             // Store complete samples array for waveform drawing
             completeSamplesArray = samples;
+            
+            // Send samples to waveform worker BEFORE building waveform
+            waveformWorker.postMessage({
+                type: 'add-samples',
+                samples: samples,
+                rawSamples: rawSamples
+            });
             
             // Send to AudioWorklet in chunks
             console.log('🎵 Sending to AudioWorklet in 1024-sample chunks...');
@@ -3090,6 +3107,34 @@
             drawWaveform();
             
             console.log(`✅ Sent ${allReceivedData.length} chunks to AudioWorklet`);
+            
+            // 🎯 FORCE IMMEDIATE PLAYBACK
+            workletNode.port.postMessage({
+                type: 'start-immediately'
+            });
+            console.log(`🚀 Sent 'start-immediately' to worklet`);
+            
+            // Fade-in audio
+            if (gainNode && audioContext) {
+                const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(
+                    Math.max(0.01, targetVolume), 
+                    audioContext.currentTime + 0.05
+                );
+                console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
+            }
+            
+            // Start position tracking
+            startPositionTracking();
+            currentAudioPosition = 0;
+            lastWorkletPosition = 0;
+            lastWorkletUpdateTime = audioContext.currentTime;
+            lastUpdateTime = audioContext.currentTime;
+            
+            // Start playback indicator
+            requestAnimationFrame(updatePlaybackIndicator);
             
             // Signal that all data has been sent
             workletNode.port.postMessage({ type: 'data-complete' });
@@ -3644,6 +3689,7 @@
                     location: s.location,
                     channel: s.channel,
                     distance_km: s.distance_km,
+                    sample_rate: s.sample_rate,  // CRITICAL: Needed for URL construction!
                     label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
                 })),
                 infrasound: (volcanoData.infrasound || []).map(s => ({
@@ -3652,6 +3698,7 @@
                     location: s.location,
                     channel: s.channel,
                     distance_km: s.distance_km,
+                    sample_rate: s.sample_rate,  // CRITICAL: Needed for URL construction!
                     label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
                 }))
             };
@@ -4572,8 +4619,8 @@
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
             // Version logging
-            console.log('🌋 [0ms] volcano-audio v1.70 - Progressive Waveform Drawing');
-            console.log('📦 [0ms] v1.70 Fix: Playback speed now preserved when starting new fetch - apply current slider value to new worklet node');
+            console.log('🌋 [0ms] volcano-audio v1.71 - Progressive Waveform Drawing');
+            console.log('📦 [0ms] v1.71 Fix: Railway backend playback + sample rate bug - inactive stations (Mauna Loa, etc.) now work correctly');
             
             // Initialize waveform worker
             initWaveformWorker();
