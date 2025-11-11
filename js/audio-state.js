@@ -46,6 +46,7 @@ export let isShowingFinalWaveform = false;
 // Visualization state
 export let spectrogramScrollSpeed = 1.0;
 export let spectrogramFrameCounter = 0;
+export let frequencyScale = 'linear'; // 'linear' or 'logarithmic'
 
 // Waveform rendering
 export let cachedWaveformCanvas = null;
@@ -91,6 +92,7 @@ export function setVisualizationStarted(value) { visualizationStarted = value; }
 export function setIsShowingFinalWaveform(value) { isShowingFinalWaveform = value; }
 export function setSpectrogramScrollSpeed(value) { spectrogramScrollSpeed = value; }
 export function setSpectrogramFrameCounter(value) { spectrogramFrameCounter = value; }
+export function setFrequencyScale(value) { frequencyScale = value; }
 export function setCachedWaveformCanvas(value) { cachedWaveformCanvas = value; }
 export function setWaveformMinMaxData(value) { waveformMinMaxData = value; }
 export function setWaveformWorker(value) { waveformWorker = value; }

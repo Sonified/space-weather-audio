@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
-import { changeSpectrogramScrollSpeed, startVisualization } from './spectrogram-renderer.js';
+import { changeSpectrogramScrollSpeed, changeFrequencyScale, startVisualization } from './spectrogram-renderer.js';
 import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPrePostSurveyModal, closePrePostSurveyModal, submitPrePostSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { initializeModals } from './modal-templates.js';
@@ -707,6 +707,8 @@ window.addEventListener('DOMContentLoaded', () => {
     
     document.getElementById('spectrogramScrollSpeed').addEventListener('input', changeSpectrogramScrollSpeed);
     changeSpectrogramScrollSpeed();
+    
+    document.getElementById('frequencyScale').addEventListener('change', changeFrequencyScale);
     
     document.getElementById('waveformFilterLabel').addEventListener('click', resetWaveformFilterToDefault);
     

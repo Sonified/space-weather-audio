@@ -35,6 +35,24 @@ export function drawSpectrogram() {
         return;
     }
     
+    // Helper function to calculate y position based on frequency scale
+    const getYPosition = (binIndex, totalBins, canvasHeight) => {
+        if (State.frequencyScale === 'logarithmic') {
+            // Logarithmic scale: more space for lower frequencies
+            // Map bin index to log scale (avoiding log(0))
+            const minFreq = 1; // Minimum frequency bin (avoid log(0))
+            const maxFreq = totalBins;
+            const logMin = Math.log10(minFreq);
+            const logMax = Math.log10(maxFreq);
+            const logFreq = Math.log10(Math.max(binIndex + 1, minFreq));
+            const normalizedLog = (logFreq - logMin) / (logMax - logMin);
+            return canvasHeight - (normalizedLog * canvasHeight);
+        } else {
+            // Linear scale (default)
+            return canvasHeight - (binIndex / totalBins) * canvasHeight;
+        }
+    };
+    
     if (actualScrollSpeed < 1.0) {
         // Slow speed: skip frames
         State.setSpectrogramFrameCounter(State.spectrogramFrameCounter + 1);
@@ -52,9 +70,11 @@ export function drawSpectrogram() {
                 const hue = percent * 60;
                 const saturation = 100;
                 const lightness = 10 + (percent * 60);
-                const y = height - (i / bufferLength) * height;
+                const y = getYPosition(i, bufferLength, height);
+                const nextY = getYPosition(i + 1, bufferLength, height);
+                const barHeight = Math.max(1, Math.abs(y - nextY));
                 ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-                ctx.fillRect(width - 1, y, 1, height / bufferLength);
+                ctx.fillRect(width - 1, nextY, 1, barHeight);
             }
         }
     } else {
@@ -75,9 +95,11 @@ export function drawSpectrogram() {
                 const hue = percent * 60;
                 const saturation = 100;
                 const lightness = 10 + (percent * 60);
-                const y = height - (i / bufferLength) * height;
+                const y = getYPosition(i, bufferLength, height);
+                const nextY = getYPosition(i + 1, bufferLength, height);
+                const barHeight = Math.max(1, Math.abs(y - nextY));
                 ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-                ctx.fillRect(width - scrollPixels + p, y, 1, height / bufferLength);
+                ctx.fillRect(width - scrollPixels + p, nextY, 1, barHeight);
             }
         }
     }
@@ -128,6 +150,15 @@ export function changeSpectrogramScrollSpeed() {
         displayText = displaySpeed.toFixed(0) + 'x';
     }
     document.getElementById('spectrogramScrollSpeedValue').textContent = displayText;
+}
+
+export function changeFrequencyScale() {
+    const select = document.getElementById('frequencyScale');
+    const value = select.value; // 'linear' or 'logarithmic'
+    
+    State.setFrequencyScale(value);
+    
+    console.log(`📊 Frequency scale changed to: ${value}`);
 }
 
 export function startVisualization() {
