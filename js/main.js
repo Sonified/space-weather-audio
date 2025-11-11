@@ -749,7 +749,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     
     // Blur dropdowns
-    const dropdowns = ['volcano', 'dataType', 'station', 'duration'];
+    const dropdowns = ['volcano', 'dataType', 'station', 'duration', 'frequencyScale'];
     dropdowns.forEach(id => {
         const dropdown = document.getElementById(id);
         if (dropdown) {
