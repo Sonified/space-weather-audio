@@ -243,6 +243,15 @@
         "samples": 30000,
         "gap_count": 0,
         "gap_samples_filled": 0
+      },
+      {
+        "start": "23:50:00",
+        "end": "00:00:00",
+        "min": 28,
+        "max": 667,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
       }
     ],
     "1h": [
@@ -290,6 +299,15 @@
         "samples": 180000,
         "gap_count": 0,
         "gap_samples_filled": 0
+      },
+      {
+        "start": "23:00:00",
+        "end": "00:00:00",
+        "min": -113,
+        "max": 734,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
       }
     ],
     "6h": [
@@ -298,6 +316,15 @@
         "end": "06:00:00",
         "min": -12493,
         "max": 11435,
+        "samples": 1080000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "18:00:00",
+        "end": "00:00:00",
+        "min": -162,
+        "max": 863,
         "samples": 1080000,
         "gap_count": 0,
         "gap_samples_filled": 0

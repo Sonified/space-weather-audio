@@ -1,6 +1,33 @@
 // ========== PROGRESSIVE CHUNK BATCHING ALGORITHM ==========
 // Validated with 10,000+ test cases in tests/test_progressive_batching_simulation.py
 
+import * as State from './audio-state.js';
+import { updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
+import { updatePlaybackSpeed } from './audio-player.js';
+import { updatePlaybackDuration } from './ui-controls.js';
+
+// Helper: Normalize data to [-1, 1] range
+function normalize(data) {
+    let min = data[0];
+    let max = data[0];
+    for (let i = 1; i < data.length; i++) {
+        if (data[i] < min) min = data[i];
+        if (data[i] > max) max = data[i];
+    }
+    
+    if (max === min) {
+        return new Float32Array(data.length);
+    }
+    
+    const normalized = new Float32Array(data.length);
+    const range = max - min;
+    for (let i = 0; i < data.length; i++) {
+        normalized[i] = 2 * (data[i] - min) / range - 1;
+    }
+    
+    return normalized;
+}
+
 // Calculate which chunks are needed using progressive algorithm
 function calculateChunksNeededMultiDay(startTime, endTime, allDayMetadata) {
     const chunks = [];
@@ -183,7 +210,7 @@ function createDownloadBatches(chunks) {
 }
 
 // ===== MODE 1: CDN DIRECT STREAMING (7.8x faster than worker!) =====
-async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart) {
+export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart) {
     const formatTime = (date) => {
         return date.toISOString().slice(0, 19);
     };
@@ -339,10 +366,10 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
         console.log(`📊 ${logTime()} Normalization range: ${normMin} to ${normMax}`);
         
         // Store metadata for duration calculation
-        currentMetadata = {
+        State.setCurrentMetadata({
             original_sample_rate: firstDayMeta.sample_rate,
             npts: totalSamples
-        };
+        });
         
         const chunksToFetch = chunksNeeded; // Use our calculated chunks!
         
@@ -396,7 +423,7 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
         }
         
         // Initialize arrays
-        allReceivedData = [];
+        State.setAllReceivedData([]);
         
         // Promise to wait for first chunk to be processed
         let firstChunkProcessedResolve = null;
@@ -420,12 +447,12 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
                     const size = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
                     const workletChunk = samples.slice(i, i + size);
                     
-                    workletNode.port.postMessage({
+                    State.workletNode.port.postMessage({
                         type: 'audio-data',
                         data: workletChunk
                     });
                     
-                    allReceivedData.push(workletChunk);
+                    State.allReceivedData.push(workletChunk);
                     
                     // 🎯 FIRST CHUNK (chunk 0) = START FADE-IN
                     // Only start playback when chunk 0 is ready!
@@ -435,7 +462,7 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
                         console.log(`⚡ FIRST CHUNK SENT in ${ttfaTime.toFixed(0)}ms - starting playback!`);
                         
                         // 🎯 FORCE IMMEDIATE PLAYBACK
-                        workletNode.port.postMessage({
+                        State.workletNode.port.postMessage({
                             type: 'start-immediately'
                         });
                         console.log(`🚀 Sent 'start-immediately' to worklet`);
@@ -446,22 +473,21 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
                             console.log(`✅ First chunk processed and sent - allowing fetch of chunk 2+`);
                         }
                         
-                        if (gainNode && audioContext) {
+                        if (State.gainNode && State.audioContext) {
                             const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                            gainNode.gain.cancelScheduledValues(audioContext.currentTime);
-                            gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
-                            gainNode.gain.exponentialRampToValueAtTime(
+                            State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
+                            State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
+                            State.gainNode.gain.exponentialRampToValueAtTime(
                                 Math.max(0.01, targetVolume), 
-                                audioContext.currentTime + 0.05
+                                State.audioContext.currentTime + 0.05
                             );
                             console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
                         }
                         
-                        startPositionTracking();
-                        currentAudioPosition = 0;
-                        lastWorkletPosition = 0;
-                        lastWorkletUpdateTime = audioContext.currentTime;
-                        lastUpdateTime = audioContext.currentTime;
+                        State.setCurrentAudioPosition(0);
+                        State.setLastWorkletPosition(0);
+                        State.setLastWorkletUpdateTime(State.audioContext.currentTime);
+                        State.setLastUpdateTime(State.audioContext.currentTime);
                         
                         // Start playback indicator (will draw when waveform is ready)
                         requestAnimationFrame(updatePlaybackIndicator);
@@ -491,7 +517,7 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
                 // Send all consecutive chunks that are ready, starting from nextWaveformChunk
                 while (nextWaveformChunk < chunksToFetch.length && processedChunks[nextWaveformChunk]) {
                     const chunk = processedChunks[nextWaveformChunk];
-                    waveformWorker.postMessage({
+                    State.waveformWorker.postMessage({
                         type: 'add-samples',
                         samples: chunk.samples,
                         rawSamples: chunk.rawSamples
@@ -506,10 +532,10 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
                         
                         // For first draw, set duration
                         if (nextWaveformChunk === 1) {
-                            totalAudioDuration = totalSamples / 44100;
+                            State.setTotalAudioDuration(totalSamples / 44100);
                         }
                         
-                        waveformWorker.postMessage({
+                        State.waveformWorker.postMessage({
                             type: 'build-waveform',
                             canvasWidth: width,
                             canvasHeight: height,
@@ -546,7 +572,7 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
                             missingChunks.push(i);
                         }
                     }
-                    console.log(`🔍 ${logTime()} Completion check: allChunksPresent=${allChunksPresent}, isFetchingNewData=${isFetchingNewData}, completionHandled=${completionHandled}, missingChunks=[${missingChunks.join(', ')}]`);
+                    console.log(`🔍 ${logTime()} Completion check: allChunksPresent=${allChunksPresent}, isFetchingNewData=${State.isFetchingNewData}, completionHandled=${completionHandled}, missingChunks=[${missingChunks.join(', ')}]`);
                 }
                 
                 // Only check for completion if all chunks are present (regardless of chunksReceived count)
@@ -574,9 +600,9 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
                     console.log(`📊 ${logTime()} Total actual samples: ${actualTotalSamples.toLocaleString()} (expected: ${totalSamples.toLocaleString()})`);
                     
                     // Signal worklet
-                    const totalWorkletSamples = allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
+                    const totalWorkletSamples = State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
                     console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()} (from allReceivedData)`);
-                    workletNode.port.postMessage({
+                    State.workletNode.port.postMessage({
                         type: 'data-complete',
                         totalSamples: totalWorkletSamples
                     });
@@ -598,11 +624,11 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
                     // Update UI
                     updatePlaybackSpeed();
                     updatePlaybackDuration();
-                    isFetchingNewData = false;
+                    State.setIsFetchingNewData(false);
                     
-                    if (loadingInterval) {
-                        clearInterval(loadingInterval);
-                        loadingInterval = null;
+                    if (State.loadingInterval) {
+                        clearInterval(State.loadingInterval);
+                        State.setLoadingInterval(null);
                     }
                     
                     document.getElementById('playPauseBtn').disabled = false;
@@ -642,12 +668,12 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
             }
             
             // Store for waveform drawing
-            completeSamplesArray = stitchedFloat32;
+            State.setCompleteSamplesArray(stitchedFloat32);
             window.rawWaveformData = stitchedRaw;
             
             // Update UI metrics
             document.getElementById('sampleCount').textContent = stitchedFloat32.length.toLocaleString();
-            totalAudioDuration = stitchedFloat32.length / 44100;
+            State.setTotalAudioDuration(stitchedFloat32.length / 44100);
             
             // 🎨 DON'T re-send samples - worker already has them!
             // Just trigger final waveform build with DC removal
@@ -776,7 +802,7 @@ async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, durat
 }
 
 // ===== MODE 2: RAILWAY BACKEND (ORIGINAL PATH) =====
-async function fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize) {
+export async function fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize) {
     const formatTime = (date) => {
         return date.toISOString().slice(0, 19);
     };
@@ -852,7 +878,7 @@ async function fetchFromRailway(stationData, startTime, duration, highpassFreq, 
     console.log('📋 Metadata:', metadata);
     
     // Store metadata for duration calculation
-    currentMetadata = metadata;
+    State.setCurrentMetadata(metadata);
     
     // Extract samples
     const samplesOffset = 4 + metadataLength;
@@ -880,10 +906,10 @@ async function fetchFromRailway(stationData, startTime, duration, highpassFreq, 
     }
     
     // Store complete samples array for waveform drawing
-    completeSamplesArray = samples;
+    State.setCompleteSamplesArray(samples);
     
     // Send samples to waveform worker BEFORE building waveform
-    waveformWorker.postMessage({
+    State.waveformWorker.postMessage({
         type: 'add-samples',
         samples: samples,
         rawSamples: rawSamples
@@ -892,64 +918,63 @@ async function fetchFromRailway(stationData, startTime, duration, highpassFreq, 
     // Send to AudioWorklet in chunks
     console.log('🎵 Sending to AudioWorklet in 1024-sample chunks...');
     const WORKLET_CHUNK_SIZE = 1024;
-    allReceivedData = [];
+    State.setAllReceivedData([]);
     
     for (let i = 0; i < samples.length; i += WORKLET_CHUNK_SIZE) {
         const chunkSize = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
         const chunk = samples.slice(i, i + chunkSize);
         
-        workletNode.port.postMessage({
+        State.workletNode.port.postMessage({
             type: 'audio-data',
             data: chunk
         });
         
-        allReceivedData.push(chunk);
+        State.allReceivedData.push(chunk);
     }
     
     // Draw complete waveform
     drawWaveform();
     
-    console.log(`✅ Sent ${allReceivedData.length} chunks to AudioWorklet`);
+    console.log(`✅ Sent ${State.allReceivedData.length} chunks to AudioWorklet`);
     
     // 🎯 FORCE IMMEDIATE PLAYBACK
-    workletNode.port.postMessage({
+    State.workletNode.port.postMessage({
         type: 'start-immediately'
     });
     console.log(`🚀 Sent 'start-immediately' to worklet`);
     
     // Fade-in audio
-    if (gainNode && audioContext) {
+    if (State.gainNode && State.audioContext) {
         const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-        gainNode.gain.cancelScheduledValues(audioContext.currentTime);
-        gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(
+        State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
+        State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
+        State.gainNode.gain.exponentialRampToValueAtTime(
             Math.max(0.01, targetVolume), 
-            audioContext.currentTime + 0.05
+            State.audioContext.currentTime + 0.05
         );
         console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
     }
     
-    // Start position tracking
-    startPositionTracking();
-    currentAudioPosition = 0;
-    lastWorkletPosition = 0;
-    lastWorkletUpdateTime = audioContext.currentTime;
-    lastUpdateTime = audioContext.currentTime;
+    // Reset position tracking
+    State.setCurrentAudioPosition(0);
+    State.setLastWorkletPosition(0);
+    State.setLastWorkletUpdateTime(State.audioContext.currentTime);
+    State.setLastUpdateTime(State.audioContext.currentTime);
     
     // Start playback indicator
     requestAnimationFrame(updatePlaybackIndicator);
     
     // Signal that all data has been sent
-    workletNode.port.postMessage({ type: 'data-complete' });
+    State.workletNode.port.postMessage({ type: 'data-complete' });
     
     // Set playback speed
     updatePlaybackSpeed();
     
     // Set anti-aliasing filter
-    if (workletNode) {
-        workletNode.port.postMessage({
+    if (State.workletNode) {
+        State.workletNode.port.postMessage({
             type: 'set-anti-aliasing',
-            enabled: antiAliasingEnabled
+            enabled: true  // Always enabled
         });
     }
     
@@ -957,12 +982,12 @@ async function fetchFromRailway(stationData, startTime, duration, highpassFreq, 
     updatePlaybackDuration();
     
     // Clear fetching flag
-    isFetchingNewData = false;
+    State.setIsFetchingNewData(false);
     
     // Stop loading animation
-    if (loadingInterval) {
-        clearInterval(loadingInterval);
-        loadingInterval = null;
+    if (State.loadingInterval) {
+        clearInterval(State.loadingInterval);
+        State.setLoadingInterval(null);
     }
     
     // Re-enable playback controls

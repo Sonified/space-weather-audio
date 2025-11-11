@@ -1,5 +1,5 @@
 // Station configuration data (active stations within 20km of top 5 volcanoes)
-const EMBEDDED_STATIONS = {
+export const EMBEDDED_STATIONS = {
   "greatsitkin": {
     "name": "Great Sitkin",
     "lat": 52.0765,

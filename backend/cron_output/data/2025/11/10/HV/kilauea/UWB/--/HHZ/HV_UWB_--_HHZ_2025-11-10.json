@@ -310,6 +310,15 @@
         "samples": 2160000,
         "gap_count": 0,
         "gap_samples_filled": 0
+      },
+      {
+        "start": "18:00:00",
+        "end": "00:00:00",
+        "min": -7909033,
+        "max": 8175291,
+        "samples": 2160000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
       }
     ]
   }
