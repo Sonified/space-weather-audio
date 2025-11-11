@@ -169,15 +169,38 @@ class SeismicProcessor extends AudioWorkletProcessor {
     }
     
     loopToStart() {
-        const previousReadIndex = this.readIndex;
-        const previousSamplesInBuffer = this.samplesInBuffer;
+        // Loop to selection start if we have a selection, otherwise position 0
+        const hasSelection = (this.selectionStart !== null && this.selectionEnd !== null);
+        const loopTarget = hasSelection ? Math.floor(this.selectionStart * 44100) : 0;
+        
+        this.isPlaying = false; // Pause during buffer rebuild
+        
+        // Clear circular buffer
+        this.writeIndex = 0;
         this.readIndex = 0;
-        this.samplesInBuffer = this.totalSamples;
-        this.totalSamplesConsumed = 0; // Reset absolute position to start
-        this.isPlaying = true;
+        this.samplesInBuffer = 0;
+        this.totalSamplesWritten = 0;
+        this.totalSamplesConsumed = loopTarget; // Reset to loop target
         this.finishSent = false;
         this.loopWarningShown = false;
-        console.log('🔄 WORKLET LOOP: ReadIndex ' + previousReadIndex + ' -> 0, SamplesInBuffer ' + previousSamplesInBuffer + ' -> ' + this.totalSamples + ', Speed: ' + this.speed.toFixed(2) + 'x');
+        this.selectionEndWarned = false;
+        this.samplesSinceLastPositionUpdate = 0; // Reset position update counter
+        
+        // Send immediate position update so UI updates
+        this.port.postMessage({
+            type: 'position',
+            samplePosition: loopTarget,
+            positionSeconds: loopTarget / 44100
+        });
+        
+        // Tell main thread we need samples from loop target
+        this.port.postMessage({
+            type: 'loop-ready',
+            targetSample: loopTarget
+        });
+        
+        const loopDesc = hasSelection ? `selection start (${this.selectionStart.toFixed(2)}s)` : 'file start';
+        console.log(`🔄 WORKLET LOOP: Cleared buffer, requesting samples from ${loopDesc}`);
     }
     
     seekToPosition(targetSample) {
@@ -335,7 +358,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         }
         
         const selectionEndSample = Math.floor(this.selectionEnd * 44100);
-        const samplesToEnd = selectionEndSample - this.readIndex;
+        const samplesToEnd = selectionEndSample - this.totalSamplesConsumed;
         
         // Warn 20ms before selection end to match fade time
         const WARNING_THRESHOLD = 882; // 20ms at 44.1kHz (matches fade time)
@@ -352,27 +375,21 @@ class SeismicProcessor extends AudioWorkletProcessor {
             });
         }
         
-        // At selection end, loop or stop
-        if (this.readIndex >= selectionEndSample) {
+        // At selection end: stop or loop
+        if (this.totalSamplesConsumed >= selectionEndSample) {
             if (this.isLooping) {
-                // Jump to selection start (sample-accurate)
-                const selectionStartSample = Math.floor(this.selectionStart * 44100);
-                this.readIndex = selectionStartSample;
-                this.samplesInBuffer = this.totalSamples - selectionStartSample;
-                this.selectionEndWarned = false;
-                this.port.postMessage({ 
-                    type: 'selection-loop',
-                    newPosition: this.selectionStart
-                });
+                // Manually trigger loop to selection start
+                this.loopToStart();
+                return true;
             } else {
-                // Stop at selection end
+                // Just stop
                 this.isPlaying = false;
                 this.port.postMessage({ 
                     type: 'selection-end-reached',
                     position: this.selectionEnd
                 });
+                return true;
             }
-            return true; // Handled boundary
         }
         
         return false;

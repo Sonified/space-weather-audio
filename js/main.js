@@ -264,15 +264,47 @@ export async function initAudioWorklet() {
                     });
                 }
                 
-                // Resume playback if it was playing before seek
-                if (wasPlaying) {
+                // Resume playback if it was playing before seek OR if main thread thinks we should be playing
+                if (wasPlaying || State.isPlaying) {
                     State.workletNode.port.postMessage({ type: 'resume' });
-                    console.log(`▶️ [SEEK-READY] Resumed playback after re-sending samples`);
+                    console.log(`▶️ [SEEK-READY] Resumed playback after re-sending samples (wasPlaying=${wasPlaying}, isPlaying=${State.isPlaying})`);
                 }
                 
                 console.log(`📤 [SEEK-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}`);
             } else {
                 console.error(`❌ [SEEK-READY] Cannot re-send: completeSamplesArray unavailable or invalid target ${targetSample}`);
+            }
+        } else if (type === 'loop-ready') {
+            // Worklet has cleared buffer and is ready to loop from target position
+            const { targetSample } = event.data;
+            console.log(`🔄 [LOOP-READY] Re-sending samples from ${targetSample.toLocaleString()} (loop restart)`);
+            
+            if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+                // Update position tracking to loop target
+                const newPositionSeconds = targetSample / 44100;
+                State.setCurrentAudioPosition(newPositionSeconds);
+                State.setLastWorkletPosition(newPositionSeconds);
+                State.setLastWorkletUpdateTime(State.audioContext.currentTime);
+                
+                // Send samples from target position onwards
+                const chunkSize = 44100 * 10; // 10 seconds per chunk
+                const totalSamples = State.completeSamplesArray.length;
+                
+                for (let i = targetSample; i < totalSamples; i += chunkSize) {
+                    const end = Math.min(i + chunkSize, totalSamples);
+                    const chunk = State.completeSamplesArray.slice(i, end);
+                    
+                    State.workletNode.port.postMessage({
+                        type: 'audio-data',
+                        data: chunk
+                    });
+                }
+                
+                // Resume playback
+                State.workletNode.port.postMessage({ type: 'resume' });
+                console.log(`▶️ [LOOP-READY] Resumed playback from ${newPositionSeconds.toFixed(2)}s with ${(totalSamples - targetSample).toLocaleString()} samples`);
+            } else {
+                console.error(`❌ [LOOP-READY] Cannot loop: completeSamplesArray unavailable`);
             }
         } else if (type === 'finished') {
             if (State.isFetchingNewData) {
