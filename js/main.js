@@ -714,17 +714,22 @@ window.addEventListener('DOMContentLoaded', () => {
     
     setupWaveformInteraction();
     
-    // Spacebar to toggle play/pause
+    // Spacebar to toggle play/pause (but not when focused on interactive elements)
     document.addEventListener('keydown', (event) => {
         if (event.code === 'Space') {
-            const isTextInput = event.target.tagName === 'INPUT' && event.target.type !== 'range';
+            // Don't capture spacebar in text inputs, textareas, selects, or buttons
+            const isTextInput = event.target.tagName === 'INPUT' && event.target.type !== 'range' && event.target.type !== 'checkbox';
             const isTextarea = event.target.tagName === 'TEXTAREA';
             const isSelect = event.target.tagName === 'SELECT';
+            const isButton = event.target.tagName === 'BUTTON';
+            const isContentEditable = event.target.isContentEditable;
             
-            if (isTextInput || isTextarea || isSelect) {
-                return;
+            // Return early (don't handle) if user is interacting with any form element
+            if (isTextInput || isTextarea || isSelect || isButton || isContentEditable) {
+                return; // Let browser handle spacebar normally
             }
             
+            // Only prevent default and handle play/pause if not in an interactive element
             event.preventDefault();
             
             const playPauseBtn = document.getElementById('playPauseBtn');
