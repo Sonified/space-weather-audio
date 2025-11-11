@@ -30,6 +30,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.writeIndex = 0;
         this.readIndex = 0;
         this.samplesInBuffer = 0;
+        this.totalSamplesWritten = 0; // Track total samples written (for completion check)
     }
     
     initializePlaybackState() {
@@ -109,6 +110,12 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 this.seekToPosition(event.data.samplePosition);
             } else if (type === 'set-selection') {
                 this.setSelection(event.data.start, event.data.end, event.data.loop);
+            } else if (type === 'get-buffer-status') {
+                this.port.postMessage({
+                    type: 'buffer-status',
+                    samplesInBuffer: this.samplesInBuffer,
+                    totalSamplesWritten: this.totalSamplesWritten
+                });
             }
         };
     }
@@ -282,6 +289,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
             this.buffer[this.writeIndex] = samples[i];
             this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
             this.samplesInBuffer++;
+            this.totalSamplesWritten++;
         }
     }
     

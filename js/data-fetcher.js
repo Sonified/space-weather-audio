@@ -599,44 +599,74 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     console.log(`📊 ${logTime()} Actual samples per chunk: ${chunkSampleCounts.join(', ')}`);
                     console.log(`📊 ${logTime()} Total actual samples: ${actualTotalSamples.toLocaleString()} (expected: ${totalSamples.toLocaleString()})`);
                     
-                    // Signal worklet
+                    // Calculate expected total
                     const totalWorkletSamples = State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
                     console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()} (from allReceivedData)`);
-                    State.workletNode.port.postMessage({
-                        type: 'data-complete',
-                        totalSamples: totalWorkletSamples
-                    });
                     
-                    // Terminate worker (we're done!)
-                    worker.terminate();
-                    console.log('🏭 Worker terminated');
+                    // 🎯 CRITICAL FIX: Wait for worklet to confirm it has buffered all samples
+                    // Set up one-time listener for buffer confirmation
+                    const bufferStatusHandler = (event) => {
+                        if (event.data.type === 'buffer-status') {
+                            const { samplesInBuffer, totalSamplesWritten } = event.data;
+                            console.log(`📊 ${logTime()} Worklet buffer status: ${totalSamplesWritten.toLocaleString()} written, ${samplesInBuffer.toLocaleString()} buffered (expecting ${totalWorkletSamples.toLocaleString()} total)`);
+                            
+                            if (totalSamplesWritten >= totalWorkletSamples) {
+                                // All samples buffered! Now send data-complete
+                                console.log(`✅ ${logTime()} Worklet confirmed all samples buffered - sending data-complete`);
+                                
+                                State.workletNode.port.postMessage({
+                                    type: 'data-complete',
+                                    totalSamples: totalWorkletSamples
+                                });
+                                
+                                // Remove this handler
+                                State.workletNode.port.removeEventListener('message', bufferStatusHandler);
+                                
+                                // Terminate worker (we're done!)
+                                worker.terminate();
+                                console.log('🏭 Worker terminated');
+                                
+                                // Update download size
+                                document.getElementById('downloadSize').textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+                                
+                                // 🎯 FINAL WAVEFORM WITH DC REMOVAL (crossfade to pink)
+                                requestIdleCallback(() => {
+                                    buildCompleteWaveform(processedChunks, chunksToFetch, normMin, normMax, totalSamples);
+                                }, { timeout: 2000 });
+                                
+                                console.log(`🎨 All chunks complete - will build final detrended waveform`);
+                                
+                                // Update UI
+                                updatePlaybackSpeed();
+                                updatePlaybackDuration();
+                                State.setIsFetchingNewData(false);
+                                
+                                if (State.loadingInterval) {
+                                    clearInterval(State.loadingInterval);
+                                    State.setLoadingInterval(null);
+                                }
+                                
+                                document.getElementById('playPauseBtn').disabled = false;
+                                document.getElementById('playPauseBtn').textContent = '⏸️ Pause';
+                                document.getElementById('playPauseBtn').classList.add('pause-active');
+                                document.getElementById('loopBtn').disabled = false;
+                                document.getElementById('status').className = 'status success';
+                                document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
+                            } else {
+                                // Not all samples written yet - wait a bit and check again
+                                console.log(`⏳ ${logTime()} Waiting for more samples (${totalSamplesWritten}/${totalWorkletSamples})...`);
+                                setTimeout(() => {
+                                    State.workletNode.port.postMessage({ type: 'get-buffer-status' });
+                                }, 50);
+                            }
+                        }
+                    };
                     
-                    // Update download size
-                    document.getElementById('downloadSize').textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+                    State.workletNode.port.addEventListener('message', bufferStatusHandler);
                     
-                    // 🎯 FINAL WAVEFORM WITH DC REMOVAL (crossfade to pink)
-                    requestIdleCallback(() => {
-                        buildCompleteWaveform(processedChunks, chunksToFetch, normMin, normMax, totalSamples);
-                    }, { timeout: 2000 });
-                    
-                    console.log(`🎨 All chunks complete - will build final detrended waveform`);
-                    
-                    // Update UI
-                    updatePlaybackSpeed();
-                    updatePlaybackDuration();
-                    State.setIsFetchingNewData(false);
-                    
-                    if (State.loadingInterval) {
-                        clearInterval(State.loadingInterval);
-                        State.setLoadingInterval(null);
-                    }
-                    
-                    document.getElementById('playPauseBtn').disabled = false;
-                    document.getElementById('playPauseBtn').textContent = '⏸️ Pause';
-                    document.getElementById('playPauseBtn').classList.add('pause-active');
-                    document.getElementById('loopBtn').disabled = false;
-                    document.getElementById('status').className = 'status success';
-                    document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
+                    // Request initial buffer status
+                    console.log(`🔍 ${logTime()} Requesting worklet buffer status...`);
+                    State.workletNode.port.postMessage({ type: 'get-buffer-status' });
                 }
             }
         };
@@ -980,22 +1010,53 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     // Start playback indicator
     requestAnimationFrame(updatePlaybackIndicator);
     
-    // Signal that all data has been sent
-    State.workletNode.port.postMessage({ type: 'data-complete' });
+    // 🎯 CRITICAL FIX: Wait for worklet to confirm it has buffered all samples (Railway path)
+    const totalRailwaySamples = samples.length;
+    const railwayBufferStatusHandler = (event) => {
+        if (event.data.type === 'buffer-status') {
+            const { samplesInBuffer, totalSamplesWritten } = event.data;
+            console.log(`📊 [Railway] Worklet buffer status: ${totalSamplesWritten.toLocaleString()} written, ${samplesInBuffer.toLocaleString()} buffered (expecting ${totalRailwaySamples.toLocaleString()} total)`);
+            
+            if (totalSamplesWritten >= totalRailwaySamples) {
+                // All samples buffered! Now send data-complete
+                console.log(`✅ [Railway] Worklet confirmed all samples buffered - sending data-complete`);
+                
+                State.workletNode.port.postMessage({ 
+                    type: 'data-complete',
+                    totalSamples: totalRailwaySamples
+                });
+                
+                // Remove this handler
+                State.workletNode.port.removeEventListener('message', railwayBufferStatusHandler);
+                
+                // Set playback speed
+                updatePlaybackSpeed();
+                
+                // Set anti-aliasing filter
+                if (State.workletNode) {
+                    State.workletNode.port.postMessage({
+                        type: 'set-anti-aliasing',
+                        enabled: true  // Always enabled
+                    });
+                }
+                
+                // Update playback duration
+                updatePlaybackDuration();
+            } else {
+                // Not all samples written yet - wait a bit and check again
+                console.log(`⏳ [Railway] Waiting for more samples (${totalSamplesWritten}/${totalRailwaySamples})...`);
+                setTimeout(() => {
+                    State.workletNode.port.postMessage({ type: 'get-buffer-status' });
+                }, 50);
+            }
+        }
+    };
     
-    // Set playback speed
-    updatePlaybackSpeed();
+    State.workletNode.port.addEventListener('message', railwayBufferStatusHandler);
     
-    // Set anti-aliasing filter
-    if (State.workletNode) {
-        State.workletNode.port.postMessage({
-            type: 'set-anti-aliasing',
-            enabled: true  // Always enabled
-        });
-    }
-    
-    // Update playback duration
-    updatePlaybackDuration();
+    // Request initial buffer status
+    console.log(`🔍 [Railway] Requesting worklet buffer status...`);
+    State.workletNode.port.postMessage({ type: 'get-buffer-status' });
     
     // Clear fetching flag
     State.setIsFetchingNewData(false);
