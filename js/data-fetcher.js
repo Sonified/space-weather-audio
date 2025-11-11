@@ -371,6 +371,12 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             npts: totalSamples
         });
         
+        // 🎯 Set totalAudioDuration early so red scan line appears immediately
+        // (This is the EXPECTED duration - we'll update with actual samples at completion)
+        const expectedDuration = totalSamples / 44100; // AudioWorklet runs at 44.1 kHz
+        State.setTotalAudioDuration(expectedDuration);
+        console.log(`📊 ${logTime()} Set EXPECTED totalAudioDuration: ${expectedDuration.toFixed(2)}s (will update with actual at completion)`);
+        
         const chunksToFetch = chunksNeeded; // Use our calculated chunks!
         
         console.log(`🚀 ${logTime()} Starting CDN DIRECT streaming (${chunksToFetch.length} chunks)...`);
@@ -601,9 +607,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     const totalWorkletSamples = State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
                     console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()} (from allReceivedData)`);
                     
-                    // 🎯 FIX: Use ACTUAL sample count for duration, not estimated!
+                    // 🎯 UPDATE: Use ACTUAL sample count for duration (refining expected duration)
                     State.setTotalAudioDuration(totalWorkletSamples / 44100);
-                    console.log(`📊 ${logTime()} Set totalAudioDuration to ${(totalWorkletSamples / 44100).toFixed(2)}s (from actual samples, not estimate)`);
+                    console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / 44100).toFixed(2)}s (actual samples: ${totalWorkletSamples.toLocaleString()}, expected: ${totalSamples.toLocaleString()})`);
                     
                     // 🎯 CRITICAL FIX: Wait for worklet to confirm it has buffered all samples
                     // Set up one-time listener for buffer confirmation

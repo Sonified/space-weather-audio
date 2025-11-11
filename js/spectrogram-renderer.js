@@ -100,7 +100,8 @@ export function changeSpectrogramScrollSpeed() {
     }
     
     // Snap to discrete achievable speeds
-    const discreteSpeeds = [0.125, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0];
+    // Rescaled so old 0.25x is now 1x, with more granular slow speeds
+    const discreteSpeeds = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 20.0];
     let displaySpeed = discreteSpeeds[0];
     for (let i = 0; i < discreteSpeeds.length - 1; i++) {
         const midpoint = (discreteSpeeds[i] + discreteSpeeds[i + 1]) / 2;
