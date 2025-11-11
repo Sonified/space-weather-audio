@@ -31,6 +31,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.readIndex = 0;
         this.samplesInBuffer = 0;
         this.totalSamplesWritten = 0; // Track total samples written (for completion check)
+        this.minBufferSeen = Infinity; // Track minimum buffer level for diagnostics
     }
     
     initializePlaybackState() {
@@ -55,6 +56,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
     initializePositionTracking() {
         this.samplesSinceLastPositionUpdate = 0;
         this.positionUpdateIntervalSamples = 1323; // ~30ms at 44.1kHz
+        this.totalSamplesConsumed = 0; // Track absolute position in file (for accurate seeking)
     }
     
     initializeFilters() {
@@ -171,6 +173,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         const previousSamplesInBuffer = this.samplesInBuffer;
         this.readIndex = 0;
         this.samplesInBuffer = this.totalSamples;
+        this.totalSamplesConsumed = 0; // Reset absolute position to start
         this.isPlaying = true;
         this.finishSent = false;
         this.loopWarningShown = false;
@@ -186,15 +189,28 @@ class SeismicProcessor extends AudioWorkletProcessor {
         }
         
         if (targetSample >= 0 && targetSample <= this.totalSamples) {
-            const previousReadIndex = this.readIndex;
-            const previousSamplesInBuffer = this.samplesInBuffer;
-            this.readIndex = targetSample;
-            this.samplesInBuffer = this.totalSamples - targetSample;
+            // Pause to prevent process() from triggering finished during buffer rebuild
+            const wasPlaying = this.isPlaying;
+            this.isPlaying = false;
+            
+            // Clear circular buffer - main thread will re-send samples from seek position
+            this.writeIndex = 0;
+            this.readIndex = 0;
+            this.samplesInBuffer = 0;
+            this.totalSamplesWritten = 0;
+            this.totalSamplesConsumed = targetSample; // Set absolute position to seek target
             this.finishSent = false;
             this.loopWarningShown = false;
             this.selectionEndWarned = false;
-            this.isPlaying = true;
-            console.log('🎯 WORKLET SEEK: ReadIndex ' + previousReadIndex + ' -> ' + this.readIndex + ', SamplesInBuffer ' + previousSamplesInBuffer + ' -> ' + this.samplesInBuffer + ', Target sample: ' + targetSample);
+            
+            // Tell main thread we need samples starting from target position
+            this.port.postMessage({
+                type: 'seek-ready',
+                targetSample: targetSample,
+                wasPlaying: wasPlaying
+            });
+            
+            console.log(`🎯 WORKLET SEEK: Paused and cleared buffer, set position to ${targetSample.toLocaleString()}`);
         }
     }
     
@@ -384,8 +400,8 @@ class SeismicProcessor extends AudioWorkletProcessor {
             if (this.hasStarted && this.isPlaying) {
                 this.port.postMessage({
                     type: 'position',
-                    samplePosition: this.readIndex,
-                    positionSeconds: this.readIndex / 44100
+                    samplePosition: this.totalSamplesConsumed,
+                    positionSeconds: this.totalSamplesConsumed / 44100
                 });
             }
             this.samplesSinceLastPositionUpdate = 0;
@@ -430,9 +446,17 @@ class SeismicProcessor extends AudioWorkletProcessor {
             this.handleFullBufferLoop();
         }
         
+        // Track minimum buffer level (for diagnostics)
+        if (this.samplesInBuffer < this.minBufferSeen) {
+            this.minBufferSeen = this.samplesInBuffer;
+        }
+        
         // CRITICAL HOT PATH: Buffer reading (kept inline for performance)
         if (this.samplesInBuffer < samplesToRead) {
-            // Underrun case
+            // Underrun case - log it!
+            if (this.hasStarted && this.samplesInBuffer > 0) {
+                console.warn(`⚠️ BUFFER UNDERRUN: only ${this.samplesInBuffer} samples available, need ${samplesToRead}`);
+            }
             const availableForOutput = Math.min(this.samplesInBuffer, channel.length);
             for (let i = 0; i < availableForOutput; i++) {
                 let sample = this.buffer[this.readIndex];
@@ -448,6 +472,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 channel[i] = sample;
                 this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
                 this.samplesInBuffer--;
+                this.totalSamplesConsumed++; // Track absolute position
             }
             for (let i = availableForOutput; i < channel.length; i++) {
                 channel[i] = 0;
@@ -458,13 +483,30 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 if (!this.finishSent && this.hasStarted && this.dataLoadingComplete) {
                     this.isPlaying = false;
                     const expectedDuration = this.totalSamples / (44100 * this.speed);
+                    
+                    // Send final position update at 100% before sending finished message
+                    this.port.postMessage({
+                        type: 'position',
+                        samplePosition: this.totalSamples,
+                        positionSeconds: expectedDuration
+                    });
+                    
                     this.port.postMessage({ 
                         type: 'finished',
                         totalSamples: this.totalSamples,
                         speed: this.speed,
-                        expectedDurationSeconds: expectedDuration
+                        expectedDurationSeconds: expectedDuration,
+                        minBufferSeen: this.minBufferSeen  // Report minimum buffer level
                     });
                     this.finishSent = true;
+                    
+                    // Report buffer health
+                    const bufferSeconds = this.minBufferSeen / 44100;
+                    if (this.minBufferSeen < 44100) {
+                        console.warn(`⚠️ Buffer health: Minimum buffer was ${this.minBufferSeen.toLocaleString()} samples (${bufferSeconds.toFixed(2)}s) - DANGEROUSLY LOW!`);
+                    } else {
+                        console.log(`✅ Buffer health: Minimum buffer was ${this.minBufferSeen.toLocaleString()} samples (${bufferSeconds.toFixed(2)}s)`);
+                    }
                 }
                 channel.fill(0);
                 return true;
@@ -487,6 +529,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     channel[i] = sample;
                     this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
                     this.samplesInBuffer--;
+                    this.totalSamplesConsumed++; // Track absolute position
                 }
             } else {
                 // Interpolation path for variable speed
@@ -537,6 +580,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 }
                 this.readIndex = (this.readIndex + samplesToRead) % this.maxBufferSize;
                 this.samplesInBuffer -= samplesToRead;
+                this.totalSamplesConsumed += samplesToRead; // Track absolute position
             }
         }
         

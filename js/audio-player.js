@@ -350,3 +350,77 @@ function updatePlaybackDuration() {
     document.getElementById('playbackDuration').textContent = durationText;
 }
 
+// Download audio as WAV file
+window.downloadAudio = function() {
+    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
+        console.warn('No audio data to download');
+        return;
+    }
+    
+    console.log('📥 Preparing audio download...');
+    
+    const sampleRate = 44100;
+    const numChannels = 1; // Mono
+    const bytesPerSample = 2; // 16-bit
+    const samples = State.completeSamplesArray;
+    
+    // Create WAV file
+    const dataLength = samples.length * bytesPerSample;
+    const buffer = new ArrayBuffer(44 + dataLength);
+    const view = new DataView(buffer);
+    
+    // Write WAV header
+    const writeString = (offset, string) => {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    };
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + dataLength, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+    view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // ByteRate
+    view.setUint16(32, numChannels * bytesPerSample, true); // BlockAlign
+    view.setUint16(34, bytesPerSample * 8, true); // BitsPerSample
+    writeString(36, 'data');
+    view.setUint32(40, dataLength, true);
+    
+    // Convert Float32 to Int16 and write samples
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++) {
+        const sample = Math.max(-1, Math.min(1, samples[i])); // Clamp
+        const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        view.setInt16(offset, int16, true);
+        offset += 2;
+    }
+    
+    // Create blob and download
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    // Generate filename from metadata
+    const metadata = State.currentMetadata;
+    let filename = 'volcano-audio';
+    if (metadata && metadata.network && metadata.station) {
+        const startDate = new Date(metadata.starttime);
+        const dateStr = startDate.toISOString().split('T')[0];
+        const timeStr = startDate.toISOString().split('T')[1].substring(0, 5).replace(':', '-');
+        filename = `${metadata.network}_${metadata.station}_${dateStr}_${timeStr}`;
+    }
+    a.download = `${filename}.wav`;
+    
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    console.log(`✅ Downloaded ${filename}.wav (${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB)`);
+}
+

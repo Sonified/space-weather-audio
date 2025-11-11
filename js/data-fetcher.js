@@ -530,10 +530,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                         const width = canvas.offsetWidth * window.devicePixelRatio;
                         const height = canvas.offsetHeight * window.devicePixelRatio;
                         
-                        // For first draw, set duration
-                        if (nextWaveformChunk === 1) {
-                            State.setTotalAudioDuration(totalSamples / 44100);
-                        }
+                        // Duration will be set once all chunks are complete (line 607-608)
+                        // Don't set it early with estimated value - causes mismatch during progressive loading
                         
                         State.waveformWorker.postMessage({
                             type: 'build-waveform',
@@ -603,6 +601,10 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     const totalWorkletSamples = State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
                     console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()} (from allReceivedData)`);
                     
+                    // 🎯 FIX: Use ACTUAL sample count for duration, not estimated!
+                    State.setTotalAudioDuration(totalWorkletSamples / 44100);
+                    console.log(`📊 ${logTime()} Set totalAudioDuration to ${(totalWorkletSamples / 44100).toFixed(2)}s (from actual samples, not estimate)`);
+                    
                     // 🎯 CRITICAL FIX: Wait for worklet to confirm it has buffered all samples
                     // Set up one-time listener for buffer confirmation
                     const bufferStatusHandler = (event) => {
@@ -629,12 +631,37 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 // Update download size
                                 document.getElementById('downloadSize').textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
                                 
-                                // 🎯 FINAL WAVEFORM WITH DC REMOVAL (crossfade to pink)
-                                requestIdleCallback(() => {
-                                    buildCompleteWaveform(processedChunks, chunksToFetch, normMin, normMax, totalSamples);
-                                }, { timeout: 2000 });
+                                // 🎯 FINAL WAVEFORM WITH DC REMOVAL (run in worker - no main thread blocking!)
+                                // The waveform worker already has all samples accumulated progressively
+                                // Just tell it to rebuild with DC removal OFF-THREAD
+                                console.log(`🎨 ${logTime()} Requesting final detrended waveform (worker has all ${totalWorkletSamples.toLocaleString()} samples)`);
                                 
-                                console.log(`🎨 All chunks complete - will build final detrended waveform`);
+                                const canvas = document.getElementById('waveform');
+                                const removeDC = document.getElementById('removeDCOffset').checked;
+                                const slider = document.getElementById('waveformFilterSlider');
+                                const alpha = 0.9 + (parseInt(slider.value) / 1000); // 0.9 to 0.999
+                                
+                                State.waveformWorker.postMessage({
+                                    type: 'build-waveform',
+                                    canvasWidth: canvas.offsetWidth * window.devicePixelRatio,
+                                    canvasHeight: canvas.offsetHeight * window.devicePixelRatio,
+                                    removeDC: removeDC,  // Apply DC removal for final waveform
+                                    alpha: alpha,
+                                    isComplete: true,    // Flag this as the final complete waveform
+                                    totalExpectedSamples: totalWorkletSamples
+                                });
+                                
+                                console.log(`🎨 ${logTime()} Final waveform build requested (off-thread, won't block audio!)`);
+                                
+                                // Stitch samples for download button (lightweight operation)
+                                const stitched = new Float32Array(totalWorkletSamples);
+                                let offset = 0;
+                                for (const chunk of State.allReceivedData) {
+                                    stitched.set(chunk, offset);
+                                    offset += chunk.length;
+                                }
+                                State.setCompleteSamplesArray(stitched);
+                                console.log(`📦 ${logTime()} Stitched ${State.allReceivedData.length} chunks into completeSamplesArray for download`);
                                 
                                 // Update UI
                                 updatePlaybackSpeed();
@@ -650,6 +677,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 document.getElementById('playPauseBtn').textContent = '⏸️ Pause';
                                 document.getElementById('playPauseBtn').classList.add('pause-active');
                                 document.getElementById('loopBtn').disabled = false;
+                                document.getElementById('downloadBtn').disabled = false;
                                 document.getElementById('status').className = 'status success';
                                 document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
                             } else {
@@ -1073,6 +1101,7 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     playPauseBtn.textContent = '⏸️ Pause';
     playPauseBtn.classList.remove('play-active', 'secondary');
     playPauseBtn.classList.add('pause-active');
+    document.getElementById('downloadBtn').disabled = false;
     
     document.getElementById('loopBtn').disabled = false;
     

@@ -125,12 +125,25 @@ export async function initAudioWorklet() {
     
     updatePlaybackSpeed();
     
+    // Log audio output latency for debugging sync issues
+    console.log(`🔊 Audio latency: output=${State.audioContext.outputLatency ? (State.audioContext.outputLatency * 1000).toFixed(1) : 'undefined'}ms, base=${(State.audioContext.baseLatency * 1000).toFixed(1)}ms`);
+    
+    // The outputLatency might be 0 or undefined on some browsers
+    // The real latency is often the render quantum (128 samples) plus base latency
+    const estimatedLatency = State.audioContext.baseLatency || (128 / 44100);
+    console.log(`🔊 Estimated total latency: ${(estimatedLatency * 1000).toFixed(1)}ms`);
+    
     worklet.port.onmessage = (event) => {
         const { type, bufferSize, samplesConsumed, totalSamples, positionSeconds, samplePosition } = event.data;
         
         if (type === 'position') {
-            State.setCurrentAudioPosition(positionSeconds);
-            State.setLastWorkletPosition(positionSeconds);
+            // Account for output latency - worklet reports when samples are consumed,
+            // but there's a delay before they reach the speakers
+            const outputLatency = State.audioContext.outputLatency || 0;
+            const adjustedPosition = Math.max(0, positionSeconds - outputLatency);
+            
+            State.setCurrentAudioPosition(adjustedPosition);
+            State.setLastWorkletPosition(adjustedPosition);
             State.setLastWorkletUpdateTime(State.audioContext.currentTime);
         } else if (type === 'selection-end-approaching') {
             const { secondsToEnd, isLooping: workletIsLooping, loopDuration } = event.data;
@@ -230,6 +243,36 @@ export async function initAudioWorklet() {
                     State.gainNode.gain.setValueAtTime(currentGain, State.audioContext.currentTime);
                     State.gainNode.gain.linearRampToValueAtTime(0.0001, State.audioContext.currentTime + fadeDuration);
                 }
+            }
+        } else if (type === 'seek-ready') {
+            // Worklet has cleared its buffer and is ready for samples at seek position
+            const { targetSample, wasPlaying } = event.data;
+            console.log(`🎯 [SEEK-READY] Re-sending samples from ${targetSample.toLocaleString()}, wasPlaying=${wasPlaying}`);
+            
+            if (State.completeSamplesArray && targetSample >= 0 && targetSample < State.completeSamplesArray.length) {
+                // Send samples in chunks to avoid blocking
+                const chunkSize = 44100 * 10; // 10 seconds per chunk
+                const totalSamples = State.completeSamplesArray.length;
+                
+                for (let i = targetSample; i < totalSamples; i += chunkSize) {
+                    const end = Math.min(i + chunkSize, totalSamples);
+                    const chunk = State.completeSamplesArray.slice(i, end);
+                    
+                    State.workletNode.port.postMessage({
+                        type: 'audio-data',
+                        data: chunk
+                    });
+                }
+                
+                // Resume playback if it was playing before seek
+                if (wasPlaying) {
+                    State.workletNode.port.postMessage({ type: 'resume' });
+                    console.log(`▶️ [SEEK-READY] Resumed playback after re-sending samples`);
+                }
+                
+                console.log(`📤 [SEEK-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}`);
+            } else {
+                console.error(`❌ [SEEK-READY] Cannot re-send: completeSamplesArray unavailable or invalid target ${targetSample}`);
             }
         } else if (type === 'finished') {
             if (State.isFetchingNewData) {
@@ -545,6 +588,7 @@ export async function startStreaming(event) {
         playPauseBtn.disabled = true;
         playPauseBtn.textContent = '⏸️ Pause';
         playPauseBtn.classList.remove('pause-active', 'play-active', 'loop-active', 'pulse-play', 'pulse-resume');
+        document.getElementById('downloadBtn').disabled = true;
         
         const loopBtn = document.getElementById('loopBtn');
         loopBtn.disabled = true;
@@ -591,6 +635,7 @@ export async function startStreaming(event) {
         
         document.getElementById('playPauseBtn').disabled = true;
         document.getElementById('loopBtn').disabled = true;
+        document.getElementById('downloadBtn').disabled = true;
     }
 }
 

@@ -106,6 +106,7 @@
                 <button type="button" id="startBtn" onclick="startStreaming(event)" style="min-width: 150px;">📡 Fetch Data</button>
                 <button type="button" onclick="togglePlayPause()" id="playPauseBtn" disabled style="min-width: 150px;">⏸️ Pause</button>
                 <button type="button" onclick="toggleLoop()" id="loopBtn" disabled style="min-width: 150px;">🔁 Loop</button>
+                <button type="button" onclick="downloadAudio()" id="downloadBtn" disabled style="min-width: 150px;">💾 Download</button>
                 <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(600px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
                     <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
                     <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" oninput="changePlaybackSpeed()" style="flex: 1; min-width: 0;">
