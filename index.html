@@ -1941,7 +1941,7 @@
                 if (window.audioWorker) {
                     window.audioWorker.terminate();
                 }
-                window.audioWorker = new Worker('audio-processor-worker.js');
+                window.audioWorker = new Worker('workers/audio-processor-worker.js');
                 const workerReadyPromise = new Promise(resolve => {
                     window.audioWorker.addEventListener('message', function onReady(e) {
                         if (e.data === 'ready') {
@@ -4621,7 +4621,7 @@
                 waveformWorker.terminate();
             }
             
-            waveformWorker = new Worker('waveform-worker.js');
+            waveformWorker = new Worker('workers/waveform-worker.js');
             
             waveformWorker.onmessage = (e) => {
                 const { type } = e.data;

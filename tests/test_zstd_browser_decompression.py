@@ -625,7 +625,7 @@ def main():
     print(f"🌐 Open {output_dir / 'test_zstd_browser.html'} in a browser to test libraries")
     print("\nNext steps:")
     print("1. Start a local HTTP server: python -m http.server 8000")
-    print("2. Open http://localhost:8000/tests/zstd_browser_tests/test_zstd_browser.html")
+    print("2. Open http://localhost:8000/tests/browser/test_zstd_browser.html")
     print("3. Check which libraries successfully decompress the test files")
 
 if __name__ == '__main__':

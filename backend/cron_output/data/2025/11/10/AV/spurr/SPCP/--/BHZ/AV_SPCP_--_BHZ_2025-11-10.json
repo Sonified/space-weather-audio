@@ -153,6 +153,96 @@
         "samples": 30000,
         "gap_count": 0,
         "gap_samples_filled": 0
+      },
+      {
+        "start": "16:30:00",
+        "end": "16:40:00",
+        "min": -40,
+        "max": 681,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "16:40:00",
+        "end": "16:50:00",
+        "min": 46,
+        "max": 649,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "16:50:00",
+        "end": "16:59:59",
+        "min": 6,
+        "max": 767,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "18:10:00",
+        "end": "18:20:00",
+        "min": 38,
+        "max": 658,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "19:00:00",
+        "end": "19:10:00",
+        "min": -27,
+        "max": 673,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "21:50:00",
+        "end": "22:00:00",
+        "min": 0,
+        "max": 626,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "22:20:00",
+        "end": "22:30:00",
+        "min": 50,
+        "max": 687,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "22:30:00",
+        "end": "22:40:00",
+        "min": -2,
+        "max": 675,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "22:40:00",
+        "end": "22:50:00",
+        "min": -61,
+        "max": 661,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "23:40:00",
+        "end": "23:50:00",
+        "min": -7,
+        "max": 649,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
       }
     ],
     "1h": [
@@ -179,6 +269,24 @@
         "end": "06:00:00",
         "min": -512,
         "max": 892,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "16:00:00",
+        "end": "17:00:00",
+        "min": -40,
+        "max": 767,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "21:00:00",
+        "end": "22:00:00",
+        "min": 0,
+        "max": 863,
         "samples": 180000,
         "gap_count": 0,
         "gap_samples_filled": 0

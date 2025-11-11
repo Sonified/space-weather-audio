@@ -15,7 +15,7 @@ def test_audio_stream_local():
     """Test the audio streaming endpoint locally"""
     
     # Configuration
-    server_url = "http://localhost:5001"  # Your local Flask server
+    server_url = "http://localhost:5005"  # Unified collector service (collector_loop.py)
     
     # Request parameters
     network = "HV"

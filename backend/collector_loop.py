@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_10_v1.64"
+__version__ = "2025_11_10_v1.73"
 import time
 import sys
 import os
@@ -33,15 +33,11 @@ DEPLOYMENT_ENV = "PRODUCTION (Railway)" if IS_PRODUCTION else "LOCAL (Developmen
 #                  Local runs at :03, :13, :23, etc. (1 minute offset to avoid conflicts)
 SCHEDULE_OFFSET_MINUTES = 0 if IS_PRODUCTION else 1
 
-# Get or create deployment time
+# Get or update deployment time (always update to current time on startup)
 deploy_time_file = Path(__file__).parent / '.deploy_time'
-if deploy_time_file.exists():
-    with open(deploy_time_file, 'r') as f:
-        deploy_time = f.read().strip()
-else:
-    deploy_time = datetime.now(timezone.utc).isoformat()
-    with open(deploy_time_file, 'w') as f:
-        f.write(deploy_time)
+deploy_time = datetime.now(timezone.utc).isoformat()
+with open(deploy_time_file, 'w') as f:
+    f.write(deploy_time)
 
 # R2 Configuration for failure logs
 R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
@@ -1642,7 +1638,7 @@ def backfill():
             station_id = f"{task['network']}.{task['station']}.{task['location'] or '--'}.{task['channel']}"
             print(f"[{i+1}/{len(backfill_tasks)}] {station_id} {task['chunk_type']} {task['start_time']} to {task['end_time']}")
             
-            # Call process_station_window from cron_job.py
+            # Call process_station_window (consolidated from cron_job.py)
             status_result, error_info = process_station_window(
                 network=task['network'],
                 station=task['station'],

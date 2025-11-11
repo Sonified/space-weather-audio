@@ -42,7 +42,7 @@ def test_parse_miniseed():
     }
     
     # Check if we already have cached data
-    test_file = Path("test_miniseed.mseed")
+    test_file = Path("files/test_miniseed.mseed")
     
     if test_file.exists():
         print(f"📂 Using cached miniSEED file: {test_file}")
@@ -138,7 +138,7 @@ def test_parse_miniseed():
         
         data_section = data[data_start:data_end]
         
-        # Decompress based on encoding (using EXACT logic from test_streaming.html)
+        # Decompress based on encoding (using EXACT logic from browser/test_streaming.html)
         samples = []
         if encoding == 2:  # int24
             num_bytes = len(data_section)

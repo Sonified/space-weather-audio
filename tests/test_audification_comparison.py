@@ -60,7 +60,7 @@ def generate_audification_test():
         raise Exception(f"IRIS returned {response.status_code}")
     
     # Save and read miniSEED
-    temp_file = 'tests/temp_test_data.mseed'
+    temp_file = 'tests/files/temp_test_data.mseed'
     with open(temp_file, 'wb') as f:
         f.write(response.content)
     

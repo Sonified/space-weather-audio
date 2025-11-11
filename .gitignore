@@ -4,9 +4,9 @@
 *.bin
 *.gz
 *.zst
-Final_Cut_Export/
+files/Final_Cut_Export/
+files/Video_Renders/
+files/mseed_files/*
+files/Audio_Files/*.deploy_time
+files/Plot_Files/*
 Logic_Pro/
-Plot_Files/*
-Video_Renders/
-mseed_files/*
-Audio_Files/*.deploy_time

@@ -8,35 +8,57 @@ This project provides a complete pipeline for converting seismic data into audio
 
 ## 🎯 Quick Links
 
-- **[🔧 Pipeline Dashboard](pipeline_dashboard.html)** - Real-time visual tracker for the full data pipeline
-- **[📊 Project Dashboard](dashboard.html)** - Visual status, interactive task manager, one-click test launching
+- **[🎵 Main Interface](index.html)** - AudioWorklet-based streaming player
+- **[📝 TODO List](docs/TODO.md)** - Current development priorities
+- **[📖 Captain's Logs](docs/captains_logs/)** - Daily progress notes and version history
 - **[🛠️ Developer Guide](docs/DEV_GUIDE.md)** - Backend setup, R2 uploads, testing, debugging
-- **[📖 Architecture Docs](docs/FULL_cache_architecture_w_LOCAL_DB.md)** - Complete technical overview (source of truth)
-- **[📝 Captain's Logs](docs/captains_logs/)** - Daily progress notes
+- **[⚙️ Stations Config](backend/stations_config.json)** - Active/inactive station configuration
 
 ## Architecture
 
 ### Data Pipeline Flow
-```
-Browser → R2 Worker (Cloudflare) → Railway Backend → IRIS → R2 Storage
-   ↓                                                               ↓
-   ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ←
-        (Browser fetches .zst chunks directly from R2)
-```
 
-1. **Browser Request**: User requests time range, browser checks local IndexedDB cache
-2. **R2 Worker Check**: If cache miss, browser requests from R2 Worker (checks R2 metadata)
-3. **Render Processing**: On R2 cache miss, R2 Worker forwards to Render backend
-4. **IRIS Fetch**: Render fetches raw seismic data from IRIS (with retry logic for half duration on failure)
-5. **Data Processing**: Dedupe, gap-fill, calculate min/max metadata for normalization
-6. **Multi-Size Chunking**: Creates optimized chunks for different use cases:
-   - **1-minute chunks** (first 6 minutes) - fastest playback start
-   - **6-minute chunks** (minutes 6-30) - balanced efficiency
-   - **30-minute chunks** (remainder) - maximum compression
-7. **Zstd Compression**: Level 3 compression for fast decompression (10-30 MB/s in browser)
-8. **R2 Upload**: All chunks uploaded to Cloudflare R2 for global edge distribution
-9. **Direct Browser Fetch**: Browser fetches `.zst` files directly from R2, decompresses locally
-10. **Local Cache**: Decompressed data stored in IndexedDB for instant replay
+The system uses **two separate paths** depending on station activity:
+
+#### Path 1: Active Stations (HV.OBL, HV.SBL, etc.)
+```
+Browser → cdn.now.audio/data (Direct CDN fetch)
+```
+- Browser fetches `.zst` chunks directly from Cloudflare R2 CDN
+- Metadata JSON consulted to determine which chunks exist
+- Realistic chunk fetch optimization: tries to grab first chunk immediately for instant playback
+- No backend involved (fastest path)
+
+#### Path 2: Inactive Stations (Mauna Loa, etc.)
+```
+Browser → Railway Backend → IRIS → Browser
+```
+- On-demand streaming via Railway `/api/stream-audio` endpoint
+- Backend fetches from IRIS, processes, and streams to browser
+- Used for stations not actively collected by scheduled collector
+
+### Data Collection Pipeline (Backend)
+
+1. **Scheduled Collection**: Railway collector runs every 10 minutes (:02, :12, :22, etc.)
+2. **IRIS Fetch**: Downloads raw seismic data from IRIS FDSN web services
+3. **Data Processing**: Detrend, deduplicate, gap-fill, calculate min/max for normalization
+4. **Multi-Size Chunking**: Creates time-aligned chunks:
+   - **10-minute chunks** - First 60 minutes (mandatory for instant playback)
+   - **1-hour chunks** - After 60 minutes, at hour boundaries
+   - **6-hour chunks** - At 6-hour boundaries (maximum efficiency)
+5. **Zstd Compression**: Level 3 compression (~2.4-3.6:1 ratio, fast browser decompression)
+6. **R2 Upload**: Chunks and metadata uploaded to Cloudflare R2 via `cdn.now.audio`
+7. **Metadata Generation**: Per-day JSON files track all chunks with timestamps, sample counts, min/max
+
+### Browser Playback System
+
+1. **Station Check**: Browser determines if station is active (from `stations_config.json`)
+2. **Metadata Fetch**: Downloads daily metadata JSON to know which chunks exist
+3. **Realistic Chunk Fetch**: Tries to grab first 10m chunk immediately (with fallback +10, +20, +30 minutes)
+4. **Progressive Streaming**: Fetches remaining chunks in batches while first chunk plays
+5. **Web Worker Decompression**: Zstd decompression off main thread
+6. **AudioWorklet Playback**: `SeismicProcessor` handles real-time audio in separate high-priority thread
+7. **Progressive Waveform**: Waveform Worker builds visualization left-to-right as chunks arrive
 
 ### Supported Volcanoes
 - **Kīlauea** (Hawaii) - HV network
@@ -53,93 +75,85 @@ Browser → R2 Worker (Cloudflare) → Railway Backend → IRIS → R2 Storage
 
 ## Features
 
-- ✅ **Global Edge Distribution**: Cloudflare R2 + Workers for low-latency worldwide access
-- ✅ **Multi-Size Chunking**: 1-min, 6-min, 30-min chunks for optimized streaming
-- ✅ **Fast Decompression**: Zstd level 3 (~10-30 MB/s in browser)
-- ✅ **Smart Caching**: R2 cache check → Render processing → IRIS fetch with retry logic
-- ✅ **Local Browser Cache**: IndexedDB stores uncompressed data for instant replay
-- ✅ **Real-Time Pipeline Visualization**: `pipeline_dashboard.html` tracks every step
-- ✅ **One-Command Local Testing**: `./boot_local_mode.sh` starts everything
-- ✅ **Automatic Metadata**: Min/max calculated for consistent normalization
+- ✅ **Dual-Path Architecture**: Direct CDN for active stations, Railway backend for inactive
+- ✅ **Realistic Chunk Optimization**: Instant playback start by fetching first chunk immediately
+- ✅ **Multi-Size Chunking**: 10m/1h/6h chunks with smart boundary-aligned selection
+- ✅ **AudioWorklet Playback**: Glitch-free, low-latency audio on separate high-priority thread
+- ✅ **Progressive Waveform**: Left-to-right visualization builds as chunks arrive
+- ✅ **Fast Decompression**: Zstd level 3 (~10-30 MB/s) in Web Worker
+- ✅ **Global Edge Distribution**: Cloudflare R2 CDN (`cdn.now.audio`)
+- ✅ **Scheduled Collection**: Automated 10-minute collection cycle for active stations
+- ✅ **Automatic Metadata**: Per-day JSON with min/max for consistent normalization
 - ✅ **Sample-Accurate Playback**: Zero clicks/pops between chunks
-- ✅ **Live Spectrogram**: Real-time frequency visualization (in test interfaces)
 
 ## Local Development Setup
 
-### Quick Start - Boot Local Mode
-```bash
-# Start both R2 Worker and Flask Backend at once
-./boot_local_mode.sh
-```
+### Quick Start - Local Collector
 
-This script will:
-- 🧹 Clean up any existing processes on ports 8787 and 5001
-- 📡 Start R2 Worker on `http://localhost:8787`
-- 🐍 Start Flask Backend on `http://localhost:5001`
-- ✅ Show you the status of both services
-- 📋 Tell you where to find the logs
+For testing the scheduled collector and on-demand streaming:
 
-**Logs:**
-- Worker: `tail -f /tmp/wrangler.log`
-- Flask: `tail -f /tmp/flask.log`
-
-**To stop all services:**
-```bash
-pkill -9 -f 'wrangler dev'
-pkill -9 -f 'backend/main.py'
-```
-
-### Manual Setup (if needed)
-
-#### Backend (Railway/Flask)
 ```bash
 cd backend
-pip install -r requirements.txt
-python3 main.py  # Runs on http://localhost:5001
+# Start local collector (includes /api/stream-audio endpoint)
+./start_local_collector.sh
 ```
 
-#### R2 Worker (Cloudflare)
+This runs the collector on `http://localhost:5005` with:
+- Scheduled 10-minute collection cycles
+- `/api/stream-audio` endpoint for on-demand inactive station streaming
+- `/health`, `/status`, `/trigger` monitoring endpoints
+
+**To stop:**
 ```bash
-cd worker
-npx wrangler dev --port 8787
+pkill -f collector_loop.py
 ```
+
+### Frontend Development
+
+Simply open `index.html` in a browser:
+- **Active stations**: Fetches directly from `cdn.now.audio` (no local setup needed)
+- **Inactive stations**: Configure to use local collector at `http://localhost:5005`
+
+### Testing
+
+1. **Active Stations** (HV.OBL, etc.): Just open `index.html` - works immediately
+2. **Inactive Stations** (Mauna Loa, etc.): Start local collector, then open `index.html`
+3. **Collection Pipeline**: Run collector with `./start_local_collector.sh`, check logs
 
 **Need more help?** See **[Developer Guide](docs/DEV_GUIDE.md)** for detailed setup, R2 configuration, and troubleshooting.
-
-### Testing the Pipeline
-1. Start local services: `./boot_local_mode.sh`
-2. Open `pipeline_dashboard.html` in your browser
-3. Ensure "🖥️ Local Mode" checkbox is checked
-4. Click "Start Pipeline Test"
-5. Watch the real-time visual feedback as data flows through the system!
 
 ## Usage
 
 ### Web Streaming Interface
-1. Open `test_streaming.html`
-2. Select volcano, duration (1-24 hours), and compression format
-3. Click "Start Streaming"
-4. Audio begins playing as soon as first chunk arrives
-5. View real-time waveform and spectrogram
+1. Open `index.html` in a web browser
+2. Select volcano and station from dropdowns
+3. Choose time range (0.5 to 24 hours)
+4. Configure playback speed and filters
+5. Click "▶️ Start Streaming"
+6. Audio begins playing as soon as first chunk arrives
+7. View real-time progressive waveform and playback indicator
 
 ### API Endpoints
 
-#### R2 Worker: `GET /request`
-Primary entry point for data requests
-- **Query params**: `network`, `station`, `location`, `channel`, `starttime` (ISO format), `duration` (seconds)
-- **Response**: Cache status (`cache_hit` or `processing`) with metadata
-- **Example**: `/request?network=HV&station=NPOC&location=&channel=HHZ&starttime=2025-10-28T00:00:00Z&duration=3600`
+#### Railway Collector Service
 
-#### Railway Backend: `POST /api/request`
-Processing endpoint (called by R2 Worker on cache miss)
-- **Body**: JSON with network, station, location, channel, starttime, duration
-- **Response**: Processing status with chunk metadata
-- **Actions**: Fetches from IRIS, processes, chunks, compresses with Zstd, uploads to R2
+**Production**: `https://volcano-audio-collector-production.up.railway.app`
 
-#### Legacy Endpoints
-- `GET /api/stream/<volcano>/<hours>` - Progressive streaming (may be deprecated)
-- `GET /api/zarr/<volcano>/<hours>` - Zarr archive download
-- `GET /api/audio/<volcano>/<hours>` - WAV file generation
+##### Primary Endpoints
+- `GET /health` - Health check (returns status, version, uptime)
+- `GET /status` - Detailed collector status with metrics (optional `?timezone=` param)
+- `GET /stations` - List active stations from `stations_config.json`
+- `GET /trigger` - Manually trigger collection cycle immediately
+- `POST /api/stream-audio` - On-demand audio streaming for inactive stations
+  - **Body**: `{network, station, location, channel, starttime, duration, highpass_hz, normalize, send_raw}`
+  - **Used by**: Browser for inactive stations (Mauna Loa, etc.)
+- `GET /gaps/<mode>` - Gap detection (`smart`, `simple`, or `all`)
+- `POST /backfill` - Backfill missing data for specified time ranges
+
+##### CDN Direct Access (Active Stations)
+- `https://cdn.now.audio/data/{YYYY}/{MM}/{DD}/{NETWORK}/{VOLCANO}/{STATION}/{LOCATION}/{CHANNEL}/{TYPE}/{FILENAME}.bin.zst`
+- **Types**: `10m`, `1h`, `6h`
+- **Metadata**: `https://cdn.now.audio/data/{YYYY}/{MM}/{DD}/{NETWORK}/{VOLCANO}/{STATION}/{LOCATION}/{CHANNEL}/{NETWORK}_{STATION}_{LOCATION}_{CHANNEL}_{YYYY-MM-DD}.json`
 
 ## Data Management
 
@@ -152,16 +166,7 @@ The system uses `data/reference/volcano_station_availability.json` which contain
 - Distance from volcano summit
 
 ### Updating Station Data
-```bash
-python python_code/audit_station_availability.py
-```
-This queries IRIS for all monitored volcanoes and updates the availability database.
-
-### Deriving Active Stations
-```bash
-python python_code/derive_active_stations.py
-```
-Filters to only currently-active channels (empty `end_time`).
+The station availability database (`data/reference/volcano_station_availability.json`) is maintained manually. The collector service uses `backend/stations_config.json` for active station configuration.
 
 ## Performance Metrics
 
@@ -172,10 +177,11 @@ Filters to only currently-active channels (empty `end_time`).
 | **Zstd-3** | **~400-600 KB** | **~30-50ms** | **~20-40ms** | **~2.4-3.6:1** |
 
 ### Multi-Size Chunking Strategy
-- **1-minute chunks** (×6): First 6 minutes for fastest playback start
-- **6-minute chunks** (×4): Minutes 6-30 for balanced efficiency  
-- **30-minute chunks** (×1): Remainder for maximum compression
-- **Total overhead**: ~11 chunks for 1 hour vs. 1 monolithic file
+- **10-minute chunks**: First 60 minutes (mandatory for instant playback, 6 chunks)
+- **1-hour chunks**: After 60 minutes at hour boundaries (balanced efficiency)
+- **6-hour chunks**: At 6-hour boundaries (maximum compression, fewest requests)
+- **Smart Selection**: Browser picks largest available chunk at each time boundary
+- **Example (6 hours)**: Six 10m chunks + five 1h chunks = 11 total requests
 
 ### Streaming Performance
 - **Time to First Audio**: Target <100ms (depends on R2 cache status)
@@ -187,38 +193,32 @@ Filters to only currently-active channels (empty `end_time`).
 
 ```
 volcano-audio/
-├── boot_local_mode.sh       # 🚀 One-command local testing setup
-├── pipeline_dashboard.html  # 🔧 Real-time pipeline visualization
+├── index.html               # 🎵 Main audio streaming interface (AudioWorklet-based)
 ├── backend/
-│   ├── main.py              # Flask API server (Render backend)
-│   └── requirements.txt     # Python dependencies (ObsPy, boto3, zstandard, etc.)
-├── worker/
-│   ├── src/index.js         # Cloudflare R2 Worker (routing/caching)
-│   └── wrangler.toml        # Worker configuration
-├── python_code/
-│   ├── data_management.py   # Station filtering utilities
-│   ├── audit_station_availability.py  # IRIS station queries
-│   └── derive_active_stations.py      # Active channel filtering
+│   ├── collector_loop.py    # 🔄 Scheduled collector + HTTP API (Railway)
+│   ├── audio_stream.py      # 🎧 On-demand streaming endpoint (/api/stream-audio)
+│   ├── stations_config.json # ⚙️ Active station configuration
+│   ├── start_local_collector.sh  # 🚀 Start local collector for testing
+│   └── requirements.txt     # Python dependencies (ObsPy, boto3, zstandard)
 ├── data/reference/
 │   ├── volcano_station_availability.json  # Complete station database
 │   └── monitored_volcanoes.json          # Volcano list from USGS
 ├── docs/
-│   ├── FULL_cache_architecture_w_LOCAL_DB.md  # ⭐ Architecture source of truth
-│   ├── captains_logs/       # Development progress logs
-│   └── planning/            # Architecture documentation
-├── tests/                   # Compression benchmarks and test logs
-├── test_streaming.html      # Legacy streaming interface
-├── test_audioworklet.html   # AudioWorklet-based player
-└── dashboard.html           # Project management dashboard
+│   ├── TODO.md              # 📝 Current development priorities
+│   ├── captains_logs/       # 📖 Daily progress logs
+│   └── DEV_GUIDE.md         # 🛠️ Developer setup guide
+├── waveform-worker.js       # 🎨 Web Worker for progressive waveform rendering
+└── archive/                  # 📦 Archived old code, docs, and prototypes
 ```
 
 ## Technical Details
 
 ### Data Storage Format
 - **R2 Storage**: Zstd-compressed `.zst` files (level 3)
-- **Data type**: int32 (32-bit signed integers for full dynamic range)
-- **Metadata**: Per-day JSON files with min/max, sample rate, timestamps, channel info
-- **Hierarchy**: `/data/{YEAR}/{MONTH}/{NETWORK}/{VOLCANO}/{STATION}/{LOCATION}/{CHANNEL}/`
+- **Data type**: float32 (normalized to [-1.0, 1.0])
+- **Metadata**: Per-day JSON files with min/max, sample rate, timestamps, all available chunks
+- **Hierarchy**: `/data/{YYYY}/{MM}/{DD}/{NETWORK}/{VOLCANO}/{STATION}/{LOCATION}/{CHANNEL}/{TYPE}/`
+  - `{TYPE}` = `10m`, `1h`, or `6h`
 
 ### Audio Processing Pipeline
 - **Input**: Seismic data sampled at 20-100 Hz (typically 100 Hz for HV network)
@@ -232,16 +232,17 @@ volcano-audio/
 - **Rationale**: 
   - Fast browser decompression (10-30 MB/s with fzstd.js)
   - Better compression than gzip (~2.4-3.6:1 ratio)
-  - No Worker CPU overhead (browser decompresses locally)
-- **Multi-size chunks**: 1-min, 6-min, 30-min for optimized streaming
+  - Decompression happens in Web Worker (non-blocking)
+- **Multi-size chunks**: 10m/1h/6h aligned to time boundaries for efficient caching
 
 ### Browser Technologies
-- **Web Audio API**: Chrome, Firefox, Safari, Edge (92%+ browsers)
-- **IndexedDB**: Local uncompressed cache for instant replay
-- **Zstd Decompression**: fzstd.js library
-- **Fetch API**: Direct R2 chunk fetching
+- **AudioWorklet API**: `SeismicProcessor` class runs audio on separate high-priority thread
+- **Web Workers**: Separate threads for Zstd decompression and waveform rendering
+- **Zstd Decompression**: fzstd.js library (~10-30 MB/s)
+- **Fetch API**: Direct CDN chunk fetching from `cdn.now.audio`
+- **Canvas API**: Real-time progressive waveform visualization
 
 ### Cloudflare Infrastructure
 - **R2 Storage**: Object storage with zero egress fees
-- **Workers**: Lightweight routing layer (checks cache, forwards to Render)
-- **Edge Distribution**: Global CDN for low-latency chunk delivery 
+- **CDN Distribution**: `cdn.now.audio` for global edge delivery
+- **Metadata + Chunks**: Per-day JSON manifests + Zstd-compressed binary chunks 

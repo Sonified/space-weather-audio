@@ -16,10 +16,10 @@ import numpy as np
 def validate_parser():
     """Compare ObsPy parsing with expected behavior"""
     
-    test_file = Path("test_miniseed.mseed")
+    test_file = Path("files/test_miniseed.mseed")
     
     if not test_file.exists():
-        print("❌ test_miniseed.mseed not found")
+        print("❌ files/test_miniseed.mseed not found")
         return
     
     print("=" * 70)
@@ -128,10 +128,10 @@ def validate_parser():
         print("✅ File uses STEIM2 compression")
         print("✅ Fixed header shows 'int24' but blockettes override to STEIM2")
         print("✅ Our JavaScript parser correctly handles STEIM2 decompression")
-        print("✅ The steim2Decompress() function in test_streaming.html matches")
+        print("✅ The steim2Decompress() function in browser/test_streaming.html matches")
         print("   the algorithm used by ObsPy")
         print("\n📋 To verify JavaScript parser:")
-        print("   1. Load test_streaming.html in browser")
+        print("   1. Load browser/test_streaming.html in browser")
         print("   2. Use 'Simple Streaming' mode with this file")
         print("   3. Parser will use steim2Decompress() automatically")
         print("   4. Samples will match ObsPy's output exactly")
@@ -151,7 +151,7 @@ def validate_parser():
     print("\n" + "=" * 70)
     print("✅ Validation Complete!")
     print("=" * 70)
-    print("\nOur custom JavaScript parser in test_streaming.html:")
+    print("\nOur custom JavaScript parser in browser/test_streaming.html:")
     print("  • Correctly detects encoding from blockettes")
     print("  • Implements Steim1 decompression (steim1Decompress)")
     print("  • Implements Steim2 decompression (steim2Decompress)")

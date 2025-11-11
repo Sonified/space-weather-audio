@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from python_code.seismic_utils import fetch_seismic_data
+from archive.python_code.seismic_utils import fetch_seismic_data
 from datetime import datetime, timedelta
 
 def download_hourly_chunks():
