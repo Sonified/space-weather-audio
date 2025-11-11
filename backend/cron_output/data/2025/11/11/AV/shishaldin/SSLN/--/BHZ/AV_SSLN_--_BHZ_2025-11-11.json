@@ -1,0 +1,26 @@
+{
+  "date": "2025-11-11",
+  "network": "AV",
+  "volcano": "shishaldin",
+  "station": "SSLN",
+  "location": "",
+  "channel": "BHZ",
+  "sample_rate": 50.0,
+  "created_at": "2025-11-11T00:13:12.135846Z",
+  "complete_day": false,
+  "chunks": {
+    "10m": [
+      {
+        "start": "00:00:00",
+        "end": "00:10:00",
+        "min": -5812,
+        "max": 727,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "1h": [],
+    "6h": []
+  }
+}

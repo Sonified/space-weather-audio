@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waveform Sync Test</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 20px;
+            margin: 0;
+        }
+        
+        h1 {
+            color: #ff6b6b;
+            margin-bottom: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #2a2a2a;
+            border-radius: 5px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            background: #4a4a4a;
+            color: #e0e0e0;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: #5a5a5a;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        select {
+            padding: 10px;
+            background: #4a4a4a;
+            color: #e0e0e0;
+            border: none;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        
+        #waveform {
+            width: 100%;
+            height: 300px;
+            background: #000;
+            display: block;
+            margin: 20px 0;
+            cursor: crosshair;
+            border: 2px solid #4a4a4a;
+        }
+        
+        .info {
+            padding: 15px;
+            background: #2a2a2a;
+            border-radius: 5px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .info span {
+            display: inline-block;
+            margin-right: 20px;
+        }
+        
+        .diagnostics {
+            margin-top: 20px;
+            padding: 15px;
+            background: #2a2a2a;
+            border-radius: 5px;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .diagnostics pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        
+        .warning { color: #ffaa00; }
+        .error { color: #ff4444; }
+        .success { color: #44ff44; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔬 Waveform Sync Test Harness</h1>
+        
+        <div class="controls">
+            <label>Test File:</label>
+            <select id="fileSelect">
+                <option value="test_30s.bin">30 seconds</option>
+                <option value="test_1m.bin">1 minute</option>
+                <option value="test_2m.bin">2 minutes</option>
+            </select>
+            <button id="loadBtn">Load File</button>
+            <button id="playBtn" disabled>Play</button>
+            <button id="pauseBtn" disabled>Pause</button>
+        </div>
+        
+        <canvas id="waveform"></canvas>
+        
+        <div class="info">
+            <span><strong>Duration:</strong> <span id="duration">--</span>s</span>
+            <span><strong>Position:</strong> <span id="position">--</span>s (<span id="positionPct">--%</span>)</span>
+            <span><strong>Samples:</strong> <span id="samples">--</span></span>
+            <span><strong>Visual %:</strong> <span id="visualPct">--%</span></span>
+        </div>
+        
+        <div class="diagnostics">
+            <h3>Diagnostics Log:</h3>
+            <pre id="log"></pre>
+        </div>
+    </div>
+
+    <script>
+        // State
+        const State = {
+            audioContext: null,
+            workletNode: null,
+            waveformWorker: null,
+            samples: null,
+            totalDuration: 0,
+            currentPosition: 0,
+            isPlaying: false,
+            waveformData: null,
+            isDragging: false
+        };
+        
+        // Logging
+        function log(msg, type = 'info') {
+            const logEl = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'warn' ? 'warning' : type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            logEl.innerHTML += `<span class="${className}">[${timestamp}] ${msg}</span>\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(msg);
+        }
+        
+        // Load file
+        document.getElementById('loadBtn').addEventListener('click', async () => {
+            const filename = document.getElementById('fileSelect').value;
+            log(`Loading ${filename}...`);
+            
+            try {
+                // Fetch binary file
+                const response = await fetch(`test_files/${filename}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const arrayBuffer = await response.arrayBuffer();
+                State.samples = new Float32Array(arrayBuffer);
+                State.totalDuration = State.samples.length / 44100;
+                
+                log(`✅ Loaded ${State.samples.length.toLocaleString()} samples (${State.totalDuration.toFixed(2)}s)`, 'success');
+                
+                // Update UI
+                document.getElementById('duration').textContent = State.totalDuration.toFixed(2);
+                document.getElementById('samples').textContent = State.samples.length.toLocaleString();
+                
+                // Initialize audio
+                await initAudio();
+                
+                // Build waveform
+                await buildWaveform();
+                
+                // Enable controls
+                document.getElementById('playBtn').disabled = false;
+                document.getElementById('pauseBtn').disabled = false;
+                
+            } catch (err) {
+                log(`❌ Error loading file: ${err.message}`, 'error');
+            }
+        });
+        
+        // Initialize audio system
+        async function initAudio() {
+            if (!State.audioContext) {
+                try {
+                    State.audioContext = new AudioContext({ sampleRate: 44100 });
+                    log('📻 AudioContext created');
+                    
+                    await State.audioContext.audioWorklet.addModule('test-audio-worklet.js');
+                    log('📻 Worklet module loaded');
+                    
+                    State.workletNode = new AudioWorkletNode(State.audioContext, 'test-audio-processor');
+                    log('📻 Worklet node created');
+                    
+                    // Handle messages from worklet
+                    State.workletNode.port.onmessage = (e) => {
+                        const { type } = e.data;
+                        
+                        if (type === 'position') {
+                            State.currentPosition = e.data.positionSeconds;
+                            updatePositionDisplay();
+                        } else if (type === 'finished') {
+                            log(`🏁 Playback finished at ${e.data.totalSamples.toLocaleString()} samples`, 'success');
+                            State.isPlaying = false;
+                        }
+                    };
+                    
+                    State.workletNode.connect(State.audioContext.destination);
+                    log('✅ Audio context initialized', 'success');
+                } catch (err) {
+                    log(`❌ Audio init error: ${err.message}`, 'error');
+                    throw err;
+                }
+            }
+            
+            // Verify worklet is ready
+            if (!State.workletNode) {
+                throw new Error('Worklet node not initialized');
+            }
+            
+            // Send samples to worklet
+            const chunkSize = 44100 * 10; // 10 second chunks
+            for (let i = 0; i < State.samples.length; i += chunkSize) {
+                const chunk = State.samples.slice(i, Math.min(i + chunkSize, State.samples.length));
+                State.workletNode.port.postMessage({
+                    type: 'audio-data',
+                    data: chunk
+                });
+            }
+            
+            // Signal completion
+            State.workletNode.port.postMessage({
+                type: 'data-complete',
+                totalSamples: State.samples.length
+            });
+            
+            log(`📤 Sent ${State.samples.length.toLocaleString()} samples to worklet`, 'success');
+        }
+        
+        // Build waveform
+        async function buildWaveform() {
+            if (!State.waveformWorker) {
+                State.waveformWorker = new Worker('test-waveform-worker.js');
+                State.waveformWorker.onmessage = (e) => {
+                    if (e.data.type === 'waveform-ready') {
+                        State.waveformData = e.data.waveformData;
+                        drawWaveform();
+                        log('✅ Waveform rendered', 'success');
+                    }
+                };
+            }
+            
+            // Send samples to worker
+            State.waveformWorker.postMessage({
+                type: 'set-samples',
+                samples: State.samples
+            });
+            
+            // Request waveform build
+            const canvas = document.getElementById('waveform');
+            State.waveformWorker.postMessage({
+                type: 'build-waveform',
+                canvasWidth: canvas.offsetWidth * window.devicePixelRatio,
+                canvasHeight: canvas.offsetHeight * window.devicePixelRatio
+            });
+        }
+        
+        // Draw waveform
+        function drawWaveform() {
+            if (!State.waveformData) return;
+            
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+            const height = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+            
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw waveform
+            const { mins, maxs } = State.waveformData;
+            const midY = height / 2;
+            
+            ctx.strokeStyle = '#4a9eff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            
+            for (let x = 0; x < mins.length; x++) {
+                const minY = midY + (mins[x] * midY * 0.9);
+                const maxY = midY + (maxs[x] * midY * 0.9);
+                
+                ctx.moveTo(x, minY);
+                ctx.lineTo(x, maxY);
+            }
+            ctx.stroke();
+            
+            // Draw playhead
+            if (State.isPlaying || State.currentPosition > 0) {
+                const progress = State.currentPosition / State.totalDuration;
+                const x = progress * width;
+                
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+        }
+        
+        // Update position display
+        function updatePositionDisplay() {
+            document.getElementById('position').textContent = State.currentPosition.toFixed(3);
+            const pct = (State.currentPosition / State.totalDuration * 100).toFixed(2);
+            document.getElementById('positionPct').textContent = pct;
+            document.getElementById('visualPct').textContent = pct;
+            
+            drawWaveform();
+        }
+        
+        // Animation loop
+        function animationLoop() {
+            if (State.isPlaying) {
+                drawWaveform();
+            }
+            requestAnimationFrame(animationLoop);
+        }
+        animationLoop();
+        
+        // Play button
+        document.getElementById('playBtn').addEventListener('click', () => {
+            if (State.audioContext.state === 'suspended') {
+                State.audioContext.resume();
+            }
+            State.workletNode.port.postMessage({ type: 'play' });
+            State.isPlaying = true;
+            log('▶️ Playing');
+        });
+        
+        // Pause button
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            State.workletNode.port.postMessage({ type: 'pause' });
+            State.isPlaying = false;
+            log('⏸️ Paused');
+        });
+        
+        // Waveform click/drag for seeking
+        const canvas = document.getElementById('waveform');
+        
+        canvas.addEventListener('mousedown', (e) => {
+            State.isDragging = true;
+            seek(e);
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (State.isDragging) {
+                seek(e);
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            State.isDragging = false;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            State.isDragging = false;
+        });
+        
+        function seek(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const progress = x / rect.width;
+            const seekTime = progress * State.totalDuration;
+            const seekSample = Math.floor(seekTime * 44100);
+            
+            // Pause during seek to prevent buffer consumption while we're rebuilding
+            State.workletNode.port.postMessage({ type: 'pause' });
+            
+            // Clear worklet buffer and set position
+            State.workletNode.port.postMessage({
+                type: 'clear-buffer',
+                samplePosition: seekSample
+            });
+            
+            // Re-send samples starting from seek position
+            const chunkSize = 44100 * 10; // 10 second chunks
+            const startSample = seekSample;
+            const endSample = State.samples.length;
+            
+            for (let i = startSample; i < endSample; i += chunkSize) {
+                const chunk = State.samples.slice(i, Math.min(i + chunkSize, endSample));
+                State.workletNode.port.postMessage({
+                    type: 'audio-data',
+                    data: chunk
+                });
+            }
+            
+            // Auto-play after seeking
+            State.workletNode.port.postMessage({ type: 'play' });
+            State.isPlaying = true;
+            
+            State.currentPosition = seekTime;
+            log(`🎯 Seek to ${seekTime.toFixed(2)}s (sample ${seekSample.toLocaleString()}), re-sent ${(endSample - startSample).toLocaleString()} samples`);
+            drawWaveform();
+        }
+        
+        log('🔬 Test player ready. Load a file to begin.');
+    </script>
+</body>
+</html>
+

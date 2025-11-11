@@ -426,7 +426,8 @@ export function setupWaveformInteraction() {
                     updateWorkletSelection();
                 }, 25);
                 
-                if (!State.isPlaying || State.isPaused) {
+                // Only auto-resume if playOnClick is enabled
+                if ((!State.isPlaying || State.isPaused) && document.getElementById('playOnClick').checked) {
                     State.setIsPaused(false);
                     State.setIsPlaying(true);
                     if (State.workletNode) {
@@ -472,7 +473,8 @@ export function setupWaveformInteraction() {
                     drawWaveformWithSelection();
                     seekToPosition(State.selectionStart);
                     
-                    if (!State.isPlaying || State.isPaused) {
+                    // Only auto-resume if playOnClick is enabled
+                    if ((!State.isPlaying || State.isPaused) && document.getElementById('playOnClick').checked) {
                         State.setIsPaused(false);
                         State.setIsPlaying(true);
                         if (State.workletNode) {

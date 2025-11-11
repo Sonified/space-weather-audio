@@ -109,7 +109,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
             } else if (type === 'loop') {
                 this.loopToStart();
             } else if (type === 'seek') {
-                this.seekToPosition(event.data.samplePosition);
+                this.seekToPosition(event.data.samplePosition, event.data.forceResume);
             } else if (type === 'set-selection') {
                 this.setSelection(event.data.start, event.data.end, event.data.loop);
             } else if (type === 'get-buffer-status') {
@@ -203,7 +203,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         console.log(`🔄 WORKLET LOOP: Cleared buffer, requesting samples from ${loopDesc}`);
     }
     
-    seekToPosition(targetSample) {
+    seekToPosition(targetSample, forceResume = false) {
         // Clamp to selection bounds if selection exists
         if (this.selectionStart !== null && this.selectionEnd !== null) {
             const startSample = Math.floor(this.selectionStart * 44100);
@@ -230,7 +230,8 @@ class SeismicProcessor extends AudioWorkletProcessor {
             this.port.postMessage({
                 type: 'seek-ready',
                 targetSample: targetSample,
-                wasPlaying: wasPlaying
+                wasPlaying: wasPlaying,
+                forceResume: forceResume  // Pass forceResume to main thread
             });
             
             console.log(`🎯 WORKLET SEEK: Paused and cleared buffer, set position to ${targetSample.toLocaleString()}`);

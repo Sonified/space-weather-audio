@@ -246,8 +246,8 @@ export async function initAudioWorklet() {
             }
         } else if (type === 'seek-ready') {
             // Worklet has cleared its buffer and is ready for samples at seek position
-            const { targetSample, wasPlaying } = event.data;
-            console.log(`🎯 [SEEK-READY] Re-sending samples from ${targetSample.toLocaleString()}, wasPlaying=${wasPlaying}`);
+            const { targetSample, wasPlaying, forceResume } = event.data;
+            console.log(`🎯 [SEEK-READY] Re-sending samples from ${targetSample.toLocaleString()}, wasPlaying=${wasPlaying}, forceResume=${forceResume}`);
             
             if (State.completeSamplesArray && targetSample >= 0 && targetSample < State.completeSamplesArray.length) {
                 // Send samples in chunks to avoid blocking
@@ -264,10 +264,10 @@ export async function initAudioWorklet() {
                     });
                 }
                 
-                // Resume playback if it was playing before seek OR if main thread thinks we should be playing
-                if (wasPlaying || State.isPlaying) {
+                // Resume playback if it was playing before OR if forceResume (from Play button)
+                if (wasPlaying || forceResume) {
                     State.workletNode.port.postMessage({ type: 'resume' });
-                    console.log(`▶️ [SEEK-READY] Resumed playback after re-sending samples (wasPlaying=${wasPlaying}, isPlaying=${State.isPlaying})`);
+                    console.log(`▶️ [SEEK-READY] Resumed playback after re-sending samples (wasPlaying=${wasPlaying}, forceResume=${forceResume})`);
                 }
                 
                 console.log(`📤 [SEEK-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}`);

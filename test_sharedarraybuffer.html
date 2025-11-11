@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SharedArrayBuffer Audio Test</title>
+</head>
+<body>
+    <h1>SharedArrayBuffer Audio Test</h1>
+    <button id="playBtn">Play Noise (5 seconds)</button>
+    <p id="status">Click button to play noise through SharedArrayBuffer</p>
+    
+    <script>
+        // Simple AudioWorklet processor that reads from SharedArrayBuffer
+        const workletCode = `
+class NoiseProcessor extends AudioWorkletProcessor {
+    constructor() {
+        super();
+        this.sharedSamples = null;
+        this.metaView = null;
+        this.readPos = 0;
+        this.totalSamples = 0;
+        this.isPlaying = false;
+        
+        this.port.onmessage = (e) => {
+            if (e.data.type === 'init') {
+                this.sharedSamples = new Int16Array(e.data.buffer);
+                this.metaView = new Int32Array(e.data.metadata);
+                this.totalSamples = Atomics.load(this.metaView, 2); // index 2 = totalSamples
+                console.log('🎵 Worklet: Initialized with ' + this.totalSamples + ' samples');
+                this.port.postMessage({ type: 'ready' });
+            } else if (e.data.type === 'start') {
+                this.isPlaying = true;
+                console.log('🎵 Worklet: Started playback');
+            }
+        };
+    }
+    
+    process(inputs, outputs, parameters) {
+        const output = outputs[0];
+        const channel = output[0];
+        
+        if (!this.isPlaying || !this.sharedSamples) {
+            channel.fill(0);
+            return true;
+        }
+        
+        for (let i = 0; i < channel.length; i++) {
+            if (this.readPos < this.totalSamples) {
+                // Read Int16, convert to Float32 [-1, 1]
+                const int16Sample = this.sharedSamples[this.readPos];
+                channel[i] = int16Sample / 32767.0;
+                this.readPos++;
+            } else {
+                channel[i] = 0;
+                this.isPlaying = false;
+                this.port.postMessage({ type: 'finished' });
+            }
+        }
+        
+        return true;
+    }
+}
+
+registerProcessor('noise-processor', NoiseProcessor);
+`;
+
+        const blob = new Blob([workletCode], { type: 'application/javascript' });
+        const workletUrl = URL.createObjectURL(blob);
+        
+        let audioContext = null;
+        let workletNode = null;
+        
+        document.getElementById('playBtn').addEventListener('click', async () => {
+            const statusEl = document.getElementById('status');
+            
+            try {
+                // 1. Check SharedArrayBuffer support
+                if (typeof SharedArrayBuffer === 'undefined') {
+                    statusEl.textContent = '❌ SharedArrayBuffer NOT supported! Need COOP/COEP headers.';
+                    return;
+                }
+                
+                statusEl.textContent = '✅ SharedArrayBuffer supported! Creating audio...';
+                
+                // 2. Create AudioContext
+                if (!audioContext) {
+                    audioContext = new AudioContext();
+                    console.log('🎵 Creating AudioContext and loading worklet...');
+                    await audioContext.audioWorklet.addModule(workletUrl);
+                    console.log('🎵 Worklet module loaded');
+                    workletNode = new AudioWorkletNode(audioContext, 'noise-processor');
+                    workletNode.connect(audioContext.destination);
+                    console.log('🎵 WorkletNode created and connected');
+                }
+                
+                // Resume if suspended
+                if (audioContext.state === 'suspended') {
+                    console.log('🎵 Resuming suspended AudioContext...');
+                    await audioContext.resume();
+                    console.log('🎵 AudioContext resumed');
+                }
+                
+                // 3. Create SharedArrayBuffer for 5 seconds of audio at 44100 Hz
+                const sampleRate = 44100;
+                const duration = 5;
+                const totalSamples = sampleRate * duration; // 220,500 samples
+                
+                const sharedBuffer = new SharedArrayBuffer(totalSamples * 2); // Int16 = 2 bytes
+                const sharedMetadata = new SharedArrayBuffer(16); // 4 Int32 values
+                const sharedSamples = new Int16Array(sharedBuffer);
+                const metaView = new Int32Array(sharedMetadata);
+                
+                statusEl.textContent = '🔊 Generating noise...';
+                
+                // 4. Fill with random noise
+                for (let i = 0; i < totalSamples; i++) {
+                    // Random Int16 value between -16384 and +16384 (50% volume)
+                    sharedSamples[i] = Math.floor((Math.random() * 2 - 1) * 16384);
+                }
+                
+                // 5. Set metadata
+                Atomics.store(metaView, 0, 0);              // writePosition (not used in this test)
+                Atomics.store(metaView, 1, 0);              // readPosition (not used in this test)
+                Atomics.store(metaView, 2, totalSamples);   // totalSamples
+                Atomics.store(metaView, 3, 0);              // isComplete (not used in this test)
+                
+                console.log('✅ Generated ' + totalSamples.toLocaleString() + ' noise samples');
+                
+                // 6. Send to worklet
+                statusEl.textContent = '📤 Sending to AudioWorklet...';
+                
+                if (!workletNode) {
+                    throw new Error('WorkletNode is null! This should not happen.');
+                }
+                
+                console.log('📤 Sending init message to worklet...');
+                
+                // 7. Set up message handler BEFORE sending init
+                workletNode.port.onmessage = (e) => {
+                    if (e.data.type === 'ready') {
+                        console.log('✅ Worklet ready, starting playback');
+                        workletNode.port.postMessage({ type: 'start' });
+                        statusEl.textContent = '🔊 PLAYING NOISE! (5 seconds)';
+                        statusEl.style.color = 'green';
+                        statusEl.style.fontWeight = 'bold';
+                    } else if (e.data.type === 'finished') {
+                        console.log('✅ Playback finished');
+                        statusEl.textContent = '✅ Finished! Click to play again.';
+                        statusEl.style.color = 'black';
+                        statusEl.style.fontWeight = 'normal';
+                    }
+                };
+                
+                // 8. Now send the init message
+                workletNode.port.postMessage({
+                    type: 'init',
+                    buffer: sharedBuffer,
+                    metadata: sharedMetadata
+                });
+                
+            } catch (error) {
+                console.error('Error:', error);
+                statusEl.textContent = '❌ Error: ' + error.message;
+                statusEl.style.color = 'red';
+            }
+        });
+    </script>
+</body>
+</html>
+

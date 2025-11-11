@@ -14,8 +14,17 @@ export function togglePlayPause() {
     
     // If playback has finished and we have data, "Play" means replay
     if (!State.isPlaying && State.allReceivedData && State.allReceivedData.length > 0) {
-        // Determine replay position: selection start if selection exists, otherwise 0
-        const replayPosition = (State.selectionStart !== null && State.selectionEnd !== null) ? State.selectionStart : 0;
+        // Determine replay position: selection start if selection exists, 
+        // otherwise current position (but reset to 0 if at/near the end)
+        let replayPosition;
+        if (State.selectionStart !== null && State.selectionEnd !== null) {
+            replayPosition = State.selectionStart;
+        } else {
+            // If we're at/near the end (within last 0.1s), restart from beginning
+            replayPosition = (State.currentAudioPosition >= State.totalAudioDuration - 0.1) 
+                ? 0 
+                : State.currentAudioPosition;
+        }
         console.log(`▶️ PLAY AGAIN: Replaying from ${replayPosition.toFixed(2)}s (selection=${State.selectionStart !== null ? 'yes' : 'no'})`);
         
         // Remove pulse animations
@@ -30,8 +39,8 @@ export function togglePlayPause() {
         document.getElementById('status').className = 'status info';
         document.getElementById('status').textContent = 'Replaying audio...';
         
-        // Just seek to replay position - seekToPosition handles everything!
-        seekToPosition(replayPosition);
+        // Just seek to replay position - forceResume=true since user clicked Play button
+        seekToPosition(replayPosition, true);
         
         return;
     }
@@ -186,7 +195,7 @@ export function resetVolumeTo1() {
     changeVolume();
 }
 
-export function seekToPosition(targetPosition) {
+export function seekToPosition(targetPosition, forceResume = false) {
     if (!State.audioContext || !State.workletNode || !State.completeSamplesArray || State.totalAudioDuration === 0) {
         console.log('❌ Cannot seek: audio not ready');
         return;
@@ -214,7 +223,8 @@ export function seekToPosition(targetPosition) {
     const wasPlaying = State.isPlaying && !State.isPaused;
     
     // If we're paused OR playback has finished, seeking should resume playback
-    if (!State.isPlaying || State.isPaused) {
+    // (if checkbox enabled OR forceResume from Play button)
+    if ((!State.isPlaying || State.isPaused) && (forceResume || document.getElementById('playOnClick').checked)) {
         console.log(`▶️ Seeking while paused - auto-resuming playback`);
         State.setIsPaused(false);
         State.setIsPlaying(true);
@@ -266,7 +276,8 @@ export function seekToPosition(targetPosition) {
         
         State.workletNode.port.postMessage({ 
             type: 'seek',
-            samplePosition: targetSample
+            samplePosition: targetSample,
+            forceResume: forceResume  // Pass forceResume to seek-ready handler
         });
         
         if (State.gainNode) {
