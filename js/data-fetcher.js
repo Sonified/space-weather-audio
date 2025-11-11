@@ -715,19 +715,29 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             const [year, month, day] = chunk.date.split('-');
             const datePath = `${year}/${month}/${day}`;
             
+            // Calculate the actual end date (might be next day if chunk crosses midnight)
+            const startDateTime = new Date(`${chunk.date}T${chunk.start}Z`);
+            const chunkDurationMinutes = {
+                '10m': 10,
+                '1h': 60,
+                '6h': 360
+            }[chunk.type];
+            const endDateTime = new Date(startDateTime.getTime() + chunkDurationMinutes * 60 * 1000);
+            const endDate = endDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
+            
             // Convert start/end times to filename format
             const startFormatted = chunk.start.replace(/:/g, '-');
             const endFormatted = chunk.end.replace(/:/g, '-');
             
             // Try NEW format first (no sample rate), fallback to OLD format (with sample rate)
-            const newFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${chunk.type}_${chunk.date}-${startFormatted}_to_${chunk.date}-${endFormatted}.bin.zst`;
+            const newFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${chunk.type}_${chunk.date}-${startFormatted}_to_${endDate}-${endFormatted}.bin.zst`;
             const newChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${newFilename}${cacheBuster}`;
             
             let response = await fetch(newChunkUrl);
             
             // If NEW format not found, try OLD format (with sample rate)
             if (!response.ok) {
-                const oldFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${chunk.date}-${endFormatted}.bin.zst`;
+                const oldFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${endDate}-${endFormatted}.bin.zst`;
                 const oldChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${oldFilename}${cacheBuster}`;
                 
                 response = await fetch(oldChunkUrl);
