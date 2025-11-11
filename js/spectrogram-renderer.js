@@ -38,7 +38,7 @@ export function drawSpectrogram() {
     // Helper function to calculate y position based on frequency scale
     const getYPosition = (binIndex, totalBins, canvasHeight) => {
         if (State.frequencyScale === 'logarithmic') {
-            // Logarithmic scale: more space for lower frequencies
+            // Logarithmic scale: strong emphasis on lower frequencies
             // Map bin index to log scale (avoiding log(0))
             const minFreq = 1; // Minimum frequency bin (avoid log(0))
             const maxFreq = totalBins;
@@ -47,8 +47,13 @@ export function drawSpectrogram() {
             const logFreq = Math.log10(Math.max(binIndex + 1, minFreq));
             const normalizedLog = (logFreq - logMin) / (logMax - logMin);
             return canvasHeight - (normalizedLog * canvasHeight);
+        } else if (State.frequencyScale === 'sqrt') {
+            // Square root scale: gentle emphasis on lower frequencies (good middle ground)
+            const normalized = binIndex / totalBins;
+            const sqrtNormalized = Math.sqrt(normalized);
+            return canvasHeight - (sqrtNormalized * canvasHeight);
         } else {
-            // Linear scale (default)
+            // Linear scale (default) - even spacing
             return canvasHeight - (binIndex / totalBins) * canvasHeight;
         }
     };
@@ -154,7 +159,7 @@ export function changeSpectrogramScrollSpeed() {
 
 export function changeFrequencyScale() {
     const select = document.getElementById('frequencyScale');
-    const value = select.value; // 'linear' or 'logarithmic'
+    const value = select.value; // 'linear', 'sqrt', or 'logarithmic'
     
     State.setFrequencyScale(value);
     
