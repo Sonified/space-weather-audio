@@ -715,7 +715,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             const [year, month, day] = chunk.date.split('-');
             const datePath = `${year}/${month}/${day}`;
             
-            // Calculate the actual end date (might be next day if chunk crosses midnight)
+            // Calculate NEW format end date (might be next day if chunk crosses midnight)
             const startDateTime = new Date(`${chunk.date}T${chunk.start}Z`);
             const chunkDurationMinutes = {
                 '10m': 10,
@@ -725,9 +725,15 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             const endDateTime = new Date(startDateTime.getTime() + chunkDurationMinutes * 60 * 1000);
             const endDate = endDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
             
+            // Calculate OLD format end date/time (1 second before, for :59 suffix)
+            const oldEndDateTime = new Date(startDateTime.getTime() + chunkDurationMinutes * 60 * 1000 - 1000);
+            const oldEndDate = oldEndDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
+            const oldEndTime = oldEndDateTime.toISOString().split('T')[1].substring(0, 8); // HH:MM:SS
+            
             // Convert start/end times to filename format
             const startFormatted = chunk.start.replace(/:/g, '-');
             const endFormatted = chunk.end.replace(/:/g, '-');
+            const oldEndFormatted = oldEndTime.replace(/:/g, '-');
             
             // Try NEW format first (no sample rate), fallback to OLD format (with sample rate)
             const newFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${chunk.type}_${chunk.date}-${startFormatted}_to_${endDate}-${endFormatted}.bin.zst`;
@@ -735,9 +741,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             
             let response = await fetch(newChunkUrl);
             
-            // If NEW format not found, try OLD format (with sample rate)
+            // If NEW format not found, try OLD format (with sample rate + :59 end time)
             if (!response.ok) {
-                const oldFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${endDate}-${endFormatted}.bin.zst`;
+                const oldFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${oldEndDate}-${oldEndFormatted}.bin.zst`;
                 const oldChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${oldFilename}${cacheBuster}`;
                 
                 response = await fetch(oldChunkUrl);

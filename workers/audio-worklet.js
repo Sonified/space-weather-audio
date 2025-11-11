@@ -248,8 +248,6 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.filterB2 = b2 / a0;
         this.filterA1 = a1 / a0;
         this.filterA2 = a2 / a0;
-        
-        console.log('🎛️ Anti-aliasing filter updated: cutoff=' + cutoff.toFixed(0) + 'Hz @ ' + this.speed.toFixed(2) + 'x speed (enabled=' + this.enableAntiAliasing + ')');
     }
     
     resetFilterState() {

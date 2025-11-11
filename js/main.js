@@ -422,15 +422,26 @@ export async function startStreaming(event) {
                     const minute = Math.floor(attemptTime.getUTCMinutes() / 10) * 10;
                     const startTimeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
                     
-                    const endMinute = minute + 10;
-                    const endHour = hour + Math.floor(endMinute / 60);
-                    const endTime = `${String(endHour % 24).padStart(2, '0')}:${String(endMinute % 60).padStart(2, '0')}:00`;
+                    // Calculate NEW format end time (actual end: 03:40:00 for 03:30 start)
+                    const endDateTime = new Date(attemptTime.getTime() + 10 * 60 * 1000); // +10 minutes
+                    const endDate = endDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
+                    const endHour = endDateTime.getUTCHours();
+                    const endMinute = endDateTime.getUTCMinutes();
+                    const endTime = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`;
+                    
+                    // Calculate OLD format end time (last second: 03:39:59 for 03:30 start)
+                    const oldEndDateTime = new Date(attemptTime.getTime() + 10 * 60 * 1000 - 1000); // +10 min - 1 sec
+                    const oldEndDate = oldEndDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
+                    const oldEndHour = oldEndDateTime.getUTCHours();
+                    const oldEndMinute = oldEndDateTime.getUTCMinutes();
+                    const oldEndSecond = oldEndDateTime.getUTCSeconds();
+                    const oldEndTime = `${String(oldEndHour).padStart(2, '0')}:${String(oldEndMinute).padStart(2, '0')}:${String(oldEndSecond).padStart(2, '0')}`;
                     
                     const [y, m, d] = date.split('-');
                     const path = `${y}/${m}/${d}`;
                     
-                    const newFname = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_10m_${date}-${startTimeStr.replace(/:/g, '-')}_to_${date}-${endTime.replace(/:/g, '-')}.bin.zst`;
-                    const oldFname = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_10m_${date}-${startTimeStr.replace(/:/g, '-')}_to_${date}-${endTime.replace(/:/g, '-')}.bin.zst`;
+                    const newFname = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_10m_${date}-${startTimeStr.replace(/:/g, '-')}_to_${endDate}-${endTime.replace(/:/g, '-')}.bin.zst`;
+                    const oldFname = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_10m_${date}-${startTimeStr.replace(/:/g, '-')}_to_${oldEndDate}-${oldEndTime.replace(/:/g, '-')}.bin.zst`;
                     
                     return {
                         newUrl: `${CDN_BASE_URL}/${path}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/10m/${newFname}${cacheBuster}`,
