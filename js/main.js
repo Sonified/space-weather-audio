@@ -7,8 +7,9 @@ import * as State from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, startVisualization } from './spectrogram-renderer.js';
-import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPrePostSurveyModal, closePrePostSurveyModal, submitPrePostSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault } from './ui-controls.js';
+import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPrePostSurveyModal, closePrePostSurveyModal, submitPrePostSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
+import { initializeModals } from './modal-templates.js';
 
 // Make functions available globally (for inline onclick handlers)
 window.loadStations = loadStations;
@@ -586,6 +587,12 @@ export async function startStreaming(event) {
 window.addEventListener('DOMContentLoaded', () => {
     console.log('🌋 [0ms] volcano-audio v1.74 - Progressive Waveform Drawing');
     console.log('📦 [0ms] v1.74 Feature: Unified collector service now handles both R2 collection + on-demand streaming');
+    
+    // Initialize modals (inject into DOM)
+    initializeModals();
+    
+    // Attach event listeners to modals
+    setupModalEventListeners();
     
     initWaveformWorker();
     

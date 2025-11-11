@@ -216,6 +216,34 @@ export async function purgeCloudflareCache() {
 }
 
 // Modal functions
+export function setupModalEventListeners() {
+    // Participant modal event listeners
+    const participantModal = document.getElementById('participantModal');
+    const participantCloseBtn = participantModal.querySelector('.modal-close');
+    const participantSubmitBtn = participantModal.querySelector('.modal-submit');
+    
+    participantModal.addEventListener('click', closeParticipantModal);
+    participantCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent bubble to overlay
+        closeParticipantModal(); // Close without event check
+    });
+    participantSubmitBtn.addEventListener('click', submitParticipantSetup);
+    
+    // Survey modal event listeners
+    const surveyModal = document.getElementById('prePostSurveyModal');
+    const surveyCloseBtn = surveyModal.querySelector('.modal-close');
+    const surveySubmitBtn = surveyModal.querySelector('.modal-submit');
+    
+    surveyModal.addEventListener('click', closePrePostSurveyModal);
+    surveyCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent bubble to overlay
+        closePrePostSurveyModal(); // Close without event check
+    });
+    surveySubmitBtn.addEventListener('click', submitPrePostSurvey);
+    
+    console.log('📋 Modal event listeners attached');
+}
+
 export function openParticipantModal() {
     document.getElementById('participantModal').classList.add('active');
     console.log('👤 Participant Setup modal opened');
