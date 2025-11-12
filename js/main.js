@@ -671,9 +671,9 @@ export async function startStreaming(event) {
 
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', () => {
-    console.log('🌋 [0ms] volcano-audio v1.76 - Progressive Waveform Drawing');
-    console.log('📦 [0ms] v1.76 Fix: Fixed midnight-crossing chunk filename generation - backend now uses end_time instead of trace.stats.endtime');
-    console.log('📦 [0ms] v1.76 Commit: v1.76 Fix: Fixed midnight-crossing chunk filename generation and frontend path checking');
+    console.log('🌋 [0ms] volcano-audio v1.77 - Progressive Waveform Drawing');
+    console.log('📦 [0ms] v1.77 Feature: Added spectrogram y-axis ticks with optimized resize handling');
+    console.log('📦 [0ms] v1.77 Commit: v1.77 Feature: Added spectrogram y-axis ticks with optimized resize handling');
     
     // Initialize modals (inject into DOM)
     initializeModals();
@@ -768,13 +768,46 @@ window.addEventListener('DOMContentLoaded', () => {
     
     console.log('✅ Event listeners added for fetch button re-enabling');
     
-    // Handle window resize to reposition axis canvas
-    let resizeTimeout;
+    // Handle window resize to reposition axis canvas - optimized for performance
+    let resizeRAF = null;
+    let lastWidth = 0;
+    let lastHeight = 0;
+    
+    // Initialize dimensions on page load
+    setTimeout(() => {
+        const spectrogramCanvas = document.getElementById('spectrogram');
+        if (spectrogramCanvas) {
+            lastWidth = spectrogramCanvas.width;
+            lastHeight = spectrogramCanvas.height;
+        }
+    }, 0);
+    
     window.addEventListener('resize', () => {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
-            resizeAxisCanvas();
-        }, 100);
+        if (resizeRAF) return; // Already scheduled
+        
+        resizeRAF = requestAnimationFrame(() => {
+            const spectrogramCanvas = document.getElementById('spectrogram');
+            const axisCanvas = document.getElementById('spectrogram-axis');
+            
+            if (spectrogramCanvas && axisCanvas) {
+                // Always reposition during resize (fast - no redraw)
+                positionAxisCanvas();
+                
+                // Only redraw if canvas dimensions actually changed (expensive operation)
+                const currentWidth = spectrogramCanvas.width;
+                const currentHeight = spectrogramCanvas.height;
+                
+                if (currentWidth !== lastWidth || currentHeight !== lastHeight) {
+                    axisCanvas.width = 60; // Always 60px width
+                    axisCanvas.height = currentHeight;
+                    drawFrequencyAxis();
+                    lastWidth = currentWidth;
+                    lastHeight = currentHeight;
+                }
+            }
+            
+            resizeRAF = null;
+        });
     });
     
     // Initial axis positioning and drawing on page load
@@ -782,6 +815,12 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         positionAxisCanvas();
         drawFrequencyAxis();
+        // Update dimensions after initial draw
+        const spectrogramCanvas = document.getElementById('spectrogram');
+        if (spectrogramCanvas) {
+            lastWidth = spectrogramCanvas.width;
+            lastHeight = spectrogramCanvas.height;
+        }
     }, 100);
 });
 

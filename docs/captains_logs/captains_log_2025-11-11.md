@@ -309,3 +309,36 @@ A latency adjustment was being applied to the playhead position:
 ### Version: v1.75
 **Commit**: `v1.75 Fix: Removed latency adjustment causing playhead misalignment`
 
+---
+
+## v1.77 Feature: Spectrogram Y-Axis Ticks
+
+### Implementation
+Added frequency axis ticks to the spectrogram showing original seismic frequencies (not sped-up audio frequencies).
+
+**Features**:
+- Y-axis displays frequency labels (e.g., "5", "10", "25 Hz") aligned with spectrogram frequencies
+- Supports all three frequency scales: linear, square root, and logarithmic
+- Dynamic tick generation based on Nyquist frequency and scale type
+- Axis canvas positioned absolutely to the right of the spectrogram
+- Optimized resize handling using `requestAnimationFrame` - only redraws when canvas dimensions change
+
+**Performance Optimizations**:
+- Separated positioning (fast) from redrawing (expensive)
+- Only redraws when width or height actually changes, not on every resize event
+- Uses `requestAnimationFrame` for smooth updates aligned with browser repaint cycle
+- Batched style updates using `cssText` to minimize reflows
+
+**Files Created**:
+- `js/spectrogram-axis-renderer.js` - Complete axis rendering module
+
+**Files Modified**:
+- `index.html` - Added axis canvas element
+- `styles.css` - Added axis canvas styling (60px width, transparent, no shadows)
+- `js/spectrogram-renderer.js` - Integrated axis drawing on scale change and visualization start
+- `js/data-fetcher.js` - Draws axis when metadata is loaded
+- `js/main.js` - Added resize handler and initial positioning
+
+### Version: v1.77
+**Commit**: `v1.77 Feature: Added spectrogram y-axis ticks with optimized resize handling`
+
