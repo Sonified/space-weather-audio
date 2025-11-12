@@ -355,6 +355,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         const totalSamples = Math.floor(durationSeconds * sampleRate); // Use actual sample rate!
         console.log(`📊 ${logTime()} Total samples: ${totalSamples.toLocaleString()} (${durationSeconds.toFixed(1)}s × ${sampleRate} Hz)`);
         
+        // Update sample count UI early (will update with actual count at completion)
+        document.getElementById('sampleCount').textContent = totalSamples.toLocaleString();
+        
         // Calculate global min/max from all chunks we're fetching
         let normMin = Infinity;
         let normMax = -Infinity;
@@ -609,6 +612,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     
                     // 🎯 UPDATE: Use ACTUAL sample count for duration (refining expected duration)
                     State.setTotalAudioDuration(totalWorkletSamples / 44100);
+                    document.getElementById('sampleCount').textContent = totalWorkletSamples.toLocaleString(); // Update with actual
                     console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / 44100).toFixed(2)}s (actual samples: ${totalWorkletSamples.toLocaleString()}, expected: ${totalSamples.toLocaleString()})`);
                     
                     // 🎯 CRITICAL FIX: Wait for worklet to confirm it has buffered all samples
