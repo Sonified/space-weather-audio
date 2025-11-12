@@ -92,16 +92,21 @@ export function drawFrequencyAxis() {
     });
     
     // Draw "Hz" label at bottom, left aligned
-    ctx.font = 'bold 15px Arial, sans-serif';  // Increased from 12px to 15px (+3pt)
-    ctx.fillStyle = '#aaa';
+    // Match the styling of frequency labels for consistency
+    ctx.font = '16px Arial, sans-serif';  // Same size as frequency labels
+    ctx.fillStyle = '#ddd';  // Same color as frequency labels
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'bottom';
+    ctx.textBaseline = 'middle';  // Use middle baseline for sharper rendering
     // Ensure no shadow on Hz label
     ctx.shadowBlur = 0;
     ctx.shadowColor = 'transparent';
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
-    ctx.fillText('Hz', 8, canvasHeight - 5);  // Left aligned at x=8, bottom with 5px padding
+    // Position at bottom: with middle baseline, y position is center of text
+    // Estimate text height ~16px, so center should be at canvasHeight - 5 - 8 = canvasHeight - 13
+    // But let's use a simpler approach: position near bottom accounting for half text height
+    const textHeight = 16; // Approximate height of 16px font
+    ctx.fillText('Hz', 8, canvasHeight - 5 - (textHeight / 2));  // Left aligned, positioned near bottom
 }
 
 /**

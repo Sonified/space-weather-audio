@@ -506,6 +506,7 @@ canvas {
     background: transparent;
 }
 
+#waveform-axis,
 #spectrogram-axis {
     width: 60px !important;
     min-width: 60px !important;

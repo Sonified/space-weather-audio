@@ -134,3 +134,35 @@ This improves the UI by keeping the most common option (24h) as default while ma
 
 This provides better user feedback during downloads and improves UI organization by grouping the download button with other utility controls.
 
+---
+
+## v1.80 Feature: Waveform Y-Axis Ticks and Axis Rendering Fixes
+
+### Implementation
+Added amplitude axis ticks to the waveform, matching the spectrogram axis design.
+
+**Features**:
+- Y-axis displays amplitude values: "0.5" (top), "0" (middle), "-0.5" (bottom)
+- Positioned absolutely to the right of the waveform canvas
+- Uses same styling and positioning approach as spectrogram axis
+- Optimized resize handling using `requestAnimationFrame`
+
+**Fixes**:
+1. **Vertical Compression Fix**: Fixed waveform axis labels appearing compressed by using `offsetHeight` (display height) instead of internal `canvas.height` (which may be scaled by `devicePixelRatio`)
+2. **Hz Label Clarity**: Fixed blurry "Hz" label on spectrogram axis by matching font size (16px), color (#ddd), and baseline (middle) to frequency labels
+3. **Zero Label**: Changed "-0" to "0" on waveform axis since the tick mark already provides visual connection
+
+**Files Created**:
+- `js/waveform-axis-renderer.js` - Complete waveform axis rendering module
+
+**Files Modified**:
+- `index.html` - Added waveform axis canvas element
+- `styles.css` - Combined waveform and spectrogram axis styling
+- `js/waveform-renderer.js` - Integrated axis drawing after waveform is drawn
+- `js/main.js` - Added resize handler for waveform axis, fixed dimension tracking
+- `js/data-fetcher.js` - Imported waveform axis functions
+- `js/spectrogram-axis-renderer.js` - Fixed Hz label styling for clarity
+
+### Version: v1.80
+**Commit**: `v1.80 Feature: Added waveform y-axis ticks and fixed axis rendering issues`
+

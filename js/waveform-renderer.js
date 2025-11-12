@@ -5,6 +5,7 @@
 
 import * as State from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
+import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 
 // Helper functions
 function removeDCOffset(data, alpha = 0.995) {
@@ -160,6 +161,11 @@ export function drawWaveformFromMinMax() {
                 cachedCanvas.height = height;
                 cachedCanvas.getContext('2d').drawImage(newCanvas, 0, 0);
                 State.setCachedWaveformCanvas(cachedCanvas);
+                
+                // Draw waveform axis after crossfade completes
+                positionWaveformAxisCanvas();
+                drawWaveformAxis();
+                
                 console.log(`✅ Waveform crossfade complete - pink detrended waveform`);
                 
                 if (State.isPlaying || State.totalAudioDuration > 0) {
@@ -202,6 +208,10 @@ export function drawWaveformFromMinMax() {
         const cacheCtx = cachedCanvas.getContext('2d');
         cacheCtx.drawImage(canvas, 0, 0);
         State.setCachedWaveformCanvas(cachedCanvas);
+        
+        // Draw waveform axis after waveform is drawn
+        positionWaveformAxisCanvas();
+        drawWaveformAxis();
         
         console.log(`✅ Waveform drawn from min/max data (${mins.length} pixels) - progressive`);
     }

@@ -11,6 +11,7 @@ import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCach
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis } from './spectrogram-axis-renderer.js';
+import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 
 // Make functions available globally (for inline onclick handlers)
 window.loadStations = loadStations;
@@ -672,9 +673,9 @@ export async function startStreaming(event) {
 
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', () => {
-    console.log('🌋 [0ms] volcano-audio v1.79 - Progressive Waveform Drawing');
-    console.log('📦 [0ms] v1.79 Fix: Fixed button height jumping + improved bottom controls spacing');
-    console.log('📦 [0ms] v1.79 Commit: v1.79 Fix: Fixed button height jumping and improved bottom controls spacing');
+    console.log('🌋 [0ms] volcano-audio v1.80 - Progressive Waveform Drawing');
+    console.log('📦 [0ms] v1.80 Feature: Added waveform y-axis ticks + fixed axis rendering issues');
+    console.log('📦 [0ms] v1.80 Commit: v1.80 Feature: Added waveform y-axis ticks and fixed axis rendering issues');
     
     // Initialize modals (inject into DOM)
     initializeModals();
@@ -769,17 +770,24 @@ window.addEventListener('DOMContentLoaded', () => {
     
     console.log('✅ Event listeners added for fetch button re-enabling');
     
-    // Handle window resize to reposition axis canvas - optimized for performance
+    // Handle window resize to reposition axis canvases - optimized for performance
     let resizeRAF = null;
-    let lastWidth = 0;
-    let lastHeight = 0;
+    let lastSpectrogramWidth = 0;
+    let lastSpectrogramHeight = 0;
+    let lastWaveformWidth = 0;
+    let lastWaveformHeight = 0;
     
     // Initialize dimensions on page load
     setTimeout(() => {
         const spectrogramCanvas = document.getElementById('spectrogram');
+        const waveformCanvas = document.getElementById('waveform');
         if (spectrogramCanvas) {
-            lastWidth = spectrogramCanvas.width;
-            lastHeight = spectrogramCanvas.height;
+            lastSpectrogramWidth = spectrogramCanvas.width;
+            lastSpectrogramHeight = spectrogramCanvas.height;
+        }
+        if (waveformCanvas) {
+            lastWaveformWidth = waveformCanvas.offsetWidth;
+            lastWaveformHeight = waveformCanvas.offsetHeight;
         }
     }, 0);
     
@@ -788,9 +796,12 @@ window.addEventListener('DOMContentLoaded', () => {
         
         resizeRAF = requestAnimationFrame(() => {
             const spectrogramCanvas = document.getElementById('spectrogram');
-            const axisCanvas = document.getElementById('spectrogram-axis');
+            const spectrogramAxisCanvas = document.getElementById('spectrogram-axis');
+            const waveformCanvas = document.getElementById('waveform');
+            const waveformAxisCanvas = document.getElementById('waveform-axis');
             
-            if (spectrogramCanvas && axisCanvas) {
+            // Handle spectrogram axis
+            if (spectrogramCanvas && spectrogramAxisCanvas) {
                 // Always reposition during resize (fast - no redraw)
                 positionAxisCanvas();
                 
@@ -798,12 +809,31 @@ window.addEventListener('DOMContentLoaded', () => {
                 const currentWidth = spectrogramCanvas.width;
                 const currentHeight = spectrogramCanvas.height;
                 
-                if (currentWidth !== lastWidth || currentHeight !== lastHeight) {
-                    axisCanvas.width = 60; // Always 60px width
-                    axisCanvas.height = currentHeight;
+                if (currentWidth !== lastSpectrogramWidth || currentHeight !== lastSpectrogramHeight) {
+                    spectrogramAxisCanvas.width = 60; // Always 60px width
+                    spectrogramAxisCanvas.height = currentHeight;
                     drawFrequencyAxis();
-                    lastWidth = currentWidth;
-                    lastHeight = currentHeight;
+                    lastSpectrogramWidth = currentWidth;
+                    lastSpectrogramHeight = currentHeight;
+                }
+            }
+            
+            // Handle waveform axis
+            if (waveformCanvas && waveformAxisCanvas) {
+                // Always reposition during resize (fast - no redraw)
+                positionWaveformAxisCanvas();
+                
+                // Only redraw if canvas dimensions actually changed (expensive operation)
+                // Use display dimensions (offsetHeight) not internal canvas dimensions
+                const currentWidth = waveformCanvas.offsetWidth;
+                const currentHeight = waveformCanvas.offsetHeight;
+                
+                if (currentWidth !== lastWaveformWidth || currentHeight !== lastWaveformHeight) {
+                    waveformAxisCanvas.width = 60; // Always 60px width
+                    waveformAxisCanvas.height = currentHeight; // Use display height
+                    drawWaveformAxis();
+                    lastWaveformWidth = currentWidth;
+                    lastWaveformHeight = currentHeight;
                 }
             }
             
@@ -816,11 +846,18 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         positionAxisCanvas();
         drawFrequencyAxis();
+        positionWaveformAxisCanvas();
+        drawWaveformAxis();
         // Update dimensions after initial draw
         const spectrogramCanvas = document.getElementById('spectrogram');
+        const waveformCanvas = document.getElementById('waveform');
         if (spectrogramCanvas) {
-            lastWidth = spectrogramCanvas.width;
-            lastHeight = spectrogramCanvas.height;
+            lastSpectrogramWidth = spectrogramCanvas.width;
+            lastSpectrogramHeight = spectrogramCanvas.height;
+        }
+        if (waveformCanvas) {
+            lastWaveformWidth = waveformCanvas.offsetWidth;
+            lastWaveformHeight = waveformCanvas.offsetHeight;
         }
     }, 100);
 });

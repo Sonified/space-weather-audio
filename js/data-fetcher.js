@@ -6,6 +6,7 @@ import { updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
 import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas } from './spectrogram-axis-renderer.js';
+import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
 
 // Helper: Normalize data to [-1, 1] range
 function normalize(data) {
