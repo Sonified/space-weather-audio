@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_10_v1.73"
+__version__ = "2025_11_12_v1.76"
 import time
 import sys
 import os
@@ -546,8 +546,10 @@ def process_station_window(network, station, location, channel, volcano, sample_
         print(f"  ✅ Compressed {compression_ratio:.1f}% (saved {100-compression_ratio:.1f}%)")
         
         # Generate filename (NEW format: no sample rate)
-        start_str = trace.stats.starttime.datetime.strftime("%Y-%m-%d-%H-%M-%S")
-        end_str = trace.stats.endtime.datetime.strftime("%Y-%m-%d-%H-%M-%S")
+        # Use requested start_time/end_time instead of trace.stats times to handle midnight crossing correctly
+        # trace.stats.endtime might be slightly off (e.g., 23:59:59.999 instead of 00:00:00)
+        start_str = start_time.strftime("%Y-%m-%d-%H-%M-%S")
+        end_str = end_time.strftime("%Y-%m-%d-%H-%M-%S")
         
         filename = f"{network}_{station}_{location_str}_{channel}_{chunk_type}_{start_str}_to_{end_str}.bin.zst"
         

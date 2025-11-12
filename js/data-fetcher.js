@@ -5,6 +5,7 @@ import * as State from './audio-state.js';
 import { updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
 import { updatePlaybackDuration } from './ui-controls.js';
+import { drawFrequencyAxis, positionAxisCanvas } from './spectrogram-axis-renderer.js';
 
 // Helper: Normalize data to [-1, 1] range
 function normalize(data) {
@@ -373,6 +374,10 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             original_sample_rate: firstDayMeta.sample_rate,
             npts: totalSamples
         });
+        
+        // Draw frequency axis with new metadata
+        positionAxisCanvas();
+        drawFrequencyAxis();
         
         // 🎯 Set totalAudioDuration early so red scan line appears immediately
         // (This is the EXPECTED duration - we'll update with actual samples at completion)
@@ -793,6 +798,16 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             const endDateTime = new Date(startDateTime.getTime() + chunkDurationMinutes * 60 * 1000);
             const endDate = endDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
             
+            // Check if chunk crosses midnight
+            const crossesMidnight = chunk.date !== endDate;
+            
+            // If crossing midnight, also prepare end date path
+            let endDatePath = null;
+            if (crossesMidnight) {
+                const [endYear, endMonth, endDay] = endDate.split('-');
+                endDatePath = `${endYear}/${endMonth}/${endDay}`;
+            }
+            
             // Calculate OLD format end date/time (1 second before, for :59 suffix)
             const oldEndDateTime = new Date(startDateTime.getTime() + chunkDurationMinutes * 60 * 1000 - 1000);
             const oldEndDate = oldEndDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -800,24 +815,40 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             
             // Convert start/end times to filename format
             const startFormatted = chunk.start.replace(/:/g, '-');
-            const endFormatted = chunk.end.replace(/:/g, '-');
+            // Use calculated endDateTime instead of chunk.end (handles midnight crossing correctly)
+            const endTime = endDateTime.toISOString().split('T')[1].substring(0, 8); // HH:MM:SS
+            const endFormatted = endTime.replace(/:/g, '-');
             const oldEndFormatted = oldEndTime.replace(/:/g, '-');
             
             // Try NEW format first (no sample rate), fallback to OLD format (with sample rate)
             const newFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${chunk.type}_${chunk.date}-${startFormatted}_to_${endDate}-${endFormatted}.bin.zst`;
-            const newChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${newFilename}${cacheBuster}`;
             
+            // Try start date path first
+            let newChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${newFilename}${cacheBuster}`;
             let response = await fetch(newChunkUrl);
+            
+            // If not found and crosses midnight, try end date path
+            if (!response.ok && crossesMidnight && endDatePath) {
+                newChunkUrl = `${CDN_BASE_URL}/${endDatePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${newFilename}${cacheBuster}`;
+                response = await fetch(newChunkUrl);
+            }
             
             // If NEW format not found, try OLD format (with sample rate + :59 end time)
             if (!response.ok) {
                 const oldFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${oldEndDate}-${oldEndFormatted}.bin.zst`;
-                const oldChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${oldFilename}${cacheBuster}`;
                 
+                // Try start date path first
+                let oldChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${oldFilename}${cacheBuster}`;
                 response = await fetch(oldChunkUrl);
                 
+                // If not found and crosses midnight, try end date path
+                if (!response.ok && crossesMidnight && endDatePath) {
+                    oldChunkUrl = `${CDN_BASE_URL}/${endDatePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${oldFilename}${cacheBuster}`;
+                    response = await fetch(oldChunkUrl);
+                }
+                
                 if (!response.ok) {
-                    throw new Error(`Chunk ${index + 1} fetch failed in both NEW and OLD formats: ${response.status}`);
+                    throw new Error(`Chunk ${index + 1} fetch failed in both NEW and OLD formats (tried start date path${crossesMidnight ? ' and end date path' : ''}): ${response.status}`);
                 }
             }
             
@@ -963,6 +994,10 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     
     // Store metadata for duration calculation
     State.setCurrentMetadata(metadata);
+    
+    // Draw frequency axis with new metadata
+    positionAxisCanvas();
+    drawFrequencyAxis();
     
     // Extract samples
     const samplesOffset = 4 + metadataLength;

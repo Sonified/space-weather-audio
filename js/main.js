@@ -10,6 +10,7 @@ import { changeSpectrogramScrollSpeed, changeFrequencyScale, startVisualization 
 import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPrePostSurveyModal, closePrePostSurveyModal, submitPrePostSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { initializeModals } from './modal-templates.js';
+import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis } from './spectrogram-axis-renderer.js';
 
 // Make functions available globally (for inline onclick handlers)
 window.loadStations = loadStations;
@@ -670,9 +671,9 @@ export async function startStreaming(event) {
 
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', () => {
-    console.log('🌋 [0ms] volcano-audio v1.75 - Progressive Waveform Drawing');
-    console.log('📦 [0ms] v1.75 Fix: Removed latency adjustment from playhead position - playhead now aligns perfectly with clicks');
-    console.log('📦 [0ms] v1.75 Commit: v1.75 Fix: Removed latency adjustment causing playhead misalignment');
+    console.log('🌋 [0ms] volcano-audio v1.76 - Progressive Waveform Drawing');
+    console.log('📦 [0ms] v1.76 Fix: Fixed midnight-crossing chunk filename generation - backend now uses end_time instead of trace.stats.endtime');
+    console.log('📦 [0ms] v1.76 Commit: v1.76 Fix: Fixed midnight-crossing chunk filename generation and frontend path checking');
     
     // Initialize modals (inject into DOM)
     initializeModals();
@@ -766,5 +767,21 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     
     console.log('✅ Event listeners added for fetch button re-enabling');
+    
+    // Handle window resize to reposition axis canvas
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            resizeAxisCanvas();
+        }, 100);
+    });
+    
+    // Initial axis positioning and drawing on page load
+    // Use setTimeout to ensure DOM is fully ready
+    setTimeout(() => {
+        positionAxisCanvas();
+        drawFrequencyAxis();
+    }, 100);
 });
 

@@ -519,14 +519,14 @@ export function updatePlaybackIndicator() {
         return;
     }
     
-    // 🐛 DEBUG: Check for duration mismatch (only after duration is set at completion)
-    if (State.allReceivedData && State.allReceivedData.length > 0 && State.totalAudioDuration > 0) {
+    // 🐛 DEBUG: Check for duration mismatch (only when all chunks are complete)
+    if (!State.isFetchingNewData && State.allReceivedData && State.allReceivedData.length > 0 && State.totalAudioDuration > 0) {
         const actualTotalSamples = State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
         const calculatedDuration = State.totalAudioDuration;
         const actualDuration = actualTotalSamples / 44100;
         
         if (Math.abs(actualDuration - calculatedDuration) > 0.01) {
-            console.warn(`⚠️ DURATION MISMATCH: calculated=${calculatedDuration.toFixed(2)}s, actual=${actualDuration.toFixed(2)}s (${actualTotalSamples.toLocaleString()} samples)`);
+            // console.warn(`⚠️ DURATION MISMATCH: calculated=${calculatedDuration.toFixed(2)}s, actual=${actualDuration.toFixed(2)}s (${actualTotalSamples.toLocaleString()} samples)`);
         }
         
         // 📊 DIAGNOSTIC: Log position comparison once per second
@@ -546,7 +546,7 @@ export function updatePlaybackIndicator() {
             const outputLatency = State.audioContext ? (State.audioContext.outputLatency || 0) : 0;
             const latencyMs = (outputLatency * 1000).toFixed(1);
             
-            console.log(`📊 Position: Visual=${visualPercent.toFixed(2)}% (${State.currentAudioPosition.toFixed(2)}s/${State.totalAudioDuration.toFixed(2)}s), Audio=${audioPercent.toFixed(2)}% (sample ${currentSample.toFixed(0)}/${totalSamples}), Latency=${latencyMs}ms`);
+            // console.log(`📊 Position: Visual=${visualPercent.toFixed(2)}% (${State.currentAudioPosition.toFixed(2)}s/${State.totalAudioDuration.toFixed(2)}s), Audio=${audioPercent.toFixed(2)}% (sample ${currentSample.toFixed(0)}/${totalSamples}), Latency=${latencyMs}ms`);
         }
     }
     
