@@ -96,3 +96,20 @@ This ensures the frontend can read all historical file formats while the backend
 
 This improves UI stability and visual hierarchy in the bottom control panel.
 
+---
+
+## v1.80 UI: Duration Dropdown and Data Type Selector
+
+### Changes
+1. **Duration Dropdown Order**: Moved "24 hours" option to the bottom of the dropdown list while keeping it as the default selected option, as requested by user.
+
+2. **Data Type Selector**: Hid the data type selector (Seismic/Infrasound) from the UI for now.
+
+### Files Changed
+- `index.html`: Moved 24h option to bottom of duration dropdown and hid data type selector
+
+### Commit
+**v1.80 UI: Moved 24h duration to bottom of dropdown and hid data type selector**
+
+This improves the UI by keeping the most common option (24h) as default while maintaining logical ordering, and simplifies the interface by hiding the data type selector.
+
