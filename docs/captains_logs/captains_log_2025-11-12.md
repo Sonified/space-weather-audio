@@ -166,3 +166,30 @@ Added amplitude axis ticks to the waveform, matching the spectrogram axis design
 ### Version: v1.80
 **Commit**: `v1.80 Feature: Added waveform y-axis ticks and fixed axis rendering issues`
 
+---
+
+## v1.82 Feature: Dynamic Y-Axis Tick Filtering Based on Playback Speed
+
+### Implementation
+Added intelligent tick filtering for spectrogram y-axis that adapts based on playback speed to reduce clutter at slower speeds.
+
+**Features**:
+- **All Scales**: 50 Hz appears when speed drops below 0.95x (even if it's the Nyquist frequency)
+- **Square Root Scale**:
+  - At 0.6x speed or slower: Remove 2, 4, 12, 17 Hz
+  - At 0.4x speed or slower: Also remove 45 Hz
+  - At 0.35x speed or slower: Also remove 7 Hz
+  - At 0.3x speed or slower: Also remove 35 Hz and 25 Hz
+- **Linear Scale**:
+  - At 0.4x speed or slower: Remove 5, 15, 25, 35, 45 Hz
+
+**Fixes**:
+- Fixed 50 Hz not appearing by allowing it to bypass the Nyquist skip condition when speed < 0.95x
+- Adjusted logarithmic scale bottom threshold from 5% to 6% to prevent label overlap with "Hz"
+
+**Files Modified**:
+- `js/spectrogram-axis-renderer.js` - Added speed-based filtering logic for all scale types
+
+### Version: v1.82
+**Commit**: `v1.82 Feature: Dynamic y-axis tick filtering based on playback speed`
+

@@ -10,7 +10,7 @@ import { changeSpectrogramScrollSpeed, changeFrequencyScale, startVisualization 
 import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPrePostSurveyModal, closePrePostSurveyModal, submitPrePostSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { initializeModals } from './modal-templates.js';
-import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis } from './spectrogram-axis-renderer.js';
+import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 
 // Make functions available globally (for inline onclick handlers)
@@ -845,7 +845,7 @@ window.addEventListener('DOMContentLoaded', () => {
     // Use setTimeout to ensure DOM is fully ready
     setTimeout(() => {
         positionAxisCanvas();
-        drawFrequencyAxis();
+        initializeAxisPlaybackRate();
         positionWaveformAxisCanvas();
         drawWaveformAxis();
         // Update dimensions after initial draw

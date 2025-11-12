@@ -92,12 +92,15 @@ export function positionWaveformAxisCanvas() {
     const topEdge = waveformRect.top - panelRect.top;
     
     // Batch style updates to minimize reflows
+    // Show the canvas after positioning to prevent flash
     axisCanvas.style.cssText = `
         position: absolute;
         left: ${rightEdge}px;
         top: ${topEdge}px;
         width: 60px;
         height: ${waveformRect.height}px;
+        opacity: 1;
+        visibility: visible;
     `;
 }
 

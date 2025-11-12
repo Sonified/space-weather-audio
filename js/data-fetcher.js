@@ -5,7 +5,7 @@ import * as State from './audio-state.js';
 import { updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
 import { updatePlaybackDuration } from './ui-controls.js';
-import { drawFrequencyAxis, positionAxisCanvas } from './spectrogram-axis-renderer.js';
+import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
 
 // Helper: Normalize data to [-1, 1] range
@@ -378,7 +378,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         
         // Draw frequency axis with new metadata
         positionAxisCanvas();
-        drawFrequencyAxis();
+        initializeAxisPlaybackRate();
         
         // 🎯 Set totalAudioDuration early so red scan line appears immediately
         // (This is the EXPECTED duration - we'll update with actual samples at completion)
@@ -1016,7 +1016,7 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     
     // Draw frequency axis with new metadata
     positionAxisCanvas();
-    drawFrequencyAxis();
+    initializeAxisPlaybackRate();
     
     // Extract samples
     const samplesOffset = 4 + metadataLength;

@@ -4,7 +4,7 @@
  */
 
 import * as State from './audio-state.js';
-import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas } from './spectrogram-axis-renderer.js';
+import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 
 export function drawSpectrogram() {
     if (!State.analyserNode) return;
@@ -166,9 +166,9 @@ export function changeFrequencyScale() {
     
     console.log(`📊 Frequency scale changed to: ${value}`);
     
-    // Redraw axis with new scale
+    // Redraw axis with new scale (respects current playback speed)
     positionAxisCanvas();
-    drawFrequencyAxis();
+    initializeAxisPlaybackRate();
 }
 
 export function startVisualization() {
@@ -180,6 +180,7 @@ export function startVisualization() {
     
     // Initialize axis positioning and drawing
     positionAxisCanvas();
+    // Draw initial axis (will use current playback rate)
     drawFrequencyAxis();
     
     drawSpectrogram();

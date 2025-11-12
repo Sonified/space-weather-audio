@@ -5,6 +5,7 @@
 
 import * as State from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator } from './waveform-renderer.js';
+import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization } from './spectrogram-renderer.js';
 
 export function togglePlayPause() {
@@ -162,6 +163,9 @@ export function updatePlaybackSpeed() {
             speed: finalSpeed
         });
     }
+    
+    // Update spectrogram axis to reflect new playback speed
+    updateAxisForPlaybackSpeed();
 }
 
 export function changePlaybackSpeed() {

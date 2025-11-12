@@ -522,6 +522,9 @@ canvas {
     filter: none !important;
     border: none !important;
     outline: none !important;
+    /* Hide initially to prevent flash - will be shown after positioning */
+    opacity: 0;
+    visibility: hidden;
 }
 
 .checkbox-group {
