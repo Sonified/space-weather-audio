@@ -46,7 +46,7 @@ export let isShowingFinalWaveform = false;
 // Visualization state
 export let spectrogramScrollSpeed = 1.0;
 export let spectrogramFrameCounter = 0;
-export let frequencyScale = 'logarithmic'; // 'linear', 'sqrt', or 'logarithmic'
+export let frequencyScale = 'sqrt'; // 'linear', 'sqrt', or 'logarithmic'
 
 // Waveform rendering
 export let cachedWaveformCanvas = null;
