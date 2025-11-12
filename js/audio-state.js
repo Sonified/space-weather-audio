@@ -35,6 +35,8 @@ export let completeSamplesArray = null;
 export let currentMetadata = null;
 export let totalAudioDuration = 0;
 export let currentAudioPosition = 0;
+export let dataStartTime = null; // UTC Date object for start of data
+export let dataEndTime = null; // UTC Date object for end of data
 
 // Flags
 export let isFetchingNewData = false;
@@ -85,6 +87,8 @@ export function setCompleteSamplesArray(value) { completeSamplesArray = value; }
 export function setCurrentMetadata(value) { currentMetadata = value; }
 export function setTotalAudioDuration(value) { totalAudioDuration = value; }
 export function setCurrentAudioPosition(value) { currentAudioPosition = value; }
+export function setDataStartTime(value) { dataStartTime = value; }
+export function setDataEndTime(value) { dataEndTime = value; }
 export function setIsFetchingNewData(value) { isFetchingNewData = value; }
 export function setLoadingInterval(value) { loadingInterval = value; }
 export function setSpectrogramInitialized(value) { spectrogramInitialized = value; }

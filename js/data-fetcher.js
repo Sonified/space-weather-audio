@@ -7,6 +7,7 @@ import { updatePlaybackSpeed } from './audio-player.js';
 import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
+import { positionWaveformXAxisCanvas, drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 
 // Helper: Normalize data to [-1, 1] range
 function normalize(data) {
@@ -376,9 +377,17 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             npts: totalSamples
         });
         
+        // Store start/end times for x-axis rendering
+        State.setDataStartTime(adjustedStartTime);
+        State.setDataEndTime(endTime);
+        
         // Draw frequency axis with new metadata
         positionAxisCanvas();
         initializeAxisPlaybackRate();
+        
+        // Draw x-axis with new time data
+        positionWaveformXAxisCanvas();
+        drawWaveformXAxis();
         
         // 🎯 Set totalAudioDuration early so red scan line appears immediately
         // (This is the EXPECTED duration - we'll update with actual samples at completion)
@@ -1014,9 +1023,18 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     // Store metadata for duration calculation
     State.setCurrentMetadata(metadata);
     
+    // Calculate and store start/end times for x-axis rendering
+    const endTime = new Date(startTime.getTime() + duration * 3600 * 1000);
+    State.setDataStartTime(startTime);
+    State.setDataEndTime(endTime);
+    
     // Draw frequency axis with new metadata
     positionAxisCanvas();
     initializeAxisPlaybackRate();
+    
+    // Draw x-axis with new time data
+    positionWaveformXAxisCanvas();
+    drawWaveformXAxis();
     
     // Extract samples
     const samplesOffset = 4 + metadataLength;

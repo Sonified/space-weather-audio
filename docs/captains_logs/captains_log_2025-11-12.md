@@ -193,3 +193,40 @@ Added intelligent tick filtering for spectrogram y-axis that adapts based on pla
 ### Version: v1.82
 **Commit**: `v1.82 Feature: Dynamic y-axis tick filtering based on playback speed`
 
+---
+
+## v1.81 Feature: Waveform X-Axis Time Ticks
+
+### Implementation
+Added time axis ticks to the waveform x-axis, displaying hourly intervals in the user's local timezone.
+
+**Features**:
+- X-axis displays hourly time ticks (00:00, 01:00, 02:00, ..., 23:00) in local time
+- Date label at far left showing current date (11/12/25 format)
+- Automatic day crossing detection - shows date instead of time when tick crosses midnight
+- Converts UTC data times to user's local timezone for display
+- First two ticks skipped to avoid overlap with date label
+- Transparent background matching y-axis style
+- Vertical lines pointing up to waveform with centered labels below
+
+**Technical Details**:
+- Uses actual data time span (not playback duration) for accurate positioning
+- Quantizes ticks at midnight local time
+- Finds first hour boundary within data range
+- Handles timezone conversion correctly for accurate positioning
+- Spectrogram moved down 30px to make room for x-axis
+
+**Files Created**:
+- `js/waveform-x-axis-renderer.js` - Complete x-axis rendering module with time conversion logic
+
+**Files Modified**:
+- `index.html` - Added waveform-x-axis canvas element
+- `styles.css` - Added transparent background styling for x-axis, moved spectrogram down 30px
+- `js/audio-state.js` - Added `dataStartTime` and `dataEndTime` state variables
+- `js/data-fetcher.js` - Store start/end times in state for both CDN and Railway paths
+- `js/waveform-renderer.js` - Integrated x-axis rendering after waveform drawing
+- `js/main.js` - Added x-axis resize handling and initial positioning
+
+### Version: v1.81
+**Commit**: `v1.81 Feature: Added waveform x-axis time ticks with hourly intervals and local time conversion`
+

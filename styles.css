@@ -504,6 +504,7 @@ canvas {
 #spectrogram {
     height: 450px;
     background: transparent;
+    margin-top: 30px;
 }
 
 #waveform-axis,
@@ -525,6 +526,19 @@ canvas {
     /* Hide initially to prevent flash - will be shown after positioning */
     opacity: 0;
     visibility: hidden;
+}
+
+#waveform-x-axis {
+    background: transparent !important;
+    position: absolute;
+    pointer-events: none;
+    z-index: 10;
+    /* Remove all shadow/glow effects */
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    border: none !important;
+    outline: none !important;
 }
 
 .checkbox-group {

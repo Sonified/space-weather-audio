@@ -12,6 +12,7 @@ import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
+import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 
 // Make functions available globally (for inline onclick handlers)
 window.loadStations = loadStations;
@@ -673,9 +674,9 @@ export async function startStreaming(event) {
 
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', () => {
-    console.log('🌋 [0ms] volcano-audio v1.80 - Progressive Waveform Drawing');
-    console.log('📦 [0ms] v1.80 Feature: Added waveform y-axis ticks + fixed axis rendering issues');
-    console.log('📦 [0ms] v1.80 Commit: v1.80 Feature: Added waveform y-axis ticks and fixed axis rendering issues');
+    console.log('🌋 [0ms] volcano-audio v1.81 - Progressive Waveform Drawing');
+    console.log('📦 [0ms] v1.81 Feature: Added waveform x-axis time ticks with hourly intervals and local time conversion');
+    console.log('📦 [0ms] v1.81 Commit: v1.81 Feature: Added waveform x-axis time ticks with hourly intervals and local time conversion');
     
     // Initialize modals (inject into DOM)
     initializeModals();
@@ -837,6 +838,19 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
             }
             
+            // Handle waveform x-axis
+            const waveformXAxisCanvas = document.getElementById('waveform-x-axis');
+            if (waveformCanvas && waveformXAxisCanvas) {
+                // Always reposition during resize
+                positionWaveformXAxisCanvas();
+                
+                // Only redraw if canvas dimensions changed
+                const currentWidth = waveformCanvas.offsetWidth;
+                if (currentWidth !== lastWaveformWidth) {
+                    resizeWaveformXAxisCanvas();
+                }
+            }
+            
             resizeRAF = null;
         });
     });
@@ -848,6 +862,8 @@ window.addEventListener('DOMContentLoaded', () => {
         initializeAxisPlaybackRate();
         positionWaveformAxisCanvas();
         drawWaveformAxis();
+        positionWaveformXAxisCanvas();
+        drawWaveformXAxis();
         // Update dimensions after initial draw
         const spectrogramCanvas = document.getElementById('spectrogram');
         const waveformCanvas = document.getElementById('waveform');

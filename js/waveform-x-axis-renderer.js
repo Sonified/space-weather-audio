@@ -1,0 +1,273 @@
+/**
+ * waveform-x-axis-renderer.js
+ * X-axis rendering for waveform showing time ticks
+ */
+
+import * as State from './audio-state.js';
+
+/**
+ * Draw time axis for waveform
+ * Shows 2-hour ticks with date at left, handles day crossings
+ */
+export function drawWaveformXAxis() {
+    const canvas = document.getElementById('waveform-x-axis');
+    if (!canvas) return;
+    
+    const waveformCanvas = document.getElementById('waveform');
+    if (!waveformCanvas) return;
+    
+    // Use display width (offsetWidth) not internal canvas width
+    const displayWidth = waveformCanvas.offsetWidth;
+    
+    // Set internal canvas resolution to match display size
+    canvas.width = displayWidth;
+    canvas.height = 40; // Fixed height for x-axis
+    
+    const ctx = canvas.getContext('2d');
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    
+    // Clear canvas (transparent background)
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    
+    // Need start/end times to calculate tick positions
+    if (!State.dataStartTime || !State.dataEndTime) {
+        return; // No data loaded yet
+    }
+    
+    const startTimeUTC = new Date(State.dataStartTime);
+    const endTimeUTC = new Date(State.dataEndTime);
+    
+    // Calculate actual time span in seconds (not playback duration!)
+    const actualTimeSpanSeconds = (endTimeUTC.getTime() - startTimeUTC.getTime()) / 1000;
+    
+    // Validate time span
+    if (!isFinite(actualTimeSpanSeconds) || actualTimeSpanSeconds <= 0) {
+        console.warn(`🕐 X-axis: Invalid time span ${actualTimeSpanSeconds}, skipping draw`);
+        return;
+    }
+    
+    console.log(`🕐 X-axis: Drawing with time span=${actualTimeSpanSeconds.toFixed(1)}s (${(actualTimeSpanSeconds/3600).toFixed(1)}h), canvas width=${canvasWidth}px`);
+    
+    // Setup text styling - match y-axis style
+    ctx.font = '16px Arial, sans-serif';
+    ctx.fillStyle = '#ddd';
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    
+    // Calculate hourly ticks
+    // Quantize at midnight (00:00), find first hour boundary within region
+    const ticks = calculateHourlyTicks(startTimeUTC, endTimeUTC);
+    
+    console.log(`🕐 X-axis: Found ${ticks.length} ticks for range ${startTimeUTC.toISOString()} to ${endTimeUTC.toISOString()}`);
+    if (ticks.length > 0) {
+        console.log(`🕐 First tick: ${ticks[0].localTime.toLocaleString()} (UTC: ${ticks[0].utcTime.toISOString()})`);
+    }
+    
+    // Draw each tick (skip the first two to avoid overlap with start date)
+    ticks.forEach((tick, index) => {
+        // Skip the first two ticks to avoid overlap with the start date at far left
+        if (index === 0 || index === 1) {
+            return;
+        }
+        
+        // Calculate x position: (time offset from start / actual time span) * canvas width
+        // Use actual time span, not playback duration!
+        const timeOffsetSeconds = (tick.utcTime.getTime() - startTimeUTC.getTime()) / 1000;
+        const x = (timeOffsetSeconds / actualTimeSpanSeconds) * canvasWidth;
+        
+        console.log(`🕐 Tick at ${tick.localTime.toLocaleTimeString()}: x=${x.toFixed(1)}, offset=${timeOffsetSeconds.toFixed(0)}s, span=${actualTimeSpanSeconds.toFixed(0)}s`);
+        
+        // Skip if outside canvas bounds (with small margin for edge cases)
+        if (x < -10 || x > canvasWidth + 10) {
+            console.log(`🕐 Skipping tick at x=${x.toFixed(1)} (outside bounds 0-${canvasWidth})`);
+            return;
+        }
+        
+        // Draw vertical line pointing up to waveform
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 8); // Short line pointing up
+        ctx.stroke();
+        
+        // Format label based on whether it's a day crossing
+        let label;
+        if (tick.isDayCrossing) {
+            // Show date in 11/12/25 format
+            const localDate = tick.localTime;
+            const month = localDate.getMonth() + 1; // 0-indexed
+            const day = localDate.getDate();
+            const year = localDate.getFullYear().toString().slice(-2); // Last 2 digits
+            label = `${month}/${day}/${year}`;
+        } else {
+            // Show time in international format (1:00 through 13:00 and 24:00)
+            const localDate = tick.localTime;
+            const hours = localDate.getHours();
+            const minutes = localDate.getMinutes();
+            
+            if (hours === 0 && minutes === 0) {
+                label = '24:00'; // Midnight shown as 24:00
+            } else {
+                // 1:00 through 23:00 (no leading zero for single digits per international format)
+                label = `${hours}:${String(minutes).padStart(2, '0')}`;
+            }
+        }
+        
+        // Draw label centered below the tick
+        // Ensure text is visible
+        ctx.fillStyle = '#ddd'; // Reset fill style
+        ctx.fillText(label, x, 12);
+        console.log(`🕐 Drew tick at x=${x.toFixed(1)}: "${label}" (dayCrossing=${tick.isDayCrossing})`);
+    });
+    
+    // Draw date at far left (first tick's date)
+    if (ticks.length > 0) {
+        const firstTick = ticks[0];
+        const localDate = firstTick.localTime;
+        const month = localDate.getMonth() + 1;
+        const day = localDate.getDate();
+        const year = localDate.getFullYear().toString().slice(-2);
+        const dateLabel = `${month}/${day}/${year}`;
+        
+        ctx.textAlign = 'left';
+        ctx.fillText(dateLabel, 8, 12);
+        ctx.textAlign = 'center'; // Reset for other labels
+    }
+}
+
+/**
+ * Calculate hourly tick positions
+ * Quantizes at midnight (local time), finds first hour boundary within region
+ * 
+ * Strategy:
+ * 1. Start from data start time, convert to local time
+ * 2. Find first hour boundary in local time (00:00, 01:00, 02:00, ..., 23:00)
+ * 3. Generate ticks every hour in local time
+ * 4. For each local time tick, calculate corresponding UTC time for positioning
+ */
+function calculateHourlyTicks(startUTC, endUTC) {
+    const ticks = [];
+    
+    // Convert start time to local time to find boundaries
+    const startLocal = new Date(startUTC);
+    
+    // Get local time components
+    const startYear = startLocal.getFullYear();
+    const startMonth = startLocal.getMonth();
+    const startDay = startLocal.getDate();
+    const startHours = startLocal.getHours();
+    
+    // Find first hour block (quantized at midnight local time)
+    // Hour blocks: 00:00, 01:00, 02:00, ..., 23:00 (local time)
+    let firstTickLocal = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
+    
+    // Round down to nearest hour boundary
+    firstTickLocal.setHours(startHours, 0, 0, 0);
+    
+    // If we're not starting at an hour boundary, find the first one within the region
+    if (firstTickLocal < startLocal) {
+        // Move forward to next hour block
+        firstTickLocal.setHours(firstTickLocal.getHours() + 1);
+    }
+    
+    // Generate ticks every hour until we exceed end time
+    let currentTickLocal = new Date(firstTickLocal);
+    let previousTickDate = null;
+    
+    // Convert end time to local for comparison
+    // We need to compare in the same time context - use UTC milliseconds
+    const endLocal = new Date(endUTC);
+    const endLocalTime = endLocal.getTime();
+    
+    while (currentTickLocal.getTime() <= endLocalTime) {
+        // Get local date string for day crossing detection
+        const currentTickDate = currentTickLocal.toDateString();
+        const isDayCrossing = previousTickDate !== null && previousTickDate !== currentTickDate;
+        
+        // Convert local time to UTC for positioning
+        // JavaScript Date constructor with (year, month, day, hour) interprets as local time
+        // getTime() returns UTC milliseconds, so we can use that for positioning
+        const localYear = currentTickLocal.getFullYear();
+        const localMonth = currentTickLocal.getMonth();
+        const localDay = currentTickLocal.getDate();
+        const localHour = currentTickLocal.getHours();
+        
+        // Create date from local components (browser interprets as local time)
+        const tickDateLocal = new Date(localYear, localMonth, localDay, localHour, 0, 0, 0);
+        
+        // getTime() gives UTC milliseconds - use for positioning
+        const tickUTCForPosition = new Date(tickDateLocal.getTime());
+        
+        // Check if this UTC time falls within our data range
+        // Compare using getTime() for accurate comparison
+        if (tickUTCForPosition.getTime() >= startUTC.getTime() && tickUTCForPosition.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: tickUTCForPosition, // UTC time for positioning
+                localTime: new Date(currentTickLocal), // Local time for display
+                isDayCrossing: isDayCrossing
+            });
+        } else {
+            console.log(`🕐 Tick filtered out: ${currentTickLocal.toLocaleString()} (UTC: ${tickUTCForPosition.toISOString()}) not in range`);
+        }
+        
+        previousTickDate = currentTickDate;
+        
+        // Move to next hour block (in local time)
+        currentTickLocal.setHours(currentTickLocal.getHours() + 1);
+    }
+    
+    return ticks;
+}
+
+/**
+ * Position the waveform x-axis canvas below the waveform
+ */
+export function positionWaveformXAxisCanvas() {
+    const waveformCanvas = document.getElementById('waveform');
+    const xAxisCanvas = document.getElementById('waveform-x-axis');
+    const panel = waveformCanvas?.closest('.panel');
+    
+    if (!waveformCanvas || !xAxisCanvas || !panel) return;
+    
+    const waveformRect = waveformCanvas.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    
+    // Position below waveform, aligned with left edge
+    const leftEdge = waveformRect.left - panelRect.left;
+    const topEdge = waveformRect.bottom - panelRect.top;
+    
+    xAxisCanvas.style.cssText = `
+        position: absolute;
+        left: ${leftEdge}px;
+        top: ${topEdge}px;
+        width: ${waveformRect.width}px;
+        height: 40px;
+        opacity: 1;
+        visibility: visible;
+    `;
+}
+
+/**
+ * Resize waveform x-axis canvas to match waveform width
+ */
+export function resizeWaveformXAxisCanvas() {
+    const waveformCanvas = document.getElementById('waveform');
+    const xAxisCanvas = document.getElementById('waveform-x-axis');
+    
+    if (!waveformCanvas || !xAxisCanvas) return;
+    
+    // Match width to waveform display width
+    xAxisCanvas.width = waveformCanvas.offsetWidth;
+    xAxisCanvas.height = 40;
+    
+    // Reposition and redraw after resize
+    positionWaveformXAxisCanvas();
+    drawWaveformXAxis();
+}
+
