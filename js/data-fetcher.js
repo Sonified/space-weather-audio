@@ -871,6 +871,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             const chunkSize = compressed.byteLength;
             totalBytesDownloaded += chunkSize;
             
+            // Update download size display incrementally as each chunk arrives
+            document.getElementById('downloadSize').textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+            
             return { compressed, chunkSize, index };
         }
         

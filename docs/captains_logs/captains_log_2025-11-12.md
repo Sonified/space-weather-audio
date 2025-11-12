@@ -113,3 +113,24 @@ This improves UI stability and visual hierarchy in the bottom control panel.
 
 This improves the UI by keeping the most common option (24h) as default while maintaining logical ordering, and simplifies the interface by hiding the data type selector.
 
+---
+
+## v1.81 UI: Incremental Download Size and Button Repositioning
+
+### Changes
+1. **Incremental Download Size Updates**: Download size metric now updates in real-time as each chunk arrives, starting at "0.00 MB" and growing incrementally throughout the download process.
+
+2. **Download Button Repositioning**: 
+   - Changed button text from "💾 Download" to "💾 Download Audio File"
+   - Moved button from top control panel to lower "Simulate Row" panel, positioned to the right of "Bypass CDN Cache" checkbox
+
+### Files Changed
+- `js/data-fetcher.js`: Added incremental download size update after each chunk is downloaded
+- `js/main.js`: Initialize download size to "0.00 MB" at start of streaming
+- `index.html`: Moved Download button to lower menu and updated button text
+
+### Commit
+**v1.81 UI: Incremental download size updates and Download button moved to lower menu**
+
+This provides better user feedback during downloads and improves UI organization by grouping the download button with other utility controls.
+

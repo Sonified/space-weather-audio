@@ -594,6 +594,7 @@ export async function startStreaming(event) {
             window.playbackDurationSeconds = null;
             stopPositionTracking();
             document.getElementById('currentPosition').textContent = '0m 0s';
+            document.getElementById('downloadSize').textContent = '0.00 MB';
             if (State.waveformWorker) {
                 State.waveformWorker.postMessage({ type: 'reset' });
             }
