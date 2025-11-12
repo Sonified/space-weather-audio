@@ -137,13 +137,10 @@ export async function initAudioWorklet() {
         const { type, bufferSize, samplesConsumed, totalSamples, positionSeconds, samplePosition } = event.data;
         
         if (type === 'position') {
-            // Account for output latency - worklet reports when samples are consumed,
-            // but there's a delay before they reach the speakers
-            const outputLatency = State.audioContext.outputLatency || 0;
-            const adjustedPosition = Math.max(0, positionSeconds - outputLatency);
-            
-            State.setCurrentAudioPosition(adjustedPosition);
-            State.setLastWorkletPosition(adjustedPosition);
+            // Use worklet's reported position directly - no latency adjustment
+            // The playhead should show where the audio actually is, matching the coordinate system used for clicks
+            State.setCurrentAudioPosition(positionSeconds);
+            State.setLastWorkletPosition(positionSeconds);
             State.setLastWorkletUpdateTime(State.audioContext.currentTime);
         } else if (type === 'selection-end-approaching') {
             const { secondsToEnd, isLooping: workletIsLooping, loopDuration } = event.data;
@@ -673,8 +670,9 @@ export async function startStreaming(event) {
 
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', () => {
-    console.log('🌋 [0ms] volcano-audio v1.74 - Progressive Waveform Drawing');
-    console.log('📦 [0ms] v1.74 Feature: Unified collector service now handles both R2 collection + on-demand streaming');
+    console.log('🌋 [0ms] volcano-audio v1.75 - Progressive Waveform Drawing');
+    console.log('📦 [0ms] v1.75 Fix: Removed latency adjustment from playhead position - playhead now aligns perfectly with clicks');
+    console.log('📦 [0ms] v1.75 Commit: v1.75 Fix: Removed latency adjustment causing playhead misalignment');
     
     // Initialize modals (inject into DOM)
     initializeModals();

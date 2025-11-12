@@ -278,3 +278,34 @@ The SharedArrayBuffer implementation was technically sound but failed due to an 
 
 **Current focus**: Ensure circular buffer implementation is robust for all use cases (seek, loop, speed changes).
 
+---
+
+## Session: Playhead Alignment Fix (v1.75)
+
+### Problem: Playhead Misalignment
+The playhead was jumping to the left of where users clicked on the waveform. When looping a region, the playhead appeared to the left of the selection start.
+
+### Root Cause
+A latency adjustment was being applied to the playhead position:
+- The worklet reports position when samples are consumed
+- Code was subtracting `outputLatency` to account for delay before audio reaches speakers
+- This shifted the visual playhead backward
+- Clicks were calculated without this adjustment
+- Result: Clicks and playhead used different coordinate systems
+
+### The Fix
+**Removed the latency adjustment** - The playhead now uses the worklet's reported position directly, matching the coordinate system used for clicks.
+
+**Change made**:
+- `js/main.js`: Removed `outputLatency` calculation and adjustment from position update handler
+- Playhead now shows `positionSeconds` directly from worklet
+- Both clicks and playhead now use the same coordinate system
+
+### Result ✅
+- Playhead aligns perfectly with clicks
+- Looping shows playhead at correct position (selection start)
+- No more jumping or misalignment issues
+
+### Version: v1.75
+**Commit**: `v1.75 Fix: Removed latency adjustment causing playhead misalignment`
+
