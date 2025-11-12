@@ -150,6 +150,13 @@ function generateLogTicks(maxFreq) {
         });
     }
     
+    // Add specific frequencies for better granularity
+    [0.3, 0.4, 0.7, 1.5, 3, 4, 7, 15, 30, 40].forEach(freq => {
+        if (freq > 0 && freq <= maxFreq) {
+            ticks.push(freq);
+        }
+    });
+    
     // Add max frequency if not already included
     if (!ticks.includes(maxFreq)) {
         ticks.push(maxFreq);
@@ -172,7 +179,7 @@ function generateSqrtTicks(maxFreq) {
         }
     } else if (maxFreq <= 50) {
         // Typical seismic (100 Hz sample rate → 50 Hz Nyquist)
-        [1, 2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50].forEach(f => {
+        [1, 2, 3, 4, 5, 7, 10, 12, 15, 17, 20, 25, 30, 35, 40, 45, 50].forEach(f => {
             if (f <= maxFreq) ticks.push(f);
         });
     } else {

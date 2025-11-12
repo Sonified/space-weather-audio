@@ -820,7 +820,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             const endFormatted = endTime.replace(/:/g, '-');
             const oldEndFormatted = oldEndTime.replace(/:/g, '-');
             
-            // Try NEW format first (no sample rate), fallback to OLD format (with sample rate)
+            // Try NEW format first (no sample rate, :00 ending)
             const newFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${chunk.type}_${chunk.date}-${startFormatted}_to_${endDate}-${endFormatted}.bin.zst`;
             
             // Try start date path first
@@ -833,7 +833,22 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 response = await fetch(newChunkUrl);
             }
             
-            // If NEW format not found, try OLD format (with sample rate + :59 end time)
+            // If NEW format with :00 ending not found, try NEW format with :59 ending (hybrid format - some stations use this)
+            if (!response.ok) {
+                const hybridFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${chunk.type}_${chunk.date}-${startFormatted}_to_${oldEndDate}-${oldEndFormatted}.bin.zst`;
+                
+                // Try start date path first
+                let hybridChunkUrl = `${CDN_BASE_URL}/${datePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${hybridFilename}${cacheBuster}`;
+                response = await fetch(hybridChunkUrl);
+                
+                // If not found and crosses midnight, try end date path
+                if (!response.ok && crossesMidnight && endDatePath) {
+                    hybridChunkUrl = `${CDN_BASE_URL}/${endDatePath}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/${chunk.type}/${hybridFilename}${cacheBuster}`;
+                    response = await fetch(hybridChunkUrl);
+                }
+            }
+            
+            // If NEW format (both variants) not found, try OLD format (with sample rate + :59 end time)
             if (!response.ok) {
                 const oldFilename = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_${chunk.type}_${chunk.date}-${startFormatted}_to_${oldEndDate}-${oldEndFormatted}.bin.zst`;
                 
@@ -848,7 +863,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 }
                 
                 if (!response.ok) {
-                    throw new Error(`Chunk ${index + 1} fetch failed in both NEW and OLD formats (tried start date path${crossesMidnight ? ' and end date path' : ''}): ${response.status}`);
+                    throw new Error(`Chunk ${index + 1} fetch failed in NEW format (:00), NEW format (:59), and OLD format (tried start date path${crossesMidnight ? ' and end date path' : ''}): ${response.status}`);
                 }
             }
             

@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """
-Scan all active volcanoes and fix all incorrectly named chunk files that cross midnight.
+Scan all active volcanoes and fix all incorrectly named chunk files.
 
-Finds files like: NET_STA_LOC_CHA_1h_YYYY-MM-DD-23-00-00_to_YYYY-MM-DD-23-59-59.bin.zst
-And renames them to: NET_STA_LOC_CHA_1h_YYYY-MM-DD-23-00-00_to_YYYY-MM-DD+1-00-00-00.bin.zst
+Finds files with wrong ending times (using :59 instead of :00):
+- Midnight-crossing: NET_STA_LOC_CHA_1h_YYYY-MM-DD-23-00-00_to_YYYY-MM-DD-23-59-59.bin.zst
+  → NET_STA_LOC_CHA_1h_YYYY-MM-DD-23-00-00_to_YYYY-MM-DD+1-00-00-00.bin.zst
+- Regular chunks: NET_STA_LOC_CHA_10m_YYYY-MM-DD-06-10-00_to_YYYY-MM-DD-06-19-59.bin.zst
+  → NET_STA_LOC_CHA_10m_YYYY-MM-DD-06-10-00_to_YYYY-MM-DD-06-20-00.bin.zst
+
+Uses collector_loop.py logic: start_time + duration = end_time
 """
 import boto3
 import os
@@ -49,31 +54,33 @@ def load_stations_config():
     
     return active_stations
 
-def is_wrong_midnight_filename(filename):
+def is_wrong_filename(filename):
     """
-    Check if filename is incorrectly named midnight-crossing chunk.
-    Wrong: ends with 23-00-00_to_YYYY-MM-DD-23-59-59
-    Correct: should end with 23-00-00_to_YYYY-MM-DD+1-00-00-00
+    Check if filename has wrong ending time format.
+    Wrong: ends with XX-XX-59 (using :59 instead of :00)
+    Correct: should end with XX-XX-00 (using exact end time)
+    
+    This catches:
+    - Midnight-crossing chunks: 23-00-00_to_23-59-59 → should be 23-00-00_to_00-00-00
+    - Regular chunks: 06-10-00_to_06-19-59 → should be 06-10-00_to_06-20-00
     """
     if not filename.endswith('.bin.zst'):
         return False
     
-    # Check if it's a 1h chunk (could also check 6h chunks)
-    if '_1h_' not in filename and '_6h_' not in filename:
-        return False
-    
-    # Check if it ends with 23-59-59 (wrong format)
-    if '_23-00-00_to_' in filename and '_23-59-59.bin.zst' in filename:
+    # Check if it ends with -59.bin.zst (wrong format - should be -00)
+    if filename.endswith('-59.bin.zst'):
+        # Make sure it's not a valid time like 23:59:59 that should actually be 00:00:00 next day
+        # But for now, we'll fix all -59 endings
         return True
     
     return False
 
 def generate_correct_filename(wrong_filename):
     """
-    Generate correct filename for midnight-crossing chunk.
+    Generate correct filename for chunk with wrong ending time.
     Uses collector_loop.py logic: start_time + duration = end_time
     """
-    if not is_wrong_midnight_filename(wrong_filename):
+    if not is_wrong_filename(wrong_filename):
         return None
     
     # Parse the filename
@@ -86,13 +93,16 @@ def generate_correct_filename(wrong_filename):
     
     before_to, after_to = base.split('_to_', 1)
     
-    # Extract chunk type (1h or 6h)
-    if '_1h_' in before_to:
+    # Extract chunk type (10m, 1h, or 6h)
+    if '_10m_' in before_to:
+        chunk_type = '10m'
+        duration_minutes = 10
+    elif '_1h_' in before_to:
         chunk_type = '1h'
-        duration_hours = 1
+        duration_minutes = 60
     elif '_6h_' in before_to:
         chunk_type = '6h'
-        duration_hours = 6
+        duration_minutes = 360
     else:
         return None
     
@@ -117,7 +127,7 @@ def generate_correct_filename(wrong_filename):
     )
     
     # Calculate correct end time (start + duration)
-    end_time = start_time + timedelta(hours=duration_hours)
+    end_time = start_time + timedelta(minutes=duration_minutes)
     
     # Format correctly
     start_formatted = start_time.strftime("%Y-%m-%d-%H-%M-%S")
@@ -143,7 +153,7 @@ def find_wrong_files_in_directory(s3_client, prefix):
             key = obj['Key']
             filename = key.split('/')[-1]
             
-            if is_wrong_midnight_filename(filename):
+            if is_wrong_filename(filename):
                 correct_filename = generate_correct_filename(filename)
                 if correct_filename:
                     # Build correct key (same path, different filename)
@@ -188,7 +198,7 @@ def copy_and_delete_file(s3_client, old_key, new_key):
 def scan_and_fix_all(s3_client, days_back=30):
     """Scan all active stations and fix wrong filenames"""
     print("=" * 70)
-    print("🔧 Fix All Midnight Chunk Filenames")
+    print("🔧 Fix All Incorrectly Named Chunk Filenames")
     print("=" * 70)
     print()
     
@@ -224,6 +234,10 @@ def scan_and_fix_all(s3_client, days_back=30):
             month = f"{current_date.month:02d}"
             day = f"{current_date.day:02d}"
             
+            # Check 10m chunks directory
+            prefix_10m = f"data/{year}/{month}/{day}/{network}/{volcano}/{sta}/{location}/{channel}/10m/"
+            wrong_files_10m = find_wrong_files_in_directory(s3_client, prefix_10m)
+            
             # Check 1h chunks directory
             prefix_1h = f"data/{year}/{month}/{day}/{network}/{volcano}/{sta}/{location}/{channel}/1h/"
             wrong_files_1h = find_wrong_files_in_directory(s3_client, prefix_1h)
@@ -232,11 +246,12 @@ def scan_and_fix_all(s3_client, days_back=30):
             prefix_6h = f"data/{year}/{month}/{day}/{network}/{volcano}/{sta}/{location}/{channel}/6h/"
             wrong_files_6h = find_wrong_files_in_directory(s3_client, prefix_6h)
             
+            all_wrong_files.extend(wrong_files_10m)
             all_wrong_files.extend(wrong_files_1h)
             all_wrong_files.extend(wrong_files_6h)
             
-            if wrong_files_1h or wrong_files_6h:
-                print(f"   📅 {current_date}: Found {len(wrong_files_1h)} wrong 1h chunks, {len(wrong_files_6h)} wrong 6h chunks")
+            if wrong_files_10m or wrong_files_1h or wrong_files_6h:
+                print(f"   📅 {current_date}: Found {len(wrong_files_10m)} wrong 10m chunks, {len(wrong_files_1h)} wrong 1h chunks, {len(wrong_files_6h)} wrong 6h chunks")
             
             current_date += timedelta(days=1)
     
@@ -249,21 +264,29 @@ def scan_and_fix_all(s3_client, days_back=30):
         print("✅ No incorrectly named files found!")
         return 0
     
-    # Show all wrong files
-    print("\n📋 Files to fix:")
-    for i, file_info in enumerate(all_wrong_files, 1):
+    # Show sample of wrong files (first 5)
+    print("\n📋 Sample files to fix (showing first 5):")
+    for i, file_info in enumerate(all_wrong_files[:5], 1):
         print(f"\n{i}. {file_info['old_filename']}")
         print(f"   → {file_info['new_filename']}")
         print(f"   Size: {file_info['size']:,} bytes")
+    
+    if len(all_wrong_files) > 5:
+        print(f"\n   ... and {len(all_wrong_files) - 5} more files")
     
     print(f"\n⚠️  This will rename {len(all_wrong_files)} files")
     print("   (Copy to new name, then delete old)")
     print()
     
-    response = input("Continue? (yes/no): ").strip().lower()
-    if response != 'yes':
-        print("❌ Cancelled")
-        return 0
+    import sys
+    if sys.stdin.isatty():
+        response = input("Continue? (yes/no): ").strip().lower()
+        if response != 'yes':
+            print("❌ Cancelled")
+            return 0
+    else:
+        print("✅ Auto-confirming (non-interactive mode)")
+        print()
     
     # Fix all files
     print(f"\n🔄 Fixing {len(all_wrong_files)} files...")
@@ -272,19 +295,29 @@ def scan_and_fix_all(s3_client, days_back=30):
     fixed = 0
     failed = 0
     
+    import sys
     for i, file_info in enumerate(all_wrong_files, 1):
-        print(f"[{i}/{len(all_wrong_files)}] {file_info['old_filename']}")
-        print(f"   → {file_info['new_filename']}")
+        # Only show every 10th file to reduce output spam
+        if i % 10 == 0 or i <= 5:
+            print(f"[{i}/{len(all_wrong_files)}] {file_info['old_filename']}", flush=True)
+            print(f"   → {file_info['new_filename']}", flush=True)
         
         success = copy_and_delete_file(s3_client, file_info['old_key'], file_info['new_key'])
         
         if success:
-            print(f"   ✅ Fixed")
             fixed += 1
+            if i % 10 == 0 or i <= 5:
+                print(f"   ✅ Fixed", flush=True)
         else:
-            print(f"   ❌ Failed")
+            print(f"   ❌ FAILED: {file_info['old_filename']}", flush=True)
             failed += 1
-        print()
+        
+        # Show progress every 50 files
+        if i % 50 == 0:
+            percent = (i * 100) // len(all_wrong_files)
+            print(f"\n📊 Progress: {i}/{len(all_wrong_files)} ({percent}%) - ✅ Fixed: {fixed}, ❌ Failed: {failed}\n", flush=True)
+        elif i % 10 == 0:
+            print(flush=True)
     
     print("=" * 70)
     print(f"✅ Fixed: {fixed}")

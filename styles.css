@@ -142,6 +142,19 @@ input[type="range"] {
     border-radius: 4px;
 }
 
+/* Fixed width for slider value displays to prevent layout shifts */
+#speedValue {
+    display: inline-block;
+    width: 2.8em;
+    text-align: left;
+}
+
+#volumeValue {
+    display: inline-block;
+    width: 2.2em;
+    text-align: left;
+}
+
 /* Webkit (Chrome, Safari, Edge) - Track */
 input[type="range"]::-webkit-slider-track {
     background: #5a1a1a;
