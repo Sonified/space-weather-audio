@@ -76,3 +76,23 @@ This ensures all future chunks crossing midnight will be named correctly, and th
 
 This ensures the frontend can read all historical file formats while the backend creates correct formats going forward.
 
+---
+
+## v1.79 Fix: UI Spacing Improvements
+
+### Changes
+1. **Fixed Button Height**: Added fixed height (44px), line-height, and flexbox layout to prevent buttons from jumping when text changes (e.g., "⏸️ Pause" vs "▶️ Resume" in Safari).
+
+2. **Improved Bottom Controls Spacing**: 
+   - Increased spacing between label and control (8px) for Frequency Scale and Scroll Speed
+   - Increased spacing between control groups (30px) for better visual separation
+
+### Files Changed
+- `styles.css`: Added fixed height and flexbox layout to buttons
+- `index.html`: Improved spacing for bottom control groups
+
+### Commit
+**v1.79 Fix: Fixed button height jumping and improved bottom controls spacing**
+
+This improves UI stability and visual hierarchy in the bottom control panel.
+

@@ -671,9 +671,9 @@ export async function startStreaming(event) {
 
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', () => {
-    console.log('🌋 [0ms] volcano-audio v1.78 - Progressive Waveform Drawing');
-    console.log('📦 [0ms] v1.78 Fix: Added hybrid format support for backward compatibility + custom y-axis ticks + 24h default duration');
-    console.log('📦 [0ms] v1.78 Commit: v1.78 Fix: Added hybrid format support, custom y-axis ticks, and 24h default duration');
+    console.log('🌋 [0ms] volcano-audio v1.79 - Progressive Waveform Drawing');
+    console.log('📦 [0ms] v1.79 Fix: Fixed button height jumping + improved bottom controls spacing');
+    console.log('📦 [0ms] v1.79 Commit: v1.79 Fix: Fixed button height jumping and improved bottom controls spacing');
     
     // Initialize modals (inject into DOM)
     initializeModals();

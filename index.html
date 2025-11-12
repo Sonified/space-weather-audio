@@ -121,21 +121,25 @@
             <canvas id="waveform" width="1200" height="135"></canvas>
             <canvas id="spectrogram" width="1200" height="450"></canvas>
             <canvas id="spectrogram-axis" width="60" height="450"></canvas>
-            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 20px; margin-top: 10px; padding: 8px 0; padding-right: 40px;">
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 30px; margin-top: 10px; padding: 8px 0; padding-right: 40px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" id="playOnClick" checked style="width: 20px; height: 20px; cursor: pointer;">
                     <label for="playOnClick" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">Play on Click</label>
                 </div>
-                <label for="frequencyScale" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Frequency Scale:</label>
-                <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: white; cursor: pointer;">
-                    <option value="linear">Linear</option>
-                    <option value="sqrt" selected>Square Root</option>
-                    <option value="logarithmic">Logarithmic</option>
-                </select>
-                <label for="spectrogramScrollSpeed" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Scroll Speed:</label>
-                <div style="position: relative; width: 150px; height: 20px;">
-                    <input type="range" id="spectrogramScrollSpeed" min="0" max="100" step="1" value="67" style="width: 150px; position: absolute; left: 0; top: 0;" title="Spectrogram scroll speed">
-                    <span id="spectrogramScrollSpeedValue" style="font-size: 14px; font-weight: 700; position: absolute; left: 158px; top: 50%; transform: translateY(-50%); white-space: nowrap; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">1.0x</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label for="frequencyScale" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Frequency Scale:</label>
+                    <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: white; cursor: pointer;">
+                        <option value="linear">Linear</option>
+                        <option value="sqrt" selected>Square Root</option>
+                        <option value="logarithmic">Logarithmic</option>
+                    </select>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label for="spectrogramScrollSpeed" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Scroll Speed:</label>
+                    <div style="position: relative; width: 150px; height: 20px;">
+                        <input type="range" id="spectrogramScrollSpeed" min="0" max="100" step="1" value="67" style="width: 150px; position: absolute; left: 0; top: 0;" title="Spectrogram scroll speed">
+                        <span id="spectrogramScrollSpeedValue" style="font-size: 14px; font-weight: 700; position: absolute; left: 158px; top: 50%; transform: translateY(-50%); white-space: nowrap; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">1.0x</span>
+                    </div>
                 </div>
             </div>
         </div>
