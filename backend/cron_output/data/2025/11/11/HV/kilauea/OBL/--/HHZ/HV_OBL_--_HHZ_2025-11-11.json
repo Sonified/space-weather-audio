@@ -1,0 +1,35 @@
+{
+  "date": "2025-11-11",
+  "network": "HV",
+  "volcano": "kilauea",
+  "station": "OBL",
+  "location": "",
+  "channel": "HHZ",
+  "sample_rate": 100.0,
+  "created_at": "2025-11-11T00:13:01.427842Z",
+  "complete_day": false,
+  "chunks": {
+    "10m": [
+      {
+        "start": "00:00:00",
+        "end": "00:10:00",
+        "min": -16669,
+        "max": -512,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "00:10:00",
+        "end": "00:20:00",
+        "min": -14400,
+        "max": -1676,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "1h": [],
+    "6h": []
+  }
+}

@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from python_code.audio_utils import create_audio_file
+from archive.python_code.audio_utils import create_audio_file
 from obspy import read, Stream
 import glob
 

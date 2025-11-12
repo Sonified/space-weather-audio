@@ -1,0 +1,401 @@
+[2025-11-10 03:37:28 UTC] 🚀 Seismic Data Collector started - 2025_11_10_v1.59
+[2025-11-10 03:37:28 UTC] Environment: LOCAL (Development)
+[2025-11-10 03:37:28 UTC] Deployed: 2025-11-05T04:40:55.278309+00:00
+[2025-11-10 03:37:28 UTC] v1.59 Refactor: Consolidated cron_job.py functionality into collector_loop.py (removed subprocess overhead)
+[2025-11-10 03:37:28 UTC] Git commit: v1.59 Refactor: Consolidated cron_job.py functionality into collector_loop.py (removed subprocess overhead)
+[2025-11-10 03:37:28 UTC] Starting health API on port 5001
+ * Serving Flask app 'collector_loop'
+[2025-11-10 03:37:28 UTC] [LOCAL] Schedule: Every 10 minutes at :03, :13, :23, :33, :43, :53
+[2025-11-10 03:37:28 UTC] [LOCAL] Next run in 332 seconds (at :43)
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://10.4.20.99:5001
+Press CTRL+C to quit
+127.0.0.1 - - [09/Nov/2025 19:37:43] "GET /trigger HTTP/1.1" 200 -
+[2025-11-10 03:37:43 UTC] 🎯 Manual trigger requested
+[2025-11-10 03:37:43 UTC] ========== Starting data collection ==========
+[2025-11-10 03:37:43 UTC] Current time: 2025-11-10 03:37:43 UTC
+[2025-11-10 03:37:43 UTC] Windows to fetch: 1
+[2025-11-10 03:37:43 UTC]   10m: 2025-11-10 03:20:00 to 03:30:00
+[2025-11-10 03:37:43 UTC] Active stations: 7
+
+[2025-11-10 03:37:43 UTC] [1/7] Processing...
+[2025-11-10 03:37:44 UTC] [kilauea] HV.OBL.--.HHZ - 10m 2025-11-10 03:20:00+00:00 to 2025-11-10 03:30:00+00:00
+  📝 Creating new metadata
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-1776/10408
+  ✅ Compressed 53.4% (saved 46.6%)
+  📝 Creating new metadata
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/OBL/--/HHZ/10m/HV_OBL_--_HHZ_10m_2025-11-10-03-20-00_to_2025-11-10-03-29-59.bin.zst
+  💾 Updated metadata locally: 1 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:37:46 UTC] [2/7] Processing...
+[2025-11-10 03:37:46 UTC] [kilauea] HV.UWB.--.HHZ - 10m 2025-11-10 03:20:00+00:00 to 2025-11-10 03:30:00+00:00
+  📝 Creating new metadata
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-7904208/-7884502
+  ✅ Compressed 56.0% (saved 44.0%)
+  📝 Creating new metadata
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/UWB/--/HHZ/10m/HV_UWB_--_HHZ_10m_2025-11-10-03-20-00_to_2025-11-10-03-29-59.bin.zst
+  💾 Updated metadata locally: 1 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:37:47 UTC] [3/7] Processing...
+[2025-11-10 03:37:47 UTC] [kilauea] HV.SBL.--.HHZ - 10m 2025-11-10 03:20:00+00:00 to 2025-11-10 03:30:00+00:00
+  📝 Creating new metadata
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-6897/6395
+  ✅ Compressed 52.1% (saved 47.9%)
+  📝 Creating new metadata
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/SBL/--/HHZ/10m/HV_SBL_--_HHZ_10m_2025-11-10-03-20-00_to_2025-11-10-03-29-59.bin.zst
+  💾 Updated metadata locally: 1 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:37:49 UTC] [4/7] Processing...
+[2025-11-10 03:37:49 UTC] [kilauea] HV.WRM.--.HHZ - 10m 2025-11-10 03:20:00+00:00 to 2025-11-10 03:30:00+00:00
+  📝 Creating new metadata
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-6471/7232
+  ✅ Compressed 53.4% (saved 46.6%)
+  📝 Creating new metadata
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/WRM/--/HHZ/10m/HV_WRM_--_HHZ_10m_2025-11-10-03-20-00_to_2025-11-10-03-29-59.bin.zst
+  💾 Updated metadata locally: 1 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:37:51 UTC] [5/7] Processing...
+[2025-11-10 03:37:51 UTC] [shishaldin] AV.SSLS.--.BHZ - 10m 2025-11-10 03:20:00+00:00 to 2025-11-10 03:30:00+00:00
+  📝 Creating new metadata
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=982/6519
+  ✅ Compressed 42.6% (saved 57.4%)
+  📝 Creating new metadata
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/shishaldin/SSLS/--/BHZ/10m/AV_SSLS_--_BHZ_10m_2025-11-10-03-20-00_to_2025-11-10-03-29-59.bin.zst
+  💾 Updated metadata locally: 1 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:37:52 UTC] [6/7] Processing...
+[2025-11-10 03:37:52 UTC] [shishaldin] AV.SSLN.--.BHZ - 10m 2025-11-10 03:20:00+00:00 to 2025-11-10 03:30:00+00:00
+  📝 Creating new metadata
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=-6223/1825
+  ✅ Compressed 48.9% (saved 51.1%)
+  📝 Creating new metadata
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/shishaldin/SSLN/--/BHZ/10m/AV_SSLN_--_BHZ_10m_2025-11-10-03-20-00_to_2025-11-10-03-29-59.bin.zst
+  💾 Updated metadata locally: 1 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:37:53 UTC] [7/7] Processing...
+[2025-11-10 03:37:53 UTC] [spurr] AV.SPCP.--.BHZ - 10m 2025-11-10 03:20:00+00:00 to 2025-11-10 03:30:00+00:00
+  📝 Creating new metadata
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=-11/710
+  ✅ Compressed 30.2% (saved 69.8%)
+  📝 Creating new metadata
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/spurr/SPCP/--/BHZ/10m/AV_SPCP_--_BHZ_10m_2025-11-10-03-20-00_to_2025-11-10-03-29-59.bin.zst
+  💾 Updated metadata locally: 1 10m, 0 1h, 0 6h (sorted)
+
+====================================================================================================
+COLLECTION COMPLETE
+====================================================================================================
+Total tasks: 7
+Successful: 7
+Skipped: 0
+Failed: 0
+====================================================================================================
+[2025-11-10 03:37:54 UTC] ✅ Data collection completed successfully
+[2025-11-10 03:43:01 UTC] ========== Starting data collection ==========
+[2025-11-10 03:43:01 UTC] Current time: 2025-11-10 03:43:01 UTC
+[2025-11-10 03:43:01 UTC] Windows to fetch: 1
+[2025-11-10 03:43:01 UTC]   10m: 2025-11-10 03:30:00 to 03:40:00
+[2025-11-10 03:43:01 UTC] Active stations: 7
+
+[2025-11-10 03:43:01 UTC] [1/7] Processing...
+[2025-11-10 03:43:01 UTC] [kilauea] HV.OBL.--.HHZ - 10m 2025-11-10 03:30:00+00:00 to 2025-11-10 03:40:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (1 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-2302/10689
+  ✅ Compressed 54.1% (saved 45.9%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/OBL/--/HHZ/10m/HV_OBL_--_HHZ_10m_2025-11-10-03-30-00_to_2025-11-10-03-39-59.bin.zst
+  💾 Updated metadata locally: 2 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:43:02 UTC] [2/7] Processing...
+[2025-11-10 03:43:02 UTC] [kilauea] HV.UWB.--.HHZ - 10m 2025-11-10 03:30:00+00:00 to 2025-11-10 03:40:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (1 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-7907487/-7883825
+  ✅ Compressed 56.6% (saved 43.4%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/UWB/--/HHZ/10m/HV_UWB_--_HHZ_10m_2025-11-10-03-30-00_to_2025-11-10-03-39-59.bin.zst
+  💾 Updated metadata locally: 2 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:43:04 UTC] [3/7] Processing...
+[2025-11-10 03:43:04 UTC] [kilauea] HV.SBL.--.HHZ - 10m 2025-11-10 03:30:00+00:00 to 2025-11-10 03:40:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (1 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-6170/5436
+  ✅ Compressed 52.9% (saved 47.1%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/SBL/--/HHZ/10m/HV_SBL_--_HHZ_10m_2025-11-10-03-30-00_to_2025-11-10-03-39-59.bin.zst
+  💾 Updated metadata locally: 2 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:43:05 UTC] [4/7] Processing...
+[2025-11-10 03:43:05 UTC] [kilauea] HV.WRM.--.HHZ - 10m 2025-11-10 03:30:00+00:00 to 2025-11-10 03:40:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (1 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-6229/9728
+  ✅ Compressed 53.6% (saved 46.4%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/WRM/--/HHZ/10m/HV_WRM_--_HHZ_10m_2025-11-10-03-30-00_to_2025-11-10-03-39-59.bin.zst
+  💾 Updated metadata locally: 2 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:43:07 UTC] [5/7] Processing...
+[2025-11-10 03:43:07 UTC] [shishaldin] AV.SSLS.--.BHZ - 10m 2025-11-10 03:30:00+00:00 to 2025-11-10 03:40:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (1 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=-75/6924
+  ✅ Compressed 42.9% (saved 57.1%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/shishaldin/SSLS/--/BHZ/10m/AV_SSLS_--_BHZ_10m_2025-11-10-03-30-00_to_2025-11-10-03-39-59.bin.zst
+  💾 Updated metadata locally: 2 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:43:08 UTC] [6/7] Processing...
+[2025-11-10 03:43:08 UTC] [shishaldin] AV.SSLN.--.BHZ - 10m 2025-11-10 03:30:00+00:00 to 2025-11-10 03:40:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (1 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=-6041/2376
+  ✅ Compressed 48.4% (saved 51.6%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/shishaldin/SSLN/--/BHZ/10m/AV_SSLN_--_BHZ_10m_2025-11-10-03-30-00_to_2025-11-10-03-39-59.bin.zst
+  💾 Updated metadata locally: 2 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:43:10 UTC] [7/7] Processing...
+[2025-11-10 03:43:10 UTC] [spurr] AV.SPCP.--.BHZ - 10m 2025-11-10 03:30:00+00:00 to 2025-11-10 03:40:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (1 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=-15/695
+  ✅ Compressed 30.1% (saved 69.9%)
+  ⏭️  Chunk already exists in metadata (race condition detected), skipping upload
+
+====================================================================================================
+COLLECTION COMPLETE
+====================================================================================================
+Total tasks: 7
+Successful: 6
+Skipped: 1
+Failed: 0
+====================================================================================================
+[2025-11-10 03:43:10 UTC] ✅ Data collection completed successfully
+[2025-11-10 03:43:10 UTC] [LOCAL] Next run in 590 seconds (at :53)
+[2025-11-10 03:53:00 UTC] ========== Starting data collection ==========
+[2025-11-10 03:53:00 UTC] Current time: 2025-11-10 03:53:00 UTC
+[2025-11-10 03:53:00 UTC] Windows to fetch: 1
+[2025-11-10 03:53:00 UTC]   10m: 2025-11-10 03:40:00 to 03:50:00
+[2025-11-10 03:53:00 UTC] Active stations: 7
+
+[2025-11-10 03:53:00 UTC] [1/7] Processing...
+[2025-11-10 03:53:00 UTC] [kilauea] HV.OBL.--.HHZ - 10m 2025-11-10 03:40:00+00:00 to 2025-11-10 03:50:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (2 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-1440/11239
+  ✅ Compressed 53.4% (saved 46.6%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/OBL/--/HHZ/10m/HV_OBL_--_HHZ_10m_2025-11-10-03-40-00_to_2025-11-10-03-49-59.bin.zst
+  💾 Updated metadata locally: 3 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:53:02 UTC] [2/7] Processing...
+[2025-11-10 03:53:02 UTC] [kilauea] HV.UWB.--.HHZ - 10m 2025-11-10 03:40:00+00:00 to 2025-11-10 03:50:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (2 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-7914690/7888664
+  ✅ Compressed 57.8% (saved 42.2%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/UWB/--/HHZ/10m/HV_UWB_--_HHZ_10m_2025-11-10-03-40-00_to_2025-11-10-03-49-59.bin.zst
+  💾 Updated metadata locally: 3 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:53:04 UTC] [3/7] Processing...
+[2025-11-10 03:53:04 UTC] [kilauea] HV.SBL.--.HHZ - 10m 2025-11-10 03:40:00+00:00 to 2025-11-10 03:50:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (2 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-7073/5487
+  ✅ Compressed 51.9% (saved 48.1%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/SBL/--/HHZ/10m/HV_SBL_--_HHZ_10m_2025-11-10-03-40-00_to_2025-11-10-03-49-59.bin.zst
+  💾 Updated metadata locally: 3 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:53:05 UTC] [4/7] Processing...
+[2025-11-10 03:53:05 UTC] [kilauea] HV.WRM.--.HHZ - 10m 2025-11-10 03:40:00+00:00 to 2025-11-10 03:50:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (2 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-10056/8742
+  ✅ Compressed 53.5% (saved 46.5%)
+  ⏭️  Chunk already exists in metadata (race condition detected), skipping upload
+[2025-11-10 03:53:07 UTC] [5/7] Processing...
+[2025-11-10 03:53:07 UTC] [shishaldin] AV.SSLS.--.BHZ - 10m 2025-11-10 03:40:00+00:00 to 2025-11-10 03:50:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (2 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=924/6264
+  ✅ Compressed 42.8% (saved 57.2%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/shishaldin/SSLS/--/BHZ/10m/AV_SSLS_--_BHZ_10m_2025-11-10-03-40-00_to_2025-11-10-03-49-59.bin.zst
+  💾 Updated metadata locally: 3 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:53:08 UTC] [6/7] Processing...
+[2025-11-10 03:53:08 UTC] [shishaldin] AV.SSLN.--.BHZ - 10m 2025-11-10 03:40:00+00:00 to 2025-11-10 03:50:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (2 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=-6126/1794
+  ✅ Compressed 48.3% (saved 51.7%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/shishaldin/SSLN/--/BHZ/10m/AV_SSLN_--_BHZ_10m_2025-11-10-03-40-00_to_2025-11-10-03-49-59.bin.zst
+  💾 Updated metadata locally: 3 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 03:53:09 UTC] [7/7] Processing...
+[2025-11-10 03:53:09 UTC] [spurr] AV.SPCP.--.BHZ - 10m 2025-11-10 03:40:00+00:00 to 2025-11-10 03:50:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (2 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=51/650
+  ✅ Compressed 30.8% (saved 69.2%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/spurr/SPCP/--/BHZ/10m/AV_SPCP_--_BHZ_10m_2025-11-10-03-40-00_to_2025-11-10-03-49-59.bin.zst
+  💾 Updated metadata locally: 3 10m, 0 1h, 0 6h (sorted)
+
+====================================================================================================
+COLLECTION COMPLETE
+====================================================================================================
+Total tasks: 7
+Successful: 6
+Skipped: 1
+Failed: 0
+====================================================================================================
+[2025-11-10 03:53:10 UTC] ✅ Data collection completed successfully
+[2025-11-10 03:53:10 UTC] [LOCAL] Next run in 590 seconds (at :03)
+[2025-11-10 04:03:00 UTC] ========== Starting data collection ==========
+[2025-11-10 04:03:00 UTC] Current time: 2025-11-10 04:03:00 UTC
+[2025-11-10 04:03:00 UTC] Windows to fetch: 2
+[2025-11-10 04:03:00 UTC]   10m: 2025-11-10 03:50:00 to 04:00:00
+[2025-11-10 04:03:00 UTC]   1h: 2025-11-10 03:00:00 to 04:00:00
+[2025-11-10 04:03:00 UTC] Active stations: 7
+
+[2025-11-10 04:03:00 UTC] [1/14] Processing...
+[2025-11-10 04:03:00 UTC] [kilauea] HV.OBL.--.HHZ - 10m 2025-11-10 03:50:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (3 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-2261/10526
+  ✅ Compressed 53.3% (saved 46.7%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/OBL/--/HHZ/10m/HV_OBL_--_HHZ_10m_2025-11-10-03-50-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 04:03:02 UTC] [2/14] Processing...
+[2025-11-10 04:03:02 UTC] [kilauea] HV.OBL.--.HHZ - 1h 2025-11-10 03:00:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (4 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 360,000 samples, min/max=-2302/11239
+  ✅ Compressed 47.3% (saved 52.7%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/OBL/--/HHZ/1h/HV_OBL_--_HHZ_1h_2025-11-10-03-00-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 1 1h, 0 6h (sorted)
+[2025-11-10 04:03:06 UTC] [3/14] Processing...
+[2025-11-10 04:03:06 UTC] [kilauea] HV.UWB.--.HHZ - 10m 2025-11-10 03:50:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (3 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=7873318/7899433
+  ✅ Compressed 56.0% (saved 44.0%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/UWB/--/HHZ/10m/HV_UWB_--_HHZ_10m_2025-11-10-03-50-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 04:03:08 UTC] [4/14] Processing...
+[2025-11-10 04:03:08 UTC] [kilauea] HV.UWB.--.HHZ - 1h 2025-11-10 03:00:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (4 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 360,000 samples, min/max=-7914690/7899433
+  ✅ Compressed 52.1% (saved 47.9%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/UWB/--/HHZ/1h/HV_UWB_--_HHZ_1h_2025-11-10-03-00-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 1 1h, 0 6h (sorted)
+[2025-11-10 04:03:12 UTC] [5/14] Processing...
+[2025-11-10 04:03:12 UTC] [kilauea] HV.SBL.--.HHZ - 10m 2025-11-10 03:50:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (3 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-5896/4400
+  ✅ Compressed 52.2% (saved 47.8%)
+  ⏭️  Chunk already exists in metadata (race condition detected), skipping upload
+[2025-11-10 04:03:15 UTC] [6/14] Processing...
+[2025-11-10 04:03:15 UTC] [kilauea] HV.SBL.--.HHZ - 1h 2025-11-10 03:00:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (4 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 360,000 samples, min/max=-7073/6395
+  ✅ Compressed 44.1% (saved 55.9%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/SBL/--/HHZ/1h/HV_SBL_--_HHZ_1h_2025-11-10-03-00-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 1 1h, 0 6h (sorted)
+[2025-11-10 04:03:20 UTC] [7/14] Processing...
+[2025-11-10 04:03:20 UTC] [kilauea] HV.WRM.--.HHZ - 10m 2025-11-10 03:50:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (3 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 60,000 samples, min/max=-5865/6119
+  ✅ Compressed 53.4% (saved 46.6%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/WRM/--/HHZ/10m/HV_WRM_--_HHZ_10m_2025-11-10-03-50-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 04:03:22 UTC] [8/14] Processing...
+[2025-11-10 04:03:22 UTC] [kilauea] HV.WRM.--.HHZ - 1h 2025-11-10 03:00:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (4 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 360,000 samples, min/max=-10056/9728
+  ✅ Compressed 46.8% (saved 53.2%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/HV/kilauea/WRM/--/HHZ/1h/HV_WRM_--_HHZ_1h_2025-11-10-03-00-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 1 1h, 0 6h (sorted)
+[2025-11-10 04:03:25 UTC] [9/14] Processing...
+[2025-11-10 04:03:25 UTC] [shishaldin] AV.SSLS.--.BHZ - 10m 2025-11-10 03:50:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (3 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=128/5874
+  ✅ Compressed 43.0% (saved 57.0%)
+  ⏭️  Chunk already exists in metadata (race condition detected), skipping upload
+[2025-11-10 04:03:28 UTC] [10/14] Processing...
+[2025-11-10 04:03:28 UTC] [shishaldin] AV.SSLS.--.BHZ - 1h 2025-11-10 03:00:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (4 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 180,000 samples, min/max=-75/6924
+  ✅ Compressed 40.7% (saved 59.3%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/shishaldin/SSLS/--/BHZ/1h/AV_SSLS_--_BHZ_1h_2025-11-10-03-00-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 1 1h, 0 6h (sorted)
+[2025-11-10 04:03:30 UTC] [11/14] Processing...
+[2025-11-10 04:03:30 UTC] [shishaldin] AV.SSLN.--.BHZ - 10m 2025-11-10 03:50:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (3 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=-6678/1749
+  ✅ Compressed 48.5% (saved 51.5%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/shishaldin/SSLN/--/BHZ/10m/AV_SSLN_--_BHZ_10m_2025-11-10-03-50-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 04:03:31 UTC] [12/14] Processing...
+[2025-11-10 04:03:31 UTC] [shishaldin] AV.SSLN.--.BHZ - 1h 2025-11-10 03:00:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (4 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 180,000 samples, min/max=-6678/2376
+  ✅ Compressed 46.3% (saved 53.7%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/shishaldin/SSLN/--/BHZ/1h/AV_SSLN_--_BHZ_1h_2025-11-10-03-00-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 1 1h, 0 6h (sorted)
+[2025-11-10 04:03:34 UTC] [13/14] Processing...
+[2025-11-10 04:03:34 UTC] [spurr] AV.SPCP.--.BHZ - 10m 2025-11-10 03:50:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (3 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 30,000 samples, min/max=57/686
+  ✅ Compressed 29.9% (saved 70.1%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/spurr/SPCP/--/BHZ/10m/AV_SPCP_--_BHZ_10m_2025-11-10-03-50-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 0 1h, 0 6h (sorted)
+[2025-11-10 04:03:35 UTC] [14/14] Processing...
+[2025-11-10 04:03:35 UTC] [spurr] AV.SPCP.--.BHZ - 1h 2025-11-10 03:00:00+00:00 to 2025-11-10 04:00:00+00:00
+  📖 Loaded existing metadata (NEW format)
+  📖 Loaded existing metadata (4 10m, 0 1h, 0 6h)
+  ✅ Got 1 trace(s)
+  ✅ Processed 180,000 samples, min/max=-29/720
+  ✅ Compressed 28.6% (saved 71.4%)
+  💾 Saved locally: /Users/robertalexander/GitHub/volcano-audio/backend/cron_output/data/2025/11/10/AV/spurr/SPCP/--/BHZ/1h/AV_SPCP_--_BHZ_1h_2025-11-10-03-00-00_to_2025-11-10-03-59-59.bin.zst
+  💾 Updated metadata locally: 4 10m, 1 1h, 0 6h (sorted)
+
+====================================================================================================
+COLLECTION COMPLETE
+====================================================================================================
+Total tasks: 14
+Successful: 12
+Skipped: 2
+Failed: 0
+====================================================================================================
+[2025-11-10 04:03:37 UTC] ✅ Data collection completed successfully
+[2025-11-10 04:03:37 UTC] [LOCAL] Next run in 563 seconds (at :13)
+[2025-11-10 04:13:00 UTC] ========== Starting data collection ==========
+[2025-11-10 04:13:00 UTC] Current time: 2025-11-10 04:13:00 UTC
+[2025-11-10 04:13:00 UTC] Windows to fetch: 1
+[2025-11-10 04:13:00 UTC]   10m: 2025-11-10 04:00:00 to 04:10:00
+[2025-11-10 04:13:00 UTC] Active stations: 7

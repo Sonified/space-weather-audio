@@ -4,7 +4,7 @@ Python/FastAPI backend for fetching, caching, and serving seismic audio data.
 
 ## Deployment
 
-**Production URL**: https://volcano-audio-production.up.railway.app
+**Production URL**: https://volcano-audio-collector-production.up.railway.app
 
 - **Platform**: Railway.app
 - **Auto-deploys**: From `main` branch on GitHub push
@@ -14,18 +14,18 @@ Python/FastAPI backend for fetching, caching, and serving seismic audio data.
 
 ### Health Check
 ```bash
-curl https://volcano-audio-production.up.railway.app/
+curl https://volcano-audio-collector-production.up.railway.app/
 # Returns: "Volcano Audio API - Ready"
 ```
 
 ### Progressive Streaming Test
 ```bash
-curl "https://volcano-audio-production.up.railway.app/progressive_test?volcano=kilauea&hours_ago=12&duration_hours=4"
+curl "https://volcano-audio-collector-production.up.railway.app/progressive_test?volcano=kilauea&hours_ago=12&duration_hours=4"
 ```
 
 ### Main Audio Endpoint
 ```bash
-curl "https://volcano-audio-production.up.railway.app/audio/{volcano}/{duration_hours}?hours_ago={hours_ago}"
+curl "https://volcano-audio-collector-production.up.railway.app/audio/{volcano}/{duration_hours}?hours_ago={hours_ago}"
 ```
 
 ## Running Tests
@@ -39,7 +39,7 @@ python test_render_iris_to_r2.py
 
 Or trigger via API (once deployed):
 ```bash
-curl https://volcano-audio-production.up.railway.app/test_iris_to_r2
+curl https://volcano-audio-collector-production.up.railway.app/test_iris_to_r2
 ```
 
 ## Environment Variables

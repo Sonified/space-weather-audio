@@ -8,8 +8,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from python_code.seismic_utils import fetch_seismic_data
-from python_code.audio_utils import create_audio_file
+from archive.python_code.seismic_utils import fetch_seismic_data
+from archive.python_code.audio_utils import create_audio_file
 from datetime import datetime, timedelta
 from obspy import Stream, read
 import numpy as np

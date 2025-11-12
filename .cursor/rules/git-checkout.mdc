@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+NEVER check out a file and replace existing code without first consulting with the user. 

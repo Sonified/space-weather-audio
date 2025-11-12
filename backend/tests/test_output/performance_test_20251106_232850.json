@@ -1,0 +1,231 @@
+{
+  "test_config": {
+    "station": {
+      "network": "HV",
+      "station": "OBL",
+      "location": "",
+      "channel": "HHZ"
+    },
+    "duration_minutes": 10,
+    "num_runs": 3,
+    "worker_url": "https://volcano-audio-test.robertalexander-music.workers.dev",
+    "timestamp": "2025-11-06T23:28:50.087481"
+  },
+  "results": [
+    {
+      "name": "Baseline: Sequential Main Thread",
+      "description": "Fetch chunks sequentially, decompress in main thread (simulates current browser without worker)",
+      "ttfa_mean": 1637.7342542012532,
+      "ttfa_std": 273.9310505143669,
+      "ttfa_min": 1399.756908416748,
+      "ttfa_max": 1937.175989151001,
+      "total_mean": 1637.7362410227458,
+      "total_std": 273.9311808253974,
+      "total_min": 1399.7588157653809,
+      "total_max": 1937.178134918213,
+      "download_mean": 811.1979166666666,
+      "download_std": 165.94815065050955,
+      "process_mean": 1.843849817911784,
+      "process_std": 2.1153257685292437,
+      "num_runs": 3,
+      "raw_results": [
+        {
+          "ttfa": 1937.175989151001,
+          "total_time": 1937.178134918213,
+          "download_time": 1002.8159618377686,
+          "process_time": 4.2858123779296875,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 1576.2698650360107,
+          "total_time": 1576.2717723846436,
+          "download_time": 716.2148952484131,
+          "process_time": 0.5757808685302734,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 1399.756908416748,
+          "total_time": 1399.7588157653809,
+          "download_time": 714.5628929138184,
+          "process_time": 0.6699562072753906,
+          "num_chunks": 1,
+          "total_samples": 120000
+        }
+      ]
+    },
+    {
+      "name": "Pipelined Fetch+Process",
+      "description": "Overlap fetch of next chunk with processing of current chunk",
+      "ttfa_mean": 991.7000929514567,
+      "ttfa_std": 113.21208414723196,
+      "ttfa_min": 890.862226486206,
+      "ttfa_max": 1114.166021347046,
+      "total_mean": 991.7690753936768,
+      "total_std": 113.24866618597028,
+      "total_min": 890.9180164337158,
+      "total_max": 1114.2852306365967,
+      "download_mean": 479.64731852213544,
+      "download_std": 89.17188802637119,
+      "process_mean": 0.950018564860026,
+      "process_std": 0.5985157521063096,
+      "num_runs": 3,
+      "raw_results": [
+        {
+          "ttfa": 890.862226486206,
+          "total_time": 890.9180164337158,
+          "download_time": 426.9130229949951,
+          "process_time": 0.5948543548583984,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 1114.166021347046,
+          "total_time": 1114.2852306365967,
+          "download_time": 582.603931427002,
+          "process_time": 1.6410350799560547,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 970.0720310211182,
+          "total_time": 970.1039791107178,
+          "download_time": 429.4250011444092,
+          "process_time": 0.614166259765625,
+          "num_chunks": 1,
+          "total_samples": 120000
+        }
+      ]
+    },
+    {
+      "name": "Parallel Fetch + Sequential Process",
+      "description": "Fetch all chunks in parallel (concurrent requests), then decompress/normalize sequentially",
+      "ttfa_mean": 788.6442343393961,
+      "ttfa_std": 50.301847686943724,
+      "ttfa_min": 756.4198970794678,
+      "ttfa_max": 846.606969833374,
+      "total_mean": 788.6451880137125,
+      "total_std": 50.30190917950776,
+      "total_min": 756.4198970794678,
+      "total_max": 846.6079235076904,
+      "download_mean": 427.1029631296794,
+      "download_std": 30.638089535770188,
+      "process_mean": 0.6782213846842448,
+      "process_std": 0.1403664622793721,
+      "num_runs": 3,
+      "raw_results": [
+        {
+          "ttfa": 762.9058361053467,
+          "total_time": 762.9077434539795,
+          "download_time": 452.9459476470947,
+          "process_time": 0.8378028869628906,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 756.4198970794678,
+          "total_time": 756.4198970794678,
+          "download_time": 435.1050853729248,
+          "process_time": 0.6229877471923828,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 846.606969833374,
+          "total_time": 846.6079235076904,
+          "download_time": 393.25785636901855,
+          "process_time": 0.5738735198974609,
+          "num_chunks": 1,
+          "total_samples": 120000
+        }
+      ]
+    },
+    {
+      "name": "First Chunk Priority + Parallel Rest",
+      "description": "Fetch & process first chunk ASAP, then fetch+process remaining chunks in parallel",
+      "ttfa_mean": 1154.1550159454346,
+      "ttfa_std": 219.44554496647606,
+      "ttfa_min": 929.0318489074707,
+      "ttfa_max": 1367.4440383911133,
+      "total_mean": 1154.1829109191895,
+      "total_std": 219.44315088614294,
+      "total_min": 929.0649890899658,
+      "total_max": 1367.4728870391846,
+      "download_mean": 692.5097465515137,
+      "download_std": 131.66589053168576,
+      "process_mean": 461.6731643676758,
+      "process_std": 87.77726035445717,
+      "num_runs": 3,
+      "raw_results": [
+        {
+          "ttfa": 929.0318489074707,
+          "total_time": 929.0649890899658,
+          "download_time": 557.4389934539795,
+          "process_time": 371.6259956359863,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 1165.9891605377197,
+          "total_time": 1166.010856628418,
+          "download_time": 699.6065139770508,
+          "process_time": 466.4043426513672,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 1367.4440383911133,
+          "total_time": 1367.4728870391846,
+          "download_time": 820.4837322235107,
+          "process_time": 546.9891548156738,
+          "num_chunks": 1,
+          "total_samples": 120000
+        }
+      ]
+    },
+    {
+      "name": "Streaming Decompression",
+      "description": "Decompress chunks as they download (streaming decompression)",
+      "ttfa_mean": 833.513339360555,
+      "ttfa_std": 56.513573324557846,
+      "ttfa_min": 791.5530204772949,
+      "ttfa_max": 897.7749347686768,
+      "total_mean": 833.5151672363281,
+      "total_std": 56.51303111301206,
+      "total_min": 791.5551662445068,
+      "total_max": 897.7761268615723,
+      "download_mean": 426.45057042439777,
+      "download_std": 52.21646086439888,
+      "process_mean": 16.46574338277181,
+      "process_std": 8.892749880706948,
+      "num_runs": 3,
+      "raw_results": [
+        {
+          "ttfa": 791.5530204772949,
+          "total_time": 791.5551662445068,
+          "download_time": 370.17178535461426,
+          "process_time": 14.549970626831055,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 811.2120628356934,
+          "total_time": 811.2142086029053,
+          "download_time": 473.3271598815918,
+          "process_time": 8.687019348144531,
+          "num_chunks": 1,
+          "total_samples": 120000
+        },
+        {
+          "ttfa": 897.7749347686768,
+          "total_time": 897.7761268615723,
+          "download_time": 435.8527660369873,
+          "process_time": 26.160240173339844,
+          "num_chunks": 1,
+          "total_samples": 120000
+        }
+      ]
+    }
+  ]
+}

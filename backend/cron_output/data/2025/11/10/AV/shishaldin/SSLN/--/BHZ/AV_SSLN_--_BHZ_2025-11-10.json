@@ -1,0 +1,334 @@
+{
+  "date": "2025-11-10",
+  "network": "AV",
+  "volcano": "shishaldin",
+  "station": "SSLN",
+  "location": "",
+  "channel": "BHZ",
+  "sample_rate": 50.0,
+  "created_at": "2025-11-10T03:37:52.919174Z",
+  "complete_day": false,
+  "chunks": {
+    "10m": [
+      {
+        "start": "03:20:00",
+        "end": "03:29:59",
+        "min": -6223,
+        "max": 1825,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "03:30:00",
+        "end": "03:39:59",
+        "min": -6041,
+        "max": 2376,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "03:40:00",
+        "end": "03:49:59",
+        "min": -6126,
+        "max": 1794,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "03:50:00",
+        "end": "03:59:59",
+        "min": -6678,
+        "max": 1749,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:00:00",
+        "end": "04:09:59",
+        "min": -6227,
+        "max": 1057,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:10:00",
+        "end": "04:20:00",
+        "min": -6261,
+        "max": 988,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:20:00",
+        "end": "04:30:00",
+        "min": -5976,
+        "max": 528,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:30:00",
+        "end": "04:40:00",
+        "min": -6006,
+        "max": 1764,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:40:00",
+        "end": "04:50:00",
+        "min": -5759,
+        "max": 971,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:50:00",
+        "end": "05:00:00",
+        "min": -6682,
+        "max": 2182,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:00:00",
+        "end": "05:10:00",
+        "min": -6325,
+        "max": 1400,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:10:00",
+        "end": "05:20:00",
+        "min": -6252,
+        "max": 1787,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:40:00",
+        "end": "05:50:00",
+        "min": -6431,
+        "max": 1917,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:50:00",
+        "end": "06:00:00",
+        "min": -5568,
+        "max": 1153,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "06:00:00",
+        "end": "06:10:00",
+        "min": -6171,
+        "max": 1617,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "06:10:00",
+        "end": "06:20:00",
+        "min": -5967,
+        "max": 1288,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "16:30:00",
+        "end": "16:40:00",
+        "min": -5814,
+        "max": 1231,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "16:40:00",
+        "end": "16:50:00",
+        "min": -5767,
+        "max": 1103,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "16:50:00",
+        "end": "17:00:00",
+        "min": -6203,
+        "max": 886,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "18:10:00",
+        "end": "18:20:00",
+        "min": -6147,
+        "max": 1080,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "19:00:00",
+        "end": "19:10:00",
+        "min": -5799,
+        "max": 896,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "21:50:00",
+        "end": "22:00:00",
+        "min": -6194,
+        "max": 1254,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "22:20:00",
+        "end": "22:30:00",
+        "min": -5502,
+        "max": 997,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "22:30:00",
+        "end": "22:40:00",
+        "min": -6794,
+        "max": 2128,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "22:40:00",
+        "end": "22:50:00",
+        "min": -5721,
+        "max": 2061,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "23:40:00",
+        "end": "23:50:00",
+        "min": -6192,
+        "max": 1421,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "23:50:00",
+        "end": "00:00:00",
+        "min": -5684,
+        "max": 2262,
+        "samples": 30000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "1h": [
+      {
+        "start": "03:00:00",
+        "end": "03:59:59",
+        "min": -6678,
+        "max": 2376,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "04:00:00",
+        "end": "05:00:00",
+        "min": -6682,
+        "max": 2182,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "05:00:00",
+        "end": "06:00:00",
+        "min": -6431,
+        "max": 1917,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "16:00:00",
+        "end": "17:00:00",
+        "min": -6280,
+        "max": 1289,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "21:00:00",
+        "end": "22:00:00",
+        "min": -6652,
+        "max": 1465,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "23:00:00",
+        "end": "00:00:00",
+        "min": -6475,
+        "max": 2262,
+        "samples": 180000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "6h": [
+      {
+        "start": "00:00:00",
+        "end": "06:00:00",
+        "min": -7815,
+        "max": 2376,
+        "samples": 1080000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "18:00:00",
+        "end": "00:00:00",
+        "min": -7855,
+        "max": 2588,
+        "samples": 1080000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ]
+  }
+}

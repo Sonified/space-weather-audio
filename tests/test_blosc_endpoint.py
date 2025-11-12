@@ -54,5 +54,5 @@ if __name__ == '__main__':
     print("\n" + "="*60)
     print("✅ All tests complete!")
     print("="*60)
-    print("\nNow open test_browser_blosc.html in your browser to test client-side decompression!")
+    print("\nNow open browser/test_browser_blosc.html in your browser to test client-side decompression!")
 

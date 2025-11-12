@@ -1,0 +1,23 @@
+name = "volcano-audio-test"
+main = "src/index.js"
+compatibility_date = "2025-10-24"
+compatibility_flags = ["nodejs_compat"]
+
+# R2 bucket binding
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "hearts-data-cache"
+
+# Environment variables
+[vars]
+RENDER_URL = "http://localhost:5001"
+
+# Observability settings
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true

@@ -4,9 +4,8 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_05_v1.57"
+__version__ = "2025_11_11_v1.77"
 import time
-import subprocess
 import sys
 import os
 import json
@@ -14,20 +13,31 @@ import threading
 import boto3
 from datetime import datetime, timezone
 from flask import Flask, jsonify
+from flask_cors import CORS
 from pathlib import Path
 
 # Simple Flask app for health/status endpoint
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
-# Get or create deployment time
+# Register audio streaming blueprint (for on-demand IRIS streaming when data not in R2)
+from audio_stream import audio_stream_bp
+app.register_blueprint(audio_stream_bp)
+
+# Detect deployment environment
+# Railway sets RAILWAY_ENVIRONMENT, local dev won't have this
+IS_PRODUCTION = os.getenv('RAILWAY_ENVIRONMENT') is not None
+DEPLOYMENT_ENV = "PRODUCTION (Railway)" if IS_PRODUCTION else "LOCAL (Development)"
+
+# Schedule offset: Production runs at :02, :12, :22, etc.
+#                  Local runs at :03, :13, :23, etc. (1 minute offset to avoid conflicts)
+SCHEDULE_OFFSET_MINUTES = 0 if IS_PRODUCTION else 1
+
+# Get or update deployment time (always update to current time on startup)
 deploy_time_file = Path(__file__).parent / '.deploy_time'
-if deploy_time_file.exists():
-    with open(deploy_time_file, 'r') as f:
-        deploy_time = f.read().strip()
-else:
-    deploy_time = datetime.now(timezone.utc).isoformat()
-    with open(deploy_time_file, 'w') as f:
-        f.write(deploy_time)
+deploy_time = datetime.now(timezone.utc).isoformat()
+with open(deploy_time_file, 'w') as f:
+    f.write(deploy_time)
 
 # R2 Configuration for failure logs
 R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
@@ -371,6 +381,325 @@ def find_station_first_file_timestamp(s3_client, network, station, location, cha
         traceback.print_exc()
         return None
 
+def process_station_window(network, station, location, channel, volcano, sample_rate,
+                           start_time, end_time, chunk_type):
+    """
+    Fetch and process data for one station and one time window.
+    Returns (status, error_info) tuple.
+    status: 'success', 'skipped', or 'failed'
+    error_info is dict with 'step', 'station', 'error' on failure, None otherwise.
+    
+    CRITICAL: Calculates min/max from the actual data array for each chunk type.
+    """
+    from obspy import UTCDateTime
+    from obspy.clients.fdsn import Client
+    import numpy as np
+    import zstandard as zstd
+    
+    station_id = f"{network}.{station}.{location}.{channel}"
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] [{volcano}] {station_id} - {chunk_type} {start_time} to {end_time}")
+    
+    try:
+        # Step 0: Check if this chunk already exists in metadata (skip if so)
+        s3 = get_s3_client()
+        year = start_time.year
+        month = f"{start_time.month:02d}"
+        day = f"{start_time.day:02d}"
+        date_str = start_time.strftime("%Y-%m-%d")
+        location_str = location if location and location != '--' else '--'
+        rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+        
+        # NEW format (without sample rate in filename)
+        metadata_filename = f"{network}_{station}_{location_str}_{channel}_{date_str}.json"
+        metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
+        
+        # Try to load existing metadata (try NEW format first, fallback to OLD format)
+        metadata = None
+        
+        if IS_PRODUCTION:
+            # Production: Load from R2
+            try:
+                response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                metadata = json.loads(response['Body'].read().decode('utf-8'))
+                print(f"  📖 Loaded existing metadata (NEW format)")
+            except s3.exceptions.NoSuchKey:
+                # Try OLD format (with sample rate)
+                old_metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                old_metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{old_metadata_filename}"
+                try:
+                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=old_metadata_key)
+                    metadata = json.loads(response['Body'].read().decode('utf-8'))
+                    print(f"  📖 Loaded existing metadata (OLD format) - will migrate to NEW format on save")
+                except s3.exceptions.NoSuchKey:
+                    pass  # No existing metadata, will create new
+        else:
+            # Local: Load from filesystem
+            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+            metadata_path = metadata_dir / metadata_filename
+            
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                print(f"  📖 Loaded existing metadata (NEW format)")
+            else:
+                # Try OLD format (with sample rate)
+                old_metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                old_metadata_path = metadata_dir / old_metadata_filename
+                if old_metadata_path.exists():
+                    with open(old_metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                    print(f"  📖 Loaded existing metadata (OLD format) - will migrate to NEW format on save")
+        
+        if metadata:
+            # Check if this time window already exists
+            start_time_str = start_time.strftime("%H:%M:%S")
+            existing_chunks = metadata['chunks'].get(chunk_type, [])
+            for chunk in existing_chunks:
+                if chunk['start'] == start_time_str:
+                    print(f"  ⏭️  Chunk already exists, skipping")
+                    return 'skipped', None
+            print(f"  📖 Loaded existing metadata ({len(metadata['chunks']['10m'])} 10m, {len(metadata['chunks'].get('1h', []))} 1h, {len(metadata['chunks']['6h'])} 6h)")
+        else:
+            # No existing metadata, will create new
+            print(f"  📝 Creating new metadata")
+        
+        # Step 1: Fetch from IRIS
+        client = Client("IRIS")
+        st = client.get_waveforms(
+            network=network,
+            station=station,
+            location=location if location != '--' else '',
+            channel=channel,
+            starttime=UTCDateTime(start_time),
+            endtime=UTCDateTime(end_time)
+        )
+        
+        if not st or len(st) == 0:
+            error_info = {
+                'step': 'IRIS_FETCH',
+                'station': station_id,
+                'chunk_type': chunk_type,
+                'error': 'No data returned from IRIS'
+            }
+            print(f"  ❌ No data returned from IRIS")
+            return 'failed', error_info
+        
+        print(f"  ✅ Got {len(st)} trace(s)")
+        
+        # Step 2: Detect gaps and merge
+        gaps = []
+        gap_list = st.get_gaps()
+        for gap in gap_list:
+            gap_start = UTCDateTime(gap[4])
+            gap_end = UTCDateTime(gap[5])
+            duration = gap_end - gap_start
+            samples_filled = int(round(duration * sample_rate))
+            gaps.append({
+                'start': gap_start.isoformat(),
+                'end': gap_end.isoformat(),
+                'samples_filled': samples_filled
+            })
+        
+        if gaps:
+            print(f"  ⚠️  {len(gaps)} gaps detected")
+        
+        st.merge(method=1, fill_value='interpolate', interpolation_samples=0)
+        trace = st[0]
+        
+        # Step 3: Ensure exact sample count based on requested window (no rounding!)
+        # We requested [start_time, end_time], so we MUST output exactly that many samples
+        requested_duration = end_time - start_time
+        expected_samples = int(requested_duration.total_seconds() * sample_rate)
+        actual_samples = len(trace.data)
+        
+        if actual_samples < expected_samples:
+            # Pad: Hold last sample value to fill to expected length
+            missing = expected_samples - actual_samples
+            last_value = trace.data[-1]
+            padding = np.full(missing, last_value, dtype=trace.data.dtype)
+            data = np.concatenate([trace.data, padding])
+            print(f"  ⚠️  Padded {missing} samples (IRIS returned {actual_samples:,}, expected {expected_samples:,})")
+        elif actual_samples > expected_samples:
+            # Truncate: Remove extra samples (shouldn't happen but safeguard)
+            extra = actual_samples - expected_samples
+            data = trace.data[:expected_samples]
+            print(f"  ⚠️  Truncated {extra} extra samples (IRIS returned {actual_samples:,}, expected {expected_samples:,})")
+        else:
+            # Perfect!
+            data = trace.data
+            print(f"  ✅ Perfect sample count: {actual_samples:,}")
+        
+        data_int32 = data.astype(np.int32)
+        
+        # CRITICAL FIX: Calculate min/max from the ACTUAL chunk data array
+        # This ensures each chunk (10m, 1h, 6h) has accurate min/max for its time window
+        min_val = int(np.min(data_int32))
+        max_val = int(np.max(data_int32))
+        
+        print(f"  ✅ Processed {len(data_int32):,} samples, min/max={min_val}/{max_val}")
+        
+        # Step 4: Compress
+        compressor = zstd.ZstdCompressor(level=3)
+        compressed = compressor.compress(data_int32.tobytes())
+        
+        compression_ratio = len(compressed) / len(data_int32.tobytes()) * 100
+        print(f"  ✅ Compressed {compression_ratio:.1f}% (saved {100-compression_ratio:.1f}%)")
+        
+        # Generate filename (NEW format: no sample rate)
+        # Use requested start_time/end_time instead of trace.stats times to handle midnight crossing correctly
+        # trace.stats.endtime might be slightly off (e.g., 23:59:59.999 instead of 00:00:00)
+        start_str = start_time.strftime("%Y-%m-%d-%H-%M-%S")
+        end_str = end_time.strftime("%Y-%m-%d-%H-%M-%S")
+        
+        filename = f"{network}_{station}_{location_str}_{channel}_{chunk_type}_{start_str}_to_{end_str}.bin.zst"
+        
+        # Step 5: Upload to R2
+        r2_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{chunk_type}/{filename}"
+        
+        # CRITICAL: Load metadata FIRST to check for duplicates BEFORE uploading binary
+        # This second load ensures we have the latest state in case another process added chunks
+        # (metadata is loaded at start of function, but other processes may have modified it)
+        metadata = None
+        
+        if IS_PRODUCTION:
+            # Production: Load from R2
+            try:
+                response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                metadata = json.loads(response['Body'].read().decode('utf-8'))
+            except s3.exceptions.NoSuchKey:
+                # Try OLD format (with sample rate)
+                old_metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                old_metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{old_metadata_filename}"
+                try:
+                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=old_metadata_key)
+                    metadata = json.loads(response['Body'].read().decode('utf-8'))
+                    print(f"  📖 Re-loaded metadata (OLD format) - will migrate to NEW format on save")
+                except s3.exceptions.NoSuchKey:
+                    pass  # Will create new below
+        else:
+            # Local: Load from filesystem
+            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+            metadata_path = metadata_dir / metadata_filename
+            
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+            else:
+                # Try OLD format (with sample rate)
+                old_metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                old_metadata_path = metadata_dir / old_metadata_filename
+                if old_metadata_path.exists():
+                    with open(old_metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                    print(f"  📖 Re-loaded metadata (OLD format) - will migrate to NEW format on save")
+        
+        if not metadata:
+            # Create new metadata
+            metadata = {
+                'date': date_str,
+                'network': network,
+                'volcano': volcano,
+                'station': station,
+                'location': location if location != '--' else '',
+                'channel': channel,
+                'sample_rate': sample_rate,
+                'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+                'complete_day': False,
+                'chunks': {
+                    '10m': [],
+                    '1h': [],
+                    '6h': []
+                }
+            }
+            print(f"  📝 Creating new metadata")
+        
+        # Build chunk metadata with ACTUAL min/max from this chunk's data
+        chunk_meta = {
+            'start': trace.stats.starttime.datetime.strftime("%H:%M:%S"),
+            'end': trace.stats.endtime.datetime.strftime("%H:%M:%S"),
+            'min': min_val,  # From THIS chunk's data array
+            'max': max_val,  # From THIS chunk's data array
+            'samples': len(data_int32),
+            'gap_count': len(gaps),
+            'gap_samples_filled': sum(g['samples_filled'] for g in gaps)
+        }
+        
+        # CRITICAL: Check for duplicates BEFORE uploading binary file
+        start_time_str = chunk_meta['start']
+        existing_chunks = metadata['chunks'].get(chunk_type, [])
+        for existing_chunk in existing_chunks:
+            if existing_chunk['start'] == start_time_str:
+                print(f"  ⏭️  Chunk already exists in metadata (race condition detected), skipping upload")
+                return 'skipped', None
+        
+        # Safe to upload binary now (duplicate check passed)
+        if IS_PRODUCTION:
+            # Production: Save to R2
+            s3.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=r2_key,
+                Body=compressed,
+                ContentType='application/octet-stream'
+            )
+            print(f"  💾 Uploaded to R2: {r2_key}")
+        else:
+            # Local: Save to filesystem
+            base_dir = Path(__file__).parent / 'cron_output'
+            chunk_dir = base_dir / 'data' / str(year) / month / day / network / volcano / station / location_str / channel / chunk_type
+            chunk_dir.mkdir(parents=True, exist_ok=True)
+            
+            chunk_path = chunk_dir / filename
+            with open(chunk_path, 'wb') as f:
+                f.write(compressed)
+            print(f"  💾 Saved locally: {chunk_path}")
+        
+        # Safe to append now
+        metadata['chunks'][chunk_type].append(chunk_meta)
+        
+        # SORT by start time (chronological)
+        metadata['chunks']['10m'].sort(key=lambda c: c['start'])
+        metadata['chunks']['1h'].sort(key=lambda c: c['start'])
+        metadata['chunks']['6h'].sort(key=lambda c: c['start'])
+        
+        # Update complete_day flag
+        if len(metadata['chunks']['10m']) >= 144:
+            metadata['complete_day'] = True
+        
+        # Upload updated metadata
+        if IS_PRODUCTION:
+            # Production: Save to R2
+            s3.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=metadata_key,
+                Body=json.dumps(metadata, indent=2).encode('utf-8'),
+                ContentType='application/json'
+            )
+            print(f"  💾 Updated metadata: {len(metadata['chunks']['10m'])} 10m, {len(metadata['chunks'].get('1h', []))} 1h, {len(metadata['chunks']['6h'])} 6h (sorted)")
+        else:
+            # Local: Save to filesystem
+            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+            metadata_dir.mkdir(parents=True, exist_ok=True)
+            
+            metadata_path = metadata_dir / metadata_filename
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            print(f"  💾 Updated metadata locally: {len(metadata['chunks']['10m'])} 10m, {len(metadata['chunks'].get('1h', []))} 1h, {len(metadata['chunks']['6h'])} 6h (sorted)")
+        
+        return 'success', None
+        
+    except Exception as e:
+        error_info = {
+            'step': 'UNKNOWN',
+            'station': station_id,
+            'chunk_type': chunk_type,
+            'error': str(e)
+        }
+        print(f"  ❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return 'failed', error_info
+
+
 def detect_and_log_station_changes():
     """
     Detect changes in active stations and update activation log.
@@ -641,7 +970,7 @@ def get_active_stations_list():
 
 def build_metadata_key(network, volcano, station, location, channel, sample_rate, date):
     """
-    Build R2 metadata key for a given station and date.
+    Build R2 metadata key for a given station and date (NEW format without sample rate).
     
     Args:
         network: Network code (e.g., 'HV')
@@ -649,24 +978,26 @@ def build_metadata_key(network, volcano, station, location, channel, sample_rate
         station: Station code (e.g., 'OBL')
         location: Location code (e.g., '' or '--')
         channel: Channel code (e.g., 'HHZ')
-        sample_rate: Sample rate (e.g., 100.0)
+        sample_rate: Sample rate (e.g., 100.0) - IGNORED in NEW format
         date: date object or datetime
     
     Returns:
-        str: R2 key like "data/2025/11/HV/kilauea/OBL/--/HHZ/HV_OBL_--_HHZ_100Hz_2025-11-05.json"
+        str: R2 key like "data/2025/11/05/HV/kilauea/OBL/--/HHZ/HV_OBL_--_HHZ_2025-11-05.json"
+        Note: No longer includes sample rate in filename!
     """
     year = date.year
     month = f"{date.month:02d}"
     day = f"{date.day:02d}"
     location_str = location if location and location != '--' else '--'
-    rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
-    filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date.strftime('%Y-%m-%d')}.json"
+    # NEW format: no sample rate in filename
+    filename = f"{network}_{station}_{location_str}_{channel}_{date.strftime('%Y-%m-%d')}.json"
     return f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{filename}"
 
 
 def load_metadata_for_date(s3_client, network, volcano, station, location, channel, sample_rate, date):
     """
     Load metadata JSON for a station and date from R2.
+    Tries NEW format (without sample rate) first, then falls back to OLD format (with sample rate).
     
     Args:
         s3_client: boto3 S3 client
@@ -687,12 +1018,26 @@ def load_metadata_for_date(s3_client, network, volcano, station, location, chann
             }
         }
     """
+    # Try NEW format first (without sample rate)
     metadata_key = build_metadata_key(network, volcano, station, location, channel, sample_rate, date)
     try:
         response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
         return json.loads(response['Body'].read().decode('utf-8'))
     except s3_client.exceptions.NoSuchKey:
-        return None
+        # Try OLD format (with sample rate)
+        year = date.year
+        month = f"{date.month:02d}"
+        day = f"{date.day:02d}"
+        location_str = location if location and location != '--' else '--'
+        rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+        old_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date.strftime('%Y-%m-%d')}.json"
+        old_metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{old_filename}"
+        
+        try:
+            response = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=old_metadata_key)
+            return json.loads(response['Body'].read().decode('utf-8'))
+        except s3_client.exceptions.NoSuchKey:
+            return None
 
 
 def generate_expected_windows(date, chunk_type):
@@ -1152,11 +1497,6 @@ def backfill():
     """
     from flask import request
     from datetime import timedelta
-    import sys
-    
-    # Import process_station_window from cron_job.py
-    sys.path.insert(0, str(Path(__file__).parent))
-    from cron_job import process_station_window
     
     try:
         data = request.get_json() or {}
@@ -1300,7 +1640,7 @@ def backfill():
             station_id = f"{task['network']}.{task['station']}.{task['location'] or '--'}.{task['channel']}"
             print(f"[{i+1}/{len(backfill_tasks)}] {station_id} {task['chunk_type']} {task['start_time']} to {task['end_time']}")
             
-            # Call process_station_window from cron_job.py
+            # Call process_station_window (consolidated from cron_job.py)
             status_result, error_info = process_station_window(
                 network=task['network'],
                 station=task['station'],
@@ -1388,7 +1728,11 @@ def backfill():
 @app.route('/health')
 def health():
     """Simple health check endpoint"""
-    return jsonify({'status': 'healthy', 'uptime_seconds': (datetime.now(timezone.utc) - datetime.fromisoformat(status['started_at'])).total_seconds()})
+    return jsonify({
+        'status': 'healthy',
+        'version': __version__,
+        'uptime_seconds': (datetime.now(timezone.utc) - datetime.fromisoformat(status['started_at'])).total_seconds()
+    })
 
 @app.route('/status')
 def get_status():
@@ -2895,16 +3239,20 @@ def repair(period='24h'):
     
     return jsonify(response)
 
+@app.route('/deduplicate')
 @app.route('/deduplicate/<period>')
 def deduplicate(period='24h'):
     """
     Deduplicate metadata entries - removes duplicate start times
-    Examples: /deduplicate/24h, /deduplicate/2d
+    
+    Examples: 
+        /deduplicate          - Last 24 hours (default)
+        /deduplicate/24h      - Last 24 hours
+        /deduplicate/2d       - Last 2 days
+        /deduplicate/1h       - Last 1 hour
+        /deduplicate/all      - ALL metadata files (entire dataset)
     """
     from datetime import timedelta
-    
-    # Parse period using helper
-    hours = parse_period(period)
     
     # Get R2 client and active stations using helpers
     s3 = get_s3_client()
@@ -2912,99 +3260,209 @@ def deduplicate(period='24h'):
     
     # Calculate time range
     now = datetime.now(timezone.utc)
-    start_time = now - timedelta(hours=hours)
-    dates_to_check = get_dates_in_period(start_time, now)
+    
+    if period.lower() == 'all':
+        # Scan ALL metadata files
+        start_time = None
+        dates_to_check = None
+        scan_mode = 'all'
+    else:
+        # Parse period using helper
+        hours = parse_period(period)
+        start_time = now - timedelta(hours=hours)
+        dates_to_check = get_dates_in_period(start_time, now)
+        scan_mode = 'time_range'
     
     total_duplicates_removed = 0
     stations_cleaned = []
+    files_processed = 0
     
-    for station_info in active_stations:
-        network = station_info['network']
-        volcano = station_info['volcano']
-        station = station_info['station']
-        location = station_info['location']
-        channel = station_info['channel']
-        sample_rate = station_info['sample_rate']
+    if scan_mode == 'all':
+        # Scan ALL metadata files in R2
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🧹 Deduplicating ALL metadata files...")
         
-        location_str = location if location and location != '--' else '--'
-        rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+        paginator = s3.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
         
-        station_id = f"{network}.{station}.{location_str}.{channel}"
-        station_dupes_removed = 0
-        
-        for check_date in dates_to_check:
-            year = check_date.year
-            month = f"{check_date.month:02d}"
-            day = f"{check_date.day:02d}"
-            date_str = check_date.strftime("%Y-%m-%d")
-            prefix = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/"
-            metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
-            metadata_key = f"{prefix}{metadata_filename}"
+        for page in pages:
+            if 'Contents' not in page:
+                continue
             
-            try:
-                # Load metadata
-                response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
-                metadata = json.loads(response['Body'].read().decode('utf-8'))
+            for obj in page['Contents']:
+                key = obj['Key']
                 
-                metadata_changed = False
+                # Only process .json metadata files
+                if not key.endswith('.json'):
+                    continue
                 
-                # Deduplicate each chunk type
-                for chunk_type in ['10m', '1h', '6h']:
-                    chunks = metadata['chunks'].get(chunk_type, [])
-                    original_count = len(chunks)
+                try:
+                    # Load metadata
+                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=key)
+                    metadata = json.loads(response['Body'].read().decode('utf-8'))
                     
-                    # Remove duplicates (keep first occurrence)
-                    seen_starts = set()
-                    deduplicated = []
-                    for chunk in chunks:
-                        if chunk['start'] not in seen_starts:
-                            deduplicated.append(chunk)
-                            seen_starts.add(chunk['start'])
+                    metadata_changed = False
+                    file_dupes_removed = 0
                     
-                    # Sort chronologically
-                    deduplicated.sort(key=lambda c: c['start'])
+                    # Deduplicate each chunk type
+                    for chunk_type in ['10m', '1h', '6h']:
+                        chunks = metadata['chunks'].get(chunk_type, [])
+                        original_count = len(chunks)
+                        
+                        # Remove duplicates (keep first occurrence)
+                        seen_starts = set()
+                        deduplicated = []
+                        for chunk in chunks:
+                            if chunk['start'] not in seen_starts:
+                                deduplicated.append(chunk)
+                                seen_starts.add(chunk['start'])
+                        
+                        # Sort chronologically
+                        deduplicated.sort(key=lambda c: c['start'])
+                        
+                        # Update metadata
+                        metadata['chunks'][chunk_type] = deduplicated
+                        
+                        dupes_removed = original_count - len(deduplicated)
+                        if dupes_removed > 0:
+                            metadata_changed = True
+                            file_dupes_removed += dupes_removed
                     
-                    # Update metadata
-                    metadata['chunks'][chunk_type] = deduplicated
+                    # Upload cleaned metadata if changed
+                    if metadata_changed:
+                        s3.put_object(
+                            Bucket=R2_BUCKET_NAME,
+                            Key=key,
+                            Body=json.dumps(metadata, indent=2).encode('utf-8'),
+                            ContentType='application/json'
+                        )
+                        
+                        station_id = f"{metadata.get('network', '?')}.{metadata.get('station', '?')}.{metadata.get('location', '--')}.{metadata.get('channel', '?')}"
+                        stations_cleaned.append({
+                            'station': station_id,
+                            'date': metadata.get('date', '?'),
+                            'file': key,
+                            'duplicates_removed': file_dupes_removed
+                        })
+                        total_duplicates_removed += file_dupes_removed
                     
-                    dupes_removed = original_count - len(deduplicated)
-                    if dupes_removed > 0:
-                        metadata_changed = True
-                        station_dupes_removed += dupes_removed
+                    files_processed += 1
                 
-                # Upload cleaned metadata if changed
-                if metadata_changed:
-                    s3.put_object(
-                        Bucket=R2_BUCKET_NAME,
-                        Key=metadata_key,
-                        Body=json.dumps(metadata, indent=2).encode('utf-8'),
-                        ContentType='application/json'
-                    )
-            
-            except s3.exceptions.NoSuchKey:
-                # No metadata for this date
-                pass
+                except Exception as e:
+                    print(f"Warning: Error processing {key}: {e}")
+                    continue
+    else:
+        # Time-based scan (existing logic)
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🧹 Deduplicating metadata from last {hours} hours...")
         
-        if station_dupes_removed > 0:
-            stations_cleaned.append({
-                'station': station_id,
-                'duplicates_removed': station_dupes_removed
-            })
-            total_duplicates_removed += station_dupes_removed
+        for station_info in active_stations:
+            network = station_info['network']
+            volcano = station_info['volcano']
+            station = station_info['station']
+            location = station_info['location']
+            channel = station_info['channel']
+            sample_rate = station_info['sample_rate']
+            
+            location_str = location if location and location != '--' else '--'
+            rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+            
+            station_id = f"{network}.{station}.{location_str}.{channel}"
+            station_dupes_removed = 0
+            
+            for check_date in dates_to_check:
+                year = check_date.year
+                month = f"{check_date.month:02d}"
+                day = f"{check_date.day:02d}"
+                date_str = check_date.strftime("%Y-%m-%d")
+                prefix = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/"
+                
+                # Try NEW format first (without sample rate)
+                metadata_filename = f"{network}_{station}_{location_str}_{channel}_{date_str}.json"
+                metadata_key = f"{prefix}{metadata_filename}"
+                
+                metadata = None
+                try:
+                    # Load metadata (NEW format)
+                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                    metadata = json.loads(response['Body'].read().decode('utf-8'))
+                except s3.exceptions.NoSuchKey:
+                    # Try OLD format (with sample rate)
+                    old_metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                    old_metadata_key = f"{prefix}{old_metadata_filename}"
+                    try:
+                        response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=old_metadata_key)
+                        metadata = json.loads(response['Body'].read().decode('utf-8'))
+                        # Use OLD key for this update, but next collection cycle will migrate to NEW
+                        metadata_key = old_metadata_key
+                    except s3.exceptions.NoSuchKey:
+                        pass  # Will skip this date
+                
+                if metadata:
+                    
+                    metadata_changed = False
+                    
+                    # Deduplicate each chunk type
+                    for chunk_type in ['10m', '1h', '6h']:
+                        chunks = metadata['chunks'].get(chunk_type, [])
+                        original_count = len(chunks)
+                        
+                        # Remove duplicates (keep first occurrence)
+                        seen_starts = set()
+                        deduplicated = []
+                        for chunk in chunks:
+                            if chunk['start'] not in seen_starts:
+                                deduplicated.append(chunk)
+                                seen_starts.add(chunk['start'])
+                        
+                        # Sort chronologically
+                        deduplicated.sort(key=lambda c: c['start'])
+                        
+                        # Update metadata
+                        metadata['chunks'][chunk_type] = deduplicated
+                        
+                        dupes_removed = original_count - len(deduplicated)
+                        if dupes_removed > 0:
+                            metadata_changed = True
+                            station_dupes_removed += dupes_removed
+                    
+                    # Upload cleaned metadata if changed
+                    if metadata_changed:
+                        s3.put_object(
+                            Bucket=R2_BUCKET_NAME,
+                            Key=metadata_key,
+                            Body=json.dumps(metadata, indent=2).encode('utf-8'),
+                            ContentType='application/json'
+                        )
+                        files_processed += 1
+            
+            if station_dupes_removed > 0:
+                stations_cleaned.append({
+                    'station': station_id,
+                    'duplicates_removed': station_dupes_removed
+                })
+                total_duplicates_removed += station_dupes_removed
     
     result = {
-        'period_hours': hours,
+        'scan_mode': scan_mode,
+        'period': period,
         'deduplicate_time': datetime.now(timezone.utc).isoformat(),
         'total_duplicates_removed': total_duplicates_removed,
         'stations_cleaned': len(stations_cleaned),
+        'files_processed': files_processed,
         'details': stations_cleaned
     }
+    
+    # Add period_hours for time_range mode
+    if scan_mode == 'time_range':
+        result['period_hours'] = hours
     
     # Add friendly message
     if total_duplicates_removed == 0:
         result['message'] = '✅ No duplicates found - metadata is clean!'
     else:
-        result['message'] = f'✅ Removed {total_duplicates_removed} duplicate entries from {len(stations_cleaned)} stations'
+        if scan_mode == 'all':
+            result['message'] = f'✅ Removed {total_duplicates_removed} duplicate entries from {len(stations_cleaned)} files (scanned {files_processed} total files)'
+        else:
+            result['message'] = f'✅ Removed {total_duplicates_removed} duplicate entries from {len(stations_cleaned)} stations'
     
     return jsonify(result)
 
@@ -3101,12 +3559,19 @@ def trigger_collection():
     })
 
 def wait_until_next_run():
-    """Wait until the next scheduled run time (:02, :12, :22, etc.)"""
+    """
+    Wait until the next scheduled run time.
+    Production: :02, :12, :22, :32, :42, :52
+    Local: :03, :13, :23, :33, :43, :53 (offset by SCHEDULE_OFFSET_MINUTES)
+    """
     now = datetime.now(timezone.utc)
     current_minute = now.minute
     
-    # Find next run minute (2, 12, 22, 32, 42, 52)
-    run_minutes = [2, 12, 22, 32, 42, 52]
+    # Base run minutes (2, 12, 22, 32, 42, 52) + offset
+    base_minutes = [2, 12, 22, 32, 42, 52]
+    run_minutes = [(m + SCHEDULE_OFFSET_MINUTES) % 60 for m in base_minutes]
+    run_minutes.sort()
+    
     next_minute = None
     
     for minute in run_minutes:
@@ -3137,7 +3602,8 @@ def wait_until_next_run():
         from datetime import timedelta
         status['next_run'] = (now + timedelta(seconds=seconds_until_next_run)).isoformat()
     
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Next run in {seconds_until_next_run} seconds")
+    env_label = "PRODUCTION" if IS_PRODUCTION else "LOCAL"
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] [{env_label}] Next run in {seconds_until_next_run} seconds (at :{next_minute:02d})")
     time.sleep(seconds_until_next_run)
 
 
@@ -3196,11 +3662,6 @@ def auto_heal_gaps():
         if total_gaps > 0:
             print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔧 Auto-heal: Backfilling {total_gaps} gaps...")
             
-            # Import process_station_window
-            import sys
-            sys.path.insert(0, str(Path(__file__).parent))
-            from cron_job import process_station_window
-            
             healed = 0
             failed = 0
             skipped = 0
@@ -3243,8 +3704,46 @@ def auto_heal_gaps():
         traceback.print_exc()
 
 
+def determine_fetch_windows(current_time, iris_delay_minutes=2):
+    """
+    Determine what time windows to fetch based on current time.
+    Returns list of (start_time, end_time, chunk_type) tuples.
+    
+    Logic:
+    - Always: 10-minute chunk
+    - At top of each hour: 1-hour chunk
+    - At 6-hour checkpoints (00:02, 06:02, 12:02, 18:02): 6-hour chunk
+    """
+    from datetime import timedelta
+    windows = []
+    
+    # Account for IRIS delay
+    effective_time = current_time - timedelta(minutes=iris_delay_minutes)
+    
+    # 10-minute chunk (always)
+    minute = effective_time.minute
+    quantized_minute = (minute // 10) * 10
+    ten_min_end = effective_time.replace(minute=quantized_minute, second=0, microsecond=0)
+    ten_min_start = ten_min_end - timedelta(minutes=10)
+    windows.append((ten_min_start, ten_min_end, '10m'))
+    
+    # 1-hour chunk (at top of every hour)
+    if quantized_minute == 0:
+        one_hour_end = effective_time.replace(minute=0, second=0, microsecond=0)
+        one_hour_start = one_hour_end - timedelta(hours=1)
+        windows.append((one_hour_start, one_hour_end, '1h'))
+    
+    # 6-hour checkpoint (at 00:02, 06:02, 12:02, 18:02)
+    if effective_time.hour % 6 == 0 and quantized_minute == 0:
+        six_hour_end = effective_time.replace(minute=0, second=0, microsecond=0)
+        six_hour_start = six_hour_end - timedelta(hours=6)
+        windows.append((six_hour_start, six_hour_end, '6h'))
+    
+    return windows
+
+
 def run_cron_job():
-    """Execute the cron job"""
+    """Execute the data collection cycle directly (no subprocess)"""
     now = datetime.now(timezone.utc)
     
     status['currently_running'] = True
@@ -3257,17 +3756,75 @@ def run_cron_job():
     should_auto_heal = (now.hour % 6 == 0 and now.minute in [0, 1, 2, 3, 4])
     
     try:
-        # Get the directory where this script is located
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        cron_job_path = os.path.join(script_dir, 'cron_job.py')
+        # Determine what time windows to fetch
+        windows = determine_fetch_windows(now)
         
-        result = subprocess.run(
-            [sys.executable, cron_job_path],
-            capture_output=True,
-            text=True
-        )
+        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] Current time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] Windows to fetch: {len(windows)}")
+        for start, end, chunk_type in windows:
+            print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}]   {chunk_type}: {start.strftime('%Y-%m-%d %H:%M:%S')} to {end.strftime('%H:%M:%S')}")
         
-        if result.returncode == 0:
+        # Load active stations
+        active_stations = get_active_stations_list()
+        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] Active stations: {len(active_stations)}")
+        print("")
+        
+        if not active_stations:
+            print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] ⚠️ No active stations configured - skipping collection")
+            status['successful_runs'] += 1
+            return
+        
+        # Process each station for each window
+        total_tasks = len(active_stations) * len(windows)
+        current_task = 0
+        successful = 0
+        skipped = 0
+        failed = 0
+        failure_details = []
+        
+        for station_config in active_stations:
+            network = station_config['network']
+            volcano = station_config['volcano']
+            station = station_config['station']
+            location = station_config.get('location', '')
+            channel = station_config['channel']
+            sample_rate = station_config['sample_rate']
+            
+            for start, end, chunk_type in windows:
+                current_task += 1
+                print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] [{current_task}/{total_tasks}] Processing...")
+                
+                result_status, error_info = process_station_window(
+                    network, station, location, channel, volcano, sample_rate,
+                    start, end, chunk_type
+                )
+                
+                if result_status == 'success':
+                    successful += 1
+                elif result_status == 'skipped':
+                    skipped += 1
+                elif result_status == 'failed':
+                    failed += 1
+                    if error_info:
+                        failure_details.append(error_info)
+                
+                # Small delay between requests
+                if current_task < total_tasks:
+                    time.sleep(1)
+        
+        # Summary
+        print("")
+        print("=" * 100)
+        print("COLLECTION COMPLETE")
+        print("=" * 100)
+        print(f"Total tasks: {total_tasks}")
+        print(f"Successful: {successful}")
+        print(f"Skipped: {skipped}")
+        print(f"Failed: {failed}")
+        print("=" * 100)
+        
+        # If all tasks succeeded or were skipped (no failures), mark as successful
+        if failed == 0:
             print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ✅ Data collection completed successfully")
             status['successful_runs'] += 1
             
@@ -3275,69 +3832,73 @@ def run_cron_job():
             if should_auto_heal:
                 auto_heal_gaps()
         else:
+            # Some tasks failed - record failure
             failure_time = datetime.now(timezone.utc).isoformat()
-            error_msg = f"Exit code {result.returncode}"
-            if result.stderr:
-                error_msg += f": {result.stderr[:500]}"  # Limit to 500 chars
-            elif result.stdout:
-                # Sometimes errors go to stdout
-                error_msg += f": {result.stdout[-500:]}"  # Last 500 chars
+            error_msg = f"Collection completed with {failed} failures out of {total_tasks} tasks"
             
-            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ Cron job failed with exit code {result.returncode}")
-            if result.stderr:
-                print(f"Stderr: {result.stderr}")
+            # Add first few failure details to error message
+            if failure_details:
+                error_msg += "\nFirst failures:"
+                for i, failure in enumerate(failure_details[:3]):
+                    error_msg += f"\n  - {failure['station']} ({failure['chunk_type']}): {failure['error']}"
             
-            # Record failure (full error stored, summary for display)
+            print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ⚠️ Collection completed with {failed} failures")
+            
+            # Record failure
             failure_info = {
                 'timestamp': failure_time,
-                'error': error_msg,  # Full error stored in R2
-                'exit_code': result.returncode,
-                'type': 'subprocess_failure'
+                'error': error_msg,
+                'exit_code': None,
+                'type': 'collection_partial_failure',
+                'details': {
+                    'total_tasks': total_tasks,
+                    'successful': successful,
+                    'skipped': skipped,
+                    'failed': failed,
+                    'failure_details': failure_details
+                }
             }
-            # Create summary version for status display
             failure_summary = {
                 'timestamp': failure_time,
-                'summary': extract_error_summary(error_msg),
-                'exit_code': result.returncode,
-                'type': 'subprocess_failure',
+                'summary': f"{failed}/{total_tasks} tasks failed",
+                'exit_code': None,
+                'type': 'collection_partial_failure',
                 'log_location': f'R2: {FAILURE_LOG_KEY}'
             }
             status['last_failure'] = failure_summary
             status['recent_failures'].append(failure_summary)
-            # Keep only last 10 failures in memory
             if len(status['recent_failures']) > 10:
                 status['recent_failures'] = status['recent_failures'][-10:]
-            # Save to persistent log
             save_failure(failure_info)
             status['failed_runs'] += 1
     
     except Exception as e:
         failure_time = datetime.now(timezone.utc).isoformat()
-        error_msg = f"Exception: {str(e)}"
+        error_msg = f"Exception during collection: {str(e)}"
         
-        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ Error running cron job: {e}")
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] ❌ Error running collection: {e}")
+        import traceback
+        traceback.print_exc()
         
-        # Record failure (full error stored, summary for display)
+        # Record failure
         failure_info = {
             'timestamp': failure_time,
-            'error': error_msg,  # Full error stored in R2
+            'error': error_msg,
             'exit_code': None,
-            'type': 'exception'
+            'type': 'collection_exception',
+            'traceback': traceback.format_exc()
         }
-        # Create summary version for status display
         failure_summary = {
             'timestamp': failure_time,
             'summary': extract_error_summary(error_msg),
             'exit_code': None,
-            'type': 'exception',
+            'type': 'collection_exception',
             'log_location': f'R2: {FAILURE_LOG_KEY}'
         }
         status['last_failure'] = failure_summary
         status['recent_failures'].append(failure_summary)
-        # Keep only last 10 failures in memory
         if len(status['recent_failures']) > 10:
             status['recent_failures'] = status['recent_failures'][-10:]
-        # Save to persistent log
         save_failure(failure_info)
         status['failed_runs'] += 1
     
@@ -3358,7 +3919,12 @@ def run_cron_job():
 
 def run_scheduler():
     """Run the scheduler loop"""
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Schedule: Every 10 minutes at :02, :12, :22, :32, :42, :52")
+    base_minutes = [2, 12, 22, 32, 42, 52]
+    run_minutes = [(m + SCHEDULE_OFFSET_MINUTES) % 60 for m in base_minutes]
+    run_minutes.sort()
+    schedule_str = ", ".join([f":{m:02d}" for m in run_minutes])
+    env_label = "PRODUCTION" if IS_PRODUCTION else "LOCAL"
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] [{env_label}] Schedule: Every 10 minutes at {schedule_str}")
     
     while True:
         wait_until_next_run()
@@ -3367,9 +3933,10 @@ def run_scheduler():
 def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.57 Fix: Added day-level folder structure and fixed deduplication race condition")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.57 Fix: Added day-level folder structure and fixed deduplication race condition")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.64 Feature: Added /api/stream-audio endpoint - unified service for collection + streaming")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.64 Feature: Added /api/stream-audio endpoint - unified service for collection + streaming")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

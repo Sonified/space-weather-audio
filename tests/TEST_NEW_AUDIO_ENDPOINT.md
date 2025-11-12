@@ -9,7 +9,7 @@ python main.py
 ```
 
 ### 2. Open the test page
-Open `test_audio_stream.html` in your browser
+Open `browser/test_audio_stream.html` in your browser
 
 ### 3. Configure and stream
 - Select a volcano/station
@@ -88,7 +88,7 @@ Check backend logs - usually means:
 ## Next Steps
 
 Once this works:
-1. Integrate into `test_streaming.html` as an alternative mode
+1. Integrate into `browser/test_streaming.html` as an alternative mode
 2. Add station picker that auto-updates from your volcano station list
 3. Add time range picker with visual timeline
 4. Maybe add spectrogram visualization?

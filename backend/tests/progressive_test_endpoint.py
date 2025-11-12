@@ -70,7 +70,7 @@ def fetch_from_iris_and_save_all_formats(volcano, hours_ago=12, duration_hours=4
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
-    from main import VOLCANOES
+    from archive.main import VOLCANOES
     
     if volcano not in VOLCANOES:
         raise ValueError(f"Unknown volcano: {volcano}")

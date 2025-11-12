@@ -1,0 +1,35 @@
+{
+  "date": "2025-11-11",
+  "network": "HV",
+  "volcano": "kilauea",
+  "station": "WRM",
+  "location": "",
+  "channel": "HHZ",
+  "sample_rate": 100.0,
+  "created_at": "2025-11-11T00:13:08.384851Z",
+  "complete_day": false,
+  "chunks": {
+    "10m": [
+      {
+        "start": "00:00:00",
+        "end": "00:10:00",
+        "min": -6630,
+        "max": 8401,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      },
+      {
+        "start": "00:10:00",
+        "end": "00:20:00",
+        "min": -4951,
+        "max": 7074,
+        "samples": 60000,
+        "gap_count": 0,
+        "gap_samples_filled": 0
+      }
+    ],
+    "1h": [],
+    "6h": []
+  }
+}

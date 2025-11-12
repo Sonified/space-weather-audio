@@ -1,0 +1,17 @@
+name = "volcano-audio-cache-purge"
+main = "purge-cache-worker.js"
+compatibility_date = "2025-10-24"
+
+# Environment variables (secrets should be set via: wrangler secret put CLOUDFLARE_API_TOKEN)
+# Set these using:
+# wrangler secret put CLOUDFLARE_API_TOKEN --config wrangler-purge.toml
+# wrangler secret put CLOUDFLARE_ZONE_ID --config wrangler-purge.toml
+
+# Route configuration
+# Deploy to: https://purge.now.audio or similar
+# Or use workers.dev subdomain: volcano-audio-cache-purge.YOUR_SUBDOMAIN.workers.dev
+
+# Observability settings
+[observability]
+enabled = true
+

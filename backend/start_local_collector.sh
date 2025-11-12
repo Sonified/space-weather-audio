@@ -5,17 +5,24 @@ echo "🚀 Starting local data collector (cron loop)..."
 echo "=================================="
 echo ""
 
-# Clean up any existing process on port 5005
-echo "🧹 Cleaning up existing processes on port 5005..."
+# Clean up any existing processes
+echo "🧹 Cleaning up existing collector processes..."
 
-# Kill any collector_loop.py processes first
+# Kill any collector_loop.py processes
 if pgrep -f "python.*collector_loop.py" >/dev/null 2>&1; then
     echo "   Killing collector_loop.py processes..."
     pkill -9 -f "python.*collector_loop.py" 
     sleep 1
 fi
 
-# Kill by port
+# Kill any standalone cron_job.py processes (shouldn't exist, but just in case)
+if pgrep -f "python.*cron_job.py" >/dev/null 2>&1; then
+    echo "   Killing stray cron_job.py processes..."
+    pkill -9 -f "python.*cron_job.py" 
+    sleep 1
+fi
+
+# Kill any process on port 5005
 if lsof -ti:5005 >/dev/null 2>&1; then
     echo "   Killing process on port 5005..."
     lsof -ti:5005 | xargs kill -9 2>/dev/null

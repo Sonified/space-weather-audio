@@ -1,0 +1,33 @@
+# Cloudflare Worker configuration for R2 Seismic Audio Streaming
+# 
+# Setup instructions:
+# 1. Install Wrangler CLI: npm install -g wrangler
+# 2. Login to Cloudflare: wrangler login
+# 3. Create R2 bucket: wrangler r2 bucket create volcano-seismic-data
+# 4. Update this file with your account ID and bucket name
+# 5. Deploy: wrangler deploy
+
+name = "volcano-audio-r2-worker"
+main = "r2-worker-example.js"
+compatibility_date = "2024-01-01"
+
+# Your Cloudflare account ID (find at: dash.cloudflare.com -> select account -> URL contains account ID)
+# REPLACE THIS with your actual account ID before deploying!
+account_id = "YOUR_ACCOUNT_ID_HERE"
+
+# R2 bucket binding
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "volcano-seismic-data"
+preview_bucket_name = "volcano-seismic-data" # Can use same bucket for preview
+
+# Custom domain (optional - worker will be available at this domain)
+# Uncomment and update with your domain
+# routes = [
+#   { pattern = "seismic.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]
+
+# Worker limits
+# Free tier: 100,000 requests/day, 128MB memory
+# If you need more, upgrade to Workers Paid plan
+
