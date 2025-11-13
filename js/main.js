@@ -12,7 +12,7 @@ import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
-import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis } from './waveform-x-axis-renderer.js';
+import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
 
 // Make functions available globally (for inline onclick handlers)
 window.loadStations = loadStations;
@@ -851,6 +851,19 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
             }
             
+            // Handle waveform date panel
+            const waveformDateCanvas = document.getElementById('waveform-date');
+            if (waveformCanvas && waveformDateCanvas) {
+                // Always reposition during resize
+                positionWaveformDateCanvas();
+                
+                // Redraw if canvas dimensions changed
+                const currentWidth = waveformCanvas.offsetWidth;
+                if (currentWidth !== lastWaveformWidth) {
+                    resizeWaveformDateCanvas();
+                }
+            }
+            
             resizeRAF = null;
         });
     });
@@ -864,6 +877,8 @@ window.addEventListener('DOMContentLoaded', () => {
         drawWaveformAxis();
         positionWaveformXAxisCanvas();
         drawWaveformXAxis();
+        positionWaveformDateCanvas();
+        drawWaveformDate();
         // Update dimensions after initial draw
         const spectrogramCanvas = document.getElementById('spectrogram');
         const waveformCanvas = document.getElementById('waveform');

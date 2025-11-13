@@ -70,10 +70,10 @@ export function drawWaveformXAxis() {
         console.log(`🕐 First tick: ${ticks[0].localTime.toLocaleString()} (UTC: ${ticks[0].utcTime.toISOString()})`);
     }
     
-    // Draw each tick (skip the first two to avoid overlap with start date)
+    // Draw each tick (skip the first one - date is in separate panel)
     ticks.forEach((tick, index) => {
-        // Skip the first two ticks to avoid overlap with the start date at far left
-        if (index === 0 || index === 1) {
+        // Skip the first tick - date is displayed in separate panel above
+        if (index === 0) {
             return;
         }
         
@@ -125,20 +125,93 @@ export function drawWaveformXAxis() {
         ctx.fillText(label, x, 12);
         console.log(`🕐 Drew tick at x=${x.toFixed(1)}: "${label}" (dayCrossing=${tick.isDayCrossing})`);
     });
+}
+
+/**
+ * Draw date panel above waveform
+ * Shows date extending off the left edge
+ */
+export function drawWaveformDate() {
+    const canvas = document.getElementById('waveform-date');
+    if (!canvas) return;
     
-    // Draw date at far left (first tick's date)
-    if (ticks.length > 0) {
-        const firstTick = ticks[0];
-        const localDate = firstTick.localTime;
-        const month = localDate.getMonth() + 1;
-        const day = localDate.getDate();
-        const year = localDate.getFullYear().toString().slice(-2);
-        const dateLabel = `${month}/${day}/${year}`;
-        
-        ctx.textAlign = 'left';
-        ctx.fillText(dateLabel, 8, 12);
-        ctx.textAlign = 'center'; // Reset for other labels
+    // Need start time to get the date
+    if (!State.dataStartTime) {
+        return; // No data loaded yet
     }
+    
+    const startTimeUTC = new Date(State.dataStartTime);
+    const startLocal = new Date(startTimeUTC);
+    
+    // Set canvas size
+    canvas.width = 200;
+    canvas.height = 40;
+    
+    const ctx = canvas.getContext('2d');
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    
+    // Clear canvas (transparent background)
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    
+    // Format date in 11/12/25 format
+    const month = startLocal.getMonth() + 1;
+    const day = startLocal.getDate();
+    const year = startLocal.getFullYear().toString().slice(-2);
+    const dateLabel = `${month}/${day}/${year}`;
+    
+    // Setup text styling - match x-axis style
+    ctx.font = '16px Arial, sans-serif';
+    ctx.fillStyle = '#ddd';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    
+    // Draw date extending off the left edge (negative x position)
+    ctx.fillText(dateLabel, -60, 12);
+}
+
+/**
+ * Position the waveform date canvas above the waveform
+ */
+export function positionWaveformDateCanvas() {
+    const waveformCanvas = document.getElementById('waveform');
+    const dateCanvas = document.getElementById('waveform-date');
+    const waveformPanel = waveformCanvas?.closest('.panel');
+    const datePanel = dateCanvas?.closest('.panel');
+    
+    if (!waveformCanvas || !dateCanvas || !waveformPanel || !datePanel) return;
+    
+    const waveformRect = waveformCanvas.getBoundingClientRect();
+    const datePanelRect = datePanel.getBoundingClientRect();
+    
+    // Position date panel above waveform, extending off the left edge
+    // Calculate position relative to date panel, accounting for waveform's position
+    const waveformLeftInPanel = waveformRect.left - datePanelRect.left;
+    
+    // Make sure panel allows overflow and has minimal padding
+    datePanel.style.cssText = `
+        position: relative;
+        overflow: visible !important;
+        margin-bottom: 0;
+        padding: 0 !important;
+        height: 40px;
+    `;
+    
+    // Position canvas to extend 60px to the left of waveform's left edge
+    // Use negative left position to extend off the left edge of the panel
+    dateCanvas.style.cssText = `
+        position: absolute;
+        left: ${waveformLeftInPanel - 60}px;
+        top: 0;
+        width: 200px;
+        height: 40px;
+        opacity: 1;
+        visibility: visible;
+    `;
 }
 
 /**
@@ -269,5 +342,18 @@ export function resizeWaveformXAxisCanvas() {
     // Reposition and redraw after resize
     positionWaveformXAxisCanvas();
     drawWaveformXAxis();
+}
+
+/**
+ * Resize waveform date canvas
+ */
+export function resizeWaveformDateCanvas() {
+    const dateCanvas = document.getElementById('waveform-date');
+    
+    if (!dateCanvas) return;
+    
+    // Reposition and redraw after resize
+    positionWaveformDateCanvas();
+    drawWaveformDate();
 }
 

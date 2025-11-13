@@ -11,7 +11,7 @@ import os
 import json
 import threading
 import boto3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import Flask, jsonify
 from flask_cors import CORS
 from pathlib import Path
@@ -46,6 +46,7 @@ R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4
 R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
 FAILURE_LOG_KEY = 'collector_logs/failures.json'
 STATION_ACTIVATION_LOG_KEY = 'collector_logs/station_activations.json'
+RUN_LOG_KEY = 'collector_logs/run_history.json'
 
 def get_s3_client():
     """Get S3 client for R2"""
@@ -207,6 +208,67 @@ def save_failure(failure_info):
         )
     except Exception as e:
         print(f"Warning: Could not save failure log to R2: {e}")
+
+def save_run_log(run_info):
+    """
+    Save run log to R2, keeping only last 7 days.
+    Latest run is at the top of the list.
+    
+    Args:
+        run_info: dict with keys:
+            - timestamp: ISO format timestamp
+            - success: bool (True if failed == 0)
+            - stations: list of station IDs (e.g., ["HV.OBL.--.HHZ", ...])
+            - files_created: dict with '10m', '1h', '6h' counts
+            - total_tasks: int
+            - successful: int
+            - skipped: int
+            - failed: int
+    """
+    try:
+        s3 = get_s3_client()
+        
+        # Load existing logs
+        try:
+            response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=RUN_LOG_KEY)
+            logs = json.loads(response['Body'].read())
+        except Exception as load_error:
+            # Check if it's a NoSuchKey exception (file doesn't exist yet)
+            error_code = getattr(load_error, 'response', {}).get('Error', {}).get('Code', '')
+            if error_code == 'NoSuchKey':
+                logs = []
+            else:
+                raise  # Re-raise if it's not a NoSuchKey error
+        
+        # Add new run at the top (latest first)
+        logs.insert(0, run_info)
+        
+        # Remove logs older than 7 days
+        cutoff_time = datetime.now(timezone.utc) - timedelta(days=7)
+        filtered_logs = []
+        for log in logs:
+            try:
+                # Parse timestamp (handle both Z and +00:00 formats)
+                ts_str = log['timestamp']
+                if ts_str.endswith('Z'):
+                    ts_str = ts_str[:-1] + '+00:00'
+                log_time = datetime.fromisoformat(ts_str)
+                if log_time > cutoff_time:
+                    filtered_logs.append(log)
+            except Exception:
+                # Skip logs with invalid timestamps
+                continue
+        logs = filtered_logs
+        
+        # Save back to R2
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=RUN_LOG_KEY,
+            Body=json.dumps(logs, indent=2),
+            ContentType='application/json'
+        )
+    except Exception as e:
+        print(f"Warning: Could not save run log to R2: {e}")
 
 def load_station_activations():
     """
@@ -1724,6 +1786,477 @@ def backfill():
             'traceback': traceback.format_exc()
         }), 500
 
+@app.route('/backfill-station', methods=['POST'])
+def backfill_station():
+    """
+    Backfill data for a specific station, defaulting to last 24 hours.
+    Ensures all chunk types (6-hour, 1-hour, and 10-minute) are generated inclusively.
+    If any part of a chunk window is touched, the entire chunk is generated.
+    
+    Chunk alignment:
+    - 6-hour chunks: align to 00:00, 06:00, 12:00, 18:00 UTC
+    - 1-hour chunks: align to :00 of each hour
+    - 10-minute chunks: align to :00, :10, :20, :30, :40, :50
+    
+    Request body:
+    {
+        "network": "HV",
+        "volcano": "kilauea",
+        "station": "OBL",
+        "location": "--",
+        "channel": "HHZ",
+        "hours_back": 24,  // Optional, defaults to 24
+        "end_time": "2025-11-12T12:00:00Z"  // Optional, defaults to now
+    }
+    """
+    from flask import request
+    from datetime import timedelta
+    
+    try:
+        data = request.get_json() or {}
+        
+        # Get station info
+        network = data.get('network')
+        volcano = data.get('volcano')
+        station_code = data.get('station')
+        location = data.get('location', '--')
+        channel = data.get('channel')
+        
+        if None in [network, volcano, station_code, channel]:
+            return jsonify({
+                'error': 'Missing required fields: network, volcano, station, channel'
+            }), 400
+        
+        # Get time range (default to last 24 hours)
+        hours_back = data.get('hours_back', 24)
+        end_time_str = data.get('end_time')
+        
+        if end_time_str:
+            if end_time_str.endswith('Z'):
+                end_time_str = end_time_str[:-1] + '+00:00'
+            end_time = datetime.fromisoformat(end_time_str)
+        else:
+            end_time = datetime.now(timezone.utc)
+        
+        start_time = end_time - timedelta(hours=hours_back)
+        
+        # Find station config to get sample_rate
+        active_stations = get_active_stations_list()
+        station_config = None
+        for st in active_stations:
+            st_location = st.get('location', '').replace('', '--') if st.get('location', '') else '--'
+            if (st['network'] == network and st['station'] == station_code and 
+                st['channel'] == channel and st_location == location):
+                station_config = st
+                break
+        
+        # If not in active stations, try loading from config directly
+        if not station_config:
+            config_path = Path(__file__).parent / 'stations_config.json'
+            with open(config_path) as f:
+                config = json.load(f)
+            
+            for st in config['networks'].get(network, {}).get(volcano, []):
+                if (st['station'] == station_code and 
+                    st['location'] == location and 
+                    st['channel'] == channel):
+                    station_config = {
+                        'network': network,
+                        'volcano': volcano,
+                        'station': station_code,
+                        'location': location.replace('--', ''),
+                        'channel': channel,
+                        'sample_rate': st['sample_rate']
+                    }
+                    break
+        
+        if not station_config:
+            return jsonify({
+                'error': f'Station not found: {network}.{station_code}.{location}.{channel} in {volcano}'
+            }), 404
+        
+        sample_rate = station_config['sample_rate']
+        location_clean = location.replace('--', '')
+        
+        backfill_tasks = []
+        
+        # SMART BACKFILL STRATEGY:
+        # 1. Find last complete 6h boundary (based on end_time)
+        # 2. If end_time is past that boundary, fetch one continuous chunk from end_time back to boundary
+        # 3. Fetch 6h chunks going backwards from that boundary
+        # 4. For oldest period, only fetch what's needed if it doesn't align to 6h boundaries
+        
+        # Find last complete 6h boundary
+        end_hour = end_time.hour
+        end_6h_boundary_hour = (end_hour // 6) * 6
+        last_complete_6h_boundary = end_time.replace(hour=end_6h_boundary_hour, minute=0, second=0, microsecond=0)
+        
+        # Check if end_time is past the last complete 6h boundary
+        if end_time > last_complete_6h_boundary:
+            # Fetch one continuous chunk from end_time back to last complete 6h boundary
+            # This covers the most recent partial period
+            print(f"  📥 Fetching recent partial period: {last_complete_6h_boundary} to {end_time}")
+            
+            # Determine what chunk types we need for this partial period
+            # Check what boundaries are touched
+            needs_6h = False  # Can't have a full 6h in partial period
+            needs_1h = False
+            needs_10m = False
+            
+            # Check if we cross any hour boundaries
+            if end_time.hour != last_complete_6h_boundary.hour or end_time.date() != last_complete_6h_boundary.date():
+                needs_1h = True
+            
+            # Always need 10m chunks for partial period
+            needs_10m = True
+            
+            # For partial period, fetch as 1h chunks if crossing hour boundaries, otherwise 10m chunks
+            if needs_1h:
+                # Generate 1h chunks for partial period
+                current_1h = last_complete_6h_boundary
+                while current_1h < end_time:
+                    current_1h_end = min(current_1h + timedelta(hours=1), end_time)
+                    backfill_tasks.append({
+                        'network': network,
+                        'volcano': volcano,
+                        'station': station_code,
+                        'location': location_clean,
+                        'channel': channel,
+                        'sample_rate': sample_rate,
+                        'chunk_type': '1h',
+                        'start_time': current_1h,
+                        'end_time': current_1h_end
+                    })
+                    current_1h = current_1h_end
+            else:
+                # Generate 10m chunks for partial period
+                current_10m = last_complete_6h_boundary
+                while current_10m < end_time:
+                    current_10m_end = min(current_10m + timedelta(minutes=10), end_time)
+                    backfill_tasks.append({
+                        'network': network,
+                        'volcano': volcano,
+                        'station': station_code,
+                        'location': location_clean,
+                        'channel': channel,
+                        'sample_rate': sample_rate,
+                        'chunk_type': '10m',
+                        'start_time': current_10m,
+                        'end_time': current_10m_end
+                    })
+                    current_10m = current_10m_end
+        
+        # Now fetch 6h chunks going backwards from last_complete_6h_boundary
+        # Start from the last complete 6h boundary and go backwards
+        current_6h_end = last_complete_6h_boundary
+        current_6h_start = current_6h_end - timedelta(hours=6)
+        
+        # Continue backwards until we reach or pass start_time
+        while current_6h_start >= start_time:
+            # Only add if it overlaps with our time range
+            if current_6h_end > start_time:
+                backfill_tasks.append({
+                    'network': network,
+                    'volcano': volcano,
+                    'station': station_code,
+                    'location': location_clean,
+                    'channel': channel,
+                    'sample_rate': sample_rate,
+                    'chunk_type': '6h',
+                    'start_time': current_6h_start,
+                    'end_time': current_6h_end
+                })
+            
+            # Move backwards
+            current_6h_end = current_6h_start
+            current_6h_start = current_6h_end - timedelta(hours=6)
+        
+        # For the oldest period (if start_time doesn't align to 6h boundary),
+        # determine what chunks we need
+        oldest_6h_boundary = current_6h_end  # This is the first 6h boundary before start_time
+        
+        if start_time < oldest_6h_boundary:
+            # We need to cover from start_time to oldest_6h_boundary
+            # Determine what chunk types are needed
+            period_start = start_time
+            period_end = oldest_6h_boundary
+            
+            # Check alignment
+            start_hour = period_start.hour
+            start_6h_boundary = (start_hour // 6) * 6
+            is_aligned_to_6h = (period_start.hour == start_6h_boundary and 
+                               period_start.minute == 0 and 
+                               period_start.second == 0)
+            
+            if not is_aligned_to_6h:
+                # Not aligned to 6h - check if aligned to 1h
+                is_aligned_to_1h = (period_start.minute == 0 and period_start.second == 0)
+                
+                if is_aligned_to_1h:
+                    # Generate 1h chunks
+                    current_1h = period_start
+                    while current_1h < period_end:
+                        current_1h_end = min(current_1h + timedelta(hours=1), period_end)
+                        backfill_tasks.append({
+                            'network': network,
+                            'volcano': volcano,
+                            'station': station_code,
+                            'location': location_clean,
+                            'channel': channel,
+                            'sample_rate': sample_rate,
+                            'chunk_type': '1h',
+                            'start_time': current_1h,
+                            'end_time': current_1h_end
+                        })
+                        current_1h = current_1h_end
+                else:
+                    # Generate 10m chunks
+                    start_10m_minute = (period_start.minute // 10) * 10
+                    current_10m = period_start.replace(minute=start_10m_minute, second=0, microsecond=0)
+                    
+                    while current_10m < period_end:
+                        current_10m_end = min(current_10m + timedelta(minutes=10), period_end)
+                        backfill_tasks.append({
+                            'network': network,
+                            'volcano': volcano,
+                            'station': station_code,
+                            'location': location_clean,
+                            'channel': channel,
+                            'sample_rate': sample_rate,
+                            'chunk_type': '10m',
+                            'start_time': current_10m,
+                            'end_time': current_10m_end
+                        })
+                        current_10m = current_10m_end
+        
+        # Now generate smaller chunks (1h and 10m) ONLY for periods not covered by 6h chunks
+        # This minimizes IRIS fetches - we'll derive smaller chunks from 6h data later
+        
+        # Collect all 6h chunk time ranges
+        six_hour_ranges = [(t['start_time'], t['end_time']) for t in backfill_tasks if t['chunk_type'] == '6h']
+        
+        def is_fully_contained_in_6h(chunk_start, chunk_end):
+            """Check if a chunk is fully contained within any 6h chunk we're fetching"""
+            for six_start, six_end in six_hour_ranges:
+                if chunk_start >= six_start and chunk_end <= six_end:
+                    return True
+            return False
+        
+        # Generate 1h chunks - only for periods NOT fully contained in 6h chunks
+        start_1h = start_time.replace(minute=0, second=0, microsecond=0)
+        end_1h = end_time.replace(minute=0, second=0, microsecond=0)
+        if end_time.minute != 0 or end_time.second != 0 or end_time.microsecond != 0:
+            end_1h = end_1h + timedelta(hours=1)
+        
+        current_1h = start_1h
+        while current_1h < end_1h:
+            current_1h_end = current_1h + timedelta(hours=1)
+            if current_1h_end > start_time and current_1h < end_time:
+                # Only add if NOT fully contained in a 6h chunk
+                if not is_fully_contained_in_6h(current_1h, current_1h_end):
+                    backfill_tasks.append({
+                        'network': network,
+                        'volcano': volcano,
+                        'station': station_code,
+                        'location': location_clean,
+                        'channel': channel,
+                        'sample_rate': sample_rate,
+                        'chunk_type': '1h',
+                        'start_time': current_1h,
+                        'end_time': current_1h_end
+                    })
+            current_1h = current_1h_end
+        
+        # Generate 10m chunks - only for periods NOT fully contained in larger chunks
+        start_10m_minute = (start_time.minute // 10) * 10
+        start_10m = start_time.replace(minute=start_10m_minute, second=0, microsecond=0)
+        
+        end_10m_minute = ((end_time.minute // 10) + (1 if end_time.minute % 10 != 0 or end_time.second != 0 or end_time.microsecond != 0 else 0)) * 10
+        if end_10m_minute >= 60:
+            end_10m = end_time.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        else:
+            end_10m = end_time.replace(minute=end_10m_minute, second=0, microsecond=0)
+        
+        # Collect all 1h chunk time ranges (including ones we just added)
+        one_hour_ranges = [(t['start_time'], t['end_time']) for t in backfill_tasks if t['chunk_type'] == '1h']
+        
+        def is_fully_contained_in_larger_chunk(chunk_start, chunk_end):
+            """Check if a 10m chunk is fully contained in any 6h or 1h chunk"""
+            # Check 6h chunks
+            for six_start, six_end in six_hour_ranges:
+                if chunk_start >= six_start and chunk_end <= six_end:
+                    return True
+            # Check 1h chunks
+            for one_start, one_end in one_hour_ranges:
+                if chunk_start >= one_start and chunk_end <= one_end:
+                    return True
+            return False
+        
+        current_10m = start_10m
+        while current_10m < end_10m:
+            current_10m_end = current_10m + timedelta(minutes=10)
+            if current_10m_end > start_time and current_10m < end_time:
+                # Only add if NOT fully contained in a larger chunk
+                if not is_fully_contained_in_larger_chunk(current_10m, current_10m_end):
+                    backfill_tasks.append({
+                        'network': network,
+                        'volcano': volcano,
+                        'station': station_code,
+                        'location': location_clean,
+                        'channel': channel,
+                        'sample_rate': sample_rate,
+                        'chunk_type': '10m',
+                        'start_time': current_10m,
+                        'end_time': current_10m_end
+                    })
+            current_10m = current_10m_end
+        
+        # Sort tasks: 6h first (most efficient), then by time (newest first)
+        # This ensures we fetch 6h chunks first, which can then be used to derive smaller chunks
+        chunk_type_order = {'6h': 0, '1h': 1, '10m': 2}
+        backfill_tasks.sort(key=lambda x: (chunk_type_order[x['chunk_type']], -x['start_time'].timestamp()))
+        
+        # Execute backfill
+        now = datetime.now(timezone.utc)
+        backfill_timestamp = now.strftime('%Y-%m-%dT%H-%M-%SZ')
+        backfill_id = f"backfill_station_{backfill_timestamp}"
+        
+        results = {
+            'successful': 0,
+            'failed': 0,
+            'skipped': 0
+        }
+        
+        details = []
+        
+        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] Starting station backfill: {network}.{station_code}.{location}.{channel}")
+        print(f"  Time range: {start_time} to {end_time} ({hours_back} hours)")
+        
+        # Count by chunk type
+        chunk_counts = {'6h': 0, '1h': 0, '10m': 0}
+        for task in backfill_tasks:
+            chunk_counts[task['chunk_type']] += 1
+        print(f"  Total windows: {len(backfill_tasks)} (6h: {chunk_counts['6h']}, 1h: {chunk_counts['1h']}, 10m: {chunk_counts['10m']})")
+        
+        for i, task in enumerate(backfill_tasks):
+            task_start = time.time()
+            
+            station_id = f"{task['network']}.{task['station']}.{task['location'] or '--'}.{task['channel']}"
+            print(f"[{i+1}/{len(backfill_tasks)}] {station_id} {task['chunk_type']} {task['start_time']} to {task['end_time']}")
+            
+            # Call process_station_window
+            status_result, error_info = process_station_window(
+                network=task['network'],
+                station=task['station'],
+                location=task['location'],
+                channel=task['channel'],
+                volcano=task['volcano'],
+                sample_rate=task['sample_rate'],
+                start_time=task['start_time'],
+                end_time=task['end_time'],
+                chunk_type=task['chunk_type']
+            )
+            
+            elapsed = time.time() - task_start
+            
+            # Track result
+            if status_result == 'success':
+                results['successful'] += 1
+                detail = {
+                    'station': station_id,
+                    'chunk_type': task['chunk_type'],
+                    'window': {
+                        'start': task['start_time'].strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'end': task['end_time'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                    },
+                    'status': 'success',
+                    'elapsed_seconds': round(elapsed, 2)
+                }
+            elif status_result == 'skipped':
+                results['skipped'] += 1
+                detail = {
+                    'station': station_id,
+                    'chunk_type': task['chunk_type'],
+                    'window': {
+                        'start': task['start_time'].strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'end': task['end_time'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                    },
+                    'status': 'skipped',
+                    'reason': 'already_exists'
+                }
+            else:  # failed
+                results['failed'] += 1
+                detail = {
+                    'station': station_id,
+                    'chunk_type': task['chunk_type'],
+                    'window': {
+                        'start': task['start_time'].strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'end': task['end_time'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                    },
+                    'status': 'failed',
+                    'error': error_info.get('error') if error_info else 'Unknown error'
+                }
+            
+            details.append(detail)
+        
+        # Build response
+        response = {
+            'backfill_id': backfill_id,
+            'started_at': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'station': {
+                'network': network,
+                'volcano': volcano,
+                'station': station_code,
+                'location': location,
+                'channel': channel
+            },
+            'time_range': {
+                'start': start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'end': end_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'hours': hours_back
+            },
+            'total_windows': len(backfill_tasks),
+            'progress': results,
+            'details': details,
+            'summary': {
+                'duration_seconds': round(time.time() - now.timestamp(), 2),
+                'success_rate': round(results['successful'] / len(backfill_tasks) * 100, 1) if backfill_tasks else 0
+            }
+        }
+        
+        print(f"Station backfill complete: {results['successful']} success, {results['failed']} failed, {results['skipped']} skipped")
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Station backfill failed: {str(e)}',
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@app.route('/ping')
+def ping():
+    """Ultra-lightweight ping endpoint - just returns 200 OK"""
+    return '', 200
+
+@app.route('/collector-state')
+def get_collector_state():
+    """
+    Lightweight endpoint returning only collector run state.
+    Much faster than /status as it doesn't query R2 or calculate file counts.
+    
+    Returns:
+        {
+            "last_run_completed": "2025-11-13 00:52:15 UTC" or null,
+            "currently_running": false
+        }
+    """
+    return jsonify({
+        'last_run_completed': status['last_run_completed'],
+        'currently_running': status['currently_running']
+    })
 
 @app.route('/health')
 def health():
@@ -2241,65 +2774,364 @@ def get_stations():
         'stations': active_stations
     })
 
+@app.route('/all-stations')
+def get_all_stations():
+    """Return ALL stations (active and inactive) from stations_config.json"""
+    import json
+    from pathlib import Path
+    
+    config_path = Path(__file__).parent / 'stations_config.json'
+    with open(config_path) as f:
+        config = json.load(f)
+    
+    all_stations = []
+    for network, volcanoes in config['networks'].items():
+        for volcano, stations in volcanoes.items():
+            for station in stations:
+                all_stations.append({
+                    'network': network,
+                    'volcano': volcano,
+                    'station': station['station'],
+                    'location': station['location'],
+                    'channel': station['channel'],
+                    'sample_rate': station['sample_rate'],
+                    'distance_km': station.get('distance_km', 0),
+                    'active': station.get('active', False)
+                })
+    
+    return jsonify({
+        'total': len(all_stations),
+        'active_count': sum(1 for s in all_stations if s['active']),
+        'stations': all_stations
+    })
+
+@app.route('/update-station-status', methods=['POST'])
+def update_station_status():
+    """
+    Update the active status of a station in stations_config.json
+    
+    Request body:
+    {
+        "network": "HV",
+        "volcano": "kilauea",
+        "station": "OBL",
+        "location": "--",
+        "channel": "HHZ",
+        "active": true
+    }
+    """
+    from flask import request
+    import json
+    from pathlib import Path
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Missing request body'}), 400
+        
+        network = data.get('network')
+        volcano = data.get('volcano')
+        station_code = data.get('station')
+        location = data.get('location', '--')
+        channel = data.get('channel')
+        active = data.get('active')
+        
+        if None in [network, volcano, station_code, channel, active]:
+            return jsonify({
+                'error': 'Missing required fields: network, volcano, station, channel, active'
+            }), 400
+        
+        # Load config
+        config_path = Path(__file__).parent / 'stations_config.json'
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        
+        # Find and update the station
+        found = False
+        for station in config['networks'].get(network, {}).get(volcano, []):
+            if (station['station'] == station_code and 
+                station['location'] == location and 
+                station['channel'] == channel):
+                station['active'] = bool(active)
+                found = True
+                break
+        
+        if not found:
+            return jsonify({
+                'error': f'Station not found: {network}.{station_code}.{location}.{channel} in {volcano}'
+            }), 404
+        
+        # Save updated config
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Station {network}.{station_code}.{location}.{channel} set to {"active" if active else "inactive"}',
+            'station': {
+                'network': network,
+                'volcano': volcano,
+                'station': station_code,
+                'location': location,
+                'channel': channel,
+                'active': active
+            }
+        })
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Failed to update station status: {str(e)}',
+            'traceback': traceback.format_exc() if os.getenv('DEBUG', '').lower() == 'true' else None
+        }), 500
+
+@app.route('/dashboard/station-status-24h')
+def dashboard_station_status_24h():
+    """
+    Clean endpoint for dashboard: Shows metadata coverage for last 24 hours.
+    
+    This is the SIMPLE version - just counts metadata chunks that exist.
+    Expected is always 144/24/4 for a full 24 hours.
+    
+    Returns:
+        {
+            'stations': [
+                {
+                    'network': 'HV',
+                    'station': 'OBL',
+                    'location': '--',
+                    'channel': 'HHZ',
+                    'volcano': 'kilauea',
+                    'actual': {'10m': 142, '1h': 24, '6h': 4},
+                    'expected': {'10m': 144, '1h': 24, '6h': 4},
+                    'missing': {'10m': 2, '1h': 0, '6h': 0},
+                    'status': 'MISSING'  // PERFECT, MISSING, or OK
+                },
+                ...
+            ],
+            'summary': {...}
+        }
+    """
+    from datetime import timedelta
+    
+    try:
+        s3 = get_s3_client()
+        active_stations_list = get_active_stations_list()
+        
+        now = datetime.now(timezone.utc)
+        last_24h_start = now - timedelta(hours=24)
+        
+        # Get dates to check - need to check the date the window starts AND the date it ends
+        # If window spans 3 dates (e.g., starts late on day 1, crosses day 2, ends early on day 3)
+        # we need all 3 dates
+        start_date = last_24h_start.date()
+        end_date = now.date()
+        
+        # Generate all dates from start to end (inclusive)
+        dates_to_check = []
+        current = start_date
+        while current <= end_date:
+            dates_to_check.append(current)
+            current += timedelta(days=1)
+        
+        # SIMPLE LOGIC: Calculate what SHOULD be complete by now
+        # Collections run at :02, :12, :22, :32, :42, :52 and take ~10 seconds
+        # If it's 23:40, collection at 23:32 should have completed the 23:20-23:30 period
+        
+        def get_last_complete_period(now, period_type):
+            """Calculate the start time of the last period that SHOULD be complete"""
+            if period_type == '10m':
+                # If we're at minute :03 or later in a 10m period, the previous period is complete
+                minute_in_period = now.minute % 10
+                if minute_in_period >= 3:
+                    # Previous period is complete
+                    last_period_start = now - timedelta(minutes=(minute_in_period + 10))
+                else:
+                    # Previous period collection hasn't run yet
+                    last_period_start = now - timedelta(minutes=(minute_in_period + 20))
+                # Round to 10-minute boundary
+                last_period_start = last_period_start.replace(minute=(last_period_start.minute // 10) * 10, second=0, microsecond=0)
+                return last_period_start
+            
+            elif period_type == '1h':
+                # If we're at :03 or later in the hour, previous hour is complete
+                if now.minute >= 3:
+                    return (now - timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+                else:
+                    return (now - timedelta(hours=2)).replace(minute=0, second=0, microsecond=0)
+            
+            elif period_type == '6h':
+                # 6h windows: 00:00, 06:00, 12:00, 18:00
+                current_window_hour = (now.hour // 6) * 6
+                minutes_into_window = (now.hour % 6) * 60 + now.minute
+                
+                if minutes_into_window >= 3:
+                    # Previous window is complete
+                    return (now.replace(hour=current_window_hour, minute=0, second=0, microsecond=0) - timedelta(hours=6))
+                else:
+                    # Go back 2 windows
+                    return (now.replace(hour=current_window_hour, minute=0, second=0, microsecond=0) - timedelta(hours=12))
+        
+        def get_first_period(window_start, period_type):
+            """Find the first period that touches the 24h window"""
+            if period_type == '10m':
+                # Round down to 10-minute boundary
+                return window_start.replace(minute=(window_start.minute // 10) * 10, second=0, microsecond=0)
+            elif period_type == '1h':
+                # Round down to hour boundary
+                return window_start.replace(minute=0, second=0, microsecond=0)
+            elif period_type == '6h':
+                # Round down to 6h boundary
+                window_hour = (window_start.hour // 6) * 6
+                return window_start.replace(hour=window_hour, minute=0, second=0, microsecond=0)
+        
+        # Calculate expected for each period type
+        EXPECTED_24H = {}
+        for period_type in ['10m', '1h', '6h']:
+            first = get_first_period(last_24h_start, period_type)
+            last = get_last_complete_period(now, period_type)
+            
+            # Period lengths
+            period_seconds = {'10m': 600, '1h': 3600, '6h': 21600}[period_type]
+            
+            # Count periods from first to last (inclusive)
+            if last >= first:
+                time_span = (last - first).total_seconds()
+                EXPECTED_24H[period_type] = int(time_span / period_seconds) + 1
+            else:
+                EXPECTED_24H[period_type] = 0
+        
+        stations = []
+        
+        for config in active_stations_list:
+            network = config['network']
+            station = config['station']
+            location = config.get('location', '')
+            channel = config['channel']
+            volcano = config.get('volcano', '')
+            sample_rate = config.get('sample_rate', 100.0)
+            location_str = location if location and location != '--' else '--'
+            
+            # Count metadata chunks in last 24h
+            actual = {'10m': 0, '1h': 0, '6h': 0}
+            
+            for date in dates_to_check:
+                metadata = load_metadata_for_date(s3, network, volcano, station, location, channel, sample_rate, date)
+                
+                if not metadata:
+                    continue
+                
+                for chunk_type in ['10m', '1h', '6h']:
+                    for chunk in metadata.get('chunks', {}).get(chunk_type, []):
+                        chunk_start_str = chunk.get('start', '')
+                        chunk_end_str = chunk.get('end', '')
+                        if not chunk_start_str or not chunk_end_str:
+                            continue
+                        
+                        try:
+                            chunk_start = datetime.fromisoformat(f"{date}T{chunk_start_str}").replace(tzinfo=timezone.utc)
+                            chunk_end = datetime.fromisoformat(f"{date}T{chunk_end_str}").replace(tzinfo=timezone.utc)
+                            
+                            # Count chunks that OVERLAP with the 24h window
+                            # Chunk overlaps if: chunk_start <= window_end AND chunk_end > window_start
+                            # Use <= to include boundary cases (chunk starting exactly at window boundary)
+                            if chunk_start <= now and chunk_end > last_24h_start:
+                                actual[chunk_type] += 1
+                        except (ValueError, TypeError):
+                            continue
+            
+            # Calculate missing
+            missing = {
+                '10m': max(0, EXPECTED_24H['10m'] - actual['10m']),
+                '1h': max(0, EXPECTED_24H['1h'] - actual['1h']),
+                '6h': max(0, EXPECTED_24H['6h'] - actual['6h'])
+            }
+            
+            # Status
+            if missing['10m'] == 0 and missing['1h'] == 0 and missing['6h'] == 0:
+                status = 'PERFECT'
+            elif missing['10m'] > 0 or missing['1h'] > 0 or missing['6h'] > 0:
+                status = 'MISSING'
+            else:
+                status = 'OK'
+            
+            stations.append({
+                'network': network,
+                'station': station,
+                'location': location_str,
+                'channel': channel,
+                'volcano': volcano,
+                'actual': actual,
+                'expected': EXPECTED_24H.copy(),
+                'missing': missing,
+                'status': status
+            })
+        
+        # Sort by status (MISSING first)
+        status_order = {'MISSING': 0, 'OK': 1, 'PERFECT': 2}
+        stations.sort(key=lambda x: (status_order.get(x['status'], 99), f"{x['network']}.{x['station']}"))
+        
+        return jsonify({
+            'timestamp': now.isoformat(),
+            'period': 'last_24_hours',
+            'expected_calculation': {
+                '10m': f'{EXPECTED_24H["10m"]} periods (collection runs at :X2 of each 10min)',
+                '1h': f'{EXPECTED_24H["1h"]} hours (collection runs at :02 of each hour)',
+                '6h': f'{EXPECTED_24H["6h"]} windows (collection runs at X:02 of window start)',
+                'note': 'Counts what SHOULD be complete by now - incomplete periods not counted'
+            },
+            'stations': stations,
+            'summary': {
+                'total_stations': len(stations),
+                'perfect': sum(1 for s in stations if s['status'] == 'PERFECT'),
+                'missing': sum(1 for s in stations if s['status'] == 'MISSING'),
+                'total_missing_chunks': {
+                    '10m': sum(s['missing']['10m'] for s in stations),
+                    '1h': sum(s['missing']['1h'] for s in stations),
+                    '6h': sum(s['missing']['6h'] for s in stations)
+                }
+            }
+        })
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc() if os.getenv('DEBUG', '').lower() == 'true' else None
+        }), 500
+
 @app.route('/per-station-files')
 def per_station_files():
     """
-    Return detailed per-station file breakdown showing actual vs expected files.
+    Return detailed per-station file breakdown for LAST 24 HOURS ONLY.
+    Uses metadata files to determine actual coverage (not raw file counts).
     Shows which stations are missing files and by how much.
     """
+    from datetime import timedelta
+    
     try:
         # Initialize R2 client
         s3 = get_s3_client()
         
-        # Get active stations and activation log
+        # Get active stations
         active_stations_list = get_active_stations_list()
-        activation_log = load_station_activations()
         
-        # Count files per station in R2
-        station_file_counts = {}  # {station_key: {'10m': count, '1h': count, '6h': count}}
-        
-        paginator = s3.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
-        
-        for page in pages:
-            if 'Contents' not in page:
-                continue
-            
-            for obj in page['Contents']:
-                key = obj['Key']
-                
-                # Parse station info from key
-                # Format: data/YYYY/MM/NETWORK/VOLCANO/STATION/LOCATION/CHANNEL/CHUNK_TYPE/filename.bin.zst
-                parts = key.split('/')
-                if len(parts) < 9:
-                    continue
-                
-                network = parts[3]
-                station = parts[5]
-                location = parts[6]
-                channel = parts[7]
-                
-                # Determine file type from path (10m, 1h, or 6h folder)
-                file_type = None
-                if '.bin.zst' in key:
-                    # Check which chunk type folder it's in
-                    if '/10m/' in key:
-                        file_type = '10m'
-                    elif '/1h/' in key:
-                        file_type = '1h'
-                    elif '/6h/' in key:
-                        file_type = '6h'
-                
-                if file_type:
-                    station_key = f"{network}_{station}_{location}_{channel}"
-                    
-                    if station_key not in station_file_counts:
-                        station_file_counts[station_key] = {'10m': 0, '1h': 0, '6h': 0}
-                    
-                    station_file_counts[station_key][file_type] += 1
-        
-        # Calculate expected files per station
+        # Calculate last 24 hours window
         now = datetime.now(timezone.utc)
+        last_24h_start = now - timedelta(hours=24)
+        
+        # Get dates we need to check (today and yesterday, in case 24h spans midnight)
+        today = now.date()
+        yesterday = today - timedelta(days=1)
+        dates_to_check = [today, yesterday]
+        
+        # Expected files for last 24 hours
+        expected_24h = {
+            '10m': 144,  # 24 hours * 6 per hour
+            '1h': 24,    # 24 hours
+            '6h': 4      # 24 hours / 6
+        }
+        
         station_breakdown = []
         
         for station_config in active_stations_list:
@@ -2308,53 +3140,48 @@ def per_station_files():
             location = station_config.get('location', '')
             channel = station_config['channel']
             volcano = station_config.get('volcano', '')
+            sample_rate = station_config.get('sample_rate', 100.0)
             location_str = location if location and location != '--' else '--'
             station_key = f"{network}_{station}_{location_str}_{channel}"
             
-            # Get actual file counts
-            actual_counts = station_file_counts.get(station_key, {'10m': 0, '1h': 0, '6h': 0})
+            # Count chunks from metadata that fall within last 24 hours
+            actual_counts = {'10m': 0, '1h': 0, '6h': 0}
             
-            # Get activation time from log
-            station_info = activation_log.get('stations', {}).get(station_key)
-            activated_at = None
-            activated_at_str = None
-            expected_10m = 0
-            expected_1h = 0
-            expected_6h = 0
-            time_since_activation = None
-            
-            if station_info and station_info.get('activated_at'):
-                try:
-                    activated_at_str = station_info['activated_at']
-                    if activated_at_str.endswith('Z'):
-                        activated_at_str = activated_at_str[:-1] + '+00:00'
-                    activated_at = datetime.fromisoformat(activated_at_str)
+            for check_date in dates_to_check:
+                # Load metadata for this date
+                metadata = load_metadata_for_date(s3, network, volcano, station, location, channel, sample_rate, check_date)
+                
+                if not metadata:
+                    continue
+                
+                # Check each chunk type
+                for chunk_type in ['10m', '1h', '6h']:
+                    chunks = metadata.get('chunks', {}).get(chunk_type, [])
                     
-                    # Only calculate expected if station is still active (not deactivated)
-                    if station_info.get('deactivated_at') is None:
-                        time_diff = now - activated_at
-                        total_minutes = time_diff.total_seconds() / 60
-                        station_cycles = int(total_minutes // 10)
+                    for chunk in chunks:
+                        # Parse chunk time
+                        chunk_start_str = chunk.get('start', '')  # Format: HH:MM:SS
+                        if not chunk_start_str:
+                            continue
                         
-                        expected_10m = station_cycles
-                        expected_1h = station_cycles // 6 if station_cycles >= 6 else 0
-                        expected_6h = station_cycles // 36 if station_cycles >= 36 else 0
-                        
-                        # Calculate time since activation (human readable)
-                        hours = int(time_diff.total_seconds() // 3600)
-                        minutes = int((time_diff.total_seconds() % 3600) // 60)
-                        if hours > 0:
-                            time_since_activation = f"{hours}h {minutes}m"
-                        else:
-                            time_since_activation = f"{minutes}m"
-                except (ValueError, TypeError) as e:
-                    pass
+                        # Combine date and time to get full timestamp
+                        chunk_datetime_str = f"{check_date}T{chunk_start_str}"
+                        try:
+                            chunk_dt = datetime.fromisoformat(chunk_datetime_str).replace(tzinfo=timezone.utc)
+                            
+                            # Check if this chunk falls within last 24 hours
+                            if chunk_dt >= last_24h_start and chunk_dt < now:
+                                actual_counts[chunk_type] += 1
+                        except (ValueError, TypeError):
+                            # Skip invalid timestamps
+                            continue
+            
+            # Calculate missing files
+            missing_10m = max(0, expected_24h['10m'] - actual_counts['10m'])
+            missing_1h = max(0, expected_24h['1h'] - actual_counts['1h'])
+            missing_6h = max(0, expected_24h['6h'] - actual_counts['6h'])
             
             # Determine status
-            missing_10m = expected_10m - actual_counts['10m']
-            missing_1h = expected_1h - actual_counts['1h']
-            missing_6h = expected_6h - actual_counts['6h']
-            
             if missing_10m == 0 and missing_1h == 0 and missing_6h == 0:
                 status_text = 'PERFECT'
             elif missing_10m > 0 or missing_1h > 0 or missing_6h > 0:
@@ -2369,22 +3196,20 @@ def per_station_files():
                 'location': location_str,
                 'channel': channel,
                 'volcano': volcano,
-                'activated_at': station_info.get('activated_at') if station_info else None,
-                'time_since_activation': time_since_activation,
                 'actual': {
                     '10m': actual_counts['10m'],
                     '1h': actual_counts['1h'],
                     '6h': actual_counts['6h']
                 },
                 'expected': {
-                    '10m': expected_10m,
-                    '1h': expected_1h,
-                    '6h': expected_6h
+                    '10m': expected_24h['10m'],
+                    '1h': expected_24h['1h'],
+                    '6h': expected_24h['6h']
                 },
                 'missing': {
-                    '10m': missing_10m if missing_10m > 0 else 0,
-                    '1h': missing_1h if missing_1h > 0 else 0,
-                    '6h': missing_6h if missing_6h > 0 else 0
+                    '10m': missing_10m,
+                    '1h': missing_1h,
+                    '6h': missing_6h
                 },
                 'status': status_text
             })
@@ -2401,6 +3226,7 @@ def per_station_files():
         
         return jsonify({
             'timestamp': now.isoformat(),
+            'period': 'last_24_hours',
             'total_stations': len(station_breakdown),
             'summary': {
                 'stations_with_missing_files': stations_with_missing,
@@ -3755,6 +4581,14 @@ def run_cron_job():
     # Check if this is a 6-hour checkpoint (will trigger auto-heal AFTER collection)
     should_auto_heal = (now.hour % 6 == 0 and now.minute in [0, 1, 2, 3, 4])
     
+    # Initialize tracking variables (accessible in finally block)
+    total_tasks = 0
+    successful = 0
+    skipped = 0
+    failed = 0
+    files_by_type = {'10m': 0, '1h': 0, '6h': 0}
+    stations_processed = set()
+    
     try:
         # Determine what time windows to fetch
         windows = determine_fetch_windows(now)
@@ -3772,6 +4606,7 @@ def run_cron_job():
         if not active_stations:
             print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] ⚠️ No active stations configured - skipping collection")
             status['successful_runs'] += 1
+            # Still log the run (with empty stats)
             return
         
         # Process each station for each window
@@ -3781,6 +4616,8 @@ def run_cron_job():
         skipped = 0
         failed = 0
         failure_details = []
+        files_by_type = {'10m': 0, '1h': 0, '6h': 0}
+        stations_processed = set()
         
         for station_config in active_stations:
             network = station_config['network']
@@ -3789,6 +4626,11 @@ def run_cron_job():
             location = station_config.get('location', '')
             channel = station_config['channel']
             sample_rate = station_config['sample_rate']
+            
+            # Track station ID
+            location_str = location if location else '--'
+            station_id = f"{network}.{station}.{location_str}.{channel}"
+            stations_processed.add(station_id)
             
             for start, end, chunk_type in windows:
                 current_task += 1
@@ -3801,6 +4643,7 @@ def run_cron_job():
                 
                 if result_status == 'success':
                     successful += 1
+                    files_by_type[chunk_type] = files_by_type.get(chunk_type, 0) + 1
                 elif result_status == 'skipped':
                     skipped += 1
                 elif result_status == 'failed':
@@ -3915,6 +4758,19 @@ def run_cron_job():
                 status['last_run_duration_seconds'] = round(duration_seconds, 2)
             except:
                 status['last_run_duration_seconds'] = None
+        
+        # Log run to R2 (keeps last 7 days)
+        run_log_info = {
+            'timestamp': completion_time.isoformat(),
+            'success': (failed == 0),
+            'stations': sorted(list(stations_processed)),
+            'files_created': files_by_type.copy(),
+            'total_tasks': total_tasks,
+            'successful': successful,
+            'skipped': skipped,
+            'failed': failed
+        }
+        save_run_log(run_log_info)
 
 
 def run_scheduler():

@@ -10,3 +10,4 @@ files/mseed_files/*
 files/Audio_Files/*.deploy_time
 files/Plot_Files/*
 Logic_Pro/
+backend/cron_output/

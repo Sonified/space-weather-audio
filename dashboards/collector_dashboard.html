@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volcano Audio Collector Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #ff6b6b;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+        }
+        
+        .config-section {
+            background: #1a1f3a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #2a2f4a;
+        }
+        
+        .config-section h2 {
+            color: #4ecdc4;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .status-card {
+            background: #252a45;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #4ecdc4;
+        }
+        
+        .status-card h3 {
+            color: #888;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .status-card .value {
+            color: #fff;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        
+        .status-card.error {
+            border-left-color: #ff6b6b;
+        }
+        
+        .status-card.success {
+            border-left-color: #51cf66;
+        }
+        
+        .status-card.warning {
+            border-left-color: #ffd43b;
+        }
+        
+        .api-url-input {
+            width: 100%;
+            padding: 10px;
+            background: #0a0e27;
+            border: 1px solid #2a2f4a;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+        
+        .button {
+            background: #4ecdc4;
+            color: #0a0e27;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1em;
+            transition: background 0.2s;
+        }
+        
+        .button:hover {
+            background: #5dd5cc;
+        }
+        
+        .button:disabled {
+            background: #2a2f4a;
+            color: #666;
+            cursor: not-allowed;
+        }
+        
+        .button.danger {
+            background: #ff6b6b;
+        }
+        
+        .button.danger:hover {
+            background: #ff8787;
+        }
+        
+        .button.secondary {
+            background: #495057;
+        }
+        
+        .button.secondary:hover {
+            background: #5a6067;
+        }
+        
+        .stations-list {
+            max-height: 600px;
+            overflow-y: auto;
+            background: #0a0e27;
+            border: 1px solid #2a2f4a;
+            border-radius: 4px;
+            padding: 15px;
+        }
+        
+        .stations-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .volcano-column {
+            background: #1a1f3a;
+            border: 1px solid #2a2f4a;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        
+        .volcano-column h3 {
+            color: #4ecdc4;
+            margin-bottom: 10px;
+            font-size: 1em;
+            text-align: center;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #2a2f4a;
+        }
+        
+        .volcano-column .station-item {
+            margin: 5px 0;
+        }
+        
+        .station-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #1a1f3a;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .station-item:hover {
+            background: #252a45;
+        }
+        
+        .station-item.active {
+            border-left: 4px solid #51cf66;
+        }
+        
+        .station-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 15px;
+            cursor: pointer;
+        }
+        
+        .station-info {
+            flex: 1;
+        }
+        
+        .station-id {
+            font-weight: bold;
+            color: #4ecdc4;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+        
+        .station-meta {
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 3px;
+        }
+        
+        .backfill-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #2a2f4a;
+        }
+        
+        .backfill-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .backfill-controls select,
+        .backfill-controls input {
+            padding: 8px;
+            background: #0a0e27;
+            border: 1px solid #2a2f4a;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 0.9em;
+        }
+        
+        .backfill-controls select {
+            min-width: 200px;
+        }
+        
+        .backfill-controls input {
+            width: 100px;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #4ecdc4;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-left: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .message {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .message.success {
+            background: #2d5016;
+            color: #51cf66;
+            border: 1px solid #51cf66;
+        }
+        
+        .message.error {
+            background: #5a1a1a;
+            color: #ff6b6b;
+            border: 1px solid #ff6b6b;
+        }
+        
+        .message.info {
+            background: #1a3a4a;
+            color: #4ecdc4;
+            border: 1px solid #4ecdc4;
+        }
+        
+        .per-station-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        .per-station-table th,
+        .per-station-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #2a2f4a;
+        }
+        
+        .per-station-table th {
+            background: #252a45;
+            color: #4ecdc4;
+            font-weight: bold;
+        }
+        
+        .per-station-table tr:hover {
+            background: #1a1f3a;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        
+        .status-badge.PERFECT {
+            background: #2d5016;
+            color: #51cf66;
+        }
+        
+        .status-badge.MISSING {
+            background: #5a1a1a;
+            color: #ff6b6b;
+        }
+        
+        .status-badge.OK {
+            background: #4a4a1a;
+            color: #ffd43b;
+        }
+        
+        .backfill-progress {
+            margin-top: 15px;
+            padding: 15px;
+            background: #1a1f3a;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        .backfill-progress.active {
+            display: block;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #0a0e27;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #4ecdc4;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌋 Volcano Audio Collector Dashboard</h1>
+        <p class="subtitle">Monitor and manage your seismic data collection system</p>
+        
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding: 10px; background: #1a1f3a; border-radius: 6px; border: 1px solid #2a2f4a;">
+            <div id="connectionStatus" style="width: 12px; height: 12px; border-radius: 50%; background: #ff6b6b;"></div>
+            <span id="connectionText" style="color: #ff6b6b; font-weight: bold;">Disconnected</span>
+        </div>
+        
+        <div class="config-section">
+            <h2>🔗 API Configuration</h2>
+            <input type="text" id="apiUrl" class="api-url-input" 
+                   value="http://localhost:5005" 
+                   placeholder="Enter collector API URL">
+            <button class="button" onclick="loadDashboard()">Refresh Dashboard</button>
+        </div>
+        
+        <div class="config-section">
+            <h2>📊 System Status</h2>
+            <div id="statusGrid" class="status-grid">
+                <div class="status-card">
+                    <h3>Status</h3>
+                    <div class="value">Loading...</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="config-section">
+            <h2>🎛️ Station Management</h2>
+            <p style="color: #888; margin-bottom: 15px;">
+                Check/uncheck stations to activate or deactivate them. Changes are saved immediately.
+            </p>
+            <button class="button secondary" onclick="loadAllStations()">Refresh Station List</button>
+            <div id="stationsList" class="stations-list" style="margin-top: 15px;">
+                <div style="text-align: center; padding: 20px; color: #888;">
+                    Click "Refresh Station List" to load stations
+                </div>
+            </div>
+        </div>
+        
+        <div class="config-section">
+            <h2>📈 Per-Station File Breakdown (Last 24 Hours)</h2>
+            <button class="button secondary" onclick="loadPerStationFiles()" id="refreshBreakdownBtn">Refresh Breakdown</button>
+            <div id="perStationContent"></div>
+        </div>
+        
+        <div class="config-section backfill-section">
+            <h2>🔄 Backfill Station Data</h2>
+            <p style="color: #888; margin-bottom: 15px;">
+                Select a volcano and station, then backfill data for the last 24 hours (or custom hours). 
+                All chunk types (6-hour, 1-hour, and 10-minute) that touch the time range will be generated inclusively.
+            </p>
+            <div class="backfill-controls">
+                <label for="backfillVolcano" style="color: #888; white-space: nowrap;">Volcano:</label>
+                <select id="backfillVolcano" onchange="loadBackfillStations()" style="min-width: 200px;">
+                    <option value="">Select volcano...</option>
+                    <option value="kilauea">Kīlauea (HI)</option>
+                    <option value="maunaloa">Mauna Loa (HI)</option>
+                    <option value="greatsitkin">Great Sitkin (AK)</option>
+                    <option value="shishaldin">Shishaldin (AK)</option>
+                    <option value="spurr">Mount Spurr (AK)</option>
+                </select>
+                <label for="backfillStation" style="color: #888; white-space: nowrap;">Station (by distance):</label>
+                <select id="backfillStation" style="min-width: 300px;">
+                    <option value="">Select volcano first...</option>
+                </select>
+                <input type="number" id="backfillHours" value="24" min="1" max="168" 
+                       placeholder="Hours back" style="width: 100px;">
+                <label style="color: #888;">hours</label>
+                <button class="button" onclick="startBackfill()" id="backfillButton">
+                    Start Backfill
+                </button>
+            </div>
+            <div id="backfillProgress" class="backfill-progress">
+                <h3 style="color: #4ecdc4; margin-bottom: 10px;">Backfill Progress</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <div id="backfillStatus" style="color: #888;"></div>
+                <div id="backfillDetails" style="margin-top: 15px;"></div>
+            </div>
+        </div>
+        
+        <div id="messages"></div>
+    </div>
+    
+    <script>
+        const API_BASE = document.getElementById('apiUrl').value;
+        let allStations = [];
+        let isConnected = false;
+        let healthCheckInterval = null;
+        
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value || 'http://localhost:5005';
+        }
+        
+        function clearHealthCheck() {
+            if (healthCheckInterval) {
+                clearInterval(healthCheckInterval);
+                healthCheckInterval = null;
+            }
+        }
+        
+        function startHealthCheck() {
+            // Clear any existing interval first to prevent duplicates
+            clearHealthCheck();
+            
+            if (isConnected) {
+                // When connected: check every 5 seconds
+                healthCheckInterval = setInterval(async () => {
+                    try {
+                        const response = await fetch(`${getApiUrl()}/ping`);
+                        if (!response.ok) {
+                            setConnectionStatus(false);
+                        }
+                    } catch (e) {
+                        setConnectionStatus(false);
+                    }
+                }, 5000);
+            } else {
+                // When disconnected: check every 1 second
+                healthCheckInterval = setInterval(async () => {
+                    try {
+                        const response = await fetch(`${getApiUrl()}/ping`);
+                        if (response.ok) {
+                            // Reconnected! Load full dashboard
+                            loadDashboard();
+                        }
+                    } catch (e) {
+                        // Still disconnected, will try again in 1 second
+                    }
+                }, 1000);
+            }
+        }
+        
+        function setConnectionStatus(connected) {
+            const statusDot = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('connectionText');
+            
+            const wasConnected = isConnected;
+            isConnected = connected;
+            
+            if (connected) {
+                statusDot.style.background = '#51cf66';
+                statusText.style.color = '#51cf66';
+                statusText.textContent = 'Connected - Server Live';
+            } else {
+                statusDot.style.background = '#ff6b6b';
+                statusText.style.color = '#ff6b6b';
+                statusText.textContent = 'Disconnected - Server Offline';
+            }
+            
+            // Only restart health check if status changed
+            if (connected !== wasConnected) {
+                startHealthCheck();
+            }
+        }
+        
+        function showMessage(text, type = 'info') {
+            const messagesDiv = document.getElementById('messages');
+            const message = document.createElement('div');
+            message.className = `message ${type}`;
+            message.textContent = text;
+            messagesDiv.appendChild(message);
+            setTimeout(() => message.remove(), 5000);
+        }
+        
+        async function loadDashboard() {
+            const apiUrl = getApiUrl();
+            
+            try {
+                // Load health
+                const healthRes = await fetch(`${apiUrl}/health`);
+                const health = await healthRes.json();
+                
+                // Load status
+                const statusRes = await fetch(`${apiUrl}/status`);
+                const status = await statusRes.json();
+                
+                // Connection successful
+                setConnectionStatus(true);
+                
+                // Update status grid
+                const statusGrid = document.getElementById('statusGrid');
+                statusGrid.innerHTML = `
+                    <div class="status-card success">
+                        <h3>Health</h3>
+                        <div class="value">${health.status}</div>
+                    </div>
+                    <div class="status-card">
+                        <h3>Version</h3>
+                        <div class="value">${status.version || 'N/A'}</div>
+                    </div>
+                    <div class="status-card">
+                        <h3>Uptime</h3>
+                        <div class="value">${formatUptime(status.uptime_seconds || 0)}</div>
+                    </div>
+                    <div class="status-card">
+                        <h3>Total Runs</h3>
+                        <div class="value">${status.total_runs || 0}</div>
+                    </div>
+                    <div class="status-card ${status.currently_running ? 'warning' : 'success'}">
+                        <h3>Status</h3>
+                        <div class="value">${status.currently_running ? 'Running' : 'Idle'}</div>
+                    </div>
+                    <div class="status-card">
+                        <h3>Active Stations</h3>
+                        <div class="value">${status.active_stations || 0}</div>
+                    </div>
+                    <div class="status-card">
+                        <h3>Total Files</h3>
+                        <div class="value">${(status.file_counts?.total || 0).toLocaleString()}</div>
+                    </div>
+                    <div class="status-card">
+                        <h3>Storage</h3>
+                        <div class="value">${formatBytes(status.storage?.total_bytes || 0)}</div>
+                    </div>
+                `;
+                
+                showMessage('Dashboard refreshed successfully', 'success');
+            } catch (error) {
+                setConnectionStatus(false);
+                showMessage(`Error loading dashboard: ${error.message}`, 'error');
+            }
+        }
+        
+        // Helper: Calculate last complete period (matches Python logic)
+        function getLastCompletePeriod(now, periodType) {
+            const dt = new Date(now);
+            
+            if (periodType === '10m') {
+                const minuteInPeriod = dt.getUTCMinutes() % 10;
+                let lastPeriodStart;
+                if (minuteInPeriod >= 3) {
+                    lastPeriodStart = new Date(dt.getTime() - (minuteInPeriod + 10) * 60 * 1000);
+                } else {
+                    lastPeriodStart = new Date(dt.getTime() - (minuteInPeriod + 20) * 60 * 1000);
+                }
+                lastPeriodStart.setUTCMinutes(Math.floor(lastPeriodStart.getUTCMinutes() / 10) * 10, 0, 0);
+                return lastPeriodStart;
+            } else if (periodType === '1h') {
+                if (dt.getUTCMinutes() >= 3) {
+                    const lastHour = new Date(dt);
+                    lastHour.setUTCHours(lastHour.getUTCHours() - 1, 0, 0, 0);
+                    return lastHour;
+                } else {
+                    const lastHour = new Date(dt);
+                    lastHour.setUTCHours(lastHour.getUTCHours() - 2, 0, 0, 0);
+                    return lastHour;
+                }
+            } else if (periodType === '6h') {
+                const currentWindowHour = Math.floor(dt.getUTCHours() / 6) * 6;
+                const minutesIntoWindow = (dt.getUTCHours() % 6) * 60 + dt.getUTCMinutes();
+                
+                if (minutesIntoWindow >= 3) {
+                    const lastWindow = new Date(dt);
+                    lastWindow.setUTCHours(currentWindowHour, 0, 0, 0);
+                    lastWindow.setTime(lastWindow.getTime() - 6 * 60 * 60 * 1000);
+                    return lastWindow;
+                } else {
+                    const lastWindow = new Date(dt);
+                    lastWindow.setUTCHours(currentWindowHour, 0, 0, 0);
+                    lastWindow.setTime(lastWindow.getTime() - 12 * 60 * 60 * 1000);
+                    return lastWindow;
+                }
+            }
+        }
+        
+        // Helper: Get expected chunks for a date (matches Python logic)
+        function getExpectedChunksForDate(targetDateStr, lastCollectorRunStr) {
+            const targetDate = new Date(targetDateStr + 'T00:00:00Z');
+            // Handle both ISO format (2025-11-13T01:13:13.190700+00:00) and UTC format (2025-11-13 01:13:13 UTC)
+            let lastRun;
+            if (lastCollectorRunStr.includes('T')) {
+                // ISO format - parse directly
+                lastRun = new Date(lastCollectorRunStr);
+            } else {
+                // UTC format - add Z if needed
+                lastRun = new Date(lastCollectorRunStr.replace(' UTC', '') + 'Z');
+            }
+            
+            const expected = { '10m': [], '1h': [], '6h': [] };
+            
+            const dateStart = new Date(targetDate);
+            dateStart.setUTCHours(0, 0, 0, 0);
+            const dateEnd = new Date(dateStart);
+            dateEnd.setUTCDate(dateEnd.getUTCDate() + 1);
+            
+            const lastComplete10m = getLastCompletePeriod(lastRun, '10m');
+            const lastComplete1h = getLastCompletePeriod(lastRun, '1h');
+            const lastComplete6h = getLastCompletePeriod(lastRun, '6h');
+            
+            // 10m chunks
+            let current10m = new Date(dateStart);
+            while (current10m < dateEnd) {
+                if (current10m <= lastComplete10m) {
+                    const hours = String(current10m.getUTCHours()).padStart(2, '0');
+                    const minutes = String(current10m.getUTCMinutes()).padStart(2, '0');
+                    expected['10m'].push(`${hours}:${minutes}:00`);
+                }
+                current10m.setUTCMinutes(current10m.getUTCMinutes() + 10);
+            }
+            
+            // 1h chunks
+            let current1h = new Date(dateStart);
+            while (current1h < dateEnd) {
+                if (current1h <= lastComplete1h) {
+                    const hours = String(current1h.getUTCHours()).padStart(2, '0');
+                    expected['1h'].push(`${hours}:00:00`);
+                }
+                current1h.setUTCHours(current1h.getUTCHours() + 1);
+            }
+            
+            // 6h chunks
+            let current6h = new Date(dateStart);
+            while (current6h < dateEnd) {
+                if (current6h <= lastComplete6h) {
+                    const hours = String(current6h.getUTCHours()).padStart(2, '0');
+                    expected['6h'].push(`${hours}:00:00`);
+                }
+                current6h.setUTCHours(current6h.getUTCHours() + 6);
+            }
+            
+            return expected;
+        }
+        
+        // Helper: Download metadata from CDN
+        async function downloadMetadata(network, station, location, channel, volcano, date) {
+            const locationStr = location === '--' || !location ? '--' : location;
+            const volcanoMap = {
+                'kilauea': 'kilauea',
+                'maunaloa': 'maunaloa',
+                'greatsitkin': 'greatsitkin',
+                'shishaldin': 'shishaldin',
+                'spurr': 'spurr'
+            };
+            const volcanoName = volcanoMap[volcano] || volcano;
+            const [year, month, day] = date.split('-');
+            const datePath = `${year}/${month}/${day}`;
+            const CDN_BASE_URL = 'https://cdn.now.audio/data';
+            
+            // Try NEW format first
+            const newUrl = `${CDN_BASE_URL}/${datePath}/${network}/${volcanoName}/${station}/${locationStr}/${channel}/${network}_${station}_${locationStr}_${channel}_${date}.json`;
+            let response = await fetch(newUrl);
+            
+            if (response.ok) {
+                return await response.json();
+            }
+            
+            // Try OLD format
+            const oldUrl = `${CDN_BASE_URL}/${datePath}/${network}/${volcanoName}/${station}/${locationStr}/${channel}/${network}_${station}_${locationStr}_${channel}_100Hz_${date}.json`;
+            response = await fetch(oldUrl);
+            
+            if (response.ok) {
+                return await response.json();
+            }
+            
+            return null;
+        }
+        
+        async function loadPerStationFiles() {
+            const apiUrl = getApiUrl();
+            const refreshBtn = document.getElementById('refreshBreakdownBtn');
+            const contentDiv = document.getElementById('perStationContent');
+            
+            // Disable button while loading
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = 'Loading...';
+            contentDiv.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">Loading breakdown...</p>';
+            
+            try {
+                console.log('🔍 [VALIDATION] Starting validation...');
+                
+                // Step 1: Get collector state (lightweight endpoint - just last run time and running status)
+                console.log('🔍 [VALIDATION] Step 1: Fetching collector state from', `${apiUrl}/collector-state`);
+                const stateRes = await fetch(`${apiUrl}/collector-state`);
+                const state = await stateRes.json();
+                console.log('🔍 [VALIDATION] Collector state response:', state);
+                const lastRun = state.last_run_completed;
+                console.log('🔍 [VALIDATION] last_run_completed:', lastRun);
+                console.log('🔍 [VALIDATION] currently_running:', state.currently_running);
+                
+                // Handle case where no collections have run yet
+                if (!lastRun) {
+                    console.warn('⚠️ [VALIDATION] No collections have run yet');
+                    contentDiv.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No collections have run yet. The collector will start collecting data on its next scheduled run.</p>';
+                    showMessage('No collection data available yet', 'info');
+                    return;
+                }
+                
+                // Parse last run time (handle both ISO format and UTC format)
+                console.log('🔍 [VALIDATION] Parsing last run time...');
+                let lastRunDt;
+                if (lastRun.includes('T')) {
+                    // ISO format - parse directly
+                    console.log('🔍 [VALIDATION] Detected ISO format timestamp');
+                    lastRunDt = new Date(lastRun);
+                } else {
+                    // UTC format - add Z if needed
+                    console.log('🔍 [VALIDATION] Detected UTC format timestamp');
+                    lastRunDt = new Date(lastRun.replace(' UTC', '') + 'Z');
+                }
+                console.log('🔍 [VALIDATION] Parsed lastRunDt:', lastRunDt.toISOString());
+                const windowStart = new Date(lastRunDt.getTime() - 24 * 60 * 60 * 1000);
+                console.log('🔍 [VALIDATION] Window start:', windowStart.toISOString());
+                
+                // Get dates to check (might span 2-3 days)
+                console.log('🔍 [VALIDATION] Calculating dates to check...');
+                const datesToCheck = [];
+                let currentDate = new Date(windowStart);
+                currentDate.setUTCHours(0, 0, 0, 0);
+                const endDate = new Date(lastRunDt);
+                endDate.setUTCHours(0, 0, 0, 0);
+                console.log('🔍 [VALIDATION] Date range:', currentDate.toISOString(), 'to', endDate.toISOString());
+                
+                while (currentDate <= endDate) {
+                    const dateStr = currentDate.toISOString().split('T')[0];
+                    datesToCheck.push(dateStr);
+                    console.log('🔍 [VALIDATION] Added date to check:', dateStr);
+                    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+                }
+                console.log('🔍 [VALIDATION] Total dates to check:', datesToCheck.length, datesToCheck);
+                
+                // Step 2: Get active stations
+                console.log('🔍 [VALIDATION] Step 2: Fetching stations from', `${apiUrl}/all-stations`);
+                const stationsRes = await fetch(`${apiUrl}/all-stations`);
+                const stationsData = await stationsRes.json();
+                console.log('🔍 [VALIDATION] Stations response:', stationsData);
+                console.log('🔍 [VALIDATION] Total stations:', stationsData.stations?.length || 0);
+                const activeStations = stationsData.stations.filter(s => s.active);
+                console.log('🔍 [VALIDATION] Active stations:', activeStations.length, activeStations);
+                
+                if (activeStations.length === 0) {
+                    console.error('❌ [VALIDATION] No active stations found!');
+                    contentDiv.innerHTML = '<p style="color: #ff6b6b; text-align: center; padding: 20px;">No active stations found. Please check station configuration.</p>';
+                    showMessage('No active stations found', 'error');
+                    return;
+                }
+                
+                if (datesToCheck.length === 0) {
+                    console.error('❌ [VALIDATION] No dates to check!');
+                    contentDiv.innerHTML = '<p style="color: #ff6b6b; text-align: center; padding: 20px;">No dates to check. This might happen if the collector just started.</p>';
+                    showMessage('No dates to validate', 'error');
+                    return;
+                }
+                
+                // Step 3: Validate each station/date combination
+                console.log('🔍 [VALIDATION] Step 3: Starting validation loop...');
+                const results = [];
+                let completed = 0;
+                const total = activeStations.length * datesToCheck.length;
+                console.log('🔍 [VALIDATION] Total combinations to validate:', total);
+                
+                // Update progress
+                contentDiv.innerHTML = `<p style="color: #888; text-align: center; padding: 20px;">Validating ${total} station/date combinations...<br><small>Collector last ran: ${lastRun}</small><br><small>Active stations: ${activeStations.length}, Dates: ${datesToCheck.join(', ')}</small></p>`;
+                
+                // Create a map of station info for quick lookup
+                const stationInfoMap = new Map();
+                activeStations.forEach(s => {
+                    const key = `${s.network}.${s.station}.${s.location}.${s.channel}`;
+                    stationInfoMap.set(key, s);
+                });
+                
+                for (const station of activeStations) {
+                    const stationKey = `${station.network}.${station.station}.${station.location}.${station.channel}`;
+                    console.log(`🔍 [VALIDATION] Processing station: ${stationKey}`);
+                    
+                    for (const date of datesToCheck) {
+                        console.log(`🔍 [VALIDATION]   Checking date: ${date}`);
+                        
+                        // Get expected chunks for this date
+                        const expected = getExpectedChunksForDate(date, lastRun);
+                        console.log(`🔍 [VALIDATION]   Expected chunks:`, {
+                            '10m': expected['10m'].length,
+                            '1h': expected['1h'].length,
+                            '6h': expected['6h'].length
+                        });
+                        
+                        // Download metadata
+                        console.log(`🔍 [VALIDATION]   Downloading metadata for ${stationKey} on ${date}...`);
+                        const metadata = await downloadMetadata(
+                            station.network,
+                            station.station,
+                            station.location,
+                            station.channel,
+                            station.volcano,
+                            date
+                        );
+                        
+                        completed++;
+                        const progress = Math.round((completed / total) * 100);
+                        console.log(`🔍 [VALIDATION]   Progress: ${completed}/${total} (${progress}%)`);
+                        contentDiv.innerHTML = `<p style="color: #888; text-align: center; padding: 20px;">Validating... ${completed}/${total} (${progress}%)</p>`;
+                        
+                        if (!metadata) {
+                            console.warn(`⚠️ [VALIDATION]   Missing metadata for ${stationKey} on ${date}`);
+                            // Missing metadata
+                            results.push({
+                                network: station.network,
+                                station: station.station,
+                                location: station.location,
+                                channel: station.channel,
+                                volcano: station.volcano,
+                                distance_km: station.distance_km,
+                                date: date,
+                                status: 'MISSING',
+                                expected: expected,
+                                actual: { '10m': [], '1h': [], '6h': [] },
+                                missing: expected
+                            });
+                        } else {
+                            console.log(`✅ [VALIDATION]   Metadata downloaded for ${stationKey} on ${date}`);
+                            // Get actual chunks
+                            const actual = {
+                                '10m': (metadata.chunks?.['10m'] || []).map(c => c.start),
+                                '1h': (metadata.chunks?.['1h'] || []).map(c => c.start),
+                                '6h': (metadata.chunks?.['6h'] || []).map(c => c.start)
+                            };
+                            console.log(`🔍 [VALIDATION]   Actual chunks:`, {
+                                '10m': actual['10m'].length,
+                                '1h': actual['1h'].length,
+                                '6h': actual['6h'].length
+                            });
+                            
+                            // Compare
+                            const missing = {};
+                            let hasMissing = false;
+                            
+                            for (const chunkType of ['10m', '1h', '6h']) {
+                                const expectedSet = new Set(expected[chunkType]);
+                                const actualSet = new Set(actual[chunkType]);
+                                const chunkMissing = expected[chunkType].filter(t => !actualSet.has(t));
+                                
+                                if (chunkMissing.length > 0) {
+                                    missing[chunkType] = chunkMissing;
+                                    hasMissing = true;
+                                    console.warn(`⚠️ [VALIDATION]   Missing ${chunkType} chunks:`, chunkMissing.length);
+                                }
+                            }
+                            
+                            const resultStatus = hasMissing ? 'MISSING' : 'PERFECT';
+                            console.log(`🔍 [VALIDATION]   Result status: ${resultStatus}`);
+                            
+                            results.push({
+                                network: station.network,
+                                station: station.station,
+                                location: station.location,
+                                channel: station.channel,
+                                volcano: station.volcano,
+                                distance_km: station.distance_km,
+                                date: date,
+                                status: resultStatus,
+                                expected: expected,
+                                actual: actual,
+                                missing: missing
+                            });
+                        }
+                    }
+                }
+                
+                console.log('🔍 [VALIDATION] Validation loop complete. Total results:', results.length);
+                
+                // Step 4: Aggregate results by station (combine across dates)
+                console.log('🔍 [VALIDATION] Step 4: Aggregating results by station...');
+                const stationMap = new Map();
+                
+                results.forEach((result, idx) => {
+                    const key = `${result.network}.${result.station}.${result.location}.${result.channel}`;
+                    console.log(`🔍 [VALIDATION]   Processing result ${idx + 1}/${results.length}: ${key} - ${result.date} - ${result.status}`);
+                    
+                    if (!stationMap.has(key)) {
+                        console.log(`🔍 [VALIDATION]   Creating new station entry for ${key}`);
+                        stationMap.set(key, {
+                            network: result.network,
+                            station: result.station,
+                            location: result.location,
+                            channel: result.channel,
+                            volcano: result.volcano,
+                            distance_km: result.distance_km,
+                            expected: { '10m': 0, '1h': 0, '6h': 0 },
+                            actual: { '10m': 0, '1h': 0, '6h': 0 },
+                            missing: { '10m': 0, '1h': 0, '6h': 0 },
+                            status: 'PERFECT'
+                        });
+                    }
+                    
+                    const station = stationMap.get(key);
+                    
+                    // Aggregate counts
+                    for (const chunkType of ['10m', '1h', '6h']) {
+                        const expectedCount = result.expected[chunkType].length;
+                        const actualCount = result.actual[chunkType].length;
+                        const missingCount = (result.missing[chunkType]?.length || 0);
+                        
+                        station.expected[chunkType] += expectedCount;
+                        station.actual[chunkType] += actualCount;
+                        station.missing[chunkType] += missingCount;
+                        
+                        if (expectedCount > 0 || actualCount > 0 || missingCount > 0) {
+                            console.log(`🔍 [VALIDATION]     ${chunkType}: expected=${expectedCount}, actual=${actualCount}, missing=${missingCount}`);
+                        }
+                    }
+                    
+                    // Update status if any missing
+                    if (result.status === 'MISSING') {
+                        station.status = 'MISSING';
+                        console.log(`🔍 [VALIDATION]     Updated station status to MISSING`);
+                    }
+                });
+                
+                const stations = Array.from(stationMap.values());
+                console.log('🔍 [VALIDATION] Aggregation complete. Total stations:', stations.length);
+                console.log('🔍 [VALIDATION] Station map keys:', Array.from(stationMap.keys()));
+                
+                if (stations.length === 0) {
+                    console.error('❌ [VALIDATION] No stations found after aggregation!');
+                    console.error('❌ [VALIDATION] Results array:', results);
+                    console.error('❌ [VALIDATION] Station map size:', stationMap.size);
+                    contentDiv.innerHTML = '<p style="color: #ff6b6b; text-align: center; padding: 20px;">No station data found after validation. Check console for errors.</p>';
+                    showMessage('No station data found', 'error');
+                    return;
+                }
+                
+                // Calculate summary
+                console.log('🔍 [VALIDATION] Calculating summary...');
+                const perfect = stations.filter(s => s.status === 'PERFECT').length;
+                const missing = stations.filter(s => s.status === 'MISSING').length;
+                console.log('🔍 [VALIDATION] Summary: perfect=', perfect, 'missing=', missing);
+                
+                // Calculate expected counts for display (use first date that has expected chunks)
+                console.log('🔍 [VALIDATION] Calculating expected counts for display...');
+                let expected10m = 0, expected1h = 0, expected6h = 0;
+                for (const date of datesToCheck) {
+                    const expected = getExpectedChunksForDate(date, lastRun);
+                    console.log(`🔍 [VALIDATION]   Expected for ${date}:`, expected);
+                    if (expected['10m'].length > 0 || expected['1h'].length > 0 || expected['6h'].length > 0) {
+                        expected10m = expected['10m'].length;
+                        expected1h = expected['1h'].length;
+                        expected6h = expected['6h'].length;
+                        console.log(`🔍 [VALIDATION]   Using expected counts from ${date}:`, { expected10m, expected1h, expected6h });
+                        break;
+                    }
+                }
+                
+                console.log('🔍 [VALIDATION] Final expected counts:', { expected10m, expected1h, expected6h });
+                console.log('🔍 [VALIDATION] Stations to display:', stations.length);
+                stations.forEach((s, idx) => {
+                    console.log(`🔍 [VALIDATION]   Station ${idx + 1}: ${s.network}.${s.station}.${s.location}.${s.channel} - ${s.status}`);
+                });
+                
+                // Build HTML
+                let html = `
+                    <div style="margin-top: 15px;">
+                        <p style="color: #888; margin-bottom: 10px;">
+                            <strong>Summary (Last 24 Hours):</strong> 
+                            ${perfect} perfect, 
+                            ${missing} with missing files
+                        </p>
+                        <p style="color: #4ecdc4; margin-bottom: 10px; font-size: 0.9em;">
+                            <strong>Expected Counts (based on collector last run: ${lastRun}):</strong> 
+                            10m: ${expected10m}, 
+                            1h: ${expected1h}, 
+                            6h: ${expected6h}
+                            <br><em style="color: #888;">Calculated dynamically from collector status</em>
+                        </p>
+                        <table class="per-station-table">
+                            <thead>
+                                <tr>
+                                    <th>Station</th>
+                                    <th>Volcano</th>
+                                    <th>Status</th>
+                                    <th>10m Files</th>
+                                    <th>1h Files</th>
+                                    <th>6h Files</th>
+                                    <th>Missing</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                
+                stations.forEach(station => {
+                    const totalMissing = station.missing['10m'] + station.missing['1h'] + station.missing['6h'];
+                    const locationStr = station.location === '--' || !station.location ? '--' : station.location;
+                    const distanceStr = station.distance_km ? `${station.distance_km}km` : 'N/A';
+                    
+                    html += `
+                        <tr>
+                            <td><span class="station-id">${station.network}.${station.station}.${locationStr}.${station.channel}</span> <span style="color: #888; font-size: 0.9em;">(${distanceStr})</span></td>
+                            <td>${station.volcano}</td>
+                            <td><span class="status-badge ${station.status}">${station.status}</span></td>
+                            <td>${station.actual['10m']} / ${station.expected['10m']}</td>
+                            <td>${station.actual['1h']} / ${station.expected['1h']}</td>
+                            <td>${station.actual['6h']} / ${station.expected['6h']}</td>
+                            <td>${totalMissing > 0 ? `<span style="color: #ff6b6b;">${totalMissing}</span>` : '0'}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+                contentDiv.innerHTML = html;
+                showMessage('Per-station breakdown loaded (last 24 hours)', 'success');
+            } catch (error) {
+                contentDiv.innerHTML = `<p style="color: #ff6b6b;">Error: ${error.message}</p>`;
+                showMessage(`Error loading per-station files: ${error.message}`, 'error');
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Refresh Breakdown';
+            }
+        }
+        
+        async function loadAllStations() {
+            const apiUrl = getApiUrl();
+            
+            try {
+                const res = await fetch(`${apiUrl}/all-stations`);
+                const data = await res.json();
+                
+                allStations = data.stations || [];
+                
+                // Update stations list
+                const stationsList = document.getElementById('stationsList');
+                if (allStations.length === 0) {
+                    stationsList.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">No stations found</div>';
+                    return;
+                }
+                
+                // Group by volcano and sort by distance
+                const volcanoOrder = ['kilauea', 'maunaloa', 'greatsitkin', 'shishaldin', 'spurr'];
+                const byVolcano = {};
+                
+                allStations.forEach(station => {
+                    if (!byVolcano[station.volcano]) {
+                        byVolcano[station.volcano] = [];
+                    }
+                    byVolcano[station.volcano].push(station);
+                });
+                
+                // Sort each volcano's stations by distance (closest first)
+                volcanoOrder.forEach(volcano => {
+                    if (byVolcano[volcano]) {
+                        byVolcano[volcano].sort((a, b) => (a.distance_km || 0) - (b.distance_km || 0));
+                    }
+                });
+                
+                // Build 5-column grid
+                let html = '<div class="stations-grid">';
+                
+                volcanoOrder.forEach(volcano => {
+                    // Format volcano names properly
+                    const volcanoNames = {
+                        'kilauea': 'Kīlauea',
+                        'maunaloa': 'Mauna Loa',
+                        'greatsitkin': 'Great Sitkin',
+                        'shishaldin': 'Shishaldin',
+                        'spurr': 'Mount Spurr'
+                    };
+                    const volcanoName = volcanoNames[volcano] || volcano;
+                    const stations = byVolcano[volcano] || [];
+                    
+                    html += `<div class="volcano-column">`;
+                    html += `<h3>${volcanoName}</h3>`;
+                    
+                    if (stations.length === 0) {
+                        html += `<div style="text-align: center; padding: 10px; color: #666; font-size: 0.9em;">No stations</div>`;
+                    } else {
+                        stations.forEach(station => {
+                            const locationStr = station.location === '--' || !station.location ? '--' : station.location;
+                            const stationId = `${station.network}.${station.station}.${locationStr}.${station.channel}`;
+                            html += `
+                                <div class="station-item ${station.active ? 'active' : ''}">
+                                    <input type="checkbox" 
+                                           ${station.active ? 'checked' : ''}
+                                           onchange="toggleStation('${station.network}', '${station.volcano}', '${station.station}', '${station.location}', '${station.channel}', this.checked)"
+                                           id="station-${stationId}">
+                                    <div class="station-info">
+                                        <div class="station-id">${stationId}</div>
+                                        <div class="station-meta">
+                                            ${station.distance_km} km • ${station.sample_rate} Hz
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    html += `</div>`;
+                });
+                
+                html += '</div>';
+                stationsList.innerHTML = html;
+                
+                // Backfill dropdowns will be populated when volcano is selected
+                
+                showMessage(`Loaded ${allStations.length} stations (${data.active_count} active)`, 'success');
+            } catch (error) {
+                showMessage(`Error loading stations: ${error.message}`, 'error');
+            }
+        }
+        
+        async function toggleStation(network, volcano, station, location, channel, active) {
+            const apiUrl = getApiUrl();
+            
+            try {
+                const res = await fetch(`${apiUrl}/update-station-status`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        network,
+                        volcano,
+                        station,
+                        location,
+                        channel,
+                        active
+                    })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok && data.success) {
+                    showMessage(data.message, 'success');
+                    // Update the checkbox's parent item class
+                    const stationId = `${network}.${station}.${location}.${channel}`;
+                    const checkbox = document.getElementById(`station-${stationId}`);
+                    if (checkbox) {
+                        const item = checkbox.closest('.station-item');
+                        if (active) {
+                            item.classList.add('active');
+                        } else {
+                            item.classList.remove('active');
+                        }
+                    }
+                } else {
+                    showMessage(data.error || 'Failed to update station status', 'error');
+                    // Revert checkbox
+                    const stationId = `${network}.${station}.${location}.${channel}`;
+                    const checkbox = document.getElementById(`station-${stationId}`);
+                    if (checkbox) {
+                        checkbox.checked = !active;
+                    }
+                }
+            } catch (error) {
+                showMessage(`Error updating station: ${error.message}`, 'error');
+                // Revert checkbox
+                const stationId = `${network}.${station}.${location}.${channel}`;
+                const checkbox = document.getElementById(`station-${stationId}`);
+                if (checkbox) {
+                    checkbox.checked = !active;
+                }
+            }
+        }
+        
+        function loadBackfillStations() {
+            const volcano = document.getElementById('backfillVolcano').value;
+            const stationSelect = document.getElementById('backfillStation');
+            
+            if (!volcano) {
+                stationSelect.innerHTML = '<option value="">Select volcano first...</option>';
+                return;
+            }
+            
+            // Filter stations by volcano and sort by distance
+            const volcanoStations = allStations
+                .filter(s => s.volcano === volcano)
+                .sort((a, b) => (a.distance_km || 0) - (b.distance_km || 0));
+            
+            if (volcanoStations.length === 0) {
+                stationSelect.innerHTML = '<option value="">No stations available for this volcano</option>';
+                return;
+            }
+            
+            // Format exactly like index.html: "NETWORK.STATION.LOCATION.CHANNEL (distance_km km, sample_rate Hz)"
+            stationSelect.innerHTML = volcanoStations.map(station => {
+                const locationStr = station.location === '--' || !station.location ? '--' : station.location;
+                const stationId = `${station.network}.${station.station}.${locationStr}.${station.channel}`;
+                const label = `${stationId} (${station.distance_km}km, ${station.sample_rate}Hz)`;
+                return `<option value='${JSON.stringify({
+                    network: station.network,
+                    volcano: station.volcano,
+                    station: station.station,
+                    location: station.location,
+                    channel: station.channel
+                })}'>${label}</option>`;
+            }).join('');
+        }
+        
+        async function startBackfill() {
+            const apiUrl = getApiUrl();
+            const volcanoSelect = document.getElementById('backfillVolcano');
+            const stationSelect = document.getElementById('backfillStation');
+            const hoursInput = document.getElementById('backfillHours');
+            const backfillButton = document.getElementById('backfillButton');
+            const progressDiv = document.getElementById('backfillProgress');
+            const progressFill = document.getElementById('progressFill');
+            const statusDiv = document.getElementById('backfillStatus');
+            const detailsDiv = document.getElementById('backfillDetails');
+            
+            if (!volcanoSelect.value) {
+                showMessage('Please select a volcano first', 'error');
+                return;
+            }
+            
+            if (!stationSelect.value) {
+                showMessage('Please select a station first', 'error');
+                return;
+            }
+            
+            const station = JSON.parse(stationSelect.value);
+            const hours = parseInt(hoursInput.value) || 24;
+            
+            backfillButton.disabled = true;
+            backfillButton.textContent = 'Backfilling...';
+            progressDiv.classList.add('active');
+            progressFill.style.width = '0%';
+            
+            const stationKey = `${station.network}.${station.station}.${station.location || '--'}.${station.channel}`;
+            statusDiv.innerHTML = `
+                <div style="margin-bottom: 10px;">
+                    <strong>Starting backfill for ${stationKey}</strong><br>
+                    <small style="color: #888;">Time range: Last ${hours} hours</small>
+                </div>
+                <div style="color: #888; font-size: 0.9em;">
+                    <div>📥 Fetching from IRIS and processing chunks...</div>
+                    <div id="currentChunk" style="margin-top: 5px; color: #4ecdc4;"></div>
+                </div>
+            `;
+            detailsDiv.innerHTML = '<div style="color: #888;">Processing chunks... This may take a few minutes.</div>';
+            
+            const startTime = Date.now();
+            let lastUpdateTime = startTime;
+            
+            try {
+                console.log(`🔄 [BACKFILL] Starting backfill for ${stationKey}, ${hours} hours back`);
+                
+                const res = await fetch(`${apiUrl}/backfill-station`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ...station,
+                        hours_back: hours
+                    })
+                });
+                
+                const data = await res.json();
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                
+                console.log(`🔄 [BACKFILL] Complete in ${elapsed}s:`, data);
+                
+                if (res.ok) {
+                    progressFill.style.width = '100%';
+                    
+                    // Count chunks by type
+                    const chunkTypeCounts = { '6h': 0, '1h': 0, '10m': 0 };
+                    data.details.forEach(d => {
+                        chunkTypeCounts[d.chunk_type] = (chunkTypeCounts[d.chunk_type] || 0) + 1;
+                    });
+                    
+                    statusDiv.innerHTML = `
+                        <div style="margin-bottom: 10px;">
+                            <strong style="color: #51cf66;">✅ Backfill Complete!</strong><br>
+                            <small style="color: #888;">Completed in ${elapsed}s</small>
+                        </div>
+                        <div style="color: #888; font-size: 0.9em;">
+                            <div>✅ Successful: ${data.progress.successful}</div>
+                            <div>⏭️ Skipped: ${data.progress.skipped}</div>
+                            <div>${data.progress.failed > 0 ? `<span style="color: #ff6b6b;">❌ Failed: ${data.progress.failed}</span>` : ''}</div>
+                            <div style="margin-top: 5px; color: #4ecdc4;">
+                                Chunks: ${chunkTypeCounts['6h']}×6h, ${chunkTypeCounts['1h']}×1h, ${chunkTypeCounts['10m']}×10m
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Show detailed results
+                    let detailsHtml = '<div style="margin-top: 15px;"><strong>Chunk Details:</strong><ul style="margin-top: 10px; padding-left: 20px; max-height: 300px; overflow-y: auto;">';
+                    
+                    // Group by status for better readability
+                    const byStatus = { success: [], skipped: [], failed: [] };
+                    data.details.forEach(detail => {
+                        byStatus[detail.status].push(detail);
+                    });
+                    
+                    // Show successful chunks (collapsed by default if many)
+                    if (byStatus.success.length > 0) {
+                        const showAll = byStatus.success.length <= 10;
+                        detailsHtml += `<li style="margin: 5px 0; color: #51cf66;"><strong>✅ Successful (${byStatus.success.length}):</strong></li>`;
+                        byStatus.success.slice(0, showAll ? byStatus.success.length : 5).forEach((detail, idx) => {
+                            const startTime = detail.window.start.replace('T', ' ').replace('Z', ' UTC');
+                            const endTime = detail.window.end.replace('T', ' ').replace('Z', ' UTC');
+                            detailsHtml += `<li style="margin-left: 20px; margin: 3px 0; color: #888; font-size: 0.9em;">
+                                ${detail.chunk_type}: ${startTime} → ${endTime} (${detail.elapsed_seconds}s)
+                            </li>`;
+                        });
+                        if (!showAll) {
+                            detailsHtml += `<li style="margin-left: 20px; color: #888; font-style: italic;">... and ${byStatus.success.length - 5} more</li>`;
+                        }
+                    }
+                    
+                    // Show skipped chunks
+                    if (byStatus.skipped.length > 0) {
+                        detailsHtml += `<li style="margin: 5px 0; color: #ffd43b;"><strong>⏭️ Skipped (${byStatus.skipped.length}):</strong> Already exist</li>`;
+                    }
+                    
+                    // Show failed chunks
+                    if (byStatus.failed.length > 0) {
+                        detailsHtml += `<li style="margin: 5px 0; color: #ff6b6b;"><strong>❌ Failed (${byStatus.failed.length}):</strong></li>`;
+                        byStatus.failed.forEach(detail => {
+                            const startTime = detail.window.start.replace('T', ' ').replace('Z', ' UTC');
+                            const endTime = detail.window.end.replace('T', ' ').replace('Z', ' UTC');
+                            detailsHtml += `<li style="margin-left: 20px; margin: 3px 0; color: #ff6b6b; font-size: 0.9em;">
+                                ${detail.chunk_type}: ${startTime} → ${endTime}
+                                ${detail.error ? `<br><span style="margin-left: 20px; color: #888;">Error: ${detail.error}</span>` : ''}
+                            </li>`;
+                        });
+                    }
+                    
+                    detailsHtml += '</ul></div>';
+                    detailsDiv.innerHTML = detailsHtml;
+                    
+                    showMessage(`Backfill complete: ${data.progress.successful} successful in ${elapsed}s`, 'success');
+                } else {
+                    statusDiv.innerHTML = `
+                        <div style="color: #ff6b6b;">
+                            <strong>❌ Backfill Failed</strong><br>
+                            <small>${data.error || 'Unknown error'}</small>
+                        </div>
+                    `;
+                    showMessage(`Backfill failed: ${data.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                console.error(`❌ [BACKFILL] Error after ${elapsed}s:`, error);
+                statusDiv.innerHTML = `
+                    <div style="color: #ff6b6b;">
+                        <strong>❌ Error</strong><br>
+                        <small>${error.message}</small>
+                    </div>
+                `;
+                showMessage(`Backfill error: ${error.message}`, 'error');
+            } finally {
+                backfillButton.disabled = false;
+                backfillButton.textContent = 'Start Backfill';
+            }
+        }
+        
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            
+            if (days > 0) {
+                return `${days}d ${hours}h`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            } else {
+                return `${minutes}m`;
+            }
+        }
+        
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+        
+        // Load dashboard on page load
+        window.addEventListener('load', () => {
+            loadDashboard();
+            loadPerStationFiles();
+            loadAllStations();
+            // Start health check monitoring
+            startHealthCheck();
+        });
+    </script>
+</body>
+</html>

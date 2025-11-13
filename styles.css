@@ -541,6 +541,19 @@ canvas {
     outline: none !important;
 }
 
+#waveform-date {
+    background: transparent !important;
+    position: absolute;
+    pointer-events: none;
+    z-index: 10;
+    /* Remove all shadow/glow effects */
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    border: none !important;
+    outline: none !important;
+}
+
 .checkbox-group {
     display: flex;
     flex-direction: column;
