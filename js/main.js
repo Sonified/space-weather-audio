@@ -7,7 +7,8 @@ import * as State from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, changeFrequencyScale, startVisualization } from './spectrogram-renderer.js';
-import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPrePostSurveyModal, closePrePostSurveyModal, submitPrePostSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
+import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
+import { getParticipantIdFromURL, storeParticipantId } from './qualtrics-api.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
@@ -26,11 +27,38 @@ window.purgeCloudflareCache = purgeCloudflareCache;
 window.openParticipantModal = openParticipantModal;
 window.closeParticipantModal = closeParticipantModal;
 window.submitParticipantSetup = submitParticipantSetup;
-window.openPrePostSurveyModal = openPrePostSurveyModal;
-window.closePrePostSurveyModal = closePrePostSurveyModal;
-window.submitPrePostSurvey = submitPrePostSurvey;
+window.openPreSurveyModal = openPreSurveyModal;
+window.closePreSurveyModal = closePreSurveyModal;
+window.submitPreSurvey = submitPreSurvey;
+window.openPostSurveyModal = openPostSurveyModal;
+window.closePostSurveyModal = closePostSurveyModal;
+window.submitPostSurvey = submitPostSurvey;
+window.openAwesfModal = openAwesfModal;
+window.closeAwesfModal = closeAwesfModal;
+window.submitAwesfSurvey = submitAwesfSurvey;
 window.changeWaveformFilter = handleWaveformFilterChange;
 window.toggleAntiAliasing = toggleAntiAliasing;
+window.toggleForceIris = toggleForceIris;
+
+// Force IRIS fetch state
+let forceIrisFetch = false;
+
+// Toggle Force IRIS fetch mode
+function toggleForceIris() {
+    forceIrisFetch = !forceIrisFetch;
+    const btn = document.getElementById('forceIrisBtn');
+    if (forceIrisFetch) {
+        btn.textContent = '🌐 Force IRIS Fetch: ON';
+        btn.style.background = '#dc3545';
+        btn.style.borderColor = '#dc3545';
+        btn.classList.add('loop-active');
+    } else {
+        btn.textContent = '🌐 Force IRIS Fetch: OFF';
+        btn.style.background = '#6c757d';
+        btn.style.borderColor = '#6c757d';
+        btn.classList.remove('loop-active');
+    }
+}
 
 // Helper function to calculate slider value for 1.0x speed
 function calculateSliderForSpeed(targetSpeed) {
@@ -460,11 +488,13 @@ export async function startStreaming(event) {
         
         const isActiveStation = await stationCheckPromise;
         
-        // 4. Build realistic chunk fetch for active stations
+        // 4. Build realistic chunk fetch for active stations (skip if forcing IRIS fetch)
         let realisticChunkPromise = Promise.resolve(null);
         let firstChunkStart = null;
         
-        if (isActiveStation) {
+        if (forceIrisFetch) {
+            console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Skipping CDN chunk fetches`);
+        } else if (isActiveStation) {
             const volcanoMap = {
                 'kilauea': 'kilauea',
                 'maunaloa': 'maunaloa',
@@ -568,7 +598,9 @@ export async function startStreaming(event) {
         State.setIsFetchingNewData(true);
         State.setSpectrogramInitialized(false);
         
-        const baseMessage = isActiveStation ? 'Fetching data from R2 via progressive streaming' : 'Fetching data from Railway backend';
+        const baseMessage = forceIrisFetch 
+            ? 'Force IRIS Fetch: Fetching live from IRIS via Railway backend' 
+            : (isActiveStation ? 'Fetching data from R2 via progressive streaming' : 'Fetching data from Railway backend');
         document.getElementById('status').className = 'status info loading';
         document.getElementById('status').textContent = baseMessage;
         
@@ -642,7 +674,10 @@ export async function startStreaming(event) {
         }, 500);
         State.setLoadingInterval(interval);
         
-        if (isActiveStation) {
+        if (forceIrisFetch) {
+            console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Using Railway backend`);
+            await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
+        } else if (isActiveStation) {
             console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
             await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart);
         } else {
@@ -674,9 +709,18 @@ export async function startStreaming(event) {
 
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', () => {
-    console.log('🌋 [0ms] volcano-audio v1.81 - Progressive Waveform Drawing');
-    console.log('📦 [0ms] v1.81 Feature: Added waveform x-axis time ticks with hourly intervals and local time conversion');
-    console.log('📦 [0ms] v1.81 Commit: v1.81 Feature: Added waveform x-axis time ticks with hourly intervals and local time conversion');
+    // Parse participant ID from URL parameters on page load
+    // Qualtrics redirects with: ?ResponseID=${e://Field/ResponseID}
+    // This automatically captures the ResponseID and stores it for survey submissions
+    const urlParticipantId = getParticipantIdFromURL();
+    if (urlParticipantId) {
+        storeParticipantId(urlParticipantId);
+        console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
+        console.log('💾 Stored ResponseID for use in survey submissions');
+    }
+    console.log('🌋 [0ms] volcano-audio v1.82 - Qualtrics Integration');
+    console.log('📦 [0ms] v1.82 Feature: Qualtrics API integration with automatic ResponseID capture and survey submission');
+    console.log('📦 [0ms] v1.82 Commit: v1.82 Feature: Qualtrics API integration with automatic ResponseID capture and survey submission');
     
     // Initialize modals (inject into DOM)
     initializeModals();

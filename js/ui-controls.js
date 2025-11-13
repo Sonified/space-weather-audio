@@ -7,6 +7,7 @@ import * as State from './audio-state.js';
 import { EMBEDDED_STATIONS } from './station-config.js';
 import { drawWaveform, changeWaveformFilter } from './waveform-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
+import { submitSurveyResponse, getParticipantId, storeParticipantId, getParticipantIdFromURL } from './qualtrics-api.js';
 
 export function loadStations() {
     const volcano = document.getElementById('volcano').value;
@@ -221,45 +222,203 @@ export function setupModalEventListeners() {
     const participantModal = document.getElementById('participantModal');
     const participantCloseBtn = participantModal.querySelector('.modal-close');
     const participantSubmitBtn = participantModal.querySelector('.modal-submit');
+    const participantIdInput = document.getElementById('participantId');
     
-    participantModal.addEventListener('click', closeParticipantModal);
+    // Function to update button state based on input value
+    const updateParticipantSubmitButton = () => {
+        const hasValue = participantIdInput && participantIdInput.value.trim().length > 0;
+        if (participantSubmitBtn) {
+            participantSubmitBtn.disabled = !hasValue;
+        }
+    };
+    
+    // Listen for input changes to enable/disable submit button
+    if (participantIdInput) {
+        participantIdInput.addEventListener('input', updateParticipantSubmitButton);
+        participantIdInput.addEventListener('keyup', updateParticipantSubmitButton);
+    }
+    
+    // Don't allow closing by clicking outside - prevent overlay clicks
+    participantModal.addEventListener('click', (e) => {
+        // Only allow clicks on the modal content itself, not the overlay
+        if (e.target === participantModal) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    });
     participantCloseBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent bubble to overlay
-        closeParticipantModal(); // Close without event check
+        e.stopPropagation();
+        // Don't allow closing via X button either - it's hidden anyway
     });
     participantSubmitBtn.addEventListener('click', submitParticipantSetup);
     
-    // Survey modal event listeners
-    const surveyModal = document.getElementById('prePostSurveyModal');
-    const surveyCloseBtn = surveyModal.querySelector('.modal-close');
-    const surveySubmitBtn = surveyModal.querySelector('.modal-submit');
+    // Initial button state check
+    updateParticipantSubmitButton();
     
-    surveyModal.addEventListener('click', closePrePostSurveyModal);
-    surveyCloseBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent bubble to overlay
-        closePrePostSurveyModal(); // Close without event check
+    // Pre-Survey modal event listeners
+    const preSurveyModal = document.getElementById('preSurveyModal');
+    const preSurveyCloseBtn = preSurveyModal.querySelector('.modal-close');
+    const preSurveySubmitBtn = preSurveyModal.querySelector('.modal-submit');
+    
+    // Function to check if all pre-survey questions are answered
+    const updatePreSurveySubmitButton = () => {
+        const allAnswered = 
+            document.querySelector('input[name="preCalm"]:checked') &&
+            document.querySelector('input[name="preEnergized"]:checked') &&
+            document.querySelector('input[name="preNervous"]:checked') &&
+            document.querySelector('input[name="preFocused"]:checked') &&
+            document.querySelector('input[name="preConnected"]:checked') &&
+            document.querySelector('input[name="preWonder"]:checked');
+        
+        if (preSurveySubmitBtn) {
+            preSurveySubmitBtn.disabled = !allAnswered;
+        }
+    };
+    
+    // Listen for changes to enable/disable submit button
+    preSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.addEventListener('change', updatePreSurveySubmitButton);
     });
-    surveySubmitBtn.addEventListener('click', submitPrePostSurvey);
+    
+    // Don't allow closing by clicking outside - prevent overlay clicks
+    preSurveyModal.addEventListener('click', (e) => {
+        // Only allow clicks on the modal content itself, not the overlay
+        if (e.target === preSurveyModal) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    });
+    preSurveyCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Don't allow closing via X button either - it's hidden anyway
+    });
+    preSurveySubmitBtn.addEventListener('click', submitPreSurvey);
+    
+    // Initial button state check
+    updatePreSurveySubmitButton();
+    
+    // Post-Survey modal event listeners
+    const postSurveyModal = document.getElementById('postSurveyModal');
+    const postSurveyCloseBtn = postSurveyModal.querySelector('.modal-close');
+    const postSurveySubmitBtn = postSurveyModal.querySelector('.modal-submit');
+    
+    // Function to check if all post-survey questions are answered
+    const updatePostSurveySubmitButton = () => {
+        const allAnswered = 
+            document.querySelector('input[name="postCalm"]:checked') &&
+            document.querySelector('input[name="postEnergized"]:checked') &&
+            document.querySelector('input[name="postNervous"]:checked') &&
+            document.querySelector('input[name="postFocused"]:checked') &&
+            document.querySelector('input[name="postConnected"]:checked') &&
+            document.querySelector('input[name="postWonder"]:checked');
+        
+        if (postSurveySubmitBtn) {
+            postSurveySubmitBtn.disabled = !allAnswered;
+        }
+    };
+    
+    // Listen for changes to enable/disable submit button
+    postSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.addEventListener('change', updatePostSurveySubmitButton);
+    });
+    
+    // Don't allow closing by clicking outside - prevent overlay clicks
+    postSurveyModal.addEventListener('click', (e) => {
+        // Only allow clicks on the modal content itself, not the overlay
+        if (e.target === postSurveyModal) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    });
+    postSurveyCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Don't allow closing via X button either - it's hidden anyway
+    });
+    postSurveySubmitBtn.addEventListener('click', submitPostSurvey);
+    
+    // Initial button state check
+    updatePostSurveySubmitButton();
+    
+    // AWE-SF modal event listeners
+    const awesfModal = document.getElementById('awesfModal');
+    const awesfCloseBtn = awesfModal.querySelector('.modal-close');
+    const awesfSubmitBtn = awesfModal.querySelector('.modal-submit');
+    
+    awesfModal.addEventListener('click', closeAwesfModal);
+    awesfCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent bubble to overlay
+        closeAwesfModal(); // Close without event check
+    });
+    awesfSubmitBtn.addEventListener('click', submitAwesfSurvey);
     
     console.log('📋 Modal event listeners attached');
 }
 
 export function openParticipantModal() {
+    // Get participant ID from URL (takes precedence) or localStorage
+    const participantId = getParticipantId();
+    const participantIdInput = document.getElementById('participantId');
+    const participantSubmitBtn = document.querySelector('#participantModal .modal-submit');
+    
+    if (participantIdInput) {
+        // Pre-populate with ID from URL or localStorage
+        participantIdInput.value = participantId || '';
+        
+        // If ID came from URL, show a message
+        const urlId = getParticipantIdFromURL();
+        if (urlId) {
+            console.log('🔗 Participant ID loaded from URL:', urlId);
+        }
+    }
+    
+    // Update button state based on whether there's a value
+    if (participantSubmitBtn) {
+        const hasValue = participantIdInput && participantIdInput.value.trim().length > 0;
+        participantSubmitBtn.disabled = !hasValue;
+    }
+    
     document.getElementById('participantModal').classList.add('active');
     console.log('👤 Participant Setup modal opened');
 }
 
 export function closeParticipantModal(event) {
-    if (!event || event.target.classList.contains('modal-overlay')) {
-        document.getElementById('participantModal').classList.remove('active');
-        console.log('👤 Participant Setup modal closed');
+    // Only allow programmatic closing (after submission), not by clicking outside
+    // Reset field to saved value (or empty) when closing without saving
+    const savedParticipantId = localStorage.getItem('participantId');
+    const participantIdInput = document.getElementById('participantId');
+    const participantSubmitBtn = document.querySelector('#participantModal .modal-submit');
+    
+    if (participantIdInput) {
+        participantIdInput.value = savedParticipantId || '';
     }
+    
+    // Update button state based on whether there's a value
+    if (participantSubmitBtn) {
+        const hasValue = participantIdInput && participantIdInput.value.trim().length > 0;
+        participantSubmitBtn.disabled = !hasValue;
+    }
+    
+    document.getElementById('participantModal').classList.remove('active');
+    console.log('👤 Participant Setup modal closed');
 }
 
 export function submitParticipantSetup() {
-    const participantId = document.getElementById('participantId').value;
+    const participantId = document.getElementById('participantId').value.trim();
     
-    console.log('📝 Participant Setup Data (not submitted yet):');
+    // Save to localStorage for persistence across sessions
+    if (participantId) {
+        storeParticipantId(participantId);
+        console.log('💾 Saved participant ID:', participantId);
+    } else {
+        // If empty, remove from localStorage
+        localStorage.removeItem('participantId');
+        console.log('🗑️ Removed participant ID from storage');
+    }
+    
+    console.log('📝 Participant Setup:');
     console.log('  - Participant ID:', participantId || '(none)');
     console.log('  - Timestamp:', new Date().toISOString());
     
@@ -268,62 +427,235 @@ export function submitParticipantSetup() {
     statusEl.textContent = `✅ Participant setup recorded: ${participantId || 'Anonymous'}`;
     
     closeParticipantModal();
-    
-    setTimeout(() => {
-        document.getElementById('participantId').value = '';
-    }, 300);
 }
 
-export function openPrePostSurveyModal() {
-    document.getElementById('prePostSurveyModal').classList.add('active');
-    console.log('📊 Pre/Post Survey modal opened');
+export function openPreSurveyModal() {
+    document.getElementById('preSurveyModal').classList.add('active');
+    console.log('📊 Pre-Survey modal opened');
 }
 
-export function closePrePostSurveyModal(event) {
-    if (!event || event.target.classList.contains('modal-overlay')) {
-        document.getElementById('prePostSurveyModal').classList.remove('active');
-        console.log('📊 Pre/Post Survey modal closed');
-    }
+export function closePreSurveyModal(event) {
+    // Only allow programmatic closing (after submission), not by clicking outside
+    document.getElementById('preSurveyModal').classList.remove('active');
+    console.log('📊 Pre-Survey modal closed');
 }
 
-export function submitPrePostSurvey() {
+export async function submitPreSurvey() {
     const surveyData = {
-        calm: document.querySelector('input[name="calm"]:checked')?.value || null,
-        energized: document.querySelector('input[name="energized"]:checked')?.value || null,
-        connected: document.querySelector('input[name="connected"]:checked')?.value || null,
-        stressed: document.querySelector('input[name="stressed"]:checked')?.value || null,
-        focused: document.querySelector('input[name="focused"]:checked')?.value || null,
-        wonder: document.querySelector('input[name="wonder"]:checked')?.value || null,
+        surveyType: 'pre',
+        calm: document.querySelector('input[name="preCalm"]:checked')?.value || null,
+        energized: document.querySelector('input[name="preEnergized"]:checked')?.value || null,
+        connected: document.querySelector('input[name="preConnected"]:checked')?.value || null,
+        nervous: document.querySelector('input[name="preNervous"]:checked')?.value || null,
+        focused: document.querySelector('input[name="preFocused"]:checked')?.value || null,
+        wonder: document.querySelector('input[name="preWonder"]:checked')?.value || null,
         timestamp: new Date().toISOString()
     };
     
-    const hasRatings = Object.values(surveyData).some(v => v !== null && v !== surveyData.timestamp);
+    // Verify all questions are answered (button should be disabled if not, but double-check)
+    const allAnswered = surveyData.calm && surveyData.energized && surveyData.connected && 
+                        surveyData.nervous && surveyData.focused && surveyData.wonder;
+    
+    if (!allAnswered) {
+        alert('Please answer all questions before submitting.');
+        return;
+    }
+    
+    // Get participant ID (from URL or localStorage)
+    const participantId = getParticipantId();
+    
+    console.log('📊 Pre-Survey Data:');
+    console.log('  - Survey Type: Pre-Survey');
+    console.log('  - Participant ID:', participantId || 'none');
+    console.log('  - Calm:', surveyData.calm || 'not rated');
+    console.log('  - Energized:', surveyData.energized || 'not rated');
+    console.log('  - Connected to nature:', surveyData.connected || 'not rated');
+    console.log('  - Nervous:', surveyData.nervous || 'not rated');
+    console.log('  - Focused:', surveyData.focused || 'not rated');
+    console.log('  - A sense of wonder:', surveyData.wonder || 'not rated');
+    console.log('  - Timestamp:', surveyData.timestamp);
+    
+    const statusEl = document.getElementById('status');
+    
+    // Submit to Qualtrics API
+    try {
+        statusEl.className = 'status info';
+        statusEl.textContent = '📤 Submitting to Qualtrics...';
+        
+        await submitSurveyResponse(surveyData, participantId);
+        
+        statusEl.className = 'status success';
+        statusEl.textContent = '✅ Pre-Survey submitted successfully!';
+        
+        closePreSurveyModal();
+        
+        setTimeout(() => {
+            document.querySelectorAll('#preSurveyModal input[type="radio"]').forEach(radio => {
+                radio.checked = false;
+            });
+        }, 300);
+    } catch (error) {
+        console.error('Failed to submit pre-survey:', error);
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ Failed to submit: ${error.message}`;
+        // Don't close modal on error so user can try again
+    }
+}
+
+export function openPostSurveyModal() {
+    document.getElementById('postSurveyModal').classList.add('active');
+    console.log('📊 Post-Survey modal opened');
+}
+
+export function closePostSurveyModal(event) {
+    // Only allow programmatic closing (after submission), not by clicking outside
+    document.getElementById('postSurveyModal').classList.remove('active');
+    console.log('📊 Post-Survey modal closed');
+}
+
+export async function submitPostSurvey() {
+    const surveyData = {
+        surveyType: 'post',
+        calm: document.querySelector('input[name="postCalm"]:checked')?.value || null,
+        energized: document.querySelector('input[name="postEnergized"]:checked')?.value || null,
+        connected: document.querySelector('input[name="postConnected"]:checked')?.value || null,
+        nervous: document.querySelector('input[name="postNervous"]:checked')?.value || null,
+        focused: document.querySelector('input[name="postFocused"]:checked')?.value || null,
+        wonder: document.querySelector('input[name="postWonder"]:checked')?.value || null,
+        timestamp: new Date().toISOString()
+    };
+    
+    // Verify all questions are answered (button should be disabled if not, but double-check)
+    const allAnswered = surveyData.calm && surveyData.energized && surveyData.connected && 
+                        surveyData.nervous && surveyData.focused && surveyData.wonder;
+    
+    if (!allAnswered) {
+        alert('Please answer all questions before submitting.');
+        return;
+    }
+    
+    // Get participant ID (from URL or localStorage)
+    const participantId = getParticipantId();
+    
+    console.log('📊 Post-Survey Data:');
+    console.log('  - Survey Type: Post-Survey');
+    console.log('  - Participant ID:', participantId || 'none');
+    console.log('  - Calm:', surveyData.calm || 'not rated');
+    console.log('  - Energized:', surveyData.energized || 'not rated');
+    console.log('  - Connected to nature:', surveyData.connected || 'not rated');
+    console.log('  - Nervous:', surveyData.nervous || 'not rated');
+    console.log('  - Focused:', surveyData.focused || 'not rated');
+    console.log('  - A sense of wonder:', surveyData.wonder || 'not rated');
+    console.log('  - Timestamp:', surveyData.timestamp);
+    
+    const statusEl = document.getElementById('status');
+    
+    // Submit to Qualtrics API
+    try {
+        statusEl.className = 'status info';
+        statusEl.textContent = '📤 Submitting to Qualtrics...';
+        
+        await submitSurveyResponse(surveyData, participantId);
+        
+        statusEl.className = 'status success';
+        statusEl.textContent = '✅ Post-Survey submitted successfully!';
+        
+        closePostSurveyModal();
+        
+        setTimeout(() => {
+            document.querySelectorAll('#postSurveyModal input[type="radio"]').forEach(radio => {
+                radio.checked = false;
+            });
+        }, 300);
+    } catch (error) {
+        console.error('Failed to submit post-survey:', error);
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ Failed to submit: ${error.message}`;
+        // Don't close modal on error so user can try again
+    }
+}
+
+export function openAwesfModal() {
+    document.getElementById('awesfModal').classList.add('active');
+    console.log('✨ AWE-SF modal opened');
+}
+
+export function closeAwesfModal(event) {
+    if (!event || event.target.classList.contains('modal-overlay')) {
+        document.getElementById('awesfModal').classList.remove('active');
+        console.log('✨ AWE-SF modal closed');
+    }
+}
+
+export async function submitAwesfSurvey() {
+    const surveyData = {
+        surveyType: 'awesf',
+        slowDown: document.querySelector('input[name="slowDown"]:checked')?.value || null,
+        reducedSelf: document.querySelector('input[name="reducedSelf"]:checked')?.value || null,
+        chills: document.querySelector('input[name="chills"]:checked')?.value || null,
+        oneness: document.querySelector('input[name="oneness"]:checked')?.value || null,
+        grand: document.querySelector('input[name="grand"]:checked')?.value || null,
+        diminishedSelf: document.querySelector('input[name="diminishedSelf"]:checked')?.value || null,
+        timeSlowing: document.querySelector('input[name="timeSlowing"]:checked')?.value || null,
+        awesfConnected: document.querySelector('input[name="awesfConnected"]:checked')?.value || null,
+        small: document.querySelector('input[name="small"]:checked')?.value || null,
+        vastness: document.querySelector('input[name="vastness"]:checked')?.value || null,
+        challenged: document.querySelector('input[name="challenged"]:checked')?.value || null,
+        selfShrink: document.querySelector('input[name="selfShrink"]:checked')?.value || null,
+        timestamp: new Date().toISOString()
+    };
+    
+    const hasRatings = Object.values(surveyData).some(v => v !== null && v !== surveyData.timestamp && v !== surveyData.surveyType);
     
     if (!hasRatings) {
         alert('Please rate at least one item before submitting.');
         return;
     }
     
-    console.log('📊 Pre/Post Survey Data (not submitted yet):');
-    console.log('  - Calm:', surveyData.calm || 'not rated');
-    console.log('  - Energized:', surveyData.energized || 'not rated');
-    console.log('  - Connected:', surveyData.connected || 'not rated');
-    console.log('  - Stressed:', surveyData.stressed || 'not rated');
-    console.log('  - Focused:', surveyData.focused || 'not rated');
-    console.log('  - Sense of Wonder:', surveyData.wonder || 'not rated');
+    // Get participant ID (from URL or localStorage)
+    const participantId = getParticipantId();
+    
+    console.log('✨ AWE-SF Survey Data:');
+    console.log('  - Participant ID:', participantId || 'none');
+    console.log('  - I sensed things momentarily slow down:', surveyData.slowDown || 'not rated');
+    console.log('  - I experienced a reduced sense of self:', surveyData.reducedSelf || 'not rated');
+    console.log('  - I had chills:', surveyData.chills || 'not rated');
+    console.log('  - I experienced a sense of oneness with all things:', surveyData.oneness || 'not rated');
+    console.log('  - I felt that I was in the presence of something grand:', surveyData.grand || 'not rated');
+    console.log('  - I felt that my sense of self was diminished:', surveyData.diminishedSelf || 'not rated');
+    console.log('  - I noticed time slowing:', surveyData.timeSlowing || 'not rated');
+    console.log('  - I had the sense of being connected to everything:', surveyData.awesfConnected || 'not rated');
+    console.log('  - I felt small compared to everything else:', surveyData.small || 'not rated');
+    console.log('  - I perceived vastness:', surveyData.vastness || 'not rated');
+    console.log('  - I felt challenged to understand the experience:', surveyData.challenged || 'not rated');
+    console.log('  - I felt my sense of self shrink:', surveyData.selfShrink || 'not rated');
     console.log('  - Timestamp:', surveyData.timestamp);
     
     const statusEl = document.getElementById('status');
-    statusEl.className = 'status success';
-    statusEl.textContent = '✅ Pre/Post survey recorded!';
     
-    closePrePostSurveyModal();
-    
-    setTimeout(() => {
-        document.querySelectorAll('input[type="radio"]').forEach(radio => {
-            radio.checked = false;
-        });
-    }, 300);
+    // Submit to Qualtrics API
+    try {
+        statusEl.className = 'status info';
+        statusEl.textContent = '📤 Submitting to Qualtrics...';
+        
+        await submitSurveyResponse(surveyData, participantId);
+        
+        statusEl.className = 'status success';
+        statusEl.textContent = '✅ AWE-SF survey submitted successfully!';
+        
+        closeAwesfModal();
+        
+        setTimeout(() => {
+            document.querySelectorAll('#awesfModal input[type="radio"]').forEach(radio => {
+                radio.checked = false;
+            });
+        }, 300);
+    } catch (error) {
+        console.error('Failed to submit AWE-SF survey:', error);
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ Failed to submit: ${error.message}`;
+        // Don't close modal on error so user can try again
+    }
 }
 
 // Waveform filter controls (wrapper functions)

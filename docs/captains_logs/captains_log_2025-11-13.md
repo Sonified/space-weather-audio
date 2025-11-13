@@ -172,4 +172,44 @@ X-axis renderer had hardcoded `ctx.fillStyle = '#ddd'` that overrode CSS variabl
    - Test backfilled audio in web interface once CDN cache updates
    - Compare Force IRIS vs CDN audio to confirm identical processing
 
+---
+
+## Qualtrics API Integration (v1.82)
+
+### Implementation
+Built complete Qualtrics API integration to automatically capture participant ResponseIDs and submit survey responses.
+
+**Key Features**:
+- **Automatic ResponseID Capture**: Parses `ResponseID` parameter from URL when users are redirected from Qualtrics
+- **Survey Submission**: All survey responses (Pre-Survey, Post-Survey, AWE-SF) automatically submit to Qualtrics API
+- **Participant ID Management**: Stores ResponseID in localStorage, pre-populates participant setup modal
+- **Embedded Data**: Includes ResponseID as embedded data field in all API submissions
+
+**Files Created**:
+- `js/qualtrics-api.js` - Qualtrics API client with ResponseID parsing and survey submission
+- `Qualtrics/REDIRECT_URL.md` - Documentation for Qualtrics redirect URL setup
+
+**Files Modified**:
+- `js/ui-controls.js` - Updated survey submission functions to call Qualtrics API
+- `js/main.js` - Added URL parameter parsing on page load, updated version to v1.82
+- `Qualtrics/fetch_survey_structure.py` - Updated to use new survey ID `SV_bNni117IsBWNZWu`
+- `Qualtrics/README.md` - Updated survey ID
+- `Qualtrics/survey_structure.json` - Fetched new survey structure with 10 questions
+
+**How It Works**:
+1. Qualtrics redirects users with: `https://volcano.now.audio/?ResponseID=${e://Field/ResponseID}`
+2. Page automatically detects and stores ResponseID
+3. All survey submissions include ResponseID as embedded data
+4. Participant setup modal pre-populates with ResponseID from URL
+
+**Question ID Mappings**:
+- Pre-session PANAS: QID5 (6 sub-questions)
+- Post-session PANAS: QID12 (6 sub-questions)  
+- AWE-SF Scale: QID13 (12 items)
+- JSON dump: QID11 (for event data)
+
+**Next Steps**:
+- Configure `ParticipantID` embedded data field in Qualtrics Survey Flow
+- Test end-to-end flow: Qualtrics redirect → site → survey submission
+
 

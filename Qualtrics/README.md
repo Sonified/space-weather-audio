@@ -18,14 +18,14 @@ python Qualtrics/fetch_survey_structure.py
 
 This will:
 1. Connect to the Qualtrics API
-2. Fetch the survey structure for survey `SV_3EOvx4jDUEVIACy`
+2. Fetch the survey structure for survey `SV_bNni117IsBWNZWu`
 3. Display all questions with their Question IDs (QID1, QID2, etc.)
 4. Save the full response to `survey_structure.json`
 
 ## API Configuration
 
 - **Base URL:** `https://oregon.yul1.qualtrics.com/API/v3/`
-- **Survey ID:** `SV_3EOvx4jDUEVIACy`
+- **Survey ID:** `SV_bNni117IsBWNZWu`
 - **Data Center ID:** `oregon.yul1`
 
 ## Next Steps
