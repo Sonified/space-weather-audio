@@ -4,11 +4,17 @@
     box-sizing: border-box;
 }
 
+html {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background: linear-gradient(135deg, #2a0606 0%, #3a0f0f 100%);
     min-height: 100vh;
     padding: 20px;
+    overflow-x: hidden;
 }
 
 .container {
@@ -596,12 +602,15 @@ input[type="checkbox"] {
     bottom: 0;
     background: rgba(0, 0, 0, 0.7);
     z-index: 1000;
+    overflow: hidden;
+    visibility: hidden;
     align-items: center;
     justify-content: center;
 }
 
 .modal-overlay.active {
     display: flex;
+    visibility: visible;
 }
 
 .modal-content {

@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qualtrics Response Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #2a0606 0%, #3a0f0f 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: white;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 8px rgba(255, 100, 100, 0.6);
+        }
+        
+        .panel {
+            background: linear-gradient(135deg, rgba(255, 250, 250, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 20px rgba(80, 20, 20, 0.35);
+            color: #333;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #550000;
+        }
+        
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid rgba(200, 100, 100, 0.3);
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #cc3333 0%, #991111 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(80, 20, 20, 0.3);
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #dd4444 0%, #aa2222 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(80, 20, 20, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .response-display {
+            margin-top: 20px;
+        }
+        
+        .response-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 6px;
+            border-left: 4px solid #cc3333;
+        }
+        
+        .response-section h3 {
+            color: #550000;
+            margin-bottom: 10px;
+        }
+        
+        .response-item {
+            margin: 8px 0;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 4px;
+        }
+        
+        .response-item strong {
+            color: #550000;
+        }
+        
+        .error {
+            background: rgba(255, 200, 200, 0.8);
+            color: #880000;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #cc3333;
+            margin-top: 20px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #550000;
+        }
+        
+        pre {
+            background: rgba(0, 0, 0, 0.8);
+            color: #0f0;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Qualtrics Response Viewer</h1>
+        
+        <div class="panel">
+            <div class="input-group">
+                <label for="responseId">Response ID:</label>
+                <input type="text" id="responseId" placeholder="Enter Response ID (e.g., R_5xRUHrX8m8iB6m5)">
+            </div>
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button onclick="fetchResponse()">📥 Fetch Response</button>
+                <button onclick="fetchResponseViaExport('json')" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">📤 Fetch via Export (JSON)</button>
+                <button onclick="fetchResponseViaExport('csv')" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);">📊 Fetch via Export (CSV)</button>
+                <button onclick="loadRecentResponses()" style="background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);">📋 Load Recent</button>
+            </div>
+            <div id="recentResponses" style="margin-top: 15px;"></div>
+            <div id="status"></div>
+        </div>
+        
+        <div id="responseDisplay" class="panel" style="display: none;">
+            <h2>📋 Response Data</h2>
+            <div id="responseContent"></div>
+        </div>
+    </div>
+    
+    <script type="module">
+        const QUALTRICS_CONFIG = {
+            BASE_URL: "https://oregon.yul1.qualtrics.com/API/v3",
+            SURVEY_ID: "SV_bNni117IsBWNZWu",
+            API_TOKEN: "FcoNLQoHtQVRAoUdIfqexMjIQgC3qqgut9Yg89Xo"
+        };
+        
+        // Helper function to create and poll an export job
+        // Note: useLabels only works with CSV format, not JSON
+        // JSON exports still include text entry fields (like QID11) without useLabels
+        async function createExportJob(format = 'json', useLabels = false) {
+            const url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/export-responses`;
+            
+            const payload = {
+                format: format
+            };
+            
+            // Only add useLabels for CSV format
+            if (format === 'csv' && useLabels) {
+                payload.useLabels = true;
+            }
+            
+            console.log('📤 Creating export job:', payload);
+            console.log('📋 Payload JSON:', JSON.stringify(payload));
+            console.log('💡 Note: JSON exports include text entry fields (QID11) without useLabels');
+            console.log('💡 useLabels only works with CSV format and converts choice codes to labels');
+            
+            // Ensure useLabels is NOT in payload for JSON format
+            if (format === 'json' && payload.useLabels !== undefined) {
+                delete payload.useLabels;
+                console.warn('⚠️ Removed useLabels from JSON export payload');
+            }
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-API-TOKEN': QUALTRICS_CONFIG.API_TOKEN,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload),
+                mode: 'cors'
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Export API Error: ${response.status} - ${errorText}`);
+            }
+            
+            const result = await response.json();
+            return result.result;
+        }
+        
+        // Helper function to poll export job status
+        async function pollExportJob(progressId) {
+            const url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/export-responses/${progressId}`;
+            
+            return new Promise((resolve, reject) => {
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const response = await fetch(url, {
+                            method: 'GET',
+                            headers: {
+                                'X-API-TOKEN': QUALTRICS_CONFIG.API_TOKEN,
+                                'Content-Type': 'application/json'
+                            },
+                            mode: 'cors'
+                        });
+                        
+                        if (!response.ok) {
+                            clearInterval(pollInterval);
+                            const errorText = await response.text();
+                            reject(new Error(`Polling Error: ${response.status} - ${errorText}`));
+                            return;
+                        }
+                        
+                        const result = await response.json();
+                        const status = result.result.status;
+                        
+                        console.log(`📊 Export status: ${status}`);
+                        
+                        if (status === 'complete') {
+                            clearInterval(pollInterval);
+                            resolve(result.result);
+                        } else if (status === 'failed') {
+                            clearInterval(pollInterval);
+                            reject(new Error('Export job failed'));
+                        }
+                        // Otherwise, keep polling
+                    } catch (error) {
+                        clearInterval(pollInterval);
+                        reject(error);
+                    }
+                }, 1000); // Poll every second
+            });
+        }
+        
+        // Helper function to download export file
+        // Note: Qualtrics returns a ZIP file containing the JSON/CSV file
+        async function downloadExportFile(fileId, format = 'json') {
+            console.log(`📥 Downloading ${format.toUpperCase()} export file...`);
+            const url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/export-responses/${fileId}/file`;
+            
+            console.log('📥 Downloading export file from:', url);
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'X-API-TOKEN': QUALTRICS_CONFIG.API_TOKEN
+                },
+                mode: 'cors'
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Download Error: ${response.status} - ${errorText}`);
+            }
+            
+            // Qualtrics returns a ZIP file, so we need to extract it
+            const blob = await response.blob();
+            console.log('📦 Downloaded blob:', {
+                type: blob.type,
+                size: blob.size,
+                isZip: blob.type === 'application/zip' || blob.type === 'application/x-zip-compressed'
+            });
+            
+            // Check if it's a ZIP file (Qualtrics always returns ZIP for exports)
+            if (blob.type === 'application/zip' || blob.type === 'application/x-zip-compressed' || blob.type === '') {
+                console.log('📦 Extracting ZIP file...');
+                
+                // Load the ZIP file using JSZip
+                const zip = await JSZip.loadAsync(blob);
+                console.log('📋 Files in ZIP:', Object.keys(zip.files));
+                
+                // Find the file in the ZIP (JSON or CSV)
+                let exportFile = null;
+                const extension = format === 'csv' ? '.csv' : '.json';
+                
+                for (const filename in zip.files) {
+                    if (filename.endsWith(extension)) {
+                        exportFile = zip.files[filename];
+                        console.log(`✅ Found ${format.toUpperCase()} file:`, filename);
+                        break;
+                    }
+                }
+                
+                if (!exportFile) {
+                    throw new Error(`No ${format.toUpperCase()} file found in ZIP archive`);
+                }
+                
+                // Extract and parse the file
+                const fileText = await exportFile.async('string');
+                
+                if (format === 'csv') {
+                    // Parse CSV to find the specific response
+                    console.log('📊 Parsing CSV data...');
+                    return parseCSVExport(fileText);
+                } else {
+                    // Parse JSON
+                    const jsonData = JSON.parse(fileText);
+                    console.log('✅ Extracted and parsed JSON data');
+                    return jsonData;
+                }
+            } else {
+                // If it's not a ZIP (shouldn't happen with Qualtrics), try to parse as JSON directly
+                const text = await blob.text();
+                return JSON.parse(text);
+            }
+        }
+        
+        // Helper function to parse CSV export and find specific response
+        function parseCSVExport(csvText) {
+            const lines = csvText.split('\n');
+            if (lines.length < 2) {
+                throw new Error('Invalid CSV format');
+            }
+            
+            // First line is headers
+            const headers = lines[0].split(',');
+            const responseIdIndex = headers.findIndex(h => h.trim() === 'ResponseId' || h.trim() === 'responseId' || h.trim() === '_recordId');
+            
+            if (responseIdIndex === -1) {
+                throw new Error('ResponseId column not found in CSV');
+            }
+            
+            console.log('📋 CSV headers:', headers);
+            console.log('📋 ResponseId column index:', responseIdIndex);
+            
+            // Find QID11 column
+            const qid11Index = headers.findIndex(h => h.trim() === 'QID11');
+            console.log('📋 QID11 column index:', qid11Index !== -1 ? qid11Index : 'NOT FOUND');
+            
+            // Parse all rows into objects
+            const responses = [];
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                
+                // Handle CSV with quoted values
+                const values = [];
+                let currentValue = '';
+                let inQuotes = false;
+                
+                for (let j = 0; j < lines[i].length; j++) {
+                    const char = lines[i][j];
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        values.push(currentValue.trim());
+                        currentValue = '';
+                    } else {
+                        currentValue += char;
+                    }
+                }
+                values.push(currentValue.trim()); // Add last value
+                
+                if (values.length === headers.length) {
+                    const response = {};
+                    headers.forEach((header, index) => {
+                        response[header.trim()] = values[index];
+                    });
+                    responses.push(response);
+                }
+            }
+            
+            console.log(`📊 Parsed ${responses.length} responses from CSV`);
+            return {
+                responses: responses,
+                headers: headers
+            };
+        }
+        
+        // Fetch response via Export API (includes text entry fields)
+        window.fetchResponseViaExport = async function(format = 'json') {
+            const responseId = document.getElementById('responseId').value.trim();
+            const statusEl = document.getElementById('status');
+            const displayEl = document.getElementById('responseDisplay');
+            const contentEl = document.getElementById('responseContent');
+            
+            if (!responseId) {
+                statusEl.innerHTML = '<div class="error">Please enter a Response ID</div>';
+                return;
+            }
+            
+            statusEl.innerHTML = `<div class="loading">⏳ Creating ${format.toUpperCase()} export job (this may take a moment)...</div>`;
+            displayEl.style.display = 'none';
+            
+            try {
+                // Step 1: Create export job
+                // CSV format with useLabels: true may include text entry fields
+                // JSON format should include text entry fields but may not
+                const useLabels = format === 'csv';
+                const exportJob = await createExportJob(format, useLabels);
+                console.log(`✅ ${format.toUpperCase()} export job created:`, exportJob);
+                
+                statusEl.innerHTML = '<div class="loading">⏳ Polling export job status...</div>';
+                
+                // Step 2: Poll for completion
+                const completedJob = await pollExportJob(exportJob.progressId);
+                console.log('✅ Export job completed:', completedJob);
+                
+                statusEl.innerHTML = '<div class="loading">⏳ Downloading export file...</div>';
+                
+                // Step 3: Download the file
+                const exportData = await downloadExportFile(completedJob.fileId, format);
+                console.log(`✅ ${format.toUpperCase()} export file downloaded`);
+                
+                // Step 4: Find the specific response ID in the export
+                let foundResponse = null;
+                
+                if (format === 'csv') {
+                    // CSV format: array of response objects with headers as keys
+                    console.log('📊 Searching CSV export for response ID:', responseId);
+                    foundResponse = exportData.responses.find(r => {
+                        const id = r.ResponseId || r.responseId || r._recordId || r['ResponseId'] || r['responseId'] || r['_recordId'];
+                        return id === responseId;
+                    });
+                    
+                    if (foundResponse) {
+                        console.log('✅ Found response in CSV export');
+                        // Convert CSV row to display format
+                        const values = {};
+                        const headers = exportData.headers;
+                        headers.forEach((header, index) => {
+                            const key = header.trim();
+                            const value = foundResponse[key];
+                            if (value !== undefined && value !== '') {
+                                values[key] = value;
+                            }
+                        });
+                        
+                        // Check for QID11 in CSV
+                        const hasQID11 = 'QID11' in values;
+                        console.log('🔍 QID11 in CSV export:', hasQID11 ? '✅ YES' : '❌ NO');
+                        if (hasQID11) {
+                            console.log('📋 QID11 value length:', values.QID11 ? values.QID11.length : 0);
+                            console.log('📋 QID11 preview:', values.QID11 ? values.QID11.substring(0, 100) + '...' : 'empty');
+                        }
+                        
+                        foundResponse = {
+                            responseId: responseId,
+                            values: values
+                        };
+                    }
+                } else {
+                    // JSON format: handle different structures
+                    console.log('📋 Export data structure:', {
+                        hasResponses: !!exportData.responses,
+                        responsesType: typeof exportData.responses,
+                        isArray: Array.isArray(exportData.responses),
+                        keys: exportData.responses ? Object.keys(exportData.responses).slice(0, 10) : [],
+                        fullStructure: Object.keys(exportData)
+                    });
+                    
+                    // Try different export formats
+                    if (Array.isArray(exportData.responses)) {
+                        // Format: { responses: [{ responseId: "...", values: {...} }] }
+                        foundResponse = exportData.responses.find(r => r.responseId === responseId);
+                    } else if (exportData.responses && typeof exportData.responses === 'object') {
+                        // Format: { responses: { "R_xxx": { values: {...} } } }
+                        foundResponse = exportData.responses[responseId];
+                        if (foundResponse && !foundResponse.responseId) {
+                            foundResponse.responseId = responseId;
+                        }
+                    } else if (Array.isArray(exportData)) {
+                        // Format: [{ responseId: "...", values: {...} }]
+                        foundResponse = exportData.find(r => r.responseId === responseId);
+                    } else if (exportData[responseId]) {
+                        // Format: { "R_xxx": { values: {...} } }
+                        foundResponse = exportData[responseId];
+                        if (foundResponse && !foundResponse.responseId) {
+                            foundResponse.responseId = responseId;
+                        }
+                    }
+                }
+                
+                if (!foundResponse) {
+                    // Log available response IDs for debugging
+                    let availableIds = [];
+                    if (Array.isArray(exportData.responses)) {
+                        availableIds = exportData.responses.map(r => r.responseId).slice(0, 5);
+                    } else if (exportData.responses && typeof exportData.responses === 'object') {
+                        availableIds = Object.keys(exportData.responses).slice(0, 5);
+                    }
+                    console.warn('⚠️ Available response IDs in export:', availableIds);
+                    throw new Error(`Response ID ${responseId} not found in export. Available IDs: ${availableIds.join(', ')}...`);
+                }
+                
+                console.log('✅ Found response in export:', foundResponse);
+                
+                // Log all available fields to find QID11
+                console.log('📋 Response structure:', {
+                    hasValues: !!foundResponse.values,
+                    hasLabels: !!foundResponse.labels,
+                    hasDisplayedValues: !!foundResponse.displayedValues,
+                    valuesKeys: foundResponse.values ? Object.keys(foundResponse.values) : [],
+                    labelsKeys: foundResponse.labels ? Object.keys(foundResponse.labels) : [],
+                    displayedValuesKeys: foundResponse.displayedValues ? Object.keys(foundResponse.displayedValues) : [],
+                    allKeys: Object.keys(foundResponse)
+                });
+                
+                // Log the full response to see what's actually there
+                console.log('📋 Full response object:', JSON.stringify(foundResponse, null, 2));
+                
+                // Check for QID11 in different locations
+                const hasQID11InValues = foundResponse.values && 'QID11' in foundResponse.values;
+                const hasQID11InLabels = foundResponse.labels && 'QID11' in foundResponse.labels;
+                const hasQID11InDisplayed = foundResponse.displayedValues && 'QID11' in foundResponse.displayedValues;
+                
+                console.log('🔍 QID11 search:', {
+                    inValues: hasQID11InValues,
+                    inLabels: hasQID11InLabels,
+                    inDisplayedValues: hasQID11InDisplayed,
+                    qid11Value: foundResponse.values?.QID11,
+                    qid11Label: foundResponse.labels?.QID11,
+                    qid11Displayed: foundResponse.displayedValues?.QID11
+                });
+                
+                // Convert export format to display format
+                // Export format may have values directly or nested
+                // Combine values, labels, and displayedValues to get all fields
+                const values = foundResponse.values || {};
+                const labels = foundResponse.labels || {};
+                const displayedValues = foundResponse.displayedValues || {};
+                
+                // Merge all fields - prefer displayedValues, then labels, then values
+                const mergedValues = { ...values };
+                
+                // Add labels for fields that don't have values
+                for (const [key, value] of Object.entries(labels)) {
+                    if (!(key in mergedValues)) {
+                        mergedValues[key] = value;
+                    }
+                }
+                
+                // Add displayedValues (these might include text entry fields)
+                for (const [key, value] of Object.entries(displayedValues)) {
+                    mergedValues[key] = value;
+                }
+                
+                // If QID11 is in labels or displayedValues but not in values, add it
+                if (!hasQID11InValues && (hasQID11InLabels || hasQID11InDisplayed)) {
+                    mergedValues.QID11 = foundResponse.displayedValues?.QID11 || foundResponse.labels?.QID11;
+                    console.log('✅ Found QID11 in labels/displayedValues, adding to merged values');
+                }
+                
+                const embeddedData = foundResponse.embeddedData || {};
+                
+                const displayResult = {
+                    result: {
+                        responseId: foundResponse.responseId || responseId,
+                        values: mergedValues,
+                        embeddedData: embeddedData
+                    }
+                };
+                
+                console.log('📋 Final merged values keys:', Object.keys(mergedValues));
+                console.log('📋 QID11 in final values:', 'QID11' in mergedValues);
+                
+                // Display the response
+                displayResponse(displayResult);
+                
+                statusEl.innerHTML = `<div style="color: green; padding: 10px;">✅ Response retrieved via ${format.toUpperCase()} Export API!${foundResponse.values && 'QID11' in foundResponse.values ? ' (QID11 found!)' : ' (checking for QID11...)'}</div>`;
+                displayEl.style.display = 'block';
+                
+            } catch (error) {
+                console.error('❌ Error:', error);
+                statusEl.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+                displayEl.style.display = 'none';
+            }
+        };
+        
+        window.fetchResponse = async function() {
+            const responseId = document.getElementById('responseId').value.trim();
+            const statusEl = document.getElementById('status');
+            const displayEl = document.getElementById('responseDisplay');
+            const contentEl = document.getElementById('responseContent');
+            
+            if (!responseId) {
+                statusEl.innerHTML = '<div class="error">Please enter a Response ID</div>';
+                return;
+            }
+            
+            statusEl.innerHTML = '<div class="loading">⏳ Fetching response...</div>';
+            displayEl.style.display = 'none';
+            
+            try {
+                // Request all fields including text entry fields (QID11)
+                // Qualtrics API may require explicit field specification or may not return text entry fields
+                // Try requesting with format=detailed or include all fields
+                let url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/responses/${responseId}`;
+                
+                // Try adding format parameter - some Qualtrics endpoints support this
+                // Also try without any params first to see what we get
+                console.log('📥 Fetching:', url);
+                console.log('📋 Looking for QID11 (JSON dump) in response...');
+                console.log('💡 Note: Qualtrics may not return text entry (TE) fields in GET responses');
+                console.log('💡 The JSON dump WAS sent (676 chars), but may not be retrievable via API');
+                console.log('💡 Use "Fetch via Export" button to get QID11 text entry field');
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'X-API-TOKEN': QUALTRICS_CONFIG.API_TOKEN,
+                        'Content-Type': 'application/json'
+                    },
+                    mode: 'cors'
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API Error: ${response.status} - ${errorText}`);
+                }
+                
+                const result = await response.json();
+                console.log('✅ Response retrieved:', result);
+                
+                // Check if QID11 is in the response
+                if (result.result && result.result.values) {
+                    const hasQID11 = 'QID11' in result.result.values;
+                    console.log('📋 QID11 (JSON dump) in response:', hasQID11 ? '✅ YES' : '❌ NO');
+                    if (hasQID11) {
+                        console.log('📋 QID11 value:', result.result.values.QID11);
+                    } else {
+                        console.log('📋 Available fields:', Object.keys(result.result.values));
+                        console.warn('⚠️ QID11 not found in response.');
+                        console.warn('⚠️ This is a known Qualtrics API limitation - text entry (TE) fields are sent but may not be returned in GET responses.');
+                        console.warn('💡 The JSON dump WAS successfully sent (676 chars), but Qualtrics API does not return it when fetching responses.');
+                        console.warn('💡 Use the "Fetch via Export" button to retrieve QID11 text entry field.');
+                        
+                        // Add a note in the UI
+                        if (result.result && result.result.values) {
+                            // Add a warning section about missing QID11
+                            const warningHtml = `
+                                <div class="response-section" style="border-left-color: #ff9800; background: rgba(255, 152, 0, 0.1);">
+                                    <h3>⚠️ JSON Dump Field (QID11)</h3>
+                                    <div class="response-item">
+                                        <strong>Status:</strong> Field was sent to Qualtrics but not returned in API response
+                                    </div>
+                                    <div class="response-item" style="margin-top: 10px;">
+                                        <strong>Note:</strong> This is a known Qualtrics API limitation. Text entry (TE) fields are successfully submitted but may not be returned when fetching responses via the API. The JSON dump containing timing information (676 characters) was sent, but you may need to export responses directly from Qualtrics to view it.
+                                    </div>
+                                    <div class="response-item" style="margin-top: 10px;">
+                                        <strong>Solution:</strong> Click the "📤 Fetch via Export (with QID11)" button above to retrieve the response using the Export API, which includes text entry fields.
+                                    </div>
+                                </div>
+                            `;
+                            // We'll need to insert this in the displayResponse function
+                        }
+                    }
+                }
+                
+                // Display the response
+                displayResponse(result);
+                
+                statusEl.innerHTML = '<div style="color: green; padding: 10px;">✅ Response retrieved successfully! (Note: QID11 may be missing - use Export button to get it)</div>';
+                displayEl.style.display = 'block';
+                
+            } catch (error) {
+                console.error('❌ Error:', error);
+                statusEl.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+                displayEl.style.display = 'none';
+            }
+        };
+        
+        // Helper function to format dates to local time
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true,
+                    timeZoneName: 'short'
+                });
+            } catch (e) {
+                return dateString;
+            }
+        }
+        
+        // Helper function to format status codes
+        function formatStatus(status) {
+            const statusMap = {
+                0: 'Survey Start',
+                1: 'Survey Preview',
+                2: 'Survey Test',
+                3: 'Survey Logic',
+                4: 'Imported',
+                5: 'Deleted',
+                6: 'Deleted (Partial)',
+                7: 'Inactive',
+                8: 'Active',
+                9: 'Finished',
+                10: 'Survey Preview (Partial)',
+                11: 'Survey Test (Partial)',
+                12: 'Survey Logic (Partial)',
+                13: 'Inactive (Partial)',
+                14: 'Active (Partial)',
+                15: 'Finished (Partial)'
+            };
+            return statusMap[status] || `Status ${status}`;
+        }
+        
+        function displayResponse(data) {
+            const contentEl = document.getElementById('responseContent');
+            
+            let html = '';
+            
+            // Display response metadata
+            if (data.result) {
+                html += '<div class="response-section">';
+                html += '<h3>📊 Response Metadata</h3>';
+                
+                if (data.result.responseId) {
+                    html += `<div class="response-item"><strong>Response ID:</strong> ${data.result.responseId}</div>`;
+                }
+                
+                const values = data.result.values || {};
+                
+                // Format and display dates
+                if (values.startDate) {
+                    html += `<div class="response-item"><strong>Start Date:</strong> ${formatDate(values.startDate)}</div>`;
+                }
+                if (values.endDate) {
+                    html += `<div class="response-item"><strong>End Date:</strong> ${formatDate(values.endDate)}</div>`;
+                }
+                if (values.recordedDate) {
+                    html += `<div class="response-item"><strong>Recorded Date:</strong> ${formatDate(values.recordedDate)}</div>`;
+                }
+                if (data.result.recordedDate) {
+                    html += `<div class="response-item"><strong>Recorded Date (result):</strong> ${formatDate(data.result.recordedDate)}</div>`;
+                }
+                
+                // Format status
+                if (values.status !== undefined) {
+                    html += `<div class="response-item"><strong>Status:</strong> ${formatStatus(values.status)} (${values.status})</div>`;
+                }
+                
+                // Format finished
+                if (values.finished !== undefined) {
+                    html += `<div class="response-item"><strong>Finished:</strong> ${values.finished === 1 || values.finished === '1' ? 'Yes' : 'No'}</div>`;
+                }
+                if (data.result.finished !== undefined) {
+                    html += `<div class="response-item"><strong>Finished (result):</strong> ${data.result.finished === 1 || data.result.finished === '1' ? 'Yes' : 'No'}</div>`;
+                }
+                
+                if (data.result.progress) {
+                    html += `<div class="response-item"><strong>Progress:</strong> ${data.result.progress}%</div>`;
+                }
+                
+                html += '</div>';
+                
+                // Display response values (excluding metadata fields we already displayed)
+                if (data.result.values) {
+                    html += '<div class="response-section">';
+                    html += '<h3>📝 Response Values</h3>';
+                    
+                    const questionMap = {
+                        'QID5_1': 'Pre: Calm',
+                        'QID5_2': 'Pre: Energized',
+                        'QID5_3': 'Pre: Connected',
+                        'QID5_4': 'Pre: Nervous',
+                        'QID5_5': 'Pre: Focused',
+                        'QID5_6': 'Pre: Wonder',
+                        'QID12_1': 'Post: Calm',
+                        'QID12_2': 'Post: Energized',
+                        'QID12_3': 'Post: Connected',
+                        'QID12_4': 'Post: Nervous',
+                        'QID12_5': 'Post: Focused',
+                        'QID12_6': 'Post: Wonder',
+                        'QID13_1': 'AWE: Slow Down',
+                        'QID13_2': 'AWE: Reduced Self',
+                        'QID13_3': 'AWE: Chills',
+                        'QID13_4': 'AWE: Oneness',
+                        'QID13_5': 'AWE: Grand',
+                        'QID13_6': 'AWE: Diminished Self',
+                        'QID13_7': 'AWE: Time Slowing',
+                        'QID13_8': 'AWE: Connected',
+                        'QID13_9': 'AWE: Small',
+                        'QID13_10': 'AWE: Vastness',
+                        'QID13_11': 'AWE: Challenged',
+                        'QID13_12': 'AWE: Self Shrink',
+                        'QID11': 'JSON Dump'
+                    };
+                    
+                    // Fields to skip (already displayed in metadata)
+                    const metadataFields = ['startDate', 'endDate', 'recordedDate', 'status', 'finished'];
+                    
+                    // Track if QID11 is present
+                    let hasQID11 = false;
+                    
+                    for (const [key, value] of Object.entries(values)) {
+                        // Skip metadata fields that we already displayed
+                        if (metadataFields.includes(key)) continue;
+                        
+                        // Track QID11
+                        if (key === 'QID11') {
+                            hasQID11 = true;
+                        }
+                        
+                        const label = questionMap[key] || key;
+                        
+                        // Special handling for JSON Dump (QID11)
+                        if (key === 'QID11' && value) {
+                            try {
+                                const jsonData = JSON.parse(value);
+                                html += '<div class="response-item">';
+                                html += `<strong>${label}:</strong>`;
+                                html += '<div style="margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.1); border-radius: 4px;">';
+                                html += '<strong>Session Tracking:</strong><br>';
+                                if (jsonData.sessionStarted) {
+                                    html += `<div style="margin-top: 5px;"><strong>Session Started:</strong> ${formatDate(jsonData.sessionStarted)}</div>`;
+                                }
+                                if (jsonData.tracking && jsonData.tracking.events) {
+                                    html += '<div style="margin-top: 10px;"><strong>Events:</strong><ul style="margin-top: 5px; margin-left: 20px;">';
+                                    jsonData.tracking.events.forEach(event => {
+                                        let eventText = '';
+                                        let eventIcon = '📋';
+                                        
+                                        if (event.type === 'survey_started') {
+                                            eventIcon = '📖';
+                                            const surveyName = event.surveyType === 'pre' ? 'Pre-Survey' : 
+                                                              event.surveyType === 'post' ? 'Post-Survey' : 
+                                                              event.surveyType === 'awesf' ? 'AWE-SF' : event.surveyType;
+                                            eventText = `Started ${surveyName}`;
+                                        } else if (event.type === 'survey_completed') {
+                                            eventIcon = '✅';
+                                            const surveyName = event.surveyType === 'pre' ? 'Pre-Survey' : 
+                                                              event.surveyType === 'post' ? 'Post-Survey' : 
+                                                              event.surveyType === 'awesf' ? 'AWE-SF' : event.surveyType;
+                                            eventText = `Completed ${surveyName}`;
+                                        } else if (event.type === 'volcano_selected') {
+                                            eventIcon = '🌋';
+                                            const volcanoName = event.data?.volcano || 'Unknown';
+                                            eventText = `Selected volcano: ${volcanoName}`;
+                                        } else if (event.type === 'fetch_data') {
+                                            eventIcon = '📡';
+                                            const volcano = event.data?.volcano || 'Unknown';
+                                            const station = event.data?.station || 'Unknown';
+                                            const duration = event.data?.duration || 'Unknown';
+                                            eventText = `Fetched data: ${volcano} - ${station} (${duration}h)`;
+                                        } else {
+                                            eventText = `${event.type}`;
+                                            if (event.data && Object.keys(event.data).length > 0) {
+                                                eventText += `: ${JSON.stringify(event.data)}`;
+                                            }
+                                        }
+                                        
+                                        html += `<li>${eventIcon} ${eventText} at ${formatDate(event.timestamp)}</li>`;
+                                    });
+                                    html += '</ul></div>';
+                                }
+                                if (jsonData.submissionTimestamp) {
+                                    html += `<div style="margin-top: 10px;"><strong>Submitted to Qualtrics:</strong> ${formatDate(jsonData.submissionTimestamp)}</div>`;
+                                }
+                                html += '</div>';
+                                html += '</div>';
+                            } catch (e) {
+                                // If parsing fails, display as plain text
+                                html += `<div class="response-item"><strong>${label}:</strong> ${value}</div>`;
+                            }
+                        } else {
+                            html += `<div class="response-item"><strong>${label}:</strong> ${value}</div>`;
+                        }
+                    }
+                    
+                    // Show warning if QID11 is missing
+                    if (!hasQID11) {
+                        html += '<div class="response-item" style="margin-top: 15px; padding: 15px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; border-radius: 4px;">';
+                        html += '<strong>⚠️ JSON Dump Field (QID11) Missing</strong><br>';
+                        html += '<div style="margin-top: 8px;">The QID11 text entry field (containing timing/tracking data) was sent to Qualtrics but is not returned by the GET response API endpoint.</div>';
+                        html += '<div style="margin-top: 8px;"><strong>Solution:</strong> Use the "📤 Fetch via Export (with QID11)" button above to retrieve this field via the Export API.</div>';
+                        html += '</div>';
+                    }
+                    
+                    html += '</div>';
+                }
+                
+                // Display embedded data
+                if (data.result.embeddedData) {
+                    html += '<div class="response-section">';
+                    html += '<h3>🔗 Embedded Data</h3>';
+                    
+                    for (const [key, value] of Object.entries(data.result.embeddedData)) {
+                        // Special handling for SessionTracking (timing data)
+                        if (key === 'SessionTracking' && value) {
+                            try {
+                                const jsonData = JSON.parse(value);
+                                html += '<div class="response-item">';
+                                html += `<strong>${key}:</strong>`;
+                                html += '<div style="margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.1); border-radius: 4px;">';
+                                html += '<strong>Session Tracking:</strong><br>';
+                                if (jsonData.sessionStarted) {
+                                    html += `<div style="margin-top: 5px;"><strong>Session Started:</strong> ${formatDate(jsonData.sessionStarted)}</div>`;
+                                }
+                                if (jsonData.tracking && jsonData.tracking.events) {
+                                    html += '<div style="margin-top: 10px;"><strong>Events:</strong><ul style="margin-top: 5px; margin-left: 20px;">';
+                                    jsonData.tracking.events.forEach(event => {
+                                        let eventText = '';
+                                        let eventIcon = '📋';
+                                        
+                                        if (event.type === 'survey_started') {
+                                            eventIcon = '📖';
+                                            const surveyName = event.surveyType === 'pre' ? 'Pre-Survey' : 
+                                                              event.surveyType === 'post' ? 'Post-Survey' : 
+                                                              event.surveyType === 'awesf' ? 'AWE-SF' : event.surveyType;
+                                            eventText = `Started ${surveyName}`;
+                                        } else if (event.type === 'survey_completed') {
+                                            eventIcon = '✅';
+                                            const surveyName = event.surveyType === 'pre' ? 'Pre-Survey' : 
+                                                              event.surveyType === 'post' ? 'Post-Survey' : 
+                                                              event.surveyType === 'awesf' ? 'AWE-SF' : event.surveyType;
+                                            eventText = `Completed ${surveyName}`;
+                                        } else if (event.type === 'volcano_selected') {
+                                            eventIcon = '🌋';
+                                            const volcanoName = event.data?.volcano || 'Unknown';
+                                            eventText = `Selected volcano: ${volcanoName}`;
+                                        } else if (event.type === 'fetch_data') {
+                                            eventIcon = '📡';
+                                            const volcano = event.data?.volcano || 'Unknown';
+                                            const station = event.data?.station || 'Unknown';
+                                            const duration = event.data?.duration || 'Unknown';
+                                            eventText = `Fetched data: ${volcano} - ${station} (${duration}h)`;
+                                        } else {
+                                            eventText = `${event.type}`;
+                                            if (event.data && Object.keys(event.data).length > 0) {
+                                                eventText += `: ${JSON.stringify(event.data)}`;
+                                            }
+                                        }
+                                        
+                                        html += `<li>${eventIcon} ${eventText} at ${formatDate(event.timestamp)}</li>`;
+                                    });
+                                    html += '</ul></div>';
+                                }
+                                if (jsonData.submissionTimestamp) {
+                                    html += `<div style="margin-top: 10px;"><strong>Submitted to Qualtrics:</strong> ${formatDate(jsonData.submissionTimestamp)}</div>`;
+                                }
+                                html += '</div>';
+                                html += '</div>';
+                            } catch (e) {
+                                // If parsing fails, display as plain text
+                                html += `<div class="response-item"><strong>${key}:</strong> ${value}</div>`;
+                            }
+                        } else if (key === 'json_data' && value) {
+                            // Special handling for json_data (interface interaction data)
+                            try {
+                                const jsonData = JSON.parse(value);
+                                html += '<div class="response-item">';
+                                html += `<strong>${key}:</strong>`;
+                                html += '<div style="margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.1); border-radius: 4px;">';
+                                html += '<pre style="white-space: pre-wrap; word-wrap: break-word; font-size: 12px;">';
+                                html += JSON.stringify(jsonData, null, 2);
+                                html += '</pre>';
+                                html += '</div>';
+                                html += '</div>';
+                            } catch (e) {
+                                // If parsing fails, display as plain text
+                                html += `<div class="response-item"><strong>${key}:</strong> ${value}</div>`;
+                            }
+                        } else {
+                            html += `<div class="response-item"><strong>${key}:</strong> ${value}</div>`;
+                        }
+                    }
+                    
+                    html += '</div>';
+                }
+            }
+            
+            // Display raw JSON
+            html += '<div class="response-section">';
+            html += '<h3>📄 Raw JSON Response</h3>';
+            html += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            html += '</div>';
+            
+            contentEl.innerHTML = html;
+        }
+        
+        // Allow Enter key to submit
+        document.getElementById('responseId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                fetchResponse();
+            }
+        });
+        
+        // Load recent responses from localStorage
+        window.loadRecentResponses = function() {
+            const recentEl = document.getElementById('recentResponses');
+            recentEl.innerHTML = '<div class="loading">⏳ Loading recent responses...</div>';
+            
+            try {
+                const recent = [];
+                
+                // Check all localStorage keys for participant responses
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('participant_response_')) {
+                        try {
+                            const data = JSON.parse(localStorage.getItem(key));
+                            if (data.qualtricsResponseId && data.submitted) {
+                                recent.push({
+                                    participantId: data.participantId,
+                                    responseId: data.qualtricsResponseId,
+                                    submittedAt: data.submittedAt,
+                                    sessionId: data.sessionId
+                                });
+                            }
+                        } catch (e) {
+                            // Skip invalid entries
+                        }
+                    }
+                }
+                
+                // Also check session state
+                const sessionStateJson = localStorage.getItem('participant_session_state');
+                if (sessionStateJson) {
+                    try {
+                        const sessionState = JSON.parse(sessionStateJson);
+                        if (sessionState.qualtricsResponseId && sessionState.status === 'submitted') {
+                            recent.push({
+                                participantId: sessionState.participantId,
+                                responseId: sessionState.qualtricsResponseId,
+                                submittedAt: sessionState.submittedAt,
+                                sessionId: sessionState.sessionId
+                            });
+                        }
+                    } catch (e) {
+                        // Skip invalid entries
+                    }
+                }
+                
+                // Remove duplicates (same responseId)
+                const unique = recent.filter((item, index, self) =>
+                    index === self.findIndex(t => t.responseId === item.responseId)
+                );
+                
+                // Sort by submittedAt (newest first)
+                unique.sort((a, b) => {
+                    const dateA = new Date(a.submittedAt || 0);
+                    const dateB = new Date(b.submittedAt || 0);
+                    return dateB - dateA;
+                });
+                
+                if (unique.length === 0) {
+                    recentEl.innerHTML = '<div style="color: #666; padding: 10px;">No recent submissions found in localStorage</div>';
+                    return;
+                }
+                
+                let html = '<div class="response-section"><h3>📋 Recent Submissions</h3>';
+                unique.forEach(item => {
+                    const date = item.submittedAt ? new Date(item.submittedAt).toLocaleString() : 'Unknown';
+                    html += `
+                        <div class="response-item" style="cursor: pointer; margin-bottom: 8px;" onclick="document.getElementById('responseId').value='${item.responseId}'; fetchResponse();">
+                            <strong>${item.responseId}</strong><br>
+                            <small>Participant: ${item.participantId} | Submitted: ${date}</small>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                
+                recentEl.innerHTML = html;
+                
+            } catch (error) {
+                recentEl.innerHTML = `<div class="error">Error loading recent responses: ${error.message}</div>`;
+            }
+        };
+        
+        // Auto-load recent responses on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            loadRecentResponses();
+        });
+    </script>
+</body>
+</html>
+

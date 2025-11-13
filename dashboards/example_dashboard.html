@@ -1,0 +1,2468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌋 Volcano Audio - Project Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Hero Section */
+        .hero {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero .subtitle {
+            color: #666;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+
+        .hero .meta {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-testing { background: #fff3cd; color: #856404; }
+        .badge-blocked { background: #f8d7da; color: #721c24; }
+
+        /* AI Context Generator */
+        .ai-context-box {
+            background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+            padding: 25px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            border-left: 5px solid #9c27b0;
+        }
+
+        .ai-context-box h3 {
+            color: #7b1fa2;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .context-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ce93d8;
+            border-radius: 8px;
+            font-size: 1em;
+            margin-bottom: 15px;
+            background: white;
+        }
+
+        .generated-context {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #ce93d8;
+            margin-bottom: 15px;
+            min-height: 100px;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .generated-context.readonly {
+            background: #fafafa;
+            color: #666;
+        }
+
+        .update-ai-btn {
+            background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .update-ai-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(156, 39, 176, 0.3);
+        }
+
+        .ai-checkbox {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            background: #f3e5f5;
+            border-radius: 4px;
+            border: 2px solid #ce93d8;
+            position: relative;
+            transition: all 0.2s;
+        }
+        
+        .ai-checkbox:hover {
+            background: #e1bee7;
+        }
+        
+        .ai-checkbox:checked {
+            background: #9c27b0;
+            border-color: #9c27b0;
+        }
+        
+        .ai-checkbox:checked::after {
+            content: '✓';
+            position: absolute;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        /* Panel Sections */
+        .panel {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .panel h2 {
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .panel h2:hover {
+            color: #667eea;
+        }
+
+        .collapse-icon {
+            font-size: 0.7em;
+            transition: transform 0.3s;
+        }
+
+        .collapsed .collapse-icon {
+            transform: rotate(-90deg);
+        }
+
+        .panel-content {
+            max-height: 3000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .collapsed .panel-content {
+            max-height: 0;
+        }
+
+        /* Current Sprint */
+        .sprint-goal {
+            background: linear-gradient(135deg, #e8f4f8 0%, #f5e8f8 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border-left: 5px solid #667eea;
+        }
+
+        .sprint-goal h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .task-list {
+            list-style: none;
+            padding-left: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .task-card {
+            padding: 12px;
+            border-radius: 8px;
+            background: #f9f9f9;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: move;
+            transition: all 0.2s;
+            border-left: 3px solid #ccc;
+        }
+
+        .task-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transform: translateX(3px);
+        }
+
+        .task-card.dragging {
+            opacity: 0.5;
+        }
+
+        .task-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .task-drag-handle {
+            font-size: 1.2em;
+            color: #999;
+            cursor: move;
+            flex-shrink: 0;
+        }
+
+        .task-text {
+            flex: 1;
+            outline: none;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
+            color: #333;
+        }
+
+        .task-text:hover {
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .task-text:focus {
+            background: white;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+        }
+
+        .task-actions {
+            display: flex;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+
+        .task-btn {
+            background: none;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .task-copy-btn {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .task-copy-btn:hover {
+            background: #e1bee7;
+        }
+
+        .task-archive-btn {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .task-archive-btn:hover {
+            background: #bbdefb;
+        }
+
+        .task-delete-btn {
+            background: #ffb3ba;
+            color: #721c24;
+        }
+
+        .task-delete-btn:hover {
+            background: #ff8a8f;
+        }
+
+        .task-activate-btn {
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
+
+        .task-activate-btn:hover {
+            background: #a5d6a7;
+        }
+
+        .task-complete {
+            background: #d4edda !important;
+            border-left-color: #28a745;
+        }
+
+        .task-complete .task-text {
+            color: #155724;
+            text-decoration: line-through;
+            opacity: 0.8;
+        }
+
+        .task-progress {
+            background: #fff3cd !important;
+            border-left-color: #ffc107;
+        }
+
+        .task-planned {
+            background: #e9ecef !important;
+            border-left-color: #6c757d;
+        }
+
+        .archive-toggle {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #e3f2fd;
+            color: #1976d2;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .archive-toggle:hover {
+            background: #bbdefb;
+            transform: translateY(-1px);
+        }
+
+        .archive-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            border: 2px dashed #ccc;
+        }
+
+        .archive-section h4 {
+            margin-bottom: 15px;
+            color: #666;
+        }
+
+        /* Component Cards */
+        .component-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .component-card {
+            background: #f9f9f9;
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid #ccc;
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+        }
+
+        .component-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+        }
+
+        .card-working { border-left-color: #28a745; }
+        .card-progress { border-left-color: #ffc107; }
+        .card-planned { border-left-color: #6c757d; }
+        .card-blocked { border-left-color: #dc3545; }
+
+        .component-card h3 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .component-card .status-indicator {
+            font-size: 0.85em;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+
+        .status-working { background: #d4edda; color: #155724; }
+        .status-progress { background: #fff3cd; color: #856404; }
+        .status-planned { background: #e9ecef; color: #495057; }
+        .status-blocked { background: #f8d7da; color: #721c24; }
+
+        .component-card p {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 0.95em;
+            line-height: 1.5;
+        }
+
+        .component-card .details {
+            font-size: 0.85em;
+            color: #777;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        /* Buttons */
+        .actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .open-btn {
+            background: #28a745;
+            color: white;
+        }
+
+        .open-btn:hover {
+            background: #218838;
+        }
+
+        .jump-in-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .discuss-btn {
+            background: #dc3545;
+            color: white;
+        }
+
+        .discuss-btn:hover {
+            background: #c82333;
+        }
+
+        .hint {
+            font-size: 0.8em;
+            color: #999;
+            font-style: italic;
+        }
+
+        /* Quick Commands */
+        .command-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            position: relative;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #667eea;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            cursor: pointer;
+        }
+
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+
+        /* Documentation Cards */
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .doc-card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 10px;
+            border-top: 3px solid #667eea;
+            transition: transform 0.2s;
+            position: relative;
+        }
+
+        .doc-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .doc-card h4 {
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .doc-card a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .doc-card a:hover {
+            text-decoration: underline;
+        }
+
+        .doc-status {
+            font-size: 0.85em;
+            margin-top: 8px;
+            color: #666;
+        }
+
+        /* Captain's Logs */
+        .log-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-left: 3px solid #6c757d;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-item:hover {
+            background: #e9ecef;
+            border-left-color: #007bff;
+            transform: translateX(2px);
+        }
+
+        .log-item.today {
+            background: #d4edda;
+            border-left-color: #28a745;
+            font-weight: 600;
+        }
+
+        .log-item.today::after {
+            content: "📍 Today";
+            font-size: 0.85em;
+            color: #28a745;
+            font-weight: 500;
+        }
+
+        /* Open Questions */
+        .questions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .question-card {
+            background: #fffbf0;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #ffc107;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: move;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .question-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateX(5px);
+        }
+
+        .question-card.dragging {
+            opacity: 0.5;
+        }
+
+        .drag-handle {
+            font-size: 1.2em;
+            color: #999;
+            cursor: move;
+        }
+
+        .question-text {
+            flex: 1;
+            color: #333;
+            outline: none;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .question-text:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .question-text:focus {
+            background: white;
+            box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.5);
+        }
+
+        .delete-question {
+            background: #ffb3ba;
+            color: #721c24;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background 0.2s;
+        }
+
+        .delete-question:hover {
+            background: #ff8a8f;
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #28a745;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Test Files Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background: #f5f5f5;
+            font-weight: 600;
+            color: #555;
+        }
+
+        tr:hover {
+            background: #f9f9f9;
+        }
+
+        .file-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .file-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: white;
+            font-size: 0.9em;
+        }
+
+        footer a {
+            color: white;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Hero Section -->
+        <div class="hero">
+            <h1>🌋 Volcano Audio Streaming Platform</h1>
+            <p class="subtitle">Real-time seismic data audification for volcano monitoring</p>
+            <div class="meta">
+                <div class="meta-item">
+                    <span>📅 Last Updated:</span>
+                    <strong id="lastUpdated">2025-10-25</strong>
+                </div>
+                <div class="meta-item">
+                    <span>Status:</span>
+                    <span class="status-badge badge-active">🟢 Active Development</span>
+                </div>
+                <div class="meta-item">
+                    <span>Sprint:</span>
+                    <strong>IndexedDB Cache</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Context Generator -->
+        <div class="ai-context-box">
+            <h3>🤖 AI Context Generator</h3>
+            
+            <label style="font-weight: 600; color: #7b1fa2; margin-bottom: 5px; display: block;">Context:</label>
+            <textarea id="aiContextInput" class="context-input" rows="2" 
+                      placeholder="E.g., I'm building a real-time seismic audification streaming platform..."
+                      oninput="updateAIContext()"></textarea>
+            
+            <label style="font-weight: 600; color: #7b1fa2; margin-bottom: 5px; display: block;">Summary:</label>
+            <div id="aiSummary" class="generated-context readonly">
+                <em style="color: #999;">Select tasks and questions below using the purple checkboxes (🤖) to populate this section.</em>
+            </div>
+            
+            <button class="update-ai-btn" onclick="copyAIContext()">
+                🤖 Copy AI Context
+            </button>
+        </div>
+
+        <!-- Current Sprint Section -->
+        <div class="panel">
+            <h2 onclick="togglePanel(this)">
+                <span class="collapse-icon">▼</span>
+                🎯 Current Sprint: Browser Cache Layer
+            </h2>
+            <div class="panel-content">
+                <div class="sprint-goal">
+                    <h3>Goal: Implement IndexedDB local caching for instant replay</h3>
+                    <p>Store seismic segments in browser with temporal keys for sub-second range queries and seamless stitching.</p>
+                </div>
+                
+                <h3 style="margin-top: 20px; margin-bottom: 10px;">📋 Tasks</h3>
+                <div style="margin-bottom: 10px;">
+                    <input type="text" id="newTaskInput" placeholder="Add a task and press Enter..." 
+                           style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1em;"
+                           onkeypress="handleTaskInput(event)">
+                </div>
+                <div id="tasksList" class="task-list"></div>
+                
+                <button class="archive-toggle" onclick="toggleArchive()">
+                    📁 <span id="archiveToggleText">Show Archive</span> (<span id="archiveCount">0</span>)
+                </button>
+                
+                <div id="archiveSection" class="archive-section" style="display: none;">
+                    <h4>📦 Archived Tasks</h4>
+                    <div id="archivedTasksList" class="task-list"></div>
+                </div>
+
+                <h3 style="margin-top: 20px; margin-bottom: 10px;">❓ Open Questions</h3>
+                <div style="margin-bottom: 10px;">
+                    <input type="text" id="newQuestionInput" placeholder="Type a question and press Enter..." 
+                           style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1em;"
+                           onkeypress="handleQuestionInput(event)">
+                </div>
+                <div id="questionsList" class="questions-list"></div>
+
+                <h3 style="margin-top: 20px; margin-bottom: 10px;">🚧 Blockers</h3>
+                <p style="color: #666;">None currently - all dependencies resolved!</p>
+            </div>
+        </div>
+
+        <!-- To Do Section -->
+        <div class="panel">
+            <h2 onclick="togglePanel(this)">
+                <span class="collapse-icon">▼</span>
+                ✅ To Do
+            </h2>
+            <div class="panel-content">
+                <div style="margin-bottom: 15px;">
+                    <input type="text" id="newTodoInput" placeholder="Add a to-do and press Enter..." 
+                           style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1em;"
+                           onkeypress="handleTodoInput(event)">
+                </div>
+                <div id="todosList" class="task-list"></div>
+                
+                <button class="archive-toggle" onclick="toggleTodoArchive()">
+                    📁 <span id="todoArchiveToggleText">Show Archive</span> (<span id="todoArchiveCount">0</span>)
+                </button>
+                
+                <div id="todoArchiveSection" class="archive-section" style="display: none;">
+                    <h4>📦 Archived To-Dos</h4>
+                    <div id="archivedTodosList" class="task-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architecture Status Section -->
+        <div class="panel">
+            <h2 onclick="togglePanel(this)">
+                <span class="collapse-icon">▼</span>
+                🏗️ Architecture Components
+            </h2>
+            <div class="panel-content">
+                <div class="component-grid">
+                    <!-- In Progress First (Top Left) -->
+                    <div class="component-card card-progress">
+                        <h3>
+                            🗄️ IndexedDB Cache
+                            <span class="status-indicator status-progress">🟡 In Progress</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('IndexedDB Cache - Browser-side cache with temporal keys')" title="Include in AI context">
+                        </h3>
+                        <p>Browser-side cache with temporal keys for instant replay and offline support</p>
+                        <div class="actions">
+                            <button class="jump-in-btn" onclick="copyPrompt('indexeddb_cache')">
+                                🚀 Jump In
+                            </button>
+                            <span class="hint">Start working on this</span>
+                        </div>
+                        <div class="details">
+                            <strong>Next Step:</strong> Implement temporal range queries<br>
+                            <strong>Test File:</strong> test_indexeddb_cache.html (to be created)
+                        </div>
+                    </div>
+
+                    <div class="component-card card-progress">
+                        <h3>
+                            🎚️ Waveform Scrubbing
+                            <span class="status-indicator status-progress">🟡 Partial</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('Waveform Scrubbing - Interactive waveform with click-to-seek')" title="Include in AI context">
+                        </h3>
+                        <p>Interactive waveform with click-to-seek and visual playback indicator</p>
+                        <div class="actions">
+                            <button class="open-btn" onclick="openFile('test_streaming.html')">
+                                ▶️ Open Demo
+                            </button>
+                            <button class="jump-in-btn" onclick="copyPrompt('waveform_scrubbing')">
+                                🚀 Improve
+                            </button>
+                        </div>
+                        <div class="details">
+                            <strong>Working:</strong> Click-to-seek in test_streaming.html<br>
+                            <strong>TODO:</strong> Integrate with AudioWorklet version
+                        </div>
+                    </div>
+
+                    <!-- Working Components -->
+                    <div class="component-card card-working">
+                        <h3>
+                            💾 R2 Storage
+                            <span class="status-indicator status-working">🟢 Working</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('R2 Storage - Cloudflare R2 with Zstd-3 compression')" title="Include in AI context">
+                        </h3>
+                        <p>Cloudflare R2 storing compressed int32 seismic data with Zstd-3 compression</p>
+                        <div class="actions">
+                            <button class="jump-in-btn" onclick="copyPrompt('r2_storage')">
+                                🔍 View Details
+                            </button>
+                            <span class="hint">Copies context prompt</span>
+                        </div>
+                        <div class="details">
+                            <strong>Compression:</strong> Zstd-3 (10% better than Gzip)<br>
+                            <strong>Format:</strong> int32 raw samples + JSON metadata
+                        </div>
+                    </div>
+
+                    <!-- Audio Pipeline -->
+                    <div class="component-card card-working">
+                        <h3>
+                            🎵 AudioWorklet
+                            <span class="status-indicator status-working">🟢 Working</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('AudioWorklet - Gapless playback in separate thread')" title="Include in AI context">
+                        </h3>
+                        <p>High-performance audio processing in separate thread with gapless playback</p>
+                        <div class="actions">
+                            <button class="open-btn" onclick="openFile('test_audioworklet.html')">
+                                ▶️ Open Demo
+                            </button>
+                        </div>
+                        <div class="details">
+                            <strong>Features:</strong> Loop, speed control, fade in/out<br>
+                            <strong>File:</strong> test_audioworklet.html
+                        </div>
+                    </div>
+
+                    <div class="component-card card-working">
+                        <h3>
+                            📊 Progressive Streaming
+                            <span class="status-indicator status-working">🟢 Working</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('Progressive Streaming - Chunked delivery with deframing')" title="Include in AI context">
+                        </h3>
+                        <p>Chunked delivery with deframing in Web Worker for smooth playback</p>
+                        <div class="actions">
+                            <button class="open-btn" onclick="openFile('test_audioworklet.html')">
+                                ▶️ Open Demo
+                            </button>
+                        </div>
+                        <div class="details">
+                            <strong>TTFA:</strong> ~200ms to first audio<br>
+                            <strong>Buffer:</strong> 2s pre-load, seamless streaming
+                        </div>
+                    </div>
+
+                    <!-- Backend -->
+                    <div class="component-card card-working">
+                        <h3>
+                            🖥️ Flask Backend
+                            <span class="status-indicator status-working">🟢 Working</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('Flask Backend - Local development server for IRIS fetching')" title="Include in AI context">
+                        </h3>
+                        <p>Local development server for IRIS fetching and caching</p>
+                        <div class="actions">
+                            <button class="jump-in-btn" onclick="copyPrompt('backend_setup')">
+                                🛠️ Setup Guide
+                            </button>
+                        </div>
+                        <div class="details">
+                            <strong>Port:</strong> http://localhost:5001<br>
+                            <strong>Endpoints:</strong> /api/stations, /api/local-cache-test
+                        </div>
+                    </div>
+
+                    <div class="component-card card-working">
+                        <h3>
+                            ☁️ Cloudflare Worker
+                            <span class="status-indicator status-working">🟢 Working</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('Cloudflare Worker - Edge computing for real-time decompression')" title="Include in AI context">
+                        </h3>
+                        <p>Edge computing for real-time decompression and streaming</p>
+                        <div class="actions">
+                            <button class="open-btn" onclick="openFile('test_audioworklet.html')">
+                                ▶️ Test Worker
+                            </button>
+                        </div>
+                        <div class="details">
+                            <strong>URL:</strong> volcano-audio-test...workers.dev<br>
+                            <strong>Features:</strong> Gzip/Zstd decompression, highpass filter
+                        </div>
+                    </div>
+
+                    <div class="component-card card-blocked">
+                        <h3>
+                            🔬 IIR Filtering (JS)
+                            <span class="status-indicator status-blocked">🔴 Blocked</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('IIR Filtering - Full instrument response removal (BLOCKED: numerical instability)')" title="Include in AI context">
+                        </h3>
+                        <p>Full instrument response removal via cascaded biquad filters</p>
+                        <div class="actions">
+                            <button class="discuss-btn" onclick="copyPrompt('iir_filtering')">
+                                💬 Discuss Blocker
+                            </button>
+                        </div>
+                        <div class="details">
+                            <strong>Issue:</strong> Numerical instability in JS implementation<br>
+                            <strong>Workaround:</strong> Using detrend + lowpass for now
+                        </div>
+                    </div>
+
+                    <!-- Visualization -->
+                    <div class="component-card card-working">
+                        <h3>
+                            📈 Spectrogram
+                            <span class="status-indicator status-working">🟢 Working</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('Spectrogram - Real-time frequency visualization')" title="Include in AI context">
+                        </h3>
+                        <p>Real-time frequency visualization with scrolling display</p>
+                        <div class="actions">
+                            <button class="open-btn" onclick="openFile('test_streaming.html')">
+                                ▶️ Open Demo
+                            </button>
+                        </div>
+                        <div class="details">
+                            <strong>File:</strong> test_streaming.html<br>
+                            <strong>Features:</strong> Color-coded frequency bands
+                        </div>
+                    </div>
+
+                    <div class="component-card card-planned">
+                        <h3>
+                            🌐 Multi-Channel Support
+                            <span class="status-indicator status-planned">⬜ Planned</span>
+                            <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                                   onchange="toggleComponentAI('Multi-Channel Support - Play multiple seismic channels simultaneously (PLANNED)')" title="Include in AI context">
+                        </h3>
+                        <p>3-component seismic data (HHE, HHN, HHZ) with spatial audio</p>
+                        <div class="actions">
+                            <button class="jump-in-btn" onclick="copyPrompt('multichannel')">
+                                🚀 Jump In
+                            </button>
+                        </div>
+                        <div class="details">
+                            <strong>Goal:</strong> Stereo/spatial audio from 3 channels<br>
+                            <strong>Test File:</strong> To be created
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Files Section -->
+        <div class="panel">
+            <h2 onclick="togglePanel(this)">
+                <span class="collapse-icon">▼</span>
+                🧪 Test Files Catalog
+            </h2>
+            <div class="panel-content">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">AI</th>
+                            <th>File</th>
+                            <th>Purpose</th>
+                            <th>Status</th>
+                            <th>Best For</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="text-align: center;">
+                                <input type="checkbox" class="ai-checkbox" onchange="toggleTestAI('test_audioworklet.html - AudioWorklet implementation')">
+                            </td>
+                            <td><a href="test_audioworklet.html" class="file-link">test_audioworklet.html</a></td>
+                            <td>AudioWorklet implementation with loop & speed</td>
+                            <td><span class="status-indicator status-working">🟢 Working</span></td>
+                            <td>Testing worklet, real-time processing</td>
+                            <td>
+                                <button class="open-btn" onclick="openFile('test_audioworklet.html')">▶️ Open</button>
+                                <button class="secondary" onclick="copyCommand(this, 'python tests/test_zstd_levels_int32.py')" style="margin-left: 5px; padding: 8px 14px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                                    🧪 Test
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: center;">
+                                <input type="checkbox" class="ai-checkbox" onchange="toggleTestAI('test_streaming.html - Full-featured player with seeking & viz')">
+                            </td>
+                            <td><a href="test_streaming.html" class="file-link">test_streaming.html</a></td>
+                            <td>Full-featured player with seeking & viz</td>
+                            <td><span class="status-indicator status-working">🟢 Working</span></td>
+                            <td>Waveform scrubbing, spectrogram, multiple pipelines</td>
+                            <td><button class="open-btn" onclick="openFile('test_streaming.html')">▶️ Open</button></td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: center;">
+                                <input type="checkbox" class="ai-checkbox" onchange="toggleTestAI('test_chunk_scheduling.html - Chunk scheduling experiments')">
+                            </td>
+                            <td><a href="test_chunk_scheduling.html" class="file-link">test_chunk_scheduling.html</a></td>
+                            <td>Chunk scheduling experiments</td>
+                            <td><span class="status-indicator status-planned">⚪ Archived</span></td>
+                            <td>Historical reference - superseded by worklet</td>
+                            <td><button class="open-btn" onclick="openFile('test_chunk_scheduling.html')">▶️ Open</button></td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: center;">
+                                <input type="checkbox" class="ai-checkbox" onchange="toggleTestAI('seismic-processor.js - Standalone AudioWorklet processor')">
+                            </td>
+                            <td><a href="seismic-processor.js" class="file-link">seismic-processor.js</a></td>
+                            <td>Standalone AudioWorklet processor</td>
+                            <td><span class="status-indicator status-working">🟢 Working</span></td>
+                            <td>Include in other HTML files</td>
+                            <td><button class="open-btn" onclick="openFile('seismic-processor.js')">📄 View</button></td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: center;">
+                                <input type="checkbox" class="ai-checkbox" onchange="toggleTestAI('test_indexeddb_cache.html - IndexedDB caching demonstration (TO BE CREATED)')">
+                            </td>
+                            <td>test_indexeddb_cache.html</td>
+                            <td>IndexedDB caching demonstration</td>
+                            <td><span class="status-indicator status-progress">🟡 In Progress</span></td>
+                            <td>Testing local cache, range queries, stitching</td>
+                            <td><button class="jump-in-btn" onclick="copyPrompt('create_indexeddb_test')">🚀 Create</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Quick Commands Section -->
+        <div class="panel">
+            <h2 onclick="togglePanel(this)">
+                <span class="collapse-icon">▼</span>
+                ⚡ Quick Commands
+            </h2>
+            <div class="panel-content">
+                <h3>
+                    🚀 Start Local Backend
+                    <input type="checkbox" class="ai-checkbox" style="margin-left: 10px; vertical-align: middle;" 
+                           onchange="toggleCommandAI('Start local backend: cd backend && source venv/bin/activate && python main.py')" title="Include in AI context">
+                </h3>
+                <div class="command-block">
+cd backend && source venv/bin/activate && python main.py
+# Runs on: http://localhost:5001
+                    <button class="copy-btn" onclick="copyCommand(this)">📋 Copy</button>
+                </div>
+
+                <h3 style="margin-top: 20px;">🌐 Open Test Files</h3>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+                    <button class="open-btn" onclick="openFile('test_audioworklet.html')">AudioWorklet</button>
+                    <button class="open-btn" onclick="openFile('test_streaming.html')">Streaming</button>
+                    <button class="open-btn" onclick="openFile('test_chunk_scheduling.html')">Chunk Scheduling</button>
+                </div>
+
+                <p style="margin-top: 20px; padding: 15px; background: #f0f4ff; border-radius: 8px; color: #666;">
+                    💡 <strong>Need more setup help?</strong> Check <a href="docs/DEV_GUIDE.md" style="color: #667eea;">DEV_GUIDE.md</a> for:
+                    <br>• Installing dependencies
+                    <br>• R2 upload with credentials
+                    <br>• Running tests
+                    <br>• Debugging tips
+                </p>
+            </div>
+        </div>
+
+        <!-- Documentation Map Section -->
+        <div class="panel">
+            <h2 onclick="togglePanel(this)">
+                <span class="collapse-icon">▼</span>
+                📚 Documentation Map
+            </h2>
+            <div class="panel-content">
+                <div class="doc-grid">
+                    <div class="doc-card" style="position: relative;">
+                        <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                               onchange="toggleDocAI('streaming_architecture.md - Two-layer caching, progressive loading, Web Audio API')" title="Include in AI context">
+                        <h4>📖 Streaming Architecture</h4>
+                        <a href="docs/planning/streaming_architecture.md">streaming_architecture.md</a>
+                        <div class="doc-status">🟢 Updated - Complete technical overview</div>
+                        <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                            Two-layer caching, progressive loading, Web Audio API, Spotify comparison
+                        </p>
+                    </div>
+
+                    <div class="doc-card" style="position: relative;">
+                        <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                               onchange="toggleDocAI('cache_architecture.md - File hierarchy, Zstd vs Gzip benchmarks')" title="Include in AI context">
+                        <h4>🗂️ Cache Design</h4>
+                        <a href="docs/cache_architecture.md">cache_architecture.md</a>
+                        <div class="doc-status">🟢 Active - Latest test results</div>
+                        <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                            File hierarchy, Zstd vs Gzip benchmarks, compression levels
+                        </p>
+                    </div>
+
+                    <div class="doc-card" style="position: relative;">
+                        <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                               onchange="toggleDocAI('FULL_cache_architecture_w_LOCAL_DB.md - IndexedDB temporal keys, no local compression')" title="Include in AI context">
+                        <h4>🧠 IndexedDB Plan</h4>
+                        <a href="docs/FULL_cache_architecture_w_LOCAL_DB .md">FULL_cache_architecture_w_LOCAL_DB.md</a>
+                        <div class="doc-status">🟡 Design phase - Browser cache strategy</div>
+                        <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                            Temporal keys, no-compression rationale, R2 Worker orchestration
+                        </p>
+                    </div>
+
+                    <div class="doc-card" style="position: relative;">
+                        <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                               onchange="toggleDocAI('captains_logs/ - Daily progress notes, decisions, bugs encountered')" title="Include in AI context">
+                        <h4>📝 Captain's Logs</h4>
+                        <a href="docs/captains_logs/">captains_logs/</a>
+                        <div class="doc-status">🟢 Updated daily - Latest: 2025-10-25</div>
+                        <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                            Daily progress notes, decisions, bugs encountered
+                        </p>
+                    </div>
+
+                    <div class="doc-card" style="position: relative;">
+                        <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                               onchange="toggleDocAI('DEV_GUIDE.md - How-to for common tasks, setup, debugging')" title="Include in AI context">
+                        <h4>📚 Dev Guide</h4>
+                        <a href="docs/DEV_GUIDE.md">DEV_GUIDE.md</a>
+                        <div class="doc-status">⬜ To be created</div>
+                        <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                            How-to for common tasks, setup, debugging
+                        </p>
+                    </div>
+
+                    <div class="doc-card" style="position: relative;">
+                        <input type="checkbox" class="ai-checkbox" style="position: absolute; top: 15px; right: 15px;" 
+                               onchange="toggleDocAI('PROJECT_STATUS.md - Current sprint, what works, quick start')" title="Include in AI context">
+                        <h4>📋 Project Status</h4>
+                        <a href="PROJECT_STATUS.md">PROJECT_STATUS.md</a>
+                        <div class="doc-status">⬜ To be created</div>
+                        <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                            Current sprint, what works, quick start
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Captain's Logs Section -->
+        <div class="panel collapsed">
+            <h2 onclick="togglePanel(this)">
+                <span class="collapse-icon">▼</span>
+                📓 Captain's Logs
+            </h2>
+            <div class="panel-content">
+                <div id="logs-setup" style="display: none; margin-bottom: 15px;">
+                    <button class="action-button" onclick="openLogsFolder()" style="width: 100%;">
+                        📁 Grant Access to Captain's Logs
+                    </button>
+                    <p style="font-size: 0.9em; color: #666; margin-top: 8px; text-align: center;">
+                        One-time setup: Navigate to <code>docs/captains_logs</code> folder
+                    </p>
+                </div>
+                <div id="logs-list" style="display: none;">
+                    <div style="margin-bottom: 10px; padding: 10px; background: #e3f2fd; border-radius: 6px; font-size: 0.9em;">
+                        <strong>Today:</strong> <span id="today-date"></span>
+                    </div>
+                    <div id="logs-items"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">Copied to clipboard!</div>
+
+    <!-- Footer -->
+    <footer>
+        <p>
+            <a href="README.md">README</a> | 
+            <a href="docs/DEV_GUIDE.md">Dev Guide</a> | 
+            <a href="PROJECT_STATUS.md">Project Status</a> | 
+            Last synced: <span id="footerDate">2025-10-25</span>
+        </p>
+    </footer>
+
+    <script>
+        // Prompt templates for "Jump In" buttons
+        const prompts = {
+            'indexeddb_cache': `Hey! I'm looking at dashboard.html and I'm ready to continue working on IndexedDB Browser Cache!
+
+Let's create or update tests/test_indexeddb_cache.html and implement:
+- IndexedDB wrapper class with temporal key structure
+- Range query logic (find all segments overlapping a time range)
+- Gap detection (identify missing segments)
+- Segment stitching (combine multiple ArrayBuffers into one)
+
+This will demonstrate that we can store and retrieve seismic data with sub-second precision for instant replay.`,
+
+            'waveform_scrubbing': `Hey! I'm looking at dashboard.html and I see waveform scrubbing is partially working in test_streaming.html!
+
+Let's integrate the click-to-seek functionality into test_audioworklet.html so we have:
+- Interactive waveform with click/drag to seek
+- Visual playback indicator that moves in real-time
+- Smooth seeking with crossfade to prevent clicks
+- Integration with AudioWorklet for seamless playback
+
+The goal is to combine the best of both test files.`,
+
+            'iir_filtering': `Hey! I'm looking at dashboard.html and I see IIR Filtering (JavaScript) is blocked due to numerical instability.
+
+Let's discuss:
+1. The double-warping issue and multi-stage response parsing we encountered
+2. Whether we should pre-compute IIR coefficients in Python and store in R2
+3. If the current workaround (detrend + lowpass + normalize) is "good enough" for now
+4. Long-term strategy for full instrument response removal
+
+Context: Python implementation works perfectly, but JavaScript has numerical issues.`,
+
+            'multichannel': `Hey! I'm looking at dashboard.html and I'm ready to start working on Multi-Channel Support!
+
+Let's spin up a new file at tests/test_multichannel.html and demonstrate that we're able to:
+- Fetch 3-component seismic data (HHE, HHN, HHZ)
+- Process all three channels simultaneously
+- Create spatial audio using Web Audio API's PannerNode
+- Visualize all three channels with color coding
+
+This will enable richer volcano monitoring with directional information.`,
+
+            'create_indexeddb_test': `Hey! I'm looking at dashboard.html and I'm ready to create the IndexedDB cache test file!
+
+Let's spin up a new file at tests/test_indexeddb_cache.html that demonstrates:
+- Opening IndexedDB with proper schema
+- Storing seismic segments with temporal keys (/data/2025/10/HV/kilauea/.../2025-10-25-00-00-00_to_2025-10-25-00-10-00.bin)
+- Querying for overlapping time ranges
+- Detecting gaps in cached data
+- Stitching multiple segments together
+- Simple UI to test cache operations
+
+This will be our playground for developing the browser cache layer!`,
+
+            'backend_setup': `Hey! I'm looking at dashboard.html and I need help setting up the local backend!
+
+Can you walk me through:
+1. Creating/activating the Python virtual environment
+2. Installing dependencies from requirements.txt
+3. Starting the Flask server on localhost:5001
+4. Testing the /api/stations endpoint
+5. Any environment variables or config needed
+
+I want to get the backend running so I can test local caching and IRIS fetching.`,
+
+            'r2_storage': `Hey! I'm looking at dashboard.html and I want to understand our R2 storage architecture better.
+
+Can you explain:
+1. The file hierarchy we're using (/data/YEAR/MONTH/NETWORK/VOLCANO/...)
+2. Why we chose Zstd-3 compression (vs Gzip or Blosc)
+3. How the Cloudflare Worker fetches and decompresses data
+4. The cost implications of our current storage strategy
+5. How to manually upload files to R2 for testing
+
+Context: R2 storage is working, I just want to understand it better for optimization.`
+        };
+
+        // Toggle panel collapse
+        function togglePanel(header) {
+            const panel = header.parentElement;
+            panel.classList.toggle('collapsed');
+        }
+
+        // Copy prompt to clipboard
+        function copyPrompt(promptKey) {
+            const prompt = prompts[promptKey];
+            if (!prompt) {
+                showToast('Prompt not found!');
+                return;
+            }
+
+            navigator.clipboard.writeText(prompt).then(() => {
+                showToast('Prompt copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showToast('Failed to copy!');
+            });
+        }
+
+        // ===== AI CONTEXT TRACKING =====
+        let selectedComponents = new Set();
+        let selectedTests = new Set();
+        let selectedCommands = new Set();
+        let selectedDocs = new Set();
+
+        function toggleComponentAI(name) {
+            if (selectedComponents.has(name)) {
+                selectedComponents.delete(name);
+            } else {
+                selectedComponents.add(name);
+            }
+            updateAIContext();
+            showToast(selectedComponents.has(name) ? 'Added to AI context 🤖' : 'Removed from AI context');
+        }
+
+        function toggleTestAI(name) {
+            if (selectedTests.has(name)) {
+                selectedTests.delete(name);
+            } else {
+                selectedTests.add(name);
+            }
+            updateAIContext();
+        }
+
+        function toggleCommandAI(name) {
+            if (selectedCommands.has(name)) {
+                selectedCommands.delete(name);
+            } else {
+                selectedCommands.add(name);
+            }
+            updateAIContext();
+        }
+
+        function toggleDocAI(name) {
+            if (selectedDocs.has(name)) {
+                selectedDocs.delete(name);
+            } else {
+                selectedDocs.add(name);
+            }
+            updateAIContext();
+        }
+
+        // ===== TO-DO MANAGEMENT WITH LOCALSTORAGE =====
+        
+        let todos = [];
+        let archivedTodos = [];
+
+        function loadTodos() {
+            const savedTodos = localStorage.getItem('volcano_audio_todos');
+            const savedArchivedTodos = localStorage.getItem('volcano_audio_archived_todos');
+            
+            if (savedTodos) {
+                todos = JSON.parse(savedTodos);
+            }
+            if (savedArchivedTodos) {
+                archivedTodos = JSON.parse(savedArchivedTodos);
+            }
+            
+            renderTodos();
+        }
+
+        function saveTodos() {
+            localStorage.setItem('volcano_audio_todos', JSON.stringify(todos));
+            localStorage.setItem('volcano_audio_archived_todos', JSON.stringify(archivedTodos));
+        }
+
+        function handleTodoInput(event) {
+            if (event.key === 'Enter') {
+                const input = document.getElementById('newTodoInput');
+                const text = input.value.trim();
+                
+                if (text) {
+                    todos.unshift({ text: text, completed: false, aiSelected: false }); // Add to top
+                    saveTodos();
+                    renderTodos();
+                    input.value = '';
+                }
+            }
+        }
+
+        function toggleTodoAI(index) {
+            if (todos[index].aiSelected === undefined) {
+                todos[index].aiSelected = false;
+            }
+            todos[index].aiSelected = !todos[index].aiSelected;
+            saveTodos();
+            updateAIContext();
+            showToast(todos[index].aiSelected ? 'Added to AI context 🤖' : 'Removed from AI context');
+        }
+
+        function renderTodos() {
+            const todosList = document.getElementById('todosList');
+            const archivedTodosList = document.getElementById('archivedTodosList');
+            
+            // Render active todos
+            todosList.innerHTML = '';
+            todos.forEach((todo, index) => {
+                // Initialize aiSelected if it doesn't exist
+                if (todo.aiSelected === undefined) {
+                    todo.aiSelected = false;
+                }
+                const card = document.createElement('div');
+                card.className = 'task-card';
+                if (todo.completed) card.classList.add('task-complete');
+                card.draggable = true;
+                card.dataset.index = index;
+                
+                card.innerHTML = `
+                    <input type="checkbox" class="task-checkbox" ${todo.completed ? 'checked' : ''} onchange="toggleTodo(${index})">
+                    <span class="task-drag-handle">☰</span>
+                    <span class="task-text" contenteditable="true">${todo.text}</span>
+                    <div class="task-actions">
+                        <input type="checkbox" class="ai-checkbox" ${todo.aiSelected ? 'checked' : ''} 
+                               onchange="toggleTodoAI(${index})" title="Include in AI context">
+                        <button class="task-btn task-copy-btn" onclick="copyTodoPrompt(${index})" title="Copy AI prompt">💬</button>
+                        <button class="task-btn task-archive-btn" onclick="archiveTodo(${index})" title="Archive">📁</button>
+                        <button class="task-btn task-delete-btn" onclick="deleteTodo(${index})" title="Delete">✕</button>
+                    </div>
+                `;
+                
+                // Drag and drop
+                card.addEventListener('dragstart', handleTodoDragStart);
+                card.addEventListener('dragover', handleTodoDragOver);
+                card.addEventListener('drop', handleTodoDrop);
+                card.addEventListener('dragend', handleTodoDragEnd);
+                
+                // Inline editing
+                const textSpan = card.querySelector('.task-text');
+                textSpan.addEventListener('blur', (e) => {
+                    updateTodo(index, e.target.textContent.trim());
+                });
+                textSpan.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.target.blur();
+                    }
+                    if (e.key === 'Escape') {
+                        e.target.textContent = todos[index].text;
+                        e.target.blur();
+                    }
+                });
+                
+                todosList.appendChild(card);
+            });
+            
+            // Render archived todos
+            archivedTodosList.innerHTML = '';
+            archivedTodos.forEach((todo, index) => {
+                const card = document.createElement('div');
+                card.className = 'task-card task-complete';
+                
+                card.innerHTML = `
+                    <span style="flex: 1;">${todo.text}</span>
+                    <div class="task-actions">
+                        <button class="task-btn task-activate-btn" onclick="activateTodo(${index})" title="Activate">↑</button>
+                        <button class="task-btn task-delete-btn" onclick="deleteArchivedTodo(${index})" title="Delete Permanently">✕</button>
+                    </div>
+                `;
+                
+                archivedTodosList.appendChild(card);
+            });
+            
+            updateTodoArchiveCount();
+        }
+
+        function toggleTodo(index) {
+            todos[index].completed = !todos[index].completed;
+            saveTodos();
+            renderTodos();
+            showToast(todos[index].completed ? 'To-do completed! 🎉' : 'To-do reopened');
+        }
+
+        function updateTodo(index, newText) {
+            if (newText && newText !== todos[index].text) {
+                todos[index].text = newText;
+                saveTodos();
+                showToast('To-do updated!');
+            }
+        }
+
+        function copyTodoPrompt(index) {
+            const todoText = todos[index].text;
+            const prompt = `Hey! I want to ${todoText}`;
+            
+            navigator.clipboard.writeText(prompt).then(() => {
+                showToast(`Task prompt copied: ${prompt}`);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showToast('Failed to copy!');
+            });
+        }
+
+        function archiveTodo(index) {
+            const todo = todos.splice(index, 1)[0];
+            archivedTodos.unshift(todo);
+            saveTodos();
+            renderTodos();
+            showToast('To-do archived! 📁');
+        }
+
+        function deleteTodo(index) {
+            todos.splice(index, 1);
+            saveTodos();
+            renderTodos();
+            showToast('To-do deleted!');
+        }
+
+        function activateTodo(index) {
+            const todo = archivedTodos.splice(index, 1)[0];
+            todos.unshift(todo);
+            saveTodos();
+            renderTodos();
+            showToast('To-do activated! ↑');
+        }
+
+        function deleteArchivedTodo(index) {
+            archivedTodos.splice(index, 1);
+            saveTodos();
+            renderTodos();
+            showToast('Archived to-do permanently deleted!');
+        }
+
+        function toggleTodoArchive() {
+            const archiveSection = document.getElementById('todoArchiveSection');
+            const toggleText = document.getElementById('todoArchiveToggleText');
+            
+            if (archiveSection.style.display === 'none') {
+                archiveSection.style.display = 'block';
+                toggleText.textContent = 'Hide Archive';
+            } else {
+                archiveSection.style.display = 'none';
+                toggleText.textContent = 'Show Archive';
+            }
+        }
+
+        function updateTodoArchiveCount() {
+            document.getElementById('todoArchiveCount').textContent = archivedTodos.length;
+        }
+
+        // Drag and drop for todos
+        let draggedTodoIndex = null;
+
+        function handleTodoDragStart(e) {
+            draggedTodoIndex = parseInt(e.target.dataset.index);
+            e.target.classList.add('dragging');
+        }
+
+        function handleTodoDragOver(e) {
+            e.preventDefault();
+        }
+
+        function handleTodoDrop(e) {
+            e.preventDefault();
+            const dropIndex = parseInt(e.target.closest('.task-card').dataset.index);
+            
+            if (draggedTodoIndex !== null && draggedTodoIndex !== dropIndex) {
+                const draggedItem = todos.splice(draggedTodoIndex, 1)[0];
+                todos.splice(dropIndex, 0, draggedItem);
+                saveTodos();
+                renderTodos();
+            }
+        }
+
+        function handleTodoDragEnd(e) {
+            e.target.classList.remove('dragging');
+            draggedTodoIndex = null;
+        }
+
+        // ===== CAPTAIN'S LOGS =====
+        let logsDirectoryHandle = null;
+
+        async function storeDirectoryHandle(handle) {
+            const db = await openLogsDB();
+            const tx = db.transaction('handles', 'readwrite');
+            const store = tx.objectStore('handles');
+            store.put(handle, 'logsDirectory');
+            
+            return new Promise((resolve, reject) => {
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        async function getStoredDirectoryHandle() {
+            try {
+                const db = await openLogsDB();
+                const tx = db.transaction('handles', 'readonly');
+                const store = tx.objectStore('handles');
+                
+                const handle = await new Promise((resolve, reject) => {
+                    const request = store.get('logsDirectory');
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                
+                if (!handle) {
+                    console.log('No stored handle found');
+                    return null;
+                }
+                
+                // Check if we still have permission
+                const permission = await handle.queryPermission({ mode: 'readwrite' });
+                if (permission === 'granted') {
+                    return handle;
+                }
+                
+                // Try to request permission again
+                const newPermission = await handle.requestPermission({ mode: 'readwrite' });
+                if (newPermission === 'granted') {
+                    return handle;
+                }
+                
+                console.log('Permission denied');
+                return null;
+            } catch (e) {
+                console.log('Error getting stored handle:', e);
+                return null;
+            }
+        }
+
+        function openLogsDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('CaptainLogsDB', 1);
+                request.onupgradeneeded = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains('handles')) {
+                        db.createObjectStore('handles');
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function openLogsFolder() {
+            if (!window.showDirectoryPicker) {
+                const message = `⚠️ File System Access API not available in Brave!
+                
+To enable it:
+1. Go to brave://flags
+2. Search for "File System Access API"
+3. Enable it
+4. Restart Brave
+
+OR just use Chrome/Edge for this feature.`;
+                
+                if (confirm(message + '\n\nWould you like to see a list of logs to open manually?')) {
+                    showManualLogsList();
+                }
+                return;
+            }
+
+            try {
+                logsDirectoryHandle = await window.showDirectoryPicker({
+                    mode: 'readwrite'
+                });
+                await storeDirectoryHandle(logsDirectoryHandle);
+                await loadLogs();
+                showToast('Captain\'s Logs folder connected! 📓');
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error('Error opening directory:', err);
+                    showToast('Failed to open folder');
+                }
+            }
+        }
+
+        function showManualLogsList() {
+            const logs = [
+                'captains_log_2025-10-25.md',
+                'captains_log_2025-10-24.md',
+                'captains_log_2025-10-23.md',
+                'captains_log_2025-10-22.md',
+                'captains_log_2025-10-21.md',
+                'captains_log_2025-10-18.md',
+                'captains_log_2025-06-07.md',
+                'captains_log_2025-06-05.md'
+            ];
+
+            const today = new Date().toISOString().split('T')[0];
+            const todayFilename = `captains_log_${today}.md`;
+            
+            document.getElementById('today-date').textContent = today;
+            document.getElementById('logs-list').style.display = 'block';
+            
+            const logsItems = document.getElementById('logs-items');
+            logsItems.innerHTML = `
+                <div style="padding: 15px; background: #fff3cd; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
+                    <strong>📝 Manual Mode</strong>
+                    <p style="margin-top: 8px; font-size: 0.9em;">Click a log to open it in Cursor/VS Code for editing.</p>
+                </div>
+            ` + logs.map(log => {
+                const date = log.replace('captains_log_', '').replace('.md', '');
+                const isToday = log === todayFilename;
+                const path = `docs/captains_logs/${log}`;
+                
+                return `
+                    <div class="log-item ${isToday ? 'today' : ''}" onclick="openInIDE('${path}')">
+                        <span>${date}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openInIDE(path) {
+            // Open in Cursor/VS Code
+            const fullPath = '/Users/robertalexander/GitHub/volcano-audio/' + path;
+            window.location.href = `vscode://file${fullPath}`;
+        }
+
+        async function initLogs() {
+            // Try to load from stored permission
+            logsDirectoryHandle = await getStoredDirectoryHandle();
+            
+            if (logsDirectoryHandle) {
+                // Already have permission, load logs
+                await loadLogs();
+            } else {
+                // First time, show setup button
+                document.getElementById('logs-setup').style.display = 'block';
+            }
+        }
+
+        async function loadLogs() {
+            if (!logsDirectoryHandle) return;
+
+            const logs = [];
+            for await (const entry of logsDirectoryHandle.values()) {
+                if (entry.kind === 'file' && entry.name.endsWith('.md') && entry.name.startsWith('captains_log_')) {
+                    logs.push(entry.name);
+                }
+            }
+
+            logs.sort().reverse();
+
+            const today = new Date().toISOString().split('T')[0];
+            const todayFilename = `captains_log_${today}.md`;
+            
+            document.getElementById('today-date').textContent = today;
+            document.getElementById('logs-setup').style.display = 'none';
+            document.getElementById('logs-list').style.display = 'block';
+            
+            const logsItems = document.getElementById('logs-items');
+            logsItems.innerHTML = logs.map(log => {
+                const date = log.replace('captains_log_', '').replace('.md', '');
+                const isToday = log === todayFilename;
+                return `
+                    <div class="log-item ${isToday ? 'today' : ''}" onclick="openLog('${log}')">
+                        <span>${date}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openLog(filename) {
+            localStorage.setItem('currentLogFilename', filename);
+            window.open('view_log.html', '_blank');
+        }
+
+        // Copy command to clipboard
+        function copyCommand(button) {
+            const commandBlock = button.parentElement;
+            const command = commandBlock.textContent
+                .replace('📋 Copy', '')
+                .trim();
+
+            navigator.clipboard.writeText(command).then(() => {
+                showToast('Command copied!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showToast('Failed to copy!');
+            });
+        }
+
+        // Open file in new tab
+        function openFile(filename) {
+            window.open(filename, '_blank');
+        }
+
+        // Show toast notification
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        // Set dates on load
+        window.addEventListener('DOMContentLoaded', () => {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('lastUpdated').textContent = today;
+            document.getElementById('footerDate').textContent = today;
+            
+            // Load open questions, tasks, and todos from localStorage
+            loadQuestions();
+            loadTasks();
+            loadTodos();
+            loadAIContext();
+            initLogs();
+        });
+
+        // ===== TASK MANAGEMENT WITH LOCALSTORAGE =====
+        
+        let tasks = [];
+        let archivedTasks = [];
+
+        function loadTasks() {
+            const savedTasks = localStorage.getItem('volcano_audio_tasks');
+            const savedArchived = localStorage.getItem('volcano_audio_archived_tasks');
+            
+            if (savedTasks) {
+                tasks = JSON.parse(savedTasks);
+            } else {
+                // Default tasks
+                tasks = [
+                    { text: 'Design temporal key structure ({START}_to_{END}.bin)', completed: true },
+                    { text: 'Document no-compression rationale', completed: true },
+                    { text: 'Test Zstd vs Gzip for R2→Browser transfer', completed: true },
+                    { text: 'Implement IndexedDB wrapper class', completed: false },
+                    { text: 'Build temporal range query logic', completed: false },
+                    { text: 'Add gap detection & stitching', completed: false },
+                    { text: 'Integrate with test_audioworklet.html', completed: false },
+                    { text: 'Test cache eviction strategies', completed: false }
+                ];
+            }
+            
+            if (savedArchived) {
+                archivedTasks = JSON.parse(savedArchived);
+            } else {
+                archivedTasks = [];
+            }
+            
+            renderTasks();
+            updateArchiveCount();
+        }
+
+        function saveTasks() {
+            localStorage.setItem('volcano_audio_tasks', JSON.stringify(tasks));
+            localStorage.setItem('volcano_audio_archived_tasks', JSON.stringify(archivedTasks));
+        }
+
+        function handleTaskInput(event) {
+            if (event.key === 'Enter') {
+                const input = document.getElementById('newTaskInput');
+                const text = input.value.trim();
+                
+                if (text) {
+                    tasks.unshift({ text: text, completed: false, aiSelected: false }); // Add to top
+                    saveTasks();
+                    renderTasks();
+                    input.value = '';
+                }
+            }
+        }
+
+        function toggleTaskAI(index) {
+            tasks[index].aiSelected = !tasks[index].aiSelected;
+            saveTasks();
+            updateAIContext();
+            showToast(tasks[index].aiSelected ? 'Added to AI context 🤖' : 'Removed from AI context');
+        }
+
+        function updateAIContext() {
+            const customContext = document.getElementById('aiContextInput').value.trim();
+            const selectedTasks = tasks.filter(t => t.aiSelected);
+            const selectedTodos = todos.filter(t => t.aiSelected);
+            const selectedQuestions = questions.filter(q => q.aiSelected);
+            const summaryDiv = document.getElementById('aiSummary');
+            
+            const hasAnySelection = selectedTasks.length > 0 || selectedTodos.length > 0 || 
+                                   selectedQuestions.length > 0 || selectedComponents.size > 0 || 
+                                   selectedTests.size > 0 || selectedCommands.size > 0 || selectedDocs.size > 0;
+            
+            if (!hasAnySelection) {
+                summaryDiv.innerHTML = '<em style="color: #999;">Select tasks and questions below using the purple checkboxes (🤖) to populate this section.</em>';
+                return;
+            }
+            
+            let summary = '';
+            
+            // Add custom context if provided
+            if (customContext) {
+                summary = customContext + '\n\n';
+            }
+            
+            // Add tasks
+            if (selectedTasks.length > 0) {
+                summary += 'I want to:\n';
+                summary += selectedTasks.map(t => `• ${t.text}`).join('\n');
+                summary += '\n\n';
+            }
+            
+            // Add todos
+            if (selectedTodos.length > 0) {
+                summary += 'On my to-do list, I have:\n';
+                summary += selectedTodos.map(t => `• ${t.text}`).join('\n');
+                summary += '\n\n';
+            }
+            
+            // Add questions
+            if (selectedQuestions.length > 0) {
+                summary += 'My open questions are:\n';
+                summary += selectedQuestions.map(q => `• ${q.text}`).join('\n');
+                summary += '\n\n';
+            }
+            
+            // Add architectural components
+            if (selectedComponents.size > 0) {
+                summary += 'Some architectural components to consider are:\n';
+                summary += Array.from(selectedComponents).map(c => `• ${c}`).join('\n');
+                summary += '\n\n';
+            }
+            
+            // Add tests
+            if (selectedTests.size > 0) {
+                summary += 'These are the relevant tests:\n';
+                summary += Array.from(selectedTests).map(t => `• ${t}`).join('\n');
+                summary += '\n\n';
+            }
+            
+            // Add commands
+            if (selectedCommands.size > 0) {
+                summary += 'These are some helpful commands:\n';
+                summary += Array.from(selectedCommands).map(c => `• ${c}`).join('\n');
+                summary += '\n\n';
+            }
+            
+            // Add docs
+            if (selectedDocs.size > 0) {
+                summary += 'Take a look at these documents to get yourself oriented:\n';
+                summary += Array.from(selectedDocs).map(d => `• ${d}`).join('\n');
+            }
+            
+            summaryDiv.style.whiteSpace = 'pre-line';
+            summaryDiv.textContent = summary.trim();
+        }
+
+        function copyAIContext() {
+            const summary = document.getElementById('aiSummary').textContent;
+            
+            if (summary.includes('Select tasks and questions')) {
+                showToast('⚠️ Please select some tasks or questions first!');
+                return;
+            }
+            
+            navigator.clipboard.writeText(summary).then(() => {
+                showToast('AI Context copied! 🤖 Paste it to start your conversation.');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showToast('Failed to copy!');
+            });
+        }
+
+        // Load custom context from localStorage
+        function loadAIContext() {
+            const savedContext = localStorage.getItem('volcano_audio_ai_context');
+            if (savedContext) {
+                document.getElementById('aiContextInput').value = savedContext;
+            } else {
+                // Set default context
+                const defaultContext = "I'm building a real-time seismic audification streaming platform that converts earthquake data into audio for volcano monitoring.";
+                document.getElementById('aiContextInput').value = defaultContext;
+                localStorage.setItem('volcano_audio_ai_context', defaultContext);
+            }
+            updateAIContext();
+        }
+
+        // Save custom context
+        document.addEventListener('DOMContentLoaded', () => {
+            const contextInput = document.getElementById('aiContextInput');
+            if (contextInput) {
+                contextInput.addEventListener('input', () => {
+                    localStorage.setItem('volcano_audio_ai_context', contextInput.value);
+                });
+            }
+        });
+
+        function renderTasks() {
+            const container = document.getElementById('tasksList');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            tasks.forEach((task, index) => {
+                // Initialize aiSelected if it doesn't exist (for existing tasks)
+                if (task.aiSelected === undefined) {
+                    task.aiSelected = false;
+                }
+                const card = document.createElement('div');
+                card.className = 'task-card';
+                if (task.completed) card.classList.add('task-complete');
+                card.draggable = true;
+                card.dataset.index = index;
+                
+                card.innerHTML = `
+                    <input type="checkbox" class="task-checkbox" ${task.completed ? 'checked' : ''} onchange="toggleTask(${index})">
+                    <span class="task-drag-handle">☰</span>
+                    <span class="task-text" contenteditable="true">${task.text}</span>
+                    <div class="task-actions">
+                        <input type="checkbox" class="ai-checkbox" ${task.aiSelected ? 'checked' : ''} 
+                               onchange="toggleTaskAI(${index})" title="Include in AI context">
+                        <button class="task-btn task-copy-btn" onclick="copyTaskPrompt(${index})" title="Copy AI prompt">💬</button>
+                        <button class="task-btn task-archive-btn" onclick="archiveTask(${index})" title="Archive">📁</button>
+                        <button class="task-btn task-delete-btn" onclick="deleteTask(${index})" title="Delete">✕</button>
+                    </div>
+                `;
+                
+                // Drag and drop
+                card.addEventListener('dragstart', handleTaskDragStart);
+                card.addEventListener('dragover', handleTaskDragOver);
+                card.addEventListener('drop', handleTaskDrop);
+                card.addEventListener('dragend', handleTaskDragEnd);
+                
+                // Inline editing
+                const textSpan = card.querySelector('.task-text');
+                textSpan.addEventListener('blur', (e) => {
+                    updateTask(index, e.target.textContent.trim());
+                });
+                textSpan.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.target.blur();
+                    }
+                    if (e.key === 'Escape') {
+                        e.target.textContent = tasks[index].text;
+                        e.target.blur();
+                    }
+                });
+                
+                container.appendChild(card);
+            });
+            
+            // Render archived tasks
+            const archivedContainer = document.getElementById('archivedTasksList');
+            if (!archivedContainer) return;
+            
+            archivedContainer.innerHTML = '';
+            
+            if (archivedTasks.length === 0) {
+                archivedContainer.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">No archived tasks</p>';
+                return;
+            }
+            
+            archivedTasks.forEach((task, index) => {
+                const card = document.createElement('div');
+                card.className = 'task-card';
+                if (task.completed) card.classList.add('task-complete');
+                
+                card.innerHTML = `
+                    <input type="checkbox" class="task-checkbox" ${task.completed ? 'checked' : ''} disabled>
+                    <span class="task-text" style="opacity: 0.7;">${task.text}</span>
+                    <div class="task-actions">
+                        <button class="task-btn task-activate-btn" onclick="activateTask(${index})" title="Restore">↑ Activate</button>
+                        <button class="task-btn task-delete-btn" onclick="deleteArchivedTask(${index})" title="Delete Permanently">✕</button>
+                    </div>
+                `;
+                
+                archivedContainer.appendChild(card);
+            });
+        }
+
+        function toggleTask(index) {
+            tasks[index].completed = !tasks[index].completed;
+            saveTasks();
+            renderTasks();
+            showToast(tasks[index].completed ? 'Task completed! 🎉' : 'Task reopened');
+        }
+
+        function updateTask(index, newText) {
+            if (newText && newText !== tasks[index].text) {
+                tasks[index].text = newText;
+                saveTasks();
+                showToast('Task updated!');
+            }
+        }
+
+        function copyTaskPrompt(index) {
+            const taskText = tasks[index].text;
+            const prompt = `Hey! I want to ${taskText}`;
+            
+            navigator.clipboard.writeText(prompt).then(() => {
+                showToast(`Task prompt copied: ${prompt}`);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showToast('Failed to copy!');
+            });
+        }
+
+        function archiveTask(index) {
+            const task = tasks.splice(index, 1)[0];
+            archivedTasks.unshift(task); // Add to beginning of archive
+            saveTasks();
+            renderTasks();
+            updateArchiveCount();
+            showToast('Task archived! 📁');
+        }
+
+        function deleteTask(index) {
+            if (confirm('Delete this task permanently?')) {
+                tasks.splice(index, 1);
+                saveTasks();
+                renderTasks();
+                showToast('Task deleted!');
+            }
+        }
+
+        function activateTask(index) {
+            const task = archivedTasks.splice(index, 1)[0];
+            tasks.unshift(task); // Add to top of active tasks
+            saveTasks();
+            renderTasks();
+            updateArchiveCount();
+            showToast('Task restored! ↑');
+        }
+
+        function deleteArchivedTask(index) {
+            if (confirm('Delete this archived task permanently?')) {
+                archivedTasks.splice(index, 1);
+                saveTasks();
+                renderTasks();
+                updateArchiveCount();
+                showToast('Archived task deleted!');
+            }
+        }
+
+        function toggleArchive() {
+            const section = document.getElementById('archiveSection');
+            const toggleText = document.getElementById('archiveToggleText');
+            
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                toggleText.textContent = 'Hide Archive';
+            } else {
+                section.style.display = 'none';
+                toggleText.textContent = 'Show Archive';
+            }
+        }
+
+        function updateArchiveCount() {
+            const countElement = document.getElementById('archiveCount');
+            if (countElement) {
+                countElement.textContent = archivedTasks.length;
+            }
+        }
+
+        // Task drag and drop
+        let draggedTaskIndex = null;
+
+        function handleTaskDragStart(e) {
+            draggedTaskIndex = parseInt(e.target.dataset.index);
+            e.target.classList.add('dragging');
+        }
+
+        function handleTaskDragOver(e) {
+            e.preventDefault();
+        }
+
+        function handleTaskDrop(e) {
+            e.preventDefault();
+            const dropIndex = parseInt(e.target.closest('.task-card').dataset.index);
+            
+            if (draggedTaskIndex !== null && draggedTaskIndex !== dropIndex) {
+                const [removed] = tasks.splice(draggedTaskIndex, 1);
+                tasks.splice(dropIndex, 0, removed);
+                
+                saveTasks();
+                renderTasks();
+                showToast('Task reordered!');
+            }
+        }
+
+        function handleTaskDragEnd(e) {
+            e.target.classList.remove('dragging');
+            draggedTaskIndex = null;
+        }
+
+        // ===== OPEN QUESTIONS MANAGEMENT WITH LOCALSTORAGE =====
+        
+        let questions = [];
+
+        function loadQuestions() {
+            const saved = localStorage.getItem('volcano_audio_questions');
+            if (saved) {
+                questions = JSON.parse(saved);
+                // Convert old string format to new object format
+                questions = questions.map(q => {
+                    if (typeof q === 'string') {
+                        return { text: q, aiSelected: false };
+                    }
+                    return q;
+                });
+            } else {
+                // Default questions
+                questions = [
+                    { text: 'What metadata goes in the JSON file alongside .blosc data?', aiSelected: false },
+                    { text: 'Timestamps: Send full time array or sparse timestamps (every 1s/10s)?', aiSelected: false },
+                    { text: 'Should we use Web Locks API for cross-tab coordination?', aiSelected: false },
+                    { text: 'How to handle sample rate mismatches between segments?', aiSelected: false }
+                ];
+            }
+            renderQuestions();
+        }
+
+        function saveQuestions() {
+            localStorage.setItem('volcano_audio_questions', JSON.stringify(questions));
+        }
+
+        function renderQuestions() {
+            const container = document.getElementById('questionsList');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            questions.forEach((question, index) => {
+                const card = document.createElement('div');
+                card.className = 'question-card';
+                card.draggable = true;
+                card.dataset.index = index;
+                
+                card.innerHTML = `
+                    <span class="drag-handle">☰</span>
+                    <span class="question-text" contenteditable="true" data-index="${index}">${question.text || question}</span>
+                    <input type="checkbox" class="ai-checkbox" ${question.aiSelected ? 'checked' : ''} 
+                           onchange="toggleQuestionAI(${index})" title="Include in AI context" style="margin-right: 8px;">
+                    <button class="delete-question" onclick="deleteQuestion(${index})">✕</button>
+                `;
+                
+                // Drag and drop handlers
+                card.addEventListener('dragstart', handleDragStart);
+                card.addEventListener('dragover', handleDragOver);
+                card.addEventListener('drop', handleDrop);
+                card.addEventListener('dragend', handleDragEnd);
+                
+                // Inline editing handler
+                const textSpan = card.querySelector('.question-text');
+                textSpan.addEventListener('blur', (e) => {
+                    updateQuestion(index, e.target.textContent.trim());
+                });
+                textSpan.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.target.blur(); // Trigger save
+                    }
+                    if (e.key === 'Escape') {
+                        const questionText = typeof questions[index] === 'string' ? questions[index] : questions[index].text;
+                        e.target.textContent = questionText; // Revert
+                        e.target.blur();
+                    }
+                });
+                
+                container.appendChild(card);
+            });
+        }
+
+        function handleQuestionInput(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const input = document.getElementById('newQuestionInput');
+                const text = input.value.trim();
+                
+                if (text) {
+                    questions.unshift({ text: text, aiSelected: false }); // Add to top
+                    saveQuestions();
+                    renderQuestions();
+                    input.value = '';
+                    showToast('Question added!');
+                }
+            }
+        }
+
+        function toggleQuestionAI(index) {
+            // Handle both old string format and new object format
+            if (typeof questions[index] === 'string') {
+                questions[index] = { text: questions[index], aiSelected: false };
+            }
+            questions[index].aiSelected = !questions[index].aiSelected;
+            saveQuestions();
+            updateAIContext();
+            showToast(questions[index].aiSelected ? 'Added to AI context 🤖' : 'Removed from AI context');
+        }
+
+        function updateQuestion(index, newText) {
+            const oldText = typeof questions[index] === 'string' ? questions[index] : questions[index].text;
+            if (newText && newText !== oldText) {
+                if (typeof questions[index] === 'string') {
+                    questions[index] = { text: newText, aiSelected: false };
+                } else {
+                    questions[index].text = newText;
+                }
+                saveQuestions();
+                showToast('Question updated!');
+            } else if (!newText) {
+                // Empty text - delete the question
+                deleteQuestion(index);
+            }
+        }
+
+        function deleteQuestion(index) {
+            questions.splice(index, 1);
+            saveQuestions();
+            renderQuestions();
+            showToast('Question deleted!');
+        }
+
+        // Drag and drop functionality
+        let draggedIndex = null;
+
+        function handleDragStart(e) {
+            draggedIndex = parseInt(e.target.dataset.index);
+            e.target.classList.add('dragging');
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const dropIndex = parseInt(e.target.closest('.question-card').dataset.index);
+            
+            if (draggedIndex !== null && draggedIndex !== dropIndex) {
+                // Reorder array
+                const [removed] = questions.splice(draggedIndex, 1);
+                questions.splice(dropIndex, 0, removed);
+                
+                saveQuestions();
+                renderQuestions();
+                showToast('Question reordered!');
+            }
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+            draggedIndex = null;
+        }
+
+        // Enhanced copy command with optional direct text
+        function copyCommand(button, directText = null) {
+            let command;
+            
+            if (directText) {
+                command = directText;
+            } else {
+                const commandBlock = button.parentElement;
+                command = commandBlock.textContent
+                    .replace('📋 Copy', '')
+                    .trim();
+            }
+
+            navigator.clipboard.writeText(command).then(() => {
+                showToast('Copied!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showToast('Failed to copy!');
+            });
+        }
+    </script>
+</body>
+</html>
+

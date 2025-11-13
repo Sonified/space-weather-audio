@@ -1,0 +1,24 @@
+{
+  "participantId": "R_5xRUHrX8m8iB6m5",
+  "qualtricsResponseId": "R_5uodFgCJq6qQIvA",
+  "sessionId": "session_1763058530990_byx6fprfd",
+  "submittedAt": "2025-11-13T18:29:36.026Z",
+  "submissionTimestamp": "2025-11-13T18:29:36.026Z",
+  "surveyData": {
+    "hasPre": true,
+    "hasPost": true,
+    "hasAwesf": true,
+    "preSubmittedAt": "2025-11-13T18:29:28.055Z",
+    "postSubmittedAt": "2025-11-13T18:29:34.345Z",
+    "awesfSubmittedAt": "2025-11-13T18:29:31.404Z"
+  },
+  "qualtricsApiResponse": {
+    "result": {
+      "responseId": "R_5uodFgCJq6qQIvA"
+    },
+    "meta": {
+      "requestId": "3385f70d-bf1d-4766-b44d-54777c74314e",
+      "httpStatus": "200 - OK"
+    }
+  }
+}

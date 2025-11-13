@@ -47,10 +47,243 @@ const QUESTION_IDS = {
 };
 
 /**
- * Submit a survey response to Qualtrics API
+ * Submit combined survey responses to Qualtrics API (all surveys in one submission)
+ * @param {Object} combinedResponses - Object containing pre, post, and awesf survey data
+ * @param {string} participantId - Optional participant ID from URL parameter
+ * @returns {Promise<Object>} - Response from Qualtrics API
+ */
+export async function submitCombinedSurveyResponse(combinedResponses, participantId = null) {
+    const url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/responses`;
+    
+    // Build the values object for Qualtrics API
+    const values = {};
+    
+    // Helper function to convert string values to numbers for Qualtrics API
+    const toNumber = (value) => {
+        if (value === null || value === undefined) return null;
+        const num = parseInt(value, 10);
+        return isNaN(num) ? null : num;
+    };
+    
+    // Combine all survey types into one submission
+    // Pre-session PANAS
+    if (combinedResponses.pre) {
+        const pre = combinedResponses.pre;
+        console.log('📋 Including Pre-survey data in submission:', pre);
+        if (pre.calm) values[QUESTION_IDS.PRE_CALM] = toNumber(pre.calm);
+        if (pre.energized) values[QUESTION_IDS.PRE_ENERGIZED] = toNumber(pre.energized);
+        if (pre.connected) values[QUESTION_IDS.PRE_CONNECTED] = toNumber(pre.connected);
+        if (pre.nervous) values[QUESTION_IDS.PRE_NERVOUS] = toNumber(pre.nervous);
+        if (pre.focused) values[QUESTION_IDS.PRE_FOCUSED] = toNumber(pre.focused);
+        if (pre.wonder) values[QUESTION_IDS.PRE_WONDER] = toNumber(pre.wonder);
+        console.log(`✅ Pre-survey values added: ${Object.keys(values).filter(k => k.startsWith('QID5')).length} fields`);
+    } else {
+        console.warn('⚠️ Pre-survey data not found in combinedResponses - skipping pre-survey submission');
+    }
+    
+    // Post-session PANAS
+    if (combinedResponses.post) {
+        const post = combinedResponses.post;
+        if (post.calm) values[QUESTION_IDS.POST_CALM] = toNumber(post.calm);
+        if (post.energized) values[QUESTION_IDS.POST_ENERGIZED] = toNumber(post.energized);
+        if (post.connected) values[QUESTION_IDS.POST_CONNECTED] = toNumber(post.connected);
+        if (post.nervous) values[QUESTION_IDS.POST_NERVOUS] = toNumber(post.nervous);
+        if (post.focused) values[QUESTION_IDS.POST_FOCUSED] = toNumber(post.focused);
+        if (post.wonder) values[QUESTION_IDS.POST_WONDER] = toNumber(post.wonder);
+    }
+    
+    // AWE-SF Scale
+    if (combinedResponses.awesf) {
+        const awesf = combinedResponses.awesf;
+        if (awesf.slowDown) values[QUESTION_IDS.AWE_SLOW_DOWN] = toNumber(awesf.slowDown);
+        if (awesf.reducedSelf) values[QUESTION_IDS.AWE_REDUCED_SELF] = toNumber(awesf.reducedSelf);
+        if (awesf.chills) values[QUESTION_IDS.AWE_CHILLS] = toNumber(awesf.chills);
+        if (awesf.oneness) values[QUESTION_IDS.AWE_ONENESS] = toNumber(awesf.oneness);
+        if (awesf.grand) values[QUESTION_IDS.AWE_GRAND] = toNumber(awesf.grand);
+        if (awesf.diminishedSelf) values[QUESTION_IDS.AWE_DIMINISHED_SELF] = toNumber(awesf.diminishedSelf);
+        if (awesf.timeSlowing) values[QUESTION_IDS.AWE_TIME_SLOWING] = toNumber(awesf.timeSlowing);
+        if (awesf.awesfConnected) values[QUESTION_IDS.AWE_CONNECTED] = toNumber(awesf.awesfConnected);
+        if (awesf.small) values[QUESTION_IDS.AWE_SMALL] = toNumber(awesf.small);
+        if (awesf.vastness) values[QUESTION_IDS.AWE_VASTNESS] = toNumber(awesf.vastness);
+        if (awesf.challenged) values[QUESTION_IDS.AWE_CHALLENGED] = toNumber(awesf.challenged);
+        if (awesf.selfShrink) values[QUESTION_IDS.AWE_SELF_SHRINK] = toNumber(awesf.selfShrink);
+    }
+    
+    // Build the request payload
+    const payload = {
+        values: values
+    };
+    
+    // Initialize embedded data object
+    const embeddedData = {};
+    
+    // Add participant ID as embedded data if provided
+    if (participantId) {
+        embeddedData.ParticipantID = participantId;
+    }
+    
+    // Add timing data as embedded data (more reliable than text entry field)
+    // Embedded data fields are returned by the API, text entry fields often are not
+    if (combinedResponses.jsonDump) {
+        const jsonDumpString = JSON.stringify(combinedResponses.jsonDump);
+        embeddedData.SessionTracking = jsonDumpString;
+        console.log('📋 SessionTracking being sent to Qualtrics as embedded data:', {
+            fieldName: 'SessionTracking',
+            length: jsonDumpString.length,
+            preview: jsonDumpString.substring(0, 200) + '...'
+        });
+        
+        // Also keep QID11 for backwards compatibility (if it exists in survey)
+        // But embedded data is the primary method now
+        // TODO: Remove QID11 once embedded data fields are confirmed working
+        values[QUESTION_IDS.JSON_DUMP] = jsonDumpString;
+    } else {
+        console.warn('⚠️ No JSON dump provided in combinedResponses');
+    }
+    
+    // Add interface interaction data as embedded data (future use)
+    // This will store all JSON data about participant interactions with the interface
+    if (combinedResponses.jsonData) {
+        const jsonDataString = JSON.stringify(combinedResponses.jsonData);
+        embeddedData.json_data = jsonDataString;
+        console.log('📋 json_data being sent to Qualtrics as embedded data:', {
+            fieldName: 'json_data',
+            length: jsonDataString.length,
+            preview: jsonDataString.substring(0, 200) + '...'
+        });
+    }
+    
+    // Add embedded data to payload if we have any
+    if (Object.keys(embeddedData).length > 0) {
+        payload.embeddedData = embeddedData;
+    }
+    
+    try {
+        console.log('📤 Submitting combined responses to Qualtrics API:', {
+            url,
+            participantId: participantId || 'none',
+            valuesCount: Object.keys(values).length,
+            hasPre: !!combinedResponses.pre,
+            hasPost: !!combinedResponses.post,
+            hasAwesf: !!combinedResponses.awesf,
+            hasJsonDump: !!values[QUESTION_IDS.JSON_DUMP],
+            allFieldIds: Object.keys(values)
+        });
+        
+        // Log the full payload to verify JSON dump is included
+        if (payload.values[QUESTION_IDS.JSON_DUMP]) {
+            console.log('📦 JSON Dump in payload:', {
+                fieldId: QUESTION_IDS.JSON_DUMP,
+                length: payload.values[QUESTION_IDS.JSON_DUMP].length,
+                preview: payload.values[QUESTION_IDS.JSON_DUMP].substring(0, 150) + '...'
+            });
+        } else {
+            console.warn('⚠️ JSON Dump NOT in payload values!');
+        }
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-API-TOKEN': QUALTRICS_CONFIG.API_TOKEN,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload),
+            mode: 'cors'
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Qualtrics API error: ${response.status} - ${errorText}`;
+            
+            // Try to parse error for better error messages
+            try {
+                const errorJson = JSON.parse(errorText);
+                if (errorJson.meta?.error?.errorMessage) {
+                    errorMessage = `Qualtrics API error: ${errorJson.meta.error.errorMessage}`;
+                }
+            } catch (e) {
+                // Use the original error message if parsing fails
+            }
+            
+            throw new Error(errorMessage);
+        }
+        
+        const result = await response.json();
+        console.log('✅ Qualtrics submission successful:', result);
+        
+        // Log the response ID if available
+        if (result.result && result.result.responseId) {
+            console.log('📋 Response ID:', result.result.responseId);
+        }
+        
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Error submitting to Qualtrics:', error);
+        throw error;
+    }
+}
+
+/**
+ * Retrieve a submitted survey response from Qualtrics API
+ * @param {string} responseId - The response ID from the submission
+ * @returns {Promise<Object>} - The response data from Qualtrics
+ */
+export async function getSurveyResponse(responseId) {
+    if (!responseId) {
+        throw new Error('Response ID is required');
+    }
+    
+    const url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/responses/${responseId}`;
+    
+    try {
+        console.log('📥 Retrieving response from Qualtrics API:', {
+            url,
+            responseId
+        });
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'X-API-TOKEN': QUALTRICS_CONFIG.API_TOKEN,
+                'Content-Type': 'application/json'
+            },
+            mode: 'cors'
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Qualtrics API error: ${response.status} - ${errorText}`;
+            
+            // Try to parse error for better error messages
+            try {
+                const errorJson = JSON.parse(errorText);
+                if (errorJson.meta?.error?.errorMessage) {
+                    errorMessage = `Qualtrics API error: ${errorJson.meta.error.errorMessage}`;
+                }
+            } catch (e) {
+                // Use the original error message if parsing fails
+            }
+            
+            throw new Error(errorMessage);
+        }
+        
+        const result = await response.json();
+        console.log('✅ Qualtrics response retrieved:', result);
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Error retrieving response from Qualtrics:', error);
+        throw error;
+    }
+}
+
+/**
+ * Submit a survey response to Qualtrics API (legacy function for single survey submission)
  * @param {Object} responseData - The survey response data
  * @param {string} participantId - Optional participant ID from URL parameter
  * @returns {Promise<Object>} - Response from Qualtrics API
+ * @deprecated Use submitCombinedSurveyResponse instead for proper Qualtrics API usage
  */
 export async function submitSurveyResponse(responseData, participantId = null) {
     const url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/responses`;
@@ -58,37 +291,44 @@ export async function submitSurveyResponse(responseData, participantId = null) {
     // Build the values object for Qualtrics API
     const values = {};
     
+    // Helper function to convert string values to numbers for Qualtrics API
+    const toNumber = (value) => {
+        if (value === null || value === undefined) return null;
+        const num = parseInt(value, 10);
+        return isNaN(num) ? null : num;
+    };
+    
     // Map survey data to Qualtrics question IDs
     if (responseData.surveyType === 'pre') {
-        // Pre-session PANAS
-        if (responseData.calm) values[QUESTION_IDS.PRE_CALM] = responseData.calm;
-        if (responseData.energized) values[QUESTION_IDS.PRE_ENERGIZED] = responseData.energized;
-        if (responseData.connected) values[QUESTION_IDS.PRE_CONNECTED] = responseData.connected;
-        if (responseData.nervous) values[QUESTION_IDS.PRE_NERVOUS] = responseData.nervous;
-        if (responseData.focused) values[QUESTION_IDS.PRE_FOCUSED] = responseData.focused;
-        if (responseData.wonder) values[QUESTION_IDS.PRE_WONDER] = responseData.wonder;
+        // Pre-session PANAS - convert strings to numbers
+        if (responseData.calm) values[QUESTION_IDS.PRE_CALM] = toNumber(responseData.calm);
+        if (responseData.energized) values[QUESTION_IDS.PRE_ENERGIZED] = toNumber(responseData.energized);
+        if (responseData.connected) values[QUESTION_IDS.PRE_CONNECTED] = toNumber(responseData.connected);
+        if (responseData.nervous) values[QUESTION_IDS.PRE_NERVOUS] = toNumber(responseData.nervous);
+        if (responseData.focused) values[QUESTION_IDS.PRE_FOCUSED] = toNumber(responseData.focused);
+        if (responseData.wonder) values[QUESTION_IDS.PRE_WONDER] = toNumber(responseData.wonder);
     } else if (responseData.surveyType === 'post') {
-        // Post-session PANAS
-        if (responseData.calm) values[QUESTION_IDS.POST_CALM] = responseData.calm;
-        if (responseData.energized) values[QUESTION_IDS.POST_ENERGIZED] = responseData.energized;
-        if (responseData.connected) values[QUESTION_IDS.POST_CONNECTED] = responseData.connected;
-        if (responseData.nervous) values[QUESTION_IDS.POST_NERVOUS] = responseData.nervous;
-        if (responseData.focused) values[QUESTION_IDS.POST_FOCUSED] = responseData.focused;
-        if (responseData.wonder) values[QUESTION_IDS.POST_WONDER] = responseData.wonder;
+        // Post-session PANAS - convert strings to numbers
+        if (responseData.calm) values[QUESTION_IDS.POST_CALM] = toNumber(responseData.calm);
+        if (responseData.energized) values[QUESTION_IDS.POST_ENERGIZED] = toNumber(responseData.energized);
+        if (responseData.connected) values[QUESTION_IDS.POST_CONNECTED] = toNumber(responseData.connected);
+        if (responseData.nervous) values[QUESTION_IDS.POST_NERVOUS] = toNumber(responseData.nervous);
+        if (responseData.focused) values[QUESTION_IDS.POST_FOCUSED] = toNumber(responseData.focused);
+        if (responseData.wonder) values[QUESTION_IDS.POST_WONDER] = toNumber(responseData.wonder);
     } else if (responseData.surveyType === 'awesf') {
-        // AWE-SF Scale
-        if (responseData.slowDown) values[QUESTION_IDS.AWE_SLOW_DOWN] = responseData.slowDown;
-        if (responseData.reducedSelf) values[QUESTION_IDS.AWE_REDUCED_SELF] = responseData.reducedSelf;
-        if (responseData.chills) values[QUESTION_IDS.AWE_CHILLS] = responseData.chills;
-        if (responseData.oneness) values[QUESTION_IDS.AWE_ONENESS] = responseData.oneness;
-        if (responseData.grand) values[QUESTION_IDS.AWE_GRAND] = responseData.grand;
-        if (responseData.diminishedSelf) values[QUESTION_IDS.AWE_DIMINISHED_SELF] = responseData.diminishedSelf;
-        if (responseData.timeSlowing) values[QUESTION_IDS.AWE_TIME_SLOWING] = responseData.timeSlowing;
-        if (responseData.awesfConnected) values[QUESTION_IDS.AWE_CONNECTED] = responseData.awesfConnected;
-        if (responseData.small) values[QUESTION_IDS.AWE_SMALL] = responseData.small;
-        if (responseData.vastness) values[QUESTION_IDS.AWE_VASTNESS] = responseData.vastness;
-        if (responseData.challenged) values[QUESTION_IDS.AWE_CHALLENGED] = responseData.challenged;
-        if (responseData.selfShrink) values[QUESTION_IDS.AWE_SELF_SHRINK] = responseData.selfShrink;
+        // AWE-SF Scale - convert strings to numbers
+        if (responseData.slowDown) values[QUESTION_IDS.AWE_SLOW_DOWN] = toNumber(responseData.slowDown);
+        if (responseData.reducedSelf) values[QUESTION_IDS.AWE_REDUCED_SELF] = toNumber(responseData.reducedSelf);
+        if (responseData.chills) values[QUESTION_IDS.AWE_CHILLS] = toNumber(responseData.chills);
+        if (responseData.oneness) values[QUESTION_IDS.AWE_ONENESS] = toNumber(responseData.oneness);
+        if (responseData.grand) values[QUESTION_IDS.AWE_GRAND] = toNumber(responseData.grand);
+        if (responseData.diminishedSelf) values[QUESTION_IDS.AWE_DIMINISHED_SELF] = toNumber(responseData.diminishedSelf);
+        if (responseData.timeSlowing) values[QUESTION_IDS.AWE_TIME_SLOWING] = toNumber(responseData.timeSlowing);
+        if (responseData.awesfConnected) values[QUESTION_IDS.AWE_CONNECTED] = toNumber(responseData.awesfConnected);
+        if (responseData.small) values[QUESTION_IDS.AWE_SMALL] = toNumber(responseData.small);
+        if (responseData.vastness) values[QUESTION_IDS.AWE_VASTNESS] = toNumber(responseData.vastness);
+        if (responseData.challenged) values[QUESTION_IDS.AWE_CHALLENGED] = toNumber(responseData.challenged);
+        if (responseData.selfShrink) values[QUESTION_IDS.AWE_SELF_SHRINK] = toNumber(responseData.selfShrink);
     }
     
     // Add JSON dump if provided (for event data)

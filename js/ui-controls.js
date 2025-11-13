@@ -7,7 +7,20 @@ import * as State from './audio-state.js';
 import { EMBEDDED_STATIONS } from './station-config.js';
 import { drawWaveform, changeWaveformFilter } from './waveform-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
-import { submitSurveyResponse, getParticipantId, storeParticipantId, getParticipantIdFromURL } from './qualtrics-api.js';
+import { submitCombinedSurveyResponse, getSurveyResponse, getParticipantId, storeParticipantId, getParticipantIdFromURL } from './qualtrics-api.js';
+import { 
+    saveSurveyResponse, 
+    getSessionResponses, 
+    getSessionState, 
+    isSessionComplete, 
+    getResponsesForSubmission, 
+    markSessionAsSubmitted,
+    getQualtricsResponseId,
+    exportResponseMetadata,
+    restoreSurveyResponses,
+    trackSurveyStart,
+    trackUserAction
+} from '../Qualtrics/participant-response-manager.js';
 import { isAdminMode } from './admin-mode.js';
 
 export function loadStations() {
@@ -18,6 +31,12 @@ export function loadStations() {
     // Save volcano selection to localStorage for persistence across sessions
     if (volcano) {
         localStorage.setItem('selectedVolcano', volcano);
+        
+        // Track volcano selection
+        const participantId = getParticipantId();
+        if (participantId) {
+            trackUserAction(participantId, 'volcano_selected', { volcano: volcano });
+        }
     }
     
     if (!EMBEDDED_STATIONS[volcano]) {
@@ -248,133 +267,265 @@ export async function purgeCloudflareCache() {
 export function setupModalEventListeners() {
     // Participant modal event listeners
     const participantModal = document.getElementById('participantModal');
-    const participantCloseBtn = participantModal.querySelector('.modal-close');
-    const participantSubmitBtn = participantModal.querySelector('.modal-submit');
-    const participantIdInput = document.getElementById('participantId');
-    
-    // Function to update button state based on input value
-    const updateParticipantSubmitButton = () => {
-        const hasValue = participantIdInput && participantIdInput.value.trim().length > 0;
+    if (!participantModal) {
+        console.error('❌ Participant modal not found in DOM');
+    } else {
+        const participantCloseBtn = participantModal.querySelector('.modal-close');
+        const participantSubmitBtn = participantModal.querySelector('.modal-submit');
+        const participantIdInput = document.getElementById('participantId');
+        
+        // Function to update button state based on input value
+        const updateParticipantSubmitButton = () => {
+            const hasValue = participantIdInput && participantIdInput.value.trim().length > 0;
+            if (participantSubmitBtn) {
+                participantSubmitBtn.disabled = !hasValue;
+            }
+        };
+        
+        // Listen for input changes to enable/disable submit button
+        if (participantIdInput) {
+            participantIdInput.addEventListener('input', updateParticipantSubmitButton);
+            participantIdInput.addEventListener('keyup', updateParticipantSubmitButton);
+        }
+        
+        // Don't allow closing by clicking outside - prevent overlay clicks
+        participantModal.addEventListener('click', (e) => {
+            // Only allow clicks on the modal content itself, not the overlay
+            if (e.target === participantModal) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
+        
+        if (participantCloseBtn) {
+            participantCloseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Don't allow closing via X button either - it's hidden anyway
+            });
+        }
+        
         if (participantSubmitBtn) {
-            participantSubmitBtn.disabled = !hasValue;
+            participantSubmitBtn.addEventListener('click', submitParticipantSetup);
         }
-    };
-    
-    // Listen for input changes to enable/disable submit button
-    if (participantIdInput) {
-        participantIdInput.addEventListener('input', updateParticipantSubmitButton);
-        participantIdInput.addEventListener('keyup', updateParticipantSubmitButton);
+        
+        // Initial button state check
+        updateParticipantSubmitButton();
     }
-    
-    // Don't allow closing by clicking outside - prevent overlay clicks
-    participantModal.addEventListener('click', (e) => {
-        // Only allow clicks on the modal content itself, not the overlay
-        if (e.target === participantModal) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        }
-    });
-    participantCloseBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // Don't allow closing via X button either - it's hidden anyway
-    });
-    participantSubmitBtn.addEventListener('click', submitParticipantSetup);
-    
-    // Initial button state check
-    updateParticipantSubmitButton();
     
     // Pre-Survey modal event listeners
     const preSurveyModal = document.getElementById('preSurveyModal');
-    const preSurveyCloseBtn = preSurveyModal.querySelector('.modal-close');
-    const preSurveySubmitBtn = preSurveyModal.querySelector('.modal-submit');
+    if (!preSurveyModal) {
+        console.error('❌ Pre-survey modal not found in DOM');
+    } else {
+        const preSurveyCloseBtn = preSurveyModal.querySelector('.modal-close');
+        const preSurveySubmitBtn = preSurveyModal.querySelector('.modal-submit');
     
-    // Function to check if all pre-survey questions are answered
-    const updatePreSurveySubmitButton = () => {
-        const allAnswered = 
-            document.querySelector('input[name="preCalm"]:checked') &&
-            document.querySelector('input[name="preEnergized"]:checked') &&
-            document.querySelector('input[name="preNervous"]:checked') &&
-            document.querySelector('input[name="preFocused"]:checked') &&
-            document.querySelector('input[name="preConnected"]:checked') &&
-            document.querySelector('input[name="preWonder"]:checked');
+        // Function to check if all pre-survey questions are answered
+        const updatePreSurveySubmitButton = () => {
+            const allAnswered = 
+                document.querySelector('input[name="preCalm"]:checked') &&
+                document.querySelector('input[name="preEnergized"]:checked') &&
+                document.querySelector('input[name="preNervous"]:checked') &&
+                document.querySelector('input[name="preFocused"]:checked') &&
+                document.querySelector('input[name="preConnected"]:checked') &&
+                document.querySelector('input[name="preWonder"]:checked');
+            
+            if (preSurveySubmitBtn) {
+                preSurveySubmitBtn.disabled = !allAnswered;
+            }
+        };
+        
+        // Listen for changes to enable/disable submit button
+        preSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', updatePreSurveySubmitButton);
+        });
+        
+        // Allow closing by clicking outside
+        preSurveyModal.addEventListener('click', (e) => {
+            if (e.target === preSurveyModal) {
+                closePreSurveyModal();
+            }
+        });
+        
+        if (preSurveyCloseBtn) {
+            preSurveyCloseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closePreSurveyModal();
+            });
+        }
         
         if (preSurveySubmitBtn) {
-            preSurveySubmitBtn.disabled = !allAnswered;
+            preSurveySubmitBtn.addEventListener('click', submitPreSurvey);
         }
-    };
-    
-    // Listen for changes to enable/disable submit button
-    preSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
-        radio.addEventListener('change', updatePreSurveySubmitButton);
-    });
-    
-    // Allow closing by clicking outside
-    preSurveyModal.addEventListener('click', (e) => {
-        if (e.target === preSurveyModal) {
-            closePreSurveyModal();
-        }
-    });
-    preSurveyCloseBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        closePreSurveyModal();
-    });
-    preSurveySubmitBtn.addEventListener('click', submitPreSurvey);
-    
-    // Initial button state check
-    updatePreSurveySubmitButton();
+        
+        // Initial button state check
+        updatePreSurveySubmitButton();
+        
+        // Quick-fill button handlers for pre-survey
+        preSurveyModal.querySelectorAll('.quick-fill-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const value = btn.getAttribute('data-value');
+                // Fill all pre-survey radio buttons with this value
+                preSurveyModal.querySelectorAll(`input[name^="pre"]`).forEach(radio => {
+                    if (radio.value === value) {
+                        radio.checked = true;
+                        radio.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+                // Visual feedback
+                btn.style.background = '#4CAF50';
+                btn.style.color = 'white';
+                setTimeout(() => {
+                    btn.style.background = 'white';
+                    btn.style.color = '#4CAF50';
+                }, 200);
+            });
+        });
+    }
     
     // Post-Survey modal event listeners
     const postSurveyModal = document.getElementById('postSurveyModal');
-    const postSurveyCloseBtn = postSurveyModal.querySelector('.modal-close');
-    const postSurveySubmitBtn = postSurveyModal.querySelector('.modal-submit');
+    if (!postSurveyModal) {
+        console.error('❌ Post-survey modal not found in DOM');
+    } else {
+        const postSurveyCloseBtn = postSurveyModal.querySelector('.modal-close');
+        const postSurveySubmitBtn = postSurveyModal.querySelector('.modal-submit');
     
-    // Function to check if all post-survey questions are answered
-    const updatePostSurveySubmitButton = () => {
-        const allAnswered = 
-            document.querySelector('input[name="postCalm"]:checked') &&
-            document.querySelector('input[name="postEnergized"]:checked') &&
-            document.querySelector('input[name="postNervous"]:checked') &&
-            document.querySelector('input[name="postFocused"]:checked') &&
-            document.querySelector('input[name="postConnected"]:checked') &&
-            document.querySelector('input[name="postWonder"]:checked');
+        // Function to check if all post-survey questions are answered
+        const updatePostSurveySubmitButton = () => {
+            const allAnswered = 
+                document.querySelector('input[name="postCalm"]:checked') &&
+                document.querySelector('input[name="postEnergized"]:checked') &&
+                document.querySelector('input[name="postNervous"]:checked') &&
+                document.querySelector('input[name="postFocused"]:checked') &&
+                document.querySelector('input[name="postConnected"]:checked') &&
+                document.querySelector('input[name="postWonder"]:checked');
+            
+            if (postSurveySubmitBtn) {
+                postSurveySubmitBtn.disabled = !allAnswered;
+            }
+        };
+        
+        // Listen for changes to enable/disable submit button
+        postSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', updatePostSurveySubmitButton);
+        });
+        
+        // Allow closing by clicking outside
+        postSurveyModal.addEventListener('click', (e) => {
+            if (e.target === postSurveyModal) {
+                closePostSurveyModal();
+            }
+        });
+        
+        if (postSurveyCloseBtn) {
+            postSurveyCloseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closePostSurveyModal();
+            });
+        }
         
         if (postSurveySubmitBtn) {
-            postSurveySubmitBtn.disabled = !allAnswered;
+            postSurveySubmitBtn.addEventListener('click', submitPostSurvey);
         }
-    };
-    
-    // Listen for changes to enable/disable submit button
-    postSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
-        radio.addEventListener('change', updatePostSurveySubmitButton);
-    });
-    
-    // Allow closing by clicking outside
-    postSurveyModal.addEventListener('click', (e) => {
-        if (e.target === postSurveyModal) {
-            closePostSurveyModal();
-        }
-    });
-    postSurveyCloseBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        closePostSurveyModal();
-    });
-    postSurveySubmitBtn.addEventListener('click', submitPostSurvey);
-    
-    // Initial button state check
-    updatePostSurveySubmitButton();
+        
+        // Initial button state check
+        updatePostSurveySubmitButton();
+        
+        // Quick-fill button handlers for post-survey
+        postSurveyModal.querySelectorAll('.quick-fill-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const value = btn.getAttribute('data-value');
+                // Fill all post-survey radio buttons with this value
+                postSurveyModal.querySelectorAll(`input[name^="post"]`).forEach(radio => {
+                    if (radio.value === value) {
+                        radio.checked = true;
+                        radio.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+                // Visual feedback
+                btn.style.background = '#4CAF50';
+                btn.style.color = 'white';
+                setTimeout(() => {
+                    btn.style.background = 'white';
+                    btn.style.color = '#4CAF50';
+                }, 200);
+            });
+        });
+    }
     
     // AWE-SF modal event listeners
     const awesfModal = document.getElementById('awesfModal');
-    const awesfCloseBtn = awesfModal.querySelector('.modal-close');
-    const awesfSubmitBtn = awesfModal.querySelector('.modal-submit');
-    
-    awesfModal.addEventListener('click', closeAwesfModal);
-    awesfCloseBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent bubble to overlay
-        closeAwesfModal(); // Close without event check
-    });
-    awesfSubmitBtn.addEventListener('click', submitAwesfSurvey);
+    if (!awesfModal) {
+        console.error('❌ AWE-SF modal not found in DOM');
+    } else {
+        const awesfCloseBtn = awesfModal.querySelector('.modal-close');
+        const awesfSubmitBtn = awesfModal.querySelector('.modal-submit');
+        
+        // Function to check if all AWE-SF questions are answered
+        const updateAwesfSubmitButton = () => {
+            const allAnswered = 
+                document.querySelector('input[name="slowDown"]:checked') &&
+                document.querySelector('input[name="reducedSelf"]:checked') &&
+                document.querySelector('input[name="chills"]:checked') &&
+                document.querySelector('input[name="oneness"]:checked') &&
+                document.querySelector('input[name="grand"]:checked') &&
+                document.querySelector('input[name="diminishedSelf"]:checked') &&
+                document.querySelector('input[name="timeSlowing"]:checked') &&
+                document.querySelector('input[name="awesfConnected"]:checked') &&
+                document.querySelector('input[name="small"]:checked') &&
+                document.querySelector('input[name="vastness"]:checked') &&
+                document.querySelector('input[name="challenged"]:checked') &&
+                document.querySelector('input[name="selfShrink"]:checked');
+            
+            if (awesfSubmitBtn) {
+                awesfSubmitBtn.disabled = !allAnswered;
+            }
+        };
+        
+        // Listen for changes to enable/disable submit button
+        awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', updateAwesfSubmitButton);
+        });
+        
+        awesfModal.addEventListener('click', closeAwesfModal);
+        
+        if (awesfCloseBtn) {
+            awesfCloseBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent bubble to overlay
+                closeAwesfModal(); // Close without event check
+            });
+        }
+        
+        if (awesfSubmitBtn) {
+            awesfSubmitBtn.addEventListener('click', submitAwesfSurvey);
+        }
+        
+        // Initial button state check
+        updateAwesfSubmitButton();
+        
+        // Quick-fill button handlers for AWE-SF
+        awesfModal.querySelectorAll('.quick-fill-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const value = btn.getAttribute('data-value');
+                // Fill all AWE-SF radio buttons with this value
+                awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+                    if (radio.value === value) {
+                        radio.checked = true;
+                        radio.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+                // Visual feedback
+                btn.style.background = '#4CAF50';
+                btn.style.color = 'white';
+                setTimeout(() => {
+                    btn.style.background = 'white';
+                    btn.style.color = '#4CAF50';
+                }, 200);
+            });
+        });
+    }
     
     console.log('📋 Modal event listeners attached');
 }
@@ -454,6 +605,12 @@ export function submitParticipantSetup() {
 export function openPreSurveyModal() {
     document.getElementById('preSurveyModal').classList.add('active');
     console.log('📊 Pre-Survey modal opened');
+    
+    // Track survey start
+    const participantId = getParticipantId();
+    if (participantId) {
+        trackSurveyStart(participantId, 'pre');
+    }
 }
 
 export function closePreSurveyModal(event) {
@@ -485,9 +642,14 @@ export async function submitPreSurvey() {
     // Get participant ID (from URL or localStorage)
     const participantId = getParticipantId();
     
+    if (!participantId) {
+        alert('Please set your participant ID before submitting surveys.');
+        return;
+    }
+    
     console.log('📊 Pre-Survey Data:');
     console.log('  - Survey Type: Pre-Survey');
-    console.log('  - Participant ID:', participantId || 'none');
+    console.log('  - Participant ID:', participantId);
     console.log('  - Calm:', surveyData.calm || 'not rated');
     console.log('  - Energized:', surveyData.energized || 'not rated');
     console.log('  - Connected to nature:', surveyData.connected || 'not rated');
@@ -498,15 +660,15 @@ export async function submitPreSurvey() {
     
     const statusEl = document.getElementById('status');
     
-    // Submit to Qualtrics API
     try {
+        // Save response locally instead of submitting immediately
         statusEl.className = 'status info';
-        statusEl.textContent = '📤 Submitting to Qualtrics...';
+        statusEl.textContent = '💾 Saving pre-survey response...';
         
-        await submitSurveyResponse(surveyData, participantId);
+        saveSurveyResponse(participantId, 'pre', surveyData);
         
         statusEl.className = 'status success';
-        statusEl.textContent = '✅ Pre-Survey submitted successfully!';
+        statusEl.textContent = '✅ Pre-Survey saved! Complete all surveys to submit.';
         
         closePreSurveyModal();
         
@@ -516,9 +678,9 @@ export async function submitPreSurvey() {
             });
         }, 300);
     } catch (error) {
-        console.error('Failed to submit pre-survey:', error);
+        console.error('Failed to save pre-survey:', error);
         statusEl.className = 'status error';
-        statusEl.textContent = `❌ Failed to submit: ${error.message}`;
+        statusEl.textContent = `❌ Failed to save: ${error.message}`;
         // Don't close modal on error so user can try again
     }
 }
@@ -526,6 +688,12 @@ export async function submitPreSurvey() {
 export function openPostSurveyModal() {
     document.getElementById('postSurveyModal').classList.add('active');
     console.log('📊 Post-Survey modal opened');
+    
+    // Track survey start
+    const participantId = getParticipantId();
+    if (participantId) {
+        trackSurveyStart(participantId, 'post');
+    }
 }
 
 export function closePostSurveyModal(event) {
@@ -557,9 +725,14 @@ export async function submitPostSurvey() {
     // Get participant ID (from URL or localStorage)
     const participantId = getParticipantId();
     
+    if (!participantId) {
+        alert('Please set your participant ID before submitting surveys.');
+        return;
+    }
+    
     console.log('📊 Post-Survey Data:');
     console.log('  - Survey Type: Post-Survey');
-    console.log('  - Participant ID:', participantId || 'none');
+    console.log('  - Participant ID:', participantId);
     console.log('  - Calm:', surveyData.calm || 'not rated');
     console.log('  - Energized:', surveyData.energized || 'not rated');
     console.log('  - Connected to nature:', surveyData.connected || 'not rated');
@@ -570,15 +743,15 @@ export async function submitPostSurvey() {
     
     const statusEl = document.getElementById('status');
     
-    // Submit to Qualtrics API
     try {
+        // Save response locally instead of submitting immediately
         statusEl.className = 'status info';
-        statusEl.textContent = '📤 Submitting to Qualtrics...';
+        statusEl.textContent = '💾 Saving post-survey response...';
         
-        await submitSurveyResponse(surveyData, participantId);
+        saveSurveyResponse(participantId, 'post', surveyData);
         
         statusEl.className = 'status success';
-        statusEl.textContent = '✅ Post-Survey submitted successfully!';
+        statusEl.textContent = '✅ Post-Survey saved! Complete all surveys to submit.';
         
         closePostSurveyModal();
         
@@ -588,9 +761,9 @@ export async function submitPostSurvey() {
             });
         }, 300);
     } catch (error) {
-        console.error('Failed to submit post-survey:', error);
+        console.error('Failed to save post-survey:', error);
         statusEl.className = 'status error';
-        statusEl.textContent = `❌ Failed to submit: ${error.message}`;
+        statusEl.textContent = `❌ Failed to save: ${error.message}`;
         // Don't close modal on error so user can try again
     }
 }
@@ -598,6 +771,12 @@ export async function submitPostSurvey() {
 export function openAwesfModal() {
     document.getElementById('awesfModal').classList.add('active');
     console.log('✨ AWE-SF modal opened');
+    
+    // Track survey start
+    const participantId = getParticipantId();
+    if (participantId) {
+        trackSurveyStart(participantId, 'awesf');
+    }
 }
 
 export function closeAwesfModal(event) {
@@ -625,18 +804,27 @@ export async function submitAwesfSurvey() {
         timestamp: new Date().toISOString()
     };
     
-    const hasRatings = Object.values(surveyData).some(v => v !== null && v !== surveyData.timestamp && v !== surveyData.surveyType);
+    // Verify all questions are answered
+    const allAnswered = surveyData.slowDown && surveyData.reducedSelf && surveyData.chills && 
+                        surveyData.oneness && surveyData.grand && surveyData.diminishedSelf &&
+                        surveyData.timeSlowing && surveyData.awesfConnected && surveyData.small &&
+                        surveyData.vastness && surveyData.challenged && surveyData.selfShrink;
     
-    if (!hasRatings) {
-        alert('Please rate at least one item before submitting.');
+    if (!allAnswered) {
+        alert('Please answer all questions before submitting.');
         return;
     }
     
     // Get participant ID (from URL or localStorage)
     const participantId = getParticipantId();
     
+    if (!participantId) {
+        alert('Please set your participant ID before submitting surveys.');
+        return;
+    }
+    
     console.log('✨ AWE-SF Survey Data:');
-    console.log('  - Participant ID:', participantId || 'none');
+    console.log('  - Participant ID:', participantId);
     console.log('  - I sensed things momentarily slow down:', surveyData.slowDown || 'not rated');
     console.log('  - I experienced a reduced sense of self:', surveyData.reducedSelf || 'not rated');
     console.log('  - I had chills:', surveyData.chills || 'not rated');
@@ -653,15 +841,15 @@ export async function submitAwesfSurvey() {
     
     const statusEl = document.getElementById('status');
     
-    // Submit to Qualtrics API
     try {
+        // Save response locally instead of submitting immediately
         statusEl.className = 'status info';
-        statusEl.textContent = '📤 Submitting to Qualtrics...';
+        statusEl.textContent = '💾 Saving AWE-SF response...';
         
-        await submitSurveyResponse(surveyData, participantId);
+        saveSurveyResponse(participantId, 'awesf', surveyData);
         
         statusEl.className = 'status success';
-        statusEl.textContent = '✅ AWE-SF survey submitted successfully!';
+        statusEl.textContent = '✅ AWE-SF saved! Complete all surveys to submit.';
         
         closeAwesfModal();
         
@@ -671,10 +859,323 @@ export async function submitAwesfSurvey() {
             });
         }, 300);
     } catch (error) {
-        console.error('Failed to submit AWE-SF survey:', error);
+        console.error('Failed to save AWE-SF survey:', error);
         statusEl.className = 'status error';
-        statusEl.textContent = `❌ Failed to submit: ${error.message}`;
+        statusEl.textContent = `❌ Failed to save: ${error.message}`;
         // Don't close modal on error so user can try again
+    }
+}
+
+/**
+ * Check if session is complete and submit all responses to Qualtrics if ready
+ * @param {string} participantId - The participant ID
+ */
+async function checkAndSubmitIfComplete(participantId) {
+    if (!participantId) return;
+    
+    try {
+        // Check if session is complete
+        if (isSessionComplete(participantId)) {
+            const combinedResponses = getResponsesForSubmission(participantId);
+            
+            if (combinedResponses) {
+                const statusEl = document.getElementById('status');
+                statusEl.className = 'status info';
+                statusEl.textContent = '📤 All surveys complete! Submitting to Qualtrics...';
+                
+                console.log('📤 Submitting combined responses to Qualtrics:', combinedResponses);
+                
+                const submissionResult = await submitCombinedSurveyResponse(combinedResponses, participantId);
+                
+                // Extract Qualtrics Response ID
+                let qualtricsResponseId = null;
+                if (submissionResult && submissionResult.result && submissionResult.result.responseId) {
+                    qualtricsResponseId = submissionResult.result.responseId;
+                    console.log('📋 Qualtrics Response ID:', qualtricsResponseId);
+                }
+                
+                // Mark session as submitted with Qualtrics response ID
+                markSessionAsSubmitted(participantId, qualtricsResponseId);
+                
+                // Export response metadata to JSON file
+                if (qualtricsResponseId) {
+                    exportResponseMetadata(participantId, qualtricsResponseId, submissionResult);
+                }
+                
+                statusEl.className = 'status success';
+                let successMsg = '✅ All surveys submitted successfully to Qualtrics!';
+                if (qualtricsResponseId) {
+                    successMsg += ` Response ID: ${qualtricsResponseId}`;
+                }
+                statusEl.textContent = successMsg;
+                
+                console.log('✅ Session completed and submitted successfully');
+            }
+        }
+    } catch (error) {
+        console.error('Error checking/submitting session:', error);
+        const statusEl = document.getElementById('status');
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ Error submitting to Qualtrics: ${error.message}`;
+        throw error;
+    }
+}
+
+/**
+ * Attempt to submit all survey responses to Qualtrics
+ * Called manually via the Submit button
+ * Includes extensive logging for debugging
+ */
+export async function attemptSubmission() {
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('🚀 SUBMISSION ATTEMPT STARTED');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    
+    const statusEl = document.getElementById('status');
+    
+    try {
+        // Step 1: Get participant ID
+        console.log('\n📋 STEP 1: Getting participant ID...');
+        const participantId = getParticipantId();
+        console.log('   Participant ID:', participantId || '❌ NOT FOUND');
+        
+        if (!participantId) {
+            const errorMsg = 'No participant ID found. Please set your participant ID first.';
+            console.error('   ❌ ERROR:', errorMsg);
+            statusEl.className = 'status error';
+            statusEl.textContent = `❌ ${errorMsg}`;
+            return;
+        }
+        console.log('   ✅ Participant ID found');
+        
+        // Step 2: Get session state
+        console.log('\n📋 STEP 2: Checking session state...');
+        const sessionState = getSessionState(participantId);
+        console.log('   Session State:', sessionState ? JSON.stringify(sessionState, null, 2) : '❌ NO SESSION FOUND');
+        
+        if (!sessionState) {
+            const errorMsg = 'No active session found. Please complete at least one survey first.';
+            console.error('   ❌ ERROR:', errorMsg);
+            statusEl.className = 'status error';
+            statusEl.textContent = `❌ ${errorMsg}`;
+            return;
+        }
+        console.log('   ✅ Session found');
+        console.log('   - Session ID:', sessionState.sessionId);
+        console.log('   - Status:', sessionState.status);
+        console.log('   - Started At:', sessionState.startedAt);
+        
+        // Step 3: Get session responses
+        console.log('\n📋 STEP 3: Retrieving session responses...');
+        const responses = getSessionResponses(participantId);
+        console.log('   Responses:', responses ? JSON.stringify(responses, null, 2) : '❌ NO RESPONSES FOUND');
+        
+        if (!responses) {
+            const errorMsg = 'No responses found for this session.';
+            console.error('   ❌ ERROR:', errorMsg);
+            statusEl.className = 'status error';
+            statusEl.textContent = `❌ ${errorMsg}`;
+            return;
+        }
+        console.log('   ✅ Responses retrieved');
+        
+        // Step 4: Check what surveys are completed
+        console.log('\n📋 STEP 4: Checking survey completion status...');
+        const hasPre = !!responses.pre;
+        const hasPost = !!responses.post;
+        const hasAwesf = !!responses.awesf;
+        console.log('   Pre-Survey:', hasPre ? '✅ COMPLETE' : '❌ MISSING');
+        console.log('   Post-Survey:', hasPost ? '✅ COMPLETE' : '❌ MISSING');
+        console.log('   AWE-SF:', hasAwesf ? '✅ COMPLETE' : '❌ MISSING');
+        
+        if (hasPre) {
+            console.log('   Pre-Survey Data:', JSON.stringify(responses.pre, null, 2));
+        }
+        if (hasPost) {
+            console.log('   Post-Survey Data:', JSON.stringify(responses.post, null, 2));
+        }
+        if (hasAwesf) {
+            console.log('   AWE-SF Data:', JSON.stringify(responses.awesf, null, 2));
+        }
+        
+        // Step 5: Check if session is complete
+        console.log('\n📋 STEP 5: Checking if session is complete...');
+        const isComplete = isSessionComplete(participantId);
+        console.log('   Session Complete:', isComplete ? '✅ YES' : '❌ NO');
+        
+        if (!isComplete) {
+            const missingSurveys = [];
+            if (!hasPre) missingSurveys.push('Pre-Survey');
+            if (!hasPost) missingSurveys.push('Post-Survey');
+            if (!hasAwesf) missingSurveys.push('AWE-SF');
+            
+            const warningMsg = `Session incomplete. Missing: ${missingSurveys.join(', ')}. Submitting partial data...`;
+            console.warn('   ⚠️ WARNING:', warningMsg);
+            statusEl.className = 'status info';
+            statusEl.textContent = `⚠️ ${warningMsg}`;
+        } else {
+            console.log('   ✅ All surveys complete');
+        }
+        
+        // Step 6: Prepare combined responses for submission
+        console.log('\n📋 STEP 6: Preparing combined responses for submission...');
+        
+        // Get tracking data from session state
+        const trackingData = sessionState.tracking || null;
+        
+        // Build JSON dump with tracking information
+        const jsonDump = {
+            sessionId: responses.sessionId,
+            participantId: responses.participantId,
+            sessionStarted: trackingData?.sessionStarted || sessionState.startedAt || null,
+            tracking: trackingData || null,
+            submissionTimestamp: new Date().toISOString()
+        };
+        
+        const combinedResponses = {
+            pre: responses.pre || null,
+            post: responses.post || null,
+            awesf: responses.awesf || null,
+            sessionId: responses.sessionId,
+            participantId: responses.participantId,
+            createdAt: responses.createdAt,
+            jsonDump: jsonDump
+        };
+        console.log('   Combined Responses:', JSON.stringify(combinedResponses, null, 2));
+        console.log('   JSON Dump:', JSON.stringify(jsonDump, null, 2));
+        console.log('   Response Count:', {
+            pre: hasPre ? 1 : 0,
+            post: hasPost ? 1 : 0,
+            awesf: hasAwesf ? 1 : 0,
+            total: (hasPre ? 1 : 0) + (hasPost ? 1 : 0) + (hasAwesf ? 1 : 0)
+        });
+        
+        // Detailed logging for each survey type
+        if (combinedResponses.pre) {
+            console.log('   ✅ Pre-survey data included:', Object.keys(combinedResponses.pre));
+        } else {
+            console.warn('   ⚠️ Pre-survey data MISSING - will not be submitted to Qualtrics');
+        }
+        if (combinedResponses.post) {
+            console.log('   ✅ Post-survey data included:', Object.keys(combinedResponses.post));
+        } else {
+            console.warn('   ⚠️ Post-survey data MISSING - will not be submitted to Qualtrics');
+        }
+        if (combinedResponses.awesf) {
+            console.log('   ✅ AWE-SF data included:', Object.keys(combinedResponses.awesf));
+        } else {
+            console.warn('   ⚠️ AWE-SF data MISSING - will not be submitted to Qualtrics');
+        }
+        
+        // Step 7: Attempt submission
+        console.log('\n📋 STEP 7: Submitting to Qualtrics API...');
+        statusEl.className = 'status info';
+        statusEl.textContent = '📤 Submitting to Qualtrics...';
+        
+        console.log('   API Endpoint: Qualtrics API v3');
+        console.log('   Survey ID: SV_bNni117IsBWNZWu');
+        console.log('   Participant ID:', participantId);
+        console.log('   Payload Preview:', {
+            hasPre,
+            hasPost,
+            hasAwesf,
+            valuesCount: 'Will be calculated by API'
+        });
+        
+        const startTime = Date.now();
+        let submissionResult;
+        
+        try {
+            submissionResult = await submitCombinedSurveyResponse(combinedResponses, participantId);
+            const duration = Date.now() - startTime;
+            
+            console.log('   ✅ Submission successful!');
+            console.log('   Response Time:', duration, 'ms');
+            console.log('   API Response:', JSON.stringify(submissionResult, null, 2));
+            
+            // Extract Qualtrics Response ID
+            let qualtricsResponseId = null;
+            if (submissionResult && submissionResult.result && submissionResult.result.responseId) {
+                qualtricsResponseId = submissionResult.result.responseId;
+                console.log('   📋 Qualtrics Response ID:', qualtricsResponseId);
+                console.log('   💡 Use this ID in Qualtrics/response-viewer.html to verify what was submitted');
+            } else {
+                console.warn('   ⚠️ No responseId found in submission result');
+                console.log('   Full result:', submissionResult);
+            }
+            
+            // Step 8: Mark session as submitted with Qualtrics response ID
+            console.log('\n📋 STEP 8: Marking session as submitted...');
+            markSessionAsSubmitted(participantId, qualtricsResponseId);
+            console.log('   ✅ Session marked as submitted');
+            
+            // Step 9: Export response metadata to JSON file
+            if (qualtricsResponseId) {
+                console.log('\n📋 STEP 9: Exporting response metadata...');
+                exportResponseMetadata(participantId, qualtricsResponseId, submissionResult);
+                console.log('   ✅ Response metadata exported to JSON file');
+            }
+            
+            statusEl.className = 'status success';
+            let successMsg = '✅ Successfully submitted to Qualtrics!';
+            if (qualtricsResponseId) {
+                successMsg += ` Response ID: ${qualtricsResponseId}`;
+            }
+            statusEl.textContent = successMsg;
+            
+            console.log('\n═══════════════════════════════════════════════════════════');
+            console.log('✅ SUBMISSION ATTEMPT COMPLETED SUCCESSFULLY');
+            if (qualtricsResponseId) {
+                console.log(`📋 Qualtrics Response ID: ${qualtricsResponseId}`);
+            }
+            console.log('═══════════════════════════════════════════════════════════');
+            
+        } catch (apiError) {
+            const duration = Date.now() - startTime;
+            console.error('   ❌ Submission failed!');
+            console.error('   Response Time:', duration, 'ms');
+            console.error('   Error Type:', apiError.constructor.name);
+            console.error('   Error Message:', apiError.message);
+            console.error('   Error Stack:', apiError.stack);
+            
+            if (apiError.message) {
+                // Try to extract more details from error message
+                try {
+                    const errorMatch = apiError.message.match(/\{.*\}/);
+                    if (errorMatch) {
+                        const errorJson = JSON.parse(errorMatch[0]);
+                        console.error('   Parsed Error Details:', JSON.stringify(errorJson, null, 2));
+                    }
+                } catch (e) {
+                    // Ignore parsing errors
+                }
+            }
+            
+            statusEl.className = 'status error';
+            statusEl.textContent = `❌ Submission failed: ${apiError.message}`;
+            
+            console.log('\n═══════════════════════════════════════════════════════════');
+            console.log('❌ SUBMISSION ATTEMPT FAILED');
+            console.log('═══════════════════════════════════════════════════════════');
+            
+            throw apiError;
+        }
+        
+    } catch (error) {
+        console.error('\n❌ FATAL ERROR in submission attempt:');
+        console.error('   Error Type:', error.constructor.name);
+        console.error('   Error Message:', error.message);
+        console.error('   Error Stack:', error.stack);
+        
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ Error: ${error.message}`;
+        
+        console.log('\n═══════════════════════════════════════════════════════════');
+        console.log('❌ SUBMISSION ATTEMPT FAILED WITH FATAL ERROR');
+        console.log('═══════════════════════════════════════════════════════════');
+        
+        throw error;
     }
 }
 

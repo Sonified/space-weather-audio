@@ -34,3 +34,17 @@ This will:
 2. Run `fetch_survey_structure.py` to get the actual Question IDs
 3. Use those Question IDs to submit responses via the API
 
+## Embedded Data Fields
+
+**IMPORTANT:** See [EMBEDDED_DATA_SETUP.md](./EMBEDDED_DATA_SETUP.md) for information about required embedded data fields.
+
+We use embedded data fields (not text entry fields) to store JSON data because:
+- ✅ Embedded data fields are reliably returned by the Qualtrics API
+- ❌ Text entry fields (like QID11) are NOT consistently returned by the API
+
+**Required Fields:**
+- `SessionTracking` - Timing data for participant sessions
+- `json_data` - Interface interaction data (future)
+
+**Status:** Pending setup in Qualtrics Survey Flow (requested Nov 13, 2025)
+

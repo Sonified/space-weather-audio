@@ -7,10 +7,11 @@ import * as State from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization } from './spectrogram-renderer.js';
-import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
-import { getParticipantIdFromURL, storeParticipantId } from './qualtrics-api.js';
+import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
+import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
+import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
@@ -37,6 +38,7 @@ window.submitPostSurvey = submitPostSurvey;
 window.openAwesfModal = openAwesfModal;
 window.closeAwesfModal = closeAwesfModal;
 window.submitAwesfSurvey = submitAwesfSurvey;
+window.attemptSubmission = attemptSubmission;
 window.toggleAdminMode = toggleAdminMode;
 window.changeWaveformFilter = handleWaveformFilterChange;
 window.toggleAntiAliasing = toggleAntiAliasing;
@@ -413,6 +415,18 @@ export async function startStreaming(event) {
         const enableNormalize = document.getElementById('enableNormalize').checked;
         const volcano = document.getElementById('volcano').value;
         
+        // Track fetch data action
+        const participantId = getParticipantId();
+        if (participantId) {
+            trackUserAction(participantId, 'fetch_data', {
+                volcano: volcano,
+                station: `${stationData.network}.${stationData.station}.${stationData.location || '--'}.${stationData.channel}`,
+                duration: duration,
+                highpassFreq: highpassFreq,
+                enableNormalize: enableNormalize
+            });
+        }
+        
         // Calculate estimated end time
         const now = new Date();
         const currentMinute = now.getUTCMinutes();
@@ -720,9 +734,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.83 - UI Improvements');
-    console.log('📦 [0ms] v1.83 Feature: Spectrogram scroll speed persistence and metrics panel repositioning');
-    console.log('📦 [0ms] v1.83 Commit: v1.83 Feature: Spectrogram scroll speed persistence and metrics panel repositioning');
+    console.log('🌋 [0ms] volcano-audio v1.84 - Qualtrics Embedded Data Migration');
+    console.log('📦 [0ms] v1.84 Feature: Migrated from QID11 text entry to embedded data fields (SessionTracking, json_data)');
+    console.log('📦 [0ms] v1.84 Commit: v1.84 Feature: Migrated from QID11 text entry to embedded data fields (SessionTracking, json_data)');
     
     // Initialize modals (inject into DOM)
     initializeModals();

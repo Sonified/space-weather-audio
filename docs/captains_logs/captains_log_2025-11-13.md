@@ -239,4 +239,54 @@ Moved metrics panel (Time to First Audio, Download Size, Sample Count, Current P
 **Files Modified**:
 - `index.html` - Moved metrics panel after Cache Row panel
 
+---
+
+## Qualtrics Embedded Data Migration (v1.84)
+
+### Problem
+Text entry fields (like QID11) are NOT reliably returned by the Qualtrics API:
+- GET `/surveys/{surveyId}/responses/{responseId}` endpoint doesn't return text entry fields
+- JSON exports also don't include text entry fields
+- CSV exports may include them, but unreliable
+
+This meant timing/tracking data was being sent successfully but couldn't be retrieved via API.
+
+### Solution: Migrate to Embedded Data Fields
+Switched from using QID11 (text entry field) to embedded data fields, which ARE reliably returned by the API.
+
+**New Embedded Data Fields**:
+1. **`SessionTracking`** - Timing data for participant sessions (survey start/end, time spent, volcano selection, data fetch events, etc.)
+2. **`json_data`** - Future use for all other JSON data (interface interactions, playback controls, etc.)
+
+### Implementation Details
+
+**Code Changes**:
+- `js/qualtrics-api.js` - Now sends timing data as `SessionTracking` embedded data field (still sends QID11 for backwards compatibility)
+- `Qualtrics/response-viewer.html` - Added Export API support (JSON and CSV formats) with ZIP extraction, parses and displays `SessionTracking` from embedded data
+- Added JSZip library for extracting ZIP files from Qualtrics exports
+
+**Documentation Created**:
+- `Qualtrics/EMBEDDED_DATA_SETUP.md` - Complete guide for setting up embedded data fields in Qualtrics Survey Flow
+- Updated `Qualtrics/README.md` - Added reference to embedded data setup
+
+**Export API Features**:
+- JSON export button - Creates export job, polls for completion, extracts ZIP, finds specific response
+- CSV export button - Same process but with CSV format (supports `useLabels: true`)
+- Both handle Qualtrics' ZIP file format and parse responses correctly
+
+### Status
+**Pending**: Leif needs to add both embedded data fields (`SessionTracking` and `json_data`) to Qualtrics Survey Flow.
+
+**Files Modified**:
+- `js/qualtrics-api.js` - Embedded data submission logic
+- `Qualtrics/response-viewer.html` - Export API support, embedded data parsing
+- `Qualtrics/EMBEDDED_DATA_SETUP.md` - New documentation
+- `Qualtrics/README.md` - Updated with embedded data info
+- `js/main.js` - Version updated to v1.84
+
+**Next Steps**:
+1. Leif adds `SessionTracking` and `json_data` embedded data fields to Survey Flow
+2. Test new submissions to verify embedded data appears in API responses
+3. Remove QID11 dependency once embedded data is confirmed working
+
 
