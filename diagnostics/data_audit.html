@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Audit - CDN vs Local</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #ff6b6b;
+            margin-bottom: 10px;
+        }
+        
+        .controls {
+            background: #1a1f3a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #2a2f4a;
+        }
+        
+        .controls label {
+            display: inline-block;
+            margin-right: 10px;
+            color: #888;
+        }
+        
+        .controls select,
+        .controls input {
+            padding: 8px;
+            background: #0a0e27;
+            border: 1px solid #2a2f4a;
+            border-radius: 4px;
+            color: #e0e0e0;
+            margin-right: 20px;
+        }
+        
+        .button {
+            background: #4ecdc4;
+            color: #0a0e27;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .button:hover {
+            background: #5dd5cc;
+        }
+        
+        .results {
+            background: #1a1f3a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #2a2f4a;
+        }
+        
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .summary-card {
+            background: #252a45;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        
+        .summary-card h3 {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        
+        .summary-card .value {
+            color: #fff;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        
+        .summary-card.good { border-left: 4px solid #51cf66; }
+        .summary-card.bad { border-left: 4px solid #ff6b6b; }
+        .summary-card.warn { border-left: 4px solid #ffd43b; }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #2a2f4a;
+        }
+        
+        th {
+            background: #252a45;
+            color: #4ecdc4;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+        
+        tr:hover {
+            background: #252a45;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        
+        .status.good { background: #2d5016; color: #51cf66; }
+        .status.bad { background: #5a1a1a; color: #ff6b6b; }
+        .status.warn { background: #4a4a1a; color: #ffd43b; }
+        .status.unknown { background: #2a2f4a; color: #888; }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+        
+        .chunk-time {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .table-wrapper {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Data Audit: CDN vs Local</h1>
+        <p style="color: #888; margin-bottom: 20px;">Compare what exists on CDN (cdn.now.audio) vs local filesystem</p>
+        
+        <div class="controls">
+            <label>Station:</label>
+            <select id="stationSelect">
+                <option value="HV.MOKD.--.HHZ">HV.MOKD.--.HHZ (Mauna Loa)</option>
+                <option value="HV.MOKE.--.HHZ">HV.MOKE.--.HHZ (Mauna Loa)</option>
+                <option value="HV.MOKL.--.HHZ">HV.MOKL.--.HHZ (Mauna Loa)</option>
+                <option value="HV.MOKB.--.BHZ">HV.MOKB.--.BHZ (Mauna Loa)</option>
+                <option value="HV.UWE.--.HHZ">HV.UWE.--.HHZ (Kilauea)</option>
+            </select>
+            
+            <label>Chunk Type:</label>
+            <select id="chunkTypeSelect">
+                <option value="10m">10-minute</option>
+                <option value="1h">1-hour</option>
+                <option value="6h">6-hour</option>
+            </select>
+            
+            <button class="button" onclick="runAudit()">Run Audit (Last 24 Hours)</button>
+        </div>
+        
+        <div id="results" style="display: none;">
+            <div class="results">
+                <h2 style="color: #4ecdc4; margin-bottom: 15px;">📊 Summary</h2>
+                <p id="timeRange" style="color: #888; margin-bottom: 15px; font-size: 0.9em;"></p>
+                <div class="summary" id="summary"></div>
+            </div>
+            
+            <div class="results">
+                <h2 style="color: #4ecdc4; margin-bottom: 15px;">📋 Chunk Details</h2>
+                <div class="table-wrapper">
+                    <table id="chunkTable">
+                        <thead>
+                            <tr>
+                                <th>Chunk Start</th>
+                                <th>Chunk End</th>
+                                <th>CDN</th>
+                                <th>Local</th>
+                                <th>Metadata</th>
+                                <th>Status</th>
+                                <th>Issues</th>
+                            </tr>
+                        </thead>
+                        <tbody id="chunkTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">
+            <p>🔍 Auditing data...</p>
+        </div>
+    </div>
+    
+    <script>
+        const CDN_BASE = 'https://cdn.now.audio/data';
+        const LOCAL_API = 'http://localhost:5005'; // Collector API for local file checking
+        
+        async function runAudit() {
+            const stationSelect = document.getElementById('stationSelect').value;
+            const chunkType = document.getElementById('chunkTypeSelect').value;
+            
+            // Parse station
+            const [network, station, location, channel] = stationSelect.split('.');
+            
+            // Show loading
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+            
+            try {
+                // Determine volcano from station
+                const volcano = station.startsWith('MOK') ? 'maunaloa' : 
+                               station === 'UWE' ? 'kilauea' : 'unknown';
+                
+                // Calculate last 24 hours
+                const now = new Date();
+                const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                
+                console.log('Auditing from', startTime.toISOString(), 'to', now.toISOString());
+                
+                // Get all dates we need to check (might span 2 days)
+                const dates = [];
+                const dateSet = new Set();
+                let currentDate = new Date(startTime);
+                currentDate.setUTCHours(0, 0, 0, 0);
+                const endDate = new Date(now);
+                endDate.setUTCHours(23, 59, 59, 999);
+                
+                while (currentDate <= endDate) {
+                    const dateStr = currentDate.toISOString().split('T')[0];
+                    if (!dateSet.has(dateStr)) {
+                        dates.push(dateStr);
+                        dateSet.add(dateStr);
+                    }
+                    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+                }
+                
+                console.log('Dates to check:', dates);
+                
+                // Fetch metadata for all dates
+                const metadataMap = {};
+                for (const date of dates) {
+                    const [year, month, day] = date.split('-');
+                    const datePath = `${year}/${month}/${day}`;
+                    const metadataUrl = `${CDN_BASE}/${datePath}/${network}/${volcano}/${station}/${location}/${channel}/${network}_${station}_${location}_${channel}_${date}.json`;
+                    
+                    console.log('Fetching metadata from:', metadataUrl);
+                    const metadataRes = await fetch(metadataUrl);
+                    if (metadataRes.ok) {
+                        metadataMap[date] = await metadataRes.json();
+                    } else {
+                        metadataMap[date] = null;
+                    }
+                }
+                
+                // Generate expected chunks for last 24 hours
+                const expectedChunks = generateExpectedChunks24h(startTime, now, chunkType);
+                
+                console.log('Expected chunks:', expectedChunks.length);
+                
+                // Check each chunk
+                const results = [];
+                for (const chunk of expectedChunks) {
+                    const chunkDate = chunk.start.toISOString().split('T')[0];
+                    const metadata = metadataMap[chunkDate];
+                    const result = await checkChunk(network, station, location, channel, volcano, chunkDate, chunkType, chunk, metadata);
+                    results.push(result);
+                }
+                
+                // Display results
+                displayResults(results, chunkType, startTime, now);
+                
+            } catch (error) {
+                console.error('Audit error:', error);
+                alert(`Error: ${error.message}`);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        function generateExpectedChunks24h(startTime, endTime, chunkType) {
+            const chunks = [];
+            const interval = chunkType === '10m' ? 10 : chunkType === '1h' ? 60 : 360; // minutes
+            
+            let current = new Date(startTime);
+            // Round down to nearest interval
+            if (chunkType === '10m') {
+                current.setUTCMinutes(Math.floor(current.getUTCMinutes() / 10) * 10, 0, 0);
+            } else if (chunkType === '1h') {
+                current.setUTCMinutes(0, 0, 0);
+            } else if (chunkType === '6h') {
+                current.setUTCHours(Math.floor(current.getUTCHours() / 6) * 6, 0, 0, 0);
+            }
+            
+            while (current < endTime) {
+                const start = new Date(current);
+                const end = new Date(current.getTime() + interval * 60 * 1000);
+                chunks.push({ start, end });
+                current = end;
+            }
+            
+            return chunks;
+        }
+        
+        function formatTimeStr(date) {
+            const h = String(date.getUTCHours()).padStart(2, '0');
+            const m = String(date.getUTCMinutes()).padStart(2, '0');
+            const s = String(date.getUTCSeconds()).padStart(2, '0');
+            return `${h}:${m}:${s}`;
+        }
+        
+        function formatDateTimeStr(date) {
+            const y = date.getUTCFullYear();
+            const mo = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const d = String(date.getUTCDate()).padStart(2, '0');
+            const h = String(date.getUTCHours()).padStart(2, '0');
+            const mi = String(date.getUTCMinutes()).padStart(2, '0');
+            const s = String(date.getUTCSeconds()).padStart(2, '0');
+            return `${y}-${mo}-${d}-${h}-${mi}-${s}`;
+        }
+        
+        async function checkChunk(network, station, location, channel, volcano, date, chunkType, chunk, metadata) {
+            const [year, month, day] = date.split('-');
+            const datePath = `${year}/${month}/${day}`;
+            
+            const startStr = formatTimeStr(chunk.start);
+            const endStr = formatTimeStr(chunk.end);
+            const startFull = formatDateTimeStr(chunk.start);
+            const endFull = formatDateTimeStr(chunk.end);
+            
+            // Check metadata
+            let inMetadata = false;
+            let metadataEnd = null;
+            let metadataSamples = null;
+            if (metadata && metadata.chunks && metadata.chunks[chunkType]) {
+                const metaChunk = metadata.chunks[chunkType].find(c => c.start === startStr);
+                if (metaChunk) {
+                    inMetadata = true;
+                    metadataEnd = metaChunk.end;
+                    metadataSamples = metaChunk.samples;
+                }
+            }
+            
+            // Check CDN file
+            const cdnUrl = `${CDN_BASE}/${datePath}/${network}/${volcano}/${station}/${location}/${channel}/${chunkType}/${network}_${station}_${location}_${channel}_${chunkType}_${startFull}_to_${endFull}.bin.zst`;
+            const cdnRes = await fetch(cdnUrl, { method: 'HEAD' });
+            const onCdn = cdnRes.ok;
+            const cdnSize = cdnRes.ok ? parseInt(cdnRes.headers.get('content-length') || 0) : null;
+            
+            // Check local file (we'll use a simple pattern match via the collector API)
+            // For now, we'll just mark as unknown since we need the collector to check
+            const onLocal = null; // Would need collector API endpoint
+            
+            // Determine status and issues
+            const issues = [];
+            let status = 'good';
+            
+            if (!inMetadata && !onCdn) {
+                status = 'bad';
+                issues.push('Missing everywhere');
+            } else if (inMetadata && !onCdn) {
+                status = 'bad';
+                issues.push('In metadata but not on CDN');
+            } else if (!inMetadata && onCdn) {
+                status = 'warn';
+                issues.push('On CDN but not in metadata');
+            } else if (inMetadata && metadataEnd !== endStr) {
+                status = 'warn';
+                issues.push(`Incomplete: ends at ${metadataEnd} instead of ${endStr}`);
+            }
+            
+            return {
+                startStr,
+                endStr,
+                fullStart: chunk.start,
+                fullEnd: chunk.end,
+                onCdn,
+                cdnSize,
+                onLocal,
+                inMetadata,
+                metadataEnd,
+                metadataSamples,
+                status,
+                issues: issues.join(', ') || 'OK'
+            };
+        }
+        
+        function displayResults(results, chunkType, startTime, endTime) {
+            // Calculate summary
+            const total = results.length;
+            const onCdn = results.filter(r => r.onCdn).length;
+            const inMetadata = results.filter(r => r.inMetadata).length;
+            const good = results.filter(r => r.status === 'good').length;
+            const warn = results.filter(r => r.status === 'warn').length;
+            const bad = results.filter(r => r.status === 'bad').length;
+            
+            // Display time range
+            const startStr = startTime.toISOString().replace('T', ' ').replace('Z', ' UTC').substring(0, 19) + ' UTC';
+            const endStr = endTime.toISOString().replace('T', ' ').replace('Z', ' UTC').substring(0, 19) + ' UTC';
+            document.getElementById('timeRange').textContent = `Auditing: ${startStr} to ${endStr}`;
+            
+            // Display summary
+            const summaryHtml = `
+                <div class="summary-card">
+                    <h3>Total Chunks</h3>
+                    <div class="value">${total}</div>
+                </div>
+                <div class="summary-card good">
+                    <h3>Good</h3>
+                    <div class="value">${good}</div>
+                </div>
+                <div class="summary-card warn">
+                    <h3>Warnings</h3>
+                    <div class="value">${warn}</div>
+                </div>
+                <div class="summary-card bad">
+                    <h3>Missing/Bad</h3>
+                    <div class="value">${bad}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>On CDN</h3>
+                    <div class="value">${onCdn}/${total}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>In Metadata</h3>
+                    <div class="value">${inMetadata}/${total}</div>
+                </div>
+            `;
+            document.getElementById('summary').innerHTML = summaryHtml;
+            
+            // Display table
+            let tableHtml = '';
+            results.forEach(r => {
+                const cdnStatus = r.onCdn ? 
+                    `<span class="status good">✓ ${(r.cdnSize / 1024).toFixed(1)}KB</span>` : 
+                    `<span class="status bad">✗ Missing</span>`;
+                
+                const localStatus = r.onLocal === null ? 
+                    `<span class="status unknown">? Unknown</span>` : 
+                    r.onLocal ? 
+                        `<span class="status good">✓ Present</span>` : 
+                        `<span class="status bad">✗ Missing</span>`;
+                
+                const metaStatus = r.inMetadata ? 
+                    `<span class="status good">✓ Listed</span>` : 
+                    `<span class="status bad">✗ Missing</span>`;
+                
+                const overallStatus = r.status === 'good' ? 
+                    `<span class="status good">Good</span>` :
+                    r.status === 'warn' ?
+                        `<span class="status warn">Warning</span>` :
+                        `<span class="status bad">Bad</span>`;
+                
+                // Format with date for multi-day view
+                const startDateTime = r.fullStart ? r.fullStart.toISOString().replace('T', ' ').replace('Z', ' UTC').substring(0, 19) + ' UTC' : r.startStr;
+                const endDateTime = r.fullEnd ? (r.metadataEnd || r.fullEnd.toISOString().replace('T', ' ').replace('Z', ' UTC').substring(0, 19) + ' UTC') : (r.metadataEnd || r.endStr);
+                
+                tableHtml += `
+                    <tr>
+                        <td class="chunk-time">${startDateTime}</td>
+                        <td class="chunk-time">${endDateTime}</td>
+                        <td>${cdnStatus}</td>
+                        <td>${localStatus}</td>
+                        <td>${metaStatus}</td>
+                        <td>${overallStatus}</td>
+                        <td style="color: ${r.status === 'good' ? '#51cf66' : r.status === 'warn' ? '#ffd43b' : '#ff6b6b'}">${r.issues}</td>
+                    </tr>
+                `;
+            });
+            document.getElementById('chunkTableBody').innerHTML = tableHtml;
+            
+            // Show results
+            document.getElementById('results').style.display = 'block';
+        }
+    </script>
+</body>
+</html>
+

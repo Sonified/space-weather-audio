@@ -64,5 +64,6 @@ echo "=================================="
 echo ""
 
 # Run collector loop on port 5005
+# Force R2 uploads even in local mode so backfills save to R2
 cd "$(dirname "$0")"
-PORT=5005 python3 collector_loop.py
+PORT=5005 FORCE_R2_UPLOAD=true python3 collector_loop.py

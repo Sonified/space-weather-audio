@@ -230,3 +230,23 @@ Added time axis ticks to the waveform x-axis, displaying hourly intervals in the
 ### Version: v1.81
 **Commit**: `v1.81 Feature: Added waveform x-axis time ticks with hourly intervals and local time conversion`
 
+---
+
+## v1.83 Restore: Clean Front-End Functionality
+
+### Changes
+Restored the front-end UI to the clean v1.81 state by removing the waveform date panel that was added in later versions. After reviewing commit 4122792, we decided this was the preferred UI state to model going forward.
+
+**Process**:
+1. Stashed current backfill work as "SAFE_Backfill" for later
+2. Reviewed commit 4122792 (v1.81) to confirm clean UI state
+3. Checked out `index.html` from that commit
+4. Pushed restoration to main branch
+
+**Files Modified**:
+- `index.html` - Restored to v1.81 state (removed waveform date panel)
+- `backend/collector_loop.py` - Updated version to v1.83 and commit message
+
+### Version: v1.83
+**Commit**: `v1.83 Restore: Clean front-end functionality - removed waveform date panel`
+

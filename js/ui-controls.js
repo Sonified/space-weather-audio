@@ -8,10 +8,17 @@ import { EMBEDDED_STATIONS } from './station-config.js';
 import { drawWaveform, changeWaveformFilter } from './waveform-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
 import { submitSurveyResponse, getParticipantId, storeParticipantId, getParticipantIdFromURL } from './qualtrics-api.js';
+import { isAdminMode } from './admin-mode.js';
 
 export function loadStations() {
-    const volcano = document.getElementById('volcano').value;
+    const volcanoSelect = document.getElementById('volcano');
+    const volcano = volcanoSelect.value;
     const stationSelect = document.getElementById('station');
+    
+    // Save volcano selection to localStorage for persistence across sessions
+    if (volcano) {
+        localStorage.setItem('selectedVolcano', volcano);
+    }
     
     if (!EMBEDDED_STATIONS[volcano]) {
         stationSelect.innerHTML = '<option value="">Volcano not found</option>';
@@ -41,6 +48,27 @@ export function loadStations() {
     });
     
     updateStationList();
+}
+
+/**
+ * Load saved volcano selection from localStorage and apply it
+ * Called on page load to restore user's preferred volcano
+ */
+export function loadSavedVolcano() {
+    const volcanoSelect = document.getElementById('volcano');
+    if (!volcanoSelect) return;
+    
+    // Load saved volcano from localStorage
+    const savedVolcano = localStorage.getItem('selectedVolcano');
+    if (savedVolcano && EMBEDDED_STATIONS[savedVolcano]) {
+        volcanoSelect.value = savedVolcano;
+        console.log('💾 Restored volcano selection:', savedVolcano);
+        // Load stations for the saved volcano
+        loadStations();
+    } else {
+        // If no saved volcano or invalid, use default and load stations
+        loadStations();
+    }
 }
 
 export function updateStationList() {
@@ -281,18 +309,15 @@ export function setupModalEventListeners() {
         radio.addEventListener('change', updatePreSurveySubmitButton);
     });
     
-    // Don't allow closing by clicking outside - prevent overlay clicks
+    // Allow closing by clicking outside
     preSurveyModal.addEventListener('click', (e) => {
-        // Only allow clicks on the modal content itself, not the overlay
         if (e.target === preSurveyModal) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
+            closePreSurveyModal();
         }
     });
     preSurveyCloseBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        // Don't allow closing via X button either - it's hidden anyway
+        closePreSurveyModal();
     });
     preSurveySubmitBtn.addEventListener('click', submitPreSurvey);
     
@@ -324,18 +349,15 @@ export function setupModalEventListeners() {
         radio.addEventListener('change', updatePostSurveySubmitButton);
     });
     
-    // Don't allow closing by clicking outside - prevent overlay clicks
+    // Allow closing by clicking outside
     postSurveyModal.addEventListener('click', (e) => {
-        // Only allow clicks on the modal content itself, not the overlay
         if (e.target === postSurveyModal) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
+            closePostSurveyModal();
         }
     });
     postSurveyCloseBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        // Don't allow closing via X button either - it's hidden anyway
+        closePostSurveyModal();
     });
     postSurveySubmitBtn.addEventListener('click', submitPostSurvey);
     
@@ -435,7 +457,6 @@ export function openPreSurveyModal() {
 }
 
 export function closePreSurveyModal(event) {
-    // Only allow programmatic closing (after submission), not by clicking outside
     document.getElementById('preSurveyModal').classList.remove('active');
     console.log('📊 Pre-Survey modal closed');
 }
@@ -508,7 +529,6 @@ export function openPostSurveyModal() {
 }
 
 export function closePostSurveyModal(event) {
-    // Only allow programmatic closing (after submission), not by clicking outside
     document.getElementById('postSurveyModal').classList.remove('active');
     console.log('📊 Post-Survey modal closed');
 }

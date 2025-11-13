@@ -122,6 +122,14 @@ export function drawWaveformXAxis() {
         // Draw label centered below the tick
         // Ensure text is visible (use CSS variable for consistent styling)
         ctx.fillStyle = labelColor;
+        
+        // Make date labels bold for day crossings
+        if (tick.isDayCrossing) {
+            ctx.font = `bold ${fontSize} Arial, sans-serif`;
+        } else {
+            ctx.font = `${fontSize} Arial, sans-serif`;
+        }
+        
         ctx.fillText(label, x, 10);
         console.log(`🕐 Drew tick at x=${x.toFixed(1)}: "${label}" (dayCrossing=${tick.isDayCrossing})`);
     });

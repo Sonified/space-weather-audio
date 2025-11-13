@@ -7,8 +7,9 @@ import * as State from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization } from './spectrogram-renderer.js';
-import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
+import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId } from './qualtrics-api.js';
+import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
@@ -36,6 +37,7 @@ window.submitPostSurvey = submitPostSurvey;
 window.openAwesfModal = openAwesfModal;
 window.closeAwesfModal = closeAwesfModal;
 window.submitAwesfSurvey = submitAwesfSurvey;
+window.toggleAdminMode = toggleAdminMode;
 window.changeWaveformFilter = handleWaveformFilterChange;
 window.toggleAntiAliasing = toggleAntiAliasing;
 window.toggleForceIris = toggleForceIris;
@@ -708,7 +710,7 @@ export async function startStreaming(event) {
 }
 
 // DOMContentLoaded initialization
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
     // Parse participant ID from URL parameters on page load
     // Qualtrics redirects with: ?ResponseID=${e://Field/ResponseID}
     // This automatically captures the ResponseID and stores it for survey submissions
@@ -728,6 +730,9 @@ window.addEventListener('DOMContentLoaded', () => {
     // Attach event listeners to modals
     setupModalEventListeners();
     
+    // Initialize admin mode (applies user mode by default)
+    initAdminMode();
+    
     // Load saved preferences immediately to avoid visual jumps
     // (Must be done before other initialization that might trigger change handlers)
     loadSpectrogramScrollSpeed();
@@ -738,7 +743,8 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('playbackSpeed').value = sliderValueFor1x;
     console.log(`Initialized playback speed slider at position ${sliderValueFor1x} for 1.0x speed`);
     
-    loadStations();
+    // Load saved volcano selection (or use default)
+    loadSavedVolcano();
     
     // Add event listeners
     document.getElementById('volcano').addEventListener('change', enableFetchButton);

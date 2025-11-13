@@ -340,6 +340,12 @@
             display: none;
         }
         
+        #backfillDetails {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        
         .backfill-progress.active {
             display: block;
         }
@@ -433,6 +439,9 @@
                 <button class="button" onclick="startBackfill()" id="backfillButton">
                     Start Backfill
                 </button>
+                <button class="button secondary" onclick="cancelBackfill()" id="cancelBackfillButton" disabled>
+                    Cancel Backfill
+                </button>
             </div>
             <div id="backfillProgress" class="backfill-progress">
                 <h3 style="color: #4ecdc4; margin-bottom: 10px;">Backfill Progress</h3>
@@ -452,6 +461,8 @@
         let allStations = [];
         let isConnected = false;
         let healthCheckInterval = null;
+        let backfillReader = null; // Store the SSE stream reader for cancellation
+        let backfillCancelled = false; // Flag to track cancellation
         
         function getApiUrl() {
             return document.getElementById('apiUrl').value || 'http://localhost:5005';
@@ -580,7 +591,6 @@
                     </div>
                 `;
                 
-                showMessage('Dashboard refreshed successfully', 'success');
             } catch (error) {
                 setConnectionStatus(false);
                 showMessage(`Error loading dashboard: ${error.message}`, 'error');
@@ -739,14 +749,25 @@
                 const stateRes = await fetch(`${apiUrl}/collector-state`);
                 const state = await stateRes.json();
                 console.log('🔍 [VALIDATION] Collector state response:', state);
-                const lastRun = state.last_run_completed;
-                console.log('🔍 [VALIDATION] last_run_completed:', lastRun);
+                
+                // Use previous instance run time (from file) if available, otherwise use current instance
+                const lastRun = state.last_run_completed_previous || state.last_run_completed;
+                const currentInstanceRun = state.last_run_completed;
+                const previousInstanceRun = state.last_run_completed_previous;
+                
+                console.log('🔍 [VALIDATION] last_run_completed (current instance):', currentInstanceRun);
+                console.log('🔍 [VALIDATION] last_run_completed_previous (from file):', previousInstanceRun);
+                console.log('🔍 [VALIDATION] Using lastRun:', lastRun);
                 console.log('🔍 [VALIDATION] currently_running:', state.currently_running);
                 
                 // Handle case where no collections have run yet
                 if (!lastRun) {
                     console.warn('⚠️ [VALIDATION] No collections have run yet');
-                    contentDiv.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No collections have run yet. The collector will start collecting data on its next scheduled run.</p>';
+                    let message = 'No collections have run yet. The collector will start collecting data on its next scheduled run.';
+                    if (currentInstanceRun || previousInstanceRun) {
+                        message += `<br><small style="color: #666;">Current instance: ${currentInstanceRun || 'null'}, Previous instance: ${previousInstanceRun || 'null'}</small>`;
+                    }
+                    contentDiv.innerHTML = `<p style="color: #888; text-align: center; padding: 20px;">${message}</p>`;
                     showMessage('No collection data available yet', 'info');
                     return;
                 }
@@ -1012,60 +1033,61 @@
                 });
                 
                 // Build HTML
-                let html = `
-                    <div style="margin-top: 15px;">
-                        <p style="color: #888; margin-bottom: 10px;">
-                            <strong>Summary (Last 24 Hours):</strong> 
+                    let html = `
+                        <div style="margin-top: 15px;">
+                            <p style="color: #888; margin-bottom: 10px;">
+                                <strong>Summary (Last 24 Hours):</strong> 
                             ${perfect} perfect, 
                             ${missing} with missing files
-                        </p>
-                        <p style="color: #4ecdc4; margin-bottom: 10px; font-size: 0.9em;">
+                            </p>
+                            <p style="color: #4ecdc4; margin-bottom: 10px; font-size: 0.9em;">
                             <strong>Expected Counts (based on collector last run: ${lastRun}):</strong> 
                             10m: ${expected10m}, 
                             1h: ${expected1h}, 
                             6h: ${expected6h}
                             <br><em style="color: #888;">Calculated dynamically from collector status</em>
+                            ${currentInstanceRun || previousInstanceRun ? `<br><small style="color: #666;">Current instance: ${currentInstanceRun || 'null'}, Previous instance: ${previousInstanceRun || 'null'}</small>` : ''}
                         </p>
-                        <table class="per-station-table">
-                            <thead>
-                                <tr>
-                                    <th>Station</th>
-                                    <th>Volcano</th>
-                                    <th>Status</th>
-                                    <th>10m Files</th>
-                                    <th>1h Files</th>
-                                    <th>6h Files</th>
-                                    <th>Missing</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                `;
-                
-                stations.forEach(station => {
+                            <table class="per-station-table">
+                                <thead>
+                                    <tr>
+                                        <th>Station</th>
+                                        <th>Volcano</th>
+                                        <th>Status</th>
+                                        <th>10m Files</th>
+                                        <th>1h Files</th>
+                                        <th>6h Files</th>
+                                        <th>Missing</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    stations.forEach(station => {
                     const totalMissing = station.missing['10m'] + station.missing['1h'] + station.missing['6h'];
                     const locationStr = station.location === '--' || !station.location ? '--' : station.location;
                     const distanceStr = station.distance_km ? `${station.distance_km}km` : 'N/A';
                     
-                    html += `
-                        <tr>
+                        html += `
+                            <tr>
                             <td><span class="station-id">${station.network}.${station.station}.${locationStr}.${station.channel}</span> <span style="color: #888; font-size: 0.9em;">(${distanceStr})</span></td>
-                            <td>${station.volcano}</td>
-                            <td><span class="status-badge ${station.status}">${station.status}</span></td>
-                            <td>${station.actual['10m']} / ${station.expected['10m']}</td>
-                            <td>${station.actual['1h']} / ${station.expected['1h']}</td>
-                            <td>${station.actual['6h']} / ${station.expected['6h']}</td>
+                                <td>${station.volcano}</td>
+                                <td><span class="status-badge ${station.status}">${station.status}</span></td>
+                                <td>${station.actual['10m']} / ${station.expected['10m']}</td>
+                                <td>${station.actual['1h']} / ${station.expected['1h']}</td>
+                                <td>${station.actual['6h']} / ${station.expected['6h']}</td>
                             <td>${totalMissing > 0 ? `<span style="color: #ff6b6b;">${totalMissing}</span>` : '0'}</td>
-                        </tr>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
                     `;
-                });
-                
-                html += `
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-                
-                contentDiv.innerHTML = html;
+                    
+                    contentDiv.innerHTML = html;
                 showMessage('Per-station breakdown loaded (last 24 hours)', 'success');
             } catch (error) {
                 contentDiv.innerHTML = `<p style="color: #ff6b6b;">Error: ${error.message}</p>`;
@@ -1253,12 +1275,39 @@
             }).join('');
         }
         
+        function cancelBackfill() {
+            if (backfillReader) {
+                console.log('🛑 [BACKFILL] Cancelling backfill...');
+                backfillCancelled = true;
+                backfillReader.cancel();
+                backfillReader = null;
+                
+                const backfillButton = document.getElementById('backfillButton');
+                const cancelButton = document.getElementById('cancelBackfillButton');
+                const statusDiv = document.getElementById('backfillStatus');
+                
+                backfillButton.disabled = false;
+                backfillButton.textContent = 'Start Backfill';
+                cancelButton.disabled = true;
+                
+                statusDiv.innerHTML = `
+                    <div style="color: #ffd43b;">
+                        <strong>⚠️ Backfill Cancelled</strong><br>
+                        <small style="color: #888;">The backfill operation was cancelled. Some chunks may have been partially processed.</small>
+                    </div>
+                `;
+                
+                showMessage('Backfill cancelled', 'info');
+            }
+        }
+        
         async function startBackfill() {
             const apiUrl = getApiUrl();
             const volcanoSelect = document.getElementById('backfillVolcano');
             const stationSelect = document.getElementById('backfillStation');
             const hoursInput = document.getElementById('backfillHours');
             const backfillButton = document.getElementById('backfillButton');
+            const cancelButton = document.getElementById('cancelBackfillButton');
             const progressDiv = document.getElementById('backfillProgress');
             const progressFill = document.getElementById('progressFill');
             const statusDiv = document.getElementById('backfillStatus');
@@ -1277,10 +1326,15 @@
             const station = JSON.parse(stationSelect.value);
             const hours = parseInt(hoursInput.value) || 24;
             
-            backfillButton.disabled = true;
-            backfillButton.textContent = 'Backfilling...';
-            progressDiv.classList.add('active');
-            progressFill.style.width = '0%';
+            // Reset cancellation flag
+            backfillCancelled = false;
+            backfillReader = null;
+            
+                backfillButton.disabled = true;
+                backfillButton.textContent = 'Backfilling...';
+                cancelButton.disabled = false;
+                progressDiv.classList.add('active');
+                progressFill.style.width = '0%';
             
             const stationKey = `${station.network}.${station.station}.${station.location || '--'}.${station.channel}`;
             statusDiv.innerHTML = `
@@ -1301,6 +1355,14 @@
             try {
                 console.log(`🔄 [BACKFILL] Starting backfill for ${stationKey}, ${hours} hours back`);
                 
+                // Track progress
+                let totalChunks = 0;
+                let currentChunk = 0;
+                const allDetails = [];
+                const chunkTypeCounts = { '6h': 0, '1h': 0, '10m': 0 };
+                let finalData = null;
+                
+                // Use fetch with streaming for SSE
                 const res = await fetch(`${apiUrl}/backfill-station`, {
                     method: 'POST',
                     headers: {
@@ -1312,91 +1374,287 @@
                     })
                 });
                 
-                const data = await res.json();
-                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                // Check if response is OK and is a stream
+                if (!res.ok) {
+                    // Error response - read as JSON
+                    const errorData = await res.json();
+                    throw new Error(errorData.error || 'Backfill failed');
+                }
                 
-                console.log(`🔄 [BACKFILL] Complete in ${elapsed}s:`, data);
-                
-                if (res.ok) {
+                // Check content type to ensure it's a stream
+                const contentType = res.headers.get('content-type') || '';
+                if (!contentType.includes('text/event-stream')) {
+                    // Not a stream - might be old JSON format (server needs restart) or error
+                    const text = await res.text();
+                    try {
+                        const data = JSON.parse(text);
+                        // Check if it's the old format (has backfill_id and details)
+                        if (data.backfill_id && data.details) {
+                            // Old format - convert to new format for display
+                            console.warn('⚠️ [BACKFILL] Server returned old JSON format - needs restart for streaming');
+                            finalData = {
+                                type: 'complete',
+                                ...data
+                            };
+                            // Process as if it was a complete message
                     progressFill.style.width = '100%';
-                    
-                    // Count chunks by type
-                    const chunkTypeCounts = { '6h': 0, '1h': 0, '10m': 0 };
-                    data.details.forEach(d => {
-                        chunkTypeCounts[d.chunk_type] = (chunkTypeCounts[d.chunk_type] || 0) + 1;
+                            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                            const chunkTypeCounts = { '6h': 0, '1h': 0, '10m': 0 };
+                            data.details.forEach(d => {
+                                chunkTypeCounts[d.chunk_type] = (chunkTypeCounts[d.chunk_type] || 0) + 1;
+                            });
+                            
+                            statusDiv.innerHTML = `
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #51cf66;">✅ Backfill Complete!</strong><br>
+                                    <small style="color: #888;">Completed in ${elapsed}s</small>
+                                </div>
+                                <div style="color: #888; font-size: 0.9em;">
+                                    <div>✅ Successful: ${data.progress.successful}</div>
+                                    <div>⏭️ Skipped: ${data.progress.skipped}</div>
+                                    ${data.progress.failed > 0 ? `<div style="color: #ff6b6b;">❌ Failed: ${data.progress.failed}</div>` : ''}
+                                    <div style="margin-top: 5px; color: #4ecdc4;">
+                                        Chunks: ${chunkTypeCounts['6h']}×6h, ${chunkTypeCounts['1h']}×1h, ${chunkTypeCounts['10m']}×10m
+                                    </div>
+                                </div>
+                            `;
+                            
+                            // Show all details
+                            let detailsHtml = '<div style="margin-top: 15px;"><strong>Chunk Details:</strong><ul style="margin-top: 10px; padding-left: 20px; max-height: 400px; overflow-y: auto;">';
+                            data.details.forEach(detail => {
+                                const startTime = detail.window.start.replace('T', ' ').replace('Z', ' UTC');
+                                const endTime = detail.window.end.replace('T', ' ').replace('Z', ' UTC');
+                                const statusIcon = detail.status === 'success' ? '✅' : 
+                                                  detail.status === 'skipped' ? '⏭️' : '❌';
+                        const statusColor = detail.status === 'success' ? '#51cf66' : 
+                                          detail.status === 'skipped' ? '#ffd43b' : '#ff6b6b';
+                                const elapsedText = detail.status === 'success' && detail.elapsed_seconds !== undefined && detail.elapsed_seconds !== null 
+                                    ? ` <span style="color: #888;">(${detail.elapsed_seconds}s)</span>` 
+                                    : '';
+                                detailsHtml += `<li style="margin: 3px 0; padding: 5px; background: #0a0e27; border-left: 3px solid ${statusColor}; font-size: 0.9em;">
+                                    ${statusIcon} <strong>${detail.chunk_type}</strong>: ${startTime} → ${endTime}${elapsedText}
+                                    ${detail.status === 'skipped' ? ` <span style="color: #888;">(already exists)</span>` : ''}
+                                    ${detail.error ? ` <span style="color: #ff6b6b;">Error: ${detail.error}</span>` : ''}
+                        </li>`;
                     });
-                    
-                    statusDiv.innerHTML = `
-                        <div style="margin-bottom: 10px;">
-                            <strong style="color: #51cf66;">✅ Backfill Complete!</strong><br>
-                            <small style="color: #888;">Completed in ${elapsed}s</small>
-                        </div>
-                        <div style="color: #888; font-size: 0.9em;">
-                            <div>✅ Successful: ${data.progress.successful}</div>
-                            <div>⏭️ Skipped: ${data.progress.skipped}</div>
-                            <div>${data.progress.failed > 0 ? `<span style="color: #ff6b6b;">❌ Failed: ${data.progress.failed}</span>` : ''}</div>
-                            <div style="margin-top: 5px; color: #4ecdc4;">
-                                Chunks: ${chunkTypeCounts['6h']}×6h, ${chunkTypeCounts['1h']}×1h, ${chunkTypeCounts['10m']}×10m
-                            </div>
-                        </div>
-                    `;
-                    
-                    // Show detailed results
-                    let detailsHtml = '<div style="margin-top: 15px;"><strong>Chunk Details:</strong><ul style="margin-top: 10px; padding-left: 20px; max-height: 300px; overflow-y: auto;">';
-                    
-                    // Group by status for better readability
-                    const byStatus = { success: [], skipped: [], failed: [] };
-                    data.details.forEach(detail => {
-                        byStatus[detail.status].push(detail);
-                    });
-                    
-                    // Show successful chunks (collapsed by default if many)
-                    if (byStatus.success.length > 0) {
-                        const showAll = byStatus.success.length <= 10;
-                        detailsHtml += `<li style="margin: 5px 0; color: #51cf66;"><strong>✅ Successful (${byStatus.success.length}):</strong></li>`;
-                        byStatus.success.slice(0, showAll ? byStatus.success.length : 5).forEach((detail, idx) => {
-                            const startTime = detail.window.start.replace('T', ' ').replace('Z', ' UTC');
-                            const endTime = detail.window.end.replace('T', ' ').replace('Z', ' UTC');
-                            detailsHtml += `<li style="margin-left: 20px; margin: 3px 0; color: #888; font-size: 0.9em;">
-                                ${detail.chunk_type}: ${startTime} → ${endTime} (${detail.elapsed_seconds}s)
-                            </li>`;
-                        });
-                        if (!showAll) {
-                            detailsHtml += `<li style="margin-left: 20px; color: #888; font-style: italic;">... and ${byStatus.success.length - 5} more</li>`;
-                        }
-                    }
-                    
-                    // Show skipped chunks
-                    if (byStatus.skipped.length > 0) {
-                        detailsHtml += `<li style="margin: 5px 0; color: #ffd43b;"><strong>⏭️ Skipped (${byStatus.skipped.length}):</strong> Already exist</li>`;
-                    }
-                    
-                    // Show failed chunks
-                    if (byStatus.failed.length > 0) {
-                        detailsHtml += `<li style="margin: 5px 0; color: #ff6b6b;"><strong>❌ Failed (${byStatus.failed.length}):</strong></li>`;
-                        byStatus.failed.forEach(detail => {
-                            const startTime = detail.window.start.replace('T', ' ').replace('Z', ' UTC');
-                            const endTime = detail.window.end.replace('T', ' ').replace('Z', ' UTC');
-                            detailsHtml += `<li style="margin-left: 20px; margin: 3px 0; color: #ff6b6b; font-size: 0.9em;">
-                                ${detail.chunk_type}: ${startTime} → ${endTime}
-                                ${detail.error ? `<br><span style="margin-left: 20px; color: #888;">Error: ${detail.error}</span>` : ''}
-                            </li>`;
-                        });
-                    }
-                    
                     detailsHtml += '</ul></div>';
                     detailsDiv.innerHTML = detailsHtml;
                     
-                    showMessage(`Backfill complete: ${data.progress.successful} successful in ${elapsed}s`, 'success');
+                            showMessage(`Backfill complete: ${data.progress.successful} successful in ${elapsed}s`, 'success');
+                            return; // Exit early since we handled it
+                        } else if (data.error) {
+                            // Error response
+                            throw new Error(data.error || 'Backfill failed');
                 } else {
-                    statusDiv.innerHTML = `
-                        <div style="color: #ff6b6b;">
-                            <strong>❌ Backfill Failed</strong><br>
-                            <small>${data.error || 'Unknown error'}</small>
-                        </div>
-                    `;
-                    showMessage(`Backfill failed: ${data.error || 'Unknown error'}`, 'error');
+                            throw new Error('Backfill failed - unexpected response format');
+                        }
+                    } catch (parseErr) {
+                        throw new Error(`Backfill failed - unexpected response: ${text.substring(0, 100)}`);
+                    }
                 }
+                
+                // Read SSE stream
+                const reader = res.body.getReader();
+                backfillReader = reader; // Store for cancellation
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let streamError = null;
+                
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) {
+                            console.log('🔄 [BACKFILL] Stream ended');
+                            break;
+                        }
+                        
+                        // Check if cancelled
+                        if (backfillCancelled) {
+                            console.log('🛑 [BACKFILL] Stream cancelled by user');
+                            break;
+                        }
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(6));
+                                
+                                    if (data.type === 'start') {
+                                        totalChunks = data.total;
+                                        
+                                        // Display audit results if available
+                                        let auditHtml = '';
+                                        if (data.audit) {
+                                            const audit = data.audit;
+                                            auditHtml = `
+                                                <div style="background: #1a1f3a; padding: 10px; border-radius: 4px; margin-bottom: 10px; border-left: 4px solid #4ecdc4;">
+                                                    <strong style="color: #4ecdc4;">📊 Metadata Audit Results:</strong><br>
+                                                    <div style="margin-top: 5px; font-size: 0.9em;">
+                                                        <div><strong>Existing:</strong> 6h=${audit.existing_counts['6h']}, 1h=${audit.existing_counts['1h']}, 10m=${audit.existing_counts['10m']}</div>
+                                                        <div><strong>Needed:</strong> 6h=${audit.needed_counts['6h']}, 1h=${audit.needed_counts['1h']}, 10m=${audit.needed_counts['10m']}</div>
+                                                        <div style="color: #4ecdc4; margin-top: 3px;">Will fetch ${audit.will_fetch_6h} 6h chunks from IRIS</div>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }
+                                        
+                                    statusDiv.innerHTML = `
+                                        <div style="margin-bottom: 10px;">
+                                            <strong>Starting backfill for ${data.station || stationKey}</strong><br>
+                                            <small style="color: #888;">Time range: Last ${hours} hours</small>
+                                        </div>
+                                        ${auditHtml}
+                                        <div style="color: #888; font-size: 0.9em;">
+                                            <div>📥 Processing ${totalChunks} chunks...</div>
+                                            <div id="currentChunk" style="margin-top: 5px; color: #4ecdc4;"></div>
+                                        </div>
+                                    `;
+                                    detailsDiv.innerHTML = '<div style="color: #888; margin-bottom: 10px;"><strong>Chunk Details:</strong></div>';
+                                } else if (data.type === 'progress') {
+                                    // Update current chunk being processed
+                                    const currentChunkDiv = document.getElementById('currentChunk');
+                                    if (currentChunkDiv) {
+                                        if (data.message) {
+                                            // Use the detailed message if available
+                                            currentChunkDiv.textContent = `[${data.current}/${data.total}] ${data.message}`;
+                                        } else {
+                                            // Fallback to basic info
+                                            const startTime = data.window.start.replace('T', ' ').replace('Z', ' UTC');
+                                            const endTime = data.window.end.replace('T', ' ').replace('Z', ' UTC');
+                                            currentChunkDiv.textContent = `[${data.current}/${data.total}] Processing ${data.chunk_type}: ${startTime} → ${endTime}`;
+                                        }
+                                    }
+                                    progressFill.style.width = `${(data.current / data.total) * 100}%`;
+                                } else if (data.type === 'chunk_complete') {
+                                    currentChunk = data.progress.current;
+                                    allDetails.push(data.detail);
+                                    
+                                    // Update progress bar
+                                    progressFill.style.width = `${(currentChunk / data.progress.total) * 100}%`;
+                                    
+                                    // Update status
+                                    const startTime = data.detail.window.start.replace('T', ' ').replace('Z', ' UTC');
+                                    const endTime = data.detail.window.end.replace('T', ' ').replace('Z', ' UTC');
+                                    const statusIcon = data.detail.status === 'success' ? '✅' : 
+                                                      data.detail.status === 'skipped' ? '⏭️' : '❌';
+                                    const statusColor = data.detail.status === 'success' ? '#51cf66' : 
+                                                       data.detail.status === 'skipped' ? '#ffd43b' : '#ff6b6b';
+                                    
+                                    // Append to details (show all chunks, no truncation)
+                                    const elapsedText = data.detail.status === 'success' && data.detail.elapsed_seconds !== undefined && data.detail.elapsed_seconds !== null 
+                                        ? ` <span style="color: #888;">(${data.detail.elapsed_seconds}s)</span>` 
+                                        : '';
+                                    const chunkHtml = `<div style="margin: 3px 0; padding: 5px; background: #0a0e27; border-left: 3px solid ${statusColor}; font-size: 0.9em;">
+                                        ${statusIcon} <strong>${data.detail.chunk_type}</strong>: ${startTime} → ${endTime}${elapsedText}
+                                        ${data.detail.status === 'skipped' ? ` <span style="color: #888;">(already exists)</span>` : ''}
+                                        ${data.detail.error ? ` <span style="color: #ff6b6b;">Error: ${data.detail.error}</span>` : ''}
+                                    </div>`;
+                                    
+                                    detailsDiv.innerHTML += chunkHtml;
+                                    
+                                    // Auto-scroll to bottom
+                                    detailsDiv.scrollTop = detailsDiv.scrollHeight;
+                                    
+                                    // Update summary
+                                    statusDiv.innerHTML = `
+                                        <div style="margin-bottom: 10px;">
+                                            <strong>Processing chunks...</strong><br>
+                                            <small style="color: #888;">Progress: ${currentChunk}/${data.progress.total}</small>
+                                        </div>
+                                        <div style="color: #888; font-size: 0.9em;">
+                                            <div>✅ Successful: ${data.progress.successful}</div>
+                                            <div>⏭️ Skipped: ${data.progress.skipped}</div>
+                                            ${data.progress.failed > 0 ? `<div style="color: #ff6b6b;">❌ Failed: ${data.progress.failed}</div>` : ''}
+                                        </div>
+                                    `;
+                                } else if (data.type === 'error') {
+                                    // Error sent through stream
+                                    throw new Error(data.error || 'Backfill error');
+                                } else if (data.type === 'complete') {
+                                    finalData = data;
+                                    progressFill.style.width = '100%';
+                                    
+                                    // Count chunks by type
+                                    data.details.forEach(d => {
+                                        chunkTypeCounts[d.chunk_type] = (chunkTypeCounts[d.chunk_type] || 0) + 1;
+                                    });
+                                    
+                                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                                    
+                                    statusDiv.innerHTML = `
+                                        <div style="margin-bottom: 10px;">
+                                            <strong style="color: #51cf66;">✅ Backfill Complete!</strong><br>
+                                            <small style="color: #888;">Completed in ${elapsed}s</small>
+                                        </div>
+                                        <div style="color: #888; font-size: 0.9em;">
+                                            <div>✅ Successful: ${data.progress.successful}</div>
+                                            <div>⏭️ Skipped: ${data.progress.skipped}</div>
+                                            ${data.progress.failed > 0 ? `<div style="color: #ff6b6b;">❌ Failed: ${data.progress.failed}</div>` : ''}
+                                            <div style="margin-top: 5px; color: #4ecdc4;">
+                                                Chunks: ${chunkTypeCounts['6h']}×6h, ${chunkTypeCounts['1h']}×1h, ${chunkTypeCounts['10m']}×10m
+                                            </div>
+                                        </div>
+                                    `;
+                                    
+                                    showMessage(`Backfill complete: ${data.progress.successful} successful in ${elapsed}s`, 'success');
+                                }
+                                } catch (e) {
+                                    console.error('Error parsing SSE data:', e, line);
+                                    streamError = e;
+                                }
+                            }
+                        }
+                    }
+                } catch (streamErr) {
+                    console.error('🔄 [BACKFILL] Stream read error:', streamErr);
+                    streamError = streamErr;
+                    backfillReader = null;
+                } finally {
+                    // Clean up reader reference
+                    backfillReader = null;
+                }
+                
+                // If cancelled, don't show error - cancellation was intentional
+                if (backfillCancelled || streamError?.name === 'AbortError') {
+                    // Cancellation was handled in cancelBackfill(), just exit
+                    return;
+                }
+                
+                if (!finalData) {
+                    // If we got some chunks but no complete message, show what we have
+                    if (allDetails.length > 0) {
+                        console.warn('🔄 [BACKFILL] Stream ended without complete message, but we have', allDetails.length, 'chunks');
+                        // Show partial results
+                        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                        const successful = allDetails.filter(d => d.status === 'success').length;
+                        const skipped = allDetails.filter(d => d.status === 'skipped').length;
+                        const failed = allDetails.filter(d => d.status === 'failed').length;
+                        
+                        statusDiv.innerHTML = `
+                            <div style="margin-bottom: 10px;">
+                                <strong style="color: #ffd43b;">⚠️ Backfill Incomplete</strong><br>
+                                <small style="color: #888;">Stream ended unexpectedly after ${elapsed}s</small>
+                            </div>
+                            <div style="color: #888; font-size: 0.9em;">
+                                <div>✅ Successful: ${successful}</div>
+                                <div>⏭️ Skipped: ${skipped}</div>
+                                ${failed > 0 ? `<div style="color: #ff6b6b;">❌ Failed: ${failed}</div>` : ''}
+                                <div style="margin-top: 5px; color: #ff6b6b;">
+                                    ⚠️ Stream ended before completion message
+                                </div>
+                            </div>
+                        `;
+                        
+                        throw new Error(`Backfill stream ended unexpectedly. Processed ${allDetails.length} chunks. ${streamError ? streamError.message : ''}`);
+                    } else {
+                        throw new Error(`Backfill did not complete properly. ${streamError ? streamError.message : 'No data received.'}`);
+                    }
+                }
+                
             } catch (error) {
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                 console.error(`❌ [BACKFILL] Error after ${elapsed}s:`, error);
@@ -1410,6 +1668,9 @@
             } finally {
                 backfillButton.disabled = false;
                 backfillButton.textContent = 'Start Backfill';
+                document.getElementById('cancelBackfillButton').disabled = true;
+                backfillReader = null;
+                backfillCancelled = false;
             }
         }
         
@@ -1436,10 +1697,23 @@
         }
         
         // Load dashboard on page load
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
+            // FIRST: Check connection with ping before loading anything
+            const apiUrl = getApiUrl();
+            try {
+                const pingRes = await fetch(`${apiUrl}/ping`);
+                if (pingRes.ok) {
+                    setConnectionStatus(true);
+                    // Connection confirmed - now load data
             loadDashboard();
             loadPerStationFiles();
             loadAllStations();
+                } else {
+                    setConnectionStatus(false);
+                }
+            } catch (e) {
+                setConnectionStatus(false);
+            }
             // Start health check monitoring
             startHealthCheck();
         });
