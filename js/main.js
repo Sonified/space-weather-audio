@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
-import { changeSpectrogramScrollSpeed, changeFrequencyScale, startVisualization } from './spectrogram-renderer.js';
+import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization } from './spectrogram-renderer.js';
 import { loadStations, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId } from './qualtrics-api.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
@@ -718,15 +718,19 @@ window.addEventListener('DOMContentLoaded', () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.82 - Qualtrics Integration');
-    console.log('📦 [0ms] v1.82 Feature: Qualtrics API integration with automatic ResponseID capture and survey submission');
-    console.log('📦 [0ms] v1.82 Commit: v1.82 Feature: Qualtrics API integration with automatic ResponseID capture and survey submission');
+    console.log('🌋 [0ms] volcano-audio v1.83 - UI Improvements');
+    console.log('📦 [0ms] v1.83 Feature: Spectrogram scroll speed persistence and metrics panel repositioning');
+    console.log('📦 [0ms] v1.83 Commit: v1.83 Feature: Spectrogram scroll speed persistence and metrics panel repositioning');
     
     // Initialize modals (inject into DOM)
     initializeModals();
     
     // Attach event listeners to modals
     setupModalEventListeners();
+    
+    // Load saved preferences immediately to avoid visual jumps
+    // (Must be done before other initialization that might trigger change handlers)
+    loadSpectrogramScrollSpeed();
     
     initWaveformWorker();
     
@@ -752,7 +756,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('volumeLabel').addEventListener('click', resetVolumeTo1);
     
     document.getElementById('spectrogramScrollSpeed').addEventListener('input', changeSpectrogramScrollSpeed);
-    changeSpectrogramScrollSpeed();
+    // Note: loadSpectrogramScrollSpeed() is called earlier in initialization to avoid visual jump
     
     document.getElementById('frequencyScale').addEventListener('change', changeFrequencyScale);
     

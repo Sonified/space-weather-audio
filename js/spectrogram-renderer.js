@@ -117,6 +117,9 @@ export function changeSpectrogramScrollSpeed() {
     const slider = document.getElementById('spectrogramScrollSpeed');
     const value = parseFloat(slider.value);
     
+    // Save slider value to localStorage for persistence across sessions
+    localStorage.setItem('spectrogramScrollSpeed', value.toString());
+    
     // Logarithmic mapping
     let rawSpeed;
     if (value <= 66.67) {
@@ -156,6 +159,76 @@ export function changeSpectrogramScrollSpeed() {
         displayText = displaySpeed.toFixed(0) + 'x';
     }
     document.getElementById('spectrogramScrollSpeedValue').textContent = displayText;
+}
+
+/**
+ * Load spectrogram scroll speed from localStorage and apply it
+ * Called on page load to restore user's preferred scroll speed
+ * Updates the slider and display immediately to avoid visual jump
+ */
+export function loadSpectrogramScrollSpeed() {
+    const slider = document.getElementById('spectrogramScrollSpeed');
+    const displayElement = document.getElementById('spectrogramScrollSpeedValue');
+    if (!slider) return;
+    
+    // Load saved value from localStorage (default: 67, which maps to 1.0x)
+    const savedValue = localStorage.getItem('spectrogramScrollSpeed');
+    if (savedValue !== null) {
+        const value = parseFloat(savedValue);
+        // Validate value is within slider range (0-100)
+        if (!isNaN(value) && value >= 0 && value <= 100) {
+            slider.value = value;
+            
+            // Calculate and update display immediately to avoid visual jump
+            // (Same logic as changeSpectrogramScrollSpeed but without saving to localStorage)
+            let rawSpeed;
+            if (value <= 66.67) {
+                const normalized = value / 66.67;
+                rawSpeed = Math.pow(10, normalized * 0.903 - 0.903);
+            } else {
+                const normalized = (value - 66.67) / 33.33;
+                rawSpeed = Math.pow(10, normalized * Math.log10(5));
+            }
+            
+            const discreteSpeeds = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 20.0];
+            let displaySpeed = discreteSpeeds[0];
+            for (let i = 0; i < discreteSpeeds.length - 1; i++) {
+                const midpoint = (discreteSpeeds[i] + discreteSpeeds[i + 1]) / 2;
+                if (rawSpeed >= midpoint) {
+                    displaySpeed = discreteSpeeds[i + 1];
+                } else {
+                    displaySpeed = discreteSpeeds[i];
+                    break;
+                }
+            }
+            
+            // Update state
+            State.setSpectrogramScrollSpeed(displaySpeed);
+            
+            // Update display text immediately
+            let displayText;
+            if (displaySpeed < 1.0) {
+                let speedStr = displaySpeed.toString();
+                if (speedStr.startsWith('0.')) {
+                    speedStr = speedStr.substring(1);
+                }
+                speedStr = speedStr.replace(/\.?0+$/, '');
+                displayText = speedStr + 'x';
+            } else {
+                displayText = displaySpeed.toFixed(0) + 'x';
+            }
+            
+            if (displayElement) {
+                displayElement.textContent = displayText;
+            }
+            
+            console.log('💾 Restored spectrogram scroll speed:', value, '→', displayText);
+            return; // Don't call changeSpectrogramScrollSpeed to avoid saving default again
+        }
+    }
+    
+    // If no saved value, apply default (this will also update display)
+    changeSpectrogramScrollSpeed();
 }
 
 export function changeFrequencyScale() {

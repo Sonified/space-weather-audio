@@ -212,4 +212,31 @@ Built complete Qualtrics API integration to automatically capture participant Re
 - Configure `ParticipantID` embedded data field in Qualtrics Survey Flow
 - Test end-to-end flow: Qualtrics redirect → site → survey submission
 
+---
+
+## UI Improvements (v1.83)
+
+### Spectrogram Scroll Speed Persistence
+Added localStorage persistence for spectrogram scroll speed preference.
+
+**Features**:
+- Scroll speed preference saved automatically when changed
+- Restored immediately on page load (no visual jump)
+- Display text updated synchronously to avoid showing default value first
+
+**Implementation**:
+- `loadSpectrogramScrollSpeed()` function loads saved value early in initialization
+- Updates slider value and display text immediately before any rendering
+- Falls back to default (1.0x) if no saved preference exists
+
+**Files Modified**:
+- `js/spectrogram-renderer.js` - Added localStorage save/load with immediate display update
+- `js/main.js` - Call `loadSpectrogramScrollSpeed()` early in initialization
+
+### Metrics Panel Repositioning
+Moved metrics panel (Time to First Audio, Download Size, Sample Count, Current Position, Playback Duration) to bottom of page.
+
+**Files Modified**:
+- `index.html` - Moved metrics panel after Cache Row panel
+
 
