@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_12_v1.80"
+__version__ = "2025_11_13_v1.83"
 import time
 import sys
 import os
@@ -12,7 +12,7 @@ import json
 import threading
 import boto3
 from datetime import datetime, timezone, timedelta
-from flask import Flask, jsonify
+from flask import Flask, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from pathlib import Path
 
@@ -27,7 +27,12 @@ app.register_blueprint(audio_stream_bp)
 # Detect deployment environment
 # Railway sets RAILWAY_ENVIRONMENT, local dev won't have this
 IS_PRODUCTION = os.getenv('RAILWAY_ENVIRONMENT') is not None
+# Allow forcing R2 uploads even in local mode (useful for backfills)
+FORCE_R2_UPLOAD = os.getenv('FORCE_R2_UPLOAD', 'false').lower() == 'true'
+USE_R2 = IS_PRODUCTION or FORCE_R2_UPLOAD
 DEPLOYMENT_ENV = "PRODUCTION (Railway)" if IS_PRODUCTION else "LOCAL (Development)"
+if FORCE_R2_UPLOAD and not IS_PRODUCTION:
+    DEPLOYMENT_ENV += " (R2 uploads enabled)"
 
 # Schedule offset: Production runs at :02, :12, :22, etc.
 #                  Local runs at :03, :13, :23, etc. (1 minute offset to avoid conflicts)
@@ -208,6 +213,32 @@ def save_failure(failure_info):
         )
     except Exception as e:
         print(f"Warning: Could not save failure log to R2: {e}")
+
+def load_latest_run():
+    """
+    Load the latest run from run_history.json.
+    Returns the timestamp of the most recent run, or None if no runs exist.
+    """
+    try:
+        s3 = get_s3_client()
+        try:
+            response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=RUN_LOG_KEY)
+            logs = json.loads(response['Body'].read())
+            if logs and len(logs) > 0:
+                # Latest run is at index 0
+                latest_run = logs[0]
+                return latest_run.get('timestamp')
+        except Exception as load_error:
+            # Check if it's a NoSuchKey exception (file doesn't exist yet)
+            error_code = getattr(load_error, 'response', {}).get('Error', {}).get('Code', '')
+            if error_code == 'NoSuchKey':
+                return None
+            else:
+                print(f"Warning: Could not load run history from R2: {load_error}")
+                return None
+    except Exception as e:
+        print(f"Warning: Could not load run history from R2: {e}")
+        return None
 
 def save_run_log(run_info):
     """
@@ -443,6 +474,615 @@ def find_station_first_file_timestamp(s3_client, network, station, location, cha
         traceback.print_exc()
         return None
 
+def fetch_and_process_waveform(network, station, location, channel, start_time, end_time, sample_rate):
+    """
+    Fetch waveform data from IRIS and process it (merge gaps, ensure exact sample count).
+    
+    Returns:
+        tuple: (trace, gaps, error_info)
+        - trace: ObsPy Trace object with processed data (or None on error)
+        - gaps: List of gap dictionaries
+        - error_info: Error dict if failed, None otherwise
+    """
+    from obspy import UTCDateTime
+    from obspy.clients.fdsn import Client
+    import numpy as np
+    
+    try:
+        # Fetch from IRIS
+        client = Client("IRIS")
+        st = client.get_waveforms(
+            network=network,
+            station=station,
+            location=location if location != '--' else '',
+            channel=channel,
+            starttime=UTCDateTime(start_time),
+            endtime=UTCDateTime(end_time)
+        )
+        
+        if not st or len(st) == 0:
+            error_info = {
+                'step': 'IRIS_FETCH',
+                'error': 'No data returned from IRIS'
+            }
+            return None, [], error_info
+        
+        # Detect gaps and merge
+        gaps = []
+        gap_list = st.get_gaps()
+        for gap in gap_list:
+            gap_start = UTCDateTime(gap[4])
+            gap_end = UTCDateTime(gap[5])
+            duration = gap_end - gap_start
+            samples_filled = int(round(duration * sample_rate))
+            gaps.append({
+                'start': gap_start.isoformat(),
+                'end': gap_end.isoformat(),
+                'samples_filled': samples_filled
+            })
+        
+        st.merge(method=1, fill_value='interpolate', interpolation_samples=0)
+        trace = st[0]
+        
+        # Ensure exact sample count based on requested window
+        requested_duration = end_time - start_time
+        expected_samples = int(requested_duration.total_seconds() * sample_rate)
+        actual_samples = len(trace.data)
+        
+        if actual_samples < expected_samples:
+            # Pad: Hold last sample value to fill to expected length
+            missing = expected_samples - actual_samples
+            last_value = trace.data[-1]
+            padding = np.full(missing, last_value, dtype=trace.data.dtype)
+            trace.data = np.concatenate([trace.data, padding])
+        elif actual_samples > expected_samples:
+            # Truncate: Remove extra samples
+            trace.data = trace.data[:expected_samples]
+        
+        return trace, gaps, None
+        
+    except Exception as e:
+        error_info = {
+            'step': 'IRIS_FETCH',
+            'error': str(e)
+        }
+        return None, [], error_info
+
+
+def create_chunk_from_waveform_data(network, station, location, channel, volcano, sample_rate,
+                                    start_time, end_time, chunk_type, trace, gaps, metadata_cache=None):
+    """
+    Create and save a chunk from pre-fetched waveform data.
+    This extracts the chunk creation/saving logic from process_station_window().
+    
+    Args:
+        network, station, location, channel, volcano, sample_rate: Station info
+        start_time, end_time: Time window for this chunk
+        chunk_type: '10m', '1h', or '6h'
+        trace: ObsPy Trace object with waveform data
+        gaps: List of gap dictionaries from the original fetch
+        metadata_cache: Optional dict to cache metadata (key: date_str, value: metadata dict)
+                       If provided, uses cache instead of loading from R2, and marks metadata as dirty
+    
+    Returns:
+        tuple: (status, error_info, metadata_dirty)
+        status: 'success', 'skipped', or 'failed'
+        error_info: Error dict if failed, None otherwise
+        metadata_dirty: True if metadata was modified and needs saving, False otherwise
+    """
+    import numpy as np
+    import zstandard as zstd
+    
+    station_id = f"{network}.{station}.{location}.{channel}"
+    
+    try:
+        # Load or create metadata
+        s3 = get_s3_client()
+        year = start_time.year
+        month = f"{start_time.month:02d}"
+        day = f"{start_time.day:02d}"
+        date_str = start_time.strftime("%Y-%m-%d")
+        location_str = location if location and location != '--' else '--'
+        rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+        
+        metadata_filename = f"{network}_{station}_{location_str}_{channel}_{date_str}.json"
+        metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
+        
+        # Load existing metadata (use cache if provided)
+        metadata = None
+        metadata_dirty = False
+        
+        if metadata_cache is not None and date_str in metadata_cache:
+            # Use cached metadata (much faster!)
+            metadata = metadata_cache[date_str].copy()  # Copy to avoid modifying cache directly
+        else:
+            # Load from R2/filesystem
+            if USE_R2:
+                try:
+                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                    metadata = json.loads(response['Body'].read().decode('utf-8'))
+                except s3.exceptions.NoSuchKey:
+                    # Try OLD format
+                    old_metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                    old_metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{old_metadata_filename}"
+                    try:
+                        response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=old_metadata_key)
+                        metadata = json.loads(response['Body'].read().decode('utf-8'))
+                    except s3.exceptions.NoSuchKey:
+                        pass
+            else:
+                metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+                metadata_path = metadata_dir / metadata_filename
+                
+                if metadata_path.exists():
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                else:
+                    old_metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                    old_metadata_path = metadata_dir / old_metadata_filename
+                    if old_metadata_path.exists():
+                        with open(old_metadata_path, 'r') as f:
+                            metadata = json.load(f)
+            
+            # Store in cache for future chunks on same date
+            if metadata_cache is not None:
+                if metadata:
+                    metadata_cache[date_str] = metadata.copy()
+                else:
+                    # Will create new metadata below, cache it after creation
+                    pass
+        
+        if not metadata:
+            metadata = {
+                'date': date_str,
+                'network': network,
+                'volcano': volcano,
+                'station': station,
+                'location': location if location != '--' else '',
+                'channel': channel,
+                'sample_rate': sample_rate,
+                'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+                'complete_day': False,
+                'chunks': {
+                    '10m': [],
+                    '1h': [],
+                    '6h': []
+                }
+            }
+        
+        # Check if chunk already exists
+        start_time_str = start_time.strftime("%H:%M:%S")
+        existing_chunks = metadata['chunks'].get(chunk_type, [])
+        for chunk in existing_chunks:
+            if chunk['start'] == start_time_str:
+                return 'skipped', None, False
+        
+        # Process data: convert to int32, calculate min/max
+        data_int32 = trace.data.astype(np.int32)
+        min_val = int(np.min(data_int32))
+        max_val = int(np.max(data_int32))
+        
+        # Compress
+        compressor = zstd.ZstdCompressor(level=3)
+        compressed = compressor.compress(data_int32.tobytes())
+        
+        # Generate filename
+        start_str = start_time.strftime("%Y-%m-%d-%H-%M-%S")
+        end_str = end_time.strftime("%Y-%m-%d-%H-%M-%S")
+        filename = f"{network}_{station}_{location_str}_{channel}_{chunk_type}_{start_str}_to_{end_str}.bin.zst"
+        
+        r2_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{chunk_type}/{filename}"
+        
+        # Skip re-check if using cache (cache is already up-to-date for this backfill session)
+        # Only re-check if NOT using cache (for race condition protection in normal operation)
+        if metadata_cache is None:
+            # Re-check for duplicates (race condition protection)
+            metadata_recheck = None
+            if USE_R2:
+                try:
+                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                    metadata_recheck = json.loads(response['Body'].read().decode('utf-8'))
+                except s3.exceptions.NoSuchKey:
+                    pass
+            else:
+                metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+                metadata_path = metadata_dir / metadata_filename
+                if metadata_path.exists():
+                    with open(metadata_path, 'r') as f:
+                        metadata_recheck = json.load(f)
+            
+            if metadata_recheck:
+                existing_chunks_recheck = metadata_recheck['chunks'].get(chunk_type, [])
+                for existing_chunk in existing_chunks_recheck:
+                    if existing_chunk['start'] == start_time_str:
+                        return 'skipped', None, False
+                # Use the rechecked metadata (more up-to-date)
+                metadata = metadata_recheck
+        
+        # Save binary file
+        if USE_R2:
+            s3.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=r2_key,
+                Body=compressed,
+                ContentType='application/octet-stream'
+            )
+        else:
+            base_dir = Path(__file__).parent / 'cron_output'
+            chunk_dir = base_dir / 'data' / str(year) / month / day / network / volcano / station / location_str / channel / chunk_type
+            chunk_dir.mkdir(parents=True, exist_ok=True)
+            chunk_path = chunk_dir / filename
+            with open(chunk_path, 'wb') as f:
+                f.write(compressed)
+        
+        # Build chunk metadata
+        chunk_meta = {
+            'start': start_time_str,
+            'end': end_time.strftime("%H:%M:%S"),
+            'min': min_val,
+            'max': max_val,
+            'samples': len(data_int32),
+            'gap_count': len(gaps),
+            'gap_samples_filled': sum(g['samples_filled'] for g in gaps)
+        }
+        
+        # Append to metadata
+        metadata['chunks'][chunk_type].append(chunk_meta)
+        
+        # Sort by start time
+        metadata['chunks']['10m'].sort(key=lambda c: c['start'])
+        metadata['chunks']['1h'].sort(key=lambda c: c['start'])
+        metadata['chunks']['6h'].sort(key=lambda c: c['start'])
+        
+        # Update complete_day flag
+        if len(metadata['chunks']['10m']) >= 144:
+            metadata['complete_day'] = True
+        
+        # Update cache if provided
+        if metadata_cache is not None:
+            metadata_cache[date_str] = metadata.copy()
+            # Don't save to R2 yet - will batch save at end
+            metadata_dirty = True
+        else:
+            # Save updated metadata immediately (normal operation)
+            try:
+                if USE_R2:
+                    s3.put_object(
+                        Bucket=R2_BUCKET_NAME,
+                        Key=metadata_key,
+                        Body=json.dumps(metadata, indent=2).encode('utf-8'),
+                        ContentType='application/json'
+                    )
+                else:
+                    metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+                    metadata_dir.mkdir(parents=True, exist_ok=True)
+                    metadata_path = metadata_dir / metadata_filename
+                    with open(metadata_path, 'w') as f:
+                        json.dump(metadata, f, indent=2)
+            except Exception as e:
+                print(f"  ⚠️  Warning: Failed to save metadata: {e}")
+        
+        return 'success', None, metadata_dirty
+        
+    except Exception as e:
+        error_info = {
+            'step': 'CHUNK_CREATION',
+            'station': station_id,
+            'chunk_type': chunk_type,
+            'error': str(e)
+        }
+        import traceback
+        traceback.print_exc()
+        return 'failed', error_info
+
+
+def extract_subchunk_from_trace(trace, parent_start_time, chunk_start_time, chunk_end_time, sample_rate):
+    """
+    Extract a sub-chunk from a larger trace.
+    
+    Args:
+        trace: ObsPy Trace object with parent data
+        parent_start_time: Start time of the parent trace
+        chunk_start_time: Start time of the desired chunk
+        chunk_end_time: End time of the desired chunk
+        sample_rate: Sample rate in Hz
+    
+    Returns:
+        tuple: (sub_trace, gaps)
+        - sub_trace: New ObsPy Trace with extracted data (or None if out of bounds)
+        - gaps: List of gap dictionaries (empty for sub-chunks, gaps are from parent)
+    """
+    from obspy import UTCDateTime
+    import numpy as np
+    
+    # Calculate sample offsets
+    parent_start_offset = (chunk_start_time - parent_start_time).total_seconds()
+    chunk_duration = (chunk_end_time - chunk_start_time).total_seconds()
+    
+    start_sample = int(parent_start_offset * sample_rate)
+    end_sample = int((parent_start_offset + chunk_duration) * sample_rate)
+    
+    # Check bounds
+    if start_sample < 0 or end_sample > len(trace.data):
+        return None, []
+    
+    # Extract data slice
+    sub_data = trace.data[start_sample:end_sample]
+    
+    # Ensure exact sample count
+    expected_samples = int(chunk_duration * sample_rate)
+    if len(sub_data) < expected_samples:
+        # Pad with last value
+        missing = expected_samples - len(sub_data)
+        last_value = sub_data[-1] if len(sub_data) > 0 else 0
+        padding = np.full(missing, last_value, dtype=sub_data.dtype)
+        sub_data = np.concatenate([sub_data, padding])
+    elif len(sub_data) > expected_samples:
+        # Truncate
+        sub_data = sub_data[:expected_samples]
+    
+    # Create new trace with extracted data
+    from obspy import Trace
+    sub_trace = Trace(data=sub_data)
+    sub_trace.stats = trace.stats.copy()
+    sub_trace.stats.starttime = UTCDateTime(chunk_start_time)
+    sub_trace.stats.npts = len(sub_data)
+    
+    # Gaps are inherited from parent (empty list for now, could be enhanced)
+    gaps = []
+    
+    return sub_trace, gaps
+
+
+def load_metadata_for_date_range(network, station, location, channel, volcano, start_time, end_time, sample_rate):
+    """
+    Load all metadata files for a date range and return a map of existing chunks.
+    
+    Returns:
+        dict: {
+            'YYYY-MM-DD': {
+                '10m': set(['HH:MM:SS', ...]),
+                '1h': set(['HH:MM:SS', ...]),
+                '6h': set(['HH:MM:SS', ...])
+            },
+            ...
+        }
+    """
+    s3 = get_s3_client()
+    location_str = location if location and location != '--' else '--'
+    rate_str = f"{sample_rate:.2f}".rstrip('0').rstrip('.') if '.' in str(sample_rate) else str(int(sample_rate))
+    
+    metadata_map = {}
+    
+    # Iterate through all dates in the range
+    current_date = start_time.date()
+    end_date = end_time.date()
+    
+    while current_date <= end_date:
+        date_str = current_date.strftime("%Y-%m-%d")
+        year = current_date.year
+        month = f"{current_date.month:02d}"
+        day = f"{current_date.day:02d}"
+        
+        metadata_filename = f"{network}_{station}_{location_str}_{channel}_{date_str}.json"
+        metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{metadata_filename}"
+        
+        metadata = None
+        
+        if USE_R2:
+            try:
+                response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
+                metadata = json.loads(response['Body'].read().decode('utf-8'))
+            except s3.exceptions.NoSuchKey:
+                # Try OLD format
+                old_metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                old_metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station}/{location_str}/{channel}/{old_metadata_filename}"
+                try:
+                    response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=old_metadata_key)
+                    metadata = json.loads(response['Body'].read().decode('utf-8'))
+                except s3.exceptions.NoSuchKey:
+                    pass
+        else:
+            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+            metadata_path = metadata_dir / metadata_filename
+            
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+            else:
+                old_metadata_filename = f"{network}_{station}_{location_str}_{channel}_{rate_str}Hz_{date_str}.json"
+                old_metadata_path = metadata_dir / old_metadata_filename
+                if old_metadata_path.exists():
+                    with open(old_metadata_path, 'r') as f:
+                        metadata = json.load(f)
+        
+        if metadata:
+            # Extract existing chunks
+            metadata_map[date_str] = {
+                '10m': set(chunk['start'] for chunk in metadata.get('chunks', {}).get('10m', [])),
+                '1h': set(chunk['start'] for chunk in metadata.get('chunks', {}).get('1h', [])),
+                '6h': set(chunk['start'] for chunk in metadata.get('chunks', {}).get('6h', []))
+            }
+        else:
+            # No metadata file exists - all chunks missing for this date
+            metadata_map[date_str] = {
+                '10m': set(),
+                '1h': set(),
+                '6h': set()
+            }
+        
+        # Move to next date
+        current_date += timedelta(days=1)
+    
+    return metadata_map
+
+
+def audit_chunks_needed(network, station, location, channel, volcano, sample_rate, start_time, end_time, metadata_map):
+    """
+    Audit which chunks are needed based on existing metadata.
+    
+    Returns:
+        dict: {
+            'needed_6h_chunks': [{'start_time': ..., 'end_time': ..., 'is_partial': ...}, ...],
+            'needed_1h_chunks': [{'start_time': ..., 'end_time': ..., 'date': 'YYYY-MM-DD'}, ...],
+            'needed_10m_chunks': [{'start_time': ..., 'end_time': ..., 'date': 'YYYY-MM-DD'}, ...],
+            'existing_counts': {'6h': X, '1h': Y, '10m': Z},
+            'needed_counts': {'6h': A, '1h': B, '10m': C}
+        }
+    """
+    needed_6h_chunks = []
+    needed_1h_chunks = []
+    needed_10m_chunks = []
+    
+    existing_counts = {'6h': 0, '1h': 0, '10m': 0}
+    needed_counts = {'6h': 0, '1h': 0, '10m': 0}
+    
+    # Find 6-hour boundaries
+    end_hour = end_time.hour
+    end_6h_boundary_hour = (end_hour // 6) * 6
+    last_complete_6h_boundary = end_time.replace(hour=end_6h_boundary_hour, minute=0, second=0, microsecond=0)
+    
+    # Calculate all 6h chunks that COULD be needed
+    potential_6h_chunks = []
+    current_6h_end = last_complete_6h_boundary
+    current_6h_start = current_6h_end - timedelta(hours=6)
+    
+    while current_6h_end > start_time:
+        if current_6h_start < start_time:
+            potential_6h_chunks.append({
+                'start_time': start_time,
+                'end_time': current_6h_end,
+                'is_partial': True
+            })
+        else:
+            potential_6h_chunks.append({
+                'start_time': current_6h_start,
+                'end_time': current_6h_end,
+                'is_partial': False
+            })
+        current_6h_end = current_6h_start
+        current_6h_start = current_6h_end - timedelta(hours=6)
+    
+    # Handle partial period at the end
+    if end_time > last_complete_6h_boundary:
+        potential_6h_chunks.insert(0, {
+            'start_time': last_complete_6h_boundary,
+            'end_time': end_time,
+            'is_partial': True
+        })
+    
+    potential_6h_chunks.reverse()
+    
+    # For each potential 6h chunk, check if we need it
+    for six_h_chunk in potential_6h_chunks:
+        chunk_start = six_h_chunk['start_time']
+        chunk_end = six_h_chunk['end_time']
+        
+        # Check what sub-chunks are missing within this 6h window
+        missing_1h = []
+        missing_10m = []
+        
+        # Check 1h chunks
+        hour_start = chunk_start.replace(minute=0, second=0, microsecond=0)
+        if hour_start < chunk_start:
+            hour_start += timedelta(hours=1)
+        
+        while hour_start < chunk_end:
+            hour_end = min(hour_start + timedelta(hours=1), chunk_end)
+            
+            # Only check if it overlaps with requested time range
+            if hour_end > start_time and hour_start < end_time:
+                date_str = hour_start.strftime("%Y-%m-%d")
+                hour_start_str = hour_start.strftime("%H:%M:%S")
+                
+                # Check if this 1h chunk exists
+                if date_str in metadata_map:
+                    if hour_start_str not in metadata_map[date_str]['1h']:
+                        missing_1h.append({
+                            'start_time': hour_start,
+                            'end_time': hour_end,
+                            'date': date_str
+                        })
+                        needed_counts['1h'] += 1
+                    else:
+                        existing_counts['1h'] += 1
+                else:
+                    missing_1h.append({
+                        'start_time': hour_start,
+                        'end_time': hour_end,
+                        'date': date_str
+                    })
+                    needed_counts['1h'] += 1
+                
+                # Check 10m chunks within this hour
+                minute_start = hour_start.replace(minute=(hour_start.minute // 10) * 10, second=0, microsecond=0)
+                if minute_start < hour_start:
+                    minute_start += timedelta(minutes=10)
+                
+                while minute_start < hour_end:
+                    minute_end = min(minute_start + timedelta(minutes=10), hour_end)
+                    
+                    # Only check if it overlaps with requested time range
+                    if minute_end > start_time and minute_start < end_time:
+                        minute_start_str = minute_start.strftime("%H:%M:%S")
+                        
+                        # Check if this 10m chunk exists
+                        if date_str in metadata_map:
+                            if minute_start_str not in metadata_map[date_str]['10m']:
+                                missing_10m.append({
+                                    'start_time': minute_start,
+                                    'end_time': minute_end,
+                                    'date': date_str
+                                })
+                                needed_counts['10m'] += 1
+                            else:
+                                existing_counts['10m'] += 1
+                        else:
+                            missing_10m.append({
+                                'start_time': minute_start,
+                                'end_time': minute_end,
+                                'date': date_str
+                            })
+                            needed_counts['10m'] += 1
+                    
+                    minute_start = minute_end
+            
+            hour_start = hour_end
+        
+        # Check if 6h chunk itself exists
+        date_str_6h = chunk_start.strftime("%Y-%m-%d")
+        chunk_start_str = chunk_start.strftime("%H:%M:%S")
+        six_h_exists = False
+        
+        if date_str_6h in metadata_map:
+            if chunk_start_str in metadata_map[date_str_6h]['6h']:
+                six_h_exists = True
+                existing_counts['6h'] += 1
+        
+        # We need to fetch this 6h chunk if:
+        # 1. The 6h chunk itself is missing, OR
+        # 2. Any of its sub-chunks (1h or 10m) are missing
+        if not six_h_exists or missing_1h or missing_10m:
+            needed_6h_chunks.append(six_h_chunk)
+            if not six_h_exists:
+                needed_counts['6h'] += 1
+            
+            # Add missing sub-chunks to our lists
+            needed_1h_chunks.extend(missing_1h)
+            needed_10m_chunks.extend(missing_10m)
+        else:
+            # All chunks exist - skip this 6h fetch
+            existing_counts['6h'] += 1
+    
+    return {
+        'needed_6h_chunks': needed_6h_chunks,
+        'needed_1h_chunks': needed_1h_chunks,
+        'needed_10m_chunks': needed_10m_chunks,
+        'existing_counts': existing_counts,
+        'needed_counts': needed_counts
+    }
+
+
 def process_station_window(network, station, location, channel, volcano, sample_rate,
                            start_time, end_time, chunk_type):
     """
@@ -478,8 +1118,8 @@ def process_station_window(network, station, location, channel, volcano, sample_
         # Try to load existing metadata (try NEW format first, fallback to OLD format)
         metadata = None
         
-        if IS_PRODUCTION:
-            # Production: Load from R2
+        if USE_R2:
+            # Load from R2 (production or forced)
             try:
                 response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
                 metadata = json.loads(response['Body'].read().decode('utf-8'))
@@ -623,8 +1263,8 @@ def process_station_window(network, station, location, channel, volcano, sample_
         # (metadata is loaded at start of function, but other processes may have modified it)
         metadata = None
         
-        if IS_PRODUCTION:
-            # Production: Load from R2
+        if USE_R2:
+            # Load from R2 (production or forced)
             try:
                 response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=metadata_key)
                 metadata = json.loads(response['Body'].read().decode('utf-8'))
@@ -695,8 +1335,8 @@ def process_station_window(network, station, location, channel, volcano, sample_
                 return 'skipped', None
         
         # Safe to upload binary now (duplicate check passed)
-        if IS_PRODUCTION:
-            # Production: Save to R2
+        if USE_R2:
+            # Save to R2 (production or forced)
             s3.put_object(
                 Bucket=R2_BUCKET_NAME,
                 Key=r2_key,
@@ -728,24 +1368,32 @@ def process_station_window(network, station, location, channel, volcano, sample_
             metadata['complete_day'] = True
         
         # Upload updated metadata
-        if IS_PRODUCTION:
-            # Production: Save to R2
-            s3.put_object(
-                Bucket=R2_BUCKET_NAME,
-                Key=metadata_key,
-                Body=json.dumps(metadata, indent=2).encode('utf-8'),
-                ContentType='application/json'
-            )
-            print(f"  💾 Updated metadata: {len(metadata['chunks']['10m'])} 10m, {len(metadata['chunks'].get('1h', []))} 1h, {len(metadata['chunks']['6h'])} 6h (sorted)")
-        else:
-            # Local: Save to filesystem
-            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
-            metadata_dir.mkdir(parents=True, exist_ok=True)
-            
-            metadata_path = metadata_dir / metadata_filename
-            with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
-            print(f"  💾 Updated metadata locally: {len(metadata['chunks']['10m'])} 10m, {len(metadata['chunks'].get('1h', []))} 1h, {len(metadata['chunks']['6h'])} 6h (sorted)")
+        try:
+            if USE_R2:
+                # Save to R2 (production or forced)
+                s3.put_object(
+                    Bucket=R2_BUCKET_NAME,
+                    Key=metadata_key,
+                    Body=json.dumps(metadata, indent=2).encode('utf-8'),
+                    ContentType='application/json'
+                )
+                print(f"  💾 Updated metadata in R2: {metadata_key} ({len(metadata['chunks']['10m'])} 10m, {len(metadata['chunks'].get('1h', []))} 1h, {len(metadata['chunks']['6h'])} 6h)")
+            else:
+                # Local: Save to filesystem
+                metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+                metadata_dir.mkdir(parents=True, exist_ok=True)
+                
+                metadata_path = metadata_dir / metadata_filename
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                print(f"  💾 Updated metadata locally: {metadata_path} ({len(metadata['chunks']['10m'])} 10m, {len(metadata['chunks'].get('1h', []))} 1h, {len(metadata['chunks']['6h'])} 6h)")
+        except Exception as e:
+            error_msg = f"Failed to save metadata: {e}"
+            print(f"  ❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
+            # Don't fail the whole chunk - metadata save failure shouldn't break the backfill
+            # But log it so we know there's an issue
         
         return 'success', None
         
@@ -929,13 +1577,16 @@ def detect_and_log_station_changes():
 # Load previous failures on startup
 previous_failures = load_failures()
 
+# Load latest run from persistent storage
+latest_run_timestamp = load_latest_run()
+
 # Shared state
 status = {
     'version': __version__,
     'deployed_at': deploy_time,
     'started_at': datetime.now(timezone.utc).isoformat(),
     'last_run_started': None,  # When current/last collection started
-    'last_run_completed': None,  # When last collection finished
+    'last_run_completed': latest_run_timestamp,  # When last collection finished (loaded from run_history.json)
     'last_run_duration_seconds': None,  # How long last collection took
     'next_run': None,
     'total_runs': 0,
@@ -1878,243 +2529,49 @@ def backfill_station():
         sample_rate = station_config['sample_rate']
         location_clean = location.replace('--', '')
         
-        backfill_tasks = []
+        # EFFICIENT BACKFILL STRATEGY WITH METADATA AUDIT:
+        # 1. Audit existing metadata to see what chunks already exist
+        # 2. Only fetch 6h chunks that are needed to derive missing sub-chunks
+        # 3. Skip IRIS fetches entirely if everything already exists
         
-        # SMART BACKFILL STRATEGY:
-        # 1. Find last complete 6h boundary (based on end_time)
-        # 2. If end_time is past that boundary, fetch one continuous chunk from end_time back to boundary
-        # 3. Fetch 6h chunks going backwards from that boundary
-        # 4. For oldest period, only fetch what's needed if it doesn't align to 6h boundaries
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔍 Auditing existing metadata...")
         
-        # Find last complete 6h boundary
-        end_hour = end_time.hour
-        end_6h_boundary_hour = (end_hour // 6) * 6
-        last_complete_6h_boundary = end_time.replace(hour=end_6h_boundary_hour, minute=0, second=0, microsecond=0)
+        # Load metadata for the date range
+        metadata_map = load_metadata_for_date_range(
+            network=network,
+            station=station_code,
+            location=location_clean,
+            channel=channel,
+            volcano=volcano,
+            start_time=start_time,
+            end_time=end_time,
+            sample_rate=sample_rate
+        )
         
-        # Check if end_time is past the last complete 6h boundary
-        if end_time > last_complete_6h_boundary:
-            # Fetch one continuous chunk from end_time back to last complete 6h boundary
-            # This covers the most recent partial period
-            print(f"  📥 Fetching recent partial period: {last_complete_6h_boundary} to {end_time}")
-            
-            # Determine what chunk types we need for this partial period
-            # Check what boundaries are touched
-            needs_6h = False  # Can't have a full 6h in partial period
-            needs_1h = False
-            needs_10m = False
-            
-            # Check if we cross any hour boundaries
-            if end_time.hour != last_complete_6h_boundary.hour or end_time.date() != last_complete_6h_boundary.date():
-                needs_1h = True
-            
-            # Always need 10m chunks for partial period
-            needs_10m = True
-            
-            # For partial period, fetch as 1h chunks if crossing hour boundaries, otherwise 10m chunks
-            if needs_1h:
-                # Generate 1h chunks for partial period
-                current_1h = last_complete_6h_boundary
-                while current_1h < end_time:
-                    current_1h_end = min(current_1h + timedelta(hours=1), end_time)
-                    backfill_tasks.append({
-                        'network': network,
-                        'volcano': volcano,
-                        'station': station_code,
-                        'location': location_clean,
-                        'channel': channel,
-                        'sample_rate': sample_rate,
-                        'chunk_type': '1h',
-                        'start_time': current_1h,
-                        'end_time': current_1h_end
-                    })
-                    current_1h = current_1h_end
-            else:
-                # Generate 10m chunks for partial period
-                current_10m = last_complete_6h_boundary
-                while current_10m < end_time:
-                    current_10m_end = min(current_10m + timedelta(minutes=10), end_time)
-                    backfill_tasks.append({
-                        'network': network,
-                        'volcano': volcano,
-                        'station': station_code,
-                        'location': location_clean,
-                        'channel': channel,
-                        'sample_rate': sample_rate,
-                        'chunk_type': '10m',
-                        'start_time': current_10m,
-                        'end_time': current_10m_end
-                    })
-                    current_10m = current_10m_end
+        # Audit which chunks are actually needed
+        audit_result = audit_chunks_needed(
+            network=network,
+            station=station_code,
+            location=location_clean,
+            channel=channel,
+            volcano=volcano,
+            sample_rate=sample_rate,
+            start_time=start_time,
+            end_time=end_time,
+            metadata_map=metadata_map
+        )
         
-        # Now fetch 6h chunks going backwards from last_complete_6h_boundary
-        # Start from the last complete 6h boundary and go backwards
-        current_6h_end = last_complete_6h_boundary
-        current_6h_start = current_6h_end - timedelta(hours=6)
+        six_hour_chunks = audit_result['needed_6h_chunks']
+        existing_counts = audit_result['existing_counts']
+        needed_counts = audit_result['needed_counts']
         
-        # Continue backwards until we reach or pass start_time
-        while current_6h_start >= start_time:
-            # Only add if it overlaps with our time range
-            if current_6h_end > start_time:
-                backfill_tasks.append({
-                    'network': network,
-                    'volcano': volcano,
-                    'station': station_code,
-                    'location': location_clean,
-                    'channel': channel,
-                    'sample_rate': sample_rate,
-                    'chunk_type': '6h',
-                    'start_time': current_6h_start,
-                    'end_time': current_6h_end
-                })
-            
-            # Move backwards
-            current_6h_end = current_6h_start
-            current_6h_start = current_6h_end - timedelta(hours=6)
+        total_chunks = needed_counts['6h'] + needed_counts['1h'] + needed_counts['10m']
         
-        # For the oldest period (if start_time doesn't align to 6h boundary),
-        # determine what chunks we need
-        oldest_6h_boundary = current_6h_end  # This is the first 6h boundary before start_time
-        
-        if start_time < oldest_6h_boundary:
-            # We need to cover from start_time to oldest_6h_boundary
-            # Determine what chunk types are needed
-            period_start = start_time
-            period_end = oldest_6h_boundary
-            
-            # Check alignment
-            start_hour = period_start.hour
-            start_6h_boundary = (start_hour // 6) * 6
-            is_aligned_to_6h = (period_start.hour == start_6h_boundary and 
-                               period_start.minute == 0 and 
-                               period_start.second == 0)
-            
-            if not is_aligned_to_6h:
-                # Not aligned to 6h - check if aligned to 1h
-                is_aligned_to_1h = (period_start.minute == 0 and period_start.second == 0)
-                
-                if is_aligned_to_1h:
-                    # Generate 1h chunks
-                    current_1h = period_start
-                    while current_1h < period_end:
-                        current_1h_end = min(current_1h + timedelta(hours=1), period_end)
-                        backfill_tasks.append({
-                            'network': network,
-                            'volcano': volcano,
-                            'station': station_code,
-                            'location': location_clean,
-                            'channel': channel,
-                            'sample_rate': sample_rate,
-                            'chunk_type': '1h',
-                            'start_time': current_1h,
-                            'end_time': current_1h_end
-                        })
-                        current_1h = current_1h_end
-                else:
-                    # Generate 10m chunks
-                    start_10m_minute = (period_start.minute // 10) * 10
-                    current_10m = period_start.replace(minute=start_10m_minute, second=0, microsecond=0)
-                    
-                    while current_10m < period_end:
-                        current_10m_end = min(current_10m + timedelta(minutes=10), period_end)
-                        backfill_tasks.append({
-                            'network': network,
-                            'volcano': volcano,
-                            'station': station_code,
-                            'location': location_clean,
-                            'channel': channel,
-                            'sample_rate': sample_rate,
-                            'chunk_type': '10m',
-                            'start_time': current_10m,
-                            'end_time': current_10m_end
-                        })
-                        current_10m = current_10m_end
-        
-        # Now generate smaller chunks (1h and 10m) ONLY for periods not covered by 6h chunks
-        # This minimizes IRIS fetches - we'll derive smaller chunks from 6h data later
-        
-        # Collect all 6h chunk time ranges
-        six_hour_ranges = [(t['start_time'], t['end_time']) for t in backfill_tasks if t['chunk_type'] == '6h']
-        
-        def is_fully_contained_in_6h(chunk_start, chunk_end):
-            """Check if a chunk is fully contained within any 6h chunk we're fetching"""
-            for six_start, six_end in six_hour_ranges:
-                if chunk_start >= six_start and chunk_end <= six_end:
-                    return True
-            return False
-        
-        # Generate 1h chunks - only for periods NOT fully contained in 6h chunks
-        start_1h = start_time.replace(minute=0, second=0, microsecond=0)
-        end_1h = end_time.replace(minute=0, second=0, microsecond=0)
-        if end_time.minute != 0 or end_time.second != 0 or end_time.microsecond != 0:
-            end_1h = end_1h + timedelta(hours=1)
-        
-        current_1h = start_1h
-        while current_1h < end_1h:
-            current_1h_end = current_1h + timedelta(hours=1)
-            if current_1h_end > start_time and current_1h < end_time:
-                # Only add if NOT fully contained in a 6h chunk
-                if not is_fully_contained_in_6h(current_1h, current_1h_end):
-                    backfill_tasks.append({
-                        'network': network,
-                        'volcano': volcano,
-                        'station': station_code,
-                        'location': location_clean,
-                        'channel': channel,
-                        'sample_rate': sample_rate,
-                        'chunk_type': '1h',
-                        'start_time': current_1h,
-                        'end_time': current_1h_end
-                    })
-            current_1h = current_1h_end
-        
-        # Generate 10m chunks - only for periods NOT fully contained in larger chunks
-        start_10m_minute = (start_time.minute // 10) * 10
-        start_10m = start_time.replace(minute=start_10m_minute, second=0, microsecond=0)
-        
-        end_10m_minute = ((end_time.minute // 10) + (1 if end_time.minute % 10 != 0 or end_time.second != 0 or end_time.microsecond != 0 else 0)) * 10
-        if end_10m_minute >= 60:
-            end_10m = end_time.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-        else:
-            end_10m = end_time.replace(minute=end_10m_minute, second=0, microsecond=0)
-        
-        # Collect all 1h chunk time ranges (including ones we just added)
-        one_hour_ranges = [(t['start_time'], t['end_time']) for t in backfill_tasks if t['chunk_type'] == '1h']
-        
-        def is_fully_contained_in_larger_chunk(chunk_start, chunk_end):
-            """Check if a 10m chunk is fully contained in any 6h or 1h chunk"""
-            # Check 6h chunks
-            for six_start, six_end in six_hour_ranges:
-                if chunk_start >= six_start and chunk_end <= six_end:
-                    return True
-            # Check 1h chunks
-            for one_start, one_end in one_hour_ranges:
-                if chunk_start >= one_start and chunk_end <= one_end:
-                    return True
-            return False
-        
-        current_10m = start_10m
-        while current_10m < end_10m:
-            current_10m_end = current_10m + timedelta(minutes=10)
-            if current_10m_end > start_time and current_10m < end_time:
-                # Only add if NOT fully contained in a larger chunk
-                if not is_fully_contained_in_larger_chunk(current_10m, current_10m_end):
-                    backfill_tasks.append({
-                        'network': network,
-                        'volcano': volcano,
-                        'station': station_code,
-                        'location': location_clean,
-                        'channel': channel,
-                        'sample_rate': sample_rate,
-                        'chunk_type': '10m',
-                        'start_time': current_10m,
-                        'end_time': current_10m_end
-                    })
-            current_10m = current_10m_end
-        
-        # Sort tasks: 6h first (most efficient), then by time (newest first)
-        # This ensures we fetch 6h chunks first, which can then be used to derive smaller chunks
-        chunk_type_order = {'6h': 0, '1h': 1, '10m': 2}
-        backfill_tasks.sort(key=lambda x: (chunk_type_order[x['chunk_type']], -x['start_time'].timestamp()))
+        # Print audit results
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📊 Metadata Audit Results:")
+        print(f"  Existing chunks: 6h={existing_counts['6h']}, 1h={existing_counts['1h']}, 10m={existing_counts['10m']}")
+        print(f"  Needed chunks: 6h={needed_counts['6h']}, 1h={needed_counts['1h']}, 10m={needed_counts['10m']}")
+        print(f"  Will fetch {len(six_hour_chunks)} 6h chunks from IRIS")
         
         # Execute backfill
         now = datetime.now(timezone.utc)
@@ -2129,104 +2586,578 @@ def backfill_station():
         
         details = []
         
-        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] Starting station backfill: {network}.{station_code}.{location}.{channel}")
+        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S UTC')}] Starting efficient station backfill: {network}.{station_code}.{location}.{channel}")
         print(f"  Time range: {start_time} to {end_time} ({hours_back} hours)")
+        print(f"  Strategy: Fetch {len(six_hour_chunks)} 6h chunks, derive {needed_counts['1h']} 1h + {needed_counts['10m']} 10m chunks")
+        print(f"  Total chunks to create: {total_chunks}")
         
-        # Count by chunk type
-        chunk_counts = {'6h': 0, '1h': 0, '10m': 0}
-        for task in backfill_tasks:
-            chunk_counts[task['chunk_type']] += 1
-        print(f"  Total windows: {len(backfill_tasks)} (6h: {chunk_counts['6h']}, 1h: {chunk_counts['1h']}, 10m: {chunk_counts['10m']})")
+        # If nothing needed, return early
+        if total_chunks == 0:
+            return jsonify({
+                'message': 'All chunks already exist - nothing to backfill',
+                'existing_counts': existing_counts,
+                'needed_counts': needed_counts,
+                'time_range': {
+                    'start': start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    'end': end_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    'hours': hours_back
+                }
+            }), 200
         
-        for i, task in enumerate(backfill_tasks):
-            task_start = time.time()
-            
-            station_id = f"{task['network']}.{task['station']}.{task['location'] or '--'}.{task['channel']}"
-            print(f"[{i+1}/{len(backfill_tasks)}] {station_id} {task['chunk_type']} {task['start_time']} to {task['end_time']}")
-            
-            # Call process_station_window
-            status_result, error_info = process_station_window(
-                network=task['network'],
-                station=task['station'],
-                location=task['location'],
-                channel=task['channel'],
-                volcano=task['volcano'],
-                sample_rate=task['sample_rate'],
-                start_time=task['start_time'],
-                end_time=task['end_time'],
-                chunk_type=task['chunk_type']
-            )
-            
-            elapsed = time.time() - task_start
-            
-            # Track result
-            if status_result == 'success':
-                results['successful'] += 1
-                detail = {
-                    'station': station_id,
-                    'chunk_type': task['chunk_type'],
-                    'window': {
-                        'start': task['start_time'].strftime('%Y-%m-%dT%H:%M:%SZ'),
-                        'end': task['end_time'].strftime('%Y-%m-%dT%H:%M:%SZ')
-                    },
-                    'status': 'success',
-                    'elapsed_seconds': round(elapsed, 2)
-                }
-            elif status_result == 'skipped':
-                results['skipped'] += 1
-                detail = {
-                    'station': station_id,
-                    'chunk_type': task['chunk_type'],
-                    'window': {
-                        'start': task['start_time'].strftime('%Y-%m-%dT%H:%M:%SZ'),
-                        'end': task['end_time'].strftime('%Y-%m-%dT%H:%M:%SZ')
-                    },
-                    'status': 'skipped',
-                    'reason': 'already_exists'
-                }
-            else:  # failed
-                results['failed'] += 1
-                detail = {
-                    'station': station_id,
-                    'chunk_type': task['chunk_type'],
-                    'window': {
-                        'start': task['start_time'].strftime('%Y-%m-%dT%H:%M:%SZ'),
-                        'end': task['end_time'].strftime('%Y-%m-%dT%H:%M:%SZ')
-                    },
-                    'status': 'failed',
-                    'error': error_info.get('error') if error_info else 'Unknown error'
-                }
-            
-            details.append(detail)
+        # Use streaming response for real-time progress updates
+        station_id = f"{network}.{station_code}.{location_clean or '--'}.{channel}"
+        chunk_counter = 0
         
-        # Build response
-        response = {
-            'backfill_id': backfill_id,
-            'started_at': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'station': {
+        # Cache metadata in memory to avoid repeated R2 GETs
+        # Key: date_str (YYYY-MM-DD), Value: metadata dict
+        # Initialize cache with metadata from audit
+        metadata_cache = {}
+        for date_str, date_metadata in metadata_map.items():
+            # Convert sets back to lists for JSON compatibility
+            metadata_cache[date_str] = {
+                'date': date_str,
                 'network': network,
                 'volcano': volcano,
                 'station': station_code,
-                'location': location,
-                'channel': channel
-            },
-            'time_range': {
-                'start': start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                'end': end_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                'hours': hours_back
-            },
-            'total_windows': len(backfill_tasks),
-            'progress': results,
-            'details': details,
-            'summary': {
-                'duration_seconds': round(time.time() - now.timestamp(), 2),
-                'success_rate': round(results['successful'] / len(backfill_tasks) * 100, 1) if backfill_tasks else 0
+                'location': location_clean if location_clean != '--' else '',
+                'channel': channel,
+                'sample_rate': sample_rate,
+                'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+                'complete_day': False,
+                'chunks': {
+                    '10m': [{'start': t} for t in sorted(date_metadata['10m'])],
+                    '1h': [{'start': t} for t in sorted(date_metadata['1h'])],
+                    '6h': [{'start': t} for t in sorted(date_metadata['6h'])]
+                }
             }
-        }
         
-        print(f"Station backfill complete: {results['successful']} success, {results['failed']} failed, {results['skipped']} skipped")
+        # Track which dates have modified metadata that needs saving (not corrupted, just "modified but not saved yet")
+        # "Dirty" is a programming term meaning "modified in memory but not persisted to disk/storage"
+        modified_metadata_dates = set()
         
-        return jsonify(response)
+        def generate():
+            nonlocal chunk_counter, metadata_cache, modified_metadata_dates
+            
+            # Track current operation state for graceful cancellation
+            current_operation = None  # 'fetching', 'saving_6h', 'saving_1h', 'saving_10m', 'deriving'
+            current_chunk_start = None
+            current_chunk_end = None
+            current_trace = None
+            current_gaps = None
+            
+            def save_modified_metadata():
+                """Helper to save all modified metadata files (modified in memory, needs to be persisted)"""
+                if not modified_metadata_dates:
+                    return
+                
+                s3 = get_s3_client()
+                for date_str in modified_metadata_dates:
+                    if date_str not in metadata_cache:
+                        continue
+                    
+                    metadata = metadata_cache[date_str]
+                    year = metadata['date'][:4]
+                    month = metadata['date'][5:7]
+                    day = metadata['date'][8:10]
+                    location_str = metadata['location'] if metadata['location'] else '--'
+                    
+                    metadata_filename = f"{network}_{station_code}_{location_str}_{channel}_{date_str}.json"
+                    metadata_key = f"data/{year}/{month}/{day}/{network}/{volcano}/{station_code}/{location_str}/{channel}/{metadata_filename}"
+                    
+                    try:
+                        if USE_R2:
+                            s3.put_object(
+                                Bucket=R2_BUCKET_NAME,
+                                Key=metadata_key,
+                                Body=json.dumps(metadata, indent=2).encode('utf-8'),
+                                ContentType='application/json'
+                            )
+                        else:
+                            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station_code / location_str / channel
+                            metadata_dir.mkdir(parents=True, exist_ok=True)
+                            metadata_path = metadata_dir / metadata_filename
+                            with open(metadata_path, 'w') as f:
+                                json.dump(metadata, f, indent=2)
+                    except Exception as e:
+                        print(f"  ⚠️  Warning: Failed to save metadata for {date_str}: {e}")
+            
+            try:
+                # Send initial progress update with audit results
+                try:
+                    yield f"data: {json.dumps({
+                        'type': 'start', 
+                        'total': total_chunks, 
+                        'backfill_id': backfill_id, 
+                        'station': station_id,
+                        'audit': {
+                            'existing_counts': existing_counts,
+                            'needed_counts': needed_counts,
+                            'will_fetch_6h': len(six_hour_chunks)
+                        }
+                    })}\n\n"
+                except (BrokenPipeError, OSError, GeneratorExit):
+                    # Client disconnected, save metadata and exit
+                    print("  ⚠️  Client disconnected during backfill start")
+                    save_modified_metadata()  # Save any modified metadata before exit
+                    return
+                
+                # Process each 6-hour chunk
+                for chunk_idx, six_h_chunk in enumerate(six_hour_chunks):
+                    chunk_start_time = six_h_chunk['start_time']
+                    chunk_end_time = six_h_chunk['end_time']
+                    
+                    print(f"[{chunk_idx+1}/{len(six_hour_chunks)}] Fetching 6h chunk: {chunk_start_time} to {chunk_end_time}")
+                    
+                    # Update current operation state
+                    current_operation = 'fetching'
+                    current_chunk_start = chunk_start_time
+                    current_chunk_end = chunk_end_time
+                    
+                    # Send progress update: Starting to fetch from IRIS
+                    try:
+                        progress_update = {
+                            'type': 'progress',
+                            'current': chunk_counter + 1,
+                            'total': total_chunks,
+                            'chunk_type': '6h',
+                            'window': {
+                                'start': chunk_start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                'end': chunk_end_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                            },
+                            'station': station_id,
+                            'message': f'Fetching 6h chunk from IRIS: {chunk_start_time.strftime("%Y-%m-%d %H:%M:%S")} to {chunk_end_time.strftime("%H:%M:%S")}'
+                        }
+                        yield f"data: {json.dumps(progress_update)}\n\n"
+                    except (BrokenPipeError, OSError, GeneratorExit):
+                        # Client disconnected, finish current operation and save metadata
+                        print("  ⚠️  Client disconnected during fetch progress update")
+                        # Current operation is just starting, nothing to finish
+                        save_modified_metadata()  # Save any modified metadata before exit
+                        return
+                    
+                    # Fetch waveform from IRIS (this is the actual operation - finish it even if client disconnects)
+                    try:
+                        trace, gaps, error_info = fetch_and_process_waveform(
+                            network=network,
+                            station=station_code,
+                            location=location_clean,
+                            channel=channel,
+                            start_time=chunk_start_time,
+                            end_time=chunk_end_time,
+                            sample_rate=sample_rate
+                        )
+                        current_trace = trace
+                        current_gaps = gaps
+                    except Exception as e:
+                        # Even if client disconnected, log the error
+                        print(f"  ⚠️  Error during IRIS fetch: {e}")
+                        trace = None
+                        gaps = []
+                        error_info = {'error': str(e)}
+                    
+                    if trace is None:
+                        # Fetch failed
+                        chunk_counter += 1
+                        results['failed'] += 1
+                        detail = {
+                            'station': station_id,
+                            'chunk_type': '6h',
+                            'window': {
+                                'start': chunk_start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                'end': chunk_end_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                            },
+                            'status': 'failed',
+                            'error': error_info.get('error') if error_info else 'Unknown error'
+                        }
+                        details.append(detail)
+                        
+                        progress_update = {
+                            'type': 'chunk_complete',
+                            'detail': detail,
+                            'progress': {
+                                'successful': results['successful'],
+                                'skipped': results['skipped'],
+                                'failed': results['failed'],
+                                'current': chunk_counter,
+                                'total': total_chunks
+                            }
+                        }
+                        yield f"data: {json.dumps(progress_update)}\n\n"
+                        continue
+                    
+                    # Update operation state - now saving 6h chunk
+                    current_operation = 'saving_6h'
+                    
+                    # Send progress update: IRIS fetch complete, now saving 6h chunk
+                    try:
+                        progress_update = {
+                            'type': 'progress',
+                            'current': chunk_counter + 1,
+                            'total': total_chunks,
+                            'chunk_type': '6h',
+                            'window': {
+                                'start': chunk_start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                'end': chunk_end_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                            },
+                            'station': station_id,
+                            'message': f'Saving 6h chunk to R2: {chunk_start_time.strftime("%Y-%m-%d %H:%M:%S")} to {chunk_end_time.strftime("%H:%M:%S")}'
+                        }
+                        yield f"data: {json.dumps(progress_update)}\n\n"
+                    except (BrokenPipeError, OSError, GeneratorExit):
+                        # Client disconnected, but we MUST finish saving this chunk and metadata
+                        print("  ⚠️  Client disconnected during 6h save progress - finishing current operation...")
+                        # Continue to save the chunk (don't return yet)
+                    
+                    # Save the 6h chunk (CRITICAL: Finish this even if client disconnected)
+                    chunk_counter += 1
+                    chunk_start_time_6h = time.time()
+                    try:
+                        status_result, error_info, metadata_dirty = create_chunk_from_waveform_data(
+                            network=network,
+                            station=station_code,
+                            location=location_clean,
+                            channel=channel,
+                            volcano=volcano,
+                            sample_rate=sample_rate,
+                            start_time=chunk_start_time,
+                            end_time=chunk_end_time,
+                            chunk_type='6h',
+                            trace=trace,
+                            gaps=gaps,
+                            metadata_cache=metadata_cache
+                        )
+                        if metadata_dirty:
+                            modified_metadata_dates.add(chunk_start_time.strftime("%Y-%m-%d"))
+                    except Exception as e:
+                        print(f"  ⚠️  Error saving 6h chunk: {e}")
+                        status_result = 'failed'
+                        error_info = {'error': str(e)}
+                        metadata_dirty = False
+                    finally:
+                        elapsed_6h = time.time() - chunk_start_time_6h
+                        current_operation = None  # Operation complete
+                    
+                    if status_result == 'success':
+                        results['successful'] += 1
+                    elif status_result == 'skipped':
+                        results['skipped'] += 1
+                    else:
+                        results['failed'] += 1
+                    
+                    detail_6h = {
+                        'station': station_id,
+                        'chunk_type': '6h',
+                        'window': {
+                            'start': chunk_start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            'end': chunk_end_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                        },
+                        'status': status_result,
+                        'elapsed_seconds': round(elapsed_6h, 2) if status_result == 'success' else None,
+                        'error': error_info.get('error') if error_info and status_result == 'failed' else None
+                    }
+                    details.append(detail_6h)
+                    
+                    progress_update = {
+                        'type': 'chunk_complete',
+                        'detail': detail_6h,
+                        'progress': {
+                            'successful': results['successful'],
+                            'skipped': results['skipped'],
+                            'failed': results['failed'],
+                            'current': chunk_counter,
+                            'total': total_chunks
+                        }
+                    }
+                    yield f"data: {json.dumps(progress_update)}\n\n"
+                    
+                    # Send progress update: Starting to derive sub-chunks
+                    progress_update = {
+                        'type': 'progress',
+                        'current': chunk_counter,
+                        'total': total_chunks,
+                        'chunk_type': '6h',
+                        'window': {
+                            'start': chunk_start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            'end': chunk_end_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                        },
+                        'station': station_id,
+                        'message': f'Deriving 1h and 10m chunks from 6h data: {chunk_start_time.strftime("%Y-%m-%d %H:%M:%S")} to {chunk_end_time.strftime("%H:%M:%S")}'
+                    }
+                    yield f"data: {json.dumps(progress_update)}\n\n"
+                    
+                    # Now derive all 1h chunks from this 6h chunk
+                    # Find hour boundaries within this chunk
+                    hour_start = chunk_start_time.replace(minute=0, second=0, microsecond=0)
+                    if hour_start < chunk_start_time:
+                        hour_start += timedelta(hours=1)
+                    
+                    while hour_start < chunk_end_time:
+                        hour_end = min(hour_start + timedelta(hours=1), chunk_end_time)
+                        
+                        # Only create chunk if it overlaps with requested time range
+                        if hour_end <= start_time or hour_start >= end_time:
+                            hour_start = hour_end
+                            continue
+                        
+                        # Extract 1h sub-chunk
+                        sub_trace, sub_gaps = extract_subchunk_from_trace(
+                            trace=trace,
+                            parent_start_time=chunk_start_time,
+                            chunk_start_time=hour_start,
+                            chunk_end_time=hour_end,
+                            sample_rate=sample_rate
+                        )
+                        
+                        if sub_trace is not None:
+                            # Send progress update: Saving 1h chunk
+                            progress_update = {
+                                'type': 'progress',
+                                'current': chunk_counter + 1,
+                                'total': total_chunks,
+                                'chunk_type': '1h',
+                                'window': {
+                                    'start': hour_start.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                    'end': hour_end.strftime('%Y-%m-%dT%H:%M:%SZ')
+                                },
+                                'station': station_id,
+                                'message': f'Saving 1h chunk to R2: {hour_start.strftime("%Y-%m-%d %H:%M:%S")} to {hour_end.strftime("%H:%M:%S")}'
+                            }
+                            yield f"data: {json.dumps(progress_update)}\n\n"
+                            
+                            chunk_counter += 1
+                            chunk_start_time_1h = time.time()
+                            status_result, error_info, metadata_dirty = create_chunk_from_waveform_data(
+                                network=network,
+                                station=station_code,
+                                location=location_clean,
+                                channel=channel,
+                                volcano=volcano,
+                                sample_rate=sample_rate,
+                                start_time=hour_start,
+                                end_time=hour_end,
+                                chunk_type='1h',
+                                trace=sub_trace,
+                                gaps=sub_gaps,
+                                metadata_cache=metadata_cache
+                            )
+                            if metadata_dirty:
+                                modified_metadata_dates.add(hour_start.strftime("%Y-%m-%d"))
+                            elapsed_1h = time.time() - chunk_start_time_1h
+                            
+                            if status_result == 'success':
+                                results['successful'] += 1
+                            elif status_result == 'skipped':
+                                results['skipped'] += 1
+                            else:
+                                results['failed'] += 1
+                            
+                            detail_1h = {
+                                'station': station_id,
+                                'chunk_type': '1h',
+                                'window': {
+                                    'start': hour_start.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                    'end': hour_end.strftime('%Y-%m-%dT%H:%M:%SZ')
+                                },
+                                'status': status_result,
+                                'elapsed_seconds': round(elapsed_1h, 2) if status_result == 'success' else None,
+                                'error': error_info.get('error') if error_info and status_result == 'failed' else None
+                            }
+                            details.append(detail_1h)
+                            
+                            progress_update = {
+                                'type': 'chunk_complete',
+                                'detail': detail_1h,
+                                'progress': {
+                                    'successful': results['successful'],
+                                    'skipped': results['skipped'],
+                                    'failed': results['failed'],
+                                    'current': chunk_counter,
+                                    'total': total_chunks
+                                }
+                            }
+                            yield f"data: {json.dumps(progress_update)}\n\n"
+                            
+                            # Derive all 10m chunks from this 1h chunk
+                            minute_start = hour_start.replace(minute=(hour_start.minute // 10) * 10, second=0, microsecond=0)
+                            if minute_start < hour_start:
+                                minute_start += timedelta(minutes=10)
+                            
+                            while minute_start < hour_end:
+                                minute_end = min(minute_start + timedelta(minutes=10), hour_end)
+                                
+                                # Only create chunk if it overlaps with requested time range
+                                if minute_end <= start_time or minute_start >= end_time:
+                                    minute_start = minute_end
+                                    continue
+                                
+                                # Extract 10m sub-chunk from the 1h trace
+                                sub_10m_trace, sub_10m_gaps = extract_subchunk_from_trace(
+                                    trace=sub_trace,
+                                    parent_start_time=hour_start,
+                                    chunk_start_time=minute_start,
+                                    chunk_end_time=minute_end,
+                                    sample_rate=sample_rate
+                                )
+                                
+                                if sub_10m_trace is not None:
+                                    # Send progress update: Saving 10m chunk
+                                    progress_update = {
+                                        'type': 'progress',
+                                        'current': chunk_counter + 1,
+                                        'total': total_chunks,
+                                        'chunk_type': '10m',
+                                        'window': {
+                                            'start': minute_start.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                            'end': minute_end.strftime('%Y-%m-%dT%H:%M:%SZ')
+                                        },
+                                        'station': station_id,
+                                        'message': f'Saving 10m chunk to R2: {minute_start.strftime("%Y-%m-%d %H:%M:%S")} to {minute_end.strftime("%H:%M:%S")}'
+                                    }
+                                    yield f"data: {json.dumps(progress_update)}\n\n"
+                                    
+                                    chunk_counter += 1
+                                    chunk_start_time_10m = time.time()
+                                    status_result, error_info, metadata_dirty = create_chunk_from_waveform_data(
+                                        network=network,
+                                        station=station_code,
+                                        location=location_clean,
+                                        channel=channel,
+                                        volcano=volcano,
+                                        sample_rate=sample_rate,
+                                        start_time=minute_start,
+                                        end_time=minute_end,
+                                        chunk_type='10m',
+                                        trace=sub_10m_trace,
+                                        gaps=sub_10m_gaps,
+                                        metadata_cache=metadata_cache
+                                    )
+                                    if metadata_dirty:
+                                        modified_metadata_dates.add(minute_start.strftime("%Y-%m-%d"))
+                                    elapsed_10m = time.time() - chunk_start_time_10m
+                                    
+                                    if status_result == 'success':
+                                        results['successful'] += 1
+                                    elif status_result == 'skipped':
+                                        results['skipped'] += 1
+                                    else:
+                                        results['failed'] += 1
+                                    
+                                    detail_10m = {
+                                        'station': station_id,
+                                        'chunk_type': '10m',
+                                        'window': {
+                                            'start': minute_start.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                            'end': minute_end.strftime('%Y-%m-%dT%H:%M:%SZ')
+                                        },
+                                        'status': status_result,
+                                        'elapsed_seconds': round(elapsed_10m, 2) if status_result == 'success' else None,
+                                        'error': error_info.get('error') if error_info and status_result == 'failed' else None
+                                    }
+                                    details.append(detail_10m)
+                                    
+                                    progress_update = {
+                                        'type': 'chunk_complete',
+                                        'detail': detail_10m,
+                                        'progress': {
+                                            'successful': results['successful'],
+                                            'skipped': results['skipped'],
+                                            'failed': results['failed'],
+                                            'current': chunk_counter,
+                                            'total': total_chunks
+                                        }
+                                    }
+                                    yield f"data: {json.dumps(progress_update)}\n\n"
+                                
+                                minute_start = minute_end
+                        
+                        hour_start = hour_end
+                
+                # Batch save all modified metadata files (much faster than saving individually!)
+                # This happens at the end of normal completion
+                if modified_metadata_dates:
+                    try:
+                        yield f"data: {json.dumps({
+                            'type': 'progress',
+                            'current': chunk_counter,
+                            'total': total_chunks,
+                            'message': f'Saving {len(modified_metadata_dates)} metadata file(s) to R2...'
+                        })}\n\n"
+                    except (BrokenPipeError, OSError, GeneratorExit):
+                        print("  ⚠️  Client disconnected during metadata save message - continuing to save metadata...")
+                    
+                    # Save metadata even if client disconnected (CRITICAL for data integrity)
+                    save_modified_metadata()
+                
+                # Send final summary (only if client still connected)
+                try:
+                    final_response = {
+                        'type': 'complete',
+                        'backfill_id': backfill_id,
+                        'started_at': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'station': {
+                            'network': network,
+                            'volcano': volcano,
+                            'station': station_code,
+                            'location': location,
+                            'channel': channel
+                        },
+                        'time_range': {
+                            'start': start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            'end': end_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            'hours': hours_back
+                        },
+                        'total_windows': total_chunks,
+                        'progress': results,
+                        'details': details,
+                        'summary': {
+                            'duration_seconds': round(time.time() - now.timestamp(), 2),
+                            'success_rate': round(results['successful'] / total_chunks * 100, 1) if total_chunks > 0 else 0
+                        }
+                    }
+                    yield f"data: {json.dumps(final_response)}\n\n"
+                    print(f"Station backfill complete: {results['successful']} success, {results['failed']} failed, {results['skipped']} skipped")
+                except (BrokenPipeError, OSError, GeneratorExit):
+                    print("  ⚠️  Client disconnected during final summary - metadata already saved")
+                
+            except Exception as e:
+                import traceback
+                error_msg = f'Error in backfill stream: {str(e)}'
+                print(f"❌ {error_msg}")
+                traceback.print_exc()
+                
+                # CRITICAL: Save modified metadata even on error (to prevent corruption)
+                try:
+                    save_modified_metadata()
+                except Exception as save_error:
+                    print(f"  ⚠️  Failed to save modified metadata on error: {save_error}")
+                
+                # Send error through stream (if client still connected)
+                try:
+                    error_response = {
+                        'type': 'error',
+                        'error': error_msg,
+                        'traceback': traceback.format_exc()
+                    }
+                    yield f"data: {json.dumps(error_response)}\n\n"
+                except (BrokenPipeError, OSError, GeneratorExit):
+                    print("  ⚠️  Client disconnected during error response")
+            
+            finally:
+                # ALWAYS save modified metadata, even if cancelled or errored
+                # This prevents corruption: if we saved binary files, metadata MUST be saved too
+                if modified_metadata_dates:
+                    print(f"  💾 [CLEANUP] Saving {len(modified_metadata_dates)} modified metadata file(s)...")
+                    try:
+                        save_modified_metadata()
+                        print(f"  ✅ [CLEANUP] Metadata saved successfully")
+                    except Exception as cleanup_error:
+                        print(f"  ❌ [CLEANUP] Failed to save modified metadata: {cleanup_error}")
+                        # This is critical - log it prominently
+                        import traceback
+                        traceback.print_exc()
+        
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🔄 Returning streaming response")
+        return Response(stream_with_context(generate()), mimetype='text/event-stream', headers={'Cache-Control': 'no-cache'})
     
     except Exception as e:
         import traceback
@@ -2245,16 +3176,21 @@ def ping():
 def get_collector_state():
     """
     Lightweight endpoint returning only collector run state.
-    Much faster than /status as it doesn't query R2 or calculate file counts.
+    Returns both current instance and previous instance run times.
     
     Returns:
         {
-            "last_run_completed": "2025-11-13 00:52:15 UTC" or null,
+            "last_run_completed": "2025-11-13T00:52:15+00:00" or null,  # Current instance (in-memory)
+            "last_run_completed_previous": "2025-11-13T00:52:15+00:00" or null,  # From run_history.json
             "currently_running": false
         }
     """
+    # Read fresh from run_history.json (persisted from previous instances)
+    latest_run_timestamp = load_latest_run()
+    
     return jsonify({
-        'last_run_completed': status['last_run_completed'],
+        'last_run_completed': status['last_run_completed'],  # Current instance (in-memory)
+        'last_run_completed_previous': latest_run_timestamp,  # Previous instances (from file)
         'currently_running': status['currently_running']
     })
 
@@ -4791,8 +5727,8 @@ def main():
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.81 UI: Incremental download size updates and Download button moved to lower menu")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.81 UI: Incremental download size updates and Download button moved to lower menu")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.83 Restore: Clean front-end functionality - removed waveform date panel")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.83 Restore: Clean front-end functionality - removed waveform date panel")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
