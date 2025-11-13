@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_13_v1.83"
+__version__ = "2025_11_13_v1.84"
 import time
 import sys
 import os
@@ -217,7 +217,8 @@ def save_failure(failure_info):
 def load_latest_run():
     """
     Load the latest run from run_history.json.
-    Returns the timestamp of the most recent run, or None if no runs exist.
+    Returns the end_time of the most recent run, or None if no runs exist.
+    Intelligently handles both old format (timestamp) and new format (start_time/end_time).
     """
     try:
         s3 = get_s3_client()
@@ -227,7 +228,8 @@ def load_latest_run():
             if logs and len(logs) > 0:
                 # Latest run is at index 0
                 latest_run = logs[0]
-                return latest_run.get('timestamp')
+                # Try new format first, fallback to old 'timestamp' field
+                return latest_run.get('end_time') or latest_run.get('timestamp')
         except Exception as load_error:
             # Check if it's a NoSuchKey exception (file doesn't exist yet)
             error_code = getattr(load_error, 'response', {}).get('Error', {}).get('Code', '')
@@ -247,7 +249,9 @@ def save_run_log(run_info):
     
     Args:
         run_info: dict with keys:
-            - timestamp: ISO format timestamp
+            - start_time: ISO format timestamp when run started
+            - end_time: ISO format timestamp when run ended
+            - duration_seconds: float, how long the run took
             - success: bool (True if failed == 0)
             - stations: list of station IDs (e.g., ["HV.OBL.--.HHZ", ...])
             - files_created: dict with '10m', '1h', '6h' counts
@@ -255,6 +259,9 @@ def save_run_log(run_info):
             - successful: int
             - skipped: int
             - failed: int
+    
+    Note: Old entries may have a 'timestamp' field (equivalent to end_time).
+          New entries use start_time/end_time for clarity.
     """
     try:
         s3 = get_s3_client()
@@ -279,8 +286,12 @@ def save_run_log(run_info):
         filtered_logs = []
         for log in logs:
             try:
-                # Parse timestamp (handle both Z and +00:00 formats)
-                ts_str = log['timestamp']
+                # Parse timestamp (handle both new 'end_time' and old 'timestamp' formats)
+                ts_str = log.get('end_time') or log.get('timestamp')
+                if not ts_str:
+                    continue  # Skip if no time field at all
+                
+                # Handle both Z and +00:00 formats
                 if ts_str.endswith('Z'):
                     ts_str = ts_str[:-1] + '+00:00'
                 log_time = datetime.fromisoformat(ts_str)
@@ -841,9 +852,18 @@ def load_metadata_for_date_range(network, station, location, channel, volcano, s
     Returns:
         dict: {
             'YYYY-MM-DD': {
-                '10m': set(['HH:MM:SS', ...]),
-                '1h': set(['HH:MM:SS', ...]),
-                '6h': set(['HH:MM:SS', ...])
+                '10m': {
+                    'HH:MM:SS': {'end': 'HH:MM:SS', 'samples': N},
+                    ...
+                },
+                '1h': {
+                    'HH:MM:SS': {'end': 'HH:MM:SS', 'samples': N},
+                    ...
+                },
+                '6h': {
+                    'HH:MM:SS': {'end': 'HH:MM:SS', 'samples': N},
+                    ...
+                }
             },
             ...
         }
@@ -897,18 +917,37 @@ def load_metadata_for_date_range(network, station, location, channel, volcano, s
                         metadata = json.load(f)
         
         if metadata:
-            # Extract existing chunks
+            # Extract existing chunks with full info (start, end, samples)
+            # ONLY include chunks that have complete metadata (have 'end' and 'samples' fields)
             metadata_map[date_str] = {
-                '10m': set(chunk['start'] for chunk in metadata.get('chunks', {}).get('10m', [])),
-                '1h': set(chunk['start'] for chunk in metadata.get('chunks', {}).get('1h', [])),
-                '6h': set(chunk['start'] for chunk in metadata.get('chunks', {}).get('6h', []))
+                '10m': {chunk['start']: {'end': chunk['end'], 'samples': chunk.get('samples', 0)} 
+                        for chunk in metadata.get('chunks', {}).get('10m', [])
+                        if 'end' in chunk and 'samples' in chunk},
+                '1h': {chunk['start']: {'end': chunk['end'], 'samples': chunk.get('samples', 0)} 
+                       for chunk in metadata.get('chunks', {}).get('1h', [])
+                       if 'end' in chunk and 'samples' in chunk},
+                '6h': {chunk['start']: {'end': chunk['end'], 'samples': chunk.get('samples', 0)} 
+                       for chunk in metadata.get('chunks', {}).get('6h', [])
+                       if 'end' in chunk and 'samples' in chunk}
             }
+            
+            # Log if we found any corrupted chunks
+            corrupted_10m = len([c for c in metadata.get('chunks', {}).get('10m', []) if 'end' not in c or 'samples' not in c])
+            corrupted_1h = len([c for c in metadata.get('chunks', {}).get('1h', []) if 'end' not in c or 'samples' not in c])
+            corrupted_6h = len([c for c in metadata.get('chunks', {}).get('6h', []) if 'end' not in c or 'samples' not in c])
+            if corrupted_10m or corrupted_1h or corrupted_6h:
+                print(f"  ⚠️  WARNING: Found corrupted metadata entries for {date_str}: 10m={corrupted_10m}, 1h={corrupted_1h}, 6h={corrupted_6h} (skipping these)")
+            # DEBUG: Log loaded chunks for this date
+            if metadata_map[date_str]['1h']:
+                print(f"  📋 Loaded metadata for {date_str}: {len(metadata_map[date_str]['1h'])} 1h chunks")
+                for start, info in metadata_map[date_str]['1h'].items():
+                    print(f"    - 1h chunk: {start} → {info['end']} ({info['samples']} samples)")
         else:
             # No metadata file exists - all chunks missing for this date
             metadata_map[date_str] = {
-                '10m': set(),
-                '1h': set(),
-                '6h': set()
+                '10m': {},
+                '1h': {},
+                '6h': {}
             }
         
         # Move to next date
@@ -994,19 +1033,28 @@ def audit_chunks_needed(network, station, location, channel, volcano, sample_rat
             if hour_end > start_time and hour_start < end_time:
                 date_str = hour_start.strftime("%Y-%m-%d")
                 hour_start_str = hour_start.strftime("%H:%M:%S")
+                hour_end_str = hour_end.strftime("%H:%M:%S")
                 
-                # Check if this 1h chunk exists
-                if date_str in metadata_map:
-                    if hour_start_str not in metadata_map[date_str]['1h']:
-                        missing_1h.append({
-                            'start_time': hour_start,
-                            'end_time': hour_end,
-                            'date': date_str
-                        })
-                        needed_counts['1h'] += 1
-                    else:
-                        existing_counts['1h'] += 1
-                else:
+                # Check if this 1h chunk exists AND is complete
+                chunk_is_complete = False
+                if date_str in metadata_map and hour_start_str in metadata_map[date_str]['1h']:
+                    chunk_info = metadata_map[date_str]['1h'][hour_start_str]
+                    chunk_end_str = chunk_info['end']
+                    expected_samples = int((hour_end - hour_start).total_seconds() * sample_rate)
+                    actual_samples = chunk_info['samples']
+                    
+                    # DEBUG: Log incomplete chunk detection
+                    if chunk_end_str != hour_end_str or abs(actual_samples - expected_samples) / expected_samples >= 0.01:
+                        print(f"  ⚠️  Found incomplete 1h chunk: {hour_start_str} → expected end {hour_end_str}, got {chunk_end_str}; expected {expected_samples} samples, got {actual_samples}")
+                    
+                    # Chunk is complete if end time matches AND sample count is close (within 1%)
+                    if chunk_end_str == hour_end_str:
+                        sample_diff = abs(actual_samples - expected_samples)
+                        if sample_diff / expected_samples < 0.01:  # Within 1% tolerance
+                            chunk_is_complete = True
+                            existing_counts['1h'] += 1
+                
+                if not chunk_is_complete:
                     missing_1h.append({
                         'start_time': hour_start,
                         'end_time': hour_end,
@@ -1025,19 +1073,23 @@ def audit_chunks_needed(network, station, location, channel, volcano, sample_rat
                     # Only check if it overlaps with requested time range
                     if minute_end > start_time and minute_start < end_time:
                         minute_start_str = minute_start.strftime("%H:%M:%S")
+                        minute_end_str = minute_end.strftime("%H:%M:%S")
                         
-                        # Check if this 10m chunk exists
-                        if date_str in metadata_map:
-                            if minute_start_str not in metadata_map[date_str]['10m']:
-                                missing_10m.append({
-                                    'start_time': minute_start,
-                                    'end_time': minute_end,
-                                    'date': date_str
-                                })
-                                needed_counts['10m'] += 1
-                            else:
-                                existing_counts['10m'] += 1
-                        else:
+                        # Check if this 10m chunk exists AND is complete
+                        chunk_is_complete = False
+                        if date_str in metadata_map and minute_start_str in metadata_map[date_str]['10m']:
+                            chunk_info = metadata_map[date_str]['10m'][minute_start_str]
+                            chunk_end_str = chunk_info['end']
+                            expected_samples = int((minute_end - minute_start).total_seconds() * sample_rate)
+                            
+                            # Chunk is complete if end time matches AND sample count is close (within 1%)
+                            if chunk_end_str == minute_end_str:
+                                sample_diff = abs(chunk_info['samples'] - expected_samples)
+                                if sample_diff / expected_samples < 0.01:  # Within 1% tolerance
+                                    chunk_is_complete = True
+                                    existing_counts['10m'] += 1
+                        
+                        if not chunk_is_complete:
                             missing_10m.append({
                                 'start_time': minute_start,
                                 'end_time': minute_end,
@@ -1049,15 +1101,23 @@ def audit_chunks_needed(network, station, location, channel, volcano, sample_rat
             
             hour_start = hour_end
         
-        # Check if 6h chunk itself exists
+        # Check if 6h chunk itself exists AND is complete
         date_str_6h = chunk_start.strftime("%Y-%m-%d")
         chunk_start_str = chunk_start.strftime("%H:%M:%S")
+        chunk_end_str = chunk_end.strftime("%H:%M:%S")
         six_h_exists = False
         
-        if date_str_6h in metadata_map:
-            if chunk_start_str in metadata_map[date_str_6h]['6h']:
-                six_h_exists = True
-                existing_counts['6h'] += 1
+        if date_str_6h in metadata_map and chunk_start_str in metadata_map[date_str_6h]['6h']:
+            chunk_info = metadata_map[date_str_6h]['6h'][chunk_start_str]
+            chunk_end_str_metadata = chunk_info['end']
+            expected_samples = int((chunk_end - chunk_start).total_seconds() * sample_rate)
+            
+            # Chunk is complete if end time matches AND sample count is close (within 1%)
+            if chunk_end_str_metadata == chunk_end_str:
+                sample_diff = abs(chunk_info['samples'] - expected_samples)
+                if sample_diff / expected_samples < 0.01:  # Within 1% tolerance
+                    six_h_exists = True
+                    existing_counts['6h'] += 1
         
         # We need to fetch this 6h chunk if:
         # 1. The 6h chunk itself is missing, OR
@@ -2426,6 +2486,27 @@ def backfill():
             }
         }
         
+        # Save backfill log to R2
+        try:
+            log_key = f"collector_logs/backfill_logs/{backfill_id}.json"
+            if USE_R2:
+                s3.put_object(
+                    Bucket=R2_BUCKET_NAME,
+                    Key=log_key,
+                    Body=json.dumps(response, indent=2).encode('utf-8'),
+                    ContentType='application/json'
+                )
+                print(f"  💾 Saved backfill log to R2: {log_key}")
+            else:
+                log_dir = Path(__file__).parent / 'cron_output' / 'collector_logs' / 'backfill_logs'
+                log_dir.mkdir(parents=True, exist_ok=True)
+                log_path = log_dir / f"{backfill_id}.json"
+                with open(log_path, 'w') as f:
+                    json.dump(response, f, indent=2)
+                print(f"  💾 Saved backfill log locally: {log_path}")
+        except Exception as log_error:
+            print(f"  ⚠️  Warning: Failed to save backfill log: {log_error}")
+        
         print(f"Backfill complete: {results['successful']} success, {results['failed']} failed, {results['skipped']} skipped")
         
         return jsonify(response)
@@ -2899,6 +2980,15 @@ def backfill_station():
                             hour_start = hour_end
                             continue
                         
+                        # CRITICAL: Only create COMPLETE hour-aligned chunks
+                        # If hour_end is not a full hour from hour_start, skip it
+                        # (This prevents creating partial 1h chunks like 02:00-02:20:18)
+                        expected_hour_end = hour_start + timedelta(hours=1)
+                        if hour_end < expected_hour_end:
+                            print(f"  ⏭️  Skipping partial 1h chunk: {hour_start.strftime('%H:%M:%S')} to {hour_end.strftime('%H:%M:%S')} (incomplete hour)")
+                            hour_start = hour_end
+                            continue
+                        
                         # Extract 1h sub-chunk
                         sub_trace, sub_gaps = extract_subchunk_from_trace(
                             trace=trace,
@@ -3071,9 +3161,24 @@ def backfill_station():
                                 minute_start = minute_end
                         
                         hour_start = hour_end
+                    
+                    # OPTIMIZATION: Save metadata after each 6h chunk completes
+                    # This ensures progress is persisted every 6 hours instead of only at the end
+                    # If backfill crashes, we only lose work since the last 6h boundary
+                    if modified_metadata_dates:
+                        try:
+                            progress_msg = f"data: {json.dumps({'type': 'progress', 'current': chunk_counter, 'total': total_chunks, 'message': f'💾 Saving metadata for 6h chunk ({len(modified_metadata_dates)} file(s))...'})}\n\n"
+                            yield progress_msg
+                        except (BrokenPipeError, OSError, GeneratorExit):
+                            print("  ⚠️  Client disconnected during 6h metadata save message - continuing to save...")
+                        
+                        # Save and clear the modified dates set
+                        save_modified_metadata()
+                        modified_metadata_dates.clear()  # Clear so we don't re-save on next iteration
+                        print(f"  ✅ Metadata saved for 6h chunk (progress preserved)")
                 
-                # Batch save all modified metadata files (much faster than saving individually!)
-                # This happens at the end of normal completion
+                # Final metadata save (for any remaining modified dates)
+                # This should be minimal since we save after each 6h chunk
                 if modified_metadata_dates:
                     try:
                         yield f"data: {json.dumps({
@@ -3112,8 +3217,35 @@ def backfill_station():
                         'summary': {
                             'duration_seconds': round(time.time() - now.timestamp(), 2),
                             'success_rate': round(results['successful'] / total_chunks * 100, 1) if total_chunks > 0 else 0
+                        },
+                        'audit': {
+                            'existing_counts': existing_counts,
+                            'needed_counts': needed_counts
                         }
                     }
+                    
+                    # Save backfill log to R2
+                    try:
+                        s3 = get_s3_client()
+                        log_key = f"collector_logs/backfill_logs/{backfill_id}.json"
+                        if USE_R2:
+                            s3.put_object(
+                                Bucket=R2_BUCKET_NAME,
+                                Key=log_key,
+                                Body=json.dumps(final_response, indent=2).encode('utf-8'),
+                                ContentType='application/json'
+                            )
+                            print(f"  💾 Saved backfill log to R2: {log_key}")
+                        else:
+                            log_dir = Path(__file__).parent / 'cron_output' / 'collector_logs' / 'backfill_logs'
+                            log_dir.mkdir(parents=True, exist_ok=True)
+                            log_path = log_dir / f"{backfill_id}.json"
+                            with open(log_path, 'w') as f:
+                                json.dump(final_response, f, indent=2)
+                            print(f"  💾 Saved backfill log locally: {log_path}")
+                    except Exception as log_error:
+                        print(f"  ⚠️  Warning: Failed to save backfill log: {log_error}")
+                    
                     yield f"data: {json.dumps(final_response)}\n\n"
                     print(f"Station backfill complete: {results['successful']} success, {results['failed']} failed, {results['skipped']} skipped")
                 except (BrokenPipeError, OSError, GeneratorExit):
@@ -5697,7 +5829,9 @@ def run_cron_job():
         
         # Log run to R2 (keeps last 7 days)
         run_log_info = {
-            'timestamp': completion_time.isoformat(),
+            'start_time': status['last_run_started'],  # When run started
+            'end_time': completion_time.isoformat(),    # When run ended
+            'duration_seconds': status.get('last_run_duration_seconds'),
             'success': (failed == 0),
             'stations': sorted(list(stations_processed)),
             'files_created': files_by_type.copy(),
@@ -5727,8 +5861,8 @@ def main():
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.83 Restore: Clean front-end functionality - removed waveform date panel")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.83 Restore: Clean front-end functionality - removed waveform date panel")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.84 UI: Axis styling refinements - CSS variables for tick labels, borders, spacing")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.84 UI: Axis styling refinements - CSS variables for tick labels, borders, spacing")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))

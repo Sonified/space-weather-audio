@@ -83,6 +83,7 @@ h2 {
     background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
     border: 1px solid rgba(200, 100, 100, 0.3);
     padding-top: 20px;
+    padding-right: 40px;
 }
 
 .panel:nth-child(5) {
@@ -499,12 +500,16 @@ canvas {
 #waveform {
     height: 135px;
     margin-bottom: 10px;
+    border: 2px solid rgba(80, 40, 40, 0.6);
+    box-shadow: none;
 }
 
 #spectrogram {
     height: 450px;
     background: transparent;
-    margin-top: 30px;
+    margin-top: 40px;
+    border: 2px solid rgba(80, 40, 40, 0.6);
+    box-shadow: none;
 }
 
 #waveform-axis,

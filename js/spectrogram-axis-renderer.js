@@ -50,10 +50,16 @@ export function drawFrequencyAxis() {
     // Clear canvas (transparent background)
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
+    // Get CSS variables for styling
+    const rootStyles = getComputedStyle(document.documentElement);
+    const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
+    const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
+    const tickColor = rootStyles.getPropertyValue('--axis-tick-color').trim() || '#888';
+    
     // Setup text styling - disable shadows/outlines
-    ctx.font = '16px Arial, sans-serif';
-    ctx.fillStyle = '#ddd';
-    ctx.strokeStyle = '#888';
+    ctx.font = `${fontSize} Arial, sans-serif`;
+    ctx.fillStyle = labelColor;
+    ctx.strokeStyle = tickColor;
     ctx.lineWidth = 1;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
@@ -157,8 +163,8 @@ export function drawFrequencyAxis() {
     
     // Draw "Hz" label at bottom, left aligned
     // Match the styling of frequency labels for consistency
-    ctx.font = '16px Arial, sans-serif';  // Same size as frequency labels
-    ctx.fillStyle = '#ddd';  // Same color as frequency labels
+    ctx.font = `${fontSize} Arial, sans-serif`;  // Use CSS variable for font size
+    ctx.fillStyle = labelColor;  // Use CSS variable for color
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';  // Use middle baseline for sharper rendering
     // Ensure no shadow on Hz label

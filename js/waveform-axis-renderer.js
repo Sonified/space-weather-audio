@@ -29,10 +29,16 @@ export function drawWaveformAxis() {
     // Clear canvas (transparent background)
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
+    // Get CSS variables for styling
+    const rootStyles = getComputedStyle(document.documentElement);
+    const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
+    const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
+    const tickColor = rootStyles.getPropertyValue('--axis-tick-color').trim() || '#888';
+    
     // Setup text styling - disable shadows/outlines
-    ctx.font = '16px Arial, sans-serif';
-    ctx.fillStyle = '#ddd';
-    ctx.strokeStyle = '#888';
+    ctx.font = `${fontSize} Arial, sans-serif`;
+    ctx.fillStyle = labelColor;
+    ctx.strokeStyle = tickColor;
     ctx.lineWidth = 1;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';

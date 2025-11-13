@@ -49,10 +49,16 @@ export function drawWaveformXAxis() {
     
     console.log(`🕐 X-axis: Drawing with time span=${actualTimeSpanSeconds.toFixed(1)}s (${(actualTimeSpanSeconds/3600).toFixed(1)}h), canvas width=${canvasWidth}px`);
     
+    // Get CSS variables for styling
+    const rootStyles = getComputedStyle(document.documentElement);
+    const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
+    const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
+    const tickColor = rootStyles.getPropertyValue('--axis-tick-color').trim() || '#888';
+    
     // Setup text styling - match y-axis style
-    ctx.font = '16px Arial, sans-serif';
-    ctx.fillStyle = '#ddd';
-    ctx.strokeStyle = '#888';
+    ctx.font = `${fontSize} Arial, sans-serif`;
+    ctx.fillStyle = labelColor;
+    ctx.strokeStyle = tickColor;
     ctx.lineWidth = 1;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
@@ -70,13 +76,8 @@ export function drawWaveformXAxis() {
         console.log(`🕐 First tick: ${ticks[0].localTime.toLocaleString()} (UTC: ${ticks[0].utcTime.toISOString()})`);
     }
     
-    // Draw each tick (skip the first one - date is in separate panel)
+    // Draw each tick
     ticks.forEach((tick, index) => {
-        // Skip the first tick - date is displayed in separate panel above
-        if (index === 0) {
-            return;
-        }
-        
         // Calculate x position: (time offset from start / actual time span) * canvas width
         // Use actual time span, not playback duration!
         const timeOffsetSeconds = (tick.utcTime.getTime() - startTimeUTC.getTime()) / 1000;
@@ -99,12 +100,11 @@ export function drawWaveformXAxis() {
         // Format label based on whether it's a day crossing
         let label;
         if (tick.isDayCrossing) {
-            // Show date in 11/12/25 format
+            // Show date in 11/12 format (mm/dd)
             const localDate = tick.localTime;
             const month = localDate.getMonth() + 1; // 0-indexed
             const day = localDate.getDate();
-            const year = localDate.getFullYear().toString().slice(-2); // Last 2 digits
-            label = `${month}/${day}/${year}`;
+            label = `${month}/${day}`;
         } else {
             // Show time in international format (1:00 through 13:00 and 24:00)
             const localDate = tick.localTime;
@@ -120,9 +120,9 @@ export function drawWaveformXAxis() {
         }
         
         // Draw label centered below the tick
-        // Ensure text is visible
-        ctx.fillStyle = '#ddd'; // Reset fill style
-        ctx.fillText(label, x, 12);
+        // Ensure text is visible (use CSS variable for consistent styling)
+        ctx.fillStyle = labelColor;
+        ctx.fillText(label, x, 10);
         console.log(`🕐 Drew tick at x=${x.toFixed(1)}: "${label}" (dayCrossing=${tick.isDayCrossing})`);
     });
 }
@@ -154,15 +154,19 @@ export function drawWaveformDate() {
     // Clear canvas (transparent background)
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
-    // Format date in 11/12/25 format
+    // Format date in 11/12 format (mm/dd)
     const month = startLocal.getMonth() + 1;
     const day = startLocal.getDate();
-    const year = startLocal.getFullYear().toString().slice(-2);
-    const dateLabel = `${month}/${day}/${year}`;
+    const dateLabel = `${month}/${day}`;
+    
+    // Get CSS variables for styling
+    const rootStyles = getComputedStyle(document.documentElement);
+    const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
+    const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
     
     // Setup text styling - match x-axis style
-    ctx.font = '16px Arial, sans-serif';
-    ctx.fillStyle = '#ddd';
+    ctx.font = `${fontSize} Arial, sans-serif`;
+    ctx.fillStyle = labelColor;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.shadowBlur = 0;
@@ -171,7 +175,7 @@ export function drawWaveformDate() {
     ctx.shadowOffsetY = 0;
     
     // Draw date extending off the left edge (negative x position)
-    ctx.fillText(dateLabel, -60, 12);
+    ctx.fillText(dateLabel, -60, 10);
 }
 
 /**

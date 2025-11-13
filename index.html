@@ -7,6 +7,14 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌋</text></svg>">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
+    <style>
+        /* Meta-variables for axis tick label styling */
+        :root {
+            --axis-label-font-size: 15px;      /* Size of tick labels */
+            --axis-label-color: #bbb;          /* Brightness/color of tick label text */
+            --axis-tick-color: #666;           /* Color of tick marks (lines) */
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -51,6 +59,10 @@
                         <option value="12">12 hours</option>
                         <option value="24" selected>24 hours</option>
                     </select>
+                </div>
+                
+                <div class="control-group" style="margin-left: auto;">
+                    <button type="button" id="forceIrisBtn" onclick="toggleForceIris()" style="padding: 8px 16px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d;">🌐 Force IRIS Fetch: OFF</button>
                 </div>
                 
                 <div class="control-group" style="display: none;">
