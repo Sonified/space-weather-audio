@@ -44,7 +44,7 @@ We use embedded data fields (not text entry fields) to store JSON data because:
 
 **Required Fields:**
 - `SessionTracking` - Timing data for participant sessions
-- `json_data` - Interface interaction data (future)
+- `JSON_data` - Interface interaction data (future)
 
-**Status:** Pending setup in Qualtrics Survey Flow (requested Nov 13, 2025)
+**Status:** ✅ Both fields have been added to Survey Flow (Nov 13, 2025)
 

@@ -65,6 +65,17 @@
                     <button type="button" id="startBtn" onclick="startStreaming(event)" style="min-width: 150px; padding: 10px 20px; font-size: 16px;">📡 Fetch Data</button>
                 </div>
                 
+                <div class="control-group" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="autoPlay" checked style="width: 20px; height: 20px; cursor: pointer;">
+                    <label for="autoPlay" style="margin-bottom: 0; cursor: pointer; font-weight: 600; font-size: 14px; color: #333;">Auto Play</label>
+                </div>
+                
+                <div class="control-group" style="margin-left: 15px; flex: 1; min-width: 200px;">
+                    <div class="status info" id="status" style="margin-top: 0; padding: 10px 15px; width: 100%;">
+                        Ready to stream. Select a volcano and station above.
+                    </div>
+                </div>
+                
                 <div class="control-group" id="forceIrisControlGroup" style="margin-left: auto; display: none;">
                     <button type="button" id="forceIrisBtn" onclick="toggleForceIris()" style="padding: 8px 16px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d;">🌐 Force IRIS Fetch: OFF</button>
                 </div>
@@ -101,10 +112,6 @@
                     <input type="checkbox" id="enableNormalize" checked style="width: 24px; height: 24px; cursor: pointer;">
                     <label for="enableNormalize" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 18px; color: #333;">Normalization</label>
                 </div>
-            </div>
-            
-            <div class="status info" id="status" style="margin-top: 15px;">
-                Ready to stream. Select a volcano and station above.
             </div>
         </div>
         

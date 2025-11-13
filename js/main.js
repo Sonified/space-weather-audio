@@ -734,9 +734,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.84 - Qualtrics Embedded Data Migration');
-    console.log('📦 [0ms] v1.84 Feature: Migrated from QID11 text entry to embedded data fields (SessionTracking, json_data)');
-    console.log('📦 [0ms] v1.84 Commit: v1.84 Feature: Migrated from QID11 text entry to embedded data fields (SessionTracking, json_data)');
+    console.log('🌋 [0ms] volcano-audio v1.85 - Region Tracker Interface');
+    console.log('📦 [0ms] v1.85 Feature: Built waveform region tracker with smooth expansion animations and frequency selection');
+    console.log('📦 [0ms] v1.85 Commit: v1.85 Feature: Built region_tracker.html - smooth region toggle/expansion without DOM destruction');
     
     // Initialize modals (inject into DOM)
     initializeModals();

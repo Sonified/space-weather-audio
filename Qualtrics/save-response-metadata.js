@@ -32,3 +32,4 @@ console.log('This script requires the metadata to be passed or read from a file.
 console.log('For now, the metadata is logged to console after submission.');
 console.log('You can copy it from there and save it manually.');
 
+

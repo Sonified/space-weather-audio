@@ -487,36 +487,58 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                         ttfaTime = performance.now() - progressiveT0;
                         console.log(`⚡ FIRST CHUNK SENT in ${ttfaTime.toFixed(0)}ms - starting playback!`);
                         
-                        // 🎯 FORCE IMMEDIATE PLAYBACK
-                        State.workletNode.port.postMessage({
-                            type: 'start-immediately'
-                        });
-                        console.log(`🚀 Sent 'start-immediately' to worklet`);
+                        const autoPlayEnabled = document.getElementById('autoPlay').checked;
+                        
+                        if (autoPlayEnabled) {
+                            // 🎯 FORCE IMMEDIATE PLAYBACK
+                            State.workletNode.port.postMessage({
+                                type: 'start-immediately'
+                            });
+                            console.log(`🚀 Sent 'start-immediately' to worklet`);
+                            
+                            if (State.gainNode && State.audioContext) {
+                                const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                                State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
+                                State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
+                                State.gainNode.gain.exponentialRampToValueAtTime(
+                                    Math.max(0.01, targetVolume), 
+                                    State.audioContext.currentTime + 0.05
+                                );
+                                console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
+                            }
+                            
+                            State.setCurrentAudioPosition(0);
+                            State.setLastWorkletPosition(0);
+                            State.setLastWorkletUpdateTime(State.audioContext.currentTime);
+                            State.setLastUpdateTime(State.audioContext.currentTime);
+                            
+                            // Enable play button immediately when playback starts
+                            const playPauseBtn = document.getElementById('playPauseBtn');
+                            playPauseBtn.disabled = false;
+                            playPauseBtn.textContent = '⏸️ Pause';
+                            playPauseBtn.classList.remove('play-active');
+                            playPauseBtn.classList.add('pause-active');
+                            
+                            // Start playback indicator (will draw when waveform is ready)
+                            requestAnimationFrame(updatePlaybackIndicator);
+                        } else {
+                            console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
+                            // Don't start playback, but keep state ready
+                            State.setIsPlaying(false);
+                            State.setIsPaused(true);
+                            // Enable play button so user can start playback
+                            const playPauseBtn = document.getElementById('playPauseBtn');
+                            playPauseBtn.disabled = false;
+                            playPauseBtn.textContent = '▶️ Play';
+                            playPauseBtn.classList.remove('pause-active');
+                            playPauseBtn.classList.add('play-active');
+                        }
                         
                         // 🎯 RESOLVE PROMISE - fetch loop can now continue to chunk 2!
                         if (firstChunkProcessedResolve) {
                             firstChunkProcessedResolve();
                             console.log(`✅ First chunk processed and sent - allowing fetch of chunk 2+`);
                         }
-                        
-                        if (State.gainNode && State.audioContext) {
-                            const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                            State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                            State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
-                            State.gainNode.gain.exponentialRampToValueAtTime(
-                                Math.max(0.01, targetVolume), 
-                                State.audioContext.currentTime + 0.05
-                            );
-                            console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
-                        }
-                        
-                        State.setCurrentAudioPosition(0);
-                        State.setLastWorkletPosition(0);
-                        State.setLastWorkletUpdateTime(State.audioContext.currentTime);
-                        State.setLastUpdateTime(State.audioContext.currentTime);
-                        
-                        // Start playback indicator (will draw when waveform is ready)
-                        requestAnimationFrame(updatePlaybackIndicator);
                     }
                 }
                 
@@ -700,13 +722,35 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                     State.setLoadingInterval(null);
                                 }
                                 
-                                document.getElementById('playPauseBtn').disabled = false;
-                                document.getElementById('playPauseBtn').textContent = '⏸️ Pause';
-                                document.getElementById('playPauseBtn').classList.add('pause-active');
+                                // Only update button if it's still disabled (wasn't enabled when playback started)
+                                const playPauseBtn = document.getElementById('playPauseBtn');
+                                if (playPauseBtn.disabled) {
+                                    playPauseBtn.disabled = false;
+                                    const autoPlayEnabled = document.getElementById('autoPlay').checked;
+                                    if (autoPlayEnabled && State.isPlaying) {
+                                        // Auto play is on and playback is active - show Pause button
+                                        playPauseBtn.textContent = '⏸️ Pause';
+                                        playPauseBtn.classList.remove('play-active');
+                                        playPauseBtn.classList.add('pause-active');
+                                        document.getElementById('status').className = 'status success';
+                                        document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
+                                    } else {
+                                        // Auto play is off or playback not started - show Play button
+                                        playPauseBtn.textContent = '▶️ Play';
+                                        playPauseBtn.classList.remove('pause-active');
+                                        playPauseBtn.classList.add('play-active');
+                                        document.getElementById('status').className = 'status success';
+                                        document.getElementById('status').textContent = '✅ Ready! Click Play to start.';
+                                    }
+                                } else {
+                                    // Button already enabled - just update status if needed
+                                    if (State.isPlaying) {
+                                        document.getElementById('status').className = 'status success';
+                                        document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
+                                    }
+                                }
                                 document.getElementById('loopBtn').disabled = false;
                                 document.getElementById('downloadBtn').disabled = false;
-                                document.getElementById('status').className = 'status success';
-                                document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
                             } else {
                                 // Not all samples written yet - wait a bit and check again
                                 console.log(`⏳ ${logTime()} Waiting for more samples (${totalSamplesWritten}/${totalWorkletSamples})...`);
@@ -1097,32 +1141,54 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     
     console.log(`✅ Sent ${State.allReceivedData.length} chunks to AudioWorklet`);
     
-    // 🎯 FORCE IMMEDIATE PLAYBACK
-    State.workletNode.port.postMessage({
-        type: 'start-immediately'
-    });
-    console.log(`🚀 Sent 'start-immediately' to worklet`);
+    const autoPlayEnabled = document.getElementById('autoPlay').checked;
     
-    // Fade-in audio
-    if (State.gainNode && State.audioContext) {
-        const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-        State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-        State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
-        State.gainNode.gain.exponentialRampToValueAtTime(
-            Math.max(0.01, targetVolume), 
-            State.audioContext.currentTime + 0.05
-        );
-        console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
+    if (autoPlayEnabled) {
+        // 🎯 FORCE IMMEDIATE PLAYBACK
+        State.workletNode.port.postMessage({
+            type: 'start-immediately'
+        });
+        console.log(`🚀 Sent 'start-immediately' to worklet`);
+        
+        // Fade-in audio
+        if (State.gainNode && State.audioContext) {
+            const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+            State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
+            State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
+            State.gainNode.gain.exponentialRampToValueAtTime(
+                Math.max(0.01, targetVolume), 
+                State.audioContext.currentTime + 0.05
+            );
+            console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
+        }
+        
+        // Reset position tracking
+        State.setCurrentAudioPosition(0);
+        State.setLastWorkletPosition(0);
+        State.setLastWorkletUpdateTime(State.audioContext.currentTime);
+        State.setLastUpdateTime(State.audioContext.currentTime);
+        
+        // Enable play button immediately when playback starts
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        playPauseBtn.disabled = false;
+        playPauseBtn.textContent = '⏸️ Pause';
+        playPauseBtn.classList.remove('play-active', 'secondary');
+        playPauseBtn.classList.add('pause-active');
+        
+        // Start playback indicator
+        requestAnimationFrame(updatePlaybackIndicator);
+    } else {
+        console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
+        // Don't start playback, but keep state ready
+        State.setIsPlaying(false);
+        State.setIsPaused(true);
+        // Enable play button so user can start playback
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        playPauseBtn.disabled = false;
+        playPauseBtn.textContent = '▶️ Play';
+        playPauseBtn.classList.remove('pause-active', 'secondary');
+        playPauseBtn.classList.add('play-active');
     }
-    
-    // Reset position tracking
-    State.setCurrentAudioPosition(0);
-    State.setLastWorkletPosition(0);
-    State.setLastWorkletUpdateTime(State.audioContext.currentTime);
-    State.setLastUpdateTime(State.audioContext.currentTime);
-    
-    // Start playback indicator
-    requestAnimationFrame(updatePlaybackIndicator);
     
     // 🎯 CRITICAL FIX: Wait for worklet to confirm it has buffered all samples (Railway path)
     const totalRailwaySamples = samples.length;
@@ -1181,18 +1247,37 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
         State.setLoadingInterval(null);
     }
     
-    // Re-enable playback controls
+    // Only update button if it's still disabled (wasn't enabled when playback started)
     const playPauseBtn = document.getElementById('playPauseBtn');
-    playPauseBtn.disabled = false;
-    playPauseBtn.textContent = '⏸️ Pause';
-    playPauseBtn.classList.remove('play-active', 'secondary');
-    playPauseBtn.classList.add('pause-active');
+    if (playPauseBtn.disabled) {
+        playPauseBtn.disabled = false;
+        const autoPlayEnabled = document.getElementById('autoPlay').checked;
+        if (autoPlayEnabled && State.isPlaying) {
+            // Auto play is on and playback is active - show Pause button
+            playPauseBtn.textContent = '⏸️ Pause';
+            playPauseBtn.classList.remove('play-active', 'secondary');
+            playPauseBtn.classList.add('pause-active');
+            document.getElementById('status').className = 'status success';
+            document.getElementById('status').textContent = '✅ Playing! (Railway backend)';
+        } else {
+            // Auto play is off or playback not started - show Play button
+            playPauseBtn.textContent = '▶️ Play';
+            playPauseBtn.classList.remove('pause-active', 'secondary');
+            playPauseBtn.classList.add('play-active');
+            document.getElementById('status').className = 'status success';
+            document.getElementById('status').textContent = '✅ Ready! Click Play to start.';
+        }
+    } else {
+        // Button already enabled - just update status if needed
+        if (State.isPlaying) {
+            document.getElementById('status').className = 'status success';
+            document.getElementById('status').textContent = '✅ Playing! (Railway backend)';
+        }
+    }
     document.getElementById('downloadBtn').disabled = false;
     
     document.getElementById('loopBtn').disabled = false;
     
-    document.getElementById('status').className = 'status success';
-    document.getElementById('status').textContent = '✅ Playing! (Railway backend)';
     console.log('✅ Streaming complete from Railway backend');
 }
 

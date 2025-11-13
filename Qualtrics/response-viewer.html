@@ -353,6 +353,27 @@
             const qid11Index = headers.findIndex(h => h.trim() === 'QID11');
             console.log('📋 QID11 column index:', qid11Index !== -1 ? qid11Index : 'NOT FOUND');
             
+            // Find embedded data columns (trim headers including \r\n)
+            const cleanHeaders = headers.map(h => h.trim().replace(/\r$/, ''));
+            const sessionTrackingIndex = cleanHeaders.findIndex(h => h === 'SessionTracking' || h === 'sessionTracking');
+            const jsonDataIndex = cleanHeaders.findIndex(h => h === 'JSON_data' || h === 'json_data' || h === 'JSONData');
+            const participantIdIndex = cleanHeaders.findIndex(h => h === 'ParticipantID' || h === 'participantId');
+            console.log('🔍 Embedded data columns in CSV:', {
+                SessionTracking: sessionTrackingIndex !== -1 ? `${sessionTrackingIndex} (header: "${cleanHeaders[sessionTrackingIndex]}")` : 'NOT FOUND',
+                JSON_data: jsonDataIndex !== -1 ? `${jsonDataIndex} (header: "${cleanHeaders[jsonDataIndex]}")` : 'NOT FOUND',
+                ParticipantID: participantIdIndex !== -1 ? `${participantIdIndex} (header: "${cleanHeaders[participantIdIndex]}")` : 'NOT FOUND'
+            });
+            
+            // Search for any column that might contain embedded data (case-insensitive)
+            const embeddedDataHeaders = cleanHeaders.filter((h, idx) => {
+                const lower = h.toLowerCase();
+                return lower.includes('session') || lower.includes('tracking') || 
+                       lower.includes('json') || lower.includes('participant');
+            });
+            if (embeddedDataHeaders.length > 0) {
+                console.log('🔍 Potential embedded data columns found:', embeddedDataHeaders);
+            }
+            
             // Parse all rows into objects
             const responses = [];
             for (let i = 1; i < lines.length; i++) {
@@ -378,17 +399,46 @@
                 
                 if (values.length === headers.length) {
                     const response = {};
-                    headers.forEach((header, index) => {
-                        response[header.trim()] = values[index];
+                    cleanHeaders.forEach((header, index) => {
+                        // Use clean header name (without \r)
+                        response[header] = values[index];
                     });
                     responses.push(response);
                 }
             }
             
             console.log(`📊 Parsed ${responses.length} responses from CSV`);
+            
+            // Log sample embedded data values from first response (if any)
+            if (responses.length > 0) {
+                const firstResponse = responses[0];
+                if (sessionTrackingIndex !== -1) {
+                    const stValue = firstResponse[cleanHeaders[sessionTrackingIndex]];
+                    console.log('📋 Sample SessionTracking value:', {
+                        header: cleanHeaders[sessionTrackingIndex],
+                        value: stValue,
+                        type: typeof stValue,
+                        length: stValue ? stValue.length : 0,
+                        isEmpty: !stValue || stValue.trim() === '' || stValue === cleanHeaders[sessionTrackingIndex],
+                        preview: stValue ? stValue.substring(0, 100) : 'null'
+                    });
+                }
+                if (jsonDataIndex !== -1) {
+                    const jdValue = firstResponse[cleanHeaders[jsonDataIndex]];
+                    console.log('📋 Sample JSON_data value:', {
+                        header: cleanHeaders[jsonDataIndex],
+                        value: jdValue,
+                        type: typeof jdValue,
+                        length: jdValue ? jdValue.length : 0,
+                        isEmpty: !jdValue || jdValue.trim() === '' || jdValue === cleanHeaders[jsonDataIndex],
+                        preview: jdValue ? jdValue.substring(0, 100) : 'null'
+                    });
+                }
+            }
+            
             return {
                 responses: responses,
-                headers: headers
+                headers: cleanHeaders
             };
         }
         
@@ -440,28 +490,93 @@
                     
                     if (foundResponse) {
                         console.log('✅ Found response in CSV export');
+                        console.log('📋 Raw CSV response object keys:', Object.keys(foundResponse));
+                        console.log('📋 Raw CSV response object:', foundResponse);
+                        
                         // Convert CSV row to display format
                         const values = {};
+                        const embeddedData = {};
                         const headers = exportData.headers;
+                        
+                        // Find embedded data column indices
+                        const sessionTrackingHeader = headers.find(h => h === 'SessionTracking' || h === 'sessionTracking');
+                        const jsonDataHeader = headers.find(h => h === 'JSON_data' || h === 'json_data' || h === 'JSONData');
+                        const participantIdHeader = headers.find(h => h === 'ParticipantID' || h === 'participantId');
+                        
+                        // Log all embedded data headers and their raw values
+                        console.log('🔍 All embedded data headers found:', {
+                            SessionTracking: sessionTrackingHeader,
+                            JSON_data: jsonDataHeader,
+                            ParticipantID: participantIdHeader
+                        });
+                        
                         headers.forEach((header, index) => {
-                            const key = header.trim();
+                            const key = header;
                             const value = foundResponse[key];
-                            if (value !== undefined && value !== '') {
+                            
+                            // Check if this is an embedded data field
+                            if (key === 'SessionTracking' || key === 'sessionTracking' || 
+                                key === 'JSON_data' || key === 'json_data' || key === 'JSONData' ||
+                                key === 'ParticipantID' || key === 'participantId') {
+                                // Log what we're checking
+                                console.log(`🔍 Checking ${key}:`, {
+                                    value: value,
+                                    type: typeof value,
+                                    isUndefined: value === undefined,
+                                    isNull: value === null,
+                                    isEmpty: value === '',
+                                    isHeaderName: value === key
+                                });
+                                
+                                if (value !== undefined && value !== null && value !== '' && value !== key) {
+                                    // Remove quotes if present and trim
+                                    const cleanValue = value.toString().replace(/^["']|["']$/g, '').trim();
+                                    if (cleanValue && cleanValue !== key) {
+                                        embeddedData[key] = cleanValue;
+                                        console.log(`✅ Found ${key} in CSV:`, {
+                                            rawValue: value,
+                                            rawLength: value.length,
+                                            cleanValue: cleanValue,
+                                            cleanLength: cleanValue.length,
+                                            preview: cleanValue.substring(0, 100)
+                                        });
+                                    } else {
+                                        console.log(`⚠️ ${key} value is empty or equals header name:`, cleanValue);
+                                    }
+                                } else {
+                                    console.log(`⚠️ ${key} skipped:`, {
+                                        reason: value === undefined ? 'undefined' : 
+                                                value === null ? 'null' : 
+                                                value === '' ? 'empty string' : 
+                                                value === key ? 'equals header name' : 'unknown'
+                                    });
+                                }
+                            } else if (value !== undefined && value !== '') {
                                 values[key] = value;
                             }
                         });
                         
                         // Check for QID11 in CSV
-                        const hasQID11 = 'QID11' in values;
+                        const hasQID11 = 'QID11' in values || 'Q11' in values;
                         console.log('🔍 QID11 in CSV export:', hasQID11 ? '✅ YES' : '❌ NO');
                         if (hasQID11) {
-                            console.log('📋 QID11 value length:', values.QID11 ? values.QID11.length : 0);
-                            console.log('📋 QID11 preview:', values.QID11 ? values.QID11.substring(0, 100) + '...' : 'empty');
+                            const qid11Value = values.QID11 || values.Q11;
+                            console.log('📋 QID11 value length:', qid11Value ? qid11Value.length : 0);
+                            console.log('📋 QID11 preview:', qid11Value ? qid11Value.substring(0, 100) + '...' : 'empty');
                         }
+                        
+                        // Check for embedded data in CSV
+                        console.log('🔍 Embedded data in CSV:', {
+                            SessionTracking: !!embeddedData.SessionTracking || !!embeddedData.sessionTracking,
+                            JSON_data: !!embeddedData.JSON_data || !!embeddedData.json_data || !!embeddedData.JSONData,
+                            ParticipantID: !!embeddedData.ParticipantID || !!embeddedData.participantId,
+                            keys: Object.keys(embeddedData)
+                        });
                         
                         foundResponse = {
                             responseId: responseId,
-                            values: values
+                            values: values,
+                            embeddedData: embeddedData
                         };
                     }
                 } else {
@@ -510,15 +625,27 @@
                 
                 console.log('✅ Found response in export:', foundResponse);
                 
-                // Log all available fields to find QID11
+                // Log all available fields to find QID11 and embedded data
                 console.log('📋 Response structure:', {
                     hasValues: !!foundResponse.values,
                     hasLabels: !!foundResponse.labels,
                     hasDisplayedValues: !!foundResponse.displayedValues,
+                    hasEmbeddedData: !!foundResponse.embeddedData,
                     valuesKeys: foundResponse.values ? Object.keys(foundResponse.values) : [],
                     labelsKeys: foundResponse.labels ? Object.keys(foundResponse.labels) : [],
                     displayedValuesKeys: foundResponse.displayedValues ? Object.keys(foundResponse.displayedValues) : [],
+                    embeddedDataKeys: foundResponse.embeddedData ? Object.keys(foundResponse.embeddedData) : [],
                     allKeys: Object.keys(foundResponse)
+                });
+                
+                // Check for embedded data fields in values (sometimes they appear there)
+                const hasSessionTracking = foundResponse.values && ('SessionTracking' in foundResponse.values || 'sessionTracking' in foundResponse.values);
+                const hasJSONData = foundResponse.values && ('JSON_data' in foundResponse.values || 'json_data' in foundResponse.values || 'JSONData' in foundResponse.values);
+                console.log('🔍 Embedded data search in values:', {
+                    SessionTracking: hasSessionTracking,
+                    JSON_data: hasJSONData,
+                    sessionTrackingValue: foundResponse.values?.SessionTracking || foundResponse.values?.sessionTracking,
+                    jsonDataValue: foundResponse.values?.JSON_data || foundResponse.values?.json_data || foundResponse.values?.JSONData
                 });
                 
                 // Log the full response to see what's actually there
@@ -566,7 +693,26 @@
                     console.log('✅ Found QID11 in labels/displayedValues, adding to merged values');
                 }
                 
-                const embeddedData = foundResponse.embeddedData || {};
+                // Check for embedded data in multiple locations
+                let embeddedData = foundResponse.embeddedData || {};
+                
+                // Sometimes embedded data appears in values (especially in exports)
+                if (foundResponse.values) {
+                    if (foundResponse.values.SessionTracking || foundResponse.values.sessionTracking) {
+                        embeddedData.SessionTracking = foundResponse.values.SessionTracking || foundResponse.values.sessionTracking;
+                        console.log('✅ Found SessionTracking in values');
+                    }
+                    if (foundResponse.values.JSON_data || foundResponse.values.json_data || foundResponse.values.JSONData) {
+                        embeddedData.JSON_data = foundResponse.values.JSON_data || foundResponse.values.json_data || foundResponse.values.JSONData;
+                        console.log('✅ Found JSON_data in values');
+                    }
+                    // Check for ParticipantID too
+                    if (foundResponse.values.ParticipantID || foundResponse.values.participantId) {
+                        embeddedData.ParticipantID = foundResponse.values.ParticipantID || foundResponse.values.participantId;
+                    }
+                }
+                
+                console.log('📋 Final embedded data:', Object.keys(embeddedData));
                 
                 const displayResult = {
                     result: {
@@ -637,37 +783,48 @@
                 const result = await response.json();
                 console.log('✅ Response retrieved:', result);
                 
+                // Check for embedded data in regular GET response
+                if (result.result && result.result.embeddedData) {
+                    console.log('🔍 Embedded data in GET response:', {
+                        keys: Object.keys(result.result.embeddedData),
+                        hasSessionTracking: 'SessionTracking' in result.result.embeddedData,
+                        hasJSONData: 'JSON_data' in result.result.embeddedData || 'json_data' in result.result.embeddedData,
+                        hasParticipantID: 'ParticipantID' in result.result.embeddedData
+                    });
+                } else {
+                    console.warn('⚠️ No embeddedData field in GET response');
+                }
+                
                 // Check if QID11 is in the response
                 if (result.result && result.result.values) {
                     const hasQID11 = 'QID11' in result.result.values;
+                    const hasSessionTracking = 'SessionTracking' in result.result.values;
+                    const hasJSONData = 'JSON_data' in result.result.values;
+                    
                     console.log('📋 QID11 (JSON dump) in response:', hasQID11 ? '✅ YES' : '❌ NO');
+                    console.log('📋 SessionTracking in response:', hasSessionTracking ? '✅ YES' : '❌ NO');
+                    console.log('📋 JSON_data in response:', hasJSONData ? '✅ YES' : '❌ NO');
+                    
+                    if (hasSessionTracking) {
+                        console.log('📋 SessionTracking value length:', result.result.values.SessionTracking?.length || 0);
+                        console.log('📋 SessionTracking preview:', result.result.values.SessionTracking?.substring(0, 100) || 'empty');
+                    }
+                    if (hasJSONData) {
+                        console.log('📋 JSON_data value length:', result.result.values.JSON_data?.length || 0);
+                        console.log('📋 JSON_data preview:', result.result.values.JSON_data?.substring(0, 100) || 'empty');
+                    }
+                    
                     if (hasQID11) {
                         console.log('📋 QID11 value:', result.result.values.QID11);
                     } else {
                         console.log('📋 Available fields:', Object.keys(result.result.values));
-                        console.warn('⚠️ QID11 not found in response.');
-                        console.warn('⚠️ This is a known Qualtrics API limitation - text entry (TE) fields are sent but may not be returned in GET responses.');
-                        console.warn('💡 The JSON dump WAS successfully sent (676 chars), but Qualtrics API does not return it when fetching responses.');
-                        console.warn('💡 Use the "Fetch via Export" button to retrieve QID11 text entry field.');
-                        
-                        // Add a note in the UI
-                        if (result.result && result.result.values) {
-                            // Add a warning section about missing QID11
-                            const warningHtml = `
-                                <div class="response-section" style="border-left-color: #ff9800; background: rgba(255, 152, 0, 0.1);">
-                                    <h3>⚠️ JSON Dump Field (QID11)</h3>
-                                    <div class="response-item">
-                                        <strong>Status:</strong> Field was sent to Qualtrics but not returned in API response
-                                    </div>
-                                    <div class="response-item" style="margin-top: 10px;">
-                                        <strong>Note:</strong> This is a known Qualtrics API limitation. Text entry (TE) fields are successfully submitted but may not be returned when fetching responses via the API. The JSON dump containing timing information (676 characters) was sent, but you may need to export responses directly from Qualtrics to view it.
-                                    </div>
-                                    <div class="response-item" style="margin-top: 10px;">
-                                        <strong>Solution:</strong> Click the "📤 Fetch via Export (with QID11)" button above to retrieve the response using the Export API, which includes text entry fields.
-                                    </div>
-                                </div>
-                            `;
-                            // We'll need to insert this in the displayResponse function
+                        if (!hasSessionTracking && !hasJSONData) {
+                            console.warn('⚠️ QID11 not found in response.');
+                            console.warn('⚠️ This is a known Qualtrics API limitation - text entry (TE) fields are sent but may not be returned in GET responses.');
+                            console.warn('💡 The JSON dump WAS successfully sent (676 chars), but Qualtrics API does not return it when fetching responses.');
+                            console.warn('💡 Use the "Fetch via Export" button to retrieve QID11 text entry field.');
+                        } else {
+                            console.log('✅ Embedded data fields found in values object (SessionTracking, JSON_data)');
                         }
                     }
                 }
@@ -904,11 +1061,28 @@
                 }
                 
                 // Display embedded data
-                if (data.result.embeddedData) {
+                // NOTE: Embedded data can appear in two places:
+                // 1. data.result.embeddedData (when retrieved via Export API)
+                // 2. data.result.values (when retrieved via GET endpoint)
+                const embeddedData = data.result.embeddedData || {};
+                // Note: values is already declared above, reuse it
+                
+                // Check for embedded data fields in values object (GET endpoint returns them here)
+                if (values.SessionTracking && !embeddedData.SessionTracking) {
+                    embeddedData.SessionTracking = values.SessionTracking;
+                }
+                if (values.JSON_data && !embeddedData.JSON_data) {
+                    embeddedData.JSON_data = values.JSON_data;
+                }
+                if (values.ParticipantID && !embeddedData.ParticipantID) {
+                    embeddedData.ParticipantID = values.ParticipantID;
+                }
+                
+                if (Object.keys(embeddedData).length > 0) {
                     html += '<div class="response-section">';
                     html += '<h3>🔗 Embedded Data</h3>';
                     
-                    for (const [key, value] of Object.entries(data.result.embeddedData)) {
+                    for (const [key, value] of Object.entries(embeddedData)) {
                         // Special handling for SessionTracking (timing data)
                         if (key === 'SessionTracking' && value) {
                             try {
@@ -968,8 +1142,8 @@
                                 // If parsing fails, display as plain text
                                 html += `<div class="response-item"><strong>${key}:</strong> ${value}</div>`;
                             }
-                        } else if (key === 'json_data' && value) {
-                            // Special handling for json_data (interface interaction data)
+                        } else if (key === 'JSON_data' && value) {
+                            // Special handling for JSON_data (interface interaction data)
                             try {
                                 const jsonData = JSON.parse(value);
                                 html += '<div class="response-item">';
@@ -985,7 +1159,7 @@
                                 html += `<div class="response-item"><strong>${key}:</strong> ${value}</div>`;
                             }
                         } else {
-                            html += `<div class="response-item"><strong>${key}:</strong> ${value}</div>`;
+                        html += `<div class="response-item"><strong>${key}:</strong> ${value}</div>`;
                         }
                     }
                     

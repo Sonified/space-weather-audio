@@ -376,7 +376,15 @@ export function getResponsesForSubmission(participantId) {
         // Metadata
         sessionId: responses.sessionId,
         participantId: responses.participantId,
-        createdAt: responses.createdAt
+        createdAt: responses.createdAt,
+        // Test JSON_data - interface interaction data
+        // This will be stored in the JSON_data embedded data field
+        jsonData: {
+            test: true,
+            message: "This is a test value for JSON_data",
+            timestamp: new Date().toISOString(),
+            version: "1.0"
+        }
     };
 }
 

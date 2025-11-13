@@ -109,28 +109,29 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
         if (awesf.selfShrink) values[QUESTION_IDS.AWE_SELF_SHRINK] = toNumber(awesf.selfShrink);
     }
     
-    // Build the request payload
-    const payload = {
-        values: values
-    };
-    
-    // Initialize embedded data object
+    // Initialize embedded data object (will be added to values, not separate)
     const embeddedData = {};
     
     // Add participant ID as embedded data if provided
     if (participantId) {
         embeddedData.ParticipantID = participantId;
+        // Add to values object (embedded data fields go in values when creating responses)
+        values.ParticipantID = participantId;
     }
     
     // Add timing data as embedded data (more reliable than text entry field)
     // Embedded data fields are returned by the API, text entry fields often are not
+    // IMPORTANT: When creating responses via API, embedded data fields must be in the values object
     if (combinedResponses.jsonDump) {
         const jsonDumpString = JSON.stringify(combinedResponses.jsonDump);
         embeddedData.SessionTracking = jsonDumpString;
+        // Add to values object (embedded data fields go in values when creating responses)
+        values.SessionTracking = jsonDumpString;
         console.log('📋 SessionTracking being sent to Qualtrics as embedded data:', {
             fieldName: 'SessionTracking',
             length: jsonDumpString.length,
-            preview: jsonDumpString.substring(0, 200) + '...'
+            preview: jsonDumpString.substring(0, 200) + '...',
+            inValues: 'SessionTracking' in values
         });
         
         // Also keep QID11 for backwards compatibility (if it exists in survey)
@@ -145,17 +146,29 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
     // This will store all JSON data about participant interactions with the interface
     if (combinedResponses.jsonData) {
         const jsonDataString = JSON.stringify(combinedResponses.jsonData);
-        embeddedData.json_data = jsonDataString;
-        console.log('📋 json_data being sent to Qualtrics as embedded data:', {
-            fieldName: 'json_data',
+        embeddedData.JSON_data = jsonDataString;
+        // Add to values object (embedded data fields go in values when creating responses)
+        values.JSON_data = jsonDataString;
+        console.log('📋 JSON_data being sent to Qualtrics as embedded data:', {
+            fieldName: 'JSON_data',
             length: jsonDataString.length,
-            preview: jsonDataString.substring(0, 200) + '...'
+            preview: jsonDataString.substring(0, 200) + '...',
+            inValues: 'JSON_data' in values
         });
     }
     
-    // Add embedded data to payload if we have any
+    // Build the request payload
+    // NOTE: When creating responses, embedded data fields go in the values object, not a separate embeddedData key
+    const payload = {
+        values: values
+    };
+    
+    // Log what embedded data we're sending
     if (Object.keys(embeddedData).length > 0) {
-        payload.embeddedData = embeddedData;
+        console.log('📦 Embedded data being sent in values object:', {
+            fields: Object.keys(embeddedData),
+            allValuesKeys: Object.keys(values).filter(k => k === 'SessionTracking' || k === 'JSON_data' || k === 'ParticipantID')
+        });
     }
     
     try {

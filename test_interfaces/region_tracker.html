@@ -1,0 +1,2047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waveform Region Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #2a0606 0%, #3a0f0f 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 2em;
+            text-shadow: 2px 2px 8px rgba(255, 100, 100, 0.6), 0 0 20px rgba(255, 50, 50, 0.4);
+        }
+
+        /* Region Card */
+        .region-card {
+            background: linear-gradient(135deg, rgba(255, 250, 250, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            box-shadow: 
+                0 10px 20px rgba(80, 20, 20, 0.35),
+                0 6px 12px rgba(80, 20, 20, 0.25),
+                0 3px 6px rgba(255, 100, 100, 0.15),
+                0 1px 3px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+            border: 1px solid rgba(200, 100, 100, 0.2);
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .region-card:hover {
+            box-shadow: 
+                0 12px 24px rgba(80, 20, 20, 0.4),
+                0 8px 16px rgba(80, 20, 20, 0.3),
+                0 4px 8px rgba(255, 100, 100, 0.2);
+        }
+
+        /* Region Header Bar */
+        .region-header {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.5);
+            border-bottom: 1px solid rgba(200, 100, 100, 0.2);
+            transition: background 0.2s;
+            font-size: 0.9em;
+        }
+
+        .region-header:hover {
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .region-header.expanded {
+            background: rgba(255, 240, 240, 0.8);
+            border-bottom-color: rgba(200, 100, 100, 0.4);
+        }
+
+        .play-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 2px;
+            background: #c82333;
+            border: none;
+            color: white;
+            font-size: 0.75em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 20px;
+            flex-shrink: 0;
+            transition: all 0.2s;
+            padding: 0;
+        }
+
+        .play-btn:hover {
+            background: #bd2130;
+        }
+
+        .play-btn.playing {
+            background: #28a745;
+        }
+
+        .region-summary {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 0.9em;
+            color: #333;
+        }
+
+        .region-label {
+            font-weight: 600;
+            color: #333;
+            margin-right: 20px;
+        }
+
+        .features-count-input {
+            width: 40px;
+            padding: 4px 6px;
+            border: 1px solid rgba(200, 100, 100, 0.3);
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: 600;
+            text-align: center;
+            margin-right: 30px;
+            background: white;
+            color: #333;
+            cursor: text;
+            transition: border-color 0.2s;
+        }
+
+        .features-count-input:focus {
+            outline: none;
+            border-color: #c82333;
+            box-shadow: 0 0 0 2px rgba(200, 35, 51, 0.2);
+        }
+
+        .features-count-input:hover {
+            border-color: rgba(200, 100, 100, 0.5);
+        }
+
+        .region-time-display {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            color: #333;
+        }
+
+        .time-label {
+            font-weight: 500;
+            color: #666;
+            margin-right: 4px;
+        }
+
+        .time-value {
+            font-family: 'Monaco', 'Menlo', monospace;
+            color: #333;
+        }
+
+        .collapse-icon {
+            font-size: 1.2em;
+            color: #c82333;
+            margin-right: 20px;
+            transition: transform 0.3s;
+            flex-shrink: 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+        }
+
+        .collapse-icon:hover {
+            color: #bd2130;
+        }
+
+        .region-header.expanded .collapse-icon {
+            transform: rotate(180deg);
+        }
+
+        .delete-region-btn {
+            background: #ffb3ba;
+            color: #721c24;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin-left: 20px;
+            flex-shrink: 0;
+        }
+
+        .delete-region-btn:hover {
+            background: #ff8a8f;
+            transform: scale(1.05);
+        }
+
+        /* Region Details */
+        .region-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            background: white;
+        }
+
+        .region-details.expanded {
+            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .details-content {
+            padding: 12px;
+            font-size: 0.85em;
+        }
+
+        /* Region Time Fields */
+        .region-time-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .time-field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .time-field-group label {
+            font-size: 0.8em;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .time-field-group input {
+            padding: 6px 8px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 0.85em;
+            transition: border-color 0.2s;
+        }
+
+        .time-field-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        /* Features List */
+        .features-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .features-container {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .feature-row {
+            background: #f9f9f9;
+            padding: 6px 10px 6px 38px;
+            border-radius: 4px;
+            border-left: 3px solid #c82333;
+            display: grid;
+            grid-template-columns: 120px 120px 80px 110px 110px 1fr;
+            gap: 8px;
+            align-items: center;
+            position: relative;
+            min-height: 36px;
+        }
+
+        .feature-number {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-weight: 700;
+            color: #333;
+            font-size: 1.2em;
+            width: 24px;
+            text-align: center;
+        }
+
+        .feature-row:nth-child(odd) {
+            background: #f9f9f9;
+        }
+
+        .feature-row:nth-child(even) {
+            background: #f0f0f0;
+        }
+
+
+        select, input[type="text"], textarea {
+            padding: 4px 6px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 0.95em;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        select:focus, input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: #c82333;
+        }
+
+        textarea.freq-input {
+            resize: vertical;
+            overflow-y: auto;
+            height: 28px;
+            line-height: 1.2;
+        }
+
+        .notes-field {
+            grid-column: 5 / -1;
+        }
+
+        .freq-input {
+            width: 100%;
+        }
+
+        .freq-input.pulse {
+            animation: pulseReceipt 0.6s ease-out;
+        }
+
+        .freq-input.pulse-long {
+            animation: pulseReceipt 1.2s ease-out;
+        }
+
+        @keyframes pulseReceipt {
+            0% {
+                background-color: #fff;
+                border-color: #c82333;
+            }
+            50% {
+                background-color: #ffe8e8;
+                border-color: #c82333;
+                box-shadow: 0 0 10px rgba(200, 35, 51, 0.5);
+            }
+            100% {
+                background-color: #fff;
+                border-color: #e0e0e0;
+            }
+        }
+
+
+        /* Select Button */
+        .select-freq-btn {
+            padding: 6px 12px;
+            border: 1px solid #c82333;
+            border-radius: 4px;
+            background: white;
+            color: #c82333;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .select-freq-btn:hover {
+            background: #c82333;
+            color: white;
+        }
+
+        .select-freq-btn.active {
+            background: #c82333;
+            color: white;
+        }
+
+        .select-freq-btn.pulse {
+            animation: pulseButton 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulseButton {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.7;
+                transform: scale(1.05);
+            }
+        }
+
+        .frequency-display {
+            grid-column: span 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 6px;
+            color: #999;
+            font-style: italic;
+            font-size: 0.85em;
+            background: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            max-width: 150px;
+        }
+
+        .frequency-display.selected {
+            color: #333;
+            font-style: normal;
+            font-weight: 500;
+        }
+
+        .frequency-display.pulse {
+            animation: pulseFrequencyDisplay 0.8s ease-out;
+        }
+
+        @keyframes pulseFrequencyDisplay {
+            0% {
+                background-color: #f9f9f9;
+                border-color: #e0e0e0;
+            }
+            50% {
+                background-color: #ffcccc;
+                border-color: #ff0000;
+                box-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+            }
+            100% {
+                background-color: #f9f9f9;
+                border-color: #e0e0e0;
+            }
+        }
+
+        /* Spectrogram Panel */
+        .spectrogram-panel {
+            background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
+            border: 1px solid rgba(200, 100, 100, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 
+                0 10px 20px rgba(80, 20, 20, 0.35),
+                0 6px 12px rgba(80, 20, 20, 0.25);
+            position: relative;
+        }
+
+        .spectrogram-container {
+            position: relative;
+            display: flex;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+        }
+
+        #spectrogram-select {
+            cursor: default;
+            display: block;
+            width: 100%;
+            height: 450px;
+        }
+
+        #spectrogram-select.selecting {
+            cursor: crosshair;
+        }
+
+        #spectrogram-axis-select {
+            display: block;
+        }
+
+        .selection-box {
+            position: absolute;
+            border: 2px solid #ff4444;
+            background: rgba(255, 68, 68, 0.2);
+            pointer-events: none;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: white;
+            font-size: 1.2em;
+        }
+
+        .empty-state p {
+            opacity: 0.9;
+            margin-top: 10px;
+        }
+
+        /* Waveform Time Bar */
+        .waveform-panel {
+            background: linear-gradient(135deg, rgba(40, 40, 40, 0.95) 0%, rgba(60, 60, 60, 0.95) 100%);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            position: relative; /* Needed for absolute positioning of add button */
+        }
+
+        .waveform-container {
+            position: relative;
+            display: flex;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .waveform-canvas-wrapper {
+            position: relative;
+            flex: 1;
+            cursor: default;
+        }
+
+        #waveform-time-bar {
+            width: 100%;
+            height: 100px;
+            display: block;
+        }
+
+        #waveform-time-axis {
+            width: 100%;
+            height: 40px;
+            display: block;
+        }
+
+        .region-highlight {
+            position: absolute;
+            top: 0;
+            height: 100px;
+            background: rgba(68, 136, 255, 0.2);
+            border-left: 2px solid rgba(68, 136, 255, 0.6);
+            border-right: 2px solid rgba(68, 136, 255, 0.6);
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .region-highlight.active {
+            background: rgba(68, 136, 255, 0.5);
+            border-left-color: rgba(68, 136, 255, 0.9);
+            border-right-color: rgba(68, 136, 255, 0.9);
+        }
+
+        .playhead {
+            position: absolute;
+            top: 0;
+            width: 4px;
+            height: 100px;
+            background: #ff0000;
+            pointer-events: none;
+            z-index: 10000;
+            display: none;
+            box-shadow: 0 0 8px rgba(255, 0, 0, 1);
+        }
+
+        .selection-box {
+            position: absolute;
+            top: 0;
+            height: 100px;
+            background: rgba(255, 255, 0, 0.2);
+            border-left: 2px solid rgba(255, 200, 0, 0.8);
+            border-right: 2px solid rgba(255, 200, 0, 0.8);
+            pointer-events: none;
+        }
+
+        .add-region-button {
+            position: absolute;
+            padding: 8px 16px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            white-space: nowrap;
+            opacity: 0;
+        }
+
+        .add-region-button:hover {
+            background: #218838;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌋 Waveform Region Tracker</h1>
+        
+        <!-- Waveform Time Bar -->
+        <div class="waveform-panel">
+            <div class="waveform-container">
+                <div class="waveform-canvas-wrapper" id="waveformWrapper">
+                    <canvas id="waveform-time-bar" width="1200" height="100"></canvas>
+                    <canvas id="waveform-time-axis" width="1200" height="40"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Spectrogram Panel for Frequency Selection -->
+        <div class="spectrogram-panel">
+            <div class="spectrogram-container">
+                <canvas id="spectrogram-axis-select" width="60" height="450"></canvas>
+                <canvas id="spectrogram-select" width="1200" height="450"></canvas>
+            </div>
+        </div>
+        
+        <div id="regionsList"></div>
+        
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <h2>No regions selected</h2>
+            <p>Select regions on the waveform to track events</p>
+        </div>
+    </div>
+
+    <script>
+        // Region data structure
+        let regions = [
+            {
+                id: 1,
+                startTime: '2025-11-13T10:23:45.123Z',
+                stopTime: '2025-11-13T10:24:12.456Z',
+                featureCount: 1,
+                features: [
+                    {
+                        type: 'Impulse',
+                        repetition: 'Unique',
+                        lowFreq: '',
+                        highFreq: '',
+                        notes: ''
+                    }
+                ],
+                expanded: false,
+                playing: false
+            }
+        ];
+
+        // ===== WAVEFORM TIME BAR =====
+        // Mock time data - 24 hour period starting from first region's start time
+        const dataStartTime = new Date('2025-11-13T00:00:00.000Z');
+        const dataEndTime = new Date('2025-11-14T00:00:00.000Z'); // 24 hours later (next day at midnight UTC)
+        const totalDuration = (dataEndTime.getTime() - dataStartTime.getTime()) / 1000; // seconds
+        
+        let activeRegionIndex = null; // Track which region is currently active (50% opacity)
+        let isSelectingTime = false;
+        let selectionStartX = null;
+        let selectionEndX = null;
+        let selectionBoxElement = null;
+        let addRegionButton = null;
+        let playheadElement = null;
+        let playheadAnimationId = null;
+        let currentlyPlayingRegionIndex = null;
+
+        // Initialize waveform
+        function initWaveform() {
+            drawWaveform();
+            drawTimeAxis();
+            setupWaveformSelection();
+            updateRegionHighlights();
+            setupPlayhead();
+            
+            // Handle window resize
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    drawWaveform();
+                    drawTimeAxis();
+                    updateRegionHighlights();
+                    // Update playhead position if playing
+                    if (currentlyPlayingRegionIndex !== null) {
+                        updatePlayheadPosition(currentlyPlayingRegionIndex);
+                    }
+                }, 100);
+            });
+        }
+
+        // Setup playhead element
+        function setupPlayhead() {
+            const wrapper = document.getElementById('waveformWrapper');
+            if (!wrapper) {
+                console.error('Waveform wrapper not found!');
+                return;
+            }
+            
+            playheadElement = document.createElement('div');
+            playheadElement.className = 'playhead';
+            wrapper.appendChild(playheadElement);
+            console.log('Playhead element created:', playheadElement);
+        }
+
+        // Draw mock waveform
+        function drawWaveform() {
+            const canvas = document.getElementById('waveform-time-bar');
+            if (!canvas) return;
+            
+            // Use display width for responsive sizing
+            const displayWidth = canvas.offsetWidth || 1200;
+            canvas.width = displayWidth;
+            canvas.height = 100;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw mock waveform (sine wave with some variation)
+            ctx.strokeStyle = '#4a9eff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            
+            const centerY = height / 2;
+            const amplitude = height * 0.4;
+            
+            for (let x = 0; x < width; x++) {
+                const t = (x / width) * Math.PI * 20; // Multiple cycles
+                const variation = Math.sin((x / width) * Math.PI * 5) * 0.3;
+                const y = centerY + Math.sin(t + variation) * amplitude;
+                
+                if (x === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+
+        // Draw time axis with ticks
+        function drawTimeAxis() {
+            const canvas = document.getElementById('waveform-time-axis');
+            const waveformCanvas = document.getElementById('waveform-time-bar');
+            if (!canvas || !waveformCanvas) return;
+            
+            // Use display width for responsive sizing
+            const displayWidth = waveformCanvas.offsetWidth;
+            canvas.width = displayWidth;
+            canvas.height = 40;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Calculate hourly ticks
+            const ticks = calculateHourlyTicks(dataStartTime, dataEndTime);
+            
+            ctx.strokeStyle = '#888';
+            ctx.fillStyle = '#ddd';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            
+            const totalTimeSpan = dataEndTime.getTime() - dataStartTime.getTime();
+            
+            ticks.forEach(tick => {
+                const timeOffsetMs = tick.utcTime.getTime() - dataStartTime.getTime();
+                const x = (timeOffsetMs / totalTimeSpan) * width;
+                
+                if (x < -10 || x > width + 10) return;
+                
+                // Draw tick mark pointing up
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, 8);
+                ctx.stroke();
+                
+                // Format label
+                let label;
+                if (tick.isDayCrossing) {
+                    const month = tick.localTime.getMonth() + 1;
+                    const day = tick.localTime.getDate();
+                    label = `${month}/${day}`;
+                    ctx.font = 'bold 12px Arial';
+                } else {
+                    const hours = tick.localTime.getHours();
+                    const minutes = tick.localTime.getMinutes();
+                    if (hours === 0 && minutes === 0) {
+                        label = '24:00';
+                    } else {
+                        label = `${hours}:${String(minutes).padStart(2, '0')}`;
+                    }
+                    ctx.font = '12px Arial';
+                }
+                
+                ctx.fillText(label, x, 10);
+            });
+        }
+
+        // Calculate hourly ticks (similar to waveform-x-axis-renderer.js)
+        function calculateHourlyTicks(startUTC, endUTC) {
+            const ticks = [];
+            
+            // Convert start time to local time to find boundaries
+            const startLocal = new Date(startUTC);
+            
+            // Get local time components
+            const startYear = startLocal.getFullYear();
+            const startMonth = startLocal.getMonth();
+            const startDay = startLocal.getDate();
+            const startHours = startLocal.getHours();
+            
+            // Find first hour block (quantized at midnight local time)
+            // Hour blocks: 00:00, 01:00, 02:00, ..., 23:00 (local time)
+            let firstTickLocal = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
+            
+            // Round down to nearest hour boundary
+            firstTickLocal.setHours(startHours, 0, 0, 0);
+            
+            // If we're not starting at an hour boundary, find the first one within the region
+            if (firstTickLocal < startLocal) {
+                // Move forward to next hour block
+                firstTickLocal.setHours(firstTickLocal.getHours() + 1);
+            }
+            
+            // Generate ticks every hour until we exceed end time
+            let currentTickLocal = new Date(firstTickLocal);
+            let previousTickDate = null;
+            
+            // Convert end time to local for comparison
+            const endLocal = new Date(endUTC);
+            const endLocalTime = endLocal.getTime();
+            
+            // Continue until we've passed the end time
+            while (currentTickLocal.getTime() <= endLocalTime) {
+                // Get local date string for day crossing detection
+                const currentTickDate = currentTickLocal.toDateString();
+                const isDayCrossing = previousTickDate !== null && previousTickDate !== currentTickDate;
+                
+                // Convert local time to UTC for positioning
+                // JavaScript Date constructor with (year, month, day, hour) interprets as local time
+                // getTime() returns UTC milliseconds, so we can use that for positioning
+                const localYear = currentTickLocal.getFullYear();
+                const localMonth = currentTickLocal.getMonth();
+                const localDay = currentTickLocal.getDate();
+                const localHour = currentTickLocal.getHours();
+                
+                // Create date from local components (browser interprets as local time)
+                const tickDateLocal = new Date(localYear, localMonth, localDay, localHour, 0, 0, 0);
+                
+                // getTime() gives UTC milliseconds - use for positioning
+                const tickUTCForPosition = new Date(tickDateLocal.getTime());
+                
+                // Check if this UTC time falls within our data range
+                if (tickUTCForPosition.getTime() >= startUTC.getTime() && tickUTCForPosition.getTime() <= endUTC.getTime()) {
+                    ticks.push({
+                        utcTime: tickUTCForPosition, // UTC time for positioning
+                        localTime: new Date(currentTickLocal), // Local time for display
+                        isDayCrossing: isDayCrossing
+                    });
+                }
+                
+                previousTickDate = currentTickDate;
+                
+                // Move to next hour block (in local time)
+                currentTickLocal.setHours(currentTickLocal.getHours() + 1);
+            }
+            
+            // Ensure we have a tick at or very close to the end time
+            // Add one more tick if the last tick is significantly before the end
+            if (ticks.length > 0) {
+                const lastTick = ticks[ticks.length - 1];
+                const timeUntilEnd = endUTC.getTime() - lastTick.utcTime.getTime();
+                const oneHourMs = 60 * 60 * 1000;
+                
+                // If there's more than 30 minutes until the end, add one more tick
+                if (timeUntilEnd > (30 * 60 * 1000)) {
+                    const endLocalDate = new Date(endUTC);
+                    const endLocalYear = endLocalDate.getFullYear();
+                    const endLocalMonth = endLocalDate.getMonth();
+                    const endLocalDay = endLocalDate.getDate();
+                    const endLocalHour = endLocalDate.getHours();
+                    
+                    const endTickLocal = new Date(endLocalYear, endLocalMonth, endLocalDay, endLocalHour, 0, 0, 0);
+                    const endTickUTC = new Date(endTickLocal.getTime());
+                    
+                    if (endTickUTC.getTime() <= endUTC.getTime()) {
+                        ticks.push({
+                            utcTime: endTickUTC,
+                            localTime: new Date(endTickLocal),
+                            isDayCrossing: false
+                        });
+                    }
+                }
+            }
+            
+            return ticks;
+        }
+
+        // Setup waveform selection
+        function setupWaveformSelection() {
+            const canvas = document.getElementById('waveform-time-bar');
+            const wrapper = document.getElementById('waveformWrapper');
+            const panel = document.querySelector('.waveform-panel');
+            if (!canvas || !wrapper || !panel) return;
+            
+            canvas.addEventListener('mousedown', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                selectionStartX = x;
+                isSelectingTime = true;
+                canvas.style.cursor = 'col-resize';
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (!isSelectingTime) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const currentX = e.clientX - rect.left;
+                selectionEndX = currentX;
+                
+                // Create or update selection box
+                if (!selectionBoxElement) {
+                    selectionBoxElement = document.createElement('div');
+                    selectionBoxElement.className = 'selection-box';
+                    wrapper.appendChild(selectionBoxElement);
+                }
+                
+                const startX = Math.min(selectionStartX, selectionEndX);
+                const endX = Math.max(selectionStartX, selectionEndX);
+                const width = endX - startX;
+                
+                selectionBoxElement.style.left = startX + 'px';
+                selectionBoxElement.style.width = width + 'px';
+            });
+            
+            canvas.addEventListener('mouseup', (e) => {
+                if (!isSelectingTime) return;
+                
+                isSelectingTime = false;
+                canvas.style.cursor = 'default';
+                
+                // Only show button if there's a valid selection (not just a click)
+                if (selectionStartX !== null && selectionEndX !== null) {
+                    const startX = Math.min(selectionStartX, selectionEndX);
+                    const endX = Math.max(selectionStartX, selectionEndX);
+                    const selectionWidth = Math.abs(endX - startX);
+                    
+                    // Only show button if selection is wide enough (more than 5px)
+                    if (selectionWidth > 5) {
+                        // Create or get button
+                        if (!addRegionButton) {
+                            addRegionButton = document.createElement('button');
+                            addRegionButton.className = 'add-region-button';
+                            addRegionButton.textContent = '+ Add Region';
+                            addRegionButton.onclick = (e) => {
+                                e.stopPropagation();
+                                createRegionFromSelection();
+                            };
+                            panel.appendChild(addRegionButton);
+                        }
+                        
+                        // Calculate button position relative to panel (centered on selection)
+                        const wrapperRect = wrapper.getBoundingClientRect();
+                        const panelRect = panel.getBoundingClientRect();
+                        const buttonX = wrapperRect.left - panelRect.left + (startX + endX) / 2;
+                        const buttonTop = wrapperRect.top - panelRect.top - 45; // Position 45px above waveform
+                        
+                        // Check if button is already visible and in a different position
+                        const isCurrentlyVisible = addRegionButton.style.display === 'block' && 
+                                                   parseFloat(addRegionButton.style.opacity) > 0;
+                        const currentLeft = parseFloat(addRegionButton.style.left) || 0;
+                        const currentTop = parseFloat(addRegionButton.style.top) || 0;
+                        const positionChanged = Math.abs(currentLeft - buttonX) > 1 || Math.abs(currentTop - buttonTop) > 1;
+                        
+                        if (isCurrentlyVisible && positionChanged) {
+                            // Fade out first, then move and fade in
+                            addRegionButton.style.transition = 'opacity 0.15s ease-out';
+                            addRegionButton.style.opacity = '0';
+                            
+                            setTimeout(() => {
+                                // Move to new position while invisible
+                                addRegionButton.style.left = buttonX + 'px';
+                                addRegionButton.style.top = buttonTop + 'px';
+                                addRegionButton.style.transform = 'translateX(-50%)';
+                                
+                                // Fade in at new position
+                                requestAnimationFrame(() => {
+                                    addRegionButton.style.transition = 'opacity 0.2s ease-in';
+                                    addRegionButton.style.opacity = '1';
+                                });
+                            }, 150); // Wait for fade out to complete
+                        } else {
+                            // First time showing or same position - just fade in
+                            addRegionButton.style.left = buttonX + 'px';
+                            addRegionButton.style.top = buttonTop + 'px';
+                            addRegionButton.style.transform = 'translateX(-50%)';
+                            addRegionButton.style.opacity = '0';
+                            addRegionButton.style.display = 'block';
+                            
+                            // Fade in quickly
+                            requestAnimationFrame(() => {
+                                addRegionButton.style.transition = 'opacity 0.2s ease-in';
+                                addRegionButton.style.opacity = '1';
+                            });
+                        }
+                    }
+                }
+            });
+            
+            // Hide selection when clicking outside
+            document.addEventListener('click', (e) => {
+                // Check if clicking on a region card
+                const regionCard = e.target.closest('.region-card');
+                if (!regionCard) {
+                    // Not clicking on a region card - clear active region if clicking elsewhere
+                    if (!canvas.contains(e.target) && !addRegionButton?.contains(e.target)) {
+                        setActiveRegion(null);
+                    }
+                }
+                
+                if (!canvas.contains(e.target) && !addRegionButton?.contains(e.target)) {
+                    if (selectionBoxElement) {
+                        selectionBoxElement.remove();
+                        selectionBoxElement = null;
+                    }
+                    if (addRegionButton) {
+                        addRegionButton.style.display = 'none';
+                    }
+                    selectionStartX = null;
+                    selectionEndX = null;
+                }
+            });
+        }
+
+        // Create region from selection
+        function createRegionFromSelection() {
+            if (selectionStartX === null || selectionEndX === null) return;
+            
+            const canvas = document.getElementById('waveform-time-bar');
+            if (!canvas) return;
+            
+            const width = canvas.offsetWidth || canvas.width;
+            const startProgress = Math.min(selectionStartX, selectionEndX) / width;
+            const endProgress = Math.max(selectionStartX, selectionEndX) / width;
+            
+            const startTimeMs = dataStartTime.getTime() + (startProgress * (dataEndTime.getTime() - dataStartTime.getTime()));
+            const endTimeMs = dataStartTime.getTime() + (endProgress * (dataEndTime.getTime() - dataStartTime.getTime()));
+            
+            const startTime = new Date(startTimeMs).toISOString();
+            const endTime = new Date(endTimeMs).toISOString();
+            
+            // Create new region
+            const newRegion = {
+                id: regions.length > 0 ? Math.max(...regions.map(r => r.id)) + 1 : 1,
+                startTime: startTime,
+                stopTime: endTime,
+                featureCount: 1,
+                features: [{
+                    type: 'Impulse',
+                    repetition: 'Unique',
+                    lowFreq: '',
+                    highFreq: '',
+                    notes: ''
+                }],
+                expanded: true,
+                playing: false
+            };
+            
+            regions.push(newRegion);
+            const newRegionIndex = regions.length - 1;
+            renderRegions();
+            
+            // Animate the new region's expansion
+            requestAnimationFrame(() => {
+                const regionCard = document.querySelector(`[data-region-id="${newRegion.id}"]`);
+                const details = regionCard ? regionCard.querySelector('.region-details') : null;
+                
+                if (details) {
+                    // Start from 0, then animate to measured height
+                    details.style.maxHeight = '0px';
+                    // Force reflow
+                    requestAnimationFrame(() => {
+                        const targetHeight = details.scrollHeight;
+                        details.style.maxHeight = targetHeight + 'px';
+                    });
+                }
+            });
+            
+            // Set as active region (50% opacity)
+            setActiveRegion(newRegionIndex);
+            
+            // Auto-enter selection mode for the first feature
+            setTimeout(() => {
+                startFrequencySelection(newRegionIndex, 0);
+            }, 100);
+            
+            // Clear selection
+            if (selectionBoxElement) {
+                selectionBoxElement.remove();
+                selectionBoxElement = null;
+            }
+            if (addRegionButton) {
+                addRegionButton.style.display = 'none';
+            }
+            selectionStartX = null;
+            selectionEndX = null;
+        }
+
+        // Update region highlights on waveform
+        function updateRegionHighlights() {
+            const wrapper = document.getElementById('waveformWrapper');
+            if (!wrapper) return;
+            
+            // Remove existing highlights
+            const existingHighlights = wrapper.querySelectorAll('.region-highlight');
+            existingHighlights.forEach(h => h.remove());
+            
+            const canvas = document.getElementById('waveform-time-bar');
+            if (!canvas) return;
+            const width = canvas.offsetWidth || canvas.width;
+            
+            // Create highlights for each region
+            regions.forEach((region, index) => {
+                const startTime = new Date(region.startTime).getTime();
+                const endTime = new Date(region.stopTime).getTime();
+                
+                const startProgress = (startTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
+                const endProgress = (endTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
+                
+                const startX = startProgress * width;
+                const endX = endProgress * width;
+                const highlightWidth = endX - startX;
+                
+                const highlight = document.createElement('div');
+                highlight.className = 'region-highlight';
+                if (index === activeRegionIndex) {
+                    highlight.classList.add('active');
+                }
+                highlight.style.left = startX + 'px';
+                highlight.style.width = highlightWidth + 'px';
+                highlight.dataset.regionIndex = index;
+                
+                wrapper.appendChild(highlight);
+            });
+        }
+
+        // Set active region (50% opacity)
+        function setActiveRegion(index) {
+            activeRegionIndex = index;
+            updateRegionHighlights();
+        }
+        
+        // Clear active region (set to null for 20% opacity on all)
+        function clearActiveRegion() {
+            activeRegionIndex = null;
+            updateRegionHighlights();
+        }
+
+        // Format time for display - human readable format (no milliseconds)
+        function formatTime(isoString) {
+            const date = new Date(isoString);
+            const hours = String(date.getUTCHours()).padStart(2, '0');
+            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+            const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+        }
+
+        // Calculate duration
+        function calculateDuration(startTime, stopTime) {
+            const start = new Date(startTime);
+            const stop = new Date(stopTime);
+            const durationMs = stop - start;
+            const seconds = (durationMs / 1000).toFixed(2);
+            return `${seconds}s`;
+        }
+
+        // Render all regions
+        function renderRegions() {
+            console.log('--- renderRegions() called ---');
+            console.log('Total regions:', regions.length);
+            regions.forEach((region, index) => {
+                console.log(`  Region ${index} (ID: ${region.id}): expanded=${region.expanded}`);
+            });
+            
+            const container = document.getElementById('regionsList');
+            const emptyState = document.getElementById('emptyState');
+            
+            if (regions.length === 0) {
+                container.innerHTML = '';
+                emptyState.style.display = 'block';
+                updateRegionHighlights();
+                return;
+            }
+            
+            emptyState.style.display = 'none';
+            container.innerHTML = '';
+            
+            regions.forEach((region, index) => {
+                const regionCard = createRegionCard(region, index);
+                container.appendChild(regionCard);
+            });
+            
+            updateRegionHighlights();
+            console.log('--- renderRegions() complete ---\n');
+        }
+
+        // Create a region card
+        function createRegionCard(region, index) {
+            const card = document.createElement('div');
+            card.className = 'region-card';
+            card.dataset.regionId = region.id;
+            
+            // Header bar
+            const header = document.createElement('div');
+            header.className = `region-header ${region.expanded ? 'expanded' : ''}`;
+            header.onclick = (e) => {
+                console.log('*** HEADER CLICKED ***', 'Region Index:', index, 'Region ID:', region.id);
+                // Don't toggle if clicking play button, delete button, or features input
+                if (e.target.closest('.play-btn') || 
+                    e.target.closest('.delete-region-btn') || 
+                    e.target.closest('.features-count-input')) {
+                    console.log('Click ignored - clicked on a button/input');
+                    return;
+                }
+                console.log('Click accepted - calling setActiveRegion and toggleRegion');
+                setActiveRegion(index);
+                toggleRegion(index);
+            };
+            
+            header.innerHTML = `
+                <span class="collapse-icon">▼</span>
+                <button class="play-btn ${region.playing ? 'playing' : ''}" 
+                        onclick="togglePlay(${index}); event.stopPropagation();"
+                        title="Play region">
+                    ${region.playing ? '⏸' : '▶'}
+                </button>
+                <span class="region-label">Region: ${region.id}</span>
+                <span style="margin-right: 8px; font-weight: 600; color: #555;">Features:</span>
+                <input type="number" 
+                       class="features-count-input" 
+                       min="1" 
+                       max="10" 
+                       value="${region.featureCount}"
+                       onchange="updateFeatureCount(${index}, parseInt(this.value)); event.stopPropagation();"
+                       onclick="event.stopPropagation();"
+                       title="Number of features">
+                <div class="region-summary">
+                    <div class="region-time-display">
+                        <span><span class="time-label">Start:</span><span class="time-value">${formatTime(region.startTime)}</span></span>
+                        <span><span class="time-label">End:</span><span class="time-value">${formatTime(region.stopTime)}</span></span>
+                    </div>
+                </div>
+                <button class="delete-region-btn" 
+                        onclick="deleteRegion(${index}); event.stopPropagation();"
+                        title="Delete region">
+                    ✕
+                </button>
+            `;
+            
+            // Details section
+            const details = document.createElement('div');
+            details.className = `region-details ${region.expanded ? 'expanded' : ''}`;
+            
+            const detailsContent = document.createElement('div');
+            detailsContent.className = 'details-content';
+            
+            // Region time fields removed - times are shown in header only
+            detailsContent.innerHTML = `
+                <div class="features-list">
+                    <div id="features-${region.id}" class="features-container"></div>
+                </div>
+            `;
+            
+            details.appendChild(detailsContent);
+            
+            card.appendChild(header);
+            card.appendChild(details);
+            
+            // Render features after card is added to DOM
+            setTimeout(() => {
+                renderFeatures(region.id, index);
+            }, 0);
+            
+            return card;
+        }
+
+        // Render features for a region
+        function renderFeatures(regionId, regionIndex) {
+            const container = document.getElementById(`features-${regionId}`);
+            if (!container) return;
+            
+            const region = regions[regionIndex];
+            
+            // Ensure featureCount matches features array length
+            while (region.features.length < region.featureCount) {
+                region.features.push({
+                    type: 'Impulse',
+                    repetition: 'Unique',
+                    lowFreq: '',
+                    highFreq: '',
+                    notes: ''
+                });
+            }
+            
+            // Trim if featureCount is less
+            if (region.features.length > region.featureCount) {
+                region.features = region.features.slice(0, region.featureCount);
+            }
+            
+            container.innerHTML = '';
+            
+            region.features.forEach((feature, featureIndex) => {
+                const featureRow = document.createElement('div');
+                featureRow.className = 'feature-row';
+                
+                featureRow.innerHTML = `
+                    <span class="feature-number">${featureIndex + 1}</span>
+                    <select id="type-${regionIndex}-${featureIndex}" name="type-${regionIndex}-${featureIndex}" onchange="updateFeature(${regionIndex}, ${featureIndex}, 'type', this.value)">
+                        <option value="Impulse" ${feature.type === 'Impulse' || !feature.type ? 'selected' : ''}>Impulse</option>
+                        <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
+                    </select>
+                    
+                    <select id="repetition-${regionIndex}-${featureIndex}" name="repetition-${regionIndex}-${featureIndex}" onchange="updateFeature(${regionIndex}, ${featureIndex}, 'repetition', this.value)">
+                        <option value="Unique" ${feature.repetition === 'Unique' || !feature.repetition ? 'selected' : ''}>Unique</option>
+                        <option value="Repeated" ${feature.repetition === 'Repeated' ? 'selected' : ''}>Repeated</option>
+                    </select>
+                    
+                    <button class="select-freq-btn ${!feature.lowFreq || !feature.highFreq ? 'pulse' : ''}" 
+                            onclick="startFrequencySelection(${regionIndex}, ${featureIndex})"
+                            id="select-btn-${regionIndex}-${featureIndex}">
+                        Select
+                    </button>
+                    
+                    ${feature.lowFreq && feature.highFreq ? 
+                        `<div class="frequency-display selected">${Math.round(parseFloat(feature.lowFreq))} - ${Math.round(parseFloat(feature.highFreq))} Hz</div>` :
+                        `<div class="frequency-display">select frequency range</div>`
+                    }
+                    
+                    <textarea class="freq-input notes-field" 
+                              placeholder="Add notes..." 
+                              onchange="updateFeature(${regionIndex}, ${featureIndex}, 'notes', this.value)"
+                              oninput="this.style.height = '28px'; this.style.height = this.scrollHeight + 'px';"
+                              id="notes-${regionIndex}-${featureIndex}">${feature.notes || ''}</textarea>
+                `;
+                
+                container.appendChild(featureRow);
+            });
+        }
+
+        // Toggle region expansion
+        function toggleRegion(index) {
+            const region = regions[index];
+            const wasExpanded = region.expanded;
+            
+            console.log('=== TOGGLE REGION CLICKED ===');
+            console.log('Region ID:', region.id);
+            console.log('Region Index:', index);
+            console.log('Current State (wasExpanded):', wasExpanded);
+            console.log('Will become:', !wasExpanded);
+            
+            // Find the elements for THIS region only
+            const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+            const header = regionCard ? regionCard.querySelector('.region-header') : null;
+            const details = regionCard ? regionCard.querySelector('.region-details') : null;
+            
+            console.log('Found region card:', !!regionCard);
+            console.log('Found header element:', !!header);
+            console.log('Found details element:', !!details);
+            
+            if (!details || !header) {
+                console.log('ERROR: Could not find required elements');
+                return;
+            }
+            
+            // Toggle the state
+            region.expanded = !wasExpanded;
+            console.log('State updated to:', region.expanded);
+            
+            if (wasExpanded) {
+                console.log('>>> ACTION: COLLAPSING <<<');
+                // Remove expanded class from header
+                header.classList.remove('expanded');
+                
+                // Collapse animation
+                const currentHeight = details.scrollHeight;
+                console.log('Current height:', currentHeight);
+                details.style.maxHeight = currentHeight + 'px';
+                details.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+                void details.offsetHeight;
+                
+                requestAnimationFrame(() => {
+                    console.log('Starting collapse animation to 0px');
+                    details.style.maxHeight = '0px';
+                    
+                    // Remove expanded class from details after animation
+                    setTimeout(() => {
+                        details.classList.remove('expanded');
+                        console.log('Collapse complete');
+                    }, 400);
+                });
+            } else {
+                console.log('>>> ACTION: EXPANDING <<<');
+                // Add expanded class to header and details
+                header.classList.add('expanded');
+                details.classList.add('expanded');
+                
+                // Expand animation
+                details.style.maxHeight = '0px';
+                details.style.transition = 'none';
+                void details.offsetHeight;
+                
+                requestAnimationFrame(() => {
+                    const targetHeight = details.scrollHeight;
+                    console.log('Target height:', targetHeight);
+                    details.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+                    details.style.maxHeight = targetHeight + 'px';
+                    console.log('Starting expand animation to', targetHeight + 'px');
+                });
+            }
+            
+            console.log('=== END TOGGLE ===\n');
+        }
+
+        // Toggle play
+        function togglePlay(index) {
+            setActiveRegion(index);
+            
+            // Stop any currently playing region
+            if (currentlyPlayingRegionIndex !== null && currentlyPlayingRegionIndex !== index) {
+                stopPlayback(currentlyPlayingRegionIndex);
+            }
+            
+            if (regions[index].playing) {
+                // Stop playback
+                stopPlayback(index);
+            } else {
+                // Start playback
+                startPlayback(index);
+            }
+            
+            renderRegions();
+        }
+
+        // Start playback animation
+        function startPlayback(regionIndex) {
+            const region = regions[regionIndex];
+            if (!region || !playheadElement) {
+                console.log('Cannot start playback: region or playheadElement missing');
+                return;
+            }
+            
+            // Cancel any existing animation first
+            if (playheadAnimationId !== null) {
+                cancelAnimationFrame(playheadAnimationId);
+                playheadAnimationId = null;
+            }
+            
+            region.playing = true;
+            currentlyPlayingRegionIndex = regionIndex;
+            
+            const startTime = new Date(region.startTime).getTime();
+            const endTime = new Date(region.stopTime).getTime();
+            const actualDuration = endTime - startTime; // milliseconds
+            
+            if (actualDuration <= 0) {
+                console.log('Invalid duration:', actualDuration);
+                return;
+            }
+            
+            // Use a fixed animation duration for consistent visual speed
+            // This makes the playhead move at the same speed regardless of region length
+            const fixedAnimationDuration = 2000; // 2 seconds in milliseconds
+            const duration = fixedAnimationDuration;
+            
+            console.log('Duration calculation:', {
+                actualDuration: actualDuration + 'ms (' + (actualDuration / 1000).toFixed(2) + 's)',
+                animationDuration: duration + 'ms (' + (duration / 1000).toFixed(2) + 's)',
+                note: 'Using fixed duration for consistent visual speed'
+            });
+            
+            // Calculate playhead start position
+            const canvas = document.getElementById('waveform-time-bar');
+            if (!canvas) {
+                console.log('Canvas not found');
+                return;
+            }
+            const width = canvas.offsetWidth || canvas.width;
+            
+            const startProgress = (startTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
+            const endProgress = (endTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
+            
+            const startX = startProgress * width;
+            const endX = endProgress * width;
+            
+            console.log('Starting playback:', { regionIndex, startX, endX, duration, width, startProgress, endProgress });
+            
+            // Position playhead at start and make it visible
+            playheadElement.style.position = 'absolute';
+            playheadElement.style.left = startX + 'px';
+            playheadElement.style.top = '0px';
+            playheadElement.style.width = '2px';
+            playheadElement.style.height = '100px';
+            playheadElement.style.backgroundColor = '#ff0000';
+            playheadElement.style.display = 'block';
+            playheadElement.style.opacity = '1';
+            playheadElement.style.zIndex = '1000';
+            playheadElement.style.pointerEvents = 'none';
+            
+            console.log('Playhead positioned:', {
+                left: playheadElement.style.left,
+                top: playheadElement.style.top,
+                display: playheadElement.style.display,
+                computedStyle: window.getComputedStyle(playheadElement).display,
+                parent: playheadElement.parentElement,
+                offsetLeft: playheadElement.offsetLeft,
+                offsetTop: playheadElement.offsetTop
+            });
+            
+            // Animate playhead from start to end
+            const animationStartTime = Date.now();
+            let frameCount = 0;
+            
+            function animate() {
+                frameCount++;
+                
+                // Check if playback was stopped
+                if (currentlyPlayingRegionIndex !== regionIndex || !regions[regionIndex] || !regions[regionIndex].playing) {
+                    console.log('Animation stopped: playback cancelled');
+                    playheadAnimationId = null;
+                    return;
+                }
+                
+                if (!playheadElement) {
+                    console.log('Animation stopped: playheadElement missing');
+                    playheadAnimationId = null;
+                    return;
+                }
+                
+                const elapsed = Date.now() - animationStartTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Calculate current X position (interpolate from startX to endX)
+                const currentX = startX + (endX - startX) * progress;
+                playheadElement.style.left = currentX + 'px';
+                
+                // Log every 10th frame for debugging
+                if (frameCount % 10 === 0) {
+                    console.log(`Animation frame ${frameCount}:`, {
+                        elapsed,
+                        progress: progress.toFixed(3),
+                        currentX: currentX.toFixed(2),
+                        startX,
+                        endX,
+                        left: playheadElement.style.left,
+                        display: playheadElement.style.display,
+                        opacity: playheadElement.style.opacity
+                    });
+                }
+                
+                if (progress >= 1) {
+                    // Reached the end - stop playback
+                    console.log('Animation complete, stopping playback');
+                    playheadAnimationId = null;
+                    stopPlayback(regionIndex);
+                } else {
+                    // Continue animation
+                    playheadAnimationId = requestAnimationFrame(animate);
+                }
+            }
+            
+            // Start animation
+            console.log('Starting animation loop...');
+            playheadAnimationId = requestAnimationFrame(animate);
+        }
+
+        // Stop playback animation
+        function stopPlayback(regionIndex) {
+            const region = regions[regionIndex];
+            if (region) {
+                region.playing = false;
+            }
+            
+            if (playheadAnimationId !== null) {
+                cancelAnimationFrame(playheadAnimationId);
+                playheadAnimationId = null;
+            }
+            
+            if (playheadElement) {
+                playheadElement.style.display = 'none';
+            }
+            
+            if (currentlyPlayingRegionIndex === regionIndex) {
+                currentlyPlayingRegionIndex = null;
+            }
+            
+            // Update UI to reflect stopped state
+            renderRegions();
+        }
+
+        // Update playhead position (for resize)
+        function updatePlayheadPosition(regionIndex) {
+            if (currentlyPlayingRegionIndex !== regionIndex || !regions[regionIndex].playing) return;
+            
+            const region = regions[regionIndex];
+            const startTime = new Date(region.startTime).getTime();
+            const endTime = new Date(region.stopTime).getTime();
+            
+            const canvas = document.getElementById('waveform-time-bar');
+            if (!canvas || !playheadElement) return;
+            const width = canvas.offsetWidth || canvas.width;
+            
+            const startProgress = (startTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
+            const endProgress = (endTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
+            
+            const startX = startProgress * width;
+            const endX = endProgress * width;
+            
+            // Get current playhead position
+            const currentLeft = parseFloat(playheadElement.style.left) || startX;
+            const progress = (currentLeft - startX) / (endX - startX);
+            
+            // Update position based on current progress
+            playheadElement.style.left = startX + ((endX - startX) * progress) + 'px';
+        }
+
+        // Update region time
+        function updateRegionTime(regionIndex, field, value) {
+            regions[regionIndex][field] = value;
+            // Re-render to update summary
+            renderRegions();
+        }
+
+        // Update feature count
+        function updateFeatureCount(regionIndex, newCount) {
+            setActiveRegion(regionIndex);
+            if (newCount < 1) newCount = 1;
+            if (newCount > 10) newCount = 10;
+            
+            const region = regions[regionIndex];
+            const oldCount = region.featureCount;
+            
+            // Update the count
+            region.featureCount = newCount;
+            
+            // Get the current details element and its height
+            const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+            const details = regionCard ? regionCard.querySelector('.region-details') : null;
+            
+            // Only animate when ADDING features, not removing
+            if (details && region.expanded && newCount > oldCount) {
+                // Capture current height
+                details.style.maxHeight = 'none';
+                details.style.transition = 'none';
+                const currentHeight = details.scrollHeight;
+                
+                // Lock at current height
+                details.style.maxHeight = currentHeight + 'px';
+                void details.offsetHeight;
+                
+                // Update the DOM
+                renderFeatures(region.id, regionIndex);
+                
+                // Animate to new height
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        details.style.maxHeight = 'none';
+                        const targetHeight = details.scrollHeight;
+                        
+                        details.style.maxHeight = currentHeight + 'px';
+                        void details.offsetHeight;
+                        
+                        details.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+                        details.style.maxHeight = targetHeight + 'px';
+                    });
+                });
+            } else {
+                // Just update instantly (for removal or when collapsed)
+                renderFeatures(region.id, regionIndex);
+            }
+        }
+
+        // Update feature property
+        function updateFeature(regionIndex, featureIndex, property, value) {
+            setActiveRegion(regionIndex);
+            if (!regions[regionIndex].features[featureIndex]) {
+                regions[regionIndex].features[featureIndex] = {};
+            }
+            regions[regionIndex].features[featureIndex][property] = value;
+        }
+
+        // Delete region
+        function deleteRegion(index) {
+            if (confirm('Delete this region?')) {
+                regions.splice(index, 1);
+                // Clear active region if deleted
+                if (activeRegionIndex === index) {
+                    activeRegionIndex = null;
+                } else if (activeRegionIndex > index) {
+                    activeRegionIndex--; // Adjust index if region before active was deleted
+                }
+                renderRegions();
+            }
+        }
+
+        // ===== FREQUENCY SELECTION FROM SPECTROGRAM =====
+        let currentSelection = null;
+        let isSelecting = false;
+        let selectionBox = null;
+        const maxFrequency = 50; // Hz - Nyquist frequency for 100 Hz sample rate
+        const frequencyScale = 'sqrt'; // Match index.html default
+
+        // Initialize spectrogram
+        function initSpectrogram() {
+            const canvas = document.getElementById('spectrogram-select');
+            const axisCanvas = document.getElementById('spectrogram-axis-select');
+            
+            if (!canvas || !axisCanvas) return;
+            
+            // Use display width for responsive sizing
+            const displayWidth = canvas.offsetWidth || 1200;
+            canvas.width = displayWidth;
+            canvas.height = 450;
+            axisCanvas.width = 60;
+            axisCanvas.height = 450;
+            
+            // Draw mock spectrogram
+            drawMockSpectrogram();
+            drawFrequencyAxis();
+            
+            // Handle window resize
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    const newWidth = canvas.offsetWidth || 1200;
+                    canvas.width = newWidth;
+                    drawMockSpectrogram();
+                    drawFrequencyAxis();
+                }, 100);
+            });
+        }
+
+        // Draw mock spectrogram data
+        function drawMockSpectrogram() {
+            const canvas = document.getElementById('spectrogram-select');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw mock spectrogram data (simulated frequency content)
+            // Use frequency bins that map to 0-50 Hz range
+            const numBins = 256;
+            for (let x = 0; x < width; x++) {
+                for (let i = 0; i < numBins; i++) {
+                    // Map bin index to frequency (0 to maxFrequency)
+                    const freq = (i / numBins) * maxFrequency;
+                    
+                    // Simulate frequency data with some structure
+                    const value = Math.random() * 255;
+                    // Add some frequency-dependent variation
+                    const freqFactor = Math.sin(freq * 0.5) * 0.3 + 0.7;
+                    const adjustedValue = value * freqFactor;
+                    const percent = adjustedValue / 255;
+                    
+                    const hue = percent * 60;
+                    const saturation = 100;
+                    const lightness = 10 + (percent * 60);
+                    
+                    // Calculate Y position based on frequency scale
+                    const y = getYPositionForFrequency(freq, maxFrequency, height, frequencyScale);
+                    const nextFreq = ((i + 1) / numBins) * maxFrequency;
+                    const nextY = getYPositionForFrequency(nextFreq, maxFrequency, height, frequencyScale);
+                    const barHeight = Math.max(1, Math.abs(y - nextY));
+                    
+                    ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                    ctx.fillRect(x, nextY, 1, barHeight);
+                }
+            }
+        }
+
+        // Draw frequency axis
+        function drawFrequencyAxis() {
+            const canvas = document.getElementById('spectrogram-axis-select');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw axis background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw frequency ticks
+            ctx.strokeStyle = '#888';
+            ctx.fillStyle = '#ddd';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            
+            const ticks = [0.1, 0.5, 1, 2, 5, 10, 20, 50];
+            ticks.forEach(freq => {
+                if (freq > maxFrequency) return;
+                
+                const y = getYPositionForFrequency(freq, maxFrequency, height, frequencyScale);
+                
+                // Draw tick mark
+                ctx.beginPath();
+                ctx.moveTo(width - 10, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+                
+                // Draw label
+                ctx.fillText(freq.toFixed(1), 5, y);
+            });
+        }
+
+        // Convert Y position to frequency
+        function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
+            const normalized = freq / maxFreq;
+            
+            if (scaleType === 'logarithmic') {
+                const minFreq = 0.1;
+                const freqSafe = Math.max(freq, minFreq);
+                const logMin = Math.log10(minFreq);
+                const logMax = Math.log10(maxFreq);
+                const logFreq = Math.log10(freqSafe);
+                const normalizedLog = (logFreq - logMin) / (logMax - logMin);
+                return canvasHeight - (normalizedLog * canvasHeight);
+            } else if (scaleType === 'sqrt') {
+                const sqrtNormalized = Math.sqrt(normalized);
+                return canvasHeight - (sqrtNormalized * canvasHeight);
+            } else {
+                return canvasHeight - (normalized * canvasHeight);
+            }
+        }
+
+        // Convert Y position back to frequency
+        function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType) {
+            const normalizedY = (canvasHeight - y) / canvasHeight;
+            
+            if (scaleType === 'logarithmic') {
+                const minFreq = 0.1;
+                const logMin = Math.log10(minFreq);
+                const logMax = Math.log10(maxFreq);
+                const logFreq = logMin + (normalizedY * (logMax - logMin));
+                return Math.pow(10, logFreq);
+            } else if (scaleType === 'sqrt') {
+                const normalized = normalizedY * normalizedY;
+                return normalized * maxFreq;
+            } else {
+                return normalizedY * maxFreq;
+            }
+        }
+
+        // Start frequency selection
+        function startFrequencySelection(regionIndex, featureIndex) {
+            const button = document.getElementById(`select-btn-${regionIndex}-${featureIndex}`);
+            if (!button) return;
+            
+            // Activate button
+            button.classList.add('active');
+            isSelecting = true;
+            currentSelection = { regionIndex, featureIndex, button };
+            
+            // Enable selection on spectrogram
+            const canvas = document.getElementById('spectrogram-select');
+            if (canvas) {
+                canvas.classList.add('selecting');
+                canvas.style.cursor = 'crosshair';
+            }
+        }
+
+        // Handle spectrogram mouse events
+        function setupSpectrogramSelection() {
+            const canvas = document.getElementById('spectrogram-select');
+            const container = document.querySelector('.spectrogram-container');
+            
+            if (!canvas || !container) return;
+            
+            let startX = null;
+            let startY = null;
+            let selectionBoxElement = null;
+            
+            canvas.addEventListener('mousedown', (e) => {
+                if (!isSelecting) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                startX = e.clientX - rect.left;
+                startY = e.clientY - rect.top;
+                
+                // Create selection box
+                selectionBoxElement = document.createElement('div');
+                selectionBoxElement.className = 'selection-box';
+                const containerRect = container.getBoundingClientRect();
+                const canvasRect = canvas.getBoundingClientRect();
+                selectionBoxElement.style.left = (startX + canvasRect.left - containerRect.left) + 'px';
+                selectionBoxElement.style.top = (startY + canvasRect.top - containerRect.top) + 'px';
+                selectionBoxElement.style.width = '0px';
+                selectionBoxElement.style.height = '0px';
+                container.appendChild(selectionBoxElement);
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (!isSelecting || startX === null || startY === null || !selectionBoxElement) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                const currentX = e.clientX - rect.left;
+                const currentY = e.clientY - rect.top;
+                
+                const left = Math.min(startX, currentX);
+                const top = Math.min(startY, currentY);
+                const width = Math.abs(currentX - startX);
+                const height = Math.abs(currentY - startY);
+                
+                selectionBoxElement.style.left = (left + rect.left - containerRect.left) + 'px';
+                selectionBoxElement.style.top = (top + rect.top - containerRect.top) + 'px';
+                selectionBoxElement.style.width = width + 'px';
+                selectionBoxElement.style.height = height + 'px';
+            });
+            
+            canvas.addEventListener('mouseup', (e) => {
+                if (!isSelecting || startX === null || startY === null || !selectionBoxElement) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                const endX = e.clientX - rect.left;
+                const endY = e.clientY - rect.top;
+                const top = Math.min(startY, endY);
+                const bottom = Math.max(startY, endY);
+                
+                // Store final box position and size before removing
+                const finalLeft = Math.min(startX, endX);
+                const finalTop = top;
+                const finalWidth = Math.abs(endX - startX);
+                const finalHeight = Math.abs(endY - startY);
+                const boxLeft = finalLeft + rect.left - containerRect.left;
+                const boxTop = finalTop + rect.top - containerRect.top;
+                
+                // Convert Y positions to frequencies (only Y matters for frequency selection)
+                const canvasHeight = canvas.height;
+                const lowFreq = getFrequencyFromY(bottom, maxFrequency, canvasHeight, frequencyScale);
+                const highFreq = getFrequencyFromY(top, maxFrequency, canvasHeight, frequencyScale);
+                
+                // Update feature data
+                if (currentSelection) {
+                    // Capture values before currentSelection is cleared
+                    const regionIndex = currentSelection.regionIndex;
+                    const featureIndex = currentSelection.featureIndex;
+                    const regionId = regions[regionIndex].id;
+                    
+                    updateFeature(regionIndex, featureIndex, 'lowFreq', lowFreq.toFixed(2));
+                    updateFeature(regionIndex, featureIndex, 'highFreq', highFreq.toFixed(2));
+                    
+                    // Re-render the feature to update the display
+                    renderFeatures(regionId, regionIndex);
+                    
+                    // Pulse the frequency display after render completes
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            const featureContainer = document.getElementById(`features-${regionId}`);
+                            if (featureContainer) {
+                                // Find the frequency display for this specific feature
+                                const featureRows = featureContainer.querySelectorAll('.feature-row');
+                                if (featureRows[featureIndex]) {
+                                    const frequencyDisplay = featureRows[featureIndex].querySelector('.frequency-display.selected');
+                                    if (frequencyDisplay) {
+                                        frequencyDisplay.classList.add('pulse');
+                                        setTimeout(() => {
+                                            frequencyDisplay.classList.remove('pulse');
+                                        }, 800);
+                                    }
+                                }
+                            }
+                        });
+                    });
+                    
+                    // Deactivate button
+                    if (currentSelection.button) {
+                        currentSelection.button.classList.remove('active');
+                    }
+                }
+                
+                // Remove selection box immediately
+                if (selectionBoxElement && selectionBoxElement.parentNode) {
+                    selectionBoxElement.parentNode.removeChild(selectionBoxElement);
+                }
+                
+                // Re-appear briefly to confirm selection (instantaneous flash)
+                setTimeout(() => {
+                    const confirmBox = document.createElement('div');
+                    confirmBox.className = 'selection-box';
+                    confirmBox.style.left = boxLeft + 'px';
+                    confirmBox.style.top = boxTop + 'px';
+                    confirmBox.style.width = finalWidth + 'px';
+                    confirmBox.style.height = finalHeight + 'px';
+                    container.appendChild(confirmBox);
+                    
+                    // Remove again after very brief display
+                    setTimeout(() => {
+                        if (confirmBox && confirmBox.parentNode) {
+                            confirmBox.parentNode.removeChild(confirmBox);
+                        }
+                    }, 80);
+                }, 50);
+                
+                // Reset selection state
+                isSelecting = false;
+                startX = null;
+                startY = null;
+                selectionBoxElement = null;
+                currentSelection = null;
+                
+                // Remove selecting class
+                canvas.classList.remove('selecting');
+            });
+        }
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            initWaveform();
+            renderRegions();
+            initSpectrogram();
+            setupSpectrogramSelection();
+        });
+    </script>
+</body>
+</html>
+

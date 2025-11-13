@@ -56,14 +56,14 @@ We use **embedded data fields** (not text entry fields) to store JSON data in Qu
 }
 ```
 
-### 2. `json_data` - Interface Interaction Data
+### 2. `JSON_data` - Interface Interaction Data
 
 **Purpose:** Store all other JSON data about participant interactions with the interface (playback controls, waveform interactions, spectrogram interactions, etc.)
 
 **Setup in Qualtrics:**
 1. Go to **Survey Flow** in Qualtrics
 2. Add an **Embedded Data** element
-3. Name it: `json_data`
+3. Name it: `JSON_data` (capital J, capital D)
 4. Leave value blank (will be populated via API)
 5. Save
 
@@ -73,21 +73,19 @@ We use **embedded data fields** (not text entry fields) to store JSON data in Qu
 
 **Requested:** November 13, 2025
 
-**Status:** Pending setup in Qualtrics Survey Flow
-
-**Action Required:** Leif needs to add both embedded data fields (`SessionTracking` and `json_data`) to the Survey Flow.
+**Status:** ✅ Both fields have been added to Survey Flow (Nov 13, 2025)
 
 ## Future Implementation
 
 Once the embedded data fields are set up in Qualtrics:
 
 1. **Update submission code** (`js/qualtrics-api.js`):
-   - Already sends `SessionTracking` in `embeddedData` object
-   - Will send `json_data` when interface interaction tracking is added
+   - ✅ Already sends `SessionTracking` in `embeddedData` object
+   - ✅ Ready to send `JSON_data` when interface interaction tracking is added
 
 2. **Update response viewer** (`Qualtrics/response-viewer.html`):
-   - Already parses and displays `SessionTracking` from embedded data
-   - Will parse and display `json_data` when available
+   - ✅ Already parses and displays `SessionTracking` from embedded data
+   - ✅ Ready to parse and display `JSON_data` when available
 
 3. **Remove QID11 dependency:**
    - Currently still sending to QID11 for backwards compatibility
@@ -100,7 +98,7 @@ After Leif sets up the embedded data fields:
 1. Submit a new test response
 2. Fetch the response via API (regular GET endpoint)
 3. Verify `SessionTracking` appears in `result.embeddedData.SessionTracking`
-4. Verify `json_data` appears in `result.embeddedData.json_data` (when implemented)
+4. Verify `JSON_data` appears in `result.embeddedData.JSON_data` (when implemented)
 
 ## Notes
 

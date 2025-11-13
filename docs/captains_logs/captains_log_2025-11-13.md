@@ -289,4 +289,36 @@ Switched from using QID11 (text entry field) to embedded data fields, which ARE 
 2. Test new submissions to verify embedded data appears in API responses
 3. Remove QID11 dependency once embedded data is confirmed working
 
+---
+
+## Region Tracker Interface (v1.85)
+
+### Implementation
+Built `test_interfaces/region_tracker.html` - A waveform region tracker for annotating seismic events with smooth UI animations.
+
+**Key Features**:
+- **Waveform time bar** with region selection and highlighting
+- **Spectrogram panel** for frequency range selection (box selection)
+- **Region cards** with expandable/collapsible feature lists
+- **Smooth animations** when expanding/collapsing regions or adding features
+- **Multiple simultaneous regions** - each toggles independently
+
+**Technical Highlights**:
+- **No DOM destruction** - Toggling one region doesn't re-render others (fixed flash bug)
+- **Smooth expansion** - Adding features slides down smoothly without flashing
+- **Feature removal** - Instantly removes features (no animation needed)
+- **CSS class manipulation** - Direct header/details class updates instead of full re-renders
+
+**Files Created**:
+- `test_interfaces/region_tracker.html` (2048 lines) - Complete standalone region tracking interface
+
+**UI Design**:
+- Red volcanic gradient background
+- Collapsible region cards with play/pause buttons
+- Feature rows with type, repetition, frequency selection, and notes
+- Visual feedback with highlighted regions on waveform during playback
+- Compact design with adjustable feature counts (1-10)
+
+**Commit**: v1.85 Feature: Built region_tracker.html - smooth region toggle/expansion without DOM destruction
+
 
