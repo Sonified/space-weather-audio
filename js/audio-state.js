@@ -64,6 +64,12 @@ export let selectionEnd = null;
 export let isSelecting = false;
 export let selectionStartX = null;
 
+// Region tracking state
+export let regions = [];
+export let activeRegionIndex = null;
+export let isSelectingFrequency = false;
+export let currentFrequencySelection = null;
+
 // Setters for modules that need to update state
 export function setAudioContext(value) { audioContext = value; }
 export function setWorkletNode(value) { workletNode = value; }
@@ -107,4 +113,8 @@ export function setSelectionStart(value) { selectionStart = value; }
 export function setSelectionEnd(value) { selectionEnd = value; }
 export function setIsSelecting(value) { isSelecting = value; }
 export function setSelectionStartX(value) { selectionStartX = value; }
+export function setRegions(value) { regions = value; }
+export function setActiveRegionIndex(value) { activeRegionIndex = value; }
+export function setIsSelectingFrequency(value) { isSelectingFrequency = value; }
+export function setCurrentFrequencySelection(value) { currentFrequencySelection = value; }
 

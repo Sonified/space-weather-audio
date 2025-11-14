@@ -15,6 +15,12 @@ body {
     min-height: 100vh;
     padding: 20px;
     overflow-x: hidden;
+    overflow-y: scroll;
+}
+
+body::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
 }
 
 .container {
@@ -52,51 +58,63 @@ h2 {
     transform: translateZ(0);
 }
 
+/* Panel 2: Simulate panel */
 .panel:nth-child(2) {
     padding-top: 12px;
     padding-bottom: 12px;
 }
 
-.panel:nth-child(2) label {
+/* Panel 3: Cache panel */
+.panel:nth-child(3) {
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+/* Panel 4: Volcano/Station selection panel */
+.panel:nth-child(4) {
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+.panel:nth-child(4) label {
     font-size: 18px;
 }
 
-.panel:nth-child(2) select,
-.panel:nth-child(2) input {
+.panel:nth-child(4) select,
+.panel:nth-child(4) input {
     font-size: 16px;
 }
 
-.panel:nth-child(3) {
+/* Panel 5: Playback controls panel */
+.panel:nth-child(5) {
     background: linear-gradient(135deg, rgba(255, 240, 240, 0.95) 0%, rgba(245, 210, 205, 0.95) 100%);
     padding-top: 12px;
     padding-bottom: 12px;
 }
 
-.panel:nth-child(3) label {
+.panel:nth-child(5) label {
     font-size: 15px;
 }
 
-.panel:nth-child(3) select,
-.panel:nth-child(3) input {
+.panel:nth-child(5) select,
+.panel:nth-child(5) input {
     font-size: 15px;
 }
 
-.panel:nth-child(3) h2 {
+.panel:nth-child(5) h2 {
     font-size: calc(1.5em + 1px);
 }
 
-.panel:nth-child(4) {
+/* Panel 6: Waveform/Spectrogram visualization panel */
+.panel:nth-child(6) {
     background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
     border: 1px solid rgba(200, 100, 100, 0.3);
     padding-top: 20px;
     padding-right: 40px;
 }
 
-.panel:nth-child(5) {
-    background: linear-gradient(135deg, rgba(255, 245, 245, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
-}
-
-.panel:nth-child(6) {
+/* Panel 7: Metrics panel (region cards float between panel 6 and 7) */
+.panel:nth-child(7) {
     padding-top: 12px;
     padding-bottom: 12px;
 }
@@ -909,5 +927,740 @@ input[type="checkbox"] {
         min-width: calc(100vw - 40px);
         max-width: calc(100vw - 40px);
     }
+}
+
+/* ===== REGION TRACKER STYLES ===== */
+
+/* Region list container */
+#regionsList {
+    margin-bottom: 15px;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-size: 1em;
+}
+
+.empty-state p {
+    opacity: 0.9;
+    margin-top: 10px;
+}
+
+/* Region Card */
+.region-card {
+    position: relative;
+    background: linear-gradient(135deg, rgba(255, 250, 250, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    box-shadow: 
+        0 10px 20px rgba(80, 20, 20, 0.35),
+        0 6px 12px rgba(80, 20, 20, 0.25),
+        0 3px 6px rgba(255, 100, 100, 0.15),
+        0 1px 3px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(200, 100, 100, 0.2);
+    overflow: visible;
+    transition: all 0.3s;
+}
+
+.region-card:hover {
+    box-shadow: 
+        0 12px 24px rgba(80, 20, 20, 0.4),
+        0 8px 16px rgba(80, 20, 20, 0.3),
+        0 4px 8px rgba(255, 100, 100, 0.2);
+}
+
+/* Region Header Bar */
+.region-header {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.5);
+    border-top: 1px solid rgba(255, 255, 255, 0.6);
+    border-bottom: 1px solid rgba(200, 100, 100, 0.2);
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.8);
+    transition: background 0.2s;
+    font-size: 0.9em;
+}
+
+.region-header:hover {
+    background: rgba(255, 255, 255, 0.7);
+}
+
+.region-header.expanded {
+    background: rgba(255, 240, 240, 0.8);
+    border-bottom-color: rgba(200, 100, 100, 0.4);
+}
+
+.region-header:not(.expanded) {
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+}
+
+.region-card .play-btn {
+    width: 32px;
+    height: 24px;
+    border-radius: 3px;
+    background: linear-gradient(145deg, #d32f3f, #a01d2a);
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+    border-right: 1px solid rgba(0, 0, 0, 0.2);
+    color: white;
+    font-size: 0.75em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 20px;
+    flex-shrink: 0;
+    transition: all 0.2s;
+    padding: 0;
+    min-height: auto;
+    line-height: normal;
+    box-shadow: 
+        0 2px 4px rgba(0, 0, 0, 0.3),
+        0 1px 2px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.region-card .play-btn:hover {
+    background: linear-gradient(145deg, #e6394a, #b01f2e);
+    box-shadow: 
+        0 3px 6px rgba(0, 0, 0, 0.4),
+        0 2px 3px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+    transform: translateY(-1px);
+}
+
+.region-card .play-btn:active {
+    transform: translateY(0px);
+    box-shadow: 
+        0 1px 2px rgba(0, 0, 0, 0.3),
+        inset 0 2px 4px rgba(0, 0, 0, 0.3),
+        inset 0 0 2px rgba(0, 0, 0, 0.2);
+}
+
+.region-card .play-btn.playing {
+    background: linear-gradient(145deg, #34ce57, #1e7e34);
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+    border-right: 1px solid rgba(0, 0, 0, 0.2);
+    box-shadow: 
+        0 2px 4px rgba(0, 0, 0, 0.3),
+        0 1px 2px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.region-summary {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 0.9em;
+    color: #333;
+}
+
+.region-label {
+    font-weight: 600;
+    color: #333;
+    margin-right: 20px;
+}
+
+.features-count-text {
+    font-weight: 600;
+    color: #333;
+    margin-right: 30px;
+}
+
+.region-time-display {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    color: #333;
+    font-size: 1.1em;
+    font-weight: 500;
+}
+
+.region-description-preview {
+    color: #666;
+    font-size: 0.9em;
+    font-style: italic;
+    margin-left: 20px;
+    max-width: 600px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.time-label {
+    font-weight: 500;
+    color: #666;
+    margin-right: 4px;
+}
+
+.time-value {
+    font-family: 'Monaco', 'Menlo', monospace;
+    color: #333;
+}
+
+.collapse-icon {
+    font-size: 1.2em;
+    color: #c82333;
+    margin-right: 20px;
+    transition: transform 0.3s;
+    flex-shrink: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+}
+
+.collapse-icon:hover {
+    color: #bd2130;
+}
+
+.region-header.expanded .collapse-icon {
+    transform: rotate(180deg);
+}
+
+.delete-region-btn {
+    background: #ffb3ba;
+    color: #721c24;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 600;
+    transition: all 0.2s;
+    margin-left: 20px;
+    flex-shrink: 0;
+    height: auto;
+    line-height: normal;
+    min-height: auto;
+}
+
+.delete-region-btn:hover {
+    background: #ff8a8f;
+    transform: scale(1.05);
+}
+
+/* Delete Feature Button (inline with feature rows) */
+.delete-feature-btn-inline {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #dc3545 !important;
+    border: none !important;
+    color: white;
+    font-size: 0.7em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    padding: 0;
+    line-height: 1;
+    box-shadow: none !important;
+}
+
+.delete-feature-btn-inline:hover {
+    background: #c82333 !important;
+    transform: translateY(-50%) scale(1.15) !important;
+    box-shadow: none !important;
+}
+
+.delete-feature-btn-inline:active {
+    transform: translateY(-50%) scale(0.9) !important;
+    box-shadow: none !important;
+}
+
+.delete-feature-btn-inline.disabled {
+    background: #ccc !important;
+    cursor: not-allowed;
+    opacity: 0.5;
+    box-shadow: none !important;
+}
+
+.delete-feature-btn-inline.disabled:hover {
+    transform: translateY(-50%) !important;
+    background: #ccc !important;
+    box-shadow: none !important;
+}
+
+/* Add Feature Row */
+.add-feature-row {
+    background: transparent;
+    padding: 1px 10px 1px 36px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    position: relative;
+    min-height: 28px;
+    margin-top: 2px;
+}
+
+.add-feature-btn {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #5cb85c !important;
+    border: none !important;
+    color: white;
+    font-size: 0.85em;
+    font-weight: 400;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    padding: 0;
+    line-height: 1;
+    min-height: auto;
+    box-shadow: none !important;
+}
+
+.add-feature-btn:hover {
+    background: #4cae4c !important;
+    transform: scale(1.15) !important;
+    box-shadow: none !important;
+}
+
+.add-feature-btn:active {
+    transform: scale(0.9) !important;
+    box-shadow: none !important;
+}
+
+.add-feature-btn:disabled {
+    background: #ccc !important;
+    cursor: not-allowed;
+    opacity: 0.5;
+    box-shadow: none !important;
+}
+
+.add-feature-btn:disabled:hover {
+    transform: none !important;
+    background: #ccc !important;
+    box-shadow: none !important;
+}
+
+.add-feature-label {
+    margin-left: 8px;
+    font-size: 0.9em;
+    color: #666;
+    font-style: italic;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.2s;
+}
+
+.add-feature-label:hover {
+    color: #333;
+}
+
+.add-feature-label.disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.add-feature-label.disabled:hover {
+    color: #666;
+}
+
+/* Region Details */
+.region-details {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    background: white;
+}
+
+.region-details.expanded {
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+}
+
+.details-content {
+    padding: 9px 12px 3px 12px;
+    font-size: 0.85em;
+}
+
+/* Features List */
+.features-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.features-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.feature-row {
+    background: #e8e8e8;
+    padding: 4px 10px 4px 58px;
+    border-radius: 4px;
+    border-left: 3px solid #c82333;
+    display: grid;
+    grid-template-columns: 110px 110px 180px 1fr;
+    gap: 8px;
+    align-items: stretch;
+    position: relative;
+    min-height: 36px;
+}
+
+.feature-number {
+    position: absolute;
+    left: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-weight: 700;
+    color: #333;
+    font-size: 1.2em;
+    width: 24px;
+    text-align: center;
+}
+
+.feature-row:nth-child(odd) {
+    background: #e8e8e8;
+}
+
+.feature-row:nth-child(even) {
+    background: #d8d8d8;
+}
+
+.feature-row select,
+.feature-row input[type="text"],
+.feature-row textarea {
+    padding: 4px 6px !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 4px !important;
+    font-size: 0.95em !important;
+    font-family: inherit !important;
+    transition: border-color 0.2s !important;
+    height: 28px !important;
+    line-height: 1.2 !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
+}
+
+.feature-row select:focus,
+.feature-row input[type="text"]:focus,
+.feature-row textarea:focus {
+    outline: none !important;
+    border-color: #c82333 !important;
+    box-shadow: none !important;
+    background: white !important;
+}
+
+textarea.freq-input {
+    resize: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 28px;
+    line-height: 1.2;
+    white-space: nowrap;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+textarea.freq-input::-webkit-scrollbar {
+    display: none;
+}
+
+.freq-input {
+    width: 100%;
+}
+
+.freq-input.pulse {
+    animation: pulseReceipt 0.6s ease-out;
+}
+
+.freq-input.pulse-long {
+    animation: pulseReceipt 1.2s ease-out;
+}
+
+@keyframes pulseReceipt {
+    0% {
+        background-color: #fff;
+        border-color: #c82333;
+    }
+    50% {
+        background-color: #ffe8e8;
+        border-color: #c82333;
+        box-shadow: 0 0 10px rgba(200, 35, 51, 0.5);
+    }
+    100% {
+        background-color: #fff;
+        border-color: #e0e0e0;
+    }
+}
+
+/* Select Button */
+.select-freq-btn {
+    padding: 6px 12px;
+    border: 1px solid #c82333;
+    border-radius: 4px;
+    background: white;
+    color: #c82333;
+    font-size: 0.85em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: auto;
+    min-height: auto;
+    line-height: normal;
+}
+
+.select-freq-btn:hover {
+    background: #c82333;
+    color: white;
+}
+
+.select-freq-btn.active {
+    background: #c82333 !important;
+    color: white !important;
+    border-color: #c82333 !important;
+    animation: subtleGlow 1.2s ease-in-out infinite !important;
+}
+
+.select-freq-btn.pulse:not(.active) {
+    animation: pulseButton 1.5s ease-in-out infinite;
+}
+
+.select-freq-btn.completed {
+    background: white;
+    color: #333;
+    border-color: #ccc;
+    font-weight: 500;
+    font-style: normal;
+}
+
+.select-freq-btn.completed:hover {
+    background: #f5f5f5;
+    color: #666;
+    border-color: #999;
+}
+
+.select-freq-btn.pulse {
+    animation: simplePulse 0.25s ease-out !important;
+}
+
+.select-freq-btn.expand-shadow {
+    animation: expandShadow 0.3s ease-out !important;
+}
+
+@keyframes expandShadow {
+    0% {
+        box-shadow: 0 0 0 rgba(200, 35, 51, 0);
+    }
+    50% {
+        box-shadow: 0 0 0 3px rgba(200, 35, 51, 0.8), 0 0 0 6px rgba(200, 35, 51, 0.4);
+    }
+    100% {
+        box-shadow: 0 0 0 rgba(200, 35, 51, 0);
+    }
+}
+
+@keyframes simplePulse {
+    0% {
+        background-color: #c82333 !important;
+        color: white !important;
+        border-color: #c82333 !important;
+        box-shadow: 0 0 15px rgba(200, 35, 51, 0.5);
+    }
+    25% {
+        background-color: #ff9999 !important;
+        color: white !important;
+        border-color: #ff5555 !important;
+        box-shadow: 0 0 18px rgba(255, 70, 70, 0.6);
+    }
+    60% {
+        background-color: #ffcccc !important;
+        color: #c82333 !important;
+        border-color: #ff7777 !important;
+        box-shadow: 0 0 15px rgba(255, 100, 100, 0.4);
+    }
+    100% {
+        background-color: white !important;
+        color: #333 !important;
+        border-color: #ccc !important;
+        box-shadow: 0 0 0 rgba(255, 0, 0, 0);
+    }
+}
+
+@keyframes subtleGlow {
+    0%, 100% {
+        box-shadow: 0 0 8px rgba(200, 35, 51, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(200, 35, 51, 0.8);
+    }
+}
+
+@keyframes pulseButton {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+        background: white;
+        color: #c82333;
+        box-shadow: 0 0 0 rgba(200, 35, 51, 0);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.08);
+        background: #fff5f5;
+        color: #c82333;
+        border-color: #e85d5d;
+        box-shadow: 0 0 8px rgba(200, 35, 51, 0.3);
+    }
+}
+
+.frequency-display {
+    grid-column: span 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 6px;
+    color: #999;
+    font-style: italic;
+    font-size: 0.85em;
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    max-width: 160px;
+    min-width: 120px;
+}
+
+.frequency-display.selected {
+    color: #333;
+    font-style: normal;
+    font-weight: 500;
+}
+
+.frequency-display.pulse {
+    animation: pulseFrequencyDisplay 0.8s ease-out;
+}
+
+.notes-field.pulse {
+    animation: pulseNotesField 0.8s ease-out;
+}
+
+@keyframes pulseFrequencyDisplay {
+    0% {
+        background-color: white;
+        border-color: #c82333;
+        box-shadow: 0 0 0 rgba(200, 35, 51, 0);
+    }
+    50% {
+        background-color: #ffcccc;
+        border-color: #ff0000;
+        box-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+    }
+    100% {
+        background-color: white;
+        border-color: #c82333;
+        box-shadow: 0 0 0 rgba(200, 35, 51, 0);
+    }
+}
+
+@keyframes pulseNotesField {
+    0% {
+        background-color: white;
+        border-color: #e0e0e0;
+        box-shadow: 0 0 0 rgba(200, 35, 51, 0);
+    }
+    50% {
+        background-color: #fff5f5;
+        border-color: #ffaaaa;
+        box-shadow: 0 0 20px rgba(200, 35, 51, 0.8), 0 0 10px rgba(200, 35, 51, 0.5);
+        transform: scale(1.005);
+    }
+    100% {
+        background-color: white;
+        border-color: #e0e0e0;
+        box-shadow: 0 0 0 rgba(200, 35, 51, 0);
+        transform: scale(1);
+    }
+}
+
+/* Region Highlight on Waveform */
+.region-highlight {
+    position: absolute;
+    top: 0;
+    height: 135px;
+    background: rgba(68, 136, 255, 0.2);
+    border-left: 2px solid rgba(68, 136, 255, 0.6);
+    border-right: 2px solid rgba(68, 136, 255, 0.6);
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+
+.region-highlight.active {
+    background: rgba(68, 136, 255, 0.5);
+    border-left-color: rgba(68, 136, 255, 0.9);
+    border-right-color: rgba(68, 136, 255, 0.9);
+}
+
+/* Selection Box for Waveform and Spectrogram */
+.selection-box {
+    position: absolute;
+    top: 0;
+    background: rgba(255, 255, 0, 0.2);
+    border-left: 2px solid rgba(255, 200, 0, 0.8);
+    border-right: 2px solid rgba(255, 200, 0, 0.8);
+    pointer-events: none;
+}
+
+/* Add Region Button */
+.add-region-button {
+    position: absolute;
+    padding: 8px 16px;
+    background: #3d6dd9;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(68, 136, 255, 0.4);
+    z-index: 1000;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.add-region-button:hover {
+    background: #4a7ae8;
+    box-shadow: 0 4px 12px rgba(68, 136, 255, 0.6);
 }
 

@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
-import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization } from './spectrogram-renderer.js';
+import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
@@ -16,6 +16,7 @@ import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion } from './region-tracker.js';
 
 // Make functions available globally (for inline onclick handlers)
 window.loadStations = loadStations;
@@ -43,6 +44,13 @@ window.toggleAdminMode = toggleAdminMode;
 window.changeWaveformFilter = handleWaveformFilterChange;
 window.toggleAntiAliasing = toggleAntiAliasing;
 window.toggleForceIris = toggleForceIris;
+window.toggleRegion = toggleRegion;
+window.toggleRegionPlay = toggleRegionPlay;
+window.addFeature = addFeature;
+window.updateFeature = updateFeature;
+window.deleteRegion = deleteRegion;
+window.startFrequencySelection = startFrequencySelection;
+window.createTestRegion = createTestRegion;
 
 // Force IRIS fetch state
 let forceIrisFetch = false;
@@ -743,6 +751,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Attach event listeners to modals
     setupModalEventListeners();
+    
+    // Initialize region tracker
+    initRegionTracker();
+    
+    // Setup spectrogram frequency selection
+    setupSpectrogramSelection();
     
     // Initialize admin mode (applies user mode by default)
     initAdminMode();

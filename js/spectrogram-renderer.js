@@ -5,6 +5,14 @@
 
 import * as State from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode } from './region-tracker.js';
+
+// Spectrogram selection state
+let spectrogramSelectionActive = false;
+let spectrogramStartX = null;
+let spectrogramStartY = null;
+let spectrogramEndY = null;
+let spectrogramSelectionBox = null;
 
 export function drawSpectrogram() {
     if (!State.analyserNode) return;
@@ -257,5 +265,104 @@ export function startVisualization() {
     drawFrequencyAxis();
     
     drawSpectrogram();
+}
+
+/**
+ * Setup spectrogram frequency selection
+ * Called from main.js after DOM is ready
+ */
+export function setupSpectrogramSelection() {
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    
+    // Use the panel as container (same as waveform selection)
+    const container = canvas.closest('.panel');
+    if (!container) return;
+    
+    canvas.addEventListener('mousedown', (e) => {
+        // Only handle if in frequency selection mode
+        if (!isInFrequencySelectionMode()) return;
+        
+        const canvasRect = canvas.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        spectrogramStartX = e.clientX - canvasRect.left;
+        spectrogramStartY = e.clientY - canvasRect.top;
+        spectrogramSelectionActive = true;
+        
+        // Create selection box
+        if (spectrogramSelectionBox) {
+            spectrogramSelectionBox.remove();
+        }
+        spectrogramSelectionBox = document.createElement('div');
+        spectrogramSelectionBox.className = 'selection-box';
+        spectrogramSelectionBox.style.position = 'absolute';
+        spectrogramSelectionBox.style.left = (spectrogramStartX + canvasRect.left - containerRect.left) + 'px';
+        spectrogramSelectionBox.style.top = (spectrogramStartY + canvasRect.top - containerRect.top) + 'px';
+        spectrogramSelectionBox.style.width = '0px';
+        spectrogramSelectionBox.style.height = '0px';
+        spectrogramSelectionBox.style.border = '2px solid #ff4444';
+        spectrogramSelectionBox.style.background = 'rgba(255, 68, 68, 0.2)';
+        spectrogramSelectionBox.style.pointerEvents = 'none';
+        spectrogramSelectionBox.style.zIndex = '100';
+        container.appendChild(spectrogramSelectionBox);
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+        if (!spectrogramSelectionActive || !spectrogramSelectionBox) return;
+        
+        const canvasRect = canvas.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const currentX = e.clientX - canvasRect.left;
+        const currentY = e.clientY - canvasRect.top;
+        spectrogramEndY = currentY;
+        
+        const left = Math.min(spectrogramStartX, currentX);
+        const top = Math.min(spectrogramStartY, currentY);
+        const width = Math.abs(currentX - spectrogramStartX);
+        const height = Math.abs(currentY - spectrogramStartY);
+        
+        spectrogramSelectionBox.style.left = (left + canvasRect.left - containerRect.left) + 'px';
+        spectrogramSelectionBox.style.top = (top + canvasRect.top - containerRect.top) + 'px';
+        spectrogramSelectionBox.style.width = width + 'px';
+        spectrogramSelectionBox.style.height = height + 'px';
+    });
+    
+    const handleMouseUp = (e) => {
+        if (!spectrogramSelectionActive) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const endY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+        
+        // Call region tracker handler
+        handleSpectrogramSelection(spectrogramStartY, endY, canvas.height);
+        
+        // Cleanup
+        if (spectrogramSelectionBox) {
+            spectrogramSelectionBox.remove();
+            spectrogramSelectionBox = null;
+        }
+        spectrogramSelectionActive = false;
+        spectrogramStartX = null;
+        spectrogramStartY = null;
+        spectrogramEndY = null;
+    };
+    
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    // Handle escape key to cancel selection
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && spectrogramSelectionActive) {
+            if (spectrogramSelectionBox) {
+                spectrogramSelectionBox.remove();
+                spectrogramSelectionBox = null;
+            }
+            spectrogramSelectionActive = false;
+            spectrogramStartX = null;
+            spectrogramStartY = null;
+            spectrogramEndY = null;
+        }
+    });
+    
+    console.log('🎯 Spectrogram frequency selection initialized');
 }
 

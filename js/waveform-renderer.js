@@ -7,6 +7,7 @@ import * as State from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion } from './region-tracker.js';
 
 // Helper functions
 function removeDCOffset(data, alpha = 0.995) {
@@ -256,6 +257,9 @@ export function drawWaveformWithSelection() {
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(State.cachedWaveformCanvas, 0, 0);
     
+    // Draw region highlights (before selection box)
+    drawRegionHighlights(ctx, width, height);
+    
     if (State.selectionStart !== null && State.selectionEnd !== null) {
         const startProgress = State.selectionStart / State.totalAudioDuration;
         const endProgress = State.selectionEnd / State.totalAudioDuration;
@@ -322,6 +326,9 @@ export function setupWaveformInteraction() {
         if (State.cachedWaveformCanvas) {
             ctx.clearRect(0, 0, canvas.width, canvasHeight);
             ctx.drawImage(State.cachedWaveformCanvas, 0, 0);
+            
+            // Draw region highlights during scrub preview
+            drawRegionHighlights(ctx, canvas.width, canvasHeight);
         }
         
         ctx.strokeStyle = State.isDragging ? '#bbbbbb' : '#ff0000';
@@ -379,6 +386,9 @@ export function setupWaveformInteraction() {
                 State.setIsSelecting(true);
                 canvas.style.cursor = 'col-resize';
                 console.log('📏 Selection drag detected');
+                
+                // Clear active region when starting new waveform selection
+                clearActiveRegion();
             }
             
             if (State.isSelecting) {
@@ -417,6 +427,9 @@ export function setupWaveformInteraction() {
                 const newIsLooping = State.isLooping;
                 
                 console.log(`📏 Selection created: ${newSelectionStart.toFixed(2)}s - ${newSelectionEnd.toFixed(2)}s (duration: ${(newSelectionEnd - newSelectionStart).toFixed(3)}s)`);
+                
+                // Show "Add Region" button for region tracker
+                showAddRegionButton(newSelectionStart, newSelectionEnd);
                 
                 if (State.workletNode) {
                     State.workletNode.port.postMessage({
@@ -461,12 +474,18 @@ export function setupWaveformInteraction() {
                 State.setSelectionEnd(null);
                 State.setSelectionStartX(null);
                 
+                // Hide "Add Region" button when selection is cleared
+                hideAddRegionButton();
+                
                 updateWorkletSelection();
                 
                 const ctx = canvas.getContext('2d');
                 if (State.cachedWaveformCanvas) {
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                     ctx.drawImage(State.cachedWaveformCanvas, 0, 0);
+                    
+                    // Draw region highlights after clearing selection
+                    drawRegionHighlights(ctx, canvas.width, canvas.height);
                 }
                 
                 performSeek();
