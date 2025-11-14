@@ -9,6 +9,8 @@ import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
 import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, resetRegionPlayButtonIfFinished } from './region-tracker.js';
+import { printSelectionDiagnostics } from './selection-diagnostics.js';
+import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -343,6 +345,9 @@ export function setupWaveformInteraction() {
         ctx.moveTo(canvasX, 0);
         ctx.lineTo(canvasX, canvasHeight);
         ctx.stroke();
+        
+        // Mirror on spectrogram
+        drawSpectrogramScrubPreview(targetPosition, State.isDragging);
     }
     
     function performSeek() {
@@ -364,6 +369,7 @@ export function setupWaveformInteraction() {
             }
             
             drawWaveformWithSelection();
+            drawSpectrogramPlayhead();  // Update spectrogram immediately
             seekToPosition(State.scrubTargetPosition, true); // Always start playback when clicking
             State.setScrubTargetPosition(null);
         }
@@ -426,13 +432,18 @@ export function setupWaveformInteraction() {
                 const endPos = targetPosition;
                 
                 State.setIsSelecting(false);
-                State.setSelectionStartX(null);
                 
                 const newSelectionStart = Math.min(startPos, endPos);
                 const newSelectionEnd = Math.max(startPos, endPos);
                 const newIsLooping = State.isLooping;
                 
                 console.log(`🖱️ Waveform selection created: ${newSelectionStart.toFixed(2)}s - ${newSelectionEnd.toFixed(2)}s (duration: ${(newSelectionEnd - newSelectionStart).toFixed(3)}s)`);
+                
+                // Print comprehensive diagnostics for the selection
+                const currentX = e.clientX - rect.left;
+                printSelectionDiagnostics(State.selectionStartX, currentX, rect.width);
+                
+                State.setSelectionStartX(null);
                 
                 // Reset all region play buttons since user is making a new selection (not playing within a region)
                 resetAllRegionPlayButtons();
@@ -457,6 +468,8 @@ export function setupWaveformInteraction() {
                 State.setSelectionStart(newSelectionStart);
                 State.setSelectionEnd(newSelectionEnd);
                 drawWaveformWithSelection();
+                clearSpectrogramScrubPreview();  // Clear scrub preview
+                drawSpectrogramPlayhead();  // Update spectrogram immediately
                 
                 setTimeout(() => {
                     State.setSelectionStart(newSelectionStart);
@@ -492,7 +505,9 @@ export function setupWaveformInteraction() {
                 
                 const { targetPosition } = getPositionFromMouse(e);
                 console.log(`🖱️ Waveform clicked at ${targetPosition.toFixed(2)}s - seeking to position`);
+                clearSpectrogramScrubPreview();  // Clear scrub preview
                 performSeek();
+                drawSpectrogramPlayhead();  // Update spectrogram immediately after seek
             }
         }
     });
@@ -512,6 +527,8 @@ export function setupWaveformInteraction() {
                         State.setLastUpdateTime(State.audioContext.currentTime);
                     }
                     drawWaveformWithSelection();
+                    clearSpectrogramScrubPreview();  // Clear scrub preview
+                    drawSpectrogramPlayhead();  // Update spectrogram immediately
                     
                     // Seek to start and optionally start playback if playOnClick is enabled
                     const shouldAutoPlay = document.getElementById('playOnClick').checked;
@@ -520,6 +537,7 @@ export function setupWaveformInteraction() {
                     State.setSelectionStart(null);
                     State.setSelectionEnd(null);
                     updateWorkletSelection();
+                    clearSpectrogramScrubPreview();  // Clear scrub preview
                     performSeek();
                 }
             } else {
@@ -589,6 +607,7 @@ export function updatePlaybackIndicator() {
         }
         
         drawWaveformWithSelection();
+        drawSpectrogramPlayhead();  // Draw playhead on spectrogram too
     }
     
     requestAnimationFrame(updatePlaybackIndicator);

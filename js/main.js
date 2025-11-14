@@ -760,9 +760,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.88 - Region Playback Race Condition Fix');
-    console.log('📦 [0ms] v1.88 Fix: Region playback race condition - fixed seek auto-resume logic to wait for buffer before playing, waveform clicks always start playback, removed premature resume calls');
-    console.log('📦 [0ms] v1.88 Commit: v1.88 Fix: Region playback race condition - fixed seek auto-resume logic to wait for buffer before playing, waveform clicks always start playback, removed premature resume calls');
+    console.log('🌋 [0ms] volcano-audio v1.91 - Zoom Architecture & Spectrogram Playhead');
+    console.log('📦 [0ms] v1.91 Docs: Created zoom architecture document outlining sample-based coordinate system for future zoom implementation');
+    console.log('📦 [0ms] v1.91 Feat: Implemented synchronized red playhead on spectrogram with optimized strip rendering and scrub preview');
     
     // Initialize modals (inject into DOM)
     initializeModals();

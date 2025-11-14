@@ -285,4 +285,80 @@ self.postMessage({ results }, transferList);
 
 ---
 
+## 📐 ARCHITECTURE: Zoom System Design & Spectrogram Playhead (v1.91)
+
+### Zoom Architecture Document
+
+**Created**: `docs/zoom_architecture.md`
+
+Comprehensive architecture document outlining the unified coordinate system for implementing zoom functionality:
+
+**Core Principle**: **Sample-based coordinates** as single source of truth
+- All positions stored as absolute sample indices (integers)
+- Zero floating-point drift
+- Perfect round-trips on zoom in/out/in/out
+- Direct buffer access mapping
+
+**Key Components**:
+1. **ZoomState Manager** - Converts samples ↔ pixels/time/timestamps for current view
+2. **Region & Feature Storage** - Absolute sample positions (not relative to regions)
+3. **Zoom Operations** - `zoomToRegion()` and `zoomToFull()` workflows
+4. **Windowed Playback** - Future feature for auto-advancing time windows
+5. **Scrolling Playback** - Three approaches from simple to ring buffer
+6. **Implementation Order** - Phased rollout plan from MVP to advanced
+
+**Why Sample-Based?**
+- Samples → Pixels: `(sample - viewStart) / viewRange * canvasWidth`
+- Pixels → Samples: `viewStart + (pixelX / canvasWidth) * viewRange`
+- Features stay at exact positions regardless of zoom level
+- Works perfectly with future windowed/scrolling playback
+
+### Spectrogram Playhead Implementation
+
+**Created**: `js/spectrogram-playhead.js`
+
+Synchronized red playhead indicator on spectrogram, perfectly mirroring waveform:
+
+**Features**:
+- Red playhead line moves during playback in sync with waveform
+- White/gray scrub preview while hovering/dragging (matches waveform UX)
+- Optimized strip rendering: only redraws 8px-wide strips (7,200 pixels vs 540,000!)
+- Pixel-level change detection to skip redundant redraws
+- Smart playhead preservation when clearing scrub preview
+
+**Performance Optimization**:
+- Instead of redrawing entire 1200×450 canvas (540k pixels):
+  - Only restore old playhead strip (8×450 = 3,600 pixels)
+  - Only restore new playhead strip (8×450 = 3,600 pixels)
+  - Draw new line
+- **Result**: 75× less pixel manipulation = instant updates
+
+**Integration Points**:
+- `updatePlaybackIndicator()` - Draws playhead every frame during playback
+- `updateScrubPreview()` - Mirrors white/gray preview on hover/drag
+- Immediate updates on seek/click - clears preview, shows playhead instantly
+
+**Bug Fix**: Changed `global.gc` to `window.gc` in worker pool termination (browsers don't have `global`)
+
+### Files Created
+- `docs/zoom_architecture.md` - Complete zoom system architecture
+- `js/spectrogram-playhead.js` - Synchronized playhead rendering
+- `js/selection-diagnostics.js` - Coordinate system validation tools
+
+### Files Modified
+- `js/main.js` - Version bump, integrated selection diagnostics
+- `js/waveform-renderer.js` - Added spectrogram playhead/preview calls, selection diagnostics integration
+- `js/spectrogram-complete-renderer.js` - Added canvas caching for playhead redrawing
+- `js/spectrogram-worker-pool.js` - Fixed global.gc bug
+
+### Result
+✅ **Perfectly synchronized** playhead across waveform and spectrogram
+✅ **Instant visual feedback** - no lag, optimized strip rendering
+✅ **Comprehensive zoom architecture** ready for implementation
+✅ **Selection diagnostics** validate coordinate systems across pixels/samples/timestamps
+
+**Commit**: v1.91 Docs: Created zoom architecture document outlining sample-based coordinate system for future zoom implementation. Feat: Implemented synchronized red playhead on spectrogram with optimized strip rendering and scrub preview. Fix: Changed global.gc to window.gc in worker pool
+
+---
+
 

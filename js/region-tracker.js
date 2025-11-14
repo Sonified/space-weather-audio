@@ -611,7 +611,7 @@ function renderFeatures(regionId, regionIndex) {
                     id="select-btn-${regionIndex}-${featureIndex}"
                     title="${feature.lowFreq && feature.highFreq ? 'click to select' : ''}">
                 ${feature.lowFreq && feature.highFreq ? 
-                    `${Math.round(parseFloat(feature.lowFreq))} - ${Math.round(parseFloat(feature.highFreq))} Hz` :
+                    `${parseFloat(feature.lowFreq).toFixed(1)} - ${parseFloat(feature.highFreq).toFixed(1)} Hz` :
                     'select frequency range'
                 }
             </button>

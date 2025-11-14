@@ -21,6 +21,9 @@ let renderingInProgress = false;
 // Worker pool for parallel FFT computation (MAXIMIZE ALL CPU CORES! 🔥)
 let workerPool = null;
 
+// Cached spectrogram canvas (for redrawing with playhead)
+let cachedSpectrogramCanvas = null;
+
 /**
  * Log memory usage for monitoring
  */
@@ -277,6 +280,12 @@ export async function renderCompleteSpectrogram() {
         console.log(`🎨 Writing ImageData to canvas...`);
         ctx.putImageData(imageData, 0, 0);
         
+        // Cache the spectrogram for redrawing with playhead
+        cachedSpectrogramCanvas = document.createElement('canvas');
+        cachedSpectrogramCanvas.width = width;
+        cachedSpectrogramCanvas.height = height;
+        cachedSpectrogramCanvas.getContext('2d').drawImage(canvas, 0, 0);
+        
         const elapsed = performance.now() - startTime;
         console.log(`✅ Complete spectrogram rendered in ${elapsed.toFixed(0)}ms`);
         
@@ -311,6 +320,7 @@ export function clearCompleteSpectrogram() {
     
     completeSpectrogramRendered = false;
     renderingInProgress = false;
+    cachedSpectrogramCanvas = null;
     State.setSpectrogramInitialized(false);
     
     // Terminate worker pool if it exists (will be recreated on next render)
@@ -330,6 +340,13 @@ export function clearCompleteSpectrogram() {
  */
 export function isCompleteSpectrogramRendered() {
     return completeSpectrogramRendered;
+}
+
+/**
+ * Get the cached spectrogram canvas
+ */
+export function getCachedSpectrogramCanvas() {
+    return cachedSpectrogramCanvas;
 }
 
 /**

@@ -176,9 +176,9 @@ export class SpectrogramWorkerPool {
         this.taskQueue = [];
         this.initialized = false;
         
-        // Force garbage collection hint
-        if (global.gc) {
-            global.gc();
+        // Force garbage collection hint (only available in special browser modes)
+        if (typeof window !== 'undefined' && window.gc) {
+            window.gc();
         }
         
         console.log(`✅ Worker pool terminated and memory freed`);
