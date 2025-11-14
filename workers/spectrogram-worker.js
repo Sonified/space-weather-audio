@@ -156,6 +156,9 @@ self.onmessage = function(e) {
         // Clear reusable buffer
         segment.fill(0);
         
+        // Calculate batch memory for monitoring
+        const batchMemory = (results.length * results[0].magnitudes.length * 4 / 1024).toFixed(1);
+        
         // Transfer magnitude buffers back to main thread (zero-copy!)
         const transferList = results.map(r => r.magnitudes.buffer);
         
@@ -164,7 +167,8 @@ self.onmessage = function(e) {
             type: 'batch-complete',
             batchStart: batchStart,
             batchEnd: batchEnd,
-            results: results
+            results: results,
+            batchMemoryKB: batchMemory
         }, transferList); // Transfer all magnitude buffers back
     }
 };

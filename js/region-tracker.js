@@ -296,34 +296,28 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
         ctx.lineTo(endX, canvasHeight);
         ctx.stroke();
         
-        // Draw region number in the center
+        // Draw region number - position dynamically based on region width
         const regionNumber = index + 1; // 1-indexed for display
-        const centerX = startX + highlightWidth / 2;
-        const centerY = canvasHeight / 2;
+        const paddingY = 17; // Padding from top edge
         
-        // Set text style - brightness follows active/inactive logic
-        if (index === activeRegionIndex) {
-            ctx.fillStyle = 'rgba(68, 136, 255, 1.0)'; // Bright blue for active
+        // Position number outside to the left if region is too narrow, otherwise inside
+        let labelX;
+        if (highlightWidth < 30) {
+            // Position number to the left, outside the box
+            labelX = startX - 20;
         } else {
-            ctx.fillStyle = 'rgba(68, 136, 255, 0.7)'; // Dimmer blue for inactive
+            // Position inside, top-left corner (with padding from left edge)
+            labelX = startX + 15;
         }
-        ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        const labelY = paddingY;
         
-        // Add text shadow for better visibility
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        ctx.shadowBlur = 4;
-        ctx.shadowOffsetX = 1;
-        ctx.shadowOffsetY = 1;
+        // Set text style - white with 80% opacity
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.font = 'bold 30px -apple-system, BlinkMacSystemFont, "Segoe UI"';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
         
-        ctx.fillText(regionNumber.toString(), centerX, centerY);
-        
-        // Reset shadow
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
+        ctx.fillText(regionNumber.toString(), labelX, labelY);
     });
 }
 
@@ -601,7 +595,7 @@ function renderFeatures(regionId, regionIndex) {
         }
         
         featureRow.innerHTML = `
-            <span class="feature-number">${featureIndex + 1}</span>
+            <span class="feature-number">Feature ${featureIndex + 1}</span>
             <select id="repetition-${regionIndex}-${featureIndex}" onchange="window.updateFeature(${regionIndex}, ${featureIndex}, 'repetition', this.value)">
                 <option value="Unique" ${feature.repetition === 'Unique' || !feature.repetition ? 'selected' : ''}>Unique</option>
                 <option value="Repeated" ${feature.repetition === 'Repeated' ? 'selected' : ''}>Repeated</option>

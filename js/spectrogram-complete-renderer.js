@@ -22,6 +22,23 @@ let renderingInProgress = false;
 let workerPool = null;
 
 /**
+ * Log memory usage for monitoring
+ */
+function logMemory(label) {
+    if (performance.memory) {
+        const used = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1);
+        const total = (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(1);
+        const limit = (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(1);
+        const percent = ((performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) * 100).toFixed(1);
+        console.log(`💾 ${label}: ${used}MB / ${total}MB (limit: ${limit}MB, ${percent}% used)`);
+        
+        if (percent > 80) {
+            console.warn('⚠️ Memory usage high!');
+        }
+    }
+}
+
+/**
  * Convert HSL to RGB
  * @param {number} h - Hue (0-360)
  * @param {number} s - Saturation (0-100)
@@ -79,6 +96,9 @@ export async function renderCompleteSpectrogram() {
     
     renderingInProgress = true;
     console.log('🎨 Starting complete spectrogram rendering...');
+    
+    // Log memory before rendering
+    logMemory('Before FFT computation');
     
     const canvas = document.getElementById('spectrogram');
     if (!canvas) {
@@ -260,6 +280,9 @@ export async function renderCompleteSpectrogram() {
         const elapsed = performance.now() - startTime;
         console.log(`✅ Complete spectrogram rendered in ${elapsed.toFixed(0)}ms`);
         
+        // Log memory after rendering
+        logMemory('After FFT completion');
+        
         completeSpectrogramRendered = true;
         State.setSpectrogramInitialized(true);
         
@@ -296,6 +319,9 @@ export function clearCompleteSpectrogram() {
         workerPool = null;
     }
     
+    // Log memory after cleanup
+    logMemory('After worker cleanup');
+    
     console.log('🧹 Cleared complete spectrogram');
 }
 
@@ -318,6 +344,9 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
     }
     
     console.log(`🔍 Rendering spectrogram for region: ${startSeconds.toFixed(2)}s to ${endSeconds.toFixed(2)}s`);
+    
+    // Log memory before region rendering
+    logMemory('Before region FFT');
     
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
@@ -467,6 +496,9 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         
         const elapsed = performance.now() - startTime;
         console.log(`✅ Region spectrogram rendered in ${elapsed.toFixed(0)}ms`);
+        
+        // Log memory after region rendering
+        logMemory('After region FFT');
         
         // Update frequency axis
         positionAxisCanvas();
