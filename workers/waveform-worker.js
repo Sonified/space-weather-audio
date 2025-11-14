@@ -8,6 +8,9 @@
  * 4. Memory efficient (doesn't store full waveform, just pixel data)
  */
 
+// Debug flag for waveform logs (set to true to enable detailed logging)
+const DEBUG_WAVEFORM = false;
+
 console.log('🎨 Waveform Worker initialized');
 
 // Store accumulated samples
@@ -32,14 +35,14 @@ self.addEventListener('message', (e) => {
         newRawSamples.set(raw, rawSamples.length);
         rawSamples = newRawSamples;
         
-        console.log(`🎨 Waveform worker: Added ${samples.length.toLocaleString()} samples (total: ${allSamples.length.toLocaleString()})`);
+        if (DEBUG_WAVEFORM) console.log(`🎨 Waveform worker: Added ${samples.length.toLocaleString()} samples (total: ${allSamples.length.toLocaleString()})`);
         
     } else if (type === 'build-waveform') {
         // Build optimized waveform for display
         const { canvasWidth, canvasHeight, removeDC, alpha, isComplete, totalExpectedSamples } = e.data;
         
         const t0 = performance.now();
-        console.log(`🎨 Building waveform: ${canvasWidth}px wide, ${allSamples.length.toLocaleString()} samples, removeDC=${removeDC}, alpha=${alpha}`);
+        if (DEBUG_WAVEFORM) console.log(`🎨 Building waveform: ${canvasWidth}px wide, ${allSamples.length.toLocaleString()} samples, removeDC=${removeDC}, alpha=${alpha}`);
         
         // Determine which samples to use
         let displaySamples = allSamples;
@@ -61,7 +64,7 @@ self.addEventListener('message', (e) => {
         const waveformData = buildMinMaxWaveform(displaySamples, effectiveWidth);
         
         const elapsed = performance.now() - t0;
-        console.log(`✅ Waveform built in ${elapsed.toFixed(0)}ms (${effectiveWidth} pixels from ${allSamples.length.toLocaleString()} samples)`);
+        if (DEBUG_WAVEFORM) console.log(`✅ Waveform built in ${elapsed.toFixed(0)}ms (${effectiveWidth} pixels from ${allSamples.length.toLocaleString()} samples)`);
         
         // Send back to main thread
         self.postMessage({

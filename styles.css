@@ -931,9 +931,55 @@ input[type="checkbox"] {
 
 /* ===== REGION TRACKER STYLES ===== */
 
+/* Tracked Regions Panel */
+#trackedRegionsPanel {
+    background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
+    border: 1px solid rgba(200, 100, 100, 0.3);
+    padding-top: 15px;
+    padding-bottom: 15px;
+}
+
+#trackedRegionsPanel h2 {
+    color: #ffe8e8;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Scrollable container for region cards */
+#regionsListContainer {
+    height: 320px; /* Fixed height for ~4 region cards */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 5px; /* Space for scrollbar */
+}
+
+/* Custom scrollbar styling for regions container */
+#regionsListContainer::-webkit-scrollbar {
+    width: 8px;
+}
+
+#regionsListContainer::-webkit-scrollbar-track {
+    background: rgba(200, 100, 100, 0.1);
+    border-radius: 4px;
+}
+
+#regionsListContainer::-webkit-scrollbar-thumb {
+    background: rgba(200, 100, 100, 0.4);
+    border-radius: 4px;
+}
+
+#regionsListContainer::-webkit-scrollbar-thumb:hover {
+    background: rgba(200, 100, 100, 0.6);
+}
+
+/* Firefox scrollbar */
+#regionsListContainer {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(200, 100, 100, 0.4) rgba(200, 100, 100, 0.1);
+}
+
 /* Region list container */
 #regionsList {
-    margin-bottom: 15px;
+    /* No margin needed anymore since it's inside the scrollable container */
 }
 
 /* Empty State */

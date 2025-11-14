@@ -4,6 +4,13 @@
  * All modules import and share this state
  */
 
+// Playback state enum
+export const PlaybackState = {
+    STOPPED: 'STOPPED',  // Default/rest state (no audio, finished, or never started)
+    PLAYING: 'PLAYING',  // Currently playing
+    PAUSED: 'PAUSED'     // Paused (ready to resume)
+};
+
 // Audio nodes
 export let audioContext = null;
 export let workletNode = null;
@@ -11,8 +18,7 @@ export let analyserNode = null;
 export let gainNode = null;
 
 // Playback state
-export let isPlaying = false;
-export let isPaused = false;
+export let playbackState = PlaybackState.STOPPED;
 export let isLooping = false;
 export let currentPlaybackRate = 1.0;
 
@@ -44,6 +50,7 @@ export let loadingInterval = null;
 export let spectrogramInitialized = false;
 export let visualizationStarted = false;
 export let isShowingFinalWaveform = false;
+export let justSeeked = false;  // Track if we just performed a seek (to avoid race conditions)
 
 // Visualization state
 export let spectrogramScrollSpeed = 1.0;
@@ -75,8 +82,10 @@ export function setAudioContext(value) { audioContext = value; }
 export function setWorkletNode(value) { workletNode = value; }
 export function setAnalyserNode(value) { analyserNode = value; }
 export function setGainNode(value) { gainNode = value; }
-export function setIsPlaying(value) { isPlaying = value; }
-export function setIsPaused(value) { isPaused = value; }
+export function setPlaybackState(value) {
+    console.log(`🔧 setPlaybackState(${value}) - previous state: ${playbackState}`);
+    playbackState = value;
+}
 export function setIsLooping(value) { isLooping = value; }
 export function setCurrentPlaybackRate(value) { currentPlaybackRate = value; }
 export function setStreamStartTime(value) { streamStartTime = value; }
@@ -100,6 +109,7 @@ export function setLoadingInterval(value) { loadingInterval = value; }
 export function setSpectrogramInitialized(value) { spectrogramInitialized = value; }
 export function setVisualizationStarted(value) { visualizationStarted = value; }
 export function setIsShowingFinalWaveform(value) { isShowingFinalWaveform = value; }
+export function setJustSeeked(value) { justSeeked = value; }
 export function setSpectrogramScrollSpeed(value) { spectrogramScrollSpeed = value; }
 export function setSpectrogramFrameCounter(value) { spectrogramFrameCounter = value; }
 export function setFrequencyScale(value) { frequencyScale = value; }

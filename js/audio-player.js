@@ -4,100 +4,135 @@
  */
 
 import * as State from './audio-state.js';
+import { PlaybackState } from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator } from './waveform-renderer.js';
 import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization } from './spectrogram-renderer.js';
+import { updateActiveRegionPlayButton } from './region-tracker.js';
 
-export function togglePlayPause() {
-    if (!State.audioContext) return;
+// ===== CENTRALIZED PLAYBACK CONTROL =====
+
+/**
+ * Start playback (or resume if paused)
+ * This is THE function for starting/resuming playback
+ */
+export function startPlayback() {
+    State.setPlaybackState(PlaybackState.PLAYING);
     
+    console.log('▶️ Starting playback');
+    
+    // Update master button
     const btn = document.getElementById('playPauseBtn');
+    btn.textContent = '⏸️ Pause';
+    btn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
+    btn.classList.add('pause-active');
     
-    // If playback has finished and we have data, "Play" means replay
-    if (!State.isPlaying && State.allReceivedData && State.allReceivedData.length > 0) {
-        // Determine replay position: selection start if selection exists, 
-        // otherwise current position (but reset to 0 if at/near the end)
-        let replayPosition;
-        if (State.selectionStart !== null && State.selectionEnd !== null) {
-            replayPosition = State.selectionStart;
-        } else {
-            // If we're at/near the end (within last 0.1s), restart from beginning
-            replayPosition = (State.currentAudioPosition >= State.totalAudioDuration - 0.1) 
-                ? 0 
-                : State.currentAudioPosition;
-        }
-        console.log(`▶️ PLAY AGAIN: Replaying from ${replayPosition.toFixed(2)}s (selection=${State.selectionStart !== null ? 'yes' : 'no'})`);
-        
-        // Remove pulse animations
-        btn.classList.remove('pulse-play', 'pulse-resume');
-        
-        // Update button state
-        State.setIsPlaying(true);
-        State.setIsPaused(false);
-        btn.textContent = '⏸️ Pause';
-        btn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
-        btn.classList.add('pause-active');
-        document.getElementById('status').className = 'status info';
-        document.getElementById('status').textContent = 'Replaying audio...';
-        
-        // Just seek to replay position - forceResume=true since user clicked Play button
-        seekToPosition(replayPosition, true);
-        
-        return;
+    // Update status
+    document.getElementById('status').className = 'status info';
+    document.getElementById('status').textContent = 'Playing...';
+    
+    // Resume AudioContext if needed
+    if (State.audioContext?.state === 'suspended') {
+        console.log('▶️ Resuming suspended AudioContext');
+        State.audioContext.resume();
     }
     
-    // Normal pause/resume behavior during active playback
-    State.setIsPaused(!State.isPaused);
+    // Tell worklet to resume
+    State.workletNode?.port.postMessage({ type: 'resume' });
     
-    if (State.isPaused) {
-        // Fade to near-zero with exponential ramp (don't suspend AudioContext!)
-        if (State.gainNode) {
-            State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-            State.gainNode.gain.setValueAtTime(State.gainNode.gain.value, State.audioContext.currentTime);
-            State.gainNode.gain.exponentialRampToValueAtTime(0.0001, State.audioContext.currentTime + 0.05);
-        }
-        
-        // Tell worklet to stop consuming samples
-        setTimeout(() => {
-            if (State.workletNode) {
-                State.workletNode.port.postMessage({ type: 'pause' });
+    // Fade volume back to target level
+    if (State.gainNode && State.audioContext) {
+        const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+        State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
+        State.gainNode.gain.setValueAtTime(State.gainNode.gain.value, State.audioContext.currentTime);
+        State.gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), State.audioContext.currentTime + 0.05);
+        console.log(`🔊 Fade-in on resume: ${State.gainNode.gain.value.toFixed(4)} → ${targetVolume.toFixed(2)} over 50ms`);
+    }
+    
+    // Restart playback indicator
+    if (State.audioContext && State.totalAudioDuration > 0) {
+        State.setLastUpdateTime(State.audioContext.currentTime);
+        requestAnimationFrame(updatePlaybackIndicator);
+    }
+    
+    // Restart spectrogram if needed
+    if (State.analyserNode && !State.visualizationStarted) {
+        startVisualization();
+    }
+    
+    // Update active region button
+    updateActiveRegionPlayButton(true);
+}
+
+/**
+ * Pause playback
+ * This is THE function for pausing
+ */
+export function pausePlayback() {
+    State.setPlaybackState(PlaybackState.PAUSED);
+    
+    console.log('⏸️ Pausing playback');
+    
+    // Fade volume
+    if (State.gainNode && State.audioContext) {
+        State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
+        State.gainNode.gain.setValueAtTime(State.gainNode.gain.value, State.audioContext.currentTime);
+        State.gainNode.gain.exponentialRampToValueAtTime(0.0001, State.audioContext.currentTime + 0.05);
+    }
+    
+    // Tell worklet to pause
+    setTimeout(() => {
+        State.workletNode?.port.postMessage({ type: 'pause' });
+    }, 50);
+    
+    // Update master button
+    const btn = document.getElementById('playPauseBtn');
+    btn.textContent = '▶️ Resume';
+    btn.classList.remove('pause-active', 'pulse-play');
+    btn.classList.add('play-active', 'pulse-resume');
+    
+    // Update status
+    document.getElementById('status').className = 'status';
+    document.getElementById('status').textContent = 'Paused';
+    
+    // Update active region button
+    updateActiveRegionPlayButton(false);
+}
+
+// ===== SIMPLIFIED TOGGLEPLAYPAUSE =====
+
+export function togglePlayPause() {
+    const currentState = `playbackState=${State.playbackState}, position=${State.currentAudioPosition?.toFixed(2) || 0}s`;
+    console.log(`🎵 Master play/pause button clicked - ${currentState}`);
+    
+    if (!State.audioContext) return;
+    
+    switch (State.playbackState) {
+        case PlaybackState.STOPPED:
+            // Determine start position
+            let startPosition;
+            if (State.selectionStart !== null && State.selectionEnd !== null) {
+                startPosition = State.selectionStart;
+            } else {
+                // If we're at/near the end (within last 0.1s), restart from beginning
+                startPosition = (State.currentAudioPosition >= State.totalAudioDuration - 0.1) 
+                    ? 0 
+                    : State.currentAudioPosition;
             }
-        }, 50);
-        
-        btn.textContent = '▶️ Resume';
-        btn.classList.remove('pause-active', 'pulse-play');
-        btn.classList.add('play-active', 'pulse-resume');
-        document.getElementById('status').className = 'status';
-        document.getElementById('status').textContent = 'Paused';
-    } else {
-        // Remove pulse animations if present
-        btn.classList.remove('pulse-play', 'pulse-resume');
-        
-        btn.textContent = '⏸️ Pause';
-        btn.classList.remove('play-active');
-        btn.classList.add('pause-active');
-        document.getElementById('status').className = 'status info';
-        document.getElementById('status').textContent = 'Playing...';
-        
-        // Tell worklet to resume consuming samples
-        if (State.workletNode) {
-            State.workletNode.port.postMessage({ type: 'resume' });
-        }
-        
-        // Fade back to target volume with exponential ramp
-        if (State.gainNode) {
-            const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-            State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-            State.gainNode.gain.setValueAtTime(State.gainNode.gain.value, State.audioContext.currentTime);
-            State.gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), State.audioContext.currentTime + 0.05);
-        }
-        
-        // Restart playback indicator
-        if (State.audioContext && State.totalAudioDuration > 0) {
-            State.setLastUpdateTime(State.audioContext.currentTime);
-            requestAnimationFrame(updatePlaybackIndicator);
-            console.log('🎬 Playback indicator restarted');
-        }
+            
+            console.log(`▶️ Starting playback from ${startPosition.toFixed(2)}s`);
+            seekToPosition(startPosition, true);
+            break;
+            
+        case PlaybackState.PLAYING:
+            console.log(`⏸️ Pausing playback`);
+            pausePlayback();
+            break;
+            
+        case PlaybackState.PAUSED:
+            console.log(`▶️ Resuming playback`);
+            startPlayback();
+            break;
     }
 }
 
@@ -199,7 +234,7 @@ export function resetVolumeTo1() {
     changeVolume();
 }
 
-export function seekToPosition(targetPosition, forceResume = false) {
+export function seekToPosition(targetPosition, shouldStartPlayback = false) {
     if (!State.audioContext || !State.workletNode || !State.completeSamplesArray || State.totalAudioDuration === 0) {
         console.log('❌ Cannot seek: audio not ready');
         return;
@@ -212,97 +247,77 @@ export function seekToPosition(targetPosition, forceResume = false) {
         targetPosition = Math.max(0, Math.min(targetPosition, State.totalAudioDuration));
     }
     
-    const targetMinutes = Math.floor(targetPosition / 60);
-    const targetSeconds = (targetPosition % 60).toFixed(1);
-    console.log(`🎯 Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')} (${targetPosition.toFixed(2)}s / ${State.totalAudioDuration.toFixed(2)}s)`);
+    console.log(`🎯 Seeking to ${targetPosition.toFixed(2)}s (shouldStartPlayback=${shouldStartPlayback})`);
     
-    // Calculate sample position
-    const sampleRate = 44100;
-    const targetSample = Math.floor(targetPosition * sampleRate);
+    // Set flag to prevent race condition in region finish detection
+    State.setJustSeeked(true);
     
-    const SEEK_CROSSFADE_TIME = 0.020;
+    const targetSample = Math.floor(targetPosition * 44100);
+    const CROSSFADE_TIME = 0.020;
     const now = State.audioContext.currentTime;
-    const seekTime = now + SEEK_CROSSFADE_TIME;
+    const wasPlaying = State.playbackState === PlaybackState.PLAYING;
     
-    const wasPlaying = State.isPlaying && !State.isPaused;
-    
-    // If we're paused OR playback has finished, seeking should resume playback
-    // (if checkbox enabled OR forceResume from Play button)
-    if ((!State.isPlaying || State.isPaused) && (forceResume || document.getElementById('playOnClick').checked)) {
-        console.log(`▶️ Seeking while paused - auto-resuming playback`);
-        State.setIsPaused(false);
-        State.setIsPlaying(true);
-        
-        const btn = document.getElementById('playPauseBtn');
-        btn.textContent = '⏸️ Pause';
-        btn.classList.remove('play-active', 'secondary');
-        btn.classList.add('pause-active');
-        
-        if (State.audioContext.state === 'suspended') {
-            console.log('▶️ Resuming suspended AudioContext');
-            State.audioContext.resume();
-        }
-        
-        if (State.workletNode) {
-            State.workletNode.port.postMessage({ type: 'resume' });
-        }
-        
-        if (State.analyserNode) {
-            drawSpectrogram();
-            console.log('🎨 Restarting spectrogram');
-        }
-        
-        State.setCurrentAudioPosition(targetPosition);
-        State.setLastWorkletPosition(targetPosition);
-        State.setLastWorkletUpdateTime(State.audioContext.currentTime);
-        State.setLastUpdateTime(State.audioContext.currentTime);
-        requestAnimationFrame(updatePlaybackIndicator);
-        
-        if (!State.visualizationStarted && State.analyserNode) {
-            startVisualization();
-        }
-        
-        console.log('✅ Auto-resume complete: isPlaying=true, isPaused=false');
-    }
-    
+    // Crossfade out if playing
     if (State.gainNode && wasPlaying) {
         const currentGain = State.gainNode.gain.value;
         State.gainNode.gain.cancelScheduledValues(now);
         State.gainNode.gain.setValueAtTime(currentGain, now);
-        State.gainNode.gain.linearRampToValueAtTime(0.0001, seekTime);
+        State.gainNode.gain.linearRampToValueAtTime(0.0001, now + CROSSFADE_TIME);
     }
     
-    const performSeekOperation = () => {
+    const performSeek = () => {
+        // Update position tracking
         State.setCurrentAudioPosition(targetPosition);
         State.setLastWorkletPosition(targetPosition);
         State.setLastWorkletUpdateTime(State.audioContext.currentTime);
         State.setLastUpdateTime(State.audioContext.currentTime);
         
+        // Send seek command to worklet
         State.workletNode.port.postMessage({ 
             type: 'seek',
             samplePosition: targetSample,
-            forceResume: forceResume  // Pass forceResume to seek-ready handler
+            forceResume: shouldStartPlayback  // Tell seek-ready handler if we want to start playback
         });
         
-        if (State.gainNode) {
+        // Crossfade back in if playing or should start
+        if (State.gainNode && (wasPlaying || shouldStartPlayback)) {
             const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-            const fadeInStart = State.audioContext.currentTime;
-            State.gainNode.gain.cancelScheduledValues(fadeInStart);
-            State.gainNode.gain.setValueAtTime(0.0001, fadeInStart);
-            State.gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), fadeInStart + SEEK_CROSSFADE_TIME);
+            const fadeStart = State.audioContext.currentTime;
+            State.gainNode.gain.cancelScheduledValues(fadeStart);
+            State.gainNode.gain.setValueAtTime(0.0001, fadeStart);
+            State.gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), fadeStart + CROSSFADE_TIME);
         }
         
-        if (State.isPlaying && !State.isPaused) {
+        // NOTE: No need to call startPlayback() here!
+        // The forceResume flag in the seek message will trigger auto-resume 
+        // once the buffer has samples (via the seek-ready handler)
+        
+        // Update playback state if starting
+        if (shouldStartPlayback) {
+            State.setPlaybackState(PlaybackState.PLAYING);
+        }
+        
+        // Ensure playback indicator continues if playing
+        if (State.playbackState === PlaybackState.PLAYING) {
             requestAnimationFrame(updatePlaybackIndicator);
         }
+        
+        // Clear the justSeeked flag after a brief delay to allow position to update
+        setTimeout(() => {
+            State.setJustSeeked(false);
+        }, 100);
     };
     
+    // Delay seek if we need to crossfade out first
     if (wasPlaying) {
-        setTimeout(performSeekOperation, SEEK_CROSSFADE_TIME * 1000);
+        setTimeout(performSeek, CROSSFADE_TIME * 1000);
     } else {
-        performSeekOperation();
+        performSeek();
     }
     
+    // Update status text
+    const targetMinutes = Math.floor(targetPosition / 60);
+    const targetSeconds = (targetPosition % 60).toFixed(1);
     const status = document.getElementById('status');
     status.className = 'status info';
     status.textContent = `✅ Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')}`;

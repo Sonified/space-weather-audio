@@ -4,6 +4,7 @@
  */
 
 import * as State from './audio-state.js';
+import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode } from './region-tracker.js';
 
@@ -17,8 +18,8 @@ let spectrogramSelectionBox = null;
 export function drawSpectrogram() {
     if (!State.analyserNode) return;
     
-    // Pause visualization when audio is paused or not playing
-    if (State.isPaused || !State.isPlaying) {
+    // Pause visualization when audio is not playing
+    if (State.playbackState !== PlaybackState.PLAYING) {
         requestAnimationFrame(drawSpectrogram);
         return;
     }

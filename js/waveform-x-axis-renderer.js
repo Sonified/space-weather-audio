@@ -5,6 +5,9 @@
 
 import * as State from './audio-state.js';
 
+// Debug flag for axis drawing logs (set to true to enable detailed logging)
+const DEBUG_AXIS = false;
+
 /**
  * Draw time axis for waveform
  * Shows 2-hour ticks with date at left, handles day crossings
@@ -47,7 +50,7 @@ export function drawWaveformXAxis() {
         return;
     }
     
-    console.log(`🕐 X-axis: Drawing with time span=${actualTimeSpanSeconds.toFixed(1)}s (${(actualTimeSpanSeconds/3600).toFixed(1)}h), canvas width=${canvasWidth}px`);
+    if (DEBUG_AXIS) console.log(`🕐 X-axis: Drawing with time span=${actualTimeSpanSeconds.toFixed(1)}s (${(actualTimeSpanSeconds/3600).toFixed(1)}h), canvas width=${canvasWidth}px`);
     
     // Get CSS variables for styling
     const rootStyles = getComputedStyle(document.documentElement);
@@ -71,11 +74,6 @@ export function drawWaveformXAxis() {
     // Quantize at midnight (00:00), find first hour boundary within region
     const ticks = calculateHourlyTicks(startTimeUTC, endTimeUTC);
     
-    console.log(`🕐 X-axis: Found ${ticks.length} ticks for range ${startTimeUTC.toISOString()} to ${endTimeUTC.toISOString()}`);
-    if (ticks.length > 0) {
-        console.log(`🕐 First tick: ${ticks[0].localTime.toLocaleString()} (UTC: ${ticks[0].utcTime.toISOString()})`);
-    }
-    
     // Draw each tick
     ticks.forEach((tick, index) => {
         // Calculate x position: (time offset from start / actual time span) * canvas width
@@ -83,11 +81,8 @@ export function drawWaveformXAxis() {
         const timeOffsetSeconds = (tick.utcTime.getTime() - startTimeUTC.getTime()) / 1000;
         const x = (timeOffsetSeconds / actualTimeSpanSeconds) * canvasWidth;
         
-        console.log(`🕐 Tick at ${tick.localTime.toLocaleTimeString()}: x=${x.toFixed(1)}, offset=${timeOffsetSeconds.toFixed(0)}s, span=${actualTimeSpanSeconds.toFixed(0)}s`);
-        
         // Skip if outside canvas bounds (with small margin for edge cases)
         if (x < -10 || x > canvasWidth + 10) {
-            console.log(`🕐 Skipping tick at x=${x.toFixed(1)} (outside bounds 0-${canvasWidth})`);
             return;
         }
         
@@ -131,7 +126,6 @@ export function drawWaveformXAxis() {
         }
         
         ctx.fillText(label, x, 10);
-        console.log(`🕐 Drew tick at x=${x.toFixed(1)}: "${label}" (dayCrossing=${tick.isDayCrossing})`);
     });
 }
 

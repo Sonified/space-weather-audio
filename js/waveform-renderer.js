@@ -4,10 +4,14 @@
  */
 
 import * as State from './audio-state.js';
+import { PlaybackState } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
-import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion } from './region-tracker.js';
+import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, resetRegionPlayButtonIfFinished } from './region-tracker.js';
+
+// Debug flag for waveform logs (set to true to enable detailed logging)
+const DEBUG_WAVEFORM = false;
 
 // Helper functions
 function removeDCOffset(data, alpha = 0.995) {
@@ -174,7 +178,7 @@ export function drawWaveformFromMinMax() {
                 
                 console.log(`✅ Waveform crossfade complete - pink detrended waveform`);
                 
-                if (State.isPlaying || State.totalAudioDuration > 0) {
+                if (State.totalAudioDuration > 0) {
                     drawWaveformWithSelection();
                 }
             }
@@ -223,7 +227,7 @@ export function drawWaveformFromMinMax() {
         positionWaveformDateCanvas();
         drawWaveformDate();
         
-        console.log(`✅ Waveform drawn from min/max data (${mins.length} pixels) - progressive`);
+        if (DEBUG_WAVEFORM) console.log(`✅ Waveform drawn from min/max data (${mins.length} pixels) - progressive`);
     }
 }
 
@@ -260,7 +264,9 @@ export function drawWaveformWithSelection() {
     // Draw region highlights (before selection box)
     drawRegionHighlights(ctx, width, height);
     
-    if (State.selectionStart !== null && State.selectionEnd !== null) {
+    // Only draw yellow selection box if NOT playing an active region
+    // When playing a region, we only want the blue region highlight, not the yellow selection box
+    if (State.selectionStart !== null && State.selectionEnd !== null && !isPlayingActiveRegion()) {
         const startProgress = State.selectionStart / State.totalAudioDuration;
         const endProgress = State.selectionEnd / State.totalAudioDuration;
         const startX = startProgress * width;
@@ -358,7 +364,7 @@ export function setupWaveformInteraction() {
             }
             
             drawWaveformWithSelection();
-            seekToPosition(State.scrubTargetPosition);
+            seekToPosition(State.scrubTargetPosition, true); // Always start playback when clicking
             State.setScrubTargetPosition(null);
         }
     }
@@ -426,7 +432,10 @@ export function setupWaveformInteraction() {
                 const newSelectionEnd = Math.max(startPos, endPos);
                 const newIsLooping = State.isLooping;
                 
-                console.log(`📏 Selection created: ${newSelectionStart.toFixed(2)}s - ${newSelectionEnd.toFixed(2)}s (duration: ${(newSelectionEnd - newSelectionStart).toFixed(3)}s)`);
+                console.log(`🖱️ Waveform selection created: ${newSelectionStart.toFixed(2)}s - ${newSelectionEnd.toFixed(2)}s (duration: ${(newSelectionEnd - newSelectionStart).toFixed(3)}s)`);
+                
+                // Reset all region play buttons since user is making a new selection (not playing within a region)
+                resetAllRegionPlayButtons();
                 
                 // Show "Add Region" button for region tracker
                 showAddRegionButton(newSelectionStart, newSelectionEnd);
@@ -449,8 +458,6 @@ export function setupWaveformInteraction() {
                 State.setSelectionEnd(newSelectionEnd);
                 drawWaveformWithSelection();
                 
-                seekToPosition(newSelectionStart);
-                
                 setTimeout(() => {
                     State.setSelectionStart(newSelectionStart);
                     State.setSelectionEnd(newSelectionEnd);
@@ -458,17 +465,9 @@ export function setupWaveformInteraction() {
                     updateWorkletSelection();
                 }, 25);
                 
-                // Only auto-resume if playOnClick is enabled
-                if ((!State.isPlaying || State.isPaused) && document.getElementById('playOnClick').checked) {
-                    State.setIsPaused(false);
-                    State.setIsPlaying(true);
-                    if (State.workletNode) {
-                        State.workletNode.port.postMessage({ type: 'resume' });
-                    }
-                    if (State.totalAudioDuration > 0) {
-                        requestAnimationFrame(updatePlaybackIndicator);
-                    }
-                }
+                // Seek to start and optionally start playback if playOnClick is enabled
+                const shouldAutoPlay = document.getElementById('playOnClick').checked;
+                seekToPosition(newSelectionStart, shouldAutoPlay);
             } else {
                 State.setSelectionStart(null);
                 State.setSelectionEnd(null);
@@ -488,8 +487,12 @@ export function setupWaveformInteraction() {
                     drawRegionHighlights(ctx, canvas.width, canvas.height);
                 }
                 
+                // Reset all region play buttons since user is clicking to seek (not playing within a region)
+                resetAllRegionPlayButtons();
+                
+                const { targetPosition } = getPositionFromMouse(e);
+                console.log(`🖱️ Waveform clicked at ${targetPosition.toFixed(2)}s - seeking to position`);
                 performSeek();
-                console.log('🖱️ Single click - cleared selection and seeking');
             }
         }
     });
@@ -509,19 +512,10 @@ export function setupWaveformInteraction() {
                         State.setLastUpdateTime(State.audioContext.currentTime);
                     }
                     drawWaveformWithSelection();
-                    seekToPosition(State.selectionStart);
                     
-                    // Only auto-resume if playOnClick is enabled
-                    if ((!State.isPlaying || State.isPaused) && document.getElementById('playOnClick').checked) {
-                        State.setIsPaused(false);
-                        State.setIsPlaying(true);
-                        if (State.workletNode) {
-                            State.workletNode.port.postMessage({ type: 'resume' });
-                        }
-                        if (State.totalAudioDuration > 0) {
-                            requestAnimationFrame(updatePlaybackIndicator);
-                        }
-                    }
+                    // Seek to start and optionally start playback if playOnClick is enabled
+                    const shouldAutoPlay = document.getElementById('playOnClick').checked;
+                    seekToPosition(State.selectionStart, shouldAutoPlay);
                 } else {
                     State.setSelectionStart(null);
                     State.setSelectionEnd(null);
@@ -553,7 +547,7 @@ export function updatePlaybackIndicator() {
         return;
     }
     
-    if (!State.isPlaying || State.isPaused) {
+    if (State.playbackState !== PlaybackState.PLAYING) {
         return;
     }
     
@@ -589,6 +583,11 @@ export function updatePlaybackIndicator() {
     }
     
     if (State.totalAudioDuration > 0) {
+        // Check if we've reached the end of an active region and reset play button
+        if (State.playbackState === PlaybackState.PLAYING) {
+            resetRegionPlayButtonIfFinished();
+        }
+        
         drawWaveformWithSelection();
     }
     
@@ -613,12 +612,12 @@ export function initWaveformWorker() {
                 State.setIsShowingFinalWaveform(true);
             }
             
-            console.log(`🎨 Waveform ready: ${totalSamples.toLocaleString()} samples → ${waveformData.mins.length} pixels in ${buildTime.toFixed(0)}ms`);
+            if (DEBUG_WAVEFORM) console.log(`🎨 Waveform ready: ${totalSamples.toLocaleString()} samples → ${waveformData.mins.length} pixels in ${buildTime.toFixed(0)}ms`);
             
             State.setWaveformMinMaxData(waveformData);
             drawWaveformFromMinMax();
             
-            if (State.isPlaying || State.totalAudioDuration > 0) {
+            if (State.totalAudioDuration > 0) {
                 drawWaveformWithSelection();
             }
         } else if (type === 'reset-complete') {

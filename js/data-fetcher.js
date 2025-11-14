@@ -2,12 +2,25 @@
 // Validated with 10,000+ test cases in tests/test_progressive_batching_simulation.py
 
 import * as State from './audio-state.js';
+import { PlaybackState } from './audio-state.js';
 import { updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
 import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+
+// ========== CONSOLE DEBUG FLAGS ==========
+// Centralized reference for all debug flags across the codebase
+// Set to true to enable detailed logging for each category
+//
+// Available flags:
+//   DEBUG_CHUNKS (data-fetcher.js) - Chunk loading, downloading, and processing logs
+//   DEBUG_WAVEFORM (waveform-renderer.js, waveform-worker.js) - Waveform building and rendering logs
+//   DEBUG_AXIS (waveform-x-axis-renderer.js) - Axis drawing and tick rendering logs
+
+// Debug flag for chunk loading logs (set to true to enable detailed logging)
+const DEBUG_CHUNKS = false;
 
 // Helper: Normalize data to [-1, 1] range
 function normalize(data) {
@@ -76,7 +89,7 @@ function calculateChunksNeededMultiDay(startTime, endTime, allDayMetadata) {
                     samples: chunkData.samples,
                     date: currentDate
                 });
-                console.log(`✅ Found 10m chunk: ${currentDate} ${timeStr} (${chunkData.samples.toLocaleString()} samples)`);
+                if (DEBUG_CHUNKS) console.log(`✅ Found 10m chunk: ${currentDate} ${timeStr} (${chunkData.samples.toLocaleString()} samples)`);
             } else {
                 console.warn(`⚠️ MISSING 10m chunk: ${currentDate} ${timeStr} - chunk not found in metadata!`);
             }
@@ -139,7 +152,7 @@ function calculateChunksNeededMultiDay(startTime, endTime, allDayMetadata) {
                 samples: chunkData.samples,
                 date: currentDate
             });
-            console.log(`✅ Found 10m chunk: ${currentDate} ${timeStr} (${chunkData.samples.toLocaleString()} samples)`);
+            if (DEBUG_CHUNKS) console.log(`✅ Found 10m chunk: ${currentDate} ${timeStr} (${chunkData.samples.toLocaleString()} samples)`);
         } else {
             console.warn(`⚠️ MISSING 10m chunk: ${currentDate} ${timeStr} - chunk not found in metadata!`);
         }
@@ -314,7 +327,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         ]);
         
         const validMetadata = allDayMetadata.filter(m => m !== null);
-        console.log(`📋 ${logTime()} Metadata + realistic chunk complete (${validMetadata.length}/${daysNeeded.length} days)`);
+        if (DEBUG_CHUNKS) console.log(`📋 ${logTime()} Metadata + realistic chunk complete (${validMetadata.length}/${daysNeeded.length} days)`);
         
         // Use our calculated estimatedEndTime as THE TRUTH
         // Metadata is only for min/max normalization, not for determining time range!
@@ -336,13 +349,13 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             }
         }
         if (actualMostRecentChunk) {
-            console.log(`📋 ${logTime()} Most recent chunk in metadata: ${actualMostRecentChunk.date} ${actualMostRecentChunk.chunk.start}`);
+            if (DEBUG_CHUNKS) console.log(`📋 ${logTime()} Most recent chunk in metadata: ${actualMostRecentChunk.date} ${actualMostRecentChunk.chunk.start}`);
         }
         
         // Calculate which chunks we need across all days
         const chunksNeeded = calculateChunksNeededMultiDay(adjustedStartTime, endTime, validMetadata);
-        console.log(`📋 ${logTime()} Calculated chunks needed: ${chunksNeeded.length} chunks`);
-        console.log(`📋 ${logTime()} Chunk types: ${chunksNeeded.map(c => c.type).join(', ')}`);
+        if (DEBUG_CHUNKS) console.log(`📋 ${logTime()} Calculated chunks needed: ${chunksNeeded.length} chunks`);
+        if (DEBUG_CHUNKS) console.log(`📋 ${logTime()} Chunk types: ${chunksNeeded.map(c => c.type).join(', ')}`);
         
         if (chunksNeeded.length === 0) {
             throw new Error('No data available for this time range!');
@@ -399,7 +412,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         
         const chunksToFetch = chunksNeeded; // Use our calculated chunks!
         
-        console.log(`🚀 ${logTime()} Starting CDN DIRECT streaming (${chunksToFetch.length} chunks)...`);
+        if (DEBUG_CHUNKS) console.log(`🚀 ${logTime()} Starting CDN DIRECT streaming (${chunksToFetch.length} chunks)...`);
         
         // 🎯 USE WORKER CREATED AT START OF startStreaming()
         const worker = window.audioWorker;
@@ -427,7 +440,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             );
             
             if (matchIndex >= 0) {
-                console.log(`⚡ ${logTime()} Realistic chunk matched chunk ${matchIndex}! (${realisticChunkDate} ${realisticChunkTime})`);
+                if (DEBUG_CHUNKS) console.log(`⚡ ${logTime()} Realistic chunk matched chunk ${matchIndex}! (${realisticChunkDate} ${realisticChunkTime})`);
                 realisticChunkIndex = matchIndex;
                 
                 // Send it to worker with correct index
@@ -439,7 +452,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     chunkIndex: matchIndex
                 }, [realisticCompressed]);
                 
-                console.log(`📥 ${logTime()} Sent realistic chunk ${matchIndex} to worker`);
+                if (DEBUG_CHUNKS) console.log(`📥 ${logTime()} Sent realistic chunk ${matchIndex} to worker`);
             } else {
                 console.log(`⚠️ ${logTime()} Realistic chunk (${realisticChunkDate} ${realisticChunkTime}) not in chunks needed - discarding`);
                 realisticChunkIndex = null;
@@ -485,7 +498,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     if (!firstChunkSent && i === 0 && currentChunkIndex === 0) {
                         firstChunkSent = true;
                         ttfaTime = performance.now() - progressiveT0;
-                        console.log(`⚡ FIRST CHUNK SENT in ${ttfaTime.toFixed(0)}ms - starting playback!`);
+                        if (DEBUG_CHUNKS) console.log(`⚡ FIRST CHUNK SENT in ${ttfaTime.toFixed(0)}ms - starting playback!`);
                         
                         const autoPlayEnabled = document.getElementById('autoPlay').checked;
                         
@@ -537,7 +550,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                         // 🎯 RESOLVE PROMISE - fetch loop can now continue to chunk 2!
                         if (firstChunkProcessedResolve) {
                             firstChunkProcessedResolve();
-                            console.log(`✅ First chunk processed and sent - allowing fetch of chunk 2+`);
+                            if (DEBUG_CHUNKS) console.log(`✅ First chunk processed and sent - allowing fetch of chunk 2+`);
                         }
                     }
                 }
@@ -559,7 +572,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 
                 // 🔍 DEBUG: Log each chunk's sample count
                 const chunkInfo = chunksToFetch[chunkIndex];
-                console.log(`📊 ${logTime()} Chunk ${chunkIndex} (${chunkInfo?.date} ${chunkInfo?.start}): ${samples.length.toLocaleString()} samples (total received: ${chunksReceived}/${chunksToFetch.length})`);
+                if (DEBUG_CHUNKS) console.log(`📊 ${logTime()} Chunk ${chunkIndex} (${chunkInfo?.date} ${chunkInfo?.start}): ${samples.length.toLocaleString()} samples (total received: ${chunksReceived}/${chunksToFetch.length})`);
                 
                 // 🎨 PROGRESSIVE WAVEFORM: Send chunks to waveform worker IN ORDER (left to right temporally)
                 // Send all consecutive chunks that are ready, starting from nextWaveformChunk
@@ -590,7 +603,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                             totalExpectedSamples: totalSamples  // For progressive left-to-right filling
                         });
                         
-                        console.log(`🎨 Progressive waveform: ${nextWaveformChunk}/${chunksToFetch.length} chunks sent to worker (${(nextWaveformChunk/chunksToFetch.length*100).toFixed(0)}%)`);
+                        if (DEBUG_CHUNKS) console.log(`🎨 Progressive waveform: ${nextWaveformChunk}/${chunksToFetch.length} chunks sent to worker (${(nextWaveformChunk/chunksToFetch.length*100).toFixed(0)}%)`);
                     }
                 }
                 
@@ -599,10 +612,12 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 sendChunksInOrder();
                 const afterSend = nextChunkToSend;
                 
-                if (afterSend > beforeSend) {
-                    console.log(`📤 Sent chunks ${beforeSend}-${afterSend-1} to worklet (in order)`);
-                } else if (chunkIndex > nextChunkToSend - 1) {
-                    console.log(`⏸️ Holding chunk ${chunkIndex} (waiting for chunk ${nextChunkToSend})`);
+                if (DEBUG_CHUNKS) {
+                    if (afterSend > beforeSend) {
+                        console.log(`📤 Sent chunks ${beforeSend}-${afterSend-1} to worklet (in order)`);
+                    } else if (chunkIndex > nextChunkToSend - 1) {
+                        console.log(`⏸️ Holding chunk ${chunkIndex} (waiting for chunk ${nextChunkToSend})`);
+                    }
                 }
                 
                 // 🎯 ALL CHUNKS RECEIVED = SIGNAL COMPLETE
@@ -618,7 +633,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                             missingChunks.push(i);
                         }
                     }
-                    console.log(`🔍 ${logTime()} Completion check: allChunksPresent=${allChunksPresent}, isFetchingNewData=${State.isFetchingNewData}, completionHandled=${completionHandled}, missingChunks=[${missingChunks.join(', ')}]`);
+                    if (DEBUG_CHUNKS) console.log(`🔍 ${logTime()} Completion check: allChunksPresent=${allChunksPresent}, isFetchingNewData=${State.isFetchingNewData}, completionHandled=${completionHandled}, missingChunks=[${missingChunks.join(', ')}]`);
                 }
                 
                 // Only check for completion if all chunks are present (regardless of chunksReceived count)
@@ -642,7 +657,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                             chunkSampleCounts.push(`chunk ${i}: MISSING`);
                         }
                     }
-                    console.log(`📊 ${logTime()} Actual samples per chunk: ${chunkSampleCounts.join(', ')}`);
+                    if (DEBUG_CHUNKS) console.log(`📊 ${logTime()} Actual samples per chunk: ${chunkSampleCounts.join(', ')}`);
                     console.log(`📊 ${logTime()} Total actual samples: ${actualTotalSamples.toLocaleString()} (expected: ${totalSamples.toLocaleString()})`);
                     
                     // Calculate expected total
@@ -727,7 +742,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 if (playPauseBtn.disabled) {
                                     playPauseBtn.disabled = false;
                                     const autoPlayEnabled = document.getElementById('autoPlay').checked;
-                                    if (autoPlayEnabled && State.isPlaying) {
+                                    if (autoPlayEnabled && State.playbackState === PlaybackState.PLAYING) {
                                         // Auto play is on and playback is active - show Pause button
                                         playPauseBtn.textContent = '⏸️ Pause';
                                         playPauseBtn.classList.remove('play-active');
@@ -744,7 +759,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                     }
                                 } else {
                                     // Button already enabled - just update status if needed
-                                    if (State.isPlaying) {
+                                    if (State.playbackState === PlaybackState.PLAYING) {
                                         document.getElementById('status').className = 'status success';
                                         document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
                                     }
@@ -821,16 +836,18 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             acc[c.type] = (acc[c.type] || 0) + 1;
             return acc;
         }, {});
-        console.log(`📋 ${logTime()} Progressive chunks: ${chunksToFetch.length} total`);
-        console.log(`📋 ${logTime()} Breakdown: ${Object.entries(typeCount).map(([t, c]) => `${c}×${t}`).join(', ')}`);
+        if (DEBUG_CHUNKS) console.log(`📋 ${logTime()} Progressive chunks: ${chunksToFetch.length} total`);
+        if (DEBUG_CHUNKS) console.log(`📋 ${logTime()} Breakdown: ${Object.entries(typeCount).map(([t, c]) => `${c}×${t}`).join(', ')}`);
         
         // Show batch plan
         const batchPlan = downloadBatches.map((batch, i) => {
             const type = chunksToFetch[batch[0]].type;
             return batch.length === 1 ? `1×${type}` : `${batch.length}×${type}`;
         }).join(' → ');
-        console.log(`🚀 ${logTime()} Download plan: ${batchPlan}`);
-        console.log(`📦 ${logTime()} Total batches: ${downloadBatches.length}`);
+        if (DEBUG_CHUNKS) {
+            console.log(`🚀 ${logTime()} Download plan: ${batchPlan}`);
+            console.log(`📦 ${logTime()} Total batches: ${downloadBatches.length}`);
+        }
         
         // Fetch function - DIRECT FROM CDN
         async function fetchChunk(chunkData) {
@@ -949,7 +966,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             }, [compressed]);
             
             const chunkType = chunksToFetch[index].type;
-            console.log(`📥 ${logTime()} Downloaded chunk ${index + 1}/${chunksToFetch.length} (${chunkType}) - ${(chunkSize / 1024).toFixed(1)} KB (${chunksDownloaded}/${chunksToFetch.length})`);
+            if (DEBUG_CHUNKS) console.log(`📥 ${logTime()} Downloaded chunk ${index + 1}/${chunksToFetch.length} (${chunkType}) - ${(chunkSize / 1024).toFixed(1)} KB (${chunksDownloaded}/${chunksToFetch.length})`);
         };
         
         // Execute batches sequentially, chunks within batch in parallel
@@ -960,7 +977,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 `1×${chunkType} alone` : 
                 `${batchIndices.length}×${chunkType} parallel`;
             
-            console.log(`📦 ${logTime()} Batch ${batchIdx + 1}/${downloadBatches.length}: ${batchLabel} (chunks ${batchIndices.map(i => i + 1).join(', ')})`);
+            if (DEBUG_CHUNKS) console.log(`📦 ${logTime()} Batch ${batchIdx + 1}/${downloadBatches.length}: ${batchLabel} (chunks ${batchIndices.map(i => i + 1).join(', ')})`);
             
             // Download all chunks in this batch IN PARALLEL
             const batchPromises = batchIndices.map(idx => 
@@ -973,9 +990,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             
             // Wait for first batch (chunk 0) to be processed before continuing
             if (batchIdx === 0) {
-                console.log(`⏳ ${logTime()} Waiting for chunk 0 to process...`);
+                if (DEBUG_CHUNKS) console.log(`⏳ ${logTime()} Waiting for chunk 0 to process...`);
                 await firstChunkProcessed;
-                console.log(`✅ ${logTime()} Chunk 0 ready - AUDIO PLAYING! Continuing with next batches...`);
+                if (DEBUG_CHUNKS) console.log(`✅ ${logTime()} Chunk 0 ready - AUDIO PLAYING! Continuing with next batches...`);
             }
         }
         
@@ -1252,7 +1269,7 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     if (playPauseBtn.disabled) {
         playPauseBtn.disabled = false;
         const autoPlayEnabled = document.getElementById('autoPlay').checked;
-        if (autoPlayEnabled && State.isPlaying) {
+        if (autoPlayEnabled && State.playbackState === PlaybackState.PLAYING) {
             // Auto play is on and playback is active - show Pause button
             playPauseBtn.textContent = '⏸️ Pause';
             playPauseBtn.classList.remove('play-active', 'secondary');
@@ -1269,7 +1286,7 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
         }
     } else {
         // Button already enabled - just update status if needed
-        if (State.isPlaying) {
+        if (State.playbackState === PlaybackState.PLAYING) {
             document.getElementById('status').className = 'status success';
             document.getElementById('status').textContent = '✅ Playing! (Railway backend)';
         }

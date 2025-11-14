@@ -1,14 +1,25 @@
 /**
  * region-tracker.js
  * Region tracking functionality for marking and annotating time/frequency regions
+ * 
+ * PLAYBACK LOGIC:
+ * - Region play buttons ALWAYS show ▶ (never change to pause)
+ * - Button color: RED (inactive) → GREEN (currently playing)
+ * - Clicking a region button: plays from start, turns GREEN
+ * - Clicking the same region again: replays from start (stays GREEN)
+ * - Clicking a different region: old turns RED, new turns GREEN, jumps to new region
+ * - When region finishes: button turns back to RED
+ * - Master play/pause and spacebar handle pause/resume (region button stays GREEN)
  */
 
 import * as State from './audio-state.js';
-import { drawWaveformWithSelection } from './waveform-renderer.js';
+import { drawWaveformWithSelection, updatePlaybackIndicator } from './waveform-renderer.js';
+import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 
 // Region data structure
 let regions = [];
 let activeRegionIndex = null;
+let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
 
 // Waveform selection state
 let isSelectingTime = false;
@@ -216,6 +227,14 @@ function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSecon
     
     // Hide the add region button
     hideAddRegionButton();
+    
+    // Clear the yellow selection box by clearing selection state
+    // The selection will be set to the region when space is pressed or play button is clicked
+    State.setSelectionStart(null);
+    State.setSelectionEnd(null);
+    
+    // Redraw waveform without the yellow selection box (only blue region highlight will remain)
+    drawWaveformWithSelection();
 }
 
 /**
@@ -276,6 +295,35 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
         ctx.moveTo(endX, 0);
         ctx.lineTo(endX, canvasHeight);
         ctx.stroke();
+        
+        // Draw region number in the center
+        const regionNumber = index + 1; // 1-indexed for display
+        const centerX = startX + highlightWidth / 2;
+        const centerY = canvasHeight / 2;
+        
+        // Set text style - brightness follows active/inactive logic
+        if (index === activeRegionIndex) {
+            ctx.fillStyle = 'rgba(68, 136, 255, 1.0)'; // Bright blue for active
+        } else {
+            ctx.fillStyle = 'rgba(68, 136, 255, 0.7)'; // Dimmer blue for inactive
+        }
+        ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Add text shadow for better visibility
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 1;
+        
+        ctx.fillText(regionNumber.toString(), centerX, centerY);
+        
+        // Reset shadow
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
     });
 }
 
@@ -647,35 +695,106 @@ export function toggleRegion(index) {
 }
 
 /**
- * Toggle region playback (mock implementation)
+ * Set selection to match active region's time range
+ */
+function setSelectionFromActiveRegion() {
+    if (activeRegionIndex === null || activeRegionIndex >= regions.length) {
+        return false;
+    }
+    
+    const region = regions[activeRegionIndex];
+    if (!State.dataStartTime || !State.dataEndTime) {
+        return false;
+    }
+    
+    // Convert region ISO timestamps to seconds from start of audio
+    const dataStartMs = State.dataStartTime.getTime();
+    const regionStartMs = new Date(region.startTime).getTime();
+    const regionEndMs = new Date(region.stopTime).getTime();
+    
+    const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+    const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    
+    // Set selection to region's time range
+    State.setSelectionStart(regionStartSeconds);
+    State.setSelectionEnd(regionEndSeconds);
+    State.setIsLooping(false); // Ensure loop is off for region playback
+    
+    // Update worklet selection using the standard function
+    updateWorkletSelection();
+    
+    // Redraw waveform to show selection
+    drawWaveformWithSelection();
+    
+    return true;
+}
+
+/**
+ * Play region from start
+ * Button always shows ▶ (play icon)
+ * Color changes: RED (not playing) → GREEN (currently playing)
+ * Master play/pause and spacebar handle pause/resume
  */
 export function toggleRegionPlay(index) {
-    setActiveRegion(index);
     const region = regions[index];
+    const regionTime = `${formatTime(region.startTime)} – ${formatTime(region.stopTime)}`;
+    console.log(`🎵 Region ${index + 1} play button clicked - ${regionTime} (Region ID: ${region.id})`);
+    
+    
+    // Reset old playing region button (if different)
+    if (activePlayingRegionIndex !== null && activePlayingRegionIndex !== index) {
+        resetRegionPlayButton(activePlayingRegionIndex);
+    }
+    
+    // Make this region active
+    activePlayingRegionIndex = index;
+    setActiveRegion(index);
+    
+    // Set selection to region bounds
+    if (!setSelectionFromActiveRegion()) {
+        console.warn('⚠️ Could not set selection from region');
+        return;
+    }
+    
+    // Calculate region start position
+    const dataStartMs = State.dataStartTime.getTime();
+    const regionStartMs = new Date(region.startTime).getTime();
+    const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+    
+    // Update region button to GREEN (playing state)
+    region.playing = true;
+    const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+    const playBtn = regionCard?.querySelector('.play-btn');
+    if (playBtn) {
+        playBtn.classList.add('playing');
+        playBtn.textContent = '▶';
+        playBtn.title = 'Play region from start';
+    }
+    
+    // Seek to region start AND start playback
+    // This handles everything: seeking, starting playback, updating master button
+    seekToPosition(regionStartSeconds, true);
+    
+    console.log(`▶️ Region ${index + 1} playing from ${regionStartSeconds.toFixed(2)}s`);
+}
+
+/**
+ * Reset a region's play button to play state
+ */
+function resetRegionPlayButton(index) {
+    if (index === null || index >= regions.length) return;
+    
+    const region = regions[index];
+    region.playing = false;
     
     const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
-    const playBtn = regionCard ? regionCard.querySelector('.play-btn') : null;
-    
-    if (!playBtn) return;
-    
-    if (!region.playing) {
-        region.playing = true;
-        playBtn.classList.add('playing');
-        playBtn.textContent = '⏸';
-        playBtn.title = 'Pause region';
-        
-        // Auto-stop after 1 second (mock playback)
-        setTimeout(() => {
-            region.playing = false;
+    if (regionCard) {
+        const playBtn = regionCard.querySelector('.play-btn');
+        if (playBtn) {
             playBtn.classList.remove('playing');
             playBtn.textContent = '▶';
             playBtn.title = 'Play region';
-        }, 1000);
-    } else {
-        region.playing = false;
-        playBtn.classList.remove('playing');
-        playBtn.textContent = '▶';
-        playBtn.title = 'Play region';
+        }
     }
 }
 
@@ -689,12 +808,107 @@ function setActiveRegion(index) {
 }
 
 /**
+ * Get active region index (exported for use by other modules)
+ */
+export function getActiveRegionIndex() {
+    return activeRegionIndex;
+}
+
+/**
+ * Get active playing region index (exported for use by other modules)
+ */
+export function getActivePlayingRegionIndex() {
+    return activePlayingRegionIndex;
+}
+
+/**
+ * Update active region play button to match master playback state
+ * Called from audio-player when master play/pause is clicked
+ * Region button always shows ▶ and stays GREEN while it's the active region
+ */
+export function updateActiveRegionPlayButton(isPlaying) {
+    // Region button stays GREEN and shows ▶ regardless of pause state
+    // Master play/pause handles the actual pause/resume functionality
+    // The button only changes back to RED when the region finishes or another region is selected
+    // So this function doesn't need to do anything to the button appearance
+}
+
+/**
+ * Set selection from active region (exported for use by other modules)
+ */
+export function setSelectionFromActiveRegionIfExists() {
+    return setSelectionFromActiveRegion();
+}
+
+/**
+ * Check if we're currently playing an active region
+ * Returns true if there's an active playing region
+ * This prevents yellow selection box from showing during region playback
+ */
+export function isPlayingActiveRegion() {
+    // Simply check if any region is marked as the active playing region
+    return activePlayingRegionIndex !== null;
+}
+
+/**
+ * Reset region play button if playback has reached the end of the region
+ * Clears active playing region and resets button to play
+ */
+export function resetRegionPlayButtonIfFinished() {
+    if (activePlayingRegionIndex === null || activePlayingRegionIndex >= regions.length) {
+        return;
+    }
+    
+    // Skip check if we just seeked (avoids race condition with stale position)
+    if (State.justSeeked) {
+        return;
+    }
+    
+    const region = regions[activePlayingRegionIndex];
+    if (!region.playing || !State.dataStartTime || !State.totalAudioDuration) {
+        return;
+    }
+    
+    // Check if current position is at or past the end of the region
+    const dataStartMs = State.dataStartTime.getTime();
+    const regionEndMs = new Date(region.stopTime).getTime();
+    const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    
+    // If we're at or past the end of the region, reset it
+    if (State.currentAudioPosition >= regionEndSeconds - 0.1) { // Small tolerance for timing
+        resetRegionPlayButton(activePlayingRegionIndex);
+        activePlayingRegionIndex = null;
+        console.log('✅ Region playback finished - reset button');
+    }
+}
+
+/**
  * Clear active region (all regions return to 20% opacity)
  */
 export function clearActiveRegion() {
     activeRegionIndex = null;
     // Trigger waveform redraw to update region highlights
     drawWaveformWithSelection();
+}
+
+/**
+ * Reset all region play buttons to "play" state
+ * Called when user makes a new waveform selection (no longer playing within a region)
+ */
+export function resetAllRegionPlayButtons() {
+    activePlayingRegionIndex = null; // Clear active playing region
+    regions.forEach((region, index) => {
+        region.playing = false;
+        const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+        if (regionCard) {
+            const playBtn = regionCard.querySelector('.play-btn');
+            if (playBtn) {
+                playBtn.classList.remove('playing');
+                playBtn.textContent = '▶';
+                playBtn.title = 'Play region';
+            }
+        }
+    });
 }
 
 /**

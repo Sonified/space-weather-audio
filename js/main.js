@@ -4,6 +4,7 @@
  */
 
 import * as State from './audio-state.js';
+import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
@@ -16,7 +17,11 @@ import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
-import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion } from './region-tracker.js';
+import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, resetRegionPlayButtonIfFinished, getActivePlayingRegionIndex } from './region-tracker.js';
+
+// Debug flag for chunk loading logs (set to true to enable detailed logging)
+// See data-fetcher.js for centralized flags documentation
+const DEBUG_CHUNKS = false;
 
 // Make functions available globally (for inline onclick handlers)
 window.loadStations = loadStations;
@@ -240,10 +245,15 @@ export async function initAudioWorklet() {
                 }
             }
         } else if (type === 'selection-end-reached') {
+            // CRITICAL: Ignore stale 'selection-end-reached' messages after a seek
+            if (State.justSeeked) {
+                console.log('⚠️ [SELECTION-END] Ignoring - stale message after seek');
+                return;
+            }
+            
             const { position } = event.data;
             
-            State.setIsPlaying(false);
-            State.setIsPaused(true);
+            State.setPlaybackState(PlaybackState.PAUSED);
             State.setCurrentAudioPosition(position);
             
             const playBtn = document.getElementById('playPauseBtn');
@@ -290,6 +300,9 @@ export async function initAudioWorklet() {
             console.log(`🎯 [SEEK-READY] Re-sending samples from ${targetSample.toLocaleString()}, wasPlaying=${wasPlaying}, forceResume=${forceResume}`);
             
             if (State.completeSamplesArray && targetSample >= 0 && targetSample < State.completeSamplesArray.length) {
+                // Tell worklet whether to auto-resume after buffering
+                const shouldAutoResume = wasPlaying || forceResume;
+                
                 // Send samples in chunks to avoid blocking
                 const chunkSize = 44100 * 10; // 10 seconds per chunk
                 const totalSamples = State.completeSamplesArray.length;
@@ -300,17 +313,12 @@ export async function initAudioWorklet() {
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
-                        data: chunk
+                        data: chunk,
+                        autoResume: shouldAutoResume  // Tell worklet to auto-resume after buffering
                     });
                 }
                 
-                // Resume playback if it was playing before OR if forceResume (from Play button)
-                if (wasPlaying || forceResume) {
-                    State.workletNode.port.postMessage({ type: 'resume' });
-                    console.log(`▶️ [SEEK-READY] Resumed playback after re-sending samples (wasPlaying=${wasPlaying}, forceResume=${forceResume})`);
-                }
-                
-                console.log(`📤 [SEEK-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}`);
+                console.log(`📤 [SEEK-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}, autoResume=${shouldAutoResume}`);
             } else {
                 console.error(`❌ [SEEK-READY] Cannot re-send: completeSamplesArray unavailable or invalid target ${targetSample}`);
             }
@@ -326,7 +334,7 @@ export async function initAudioWorklet() {
                 State.setLastWorkletPosition(newPositionSeconds);
                 State.setLastWorkletUpdateTime(State.audioContext.currentTime);
                 
-                // Send samples from target position onwards
+                // Send samples from target position onwards with auto-resume
                 const chunkSize = 44100 * 10; // 10 seconds per chunk
                 const totalSamples = State.completeSamplesArray.length;
                 
@@ -336,13 +344,12 @@ export async function initAudioWorklet() {
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
-                        data: chunk
+                        data: chunk,
+                        autoResume: true  // Auto-resume when buffer is ready
                     });
                 }
                 
-                // Resume playback
-                State.workletNode.port.postMessage({ type: 'resume' });
-                console.log(`▶️ [LOOP-READY] Resumed playback from ${newPositionSeconds.toFixed(2)}s with ${(totalSamples - targetSample).toLocaleString()} samples`);
+                console.log(`🔄 [LOOP-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from ${newPositionSeconds.toFixed(2)}s, will auto-resume`);
             } else {
                 console.error(`❌ [LOOP-READY] Cannot loop: completeSamplesArray unavailable`);
             }
@@ -352,12 +359,17 @@ export async function initAudioWorklet() {
                 return;
             }
             
+            // CRITICAL: Ignore stale 'finished' messages after a seek
+            if (State.justSeeked) {
+                console.log('⚠️ [FINISHED] Ignoring - stale message after seek');
+                return;
+            }
+            
             const { totalSamples: finishedTotalSamples, speed } = event.data;
             console.log(`🏁 [FINISHED] Buffer empty: ${finishedTotalSamples.toLocaleString()} samples @ ${speed.toFixed(2)}x speed`);
             
             if (State.isLooping && State.allReceivedData && State.allReceivedData.length > 0) {
-                State.setIsPlaying(true);
-                State.setIsPaused(false);
+                State.setPlaybackState(PlaybackState.PLAYING);
                 State.setCurrentAudioPosition(0);
                 State.setLastUpdateTime(State.audioContext.currentTime);
                 
@@ -374,13 +386,16 @@ export async function initAudioWorklet() {
                     requestAnimationFrame(updatePlaybackIndicator);
                 }
             } else {
-                State.setIsPlaying(false);
+                State.setPlaybackState(PlaybackState.STOPPED);
                 
                 if (finishedTotalSamples && State.totalAudioDuration > 0) {
                     const finalPosition = finishedTotalSamples / 44100;
                     State.setCurrentAudioPosition(Math.min(finalPosition, State.totalAudioDuration));
                     drawWaveformWithSelection();
                 }
+                
+                // Check if we were playing a region and reset its play button if finished
+                resetRegionPlayButtonIfFinished();
                 
                 stopPositionTracking();
                 const playBtn = document.getElementById('playPauseBtn');
@@ -601,7 +616,7 @@ export async function startStreaming(event) {
                         
                         if (response.ok) {
                             const compressed = await response.arrayBuffer();
-                            console.log(`📥 ${logTime()} Realistic chunk SUCCESS (${attempt.label}): ${date} ${time} - ${(compressed.byteLength / 1024).toFixed(1)} KB`);
+                            if (DEBUG_CHUNKS) console.log(`📥 ${logTime()} Realistic chunk SUCCESS (${attempt.label}): ${date} ${time} - ${(compressed.byteLength / 1024).toFixed(1)} KB`);
                             return { compressed, date, time };
                         } else {
                             console.warn(`⚠️ ${logTime()} Realistic ${attempt.label} not found - trying next...`);
@@ -630,7 +645,7 @@ export async function startStreaming(event) {
         
         if (State.workletNode) {
             State.workletNode.port.onmessage = null;
-            if (State.gainNode && State.audioContext && State.isPlaying) {
+            if (State.gainNode && State.audioContext && State.playbackState === PlaybackState.PLAYING) {
                 State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
                 State.gainNode.gain.setValueAtTime(State.gainNode.gain.value, State.audioContext.currentTime);
                 State.gainNode.gain.exponentialRampToValueAtTime(0.0001, State.audioContext.currentTime + 0.05);
@@ -662,8 +677,7 @@ export async function startStreaming(event) {
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
             }
-            State.setIsPlaying(false);
-            State.setIsPaused(false);
+            State.setPlaybackState(PlaybackState.STOPPED);
         }
         
         await initAudioWorklet();
@@ -683,8 +697,7 @@ export async function startStreaming(event) {
         loopBtn.disabled = true;
         loopBtn.classList.remove('loop-active');
         
-        State.setIsPlaying(true);
-        State.setIsPaused(false);
+        State.setPlaybackState(PlaybackState.PLAYING);
         State.setStreamStartTime(performance.now());
         
         let dotCount = 0;
@@ -742,9 +755,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.87 - Region Tracker Enhancements');
-    console.log('📦 [0ms] v1.87 UI: Region tracker enhancements - fixed frequency button fade (no white flash), added expanding shadow on selection, description preview in collapsed headers, single-line notes with horizontal scroll, 3D play button texture, reduced padding, subtle header depth, fixed rounded corners, moved spectrogram axis to right, Enter key exits notes, separated selection from expand/collapse');
-    console.log('📦 [0ms] v1.87 Commit: v1.87 UI: Region tracker enhancements - fixed frequency button fade animation, added expanding shadow effect, description preview in collapsed headers, single-line notes field, 3D play button, reduced padding, subtle depth, fixed corners, moved axis right, Enter exits notes, triangle-only expand');
+    console.log('🌋 [0ms] volcano-audio v1.88 - Region Playback Race Condition Fix');
+    console.log('📦 [0ms] v1.88 Fix: Region playback race condition - fixed seek auto-resume logic to wait for buffer before playing, waveform clicks always start playback, removed premature resume calls');
+    console.log('📦 [0ms] v1.88 Commit: v1.88 Fix: Region playback race condition - fixed seek auto-resume logic to wait for buffer before playing, waveform clicks always start playback, removed premature resume calls');
     
     // Initialize modals (inject into DOM)
     initializeModals();
@@ -817,7 +830,11 @@ window.addEventListener('DOMContentLoaded', async () => {
             event.preventDefault();
             
             const playPauseBtn = document.getElementById('playPauseBtn');
-            if (!playPauseBtn.disabled && (State.isPlaying || State.allReceivedData.length > 0)) {
+            if (!playPauseBtn.disabled && (State.playbackState !== PlaybackState.STOPPED || State.allReceivedData.length > 0)) {
+                // If there's an active region, set selection to that region before playing
+                if (setSelectionFromActiveRegionIfExists()) {
+                    // Selection is now set to the active region, togglePlayPause will use it
+                }
                 togglePlayPause();
             }
         }

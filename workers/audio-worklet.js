@@ -24,7 +24,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
     // ===== INITIALIZATION MODULES =====
     
     initializeBuffer() {
-        this.maxBufferSize = 44100 * 60; // 60 seconds max
+        this.maxBufferSize = 44100 * 300; // 5 minutes max (13.2M samples, ~53MB)
         this.buffer = new Float32Array(this.maxBufferSize);
         this.buffer.fill(0);
         this.writeIndex = 0;
@@ -88,10 +88,10 @@ class SeismicProcessor extends AudioWorkletProcessor {
     
     setupMessageHandler() {
         this.port.onmessage = (event) => {
-            const { type, data, speed, enabled } = event.data;
+            const { type, data, speed, enabled, autoResume } = event.data;
             
             if (type === 'audio-data') {
-                this.addSamples(data);
+                this.addSamples(data, autoResume);
             } else if (type === 'pause') {
                 this.isPlaying = false;
             } else if (type === 'resume') {
@@ -333,7 +333,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         }
     }
     
-    addSamples(samples) {
+    addSamples(samples, autoResume = false) {
         const neededSize = this.samplesInBuffer + samples.length;
         if (neededSize > this.maxBufferSize) {
             this.expandBuffer(neededSize);
@@ -341,13 +341,18 @@ class SeismicProcessor extends AudioWorkletProcessor {
         
         this.writeSamples(samples);
         
-        // Check if we can start playback
+        // Check if we can start playback (initial load)
         if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
             console.log('🎵 WORKLET addSamples: Threshold reached! samplesInBuffer=' + this.samplesInBuffer + ', minBuffer=' + this.minBufferBeforePlay);
             this.readIndex = 0;
             this.isPlaying = true;
             this.hasStarted = true;
             this.port.postMessage({ type: 'started' });
+        }
+        // Auto-resume after seek/loop if requested and buffer is ready
+        else if (autoResume && !this.isPlaying && this.samplesInBuffer >= this.minBufferBeforePlay) {
+            console.log('🎵 WORKLET addSamples: Auto-resuming after buffering ' + this.samplesInBuffer + ' samples');
+            this.isPlaying = true;
         }
     }
     
