@@ -734,9 +734,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.85 - Region Tracker Interface');
-    console.log('📦 [0ms] v1.85 Feature: Built waveform region tracker with smooth expansion animations and frequency selection');
-    console.log('📦 [0ms] v1.85 Commit: v1.85 Feature: Built region_tracker.html - smooth region toggle/expansion without DOM destruction');
+    console.log('🌋 [0ms] volcano-audio v1.86 - Region Tracker UI Polish');
+    console.log('📦 [0ms] v1.86 UI: Polished region tracker - play button simplification, feature row styling, time display improvements, button state feedback, and selection animations');
+    console.log('📦 [0ms] v1.86 Commit: v1.86 UI: Region tracker polish - simplified play button, enhanced feature styling (darker rows, field reordering), improved time display (no labels/seconds, larger), grey completed state for select button with pulsing glow, sequential flash animations for frequency→description, kept region highlighted during selection');
     
     // Initialize modals (inject into DOM)
     initializeModals();

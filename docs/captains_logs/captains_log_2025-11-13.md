@@ -321,4 +321,93 @@ Built `test_interfaces/region_tracker.html` - A waveform region tracker for anno
 
 **Commit**: v1.85 Feature: Built region_tracker.html - smooth region toggle/expansion without DOM destruction
 
+---
+
+## Region Tracker UI Polish (v1.86)
+
+### Overview
+Comprehensive UI polish pass on the region tracker interface (`test_interfaces/region_tracker.html`), focusing on visual refinement, user feedback, and interaction flow improvements.
+
+### Play Button Simplification
+**Problem**: Complex playhead animation code with line drawing was unnecessary since actual playback will be implemented separately.
+
+**Solution**: Simplified to minimal logic:
+- Button toggles to pause state for 1 second, then returns to play
+- Removed all playhead animation, position tracking, and visual line drawing
+- Fixed flashing issue - now only updates the specific button element instead of re-rendering entire region panel
+
+**Technical Changes**:
+- Removed `playheadElement`, `playheadAnimationId`, `startPlayback()`, `stopPlayback()`, `updatePlayheadPosition()`
+- Removed `.playhead` CSS
+- `togglePlay()` now directly manipulates button DOM element instead of calling `renderRegions()`
+- Made play button wider (24px → 32px) for better clickability
+
+### Feature Row Styling
+**Visual Improvements**:
+- Darkened alternating row backgrounds for better contrast (#f9f9f9/#f0f0f0 → #e8e8e8/#d8d8d8)
+- Reordered fields: Moved "Unique/Repeated" to the left of "Impulsive/Continuous"
+- Final order: Feature # → Repetition → Type → Select → Frequency → Description
+
+### Time Display Improvements
+**Old Format**: `Start: 10:23:45  End: 10:24:12`
+**New Format**: `10:23 – 10:24`
+
+**Changes**:
+- Removed "Start:"/"End:" labels for cleaner look
+- Removed seconds for brevity
+- Used en dash (–) instead of "to" for professional appearance
+- Increased font size (1.1em) and weight (500) for better readability
+- Result: Instant readability, conversational flow
+
+### Button State Feedback
+**Select Button States**:
+1. **Before selection**: Bright red with pulsing animation, text: "Select"
+2. **During selection**: Red with subtle pulsing glow (8px→20px shadow, 1.2s cycle)
+3. **After selection**: Grey with subtle styling, text: "Selected"
+   - Background: white, Color: #888, Border: #ccc
+   - Still clickable to re-select if needed
+   - Hover state shows it's interactive
+
+**Technical Implementation**:
+- Added `.select-freq-btn.completed` CSS class
+- Added `@keyframes subtleGlow` for active state
+- Button text dynamically changes based on `feature.lowFreq && feature.highFreq`
+- Fixed bug where button re-rendering lost state by adding class during HTML generation
+
+### Selection Flow Animations
+**Wave Effect**: Sequential flash animations guide user attention:
+1. **Frequency display** flashes red (0-800ms)
+2. **Description field** starts flashing red at 150ms (overlapping wave effect)
+3. **Description field** continues for 1400ms with slow fade-out
+4. **Auto-focus** description field for immediate typing
+
+**Technical Details**:
+- Created `@keyframes pulseNotesField` matching frequency display animation
+- Overlapping timing (150ms delay) creates fluid wave effect
+- Red glow with shadow (background → #ffcccc, border → #ff0000, shadow: 0 0 15px)
+
+### Region Selection Preservation
+**Fix**: When selecting frequency ranges on spectrogram, the waveform region now stays highlighted (bright/active) instead of deselecting.
+
+**Implementation**: Modified click-outside handler to check if user is clicking on spectrogram canvas and preserve active region in that case.
+
+### Header Cleanup
+**Removed**: "Features: X" count display from region header bar
+**Reasoning**: Beautiful UI makes feature count obvious from visual inspection; extra text was redundant
+
+### Files Modified
+- `test_interfaces/region_tracker.html` - All UI improvements (CSS + JavaScript)
+- `js/main.js` - Version bump to v1.86 with commit message
+
+### User Experience Improvements Summary
+1. ✅ Faster visual feedback (pulsing glow during selection)
+2. ✅ Clearer state indication (grey completed state, "Selected" text)
+3. ✅ Smoother interaction flow (overlapping animations, auto-focus)
+4. ✅ Reduced visual noise (removed labels, simplified play button, cleaner time display)
+5. ✅ Better contrast (darker feature rows)
+6. ✅ Preserved context (region stays highlighted during selection)
+7. ✅ Intuitive field ordering (repetition before type)
+
+**Commit**: v1.86 UI: Region tracker polish - simplified play button, enhanced feature styling (darker rows, field reordering), improved time display (no labels/seconds, larger), grey completed state for select button with pulsing glow, sequential flash animations for frequency→description, kept region highlighted during selection
+
 

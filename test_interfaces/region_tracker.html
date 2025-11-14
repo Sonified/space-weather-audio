@@ -35,9 +35,10 @@
 
         /* Region Card */
         .region-card {
+            position: relative;
             background: linear-gradient(135deg, rgba(255, 250, 250, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
             border-radius: 10px;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
             box-shadow: 
                 0 10px 20px rgba(80, 20, 20, 0.35),
                 0 6px 12px rgba(80, 20, 20, 0.25),
@@ -45,7 +46,7 @@
                 0 1px 3px rgba(0, 0, 0, 0.1),
                 inset 0 1px 0 rgba(255, 255, 255, 0.6);
             border: 1px solid rgba(200, 100, 100, 0.2);
-            overflow: hidden;
+            overflow: visible;
             transition: all 0.3s;
         }
 
@@ -78,7 +79,7 @@
         }
 
         .play-btn {
-            width: 24px;
+            width: 32px;
             height: 24px;
             border-radius: 2px;
             background: #c82333;
@@ -118,29 +119,10 @@
             margin-right: 20px;
         }
 
-        .features-count-input {
-            width: 40px;
-            padding: 4px 6px;
-            border: 1px solid rgba(200, 100, 100, 0.3);
-            border-radius: 4px;
-            font-size: 0.9em;
+        .features-count-text {
             font-weight: 600;
-            text-align: center;
-            margin-right: 30px;
-            background: white;
             color: #333;
-            cursor: text;
-            transition: border-color 0.2s;
-        }
-
-        .features-count-input:focus {
-            outline: none;
-            border-color: #c82333;
-            box-shadow: 0 0 0 2px rgba(200, 35, 51, 0.2);
-        }
-
-        .features-count-input:hover {
-            border-color: rgba(200, 100, 100, 0.5);
+            margin-right: 30px;
         }
 
         .region-time-display {
@@ -148,6 +130,8 @@
             align-items: center;
             gap: 30px;
             color: #333;
+            font-size: 1.1em;
+            font-weight: 500;
         }
 
         .time-label {
@@ -202,6 +186,120 @@
             transform: scale(1.05);
         }
 
+        /* Delete Feature Button (inline with feature rows) */
+        .delete-feature-btn-inline {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #dc3545;
+            border: none;
+            color: white;
+            font-size: 0.7em;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .delete-feature-btn-inline:hover {
+            background: #c82333;
+            transform: translateY(-50%) scale(1.15);
+        }
+
+        .delete-feature-btn-inline:active {
+            transform: translateY(-50%) scale(0.9);
+        }
+
+        .delete-feature-btn-inline.disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .delete-feature-btn-inline.disabled:hover {
+            transform: translateY(-50%);
+        }
+
+        /* Add Feature Row */
+        .add-feature-row {
+            background: transparent;
+            padding: 2px 10px 2px 36px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            position: relative;
+            min-height: 28px;
+            margin-top: 2px;
+        }
+
+        .add-feature-btn {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #5cb85c;
+            border: none;
+            color: white;
+            font-size: 0.85em;
+            font-weight: 400;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .add-feature-btn:hover {
+            background: #4cae4c;
+            transform: scale(1.15);
+        }
+
+        .add-feature-btn:active {
+            transform: scale(0.9);
+        }
+
+        .add-feature-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .add-feature-btn:disabled:hover {
+            transform: none;
+        }
+
+        .add-feature-label {
+            margin-left: 8px;
+            font-size: 0.9em;
+            color: #666;
+            font-style: italic;
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.2s;
+        }
+
+        .add-feature-label:hover {
+            color: #333;
+        }
+
+        .add-feature-label.disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .add-feature-label.disabled:hover {
+            color: #666;
+        }
+
         /* Region Details */
         .region-details {
             max-height: 0;
@@ -215,7 +313,7 @@
         }
 
         .details-content {
-            padding: 12px;
+            padding: 12px 12px 4px 12px;
             font-size: 0.85em;
         }
 
@@ -268,12 +366,12 @@
         }
 
         .feature-row {
-            background: #f9f9f9;
-            padding: 6px 10px 6px 38px;
+            background: #e8e8e8;
+            padding: 6px 10px 6px 58px;
             border-radius: 4px;
             border-left: 3px solid #c82333;
             display: grid;
-            grid-template-columns: 120px 120px 80px 110px 110px 1fr;
+            grid-template-columns: 120px 120px 80px 160px 110px 1fr;
             gap: 8px;
             align-items: center;
             position: relative;
@@ -282,7 +380,7 @@
 
         .feature-number {
             position: absolute;
-            left: 8px;
+            left: 28px;
             top: 50%;
             transform: translateY(-50%);
             font-weight: 700;
@@ -293,11 +391,11 @@
         }
 
         .feature-row:nth-child(odd) {
-            background: #f9f9f9;
+            background: #e8e8e8;
         }
 
         .feature-row:nth-child(even) {
-            background: #f0f0f0;
+            background: #d8d8d8;
         }
 
 
@@ -375,22 +473,52 @@
         }
 
         .select-freq-btn.active {
-            background: #c82333;
-            color: white;
+            background: #c82333 !important;
+            color: white !important;
+            border-color: #c82333 !important;
+            animation: subtleGlow 1.2s ease-in-out infinite !important;
         }
 
-        .select-freq-btn.pulse {
+        .select-freq-btn.pulse:not(.active) {
             animation: pulseButton 1.5s ease-in-out infinite;
+        }
+
+        .select-freq-btn.completed {
+            background: white;
+            color: #888;
+            border-color: #ccc;
+        }
+
+        .select-freq-btn.completed:hover {
+            background: #f5f5f5;
+            color: #666;
+            border-color: #999;
+        }
+
+        @keyframes subtleGlow {
+            0%, 100% {
+                box-shadow: 0 0 8px rgba(200, 35, 51, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 20px rgba(200, 35, 51, 0.8);
+            }
         }
 
         @keyframes pulseButton {
             0%, 100% {
                 opacity: 1;
                 transform: scale(1);
+                background: white;
+                color: #c82333;
+                box-shadow: 0 0 0 rgba(200, 35, 51, 0);
             }
             50% {
-                opacity: 0.7;
-                transform: scale(1.05);
+                opacity: 1;
+                transform: scale(1.08);
+                background: #fff5f5;
+                color: #c82333;
+                border-color: #e85d5d;
+                box-shadow: 0 0 8px rgba(200, 35, 51, 0.3);
             }
         }
 
@@ -406,7 +534,8 @@
             background: #f9f9f9;
             border: 1px solid #e0e0e0;
             border-radius: 4px;
-            max-width: 150px;
+            max-width: 160px;
+            min-width: 120px;
         }
 
         .frequency-display.selected {
@@ -417,6 +546,10 @@
 
         .frequency-display.pulse {
             animation: pulseFrequencyDisplay 0.8s ease-out;
+        }
+
+        .notes-field.pulse {
+            animation: pulseNotesField 1.4s ease-out;
         }
 
         @keyframes pulseFrequencyDisplay {
@@ -431,6 +564,22 @@
             }
             100% {
                 background-color: #f9f9f9;
+                border-color: #e0e0e0;
+            }
+        }
+
+        @keyframes pulseNotesField {
+            0% {
+                background-color: white;
+                border-color: #e0e0e0;
+            }
+            50% {
+                background-color: #ffcccc;
+                border-color: #ff0000;
+                box-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+            }
+            100% {
+                background-color: white;
                 border-color: #e0e0e0;
             }
         }
@@ -543,17 +692,6 @@
             border-right-color: rgba(68, 136, 255, 0.9);
         }
 
-        .playhead {
-            position: absolute;
-            top: 0;
-            width: 4px;
-            height: 100px;
-            background: #ff0000;
-            pointer-events: none;
-            z-index: 10000;
-            display: none;
-            box-shadow: 0 0 8px rgba(255, 0, 0, 1);
-        }
 
         .selection-box {
             position: absolute;
@@ -568,7 +706,7 @@
         .add-region-button {
             position: absolute;
             padding: 8px 16px;
-            background: #28a745;
+            background: #1e7e34;
             color: white;
             border: none;
             border-radius: 4px;
@@ -582,7 +720,7 @@
         }
 
         .add-region-button:hover {
-            background: #218838;
+            background: #1a6b2e;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
         }
     </style>
@@ -627,7 +765,7 @@
                 featureCount: 1,
                 features: [
                     {
-                        type: 'Impulse',
+                        type: 'Impulsive',
                         repetition: 'Unique',
                         lowFreq: '',
                         highFreq: '',
@@ -651,9 +789,6 @@
         let selectionEndX = null;
         let selectionBoxElement = null;
         let addRegionButton = null;
-        let playheadElement = null;
-        let playheadAnimationId = null;
-        let currentlyPlayingRegionIndex = null;
 
         // Initialize waveform
         function initWaveform() {
@@ -661,7 +796,6 @@
             drawTimeAxis();
             setupWaveformSelection();
             updateRegionHighlights();
-            setupPlayhead();
             
             // Handle window resize
             let resizeTimeout;
@@ -671,26 +805,8 @@
                     drawWaveform();
                     drawTimeAxis();
                     updateRegionHighlights();
-                    // Update playhead position if playing
-                    if (currentlyPlayingRegionIndex !== null) {
-                        updatePlayheadPosition(currentlyPlayingRegionIndex);
-                    }
                 }, 100);
             });
-        }
-
-        // Setup playhead element
-        function setupPlayhead() {
-            const wrapper = document.getElementById('waveformWrapper');
-            if (!wrapper) {
-                console.error('Waveform wrapper not found!');
-                return;
-            }
-            
-            playheadElement = document.createElement('div');
-            playheadElement.className = 'playhead';
-            wrapper.appendChild(playheadElement);
-            console.log('Playhead element created:', playheadElement);
         }
 
         // Draw mock waveform
@@ -1019,9 +1135,12 @@
             document.addEventListener('click', (e) => {
                 // Check if clicking on a region card
                 const regionCard = e.target.closest('.region-card');
+                const spectrogramCanvas = document.getElementById('spectrogram-select');
                 if (!regionCard) {
                     // Not clicking on a region card - clear active region if clicking elsewhere
-                    if (!canvas.contains(e.target) && !addRegionButton?.contains(e.target)) {
+                    // BUT keep active region if clicking on spectrogram while in selection mode
+                    const isClickingSpectrogram = spectrogramCanvas && spectrogramCanvas.contains(e.target);
+                    if (!canvas.contains(e.target) && !addRegionButton?.contains(e.target) && !isClickingSpectrogram) {
                         setActiveRegion(null);
                     }
                 }
@@ -1057,6 +1176,11 @@
             const startTime = new Date(startTimeMs).toISOString();
             const endTime = new Date(endTimeMs).toISOString();
             
+            // Collapse all existing regions before adding new one
+            regions.forEach(region => {
+                region.expanded = false;
+            });
+            
             // Create new region
             const newRegion = {
                 id: regions.length > 0 ? Math.max(...regions.map(r => r.id)) + 1 : 1,
@@ -1064,7 +1188,7 @@
                 stopTime: endTime,
                 featureCount: 1,
                 features: [{
-                    type: 'Impulse',
+                    type: 'Impulsive',
                     repetition: 'Unique',
                     lowFreq: '',
                     highFreq: '',
@@ -1164,13 +1288,12 @@
             updateRegionHighlights();
         }
 
-        // Format time for display - human readable format (no milliseconds)
+        // Format time for display - human readable format (no seconds)
         function formatTime(isoString) {
             const date = new Date(isoString);
             const hours = String(date.getUTCHours()).padStart(2, '0');
             const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-            const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-            return `${hours}:${minutes}:${seconds}`;
+            return `${hours}:${minutes}`;
         }
 
         // Calculate duration
@@ -1223,11 +1346,10 @@
             header.className = `region-header ${region.expanded ? 'expanded' : ''}`;
             header.onclick = (e) => {
                 console.log('*** HEADER CLICKED ***', 'Region Index:', index, 'Region ID:', region.id);
-                // Don't toggle if clicking play button, delete button, or features input
+                // Don't toggle if clicking play button or delete button
                 if (e.target.closest('.play-btn') || 
-                    e.target.closest('.delete-region-btn') || 
-                    e.target.closest('.features-count-input')) {
-                    console.log('Click ignored - clicked on a button/input');
+                    e.target.closest('.delete-region-btn')) {
+                    console.log('Click ignored - clicked on a button');
                     return;
                 }
                 console.log('Click accepted - calling setActiveRegion and toggleRegion');
@@ -1243,19 +1365,9 @@
                     ${region.playing ? '⏸' : '▶'}
                 </button>
                 <span class="region-label">Region: ${region.id}</span>
-                <span style="margin-right: 8px; font-weight: 600; color: #555;">Features:</span>
-                <input type="number" 
-                       class="features-count-input" 
-                       min="1" 
-                       max="10" 
-                       value="${region.featureCount}"
-                       onchange="updateFeatureCount(${index}, parseInt(this.value)); event.stopPropagation();"
-                       onclick="event.stopPropagation();"
-                       title="Number of features">
                 <div class="region-summary">
                     <div class="region-time-display">
-                        <span><span class="time-label">Start:</span><span class="time-value">${formatTime(region.startTime)}</span></span>
-                        <span><span class="time-label">End:</span><span class="time-value">${formatTime(region.stopTime)}</span></span>
+                        ${formatTime(region.startTime)} – ${formatTime(region.stopTime)}
                     </div>
                 </div>
                 <button class="delete-region-btn" 
@@ -1273,9 +1385,23 @@
             detailsContent.className = 'details-content';
             
             // Region time fields removed - times are shown in header only
+            const isMaxFeatures = region.featureCount >= 10;
             detailsContent.innerHTML = `
                 <div class="features-list">
                     <div id="features-${region.id}" class="features-container"></div>
+                    <div class="add-feature-row">
+                        <button class="add-feature-btn" 
+                                onclick="addFeature(${index}); event.stopPropagation();"
+                                ${isMaxFeatures ? 'disabled' : ''}
+                                title="${isMaxFeatures ? 'Maximum features (10) reached' : 'Add feature'}">
+                            +
+                        </button>
+                        <span class="add-feature-label ${isMaxFeatures ? 'disabled' : ''}"
+                              onclick="${isMaxFeatures ? '' : `addFeature(${index}); event.stopPropagation();`}"
+                              title="${isMaxFeatures ? 'Maximum features (10) reached' : 'Add feature'}">
+                            ${isMaxFeatures ? 'Max features reached' : 'Add feature'}
+                        </span>
+                    </div>
                 </div>
             `;
             
@@ -1287,6 +1413,18 @@
             // Render features after card is added to DOM
             setTimeout(() => {
                 renderFeatures(region.id, index);
+                
+                // If region is expanded, set maxHeight immediately without animation
+                if (region.expanded && details) {
+                    // Disable transition temporarily
+                    details.style.transition = 'none';
+                    details.style.maxHeight = details.scrollHeight + 'px';
+                    
+                    // Re-enable transition after next frame
+                    requestAnimationFrame(() => {
+                        details.style.transition = '';
+                    });
+                }
             }, 0);
             
             return card;
@@ -1321,22 +1459,37 @@
                 const featureRow = document.createElement('div');
                 featureRow.className = 'feature-row';
                 
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-feature-btn-inline';
+                deleteBtn.textContent = '×';
+                deleteBtn.title = featureIndex === 0 ? 'Cannot delete first feature' : 'Delete this feature';
+                
+                if (featureIndex === 0) {
+                    deleteBtn.classList.add('disabled');
+                    deleteBtn.disabled = true;
+                } else {
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        deleteSpecificFeature(regionIndex, featureIndex);
+                    };
+                }
+                
                 featureRow.innerHTML = `
                     <span class="feature-number">${featureIndex + 1}</span>
-                    <select id="type-${regionIndex}-${featureIndex}" name="type-${regionIndex}-${featureIndex}" onchange="updateFeature(${regionIndex}, ${featureIndex}, 'type', this.value)">
-                        <option value="Impulse" ${feature.type === 'Impulse' || !feature.type ? 'selected' : ''}>Impulse</option>
-                        <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
-                    </select>
-                    
                     <select id="repetition-${regionIndex}-${featureIndex}" name="repetition-${regionIndex}-${featureIndex}" onchange="updateFeature(${regionIndex}, ${featureIndex}, 'repetition', this.value)">
                         <option value="Unique" ${feature.repetition === 'Unique' || !feature.repetition ? 'selected' : ''}>Unique</option>
                         <option value="Repeated" ${feature.repetition === 'Repeated' ? 'selected' : ''}>Repeated</option>
                     </select>
                     
-                    <button class="select-freq-btn ${!feature.lowFreq || !feature.highFreq ? 'pulse' : ''}" 
+                    <select id="type-${regionIndex}-${featureIndex}" name="type-${regionIndex}-${featureIndex}" onchange="updateFeature(${regionIndex}, ${featureIndex}, 'type', this.value)">
+                        <option value="Impulsive" ${feature.type === 'Impulsive' || !feature.type ? 'selected' : ''}>Impulsive</option>
+                        <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
+                    </select>
+                    
+                    <button class="select-freq-btn ${!feature.lowFreq || !feature.highFreq ? 'pulse' : 'completed'}" 
                             onclick="startFrequencySelection(${regionIndex}, ${featureIndex})"
                             id="select-btn-${regionIndex}-${featureIndex}">
-                        Select
+                        ${feature.lowFreq && feature.highFreq ? 'Selected' : 'Select'}
                     </button>
                     
                     ${feature.lowFreq && feature.highFreq ? 
@@ -1345,12 +1498,13 @@
                     }
                     
                     <textarea class="freq-input notes-field" 
-                              placeholder="Add notes..." 
+                              placeholder="Add description..." 
                               onchange="updateFeature(${regionIndex}, ${featureIndex}, 'notes', this.value)"
                               oninput="this.style.height = '28px'; this.style.height = this.scrollHeight + 'px';"
                               id="notes-${regionIndex}-${featureIndex}">${feature.notes || ''}</textarea>
                 `;
                 
+                featureRow.insertBefore(deleteBtn, featureRow.firstChild);
                 container.appendChild(featureRow);
             });
         }
@@ -1412,6 +1566,7 @@
                 header.classList.add('expanded');
                 details.classList.add('expanded');
                 
+                
                 // Expand animation
                 details.style.maxHeight = '0px';
                 details.style.transition = 'none';
@@ -1429,206 +1584,38 @@
             console.log('=== END TOGGLE ===\n');
         }
 
-        // Toggle play
+        // Toggle play - simplified version (no animation)
         function togglePlay(index) {
             setActiveRegion(index);
+            const region = regions[index];
             
-            // Stop any currently playing region
-            if (currentlyPlayingRegionIndex !== null && currentlyPlayingRegionIndex !== index) {
-                stopPlayback(currentlyPlayingRegionIndex);
-            }
+            // Find the play button for this region
+            const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+            const playBtn = regionCard ? regionCard.querySelector('.play-btn') : null;
             
-            if (regions[index].playing) {
-                // Stop playback
-                stopPlayback(index);
+            if (!playBtn) return;
+            
+            if (!region.playing) {
+                // Start "playing" - just toggle state
+                region.playing = true;
+                playBtn.classList.add('playing');
+                playBtn.textContent = '⏸';
+                playBtn.title = 'Pause region';
+                
+                // Auto-stop after 1 second
+                setTimeout(() => {
+                    region.playing = false;
+                    playBtn.classList.remove('playing');
+                    playBtn.textContent = '▶';
+                    playBtn.title = 'Play region';
+                }, 1000);
             } else {
-                // Start playback
-                startPlayback(index);
-            }
-            
-            renderRegions();
-        }
-
-        // Start playback animation
-        function startPlayback(regionIndex) {
-            const region = regions[regionIndex];
-            if (!region || !playheadElement) {
-                console.log('Cannot start playback: region or playheadElement missing');
-                return;
-            }
-            
-            // Cancel any existing animation first
-            if (playheadAnimationId !== null) {
-                cancelAnimationFrame(playheadAnimationId);
-                playheadAnimationId = null;
-            }
-            
-            region.playing = true;
-            currentlyPlayingRegionIndex = regionIndex;
-            
-            const startTime = new Date(region.startTime).getTime();
-            const endTime = new Date(region.stopTime).getTime();
-            const actualDuration = endTime - startTime; // milliseconds
-            
-            if (actualDuration <= 0) {
-                console.log('Invalid duration:', actualDuration);
-                return;
-            }
-            
-            // Use a fixed animation duration for consistent visual speed
-            // This makes the playhead move at the same speed regardless of region length
-            const fixedAnimationDuration = 2000; // 2 seconds in milliseconds
-            const duration = fixedAnimationDuration;
-            
-            console.log('Duration calculation:', {
-                actualDuration: actualDuration + 'ms (' + (actualDuration / 1000).toFixed(2) + 's)',
-                animationDuration: duration + 'ms (' + (duration / 1000).toFixed(2) + 's)',
-                note: 'Using fixed duration for consistent visual speed'
-            });
-            
-            // Calculate playhead start position
-            const canvas = document.getElementById('waveform-time-bar');
-            if (!canvas) {
-                console.log('Canvas not found');
-                return;
-            }
-            const width = canvas.offsetWidth || canvas.width;
-            
-            const startProgress = (startTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
-            const endProgress = (endTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
-            
-            const startX = startProgress * width;
-            const endX = endProgress * width;
-            
-            console.log('Starting playback:', { regionIndex, startX, endX, duration, width, startProgress, endProgress });
-            
-            // Position playhead at start and make it visible
-            playheadElement.style.position = 'absolute';
-            playheadElement.style.left = startX + 'px';
-            playheadElement.style.top = '0px';
-            playheadElement.style.width = '2px';
-            playheadElement.style.height = '100px';
-            playheadElement.style.backgroundColor = '#ff0000';
-            playheadElement.style.display = 'block';
-            playheadElement.style.opacity = '1';
-            playheadElement.style.zIndex = '1000';
-            playheadElement.style.pointerEvents = 'none';
-            
-            console.log('Playhead positioned:', {
-                left: playheadElement.style.left,
-                top: playheadElement.style.top,
-                display: playheadElement.style.display,
-                computedStyle: window.getComputedStyle(playheadElement).display,
-                parent: playheadElement.parentElement,
-                offsetLeft: playheadElement.offsetLeft,
-                offsetTop: playheadElement.offsetTop
-            });
-            
-            // Animate playhead from start to end
-            const animationStartTime = Date.now();
-            let frameCount = 0;
-            
-            function animate() {
-                frameCount++;
-                
-                // Check if playback was stopped
-                if (currentlyPlayingRegionIndex !== regionIndex || !regions[regionIndex] || !regions[regionIndex].playing) {
-                    console.log('Animation stopped: playback cancelled');
-                    playheadAnimationId = null;
-                    return;
-                }
-                
-                if (!playheadElement) {
-                    console.log('Animation stopped: playheadElement missing');
-                    playheadAnimationId = null;
-                    return;
-                }
-                
-                const elapsed = Date.now() - animationStartTime;
-                const progress = Math.min(elapsed / duration, 1);
-                
-                // Calculate current X position (interpolate from startX to endX)
-                const currentX = startX + (endX - startX) * progress;
-                playheadElement.style.left = currentX + 'px';
-                
-                // Log every 10th frame for debugging
-                if (frameCount % 10 === 0) {
-                    console.log(`Animation frame ${frameCount}:`, {
-                        elapsed,
-                        progress: progress.toFixed(3),
-                        currentX: currentX.toFixed(2),
-                        startX,
-                        endX,
-                        left: playheadElement.style.left,
-                        display: playheadElement.style.display,
-                        opacity: playheadElement.style.opacity
-                    });
-                }
-                
-                if (progress >= 1) {
-                    // Reached the end - stop playback
-                    console.log('Animation complete, stopping playback');
-                    playheadAnimationId = null;
-                    stopPlayback(regionIndex);
-                } else {
-                    // Continue animation
-                    playheadAnimationId = requestAnimationFrame(animate);
-                }
-            }
-            
-            // Start animation
-            console.log('Starting animation loop...');
-            playheadAnimationId = requestAnimationFrame(animate);
-        }
-
-        // Stop playback animation
-        function stopPlayback(regionIndex) {
-            const region = regions[regionIndex];
-            if (region) {
+                // Stop playing
                 region.playing = false;
+                playBtn.classList.remove('playing');
+                playBtn.textContent = '▶';
+                playBtn.title = 'Play region';
             }
-            
-            if (playheadAnimationId !== null) {
-                cancelAnimationFrame(playheadAnimationId);
-                playheadAnimationId = null;
-            }
-            
-            if (playheadElement) {
-                playheadElement.style.display = 'none';
-            }
-            
-            if (currentlyPlayingRegionIndex === regionIndex) {
-                currentlyPlayingRegionIndex = null;
-            }
-            
-            // Update UI to reflect stopped state
-            renderRegions();
-        }
-
-        // Update playhead position (for resize)
-        function updatePlayheadPosition(regionIndex) {
-            if (currentlyPlayingRegionIndex !== regionIndex || !regions[regionIndex].playing) return;
-            
-            const region = regions[regionIndex];
-            const startTime = new Date(region.startTime).getTime();
-            const endTime = new Date(region.stopTime).getTime();
-            
-            const canvas = document.getElementById('waveform-time-bar');
-            if (!canvas || !playheadElement) return;
-            const width = canvas.offsetWidth || canvas.width;
-            
-            const startProgress = (startTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
-            const endProgress = (endTime - dataStartTime.getTime()) / (dataEndTime.getTime() - dataStartTime.getTime());
-            
-            const startX = startProgress * width;
-            const endX = endProgress * width;
-            
-            // Get current playhead position
-            const currentLeft = parseFloat(playheadElement.style.left) || startX;
-            const progress = (currentLeft - startX) / (endX - startX);
-            
-            // Update position based on current progress
-            playheadElement.style.left = startX + ((endX - startX) * progress) + 'px';
         }
 
         // Update region time
@@ -1636,6 +1623,51 @@
             regions[regionIndex][field] = value;
             // Re-render to update summary
             renderRegions();
+        }
+
+        // Update the feature count display
+        function updateFeatureCountDisplay(regionIndex) {
+            const region = regions[regionIndex];
+            const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+            const countText = regionCard ? regionCard.querySelector('.features-count-text') : null;
+            
+            // Update the count text in the header
+            if (countText) {
+                countText.textContent = region.featureCount;
+            }
+        }
+
+        // Add a feature (increment count by 1)
+        function addFeature(regionIndex) {
+            const region = regions[regionIndex];
+            const currentCount = region.featureCount;
+            
+            // Max is 10 features
+            if (currentCount >= 10) {
+                console.log('Maximum features (10) reached');
+                return;
+            }
+            
+            updateFeatureCount(regionIndex, currentCount + 1);
+        }
+
+        // Delete a specific feature by index
+        function deleteSpecificFeature(regionIndex, featureIndex) {
+            const region = regions[regionIndex];
+            
+            // Cannot delete if only 1 feature or trying to delete the first one
+            if (region.featureCount <= 1 || featureIndex === 0) {
+                console.log('Cannot delete - minimum 1 feature required or attempting to delete first feature');
+                return;
+            }
+            
+            // Remove the feature from the array
+            region.features.splice(featureIndex, 1);
+            region.featureCount = region.features.length;
+            
+            // Re-render
+            renderFeatures(region.id, regionIndex);
+            updateFeatureCountDisplay(regionIndex);
         }
 
         // Update feature count
@@ -1667,6 +1699,7 @@
                 
                 // Update the DOM
                 renderFeatures(region.id, regionIndex);
+                updateFeatureCountDisplay(regionIndex);
                 
                 // Animate to new height
                 requestAnimationFrame(() => {
@@ -1681,9 +1714,15 @@
                         details.style.maxHeight = targetHeight + 'px';
                     });
                 });
+                
+                // Auto-enter selection mode for the newly added feature
+                setTimeout(() => {
+                    startFrequencySelection(regionIndex, newCount - 1);
+                }, 100);
             } else {
                 // Just update instantly (for removal or when collapsed)
                 renderFeatures(region.id, regionIndex);
+                updateFeatureCountDisplay(regionIndex);
             }
         }
 
@@ -1875,8 +1914,9 @@
             const button = document.getElementById(`select-btn-${regionIndex}-${featureIndex}`);
             if (!button) return;
             
-            // Activate button
+            // Activate button and stop pulsing, remove completed state
             button.classList.add('active');
+            button.classList.remove('pulse', 'completed');
             isSelecting = true;
             currentSelection = { regionIndex, featureIndex, button };
             
@@ -1884,7 +1924,6 @@
             const canvas = document.getElementById('spectrogram-select');
             if (canvas) {
                 canvas.classList.add('selecting');
-                canvas.style.cursor = 'crosshair';
             }
         }
 
@@ -1898,6 +1937,30 @@
             let startX = null;
             let startY = null;
             let selectionBoxElement = null;
+            
+            // Cleanup function to reset selection state
+            function cleanupSelection(wasCompleted = false) {
+                if (selectionBoxElement && selectionBoxElement.parentNode) {
+                    selectionBoxElement.parentNode.removeChild(selectionBoxElement);
+                }
+                selectionBoxElement = null;
+                startX = null;
+                startY = null;
+                
+                // Deactivate button if one was active
+                if (currentSelection && currentSelection.button) {
+                    currentSelection.button.classList.remove('active');
+                    // Mark as completed if a selection was made
+                    if (wasCompleted) {
+                        currentSelection.button.classList.add('completed');
+                    }
+                }
+                
+                isSelecting = false;
+                currentSelection = null;
+                canvas.classList.remove('selecting');
+                canvas.style.cursor = ''; // Clear any inline cursor style
+            }
             
             canvas.addEventListener('mousedown', (e) => {
                 if (!isSelecting) return;
@@ -1937,13 +2000,16 @@
                 selectionBoxElement.style.height = height + 'px';
             });
             
-            canvas.addEventListener('mouseup', (e) => {
+            // Use document-level mouseup to catch releases outside canvas
+            function handleMouseUp(e) {
                 if (!isSelecting || startX === null || startY === null || !selectionBoxElement) return;
                 
                 const rect = canvas.getBoundingClientRect();
                 const containerRect = container.getBoundingClientRect();
-                const endX = e.clientX - rect.left;
-                const endY = e.clientY - rect.top;
+                
+                // Clamp coordinates to canvas bounds
+                const endX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+                const endY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
                 const top = Math.min(startY, endY);
                 const bottom = Math.max(startY, endY);
                 
@@ -1988,15 +2054,23 @@
                                             frequencyDisplay.classList.remove('pulse');
                                         }, 800);
                                     }
+                                    
+                                    // Pulse the notes field with overlap
+                                    const notesField = featureRows[featureIndex].querySelector('.notes-field');
+                                    if (notesField) {
+                                        setTimeout(() => {
+                                            notesField.classList.add('pulse');
+                                            // Auto-focus the description field
+                                            notesField.focus();
+                                            setTimeout(() => {
+                                                notesField.classList.remove('pulse');
+                                            }, 1400);
+                                        }, 150); // Start earlier for more overlap
+                                    }
                                 }
                             }
                         });
                     });
-                    
-                    // Deactivate button
-                    if (currentSelection.button) {
-                        currentSelection.button.classList.remove('active');
-                    }
                 }
                 
                 // Remove selection box immediately
@@ -2022,15 +2096,18 @@
                     }, 80);
                 }, 50);
                 
-                // Reset selection state
-                isSelecting = false;
-                startX = null;
-                startY = null;
-                selectionBoxElement = null;
-                currentSelection = null;
-                
-                // Remove selecting class
-                canvas.classList.remove('selecting');
+                // Cleanup selection state, mark as completed
+                cleanupSelection(true);
+            }
+            
+            // Attach to document to catch mouseup anywhere
+            document.addEventListener('mouseup', handleMouseUp);
+            
+            // Also handle escape key to cancel selection
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && isSelecting) {
+                    cleanupSelection();
+                }
             });
         }
 
