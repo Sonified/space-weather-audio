@@ -410,4 +410,81 @@ Comprehensive UI polish pass on the region tracker interface (`test_interfaces/r
 
 **Commit**: v1.86 UI: Region tracker polish - simplified play button, enhanced feature styling (darker rows, field reordering), improved time display (no labels/seconds, larger), grey completed state for select button with pulsing glow, sequential flash animations for frequency→description, kept region highlighted during selection
 
+---
+
+## Region Tracker UI Enhancements (v1.87)
+
+### Overview
+Comprehensive enhancements to the region tracker interface focusing on animation fixes, visual polish, and improved user interaction patterns.
+
+### Animation Fixes
+**Frequency Button Fade**:
+- Fixed white flash issue when button transitions from active to pulse state
+- Disabled CSS transitions before removing active class to prevent flash
+- Button now smoothly fades from red to white without intermediate white state
+- Reduced fade duration from 0.75s to 0.25s for snappier feedback
+
+**Expanding Shadow Effect**:
+- Added expanding red shadow/border effect when frequency selection is released
+- Shadow expands outward around button (0px → 6px) to indicate change
+- Runs simultaneously with fade animation for cohesive feedback
+
+### UI Enhancements
+**Description Preview**:
+- First feature's description now shows in collapsed region header
+- Appears to the right of time display in italic gray text
+- Max width 600px with ellipsis truncation
+- Updates dynamically when notes are changed
+- Hidden when region is expanded
+
+**Notes Field**:
+- Locked to single-line height (28px)
+- Text scrolls horizontally instead of growing vertically
+- Hidden horizontal scrollbar for clean appearance
+- Enter key exits field instead of creating new line
+- `white-space: nowrap` prevents line breaks
+
+**Play Button 3D Texture**:
+- Added gradient background (lighter top-left, darker bottom-right)
+- Layered box shadows for depth (outer + inset)
+- Border highlights (light top/left, dark bottom/right)
+- Text shadow for icon depth
+- Hover effect lifts button slightly
+- Active state presses button down
+- Same 3D treatment for playing state (green)
+
+**Visual Density**:
+- Reduced all vertical padding by 25%:
+  - Region header: 8px → 6px
+  - Details content: 12px/4px → 9px/3px
+  - Feature rows: 6px → 4px
+  - Add feature row: 2px → 1px
+- More compact, information-dense layout
+
+**Region Header Depth**:
+- Added subtle top border (light white highlight)
+- Inset shadow at top for depth
+- Creates raised card appearance
+- Fixed rounded corners (10px → 6px) for less rounded look
+
+### Interaction Improvements
+**Selection vs Expand/Collapse**:
+- Clicking region header bar now only selects region (highlights waveform)
+- Only triangle icon expands/collapses region details
+- Clear separation of selection and navigation actions
+- Waveform highlight clears when starting new waveform selection
+
+**Spectrogram Axis**:
+- Moved frequency axis to right side of spectrogram
+- Ticks point left toward spectrogram
+- Labels positioned on right side with proper spacing
+- Better visual flow
+
+### Files Modified
+- `test_interfaces/region_tracker.html` - All enhancements (CSS + JavaScript)
+- `js/main.js` - Version updated to v1.87
+- `backend/collector_loop.py` - Version updated to v1.87
+
+**Commit**: v1.87 UI: Region tracker enhancements - fixed frequency button fade animation, added expanding shadow effect, description preview in collapsed headers, single-line notes field, 3D play button, reduced padding, subtle depth, fixed corners, moved axis right, Enter exits notes, triangle-only expand
+
 

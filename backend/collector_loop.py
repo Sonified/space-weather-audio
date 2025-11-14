@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_13_v1.84"
+__version__ = "2025_11_13_v1.87"
 import time
 import sys
 import os
@@ -5861,8 +5861,8 @@ def main():
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.84 UI: Axis styling refinements - CSS variables for tick labels, borders, spacing")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.84 UI: Axis styling refinements - CSS variables for tick labels, borders, spacing")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.87 UI: Region tracker enhancements - fixed frequency button fade animation, added expanding shadow effect, description preview in collapsed headers, single-line notes field, 3D play button, reduced padding, subtle depth, fixed corners, moved axis right, Enter exits notes, triangle-only expand")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Git commit: v1.87 UI: Region tracker enhancements - fixed frequency button fade animation, added expanding shadow effect, description preview in collapsed headers, single-line notes field, 3D play button, reduced padding, subtle depth, fixed corners, moved axis right, Enter exits notes, triangle-only expand")
     
     # Start Flask server in background thread
     port = int(os.getenv('PORT', 5000))
