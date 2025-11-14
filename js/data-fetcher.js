@@ -9,6 +9,7 @@ import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -726,6 +727,12 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 }
                                 State.setCompleteSamplesArray(stitched);
                                 console.log(`📦 ${logTime()} Stitched ${State.allReceivedData.length} chunks into completeSamplesArray for download`);
+                                
+                                // 🎨 Render complete spectrogram now that all data is ready
+                                console.log(`🎨 ${logTime()} Triggering complete spectrogram rendering...`);
+                                startCompleteVisualization().catch(err => {
+                                    console.error('❌ Error rendering complete spectrogram:', err);
+                                });
                                 
                                 // Update UI
                                 updatePlaybackSpeed();

@@ -55,10 +55,11 @@ export function startPlayback() {
         requestAnimationFrame(updatePlaybackIndicator);
     }
     
-    // Restart spectrogram if needed
-    if (State.analyserNode && !State.visualizationStarted) {
-        startVisualization();
-    }
+    // COMMENTED OUT: Using complete spectrogram renderer instead of streaming
+    // // Restart spectrogram if needed
+    // if (State.analyserNode && !State.visualizationStarted) {
+    //     startVisualization();
+    // }
     
     // Update active region button
     updateActiveRegionPlayButton(true);

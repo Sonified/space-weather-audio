@@ -8,6 +8,7 @@ import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
+import { clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
 import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
@@ -408,7 +409,8 @@ export async function initAudioWorklet() {
         }
     };
     
-    startVisualization();
+    // COMMENTED OUT: Using complete spectrogram renderer instead of streaming
+    // startVisualization();
 }
 
 // Main streaming function
@@ -418,6 +420,9 @@ export async function startStreaming(event) {
             event.preventDefault();
             event.stopPropagation();
         }
+        
+        // Clear complete spectrogram when loading new data
+        clearCompleteSpectrogram();
         
         State.setIsShowingFinalWaveform(false);
         

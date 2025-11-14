@@ -1,0 +1,498 @@
+/**
+ * spectrogram-complete-renderer.js
+ * Complete spectrogram renderer - renders entire spectrogram in one shot after all audio is loaded
+ * This provides perfect time alignment with the waveform and avoids streaming artifacts
+ * 
+ * OPTIMIZATIONS:
+ * - Worker pool for parallel FFT computation (8 cores!)
+ * - Direct ImageData pixel buffer manipulation (no fillRect!)
+ * - Pre-computed color lookup table (no repeated HSL→RGB conversion!)
+ * - Only computes as many FFTs as pixels wide (no wasted computation!)
+ */
+
+import * as State from './audio-state.js';
+import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
+import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
+
+// Track if we've rendered the complete spectrogram
+let completeSpectrogramRendered = false;
+let renderingInProgress = false;
+
+// Worker pool for parallel FFT computation (MAXIMIZE ALL CPU CORES! 🔥)
+let workerPool = null;
+
+/**
+ * Convert HSL to RGB
+ * @param {number} h - Hue (0-360)
+ * @param {number} s - Saturation (0-100)
+ * @param {number} l - Lightness (0-100)
+ * @returns {Array} [r, g, b] values (0-255)
+ */
+function hslToRgb(h, s, l) {
+    h = h / 360;
+    s = s / 100;
+    l = l / 100;
+    
+    let r, g, b;
+    
+    if (s === 0) {
+        r = g = b = l; // achromatic
+    } else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        };
+        
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+    }
+    
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+/**
+ * Main function to render the complete spectrogram
+ * Called once all audio data is available
+ */
+export async function renderCompleteSpectrogram() {
+    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
+        console.log('⚠️ Cannot render complete spectrogram - no audio data available');
+        return;
+    }
+    
+    if (renderingInProgress) {
+        console.log('⚠️ Spectrogram rendering already in progress');
+        return;
+    }
+    
+    if (completeSpectrogramRendered) {
+        console.log('✅ Complete spectrogram already rendered');
+        return;
+    }
+    
+    renderingInProgress = true;
+    console.log('🎨 Starting complete spectrogram rendering...');
+    
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) {
+        console.error('❌ Spectrogram canvas not found');
+        renderingInProgress = false;
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d', { willReadFrequently: false });
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    try {
+        const startTime = performance.now();
+        
+        // Get audio data
+        const audioData = State.completeSamplesArray;
+        const totalSamples = audioData.length;
+        const sampleRate = 44100; // AudioContext sample rate
+        
+        console.log(`📊 Rendering spectrogram for ${totalSamples.toLocaleString()} samples (${(totalSamples / sampleRate).toFixed(2)}s)`);
+        
+        // FFT parameters
+        const fftSize = 2048; // Matches analyser node
+        const frequencyBinCount = fftSize / 2;
+        
+        // OPTIMIZATION: Only compute as many time slices as we have pixels!
+        const maxTimeSlices = width; // One FFT per pixel column
+        const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
+        const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+        
+        console.log(`🔧 FFT size: ${fftSize}, Hop size: ${hopSize.toLocaleString()}, Time slices: ${numTimeSlices.toLocaleString()} (optimized for ${width}px width)`);
+        
+        // Pre-compute Hann window
+        const window = new Float32Array(fftSize);
+        for (let i = 0; i < fftSize; i++) {
+            window[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / fftSize));
+        }
+        
+        // Initialize worker pool if needed
+        if (!workerPool) {
+            workerPool = new SpectrogramWorkerPool();
+            await workerPool.initialize();
+        }
+        
+        // Helper function to calculate y position based on frequency scale
+        const getYPosition = (binIndex, totalBins, canvasHeight) => {
+            const currentPlaybackRate = State.currentPlaybackRate || 1.0;
+            
+            if (State.frequencyScale === 'logarithmic') {
+                // Logarithmic scale: strong emphasis on lower frequencies
+                const minFreq = 1;
+                const maxFreq = totalBins;
+                const logMin = Math.log10(minFreq);
+                const logMax = Math.log10(maxFreq);
+                const logFreq = Math.log10(Math.max(binIndex + 1, minFreq));
+                let normalizedLog = (logFreq - logMin) / (logMax - logMin);
+                
+                // Apply playback rate scaling
+                normalizedLog = Math.min(normalizedLog * currentPlaybackRate, 1.0);
+                
+                return canvasHeight - (normalizedLog * canvasHeight);
+            } else if (State.frequencyScale === 'sqrt') {
+                // Square root scale: gentle emphasis on lower frequencies
+                let normalized = binIndex / totalBins;
+                
+                // Apply playback rate scaling
+                normalized = Math.min(normalized * currentPlaybackRate, 1.0);
+                
+                const sqrtNormalized = Math.sqrt(normalized);
+                return canvasHeight - (sqrtNormalized * canvasHeight);
+            } else {
+                // Linear scale (default)
+                let normalized = binIndex / totalBins;
+                
+                // Apply playback rate scaling
+                normalized = Math.min(normalized * currentPlaybackRate, 1.0);
+                
+                return canvasHeight - (normalized * canvasHeight);
+            }
+        };
+        
+        // Create ImageData for direct pixel manipulation (MUCH faster than fillRect!)
+        const imageData = ctx.createImageData(width, height);
+        const pixels = imageData.data;
+        
+        // Pre-compute color lookup table (256 levels from dB scale)
+        const colorLUT = new Uint8ClampedArray(256 * 3); // RGB values for each level
+        for (let i = 0; i < 256; i++) {
+            const normalized = i / 255;
+            const hue = normalized * 60; // 0° to 60°
+            const saturation = 100;
+            const lightness = 10 + (normalized * 60);
+            
+            // Convert HSL to RGB (pre-compute once!)
+            const rgb = hslToRgb(hue, saturation, lightness);
+            colorLUT[i * 3] = rgb[0];
+            colorLUT[i * 3 + 1] = rgb[1];
+            colorLUT[i * 3 + 2] = rgb[2];
+        }
+        
+        console.log(`🎨 Pre-computed color LUT (256 levels)`);
+        
+        // Calculate x position for each slice
+        const pixelsPerSlice = width / numTimeSlices;
+        
+        // Create batches for parallel processing
+        const batchSize = 50; // Smaller batches = better load balancing across workers
+        const batches = [];
+        
+        for (let batchStart = 0; batchStart < numTimeSlices; batchStart += batchSize) {
+            const batchEnd = Math.min(batchStart + batchSize, numTimeSlices);
+            batches.push({ start: batchStart, end: batchEnd });
+        }
+        
+        console.log(`📦 Processing ${numTimeSlices} slices in ${batches.length} batches across worker pool`);
+        
+        // Function to draw results from worker (called as results arrive)
+        const drawResults = (results, progress, workerIndex) => {
+            for (const result of results) {
+                const { sliceIdx, magnitudes } = result;
+                
+                // Calculate x position
+                const xStart = Math.floor(sliceIdx * pixelsPerSlice);
+                const xEnd = Math.floor((sliceIdx + 1) * pixelsPerSlice);
+                
+                // Draw this time slice directly to pixel buffer
+                for (let binIdx = 0; binIdx < frequencyBinCount; binIdx++) {
+                    const magnitude = magnitudes[binIdx];
+                    
+                    // Convert magnitude to dB scale and normalize
+                    const db = 20 * Math.log10(magnitude + 1e-10);
+                    const normalizedDb = Math.max(0, Math.min(1, (db + 100) / 100));
+                    const colorIndex = Math.floor(normalizedDb * 255);
+                    
+                    // Get pre-computed RGB values
+                    const r = colorLUT[colorIndex * 3];
+                    const g = colorLUT[colorIndex * 3 + 1];
+                    const b = colorLUT[colorIndex * 3 + 2];
+                    
+                    // Calculate y positions
+                    const yStart = Math.floor(getYPosition(binIdx + 1, frequencyBinCount, height));
+                    const yEnd = Math.floor(getYPosition(binIdx, frequencyBinCount, height));
+                    
+                    // Write pixels directly to buffer (no fillRect calls!)
+                    for (let x = xStart; x < xEnd; x++) {
+                        for (let y = yStart; y < yEnd; y++) {
+                            const pixelIndex = (y * width + x) * 4;
+                            pixels[pixelIndex] = r;
+                            pixels[pixelIndex + 1] = g;
+                            pixels[pixelIndex + 2] = b;
+                            pixels[pixelIndex + 3] = 255; // Alpha
+                        }
+                    }
+                }
+            }
+            
+            // Log progress with worker info
+            console.log(`⏳ Spectrogram rendering: ${progress}% (worker ${workerIndex})`);
+        };
+        
+        // Process all batches in parallel across worker pool! 🔥
+        await workerPool.processBatches(
+            audioData,
+            batches,
+            fftSize,
+            hopSize,
+            window,
+            drawResults  // Callback fires immediately as each worker completes
+        );
+        
+        // Write ImageData to canvas in one shot (ultra fast!)
+        console.log(`🎨 Writing ImageData to canvas...`);
+        ctx.putImageData(imageData, 0, 0);
+        
+        const elapsed = performance.now() - startTime;
+        console.log(`✅ Complete spectrogram rendered in ${elapsed.toFixed(0)}ms`);
+        
+        completeSpectrogramRendered = true;
+        State.setSpectrogramInitialized(true);
+        
+        // Draw frequency axis
+        positionAxisCanvas();
+        initializeAxisPlaybackRate();
+        drawFrequencyAxis();
+        
+    } catch (error) {
+        console.error('❌ Error rendering complete spectrogram:', error);
+    } finally {
+        renderingInProgress = false;
+    }
+}
+
+/**
+ * Clear the complete spectrogram and reset rendering state
+ * Called when new audio is loaded
+ */
+export function clearCompleteSpectrogram() {
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    completeSpectrogramRendered = false;
+    renderingInProgress = false;
+    State.setSpectrogramInitialized(false);
+    
+    // Terminate worker pool if it exists (will be recreated on next render)
+    if (workerPool) {
+        workerPool.terminate();
+        workerPool = null;
+    }
+    
+    console.log('🧹 Cleared complete spectrogram');
+}
+
+/**
+ * Check if complete spectrogram has been rendered
+ */
+export function isCompleteSpectrogramRendered() {
+    return completeSpectrogramRendered;
+}
+
+/**
+ * Render spectrogram for a specific time range (region zoom)
+ * @param {number} startSeconds - Start time in seconds
+ * @param {number} endSeconds - End time in seconds
+ */
+export async function renderCompleteSpectrogramForRegion(startSeconds, endSeconds) {
+    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
+        console.log('⚠️ Cannot render region spectrogram - no audio data');
+        return;
+    }
+    
+    console.log(`🔍 Rendering spectrogram for region: ${startSeconds.toFixed(2)}s to ${endSeconds.toFixed(2)}s`);
+    
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d', { willReadFrequently: false });
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    try {
+        const startTime = performance.now();
+        
+        // Calculate sample range
+        const sampleRate = 44100;
+        const startSample = Math.floor(startSeconds * sampleRate);
+        const endSample = Math.floor(endSeconds * sampleRate);
+        const regionSamples = State.completeSamplesArray.slice(startSample, endSample);
+        const totalSamples = regionSamples.length;
+        const duration = endSeconds - startSeconds;
+        
+        console.log(`📊 Region: ${totalSamples.toLocaleString()} samples (${duration.toFixed(2)}s)`);
+        console.log(`🎯 ZOOM RESOLUTION: ${(width / duration).toFixed(1)} pixels/second (vs ${(width / State.totalAudioDuration).toFixed(1)} for full view)`);
+        
+        // FFT parameters
+        const fftSize = 2048;
+        const frequencyBinCount = fftSize / 2;
+        
+        // Higher resolution for zoomed view!
+        const maxTimeSlices = width; // One FFT per pixel
+        const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
+        const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+        
+        console.log(`🔧 FFT size: ${fftSize}, Hop size: ${hopSize.toLocaleString()}, Time slices: ${numTimeSlices.toLocaleString()}`);
+        
+        // Pre-compute Hann window
+        const window = new Float32Array(fftSize);
+        for (let i = 0; i < fftSize; i++) {
+            window[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / fftSize));
+        }
+        
+        // Initialize worker pool
+        if (!workerPool) {
+            workerPool = new SpectrogramWorkerPool();
+            await workerPool.initialize();
+        }
+        
+        // Get y position helper (same as full render)
+        const getYPosition = (binIndex, totalBins, canvasHeight) => {
+            const currentPlaybackRate = State.currentPlaybackRate || 1.0;
+            
+            if (State.frequencyScale === 'logarithmic') {
+                const minFreq = 1;
+                const maxFreq = totalBins;
+                const logMin = Math.log10(minFreq);
+                const logMax = Math.log10(maxFreq);
+                const logFreq = Math.log10(Math.max(binIndex + 1, minFreq));
+                let normalizedLog = (logFreq - logMin) / (logMax - logMin);
+                normalizedLog = Math.min(normalizedLog * currentPlaybackRate, 1.0);
+                return canvasHeight - (normalizedLog * canvasHeight);
+            } else if (State.frequencyScale === 'sqrt') {
+                let normalized = binIndex / totalBins;
+                normalized = Math.min(normalized * currentPlaybackRate, 1.0);
+                const sqrtNormalized = Math.sqrt(normalized);
+                return canvasHeight - (sqrtNormalized * canvasHeight);
+            } else {
+                let normalized = binIndex / totalBins;
+                normalized = Math.min(normalized * currentPlaybackRate, 1.0);
+                return canvasHeight - (normalized * canvasHeight);
+            }
+        };
+        
+        // Create ImageData for direct pixel manipulation
+        const imageData = ctx.createImageData(width, height);
+        const pixels = imageData.data;
+        
+        // Pre-compute color LUT
+        const colorLUT = new Uint8ClampedArray(256 * 3);
+        for (let i = 0; i < 256; i++) {
+            const normalized = i / 255;
+            const hue = normalized * 60;
+            const saturation = 100;
+            const lightness = 10 + (normalized * 60);
+            const rgb = hslToRgb(hue, saturation, lightness);
+            colorLUT[i * 3] = rgb[0];
+            colorLUT[i * 3 + 1] = rgb[1];
+            colorLUT[i * 3 + 2] = rgb[2];
+        }
+        
+        // Create batches
+        const batchSize = 50;
+        const batches = [];
+        for (let batchStart = 0; batchStart < numTimeSlices; batchStart += batchSize) {
+            const batchEnd = Math.min(batchStart + batchSize, numTimeSlices);
+            batches.push({ start: batchStart, end: batchEnd });
+        }
+        
+        const pixelsPerSlice = width / numTimeSlices;
+        
+        // Draw callback
+        const drawResults = (results, progress, workerIndex) => {
+            for (const result of results) {
+                const { sliceIdx, magnitudes } = result;
+                const xStart = Math.floor(sliceIdx * pixelsPerSlice);
+                const xEnd = Math.floor((sliceIdx + 1) * pixelsPerSlice);
+                
+                for (let binIdx = 0; binIdx < frequencyBinCount; binIdx++) {
+                    const magnitude = magnitudes[binIdx];
+                    const db = 20 * Math.log10(magnitude + 1e-10);
+                    const normalizedDb = Math.max(0, Math.min(1, (db + 100) / 100));
+                    const colorIndex = Math.floor(normalizedDb * 255);
+                    
+                    const r = colorLUT[colorIndex * 3];
+                    const g = colorLUT[colorIndex * 3 + 1];
+                    const b = colorLUT[colorIndex * 3 + 2];
+                    
+                    const yStart = Math.floor(getYPosition(binIdx + 1, frequencyBinCount, height));
+                    const yEnd = Math.floor(getYPosition(binIdx, frequencyBinCount, height));
+                    
+                    for (let x = xStart; x < xEnd; x++) {
+                        for (let y = yStart; y < yEnd; y++) {
+                            const pixelIndex = (y * width + x) * 4;
+                            pixels[pixelIndex] = r;
+                            pixels[pixelIndex + 1] = g;
+                            pixels[pixelIndex + 2] = b;
+                            pixels[pixelIndex + 3] = 255;
+                        }
+                    }
+                }
+            }
+            console.log(`⏳ Region spectrogram: ${progress}% (worker ${workerIndex})`);
+        };
+        
+        // Process with worker pool
+        await workerPool.processBatches(
+            regionSamples, // Use region data only!
+            batches,
+            fftSize,
+            hopSize,
+            window,
+            drawResults
+        );
+        
+        // Write to canvas
+        ctx.putImageData(imageData, 0, 0);
+        
+        const elapsed = performance.now() - startTime;
+        console.log(`✅ Region spectrogram rendered in ${elapsed.toFixed(0)}ms`);
+        
+        // Update frequency axis
+        positionAxisCanvas();
+        initializeAxisPlaybackRate();
+        drawFrequencyAxis();
+        
+    } catch (error) {
+        console.error('❌ Error rendering region spectrogram:', error);
+    }
+}
+
+/**
+ * Initialize complete spectrogram visualization
+ * Called once after all audio data is loaded
+ */
+export async function startCompleteVisualization() {
+    // Wait a bit to ensure all data is truly ready
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
+        console.log('⚠️ Cannot start complete visualization - no audio data');
+        return;
+    }
+    
+    console.log('🎬 Starting complete spectrogram visualization');
+    
+    // Render the complete spectrogram
+    await renderCompleteSpectrogram();
+}
