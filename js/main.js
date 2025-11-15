@@ -8,7 +8,7 @@ import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
+import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
 import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
@@ -151,10 +151,13 @@ function toggleAntiAliasing() {
 // Initialize AudioWorklet
 export async function initAudioWorklet() {
     if (!State.audioContext) {
-        const ctx = new AudioContext({ sampleRate: 44100 });
+        const ctx = new AudioContext({ 
+            sampleRate: 44100,
+            latencyHint: 'playback'  // 30ms buffer for stable playback (prevents dropouts)
+        });
         State.setAudioContext(ctx);
         await ctx.audioWorklet.addModule('workers/audio-worklet.js');
-        console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: 44100 Hz)`);
+        console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: 44100 Hz, latency: playback)`);
     }
     
     const worklet = new AudioWorkletNode(State.audioContext, 'seismic-processor');
@@ -496,10 +499,13 @@ export async function startStreaming(event) {
         // 2. AudioContext creation
         const audioContextPromise = (async () => {
             if (!State.audioContext) {
-                const ctx = new AudioContext({ sampleRate: 44100 });
+                const ctx = new AudioContext({ 
+                    sampleRate: 44100,
+                    latencyHint: 'playback'  // 30ms buffer for stable playback (prevents dropouts)
+                });
                 State.setAudioContext(ctx);
                 await ctx.audioWorklet.addModule('workers/audio-worklet.js');
-                console.log(`🎵 ${logTime()} AudioContext ready`);
+                console.log(`🎵 ${logTime()} AudioContext ready (latency: playback)`);
             }
         })();
         
@@ -760,9 +766,12 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.91 - Zoom Architecture & Spectrogram Playhead');
-    console.log('📦 [0ms] v1.91 Docs: Created zoom architecture document outlining sample-based coordinate system for future zoom implementation');
-    console.log('📦 [0ms] v1.91 Feat: Implemented synchronized red playhead on spectrogram with optimized strip rendering and scrub preview');
+    console.log('🌋 [0ms] volcano-audio v1.92 - Memory Health Monitoring & Audio Buffer Optimization');
+    console.log('📦 [0ms] v1.92 Perf: Changed AudioContext latencyHint to "playback" - eliminated ALL buffer underruns with imperceptible 30ms latency');
+    console.log('📦 [0ms] v1.92 Feat: Added memory health monitoring system - tracks baseline, trends, and detects leaks every 10 seconds');
+    
+    // Start memory health monitoring
+    startMemoryMonitoring();
     
     // Initialize modals (inject into DOM)
     initializeModals();

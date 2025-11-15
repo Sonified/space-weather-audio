@@ -362,3 +362,102 @@ Synchronized red playhead indicator on spectrogram, perfectly mirroring waveform
 ---
 
 
+
+## 🎵 PERF: Audio Buffer Optimization & Memory Health Monitoring (v1.92)
+
+### The Problem: Buffer Underruns
+
+Despite having all the audio data loaded, users experienced constant buffer underrun warnings:
+```
+⚠️ BUFFER UNDERRUN: only 234 samples available, need 512
+⚠️ Buffer health: Minimum buffer was 89 samples (0.002s) - DANGEROUSLY LOW!
+```
+
+These weren't data loading issues - they were happening because the audio thread was running on a tightrope with no safety margin.
+
+### Investigation: Two Separate Issues
+
+#### Issue 1: AudioContext Latency Configuration
+
+The AudioContext was created with no `latencyHint`, defaulting to `'interactive'`:
+```javascript
+new AudioContext({ sampleRate: 44100 })
+// Default = 'interactive' (~5ms buffer)
+```
+
+This gave only ~5ms of system buffer - perfect for live music/gaming, but terrible for our use case with:
+- 8-9 parallel FFT workers consuming CPU
+- Garbage collection pauses (at 98% memory usage!)
+- Heavy canvas rendering
+- Dataset switching
+
+#### Issue 2: Memory Monitoring Gaps
+
+We had no visibility into:
+- Baseline memory health over time
+- Memory leak detection
+- Whether GC was running properly
+- Browser-specific memory behavior (Brave vs Chrome vs Safari)
+
+### The Fix: ONE LINE OF CODE! 🔥
+
+**Changed AudioContext latency hint from `'interactive'` (5ms) to `'playback'` (30ms):**
+
+```javascript
+new AudioContext({ 
+    sampleRate: 44100,
+    latencyHint: 'playback'  // 30ms buffer for stable playback
+})
+```
+
+**Result**: Every single buffer underrun warning vanished instantly!
+
+The 25ms difference gave the audio thread enough cushion to handle:
+- ✅ GC pauses during memory-intensive operations
+- ✅ 8-9 worker threads running parallel FFTs
+- ✅ Rapid volcano dataset switching
+- ✅ Browser multitasking
+
+30ms is imperceptible to humans (film runs at 24fps = 42ms/frame) but MASSIVE for a computer thread.
+
+### Bonus: Memory Health Monitoring System
+
+Added comprehensive memory monitoring to track app health:
+
+**Features**:
+- Logs memory stats every 10 seconds
+- Tracks baseline (minimum after GC)
+- Calculates average usage over time
+- Detects memory leak trends (baseline growing >200MB)
+- Warns at >80% usage
+- Handles Safari/Firefox (no `performance.memory` API)
+
+**Console Output**:
+```
+🏥 Memory health: 4025MB (98.3%) | Baseline: 3953MB | Avg: 97.4% | Limit: 4096MB | Trend: stable
+```
+
+**Leak Detection**:
+If baseline grows >200MB over time:
+```
+🚨 POTENTIAL MEMORY LEAK: Baseline grew 250MB (3800MB → 4050MB)
+```
+
+**Browser Compatibility**:
+- Chrome/Brave: Full monitoring with accurate stats
+- Safari/Firefox: Silent fallback (API not available)
+
+### Files Modified
+- `js/main.js` - Version bump to v1.92, added `latencyHint: 'playback'` to both AudioContext creations, imported and started memory monitoring
+- `js/spectrogram-complete-renderer.js` - Added memory health monitoring system with baseline tracking, trend detection, leak warnings, and aggressive cleanup on dataset switching
+
+### Result
+✅ **Zero buffer underruns** - Audio plays perfectly smooth, even during heavy operations
+✅ **Imperceptible latency** - 30ms is unnoticeable to users
+✅ **Memory visibility** - Can track health, detect leaks, monitor GC effectiveness
+✅ **Stable at 98% memory** - App works at capacity without crashes
+
+**Sometimes the biggest performance wins are the simplest changes!** 🎯
+
+**Commit**: v1.92 Perf: Changed AudioContext latencyHint to 'playback' - eliminated buffer underruns with 30ms latency. Feat: Added memory health monitoring system with baseline tracking and leak detection
+

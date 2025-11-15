@@ -24,6 +24,12 @@ let workerPool = null;
 // Cached spectrogram canvas (for redrawing with playhead)
 let cachedSpectrogramCanvas = null;
 
+// Memory monitoring
+let memoryMonitorInterval = null;
+let memoryBaseline = null;
+let memoryHistory = [];
+const MEMORY_HISTORY_SIZE = 20; // Keep last 20 readings (3+ minutes at 10s intervals)
+
 /**
  * Log memory usage for monitoring
  */
@@ -38,6 +44,75 @@ function logMemory(label) {
         if (percent > 80) {
             console.warn('⚠️ Memory usage high!');
         }
+        
+        return parseFloat(used);
+    }
+    return null;
+}
+
+/**
+ * Periodic memory health check
+ * Monitors baseline and detects potential memory leaks
+ */
+function memoryHealthCheck() {
+    if (!performance.memory) return; // Safari/Firefox don't support this API
+    
+    const used = performance.memory.usedJSHeapSize / 1024 / 1024;
+    const limit = performance.memory.jsHeapSizeLimit / 1024 / 1024;
+    const percent = ((performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) * 100).toFixed(1);
+    
+    // Track baseline (minimum observed memory - after GC runs)
+    if (memoryBaseline === null || used < memoryBaseline) {
+        memoryBaseline = used;
+    }
+    
+    // Add to history
+    memoryHistory.push({ time: Date.now(), used, percent: parseFloat(percent) });
+    if (memoryHistory.length > MEMORY_HISTORY_SIZE) {
+        memoryHistory.shift();
+    }
+    
+    // Calculate trend (is baseline growing?)
+    let trend = 'stable';
+    if (memoryHistory.length >= 10) {
+        const oldBaseline = Math.min(...memoryHistory.slice(0, 5).map(h => h.used));
+        const newBaseline = Math.min(...memoryHistory.slice(-5).map(h => h.used));
+        const growth = newBaseline - oldBaseline;
+        
+        if (growth > 200) { // Growing by 200+ MB
+            trend = '📈 increasing';
+            console.warn(`🚨 POTENTIAL MEMORY LEAK: Baseline grew ${growth.toFixed(0)}MB (${oldBaseline.toFixed(0)}MB → ${newBaseline.toFixed(0)}MB)`);
+        } else if (growth > 100) {
+            trend = '📈 rising';
+        }
+    }
+    
+    // Log periodic health check
+    const avgPercent = (memoryHistory.reduce((sum, h) => sum + h.percent, 0) / memoryHistory.length).toFixed(1);
+    console.log(`🏥 Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
+}
+
+/**
+ * Start periodic memory monitoring
+ */
+export function startMemoryMonitoring() {
+    if (memoryMonitorInterval) return;
+    
+    console.log('🏥 Starting memory health monitoring (every 10 seconds)');
+    memoryMonitorInterval = setInterval(memoryHealthCheck, 10000);
+    
+    // Initial check
+    memoryHealthCheck();
+}
+
+/**
+ * Stop periodic memory monitoring
+ */
+export function stopMemoryMonitoring() {
+    if (memoryMonitorInterval) {
+        clearInterval(memoryMonitorInterval);
+        memoryMonitorInterval = null;
+        console.log('🏥 Stopped memory health monitoring');
     }
 }
 
@@ -312,15 +387,33 @@ export async function renderCompleteSpectrogram() {
  * Called when new audio is loaded
  */
 export function clearCompleteSpectrogram() {
-    const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
+    console.log('🧹 Starting aggressive spectrogram cleanup...');
     
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Log memory before cleanup
+    logMemory('Before cleanup');
+    
+    const canvas = document.getElementById('spectrogram');
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Aggressively clear cached canvas to free memory immediately
+    if (cachedSpectrogramCanvas) {
+        try {
+            const cacheCtx = cachedSpectrogramCanvas.getContext('2d');
+            cacheCtx.clearRect(0, 0, cachedSpectrogramCanvas.width, cachedSpectrogramCanvas.height);
+            // Resize to 0x0 to force deallocation
+            cachedSpectrogramCanvas.width = 0;
+            cachedSpectrogramCanvas.height = 0;
+        } catch (e) {
+            console.warn('⚠️ Error clearing cached canvas:', e);
+        }
+        cachedSpectrogramCanvas = null;
+    }
     
     completeSpectrogramRendered = false;
     renderingInProgress = false;
-    cachedSpectrogramCanvas = null;
     State.setSpectrogramInitialized(false);
     
     // Terminate worker pool if it exists (will be recreated on next render)
@@ -329,10 +422,16 @@ export function clearCompleteSpectrogram() {
         workerPool = null;
     }
     
-    // Log memory after cleanup
-    logMemory('After worker cleanup');
+    // Hint to browser that GC would be nice (only works with --expose-gc flag)
+    if (typeof window !== 'undefined' && window.gc) {
+        console.log('🗑️ Requesting manual garbage collection...');
+        window.gc();
+    }
     
-    console.log('🧹 Cleared complete spectrogram');
+    // Log memory after cleanup
+    logMemory('After aggressive cleanup');
+    
+    console.log('✅ Spectrogram cleanup complete');
 }
 
 /**
