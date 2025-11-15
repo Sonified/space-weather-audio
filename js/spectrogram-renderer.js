@@ -343,9 +343,10 @@ export function setupSpectrogramSelection() {
         
         const rect = canvas.getBoundingClientRect();
         const endY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+        const endX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
         
-        // Call region tracker handler
-        handleSpectrogramSelection(spectrogramStartY, endY, canvas.height);
+        // Call region tracker handler with X positions for time tracking
+        handleSpectrogramSelection(spectrogramStartY, endY, canvas.height, spectrogramStartX, endX, canvas.width);
         
         // Cleanup
         if (spectrogramSelectionBox) {

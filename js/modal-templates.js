@@ -239,6 +239,55 @@ export function createPostSurveyModal() {
     return createMoodSurveyModal('post', 'postSurveyModal', '📊 Post-Survey');
 }
 
+export function createActivityLevelModal() {
+    const modal = document.createElement('div');
+    modal.id = 'activityLevelModal';
+    modal.className = 'modal-overlay activity-level-modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Activity Level Assessment</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Question -->
+                <div style="font-size: 18px; color: #333; margin-bottom: 30px; text-align: center; font-weight: normal;">
+                    Based on your current knowledge and previous interactions with audified seismic data, during the last 24 hours what is the level of activity displayed here?
+                </div>
+                
+                <!-- Scale header labels -->
+                <div class="survey-scale-labels">
+                    <div></div>
+                    <div class="survey-scale-labels-grid">
+                        <span>Not active</span>
+                        <span>Moderately active</span>
+                        <span>Active</span>
+                        <span>Very Active</span>
+                        <span>Extremely Active</span>
+                    </div>
+                </div>
+                
+                <div class="mood-scale-container">
+                <!-- Activity Level -->
+                <div class="mood-scale-item">
+                    <div class="mood-scale-label"></div>
+                    <div class="mood-scale-options">
+                        <div class="mood-scale-option"><input type="radio" name="activityLevel" id="activityLevel1" value="1"><label for="activityLevel1">1</label></div>
+                        <div class="mood-scale-option"><input type="radio" name="activityLevel" id="activityLevel2" value="2"><label for="activityLevel2">2</label></div>
+                        <div class="mood-scale-option"><input type="radio" name="activityLevel" id="activityLevel3" value="3"><label for="activityLevel3">3</label></div>
+                        <div class="mood-scale-option"><input type="radio" name="activityLevel" id="activityLevel4" value="4"><label for="activityLevel4">4</label></div>
+                        <div class="mood-scale-option"><input type="radio" name="activityLevel" id="activityLevel5" value="5"><label for="activityLevel5">5</label></div>
+                    </div>
+                </div>
+                </div>
+                
+                <button type="button" class="modal-submit" disabled>✓ Next</button>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
 export function createAwesfModal() {
     const modal = document.createElement('div');
     modal.id = 'awesfModal';
@@ -458,11 +507,13 @@ export function initializeModals() {
     const participantModal = createParticipantModal();
     const preSurveyModal = createPreSurveyModal();
     const postSurveyModal = createPostSurveyModal();
+    const activityLevelModal = createActivityLevelModal();
     const awesfModal = createAwesfModal();
     
     document.body.appendChild(participantModal);
     document.body.appendChild(preSurveyModal);
     document.body.appendChild(postSurveyModal);
+    document.body.appendChild(activityLevelModal);
     document.body.appendChild(awesfModal);
     
     // Pre-populate participant ID from localStorage if available

@@ -150,3 +150,41 @@ v2.01 - Commit: "v2.01 UI: Added participant ID display in header, updated parti
 
 ---
 
+## 🎯 Feature: Time Tracking & Selection UI Improvements (v2.01)
+
+### Changes
+1. **Feature Time Tracking:**
+   - Added `startTime` and `endTime` fields to features (UTC ISO format)
+   - Tracks time range when user selects features on spectrogram
+   - Converts X pixel positions to UTC timestamps using data start/end times
+   - Stores full UTC timestamps with dates (handles midnight boundaries)
+
+2. **Feature Selection Button Updates:**
+   - Changed button text from "select frequency range" to "Select feature"
+   - Button now displays: "HH:MM:SS - HH:MM:SS • X.X - X.X Hz"
+   - Uses bullet point (•) separator with non-breaking spaces for spacing
+   - Hours below 10 display without leading zero (e.g., "9:23:45" not "09:23:45")
+   - Button width reduced from 290px to 240px for better fit
+
+3. **Backend Submission Preparation:**
+   - Added `formatRegionsForSubmission()` function to format regions/features for backend
+   - Includes region start/end times and feature start/end times in UTC ISO format
+   - Includes region/feature numbers (1-indexed, reflects final order after deletions)
+   - Data structure ready for backend endpoint (when available)
+
+4. **Spectrogram Selection Enhancement:**
+   - Now tracks both X (time) and Y (frequency) positions during selection
+   - Converts X positions to timestamps for feature time tracking
+   - Passes both time and frequency data to feature handler
+
+### Files Modified
+- `js/region-tracker.js` - Added time tracking, updated button format, added formatting functions
+- `js/spectrogram-renderer.js` - Track X positions for time conversion
+- `js/ui-controls.js` - Added regions/features to submission data
+- `styles.css` - Reduced button width from 290px to 240px
+
+### Version
+v2.01 - Commit: "v2.01 Feature: Added feature time tracking and improved feature selection UI with time/frequency display"
+
+---
+

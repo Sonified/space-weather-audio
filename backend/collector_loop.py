@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_15_v2.00"
+__version__ = "2025_11_15_v2.01"
 import time
 import sys
 import os
@@ -5776,7 +5776,7 @@ def run_scheduler():
 def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git Commit: v2.00 Refactor: Removed all hardcoded R2 credentials, moved files to utilities folder, added beginning gap padding for late-starting data")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git Commit: v2.01 Feature: Added feature time tracking and improved feature selection UI with time/frequency display")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.89 UI: Panel styling improvements - replaced nth-child selectors with class-based selectors, reduced button/panel heights, improved slider styling, changed 'Tracked Regions' to 'Selected Regions'")

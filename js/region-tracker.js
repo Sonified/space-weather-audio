@@ -33,6 +33,8 @@ let isSelectingFrequency = false;
 let currentFrequencySelection = null;
 let spectrogramSelectionBox = null;
 let spectrogramStartY = null;
+let spectrogramStartX = null;
+let spectrogramEndX = null;
 
 // Constants
 const maxFrequency = 50; // Hz - Nyquist frequency for 100 Hz sample rate
@@ -191,6 +193,8 @@ function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSecon
             repetition: 'Unique',
             lowFreq: '',
             highFreq: '',
+            startTime: '',
+            endTime: '',
             notes: ''
         }],
         expanded: true,
@@ -359,7 +363,7 @@ export function startFrequencySelection(regionIndex, featureIndex) {
  * Handle spectrogram frequency selection
  * Called when user completes a box selection on spectrogram
  */
-export function handleSpectrogramSelection(startY, endY, canvasHeight) {
+export function handleSpectrogramSelection(startY, endY, canvasHeight, startX, endX, canvasWidth) {
     if (!isSelectingFrequency || !currentFrequencySelection) {
         return;
     }
@@ -370,10 +374,40 @@ export function handleSpectrogramSelection(startY, endY, canvasHeight) {
     const lowFreq = getFrequencyFromY(Math.max(startY, endY), maxFrequency, canvasHeight, State.frequencyScale);
     const highFreq = getFrequencyFromY(Math.min(startY, endY), maxFrequency, canvasHeight, State.frequencyScale);
     
+    // Convert X positions to timestamps
+    let startTime = null;
+    let endTime = null;
+    
+    if (startX !== null && endX !== null && State.dataStartTime && State.dataEndTime && State.totalAudioDuration) {
+        const dataStartMs = State.dataStartTime.getTime();
+        const dataEndMs = State.dataEndTime.getTime();
+        const totalDurationMs = dataEndMs - dataStartMs;
+        
+        // Convert pixel positions to progress (0-1)
+        const startProgress = Math.max(0, Math.min(1, startX / canvasWidth));
+        const endProgress = Math.max(0, Math.min(1, endX / canvasWidth));
+        
+        // Convert progress to timestamps
+        const startTimeMs = dataStartMs + (startProgress * totalDurationMs);
+        const endTimeMs = dataStartMs + (endProgress * totalDurationMs);
+        
+        // Ensure start is before end
+        const actualStartMs = Math.min(startTimeMs, endTimeMs);
+        const actualEndMs = Math.max(startTimeMs, endTimeMs);
+        
+        startTime = new Date(actualStartMs).toISOString();
+        endTime = new Date(actualEndMs).toISOString();
+    }
+    
     // Update feature data
     if (regions[regionIndex] && regions[regionIndex].features[featureIndex]) {
         regions[regionIndex].features[featureIndex].lowFreq = lowFreq.toFixed(2);
         regions[regionIndex].features[featureIndex].highFreq = highFreq.toFixed(2);
+        
+        if (startTime && endTime) {
+            regions[regionIndex].features[featureIndex].startTime = startTime;
+            regions[regionIndex].features[featureIndex].endTime = endTime;
+        }
         
         // Re-render the feature
         renderFeatures(regions[regionIndex].id, regionIndex);
@@ -402,6 +436,8 @@ export function handleSpectrogramSelection(startY, endY, canvasHeight) {
     // Clear selection state
     isSelectingFrequency = false;
     currentFrequencySelection = null;
+    spectrogramStartX = null;
+    spectrogramEndX = null;
     
     const canvas = document.getElementById('spectrogram');
     if (canvas) {
@@ -438,6 +474,32 @@ function formatTime(isoString) {
     const hours = String(date.getUTCHours()).padStart(2, '0');
     const minutes = String(date.getUTCMinutes()).padStart(2, '0');
     return `${hours}:${minutes}`;
+}
+
+/**
+ * Format time for display with seconds (H:MM:SS format, no leading zero on hours if < 10)
+ */
+function formatTimeWithSeconds(isoString) {
+    const date = new Date(isoString);
+    const hours = date.getUTCHours(); // No padding - single digit for 0-9
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+}
+
+/**
+ * Format feature button text: "HH:MM:SS - HH:MM:SS • X.X - X.X Hz"
+ */
+function formatFeatureButtonText(feature) {
+    if (!feature.startTime || !feature.endTime || !feature.lowFreq || !feature.highFreq) {
+        return 'Select feature';
+    }
+    
+    const startTimeStr = formatTimeWithSeconds(feature.startTime);
+    const endTimeStr = formatTimeWithSeconds(feature.endTime);
+    const freqStr = `${parseFloat(feature.lowFreq).toFixed(1)} - ${parseFloat(feature.highFreq).toFixed(1)} Hz`;
+    
+    return `${startTimeStr} - ${endTimeStr}\u00A0\u00A0•\u00A0\u00A0${freqStr}`;
 }
 
 /**
@@ -605,6 +667,8 @@ function renderFeatures(regionId, regionIndex) {
             repetition: 'Unique',
             lowFreq: '',
             highFreq: '',
+            startTime: '',
+            endTime: '',
             notes: ''
         });
     }
@@ -646,13 +710,13 @@ function renderFeatures(regionId, regionIndex) {
                 <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
             </select>
             
-            <button class="select-freq-btn ${!feature.lowFreq || !feature.highFreq ? 'pulse' : 'completed'}" 
+            <button class="select-freq-btn ${!feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime ? 'pulse' : 'completed'}" 
                     id="select-btn-${regionIndex}-${featureIndex}"
                     data-region-index="${regionIndex}" data-feature-index="${featureIndex}"
-                    title="${feature.lowFreq && feature.highFreq ? 'click to select' : ''}">
-                ${feature.lowFreq && feature.highFreq ? 
-                    `${parseFloat(feature.lowFreq).toFixed(1)} - ${parseFloat(feature.highFreq).toFixed(1)} Hz` :
-                    'select frequency range'
+                    title="${feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 'click to select' : ''}">
+                ${feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 
+                    formatFeatureButtonText(feature) :
+                    'Select feature'
                 }
             </button>
             
@@ -1121,6 +1185,8 @@ export function createTestRegion() {
             repetition: 'Unique',
             lowFreq: '',
             highFreq: '',
+            startTime: '',
+            endTime: '',
             notes: ''
         }],
         expanded: true,

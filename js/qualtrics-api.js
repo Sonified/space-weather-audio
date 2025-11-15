@@ -42,6 +42,9 @@ const QUESTION_IDS = {
     AWE_CHALLENGED: "QID13_11",
     AWE_SELF_SHRINK: "QID13_12",
     
+    // Activity Level (QID15) - 5-point scale
+    ACTIVITY_LEVEL: "QID15_1",
+    
     // JSON dump field (QID11) - for storing event data
     JSON_DUMP: "QID11"
 };
@@ -107,6 +110,52 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
         if (awesf.vastness) values[QUESTION_IDS.AWE_VASTNESS] = toNumber(awesf.vastness);
         if (awesf.challenged) values[QUESTION_IDS.AWE_CHALLENGED] = toNumber(awesf.challenged);
         if (awesf.selfShrink) values[QUESTION_IDS.AWE_SELF_SHRINK] = toNumber(awesf.selfShrink);
+    }
+    
+    // Activity Level (5-point scale)
+    // Map UI values (1-5) to Qualtrics choice IDs (2, 7, 8, 9, 10)
+    if (combinedResponses.activityLevel) {
+        const activityLevel = combinedResponses.activityLevel;
+        if (activityLevel.activityLevel) {
+            const uiValue = parseInt(activityLevel.activityLevel, 10);
+            const qualtricsChoiceMap = {
+                1: 2,   // UI 1 → Qualtrics 2 (Very low)
+                2: 7,   // UI 2 → Qualtrics 7 (Low)
+                3: 8,   // UI 3 → Qualtrics 8 (Somewhat low)
+                4: 9,   // UI 4 → Qualtrics 9 (Moderate)
+                5: 10   // UI 5 → Qualtrics 10 (Somewhat high)
+            };
+            const qualtricsValue = qualtricsChoiceMap[uiValue];
+            if (qualtricsValue) {
+                values[QUESTION_IDS.ACTIVITY_LEVEL] = qualtricsValue;
+            }
+        }
+    }
+    
+    // Format volcano name for QID8 (Event tracking - Volcano column)
+    // Format: Remove location, remove special characters, remove spaces, capitalize appropriately
+    function formatVolcanoName(volcanoValue) {
+        const volcanoMap = {
+            'kilauea': 'Kilauea',
+            'maunaloa': 'MaunaLoa',
+            'greatsitkin': 'GreatSitkin',
+            'shishaldin': 'Shishaldin',
+            'spurr': 'Spurr'
+        };
+        return volcanoMap[volcanoValue] || volcanoValue;
+    }
+    
+    // Get current volcano selection from UI and add to QID8
+    // QID8 is a matrix question: subquestion 1, choice 4 (Volcano) = _1_4_TEXT
+    try {
+        const volcanoSelect = document.getElementById('volcano');
+        if (volcanoSelect && volcanoSelect.value) {
+            const formattedVolcano = formatVolcanoName(volcanoSelect.value);
+            values['_1_4_TEXT'] = formattedVolcano;
+            console.log(`🌋 Adding volcano to QID8: ${volcanoSelect.value} → ${formattedVolcano}`);
+        }
+    } catch (error) {
+        console.warn('⚠️ Could not get volcano selection for QID8:', error);
     }
     
     // Initialize embedded data object (will be added to values, not separate)

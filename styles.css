@@ -894,6 +894,61 @@ input[type="checkbox"] {
     gap: 0px;
 }
 
+/* Activity Level Modal - 5-point scale */
+.activity-level-modal .modal-content {
+    max-width: 800px;
+    min-width: 600px;
+    max-height: 90vh;
+}
+
+.activity-level-modal .mood-scale-item {
+    grid-template-columns: 1fr;
+    gap: 0px;
+    padding: 6px 10px;
+}
+
+.activity-level-modal .mood-scale-label {
+    display: none;
+}
+
+.activity-level-modal .mood-scale-options {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0px;
+    width: 100%;
+}
+
+.activity-level-modal .survey-scale-labels {
+    grid-template-columns: 1fr;
+    gap: 0px;
+}
+
+.activity-level-modal .survey-scale-labels-grid {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0px;
+}
+
+.activity-level-modal .modal-header {
+    border-bottom: none;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    position: relative;
+    justify-content: flex-end;
+}
+
+.activity-level-modal .modal-title {
+    text-align: center;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    pointer-events: none;
+    margin: 0;
+}
+
+.activity-level-modal .modal-close {
+    display: none;
+}
+
 .awesf-modal .modal-header {
     border-bottom: none;
     margin-bottom: 20px;
@@ -1426,7 +1481,7 @@ input[type="checkbox"] {
     border-radius: 4px;
     border-left: 3px solid #c82333;
     display: grid;
-    grid-template-columns: 95px 100px 145px 1fr;
+    grid-template-columns: 95px 100px 240px 1fr;
     gap: 8px;
     align-items: stretch;
     position: relative;

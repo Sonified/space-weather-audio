@@ -360,7 +360,7 @@ export function getResponsesForSubmission(participantId) {
     if (!responses) return null;
     
     // Check if we have all required surveys
-    if (!responses.pre || !responses.post || !responses.awesf) {
+    if (!responses.pre || !responses.post || !responses.awesf || !responses.activityLevel) {
         return null;
     }
     
@@ -373,17 +373,20 @@ export function getResponsesForSubmission(participantId) {
         post: responses.post,
         // AWE-SF data
         awesf: responses.awesf,
+        // Activity Level data
+        activityLevel: responses.activityLevel,
         // Metadata
         sessionId: responses.sessionId,
         participantId: responses.participantId,
         createdAt: responses.createdAt,
-        // Test JSON_data - interface interaction data
+        // JSON_data - interface interaction data
         // This will be stored in the JSON_data embedded data field
+        // Note: Regions/features are added in ui-controls.js when building jsonDump
+        // This function is primarily for internal use; actual submission uses jsonDump from ui-controls.js
         jsonData: {
-            test: true,
-            message: "This is a test value for JSON_data",
             timestamp: new Date().toISOString(),
-            version: "1.0"
+            version: "1.0",
+            note: "Regions and features are included in jsonDump during submission"
         }
     };
 }

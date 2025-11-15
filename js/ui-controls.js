@@ -22,6 +22,7 @@ import {
     trackUserAction
 } from '../Qualtrics/participant-response-manager.js';
 import { isAdminMode } from './admin-mode.js';
+import { getRegions } from './region-tracker.js';
 
 export function loadStations() {
     const volcanoSelect = document.getElementById('volcano');
@@ -455,6 +456,50 @@ export function setupModalEventListeners() {
         });
     }
     
+    // Activity Level modal event listeners
+    const activityLevelModal = document.getElementById('activityLevelModal');
+    if (!activityLevelModal) {
+        console.error('❌ Activity Level modal not found in DOM');
+    } else {
+        const activityLevelCloseBtn = activityLevelModal.querySelector('.modal-close');
+        const activityLevelSubmitBtn = activityLevelModal.querySelector('.modal-submit');
+        
+        // Function to check if activity level question is answered
+        const updateActivityLevelSubmitButton = () => {
+            const answered = document.querySelector('input[name="activityLevel"]:checked');
+            
+            if (activityLevelSubmitBtn) {
+                activityLevelSubmitBtn.disabled = !answered;
+            }
+        };
+        
+        // Listen for changes to enable/disable submit button
+        activityLevelModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', updateActivityLevelSubmitButton);
+        });
+        
+        // Allow closing by clicking outside
+        activityLevelModal.addEventListener('click', (e) => {
+            if (e.target === activityLevelModal) {
+                closeActivityLevelModal();
+            }
+        });
+        
+        if (activityLevelCloseBtn) {
+            activityLevelCloseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeActivityLevelModal();
+            });
+        }
+        
+        if (activityLevelSubmitBtn) {
+            activityLevelSubmitBtn.addEventListener('click', submitActivityLevelSurvey);
+        }
+        
+        // Initial button state check
+        updateActivityLevelSubmitButton();
+    }
+    
     // AWE-SF modal event listeners
     const awesfModal = document.getElementById('awesfModal');
     if (!awesfModal) {
@@ -779,6 +824,75 @@ export async function submitPostSurvey() {
     }
 }
 
+export function openActivityLevelModal() {
+    document.getElementById('activityLevelModal').classList.add('active');
+    console.log('🌋 Activity Level modal opened');
+    
+    // Track survey start
+    const participantId = getParticipantId();
+    if (participantId) {
+        trackSurveyStart(participantId, 'activityLevel');
+    }
+}
+
+export function closeActivityLevelModal(event) {
+    document.getElementById('activityLevelModal').classList.remove('active');
+    console.log('🌋 Activity Level modal closed');
+}
+
+export async function submitActivityLevelSurvey() {
+    const surveyData = {
+        surveyType: 'activityLevel',
+        activityLevel: document.querySelector('input[name="activityLevel"]:checked')?.value || null,
+        timestamp: new Date().toISOString()
+    };
+    
+    // Verify question is answered
+    if (!surveyData.activityLevel) {
+        alert('Please select an activity level before submitting.');
+        return;
+    }
+    
+    // Get participant ID (from URL or localStorage)
+    const participantId = getParticipantId();
+    
+    if (!participantId) {
+        alert('Please set your participant ID before submitting surveys.');
+        return;
+    }
+    
+    console.log('🌋 Activity Level Survey Data:');
+    console.log('  - Participant ID:', participantId);
+    console.log('  - Activity Level:', surveyData.activityLevel || 'not rated');
+    console.log('  - Timestamp:', surveyData.timestamp);
+    
+    const statusEl = document.getElementById('status');
+    
+    try {
+        // Save response locally instead of submitting immediately
+        statusEl.className = 'status info';
+        statusEl.textContent = '💾 Saving activity level response...';
+        
+        saveSurveyResponse(participantId, 'activityLevel', surveyData);
+        
+        statusEl.className = 'status success';
+        statusEl.textContent = '✅ Activity Level saved! Complete all surveys to submit.';
+        
+        closeActivityLevelModal();
+        
+        setTimeout(() => {
+            document.querySelectorAll('#activityLevelModal input[type="radio"]').forEach(radio => {
+                radio.checked = false;
+            });
+        }, 300);
+    } catch (error) {
+        console.error('Failed to save activity level survey:', error);
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ Failed to save: ${error.message}`;
+        // Don't close modal on error so user can try again
+    }
+}
+
 export function openAwesfModal() {
     document.getElementById('awesfModal').classList.add('active');
     console.log('✨ AWE-SF modal opened');
@@ -933,10 +1047,50 @@ async function checkAndSubmitIfComplete(participantId) {
 }
 
 /**
- * Attempt to submit all survey responses to Qualtrics
- * Called manually via the Submit button
- * Includes extensive logging for debugging
+ * Format regions and features for backend submission
+ * Prepares data with all time fields in UTC ISO format
+ * @param {Array} regions - Array of region objects from region-tracker
+ * @returns {Array} Formatted regions array ready for submission
  */
+function formatRegionsForSubmission(regions) {
+    if (!regions || regions.length === 0) {
+        return [];
+    }
+    
+    return regions.map((region, regionIndex) => {
+        const formattedRegion = {
+            regionNumber: regionIndex + 1, // 1-indexed, reflects final order (shifts when regions deleted)
+            regionId: region.id, // Internal tracking ID (persistent, not needed for backend)
+            // Region times in UTC ISO format
+            regionStartTime: region.startTime || null,
+            regionEndTime: region.stopTime || null,
+            featureCount: region.featureCount || 0,
+            features: []
+        };
+        
+        // Format features within this region
+        if (region.features && region.features.length > 0) {
+            formattedRegion.features = region.features.map((feature, featureIndex) => {
+                return {
+                    featureNumber: featureIndex + 1, // 1-indexed for display
+                    // Feature times in UTC ISO format (prepared for backend endpoint)
+                    featureStartTime: feature.startTime || null,
+                    featureEndTime: feature.endTime || null,
+                    // Frequency data
+                    lowFreq: feature.lowFreq || null,
+                    highFreq: feature.highFreq || null,
+                    // Feature metadata
+                    type: feature.type || null,
+                    repetition: feature.repetition || null,
+                    notes: feature.notes || null
+                };
+            });
+        }
+        
+        return formattedRegion;
+    });
+}
+
 export async function attemptSubmission() {
     console.log('═══════════════════════════════════════════════════════════');
     console.log('🚀 SUBMISSION ATTEMPT STARTED');
@@ -1035,12 +1189,23 @@ export async function attemptSubmission() {
         // Get tracking data from session state
         const trackingData = sessionState.tracking || null;
         
+        // Get regions and features data
+        const regions = getRegions();
+        const formattedRegions = formatRegionsForSubmission(regions);
+        console.log('   📊 Regions data:', {
+            regionCount: formattedRegions.length,
+            totalFeatures: formattedRegions.reduce((sum, r) => sum + (r.features?.length || 0), 0),
+            hasRegionTimes: formattedRegions.some(r => r.regionStartTime && r.regionEndTime),
+            hasFeatureTimes: formattedRegions.some(r => r.features?.some(f => f.featureStartTime && f.featureEndTime))
+        });
+        
         // Build JSON dump with tracking information
         const jsonDump = {
             sessionId: responses.sessionId,
             participantId: responses.participantId,
             sessionStarted: trackingData?.sessionStarted || sessionState.startedAt || null,
             tracking: trackingData || null,
+            regions: formattedRegions,
             submissionTimestamp: new Date().toISOString()
         };
         

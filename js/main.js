@@ -9,7 +9,7 @@ import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSp
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
-import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
+import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
@@ -1077,6 +1077,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Survey/Modal Buttons
     document.getElementById('participantModalBtn').addEventListener('click', openParticipantModal);
     document.getElementById('preSurveyModalBtn').addEventListener('click', openPreSurveyModal);
+    document.getElementById('activityLevelModalBtn').addEventListener('click', openActivityLevelModal);
     document.getElementById('awesfModalBtn').addEventListener('click', openAwesfModal);
     document.getElementById('postSurveyModalBtn').addEventListener('click', openPostSurveyModal);
     document.getElementById('submitBtn').addEventListener('click', attemptSubmission);
