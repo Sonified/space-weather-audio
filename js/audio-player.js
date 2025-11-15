@@ -5,7 +5,7 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { drawWaveformWithSelection, updatePlaybackIndicator } from './waveform-renderer.js';
+import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization } from './spectrogram-renderer.js';
 import { updateActiveRegionPlayButton } from './region-tracker.js';
@@ -71,7 +71,7 @@ export function startPlayback() {
     // Restart playback indicator
     if (State.audioContext && State.totalAudioDuration > 0) {
         State.setLastUpdateTime(State.audioContext.currentTime);
-        requestAnimationFrame(updatePlaybackIndicator);
+        startPlaybackIndicator();
     }
     
     // COMMENTED OUT: Using complete spectrogram renderer instead of streaming
@@ -336,11 +336,17 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         // Update playback state if starting
         if (shouldStartPlayback) {
             State.setPlaybackState(PlaybackState.PLAYING);
+            
+            // Update play/pause button to show "Pause"
+            const btn = document.getElementById('playPauseBtn');
+            btn.textContent = '⏸️ Pause';
+            btn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
+            btn.classList.add('pause-active');
         }
         
         // Ensure playback indicator continues if playing
         if (State.playbackState === PlaybackState.PLAYING) {
-            requestAnimationFrame(updatePlaybackIndicator);
+            startPlaybackIndicator();
         }
         
         // Clear the justSeeked flag after a brief delay to allow position to update

@@ -3,7 +3,7 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
+import { updatePlaybackIndicator, drawWaveform, startPlaybackIndicator } from './waveform-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
 import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
@@ -629,7 +629,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                             playPauseBtn.classList.add('pause-active');
                             
                             // Start playback indicator (will draw when waveform is ready)
-                            requestAnimationFrame(updatePlaybackIndicator);
+                            startPlaybackIndicator();
                         } else {
                             console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
                             // Don't start playback, but keep state ready
@@ -1260,6 +1260,10 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     const samplesBytes = decompressed.slice(samplesOffset);
     let samples = new Float32Array(samplesBytes.buffer, samplesBytes.byteOffset, samplesBytes.length / 4);
     
+    // 🔥 FIX: Explicitly null out decompressed to allow GC of original buffer
+    // The Float32Array we created above shares the buffer, but we've copied what we need
+    decompressed = null;
+    
     console.log(`✅ Got ${samples.length.toLocaleString()} samples @ ${metadata.original_sample_rate} Hz`);
     
     // Calculate min/max
@@ -1347,7 +1351,7 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
         playPauseBtn.classList.add('pause-active');
         
         // Start playback indicator
-        requestAnimationFrame(updatePlaybackIndicator);
+        startPlaybackIndicator();
     } else {
         console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
         // Don't start playback, but keep state ready

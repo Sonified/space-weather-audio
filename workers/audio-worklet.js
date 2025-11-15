@@ -200,7 +200,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         });
         
         const loopDesc = hasSelection ? `selection start (${this.selectionStart.toFixed(2)}s)` : 'file start';
-        console.log(`🔄 WORKLET LOOP: Cleared buffer, requesting samples from ${loopDesc}`);
+        // console.log(`🔄 WORKLET LOOP: Cleared buffer, requesting samples from ${loopDesc}`);
     }
     
     seekToPosition(targetSample, forceResume = false) {
@@ -351,7 +351,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         }
         // Auto-resume after seek/loop if requested and buffer is ready
         else if (autoResume && !this.isPlaying && this.samplesInBuffer >= this.minBufferBeforePlay) {
-            console.log('🎵 WORKLET addSamples: Auto-resuming after buffering ' + this.samplesInBuffer + ' samples');
+            // console.log('🎵 WORKLET addSamples: Auto-resuming after buffering ' + this.samplesInBuffer + ' samples');
             this.isPlaying = true;
         }
     }

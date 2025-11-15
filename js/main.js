@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops } from './audio-player.js';
-import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
+import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
 import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
@@ -120,6 +120,14 @@ function toggleAntiAliasing() {
 
 // Initialize AudioWorklet
 export async function initAudioWorklet() {
+    // 🔥 FIX: Clear old worklet message handler before creating new one
+    if (State.workletNode) {
+        console.log('🧹 Clearing old worklet message handler before creating new worklet...');
+        State.workletNode.port.onmessage = null;  // Break closure chain
+        State.workletNode.disconnect();
+        State.setWorkletNode(null);
+    }
+    
     if (!State.audioContext) {
         const ctx = new AudioContext({ 
             sampleRate: 44100,
@@ -299,7 +307,7 @@ export async function initAudioWorklet() {
         } else if (type === 'loop-ready') {
             // Worklet has cleared buffer and is ready to loop from target position
             const { targetSample } = event.data;
-            console.log(`🔄 [LOOP-READY] Re-sending samples from ${targetSample.toLocaleString()} (loop restart)`);
+            // console.log(`🔄 [LOOP-READY] Re-sending samples from ${targetSample.toLocaleString()} (loop restart)`);
             
             if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
                 // Update position tracking to loop target
@@ -323,7 +331,7 @@ export async function initAudioWorklet() {
                     });
                 }
                 
-                console.log(`🔄 [LOOP-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from ${newPositionSeconds.toFixed(2)}s, will auto-resume`);
+                // console.log(`🔄 [LOOP-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from ${newPositionSeconds.toFixed(2)}s, will auto-resume`);
             } else {
                 console.error(`❌ [LOOP-READY] Cannot loop: completeSamplesArray unavailable`);
             }
@@ -340,7 +348,7 @@ export async function initAudioWorklet() {
             }
             
             const { totalSamples: finishedTotalSamples, speed } = event.data;
-            console.log(`🏁 [FINISHED] Buffer empty: ${finishedTotalSamples.toLocaleString()} samples @ ${speed.toFixed(2)}x speed`);
+            // console.log(`🏁 [FINISHED] Buffer empty: ${finishedTotalSamples.toLocaleString()} samples @ ${speed.toFixed(2)}x speed`);
             
             if (State.isLooping && State.allReceivedData && State.allReceivedData.length > 0) {
                 State.setPlaybackState(PlaybackState.PLAYING);
@@ -360,7 +368,7 @@ export async function initAudioWorklet() {
                 }
                 
                 if (State.totalAudioDuration > 0) {
-                    requestAnimationFrame(updatePlaybackIndicator);
+                    startPlaybackIndicator();
                 }
             } else {
                 // 🔥 FIX: Cancel animation frame loops to prevent memory leaks
@@ -646,6 +654,8 @@ export async function startStreaming(event) {
         
         if (State.workletNode) {
             console.log('🧹 Starting AGGRESSIVE memory cleanup...');
+            // 🔥 FIX: Cancel RAF loops FIRST to prevent new detached callbacks
+            cancelAllRAFLoops();
             State.workletNode.port.onmessage = null;
             if (State.gainNode && State.audioContext && State.playbackState === PlaybackState.PLAYING) {
                 State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
@@ -664,6 +674,12 @@ export async function startStreaming(event) {
             const oldSamplesLength = State.completeSamplesArray?.length || 0;
             console.log(`🧹 Clearing old audio data: ${oldDataLength} chunks, ${oldSamplesLength.toLocaleString()} samples`);
             
+            // 🔥 FIX: Explicitly null out each chunk to break references before clearing array
+            if (State.allReceivedData && State.allReceivedData.length > 0) {
+                for (let i = 0; i < State.allReceivedData.length; i++) {
+                    State.allReceivedData[i] = null;
+                }
+            }
             State.setAllReceivedData([]);
             State.setCompleteSamplesArray(null);
             State.setCachedWaveformCanvas(null);
@@ -686,10 +702,13 @@ export async function startStreaming(event) {
                 ctx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
             }
             
-            // 🔥 FIX: Cancel animation frame loops to prevent memory leaks
-            cancelAllRAFLoops();
-            
             State.setPlaybackState(PlaybackState.STOPPED);
+            
+            // 🔥 Hint to browser that GC would be nice (only works with --js-flags="--expose-gc")
+            if (typeof window !== 'undefined' && window.gc) {
+                console.log('🗑️ Requesting manual garbage collection...');
+                window.gc();
+            }
             
             console.log('🧹 Memory cleanup complete - old references cleared');
         }

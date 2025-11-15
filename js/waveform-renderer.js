@@ -561,6 +561,17 @@ export function setupWaveformInteraction() {
 // Diagnostic logging state
 let lastDiagnosticTime = 0;
 
+// 🔥 HELPER: Start playback indicator loop (ensures cleanup before starting)
+export function startPlaybackIndicator() {
+    // Cancel any existing RAF to prevent parallel loops
+    if (State.playbackIndicatorRAF !== null) {
+        cancelAnimationFrame(State.playbackIndicatorRAF);
+        State.setPlaybackIndicatorRAF(null);
+    }
+    // Start new loop
+    State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
+}
+
 export function updatePlaybackIndicator() {
     // 🔥 FIX: Cancel any existing RAF to prevent closure chain memory leak
     if (State.playbackIndicatorRAF !== null) {
@@ -579,36 +590,10 @@ export function updatePlaybackIndicator() {
         return;
     }
     
-    // 🐛 DEBUG: Check for duration mismatch (only when all chunks are complete)
-    if (!State.isFetchingNewData && State.allReceivedData && State.allReceivedData.length > 0 && State.totalAudioDuration > 0) {
-        const actualTotalSamples = State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
-        const calculatedDuration = State.totalAudioDuration;
-        const actualDuration = actualTotalSamples / 44100;
-        
-        if (Math.abs(actualDuration - calculatedDuration) > 0.01) {
-            // console.warn(`⚠️ DURATION MISMATCH: calculated=${calculatedDuration.toFixed(2)}s, actual=${actualDuration.toFixed(2)}s (${actualTotalSamples.toLocaleString()} samples)`);
-        }
-        
-        // 📊 DIAGNOSTIC: Log position comparison once per second
-        const now = performance.now();
-        if (now - lastDiagnosticTime >= 1000) {
-            lastDiagnosticTime = now;
-            
-            // Visual playhead percentage
-            const visualPercent = (State.currentAudioPosition / State.totalAudioDuration) * 100;
-            
-            // Audio buffer percentage (from samples)
-            const totalSamples = actualTotalSamples;
-            const currentSample = State.currentAudioPosition * 44100; // Convert time to samples
-            const audioPercent = (currentSample / totalSamples) * 100;
-            
-            // Output latency info
-            const outputLatency = State.audioContext ? (State.audioContext.outputLatency || 0) : 0;
-            const latencyMs = (outputLatency * 1000).toFixed(1);
-            
-            // console.log(`📊 Position: Visual=${visualPercent.toFixed(2)}% (${State.currentAudioPosition.toFixed(2)}s/${State.totalAudioDuration.toFixed(2)}s), Audio=${audioPercent.toFixed(2)}% (sample ${currentSample.toFixed(0)}/${totalSamples}), Latency=${latencyMs}ms`);
-        }
-    }
+    // 🔥 FIX: Removed access to State.allReceivedData to prevent closure leak
+    // The diagnostic code was accessing State.allReceivedData which contains thousands of Float32Array chunks
+    // This created a closure chain: RAF callback → State module → allReceivedData → 4,237 Float32Array chunks (17MB)
+    // Use State.completeSamplesArray.length instead if needed, or remove diagnostic code entirely
     
     if (State.totalAudioDuration > 0) {
         // Check if we've reached the end of an active region and reset play button

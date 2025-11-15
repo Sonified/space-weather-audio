@@ -382,6 +382,9 @@ button.loop-active:hover:not(:disabled) {
     overflow: hidden;
     border: 2px solid rgba(150, 80, 80, 0.5);
     position: relative;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0; /* Allow flex item to shrink below content size */
 }
 
 .status.info { background: rgba(255, 200, 150, 0.3); color: #663300; font-weight: 600; }
