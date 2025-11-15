@@ -416,7 +416,7 @@ export function clearCompleteSpectrogram() {
     renderingInProgress = false;
     State.setSpectrogramInitialized(false);
     
-    // Terminate worker pool if it exists (will be recreated on next render)
+    // Terminate worker pool to free memory (will be recreated on next render)
     if (workerPool) {
         workerPool.terminate();
         workerPool = null;

@@ -281,6 +281,18 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             currentDate.setUTCDate(currentDate.getUTCDate() + 1); // Next day
         }
         
+        // Check if we're too close to UTC midnight for today's metadata to exist
+        const now = new Date();
+        const todayUTC = now.toISOString().split('T')[0];
+        const minutesSinceMidnight = now.getUTCHours() * 60 + now.getUTCMinutes();
+        
+        // If the most recent day is today AND we're within 12 minutes of midnight, remove it
+        // (Collector needs time to generate daily metadata file)
+        if (daysNeeded.length > 1 && daysNeeded[daysNeeded.length - 1] === todayUTC && minutesSinceMidnight < 12) {
+            daysNeeded.pop();
+            console.log(`🌙 ${logTime()} UTC midnight grace period! Only ${minutesSinceMidnight} min since midnight - skipping today's metadata (${todayUTC}) to avoid 404s. Collector needs time to wake up! 😊`);
+        }
+        
         console.log(`📋 ${logTime()} Days needed: ${daysNeeded.join(', ')}`);
         
         // Helper to build CDN chunk URL (NEW format: no sample rate)

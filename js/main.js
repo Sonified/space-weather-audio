@@ -427,6 +427,13 @@ export async function startStreaming(event) {
         // Clear complete spectrogram when loading new data
         clearCompleteSpectrogram();
         
+        // Terminate and recreate waveform worker to free memory
+        if (State.waveformWorker) {
+            State.waveformWorker.terminate();
+            console.log('🧹 Terminated waveform worker');
+        }
+        initWaveformWorker();
+        
         State.setIsShowingFinalWaveform(false);
         
         window.streamingStartTime = performance.now();
@@ -445,6 +452,10 @@ export async function startStreaming(event) {
         const highpassFreq = document.getElementById('highpassFreq').value;
         const enableNormalize = document.getElementById('enableNormalize').checked;
         const volcano = document.getElementById('volcano').value;
+        
+        // Log what we're fetching
+        const stationLabel = `${stationData.network}.${stationData.station}.${stationData.location || '--'}.${stationData.channel}`;
+        console.log(`🌋 Fetching data for ${volcano} from station ${stationLabel}`);
         
         // Track fetch data action
         const participantId = getParticipantId();
@@ -649,8 +660,8 @@ export async function startStreaming(event) {
         State.setSpectrogramInitialized(false);
         
         const baseMessage = forceIrisFetch 
-            ? 'Force IRIS Fetch: Fetching live from IRIS via Railway backend' 
-            : (isActiveStation ? 'Fetching data from R2 via progressive streaming' : 'Fetching data from Railway backend');
+            ? `📡 Fetching data for station ${stationLabel} (${stationData.distance_km}km) from IRIS Server`
+            : (isActiveStation ? `📡 Fetching data for station ${stationLabel} (${stationData.distance_km}km) from R2 Server` : `📡 Fetching data for station ${stationLabel} (${stationData.distance_km}km) from Railway Server`);
         document.getElementById('status').className = 'status info loading';
         document.getElementById('status').textContent = baseMessage;
         
@@ -679,9 +690,7 @@ export async function startStreaming(event) {
             stopPositionTracking();
             document.getElementById('currentPosition').textContent = '0m 0s';
             document.getElementById('downloadSize').textContent = '0.00 MB';
-            if (State.waveformWorker) {
-                State.waveformWorker.postMessage({ type: 'reset' });
-            }
+            // Waveform worker is now terminated/recreated at start of startStreaming()
             const waveformCanvas = document.getElementById('waveform');
             if (waveformCanvas) {
                 const ctx = waveformCanvas.getContext('2d');
