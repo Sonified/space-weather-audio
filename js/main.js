@@ -5,7 +5,7 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed } from './audio-player.js';
+import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
@@ -24,39 +24,9 @@ import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFe
 // See data-fetcher.js for centralized flags documentation
 const DEBUG_CHUNKS = false;
 
-// Make functions available globally (for inline onclick handlers)
-window.loadStations = loadStations;
-window.updateStationList = updateStationList;
-window.startStreaming = startStreaming;
-window.togglePlayPause = togglePlayPause;
-window.toggleLoop = toggleLoop;
-window.changePlaybackSpeed = changePlaybackSpeed;
-window.changeVolume = changeVolume;
-window.purgeCloudflareCache = purgeCloudflareCache;
-window.openParticipantModal = openParticipantModal;
-window.closeParticipantModal = closeParticipantModal;
-window.submitParticipantSetup = submitParticipantSetup;
-window.openPreSurveyModal = openPreSurveyModal;
-window.closePreSurveyModal = closePreSurveyModal;
-window.submitPreSurvey = submitPreSurvey;
-window.openPostSurveyModal = openPostSurveyModal;
-window.closePostSurveyModal = closePostSurveyModal;
-window.submitPostSurvey = submitPostSurvey;
-window.openAwesfModal = openAwesfModal;
-window.closeAwesfModal = closeAwesfModal;
-window.submitAwesfSurvey = submitAwesfSurvey;
-window.attemptSubmission = attemptSubmission;
-window.toggleAdminMode = toggleAdminMode;
-window.changeWaveformFilter = handleWaveformFilterChange;
-window.toggleAntiAliasing = toggleAntiAliasing;
-window.toggleForceIris = toggleForceIris;
-window.toggleRegion = toggleRegion;
-window.toggleRegionPlay = toggleRegionPlay;
-window.addFeature = addFeature;
-window.updateFeature = updateFeature;
-window.deleteRegion = deleteRegion;
-window.startFrequencySelection = startFrequencySelection;
-window.createTestRegion = createTestRegion;
+// 🧹 MEMORY LEAK FIX: Use event listeners instead of window.* assignments
+// This prevents closure memory leaks by avoiding permanent window references
+// that capture entire module scopes including State with all audio data
 
 // Force IRIS fetch state
 let forceIrisFetch = false;
@@ -494,7 +464,9 @@ export async function startStreaming(event) {
         
         // 1. Worker creation
         if (window.audioWorker) {
+            console.log('🧹 Terminating old audio worker...');
             window.audioWorker.terminate();
+            window.audioWorker = null; // 🧹 Clear reference before creating new worker
         }
         window.audioWorker = new Worker('workers/audio-processor-worker.js');
         const workerReadyPromise = new Promise(resolve => {
@@ -666,6 +638,7 @@ export async function startStreaming(event) {
         document.getElementById('status').textContent = baseMessage;
         
         if (State.workletNode) {
+            console.log('🧹 Starting AGGRESSIVE memory cleanup...');
             State.workletNode.port.onmessage = null;
             if (State.gainNode && State.audioContext && State.playbackState === PlaybackState.PLAYING) {
                 State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
@@ -678,6 +651,12 @@ export async function startStreaming(event) {
                 State.gainNode.disconnect();
                 State.setGainNode(null);
             }
+            
+            // 🧹 AGGRESSIVE CLEANUP: Explicitly null out large arrays
+            const oldDataLength = State.allReceivedData?.length || 0;
+            const oldSamplesLength = State.completeSamplesArray?.length || 0;
+            console.log(`🧹 Clearing old audio data: ${oldDataLength} chunks, ${oldSamplesLength.toLocaleString()} samples`);
+            
             State.setAllReceivedData([]);
             State.setCompleteSamplesArray(null);
             State.setCachedWaveformCanvas(null);
@@ -687,6 +666,8 @@ export async function startStreaming(event) {
             State.setCurrentAudioPosition(0);
             document.getElementById('playbackDuration').textContent = '--';
             window.playbackDurationSeconds = null;
+            window.rawWaveformData = null; // 🧹 Clear raw waveform data for GC
+            window.displayWaveformData = null; // 🧹 Clear display waveform data for GC
             stopPositionTracking();
             document.getElementById('currentPosition').textContent = '0m 0s';
             document.getElementById('downloadSize').textContent = '0.00 MB';
@@ -698,6 +679,8 @@ export async function startStreaming(event) {
                 ctx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
             }
             State.setPlaybackState(PlaybackState.STOPPED);
+            
+            console.log('🧹 Memory cleanup complete - old references cleared');
         }
         
         await initAudioWorklet();
@@ -1013,5 +996,43 @@ window.addEventListener('DOMContentLoaded', async () => {
             lastWaveformHeight = waveformCanvas.offsetHeight;
         }
     }, 100);
+    
+    // 🎯 SETUP EVENT LISTENERS (replaces onclick handlers to prevent memory leaks)
+    // All event listeners are properly scoped and don't create permanent closures on window.*
+    
+    // Cache & Download
+    document.getElementById('purgeCacheBtn').addEventListener('click', purgeCloudflareCache);
+    document.getElementById('downloadBtn').addEventListener('click', downloadAudio);
+    
+    // Station Selection
+    document.getElementById('volcano').addEventListener('change', loadStations);
+    document.getElementById('dataType').addEventListener('change', updateStationList);
+    
+    // Data Fetching
+    document.getElementById('startBtn').addEventListener('click', startStreaming);
+    document.getElementById('forceIrisBtn').addEventListener('click', toggleForceIris);
+    
+    // Playback Controls
+    document.getElementById('playPauseBtn').addEventListener('click', togglePlayPause);
+    document.getElementById('loopBtn').addEventListener('click', toggleLoop);
+    document.getElementById('playbackSpeed').addEventListener('input', changePlaybackSpeed);
+    document.getElementById('volumeSlider').addEventListener('input', changeVolume);
+    
+    // Waveform Filters
+    document.getElementById('removeDCOffset').addEventListener('change', handleWaveformFilterChange);
+    document.getElementById('waveformFilterSlider').addEventListener('input', handleWaveformFilterChange);
+    
+    // Anti-aliasing
+    document.getElementById('antiAliasingBtn').addEventListener('click', toggleAntiAliasing);
+    
+    // Survey/Modal Buttons
+    document.getElementById('participantModalBtn').addEventListener('click', openParticipantModal);
+    document.getElementById('preSurveyModalBtn').addEventListener('click', openPreSurveyModal);
+    document.getElementById('awesfModalBtn').addEventListener('click', openAwesfModal);
+    document.getElementById('postSurveyModalBtn').addEventListener('click', openPostSurveyModal);
+    document.getElementById('submitBtn').addEventListener('click', attemptSubmission);
+    document.getElementById('adminModeBtn').addEventListener('click', toggleAdminMode);
+    
+    console.log('✅ Event listeners setup complete - memory leak prevention active!');
 });
 

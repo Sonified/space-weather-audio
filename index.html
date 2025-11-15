@@ -24,12 +24,12 @@
         <div class="panel panel-cache" id="cachePanel" style="padding: 15px 20px; display: none;">
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                 <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Cache:</label>
-                <button type="button" id="purgeCacheBtn" onclick="purgeCloudflareCache()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🗑️ Purge CDN Cache</button>
+                <button type="button" id="purgeCacheBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🗑️ Purge CDN Cache</button>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" id="bypassCache" style="width: 20px; height: 20px; cursor: pointer;">
                     <label for="bypassCache" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #333;">Bypass CDN Cache</label>
                 </div>
-                <button type="button" onclick="downloadAudio()" id="downloadBtn" disabled style="padding: 10px 20px; font-size: 14px; min-width: auto;">💾 Download Audio File</button>
+                <button type="button" id="downloadBtn" disabled style="padding: 10px 20px; font-size: 14px; min-width: auto;">💾 Download Audio File</button>
             </div>
         </div>
         
@@ -37,7 +37,7 @@
             <div class="controls">
                 <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px;">
                     <label for="volcano" style="margin-bottom: 0;">Volcano:</label>
-                    <select id="volcano" onchange="loadStations()">
+                    <select id="volcano">
                         <option value="kilauea">Kīlauea (HI)</option>
                         <option value="maunaloa">Mauna Loa (HI)</option>
                         <option value="greatsitkin">Great Sitkin (AK)</option>
@@ -48,7 +48,7 @@
                 
                 <div class="control-group" style="display: none;">
                     <label for="dataType">Data Type:</label>
-                    <select id="dataType" onchange="updateStationList()">
+                    <select id="dataType">
                         <option value="seismic">Seismic (Z-component)</option>
                         <option value="infrasound">Infrasound</option>
                     </select>
@@ -75,7 +75,7 @@
                 </div>
                 
                 <div class="control-group">
-                    <button type="button" id="startBtn" onclick="startStreaming(event)" style="min-width: 150px; padding: 10px 20px; font-size: 16px;">📡 Fetch Data</button>
+                    <button type="button" id="startBtn" style="min-width: 150px; padding: 10px 20px; font-size: 16px;">📡 Fetch Data</button>
                 </div>
                 
                 <div class="control-group" style="display: flex; flex-direction: row; align-items: center; gap: 8px;">
@@ -90,7 +90,7 @@
                 </div>
                 
                 <div class="control-group" id="forceIrisControlGroup" style="margin-left: auto; display: none;">
-                    <button type="button" id="forceIrisBtn" onclick="toggleForceIris()" style="padding: 8px 16px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d;">🌐 Force IRIS Fetch: OFF</button>
+                    <button type="button" id="forceIrisBtn" style="padding: 8px 16px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d;">🌐 Force IRIS Fetch: OFF</button>
                 </div>
                 
                 <div class="control-group" style="display: none;">
@@ -108,7 +108,7 @@
                 </div>
                 
                 <div class="control-group" style="display: none;">
-                    <button type="button" id="antiAliasingBtn" onclick="toggleAntiAliasing()" class="loop-active" style="padding: 8px 16px; font-size: 14px; min-width: auto;">🎛️ Anti-Alias: ON</button>
+                    <button type="button" id="antiAliasingBtn" class="loop-active" style="padding: 8px 16px; font-size: 14px; min-width: auto;">🎛️ Anti-Alias: ON</button>
                 </div>
                 
                 <div class="control-group" style="display: none;">
@@ -130,23 +130,23 @@
         
         <div class="panel panel-playback">
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
-                <button type="button" onclick="togglePlayPause()" id="playPauseBtn" disabled style="min-width: 120px;">⏸️ Pause</button>
-                <button type="button" onclick="toggleLoop()" id="loopBtn" disabled style="min-width: 120px;">🔁 Loop</button>
+                <button type="button" id="playPauseBtn" disabled style="min-width: 120px;">⏸️ Pause</button>
+                <button type="button" id="loopBtn" disabled style="min-width: 120px;">🔁 Loop</button>
                 <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(600px, 100%); gap: 10px; padding: 0 20px 0 20px; box-sizing: border-box;">
                     <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
-                    <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" oninput="changePlaybackSpeed()" style="flex: 1; min-width: 0;">
+                    <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" style="flex: 1; min-width: 0;">
                 </div>
                 <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(400px, 100%); gap: 10px; padding: 0 20px 0 5px; box-sizing: border-box;">
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
-                    <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" oninput="changeVolume()" style="flex: 1; min-width: 0;">
+                    <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
                 </div>
                 <div style="display: none; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(500px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                        <input type="checkbox" id="removeDCOffset" onchange="changeWaveformFilter()" checked style="width: 20px; height: 20px; cursor: pointer;">
+                        <input type="checkbox" id="removeDCOffset" checked style="width: 20px; height: 20px; cursor: pointer;">
                         <span style="font-weight: 600; white-space: nowrap; font-size: 18px;">Drift Removal:</span>
                     </label>
                     <label for="waveformFilterSlider" id="waveformFilterLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Adjust drift removal aggressiveness"><span id="waveformFilterValue">0.9974</span></label>
-                    <input type="range" id="waveformFilterSlider" min="0" max="100" step="1" value="95" oninput="changeWaveformFilter()" style="flex: 1; min-width: 0;">
+                    <input type="range" id="waveformFilterSlider" min="0" max="100" step="1" value="95" style="flex: 1; min-width: 0;">
                 </div>
             </div>
         </div>
@@ -218,12 +218,12 @@
         <div class="panel panel-simulate" style="padding: 15px 20px;">
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                 <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Simulate:</label>
-                <button type="button" onclick="openParticipantModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👤 Participant Setup</button>
-                <button type="button" onclick="openPreSurveyModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Pre-Survey</button>
-                <button type="button" onclick="openAwesfModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">✨ AWE-SF</button>
-                <button type="button" onclick="openPostSurveyModal()" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Post-Survey</button>
-                <button type="button" onclick="attemptSubmission()" style="padding: 10px 20px; font-size: 14px; min-width: auto; background: #28a745; border-color: #28a745; color: white; font-weight: 600;">📤 Submit</button>
-                <button type="button" id="adminModeBtn" onclick="toggleAdminMode()" style="margin-left: auto; padding: 10px 20px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d; color: white;">👑 Admin Mode: OFF</button>
+                <button type="button" id="participantModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👤 Participant Setup</button>
+                <button type="button" id="preSurveyModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Pre-Survey</button>
+                <button type="button" id="awesfModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">✨ AWE-SF</button>
+                <button type="button" id="postSurveyModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Post-Survey</button>
+                <button type="button" id="submitBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto; background: #28a745; border-color: #28a745; color: white; font-weight: 600;">📤 Submit</button>
+                <button type="button" id="adminModeBtn" style="margin-left: auto; padding: 10px 20px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d; color: white;">👑 Admin Mode: OFF</button>
             </div>
         </div>
     </div>

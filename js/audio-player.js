@@ -382,7 +382,7 @@ function updatePlaybackDuration() {
 }
 
 // Download audio as WAV file
-window.downloadAudio = function() {
+export function downloadAudio() {
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         console.warn('No audio data to download');
         return;

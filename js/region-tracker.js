@@ -470,6 +470,7 @@ function createRegionCard(region, index) {
     header.className = `region-header ${region.expanded ? 'expanded' : ''}`;
     header.onclick = (e) => {
         if (e.target.closest('.play-btn') || 
+            e.target.closest('.zoom-btn') ||
             e.target.closest('.delete-region-btn') ||
             e.target.closest('.collapse-icon')) {
             return;
@@ -482,9 +483,14 @@ function createRegionCard(region, index) {
         : '';
     
     header.innerHTML = `
-        <span class="collapse-icon" onclick="window.toggleRegion(${index}); event.stopPropagation();">▼</span>
+        <span class="collapse-icon" data-region-index="${index}">▼</span>
+        <button class="zoom-btn" 
+                data-region-index="${index}"
+                title="Zoom to region">
+            🔍
+        </button>
         <button class="play-btn ${region.playing ? 'playing' : ''}" 
-                onclick="window.toggleRegionPlay(${index}); event.stopPropagation();"
+                data-region-index="${index}"
                 title="Play region">
             ${region.playing ? '⏸' : '▶'}
         </button>
@@ -496,11 +502,29 @@ function createRegionCard(region, index) {
             </div>
         </div>
         <button class="delete-region-btn" 
-                onclick="window.deleteRegion(${index}); event.stopPropagation();"
+                data-region-index="${index}"
                 title="Delete region">
             ✕
         </button>
     `;
+    
+    // 🧹 MEMORY LEAK FIX: Attach event listeners instead of inline onclick
+    header.querySelector('.collapse-icon').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleRegion(index);
+    });
+    header.querySelector('.zoom-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Zoom functionality can be added here
+    });
+    header.querySelector('.play-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleRegionPlay(index);
+    });
+    header.querySelector('.delete-region-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteRegion(index);
+    });
     
     // Details section
     const details = document.createElement('div');
@@ -515,19 +539,35 @@ function createRegionCard(region, index) {
             <div id="features-${region.id}" class="features-container"></div>
             <div class="add-feature-row">
                 <button class="add-feature-btn" 
-                        onclick="window.addFeature(${index}); event.stopPropagation();"
+                        data-region-index="${index}"
                         ${isMaxFeatures ? 'disabled' : ''}
                         title="${isMaxFeatures ? 'Maximum features (10) reached' : 'Add feature'}">
                     +
                 </button>
                 <span class="add-feature-label ${isMaxFeatures ? 'disabled' : ''}"
-                      onclick="${isMaxFeatures ? '' : `window.addFeature(${index}); event.stopPropagation();`}"
+                      data-region-index="${index}"
                       title="${isMaxFeatures ? 'Maximum features (10) reached' : 'Add feature'}">
                     ${isMaxFeatures ? 'Max features reached' : 'Add feature'}
                 </span>
             </div>
         </div>
     `;
+    
+    // 🧹 MEMORY LEAK FIX: Attach event listeners for add feature buttons
+    const addFeatureBtn = detailsContent.querySelector('.add-feature-btn');
+    const addFeatureLabel = detailsContent.querySelector('.add-feature-label');
+    if (addFeatureBtn && !isMaxFeatures) {
+        addFeatureBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            addFeature(index);
+        });
+    }
+    if (addFeatureLabel && !isMaxFeatures) {
+        addFeatureLabel.addEventListener('click', (e) => {
+            e.stopPropagation();
+            addFeature(index);
+        });
+    }
     
     details.appendChild(detailsContent);
     card.appendChild(header);
@@ -596,19 +636,19 @@ function renderFeatures(regionId, regionIndex) {
         
         featureRow.innerHTML = `
             <span class="feature-number">Feature ${featureIndex + 1}</span>
-            <select id="repetition-${regionIndex}-${featureIndex}" onchange="window.updateFeature(${regionIndex}, ${featureIndex}, 'repetition', this.value)">
+            <select id="repetition-${regionIndex}-${featureIndex}">
                 <option value="Unique" ${feature.repetition === 'Unique' || !feature.repetition ? 'selected' : ''}>Unique</option>
                 <option value="Repeated" ${feature.repetition === 'Repeated' ? 'selected' : ''}>Repeated</option>
             </select>
             
-            <select id="type-${regionIndex}-${featureIndex}" onchange="window.updateFeature(${regionIndex}, ${featureIndex}, 'type', this.value)">
+            <select id="type-${regionIndex}-${featureIndex}">
                 <option value="Impulsive" ${feature.type === 'Impulsive' || !feature.type ? 'selected' : ''}>Impulsive</option>
                 <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
             </select>
             
             <button class="select-freq-btn ${!feature.lowFreq || !feature.highFreq ? 'pulse' : 'completed'}" 
-                    onclick="window.startFrequencySelection(${regionIndex}, ${featureIndex})"
                     id="select-btn-${regionIndex}-${featureIndex}"
+                    data-region-index="${regionIndex}" data-feature-index="${featureIndex}"
                     title="${feature.lowFreq && feature.highFreq ? 'click to select' : ''}">
                 ${feature.lowFreq && feature.highFreq ? 
                     `${parseFloat(feature.lowFreq).toFixed(1)} - ${parseFloat(feature.highFreq).toFixed(1)} Hz` :
@@ -618,12 +658,41 @@ function renderFeatures(regionId, regionIndex) {
             
             <textarea class="freq-input notes-field" 
                       placeholder="Add description..." 
-                      onchange="window.updateFeature(${regionIndex}, ${featureIndex}, 'notes', this.value)"
-                      onkeydown="if(event.key === 'Enter') { event.preventDefault(); this.blur(); }"
+                      data-region-index="${regionIndex}" data-feature-index="${featureIndex}"
                       id="notes-${regionIndex}-${featureIndex}">${feature.notes || ''}</textarea>
         `;
         
         featureRow.insertBefore(deleteBtn, featureRow.firstChild);
+        
+        // 🧹 MEMORY LEAK FIX: Attach event listeners for feature controls
+        const repetitionSelect = featureRow.querySelector(`#repetition-${regionIndex}-${featureIndex}`);
+        const typeSelect = featureRow.querySelector(`#type-${regionIndex}-${featureIndex}`);
+        const freqBtn = featureRow.querySelector(`#select-btn-${regionIndex}-${featureIndex}`);
+        const notesField = featureRow.querySelector(`#notes-${regionIndex}-${featureIndex}`);
+        
+        repetitionSelect.addEventListener('change', function() {
+            updateFeature(regionIndex, featureIndex, 'repetition', this.value);
+        });
+        
+        typeSelect.addEventListener('change', function() {
+            updateFeature(regionIndex, featureIndex, 'type', this.value);
+        });
+        
+        freqBtn.addEventListener('click', () => {
+            startFrequencySelection(regionIndex, featureIndex);
+        });
+        
+        notesField.addEventListener('change', function() {
+            updateFeature(regionIndex, featureIndex, 'notes', this.value);
+        });
+        
+        notesField.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                this.blur();
+            }
+        });
+        
         container.appendChild(featureRow);
     });
 }

@@ -535,3 +535,68 @@ Verified new credentials work with test script that successfully:
 
 **Commit**: v1.93 Security: Removed hardcoded R2 credentials - implemented python-dotenv for local .env file management, updated collector_loop.py and backfill scripts to use environment variables, added .env to .gitignore, generated new R2 keys, configured Railway dashboard variables
 
+---
+
+## v1.95 - Critical Memory Leak Fix: Eliminated window.* Closures (2025-11-14)
+
+### Problem Discovered
+Heap snapshot analysis revealed **MASSIVE memory leak**:
+- **87,000 ArrayBuffer instances** holding **1GB+ of memory**
+- Each buffer was exactly **34MB** (8.64M Float32 samples = 3.26 minutes of audio)
+- **2.1 MILLION Function instances** (closures not cleaned up)
+- Memory baseline growing **~100MB per session** and never releasing
+- Retainer chain showed: `Float32Array.buffer` → `State` → `attemptSubmission()` in `Window (global*)`
+
+### Root Cause
+**All** inline `onclick="functionName()"` handlers created permanent closures on `window.*` that captured:
+- Entire module scope including `import * as State`
+- `State.completeSamplesArray` (8.64M Float32Array = 34MB per session)
+- `State.allReceivedData` (all audio chunks)
+- **NEVER garbage collected** because `window` object persists forever
+
+32+ window.* assignments in main.js:
+```javascript
+window.attemptSubmission = attemptSubmission;  // ❌ Captures State forever!
+window.startStreaming = startStreaming;  // ❌ Captures State forever!
+// ... 30 more creating permanent closures
+```
+
+### Solution
+**Completely refactored event handling**:
+
+1. **HTML Cleanup** (`index.html`)
+   - Removed ALL 16 inline `onclick/onchange/oninput` attributes
+   - Added unique `id` attributes where missing
+
+2. **Event Listener Architecture** (`js/main.js`)
+   - Removed all 32 `window.* = function` assignments
+   - Added proper `addEventListener` setup in DOMContentLoaded
+   - Event listeners properly scoped - no permanent closures
+
+3. **Dynamic HTML Fix** (`js/region-tracker.js`)
+   - Refactored dynamically generated HTML (worst offender!)
+   - Replaced inline `onclick="window.functionName()"` with data attributes
+   - Attached event listeners programmatically after DOM creation
+
+4. **Additional Cleanup**
+   - `js/audio-player.js` - Changed `window.downloadAudio` to proper export
+   - `js/data-fetcher.js` - Added progressive chunk memory cleanup
+   - Fixed global leaks: `window.rawWaveformData`, `window.displayWaveformData`, `window.audioWorker`
+
+### Memory Impact
+**Before**: Each session = 200MB that NEVER freed (accumulated indefinitely)
+**After**: Old audio data properly garbage collected between sessions
+
+### Files Changed
+- `index.html` - Removed all inline event handlers
+- `js/main.js` - Event listener setup, removed window assignments
+- `js/audio-player.js` - Proper export instead of window assignment
+- `js/region-tracker.js` - Refactored dynamic HTML generation
+- `js/data-fetcher.js` - Progressive memory cleanup
+- `backend/collector_loop.py` - Version bump to v1.95
+
+### Technical Details
+The heap snapshot showed functions like `attemptSubmission` on `Window (global*)` holding references to the entire State module, which held ALL audio data from EVERY session. Even after calling cleanup code, the window.* closures prevented garbage collection. This is a textbook closure memory leak pattern.
+
+**Commit**: v1.95 Critical Fix: Eliminated 1GB+ memory leak - removed all window.* function assignments and inline onclick handlers, refactored to proper event listeners, added progressive chunk cleanup, fixed closure chain preventing garbage collection of old audio data
+

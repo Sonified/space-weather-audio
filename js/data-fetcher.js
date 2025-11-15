@@ -570,6 +570,19 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 
                 nextChunkToSend++;
             }
+            
+            // 🧹 PROGRESSIVE MEMORY CLEANUP: Free chunks that have been sent to both worklet AND waveform worker
+            // Clear from the oldest sent chunk up to the current send position
+            // This frees memory progressively as chunks are processed
+            for (let i = 0; i < nextChunkToSend; i++) {
+                if (processedChunks[i] && processedChunks[i].samples !== null) {
+                    // Only clear if this chunk has also been sent to waveform worker
+                    if (i < nextWaveformChunk) {
+                        processedChunks[i].samples = null; // Free main thread memory (rawSamples kept for final waveform)
+                        if (DEBUG_CHUNKS && i % 10 === 0) console.log(`🧹 Freed chunk ${i} samples from main thread memory`);
+                    }
+                }
+            }
         }
         
         // Track which chunks to send to waveform worker in order
@@ -659,21 +672,27 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     console.log(`✅ All ${chunksToFetch.length} chunks processed in ${totalTime.toFixed(0)}ms total`);
                     
                     // 🔍 DEBUG: Calculate actual total samples from processed chunks
+                    // Note: Some chunks may have samples=null due to progressive memory cleanup
                     let actualTotalSamples = 0;
                     const chunkSampleCounts = [];
                     for (let i = 0; i < processedChunks.length; i++) {
                         if (processedChunks[i]) {
-                            const count = processedChunks[i].samples.length;
-                            actualTotalSamples += count;
-                            chunkSampleCounts.push(`chunk ${i}: ${count.toLocaleString()}`);
+                            // Check if samples still exist (not freed by progressive cleanup)
+                            if (processedChunks[i].samples) {
+                                const count = processedChunks[i].samples.length;
+                                actualTotalSamples += count;
+                                chunkSampleCounts.push(`chunk ${i}: ${count.toLocaleString()}`);
+                            } else {
+                                chunkSampleCounts.push(`chunk ${i}: freed`);
+                            }
                         } else {
                             chunkSampleCounts.push(`chunk ${i}: MISSING`);
                         }
                     }
-                    if (DEBUG_CHUNKS) console.log(`📊 ${logTime()} Actual samples per chunk: ${chunkSampleCounts.join(', ')}`);
-                    console.log(`📊 ${logTime()} Total actual samples: ${actualTotalSamples.toLocaleString()} (expected: ${totalSamples.toLocaleString()})`);
+                    if (DEBUG_CHUNKS) console.log(`📊 ${logTime()} Chunk sample counts: ${chunkSampleCounts.join(', ')}`);
+                    if (DEBUG_CHUNKS && actualTotalSamples > 0) console.log(`📊 ${logTime()} Actual samples from non-freed chunks: ${actualTotalSamples.toLocaleString()}`);
                     
-                    // Calculate expected total
+                    // Calculate total from worklet data (most reliable - includes all chunks)
                     const totalWorkletSamples = State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
                     console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()} (from allReceivedData)`);
                     
@@ -703,7 +722,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 
                                 // Terminate worker (we're done!)
                                 worker.terminate();
-                                console.log('🏭 Worker terminated');
+                                window.audioWorker = null; // 🧹 Clear global reference for GC
+                                console.log('🏭 Worker terminated and cleared');
                                 
                                 // Update download size
                                 document.getElementById('downloadSize').textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
@@ -810,9 +830,10 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             const t0 = performance.now();
             
             // Stitch all chunks together
+            // Note: Some chunks may have samples=null due to progressive memory cleanup
             let totalLength = 0;
             for (let i = 0; i < processedChunks.length; i++) {
-                if (processedChunks[i]) {
+                if (processedChunks[i] && processedChunks[i].samples) {
                     totalLength += processedChunks[i].samples.length;
                 }
             }
@@ -822,7 +843,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             
             let offset = 0;
             for (let i = 0; i < processedChunks.length; i++) {
-                if (processedChunks[i]) {
+                if (processedChunks[i] && processedChunks[i].samples) {
                     const { samples, rawSamples } = processedChunks[i];
                     stitchedFloat32.set(samples, offset);
                     stitchedRaw.set(rawSamples, offset);
