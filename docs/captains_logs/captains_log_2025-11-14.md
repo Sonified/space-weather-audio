@@ -600,3 +600,132 @@ The heap snapshot showed functions like `attemptSubmission` on `Window (global*)
 
 **Commit**: v1.95 Critical Fix: Eliminated 1GB+ memory leak - removed all window.* function assignments and inline onclick handlers, refactored to proper event listeners, added progressive chunk cleanup, fixed closure chain preventing garbage collection of old audio data
 
+---
+
+## 🔇 FIX: Gap Handling with Silence & Boundary Smoothing (v1.96)
+
+### Problem
+When stations went down and data chunks were missing, the application was silently skipping those gaps:
+- Missing chunks were not fetched (correct)
+- But no data was inserted for those time periods (wrong!)
+- Result: Timeline compression - 24h request would only play 23h 10min
+- Example: Request 4,320,000 samples but only get 4,170,000 (missing 50 minutes)
+- Timestamps didn't match audio position - confusing for users
+- Also: Audible clicks at gap boundaries due to discontinuities
+
+### Root Cause
+In `calculateChunksNeededMultiDay()`, missing chunks were logged but not added to the chunks array:
+```javascript
+if (chunkData) {
+    chunks.push({ /* chunk data */ });
+} else {
+    console.warn(`⚠️ MISSING 10m chunk: ${date} ${time} - chunk not found in metadata!`);
+    // ❌ Nothing added - gap just disappeared from timeline
+}
+```
+
+### Solution: Fill Gaps with Silence
+
+**Step 1: Mark Missing Chunks** (`data-fetcher.js`)
+- When chunk not found in metadata, calculate expected sample count
+- Add to chunks array with `isMissing: true` flag
+- Set min/max to 0 for normalization consistency
+
+```javascript
+chunks.push({
+    type: '10m',
+    start: timeStr,
+    end: endTimeStr,
+    min: 0,
+    max: 0,
+    samples: expectedSamples,  // 10min × sample_rate
+    date: currentDate,
+    isMissing: true
+});
+```
+
+**Step 2: Skip Fetch for Missing Chunks** (`data-fetcher.js`)
+- In download loop, check `chunk.isMissing` flag
+- Return immediately without fetching
+- Pass metadata to worker to generate silence
+
+```javascript
+if (chunk.isMissing) {
+    return Promise.resolve({
+        compressed: null,
+        isMissing: true,
+        expectedSamples: chunk.samples
+    });
+}
+```
+
+**Step 3: Generate Silence in Worker** (`audio-processor-worker.js`)
+- Worker receives `isMissing` flag
+- Creates Float32Array and Int32Array of zeros (typed arrays initialize to 0)
+- Processes instantly (~0ms) - no decompression needed
+
+```javascript
+if (isMissing) {
+    const normalized = new Float32Array(expectedSamples);  // All zeros
+    const int32Samples = new Int32Array(expectedSamples);  // All zeros
+    // Send back...
+}
+```
+
+**Step 4: Boundary Smoothing** (`data-fetcher.js`)
+- Apply 1000-sample linear interpolation at transitions
+- Real → Missing: Fade from last real value to 0
+- Missing → Real: Fade from previous real value to 0 at start
+
+```javascript
+const SMOOTH_SAMPLES = 1000; // ~23ms at 44.1kHz
+
+// Transition into missing chunk
+if (isMissing && prevChunk) {
+    const prevValue = prevSamples[prevSamples.length - 1];
+    for (let i = 0; i < SMOOTH_SAMPLES; i++) {
+        const alpha = i / SMOOTH_SAMPLES;
+        samples[i] = prevValue * (1 - alpha) + 0 * alpha;
+    }
+}
+
+// Transition from real chunk before gap
+if (!isMissing && nextIsMissing) {
+    const startValue = samples[samples.length - SMOOTH_SAMPLES];
+    for (let i = 0; i < SMOOTH_SAMPLES; i++) {
+        const alpha = i / SMOOTH_SAMPLES;
+        samples[samples.length - SMOOTH_SAMPLES + i] = startValue * (1 - alpha);
+    }
+}
+```
+
+### Technical Details
+
+**Memory Efficiency**:
+- Float32Array initializes to zeros automatically
+- No explicit loop needed to fill with silence
+- Zero-copy transfer to worklet
+
+**Timeline Accuracy**:
+- Expected samples: 4,320,000 (24h × 50 Hz)
+- Actual samples: 4,320,000 (gaps filled!)
+- Perfect timestamp alignment maintained
+
+**Smoothing Math**:
+- Linear interpolation: `value = start * (1 - alpha) + end * alpha`
+- 1000 samples = ~23ms at 44.1kHz playback
+- Imperceptible transition, eliminates clicks
+
+### Files Modified
+- `js/data-fetcher.js` - Added missing chunk detection, silence generation, boundary smoothing in sendChunksInOrder()
+- `workers/audio-processor-worker.js` - Added isMissing handler to generate zero arrays
+
+### Result
+✅ **Perfect timestamp accuracy** - 24h request = 24h playback duration
+✅ **Gaps represented honestly** - Silence where station was down
+✅ **No clicks** - Smooth transitions with 1000-sample interpolation
+✅ **Waveform shows gaps** - Flat lines where data missing (no squiggles)
+✅ **Spectrogram shows gaps** - Dark regions where silent
+
+**Commit**: v1.96 Fix: Gap handling with silence and boundary smoothing - missing data chunks now filled with zeros of correct duration, linear interpolation smoothing (1000 samples) at boundaries to eliminate clicks, maintains perfect timestamp accuracy
+

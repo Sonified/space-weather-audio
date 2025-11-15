@@ -10,11 +10,34 @@ console.log('🏭 Audio Processor Worker initialized');
 self.postMessage('ready');
 
 self.onmessage = async (e) => {
-    const { type, compressed, normMin, normMax, chunkIndex } = e.data;
+    const { type, compressed, normMin, normMax, chunkIndex, isMissing, expectedSamples } = e.data;
     
     if (type === 'process-chunk') {
         const t0 = performance.now();
         
+        // 🆕 Handle missing chunks - generate zeros instead of decompressing
+        if (isMissing) {
+            // Create arrays of zeros (Float32Array initializes to 0)
+            const normalized = new Float32Array(expectedSamples);  // Already all zeros
+            const int32Samples = new Int32Array(expectedSamples);  // Already all zeros
+            
+            const totalTime = performance.now() - t0;
+            
+            if (DEBUG_CHUNKS) console.log(`🏭 Worker generated silence for chunk ${chunkIndex}: ${expectedSamples.toLocaleString()} samples in ${totalTime.toFixed(0)}ms`);
+            
+            // Send back (no transfer needed, but include for consistency)
+            self.postMessage({ 
+                type: 'chunk-ready',
+                chunkIndex,
+                samples: normalized,
+                rawSamples: int32Samples,
+                sampleCount: normalized.length
+            }, [normalized.buffer, int32Samples.buffer]);
+            
+            return;
+        }
+        
+        // Normal processing for existing chunks
         // 1. Decompress (off main thread!)
         const decompressed = fzstd.decompress(new Uint8Array(compressed));
         const int32Samples = new Int32Array(

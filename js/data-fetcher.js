@@ -92,7 +92,27 @@ function calculateChunksNeededMultiDay(startTime, endTime, allDayMetadata) {
                 });
                 if (DEBUG_CHUNKS) console.log(`✅ Found 10m chunk: ${currentDate} ${timeStr} (${chunkData.samples.toLocaleString()} samples)`);
             } else {
-                console.warn(`⚠️ MISSING 10m chunk: ${currentDate} ${timeStr} - chunk not found in metadata!`);
+                // Calculate expected end time for missing chunk
+                const endTime = new Date(currentTime);
+                endTime.setUTCMinutes(endTime.getUTCMinutes() + 10);
+                const endTimeStr = formatTime(endTime.getUTCHours(), endTime.getUTCMinutes());
+                
+                // Get sample rate from first available metadata
+                const firstDayMeta = allDayMetadata.find(m => m && m.sample_rate);
+                const sampleRate = firstDayMeta ? firstDayMeta.sample_rate : 50; // Default to 50 Hz if not found
+                const expectedSamples = 10 * 60 * sampleRate; // 10 minutes worth
+                
+                chunks.push({
+                    type: '10m',
+                    start: timeStr,
+                    end: endTimeStr,
+                    min: 0,
+                    max: 0,
+                    samples: expectedSamples,
+                    date: currentDate,
+                    isMissing: true // 🆕 Flag for missing data
+                });
+                console.warn(`⚠️ MISSING 10m chunk: ${currentDate} ${timeStr} - will fill with ${expectedSamples.toLocaleString()} zeros`);
             }
             currentTime.setUTCMinutes(currentTime.getUTCMinutes() + 10);
             minutesElapsed += 10;
@@ -155,7 +175,27 @@ function calculateChunksNeededMultiDay(startTime, endTime, allDayMetadata) {
             });
             if (DEBUG_CHUNKS) console.log(`✅ Found 10m chunk: ${currentDate} ${timeStr} (${chunkData.samples.toLocaleString()} samples)`);
         } else {
-            console.warn(`⚠️ MISSING 10m chunk: ${currentDate} ${timeStr} - chunk not found in metadata!`);
+            // Calculate expected end time for missing chunk
+            const endTime = new Date(currentTime);
+            endTime.setUTCMinutes(endTime.getUTCMinutes() + 10);
+            const endTimeStr = formatTime(endTime.getUTCHours(), endTime.getUTCMinutes());
+            
+            // Get sample rate from first available metadata
+            const firstDayMeta = allDayMetadata.find(m => m && m.sample_rate);
+            const sampleRate = firstDayMeta ? firstDayMeta.sample_rate : 50; // Default to 50 Hz if not found
+            const expectedSamples = 10 * 60 * sampleRate; // 10 minutes worth
+            
+            chunks.push({
+                type: '10m',
+                start: timeStr,
+                end: endTimeStr,
+                min: 0,
+                max: 0,
+                samples: expectedSamples,
+                date: currentDate,
+                isMissing: true // 🆕 Flag for missing data
+            });
+            console.warn(`⚠️ MISSING 10m chunk: ${currentDate} ${timeStr} - will fill with ${expectedSamples.toLocaleString()} zeros`);
         }
         currentTime.setUTCMinutes(currentTime.getUTCMinutes() + 10);
         minutesElapsed += 10;
@@ -490,8 +530,51 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         function sendChunksInOrder() {
             // Send all sequential chunks that are ready
             while (processedChunks[nextChunkToSend]) {
-                const { samples } = processedChunks[nextChunkToSend];
+                let { samples } = processedChunks[nextChunkToSend];
                 const currentChunkIndex = nextChunkToSend;
+                const currentChunkInfo = chunksToFetch[currentChunkIndex];
+                
+                // 🎵 SMOOTH BOUNDARIES: If this or adjacent chunks are missing, apply linear interpolation
+                // This eliminates clicks when transitioning between real data and silence
+                const SMOOTH_SAMPLES = 1000; // ~23ms at 44.1kHz = 1000 samples
+                
+                // Check if current chunk is missing
+                const isMissing = currentChunkInfo?.isMissing || false;
+                
+                // Check if next chunk is missing (to smooth END of current real chunk)
+                const nextChunkInfo = chunksToFetch[nextChunkToSend + 1];
+                const nextIsMissing = nextChunkInfo?.isMissing || false;
+                
+                // Copy samples so we don't modify the original
+                samples = new Float32Array(samples);
+                
+                // SMOOTH START: Transition from previous chunk into this missing chunk
+                if (isMissing && nextChunkToSend > 0 && processedChunks[nextChunkToSend - 1]) {
+                    const prevSamples = processedChunks[nextChunkToSend - 1].samples;
+                    if (prevSamples && prevSamples.length > 0) {
+                        const prevValue = prevSamples[prevSamples.length - 1];
+                        const targetValue = 0; // Current chunk is silent
+                        const smoothLength = Math.min(SMOOTH_SAMPLES, samples.length);
+                        
+                        for (let i = 0; i < smoothLength; i++) {
+                            const alpha = i / smoothLength; // 0 to 1
+                            samples[i] = prevValue * (1 - alpha) + targetValue * alpha;
+                        }
+                    }
+                }
+                
+                // SMOOTH END: Transition from this real chunk into next missing chunk
+                if (!isMissing && nextIsMissing) {
+                    const smoothLength = Math.min(SMOOTH_SAMPLES, samples.length);
+                    const startIdx = samples.length - smoothLength;
+                    const startValue = samples[startIdx];
+                    const targetValue = 0; // Next chunk is silent
+                    
+                    for (let i = 0; i < smoothLength; i++) {
+                        const alpha = i / smoothLength; // 0 to 1
+                        samples[startIdx + i] = startValue * (1 - alpha) + targetValue * alpha;
+                    }
+                }
                 
                 // 🎯 SEND TO WORKLET IN ORDER
                 const WORKLET_CHUNK_SIZE = 1024;
@@ -994,19 +1077,35 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         
         // Helper to send chunk to worker
         const sendToWorker = (result) => {
-            const { compressed, chunkSize, index } = result;
+            const { compressed, chunkSize, index, isMissing, expectedSamples } = result;
             chunksDownloaded++;
             
-            worker.postMessage({
-                type: 'process-chunk',
-                compressed: compressed,
-                normMin: normMin,
-                normMax: normMax,
-                chunkIndex: index
-            }, [compressed]);
-            
-            const chunkType = chunksToFetch[index].type;
-            if (DEBUG_CHUNKS) console.log(`📥 ${logTime()} Downloaded chunk ${index + 1}/${chunksToFetch.length} (${chunkType}) - ${(chunkSize / 1024).toFixed(1)} KB (${chunksDownloaded}/${chunksToFetch.length})`);
+            // 🆕 Handle missing chunks - send flag to worker to generate zeros
+            if (isMissing) {
+                worker.postMessage({
+                    type: 'process-chunk',
+                    compressed: null,
+                    normMin: normMin,
+                    normMax: normMax,
+                    chunkIndex: index,
+                    isMissing: true,
+                    expectedSamples: expectedSamples
+                });
+                
+                const chunkType = chunksToFetch[index].type;
+                if (DEBUG_CHUNKS) console.log(`🔇 ${logTime()} Generated silence for chunk ${index + 1}/${chunksToFetch.length} (${chunkType}) - ${expectedSamples.toLocaleString()} samples (${chunksDownloaded}/${chunksToFetch.length})`);
+            } else {
+                worker.postMessage({
+                    type: 'process-chunk',
+                    compressed: compressed,
+                    normMin: normMin,
+                    normMax: normMax,
+                    chunkIndex: index
+                }, [compressed]);
+                
+                const chunkType = chunksToFetch[index].type;
+                if (DEBUG_CHUNKS) console.log(`📥 ${logTime()} Downloaded chunk ${index + 1}/${chunksToFetch.length} (${chunkType}) - ${(chunkSize / 1024).toFixed(1)} KB (${chunksDownloaded}/${chunksToFetch.length})`);
+            }
         };
         
         // Execute batches sequentially, chunks within batch in parallel
@@ -1019,10 +1118,24 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             
             if (DEBUG_CHUNKS) console.log(`📦 ${logTime()} Batch ${batchIdx + 1}/${downloadBatches.length}: ${batchLabel} (chunks ${batchIndices.map(i => i + 1).join(', ')})`);
             
-            // Download all chunks in this batch IN PARALLEL
-            const batchPromises = batchIndices.map(idx => 
-                fetchChunk({ chunk: chunksToFetch[idx], index: idx })
-            );
+            // Download all chunks in this batch IN PARALLEL (or generate zeros for missing)
+            const batchPromises = batchIndices.map(idx => {
+                const chunk = chunksToFetch[idx];
+                
+                // 🆕 Check if chunk is missing - generate zeros instead of fetching
+                if (chunk.isMissing) {
+                    return Promise.resolve({
+                        compressed: null,
+                        chunkSize: 0,
+                        index: idx,
+                        isMissing: true,
+                        expectedSamples: chunk.samples
+                    });
+                }
+                
+                // Normal fetch for existing chunks
+                return fetchChunk({ chunk: chunk, index: idx });
+            });
             const batchResults = await Promise.all(batchPromises);
             
             // Send to worker
