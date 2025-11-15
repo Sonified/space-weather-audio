@@ -42,3 +42,37 @@ v1.98 - Commit: "v1.98 Fix: Memory leak - break worker closure chains with onmes
 
 ---
 
+## 🎨 UI: Spectrogram Scan Line Visual Improvements (v1.99)
+
+### Changes
+1. **Spectrogram scan line (playhead):**
+   - Changed from red to grey (#808080)
+   - Reduced opacity to 60% (from 100%)
+   - Makes it less intrusive and more background visual indicator
+
+2. **Disabled spectrogram clickability:**
+   - Commented out all mouse event listeners in `setupSpectrogramSelection()`
+   - Prevents frequency selection via spectrogram clicks
+   - Spectrogram is now display-only
+
+3. **Waveform & spectrogram preview lines:**
+   - Reduced opacity to 60% (from 100%)
+   - Applied to both hover and drag preview lines
+   - Consistent visual weight across UI
+
+4. **Fixed double line issue during scrubbing:**
+   - Simplified `drawSpectrogramScrubPreview()` to do full clear/redraw (like waveform)
+   - Playhead now properly hides during drag operations
+   - No more double lines when clicking and holding
+
+### Files Modified
+- `js/spectrogram-playhead.js` - Opacity changes, simplified scrub preview logic
+- `js/spectrogram-renderer.js` - Commented out event listeners
+- `js/waveform-renderer.js` - Preview line opacity
+- `backend/collector_loop.py` - Version bump
+
+### Version
+v1.99 - Commit: "v1.99 UI: Spectrogram scan line - changed to grey at 60% opacity, disabled spectrogram click handlers, reduced waveform/spectrogram preview line opacity to 60%, fixed double line issue during scrubbing"
+
+---
+

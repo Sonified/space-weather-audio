@@ -339,12 +339,14 @@ export function setupWaveformInteraction() {
             drawRegionHighlights(ctx, canvas.width, canvasHeight);
         }
         
+        ctx.globalAlpha = 0.6;
         ctx.strokeStyle = State.isDragging ? '#bbbbbb' : '#ff0000';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(canvasX, 0);
         ctx.lineTo(canvasX, canvasHeight);
         ctx.stroke();
+        ctx.globalAlpha = 1.0;  // Reset alpha
         
         // Mirror on spectrogram
         drawSpectrogramScrubPreview(targetPosition, State.isDragging);

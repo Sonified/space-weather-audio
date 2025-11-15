@@ -21,6 +21,9 @@ export function drawSpectrogramPlayhead() {
     const cachedCanvas = getCachedSpectrogramCanvas();
     if (!cachedCanvas) return;  // No cached spectrogram yet
     
+    // Don't draw playhead while user is scrubbing
+    if (State.isDragging) return;
+    
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     const height = canvas.height;
@@ -64,13 +67,15 @@ export function drawSpectrogramPlayhead() {
             newX, 0, newW, height   // Dest
         );
         
-        // Draw red playhead line
-        ctx.strokeStyle = '#ff0000';
+        // Draw faint grey playhead line (non-interactive)
+        ctx.globalAlpha = 0.6;
+        ctx.strokeStyle = '#808080';  // Grey color
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(playheadX, 0);
         ctx.lineTo(playheadX, height);
         ctx.stroke();
+        ctx.globalAlpha = 1.0;  // Reset alpha
     }
 }
 
@@ -94,63 +99,21 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
     const progress = Math.min(targetPosition / State.totalAudioDuration, 1.0);
     const previewX = Math.floor(progress * width);
     
-    // Skip if same position
-    if (previewX === lastPreviewX) {
-        return;
-    }
-    
-    const oldPreviewX = lastPreviewX;
-    lastPreviewX = previewX;
-    
-    const stripWidth = 4;
-    
-    // Restore old preview area
-    if (oldPreviewX >= 0) {
-        const oldX = Math.max(0, oldPreviewX - stripWidth);
-        const oldW = Math.min(stripWidth * 2, width - oldX);
-        ctx.drawImage(
-            cachedCanvas,
-            oldX, 0, oldW, height,
-            oldX, 0, oldW, height
-        );
-        
-        // Redraw red playhead if it was in that area
-        if (lastPlayheadX >= 0 && Math.abs(lastPlayheadX - oldPreviewX) < stripWidth * 2) {
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(lastPlayheadX, 0);
-            ctx.lineTo(lastPlayheadX, height);
-            ctx.stroke();
-        }
-    }
-    
-    // Restore new preview area
-    const newX = Math.max(0, previewX - stripWidth);
-    const newW = Math.min(stripWidth * 2, width - newX);
-    ctx.drawImage(
-        cachedCanvas,
-        newX, 0, newW, height,
-        newX, 0, newW, height
-    );
-    
-    // Redraw red playhead if it's in the new area
-    if (lastPlayheadX >= 0 && Math.abs(lastPlayheadX - previewX) < stripWidth * 2) {
-        ctx.strokeStyle = '#ff0000';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(lastPlayheadX, 0);
-        ctx.lineTo(lastPlayheadX, height);
-        ctx.stroke();
-    }
+    // KEEP IT SIMPLE: Clear and redraw from cache (like waveform does)
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(cachedCanvas, 0, 0);
     
     // Draw preview line (gray if dragging, white if just hovering)
+    ctx.globalAlpha = 0.6;
     ctx.strokeStyle = isDragging ? '#bbbbbb' : '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(previewX, 0);
     ctx.lineTo(previewX, height);
     ctx.stroke();
+    ctx.globalAlpha = 1.0;  // Reset alpha
+    
+    lastPreviewX = previewX;
 }
 
 /**
@@ -178,14 +141,16 @@ export function clearSpectrogramScrubPreview() {
         oldX, 0, oldW, height
     );
     
-    // Redraw playhead if it was in that area
+    // Redraw faint grey playhead if it was in that area
     if (lastPlayheadX >= 0 && Math.abs(lastPlayheadX - lastPreviewX) < stripWidth * 2) {
-        ctx.strokeStyle = '#ff0000';
+        ctx.globalAlpha = 0.6;
+        ctx.strokeStyle = '#808080';  // Grey color
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(lastPlayheadX, 0);
         ctx.lineTo(lastPlayheadX, height);
         ctx.stroke();
+        ctx.globalAlpha = 1.0;  // Reset alpha
     }
     
     lastPreviewX = -1;

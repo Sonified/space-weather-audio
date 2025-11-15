@@ -290,6 +290,8 @@ export function setupSpectrogramSelection() {
     const container = canvas.closest('.panel');
     if (!container) return;
     
+    // ⚠️ COMMENTED OUT: Spectrogram click/selection disabled
+    /*
     canvas.addEventListener('mousedown', (e) => {
         // Only handle if in frequency selection mode
         if (!isInFrequencySelectionMode()) return;
@@ -373,7 +375,8 @@ export function setupSpectrogramSelection() {
             spectrogramEndY = null;
         }
     });
+    */
     
-    console.log('🎯 Spectrogram frequency selection initialized');
+    console.log('🎯 Spectrogram frequency selection DISABLED (commented out)');
 }
 
