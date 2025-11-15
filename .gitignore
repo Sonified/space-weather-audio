@@ -15,3 +15,12 @@ backend/cron_output/
 .env
 .env.local
 *.key
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# Backup files
+*.bak
+# Auto-generated
+.deploy_time
