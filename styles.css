@@ -928,6 +928,11 @@ input[type="checkbox"] {
     display: none;
 }
 
+#participantModal .modal-content {
+    max-width: 600px;
+    min-width: 400px;
+}
+
 @media (max-width: 1200px) {
     .awesf-modal .modal-content {
         min-width: calc(100vw - 40px);

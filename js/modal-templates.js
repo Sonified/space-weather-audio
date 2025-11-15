@@ -11,12 +11,13 @@ export function createParticipantModal() {
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 20px; color: #333; font-size: 16px;">Enter your participant ID number to begin:</p>
+                <p style="margin-bottom: 20px; color: #333; font-size: 16px; font-weight: bold;">Enter your participant ID number to begin:</p>
                 <div class="modal-form-group">
                     <label for="participantId" style="display: none;">Participant ID/Number:</label>
                     <input type="text" id="participantId" placeholder="Enter participant identifier">
                 </div>
-                <button type="button" class="modal-submit" disabled>✓ Start Session</button>
+                <button type="button" class="modal-submit" disabled>✓ Confirm</button>
+                <p style="margin-top: 18px; margin-bottom: 0; color: #555; font-size: 14px; text-align: center;">Not look right? Email: leif@uoregon.edu</p>
             </div>
         </div>
     `;

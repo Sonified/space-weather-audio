@@ -115,3 +115,38 @@ v2.00 - Commit: "v2.00 Refactor: Removed all hardcoded R2 credentials, moved fil
 
 ---
 
+## 🎨 UI: Participant ID Display & Modal Updates (v2.01)
+
+### Changes
+1. **Participant ID Display in Header:**
+   - Added participant ID display inline with main title, aligned right
+   - Shows "Participant ID: [ID]" when participant ID exists (from URL or localStorage)
+   - Clickable to open participant setup modal
+   - Styled with subtle colors (#aaa/#bbb) for dark red background
+   - Bottom-aligned to sit at top of panel below
+
+2. **Participant Setup Modal Improvements:**
+   - Made modal narrower (max-width: 600px, min-width: 400px)
+   - Changed button text from "Start Session" to "Confirm"
+   - Made instruction text bold ("Enter your participant ID number to begin:")
+   - Added help text below button: "Not look right? Email: leif@uoregon.edu"
+   - Centered help text with appropriate styling
+
+3. **JavaScript Updates:**
+   - Added `updateParticipantIdDisplay()` function to show/hide and update display
+   - Display updates automatically on page load and after participant setup submission
+   - Added click handler to open modal when participant ID is clicked
+   - Added subtle hover effect (semi-transparent white overlay)
+
+### Files Modified
+- `index.html` - Added participant ID display in header
+- `js/main.js` - Added display update function and event handlers
+- `js/ui-controls.js` - Updated submit function to refresh display
+- `js/modal-templates.js` - Updated participant modal template
+- `styles.css` - Added participant modal width styling
+
+### Version
+v2.01 - Commit: "v2.01 UI: Added participant ID display in header, updated participant setup modal with improved styling and Confirm button"
+
+---
+

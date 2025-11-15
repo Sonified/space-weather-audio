@@ -18,7 +18,17 @@
 </head>
 <body>
     <div class="container">
-        <h1>IRIS Data Audification (Beta) 🚧</h1>
+        <div style="display: flex; align-items: flex-end; margin-bottom: 12px; position: relative;">
+            <div style="flex: 1;"></div>
+            <h1 style="margin: 0 0 0 0; flex: 0 0 auto;">IRIS Data Audification (Beta) 🚧</h1>
+            <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end;">
+                <div id="participantIdDisplay" style="display: none; margin-bottom: 0;">
+                    <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
+                        Participant ID: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
+                    </span>
+                </div>
+            </div>
+        </div>
         
         <!-- Cache Row -->
         <div class="panel panel-cache" id="cachePanel" style="padding: 15px 20px; display: none;">

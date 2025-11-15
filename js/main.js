@@ -777,6 +777,23 @@ export async function startStreaming(event) {
     }
 }
 
+/**
+ * Update the participant ID display in the top panel
+ */
+function updateParticipantIdDisplay() {
+    const participantId = getParticipantId();
+    const displayElement = document.getElementById('participantIdDisplay');
+    const valueElement = document.getElementById('participantIdValue');
+    
+    if (participantId) {
+        if (displayElement) displayElement.style.display = 'block';
+        if (valueElement) valueElement.textContent = participantId;
+    } else {
+        if (displayElement) displayElement.style.display = 'none';
+        if (valueElement) valueElement.textContent = '--';
+    }
+}
+
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', async () => {
     // Parse participant ID from URL parameters on page load
@@ -788,8 +805,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.98 - Memory Leak Fix');
-    console.log('📦 [0ms] v1.98 Fix: Memory leak - break worker closure chains with onmessage=null before terminate to allow GC');
+    
+    // Update participant ID display
+    updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.01 - Participant ID Display & Modal Updates');
+    console.log('📦 [0ms] v2.01 UI: Added participant ID display in header, updated participant setup modal with improved styling and "Confirm" button');
     
     // Start memory health monitoring
     startMemoryMonitoring();
@@ -1061,6 +1081,19 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('postSurveyModalBtn').addEventListener('click', openPostSurveyModal);
     document.getElementById('submitBtn').addEventListener('click', attemptSubmission);
     document.getElementById('adminModeBtn').addEventListener('click', toggleAdminMode);
+    
+    // Participant ID display click handler
+    const participantIdText = document.getElementById('participantIdText');
+    if (participantIdText) {
+        participantIdText.addEventListener('click', openParticipantModal);
+        // Add hover effect
+        participantIdText.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+        });
+        participantIdText.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = 'transparent';
+        });
+    }
     
     console.log('✅ Event listeners setup complete - memory leak prevention active!');
 });

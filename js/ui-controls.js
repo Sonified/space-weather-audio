@@ -599,6 +599,17 @@ export function submitParticipantSetup() {
     statusEl.className = 'status success';
     statusEl.textContent = `✅ Participant setup recorded: ${participantId || 'Anonymous'}`;
     
+    // Update participant ID display in top panel
+    const displayElement = document.getElementById('participantIdDisplay');
+    const valueElement = document.getElementById('participantIdValue');
+    if (participantId) {
+        if (displayElement) displayElement.style.display = 'block';
+        if (valueElement) valueElement.textContent = participantId;
+    } else {
+        if (displayElement) displayElement.style.display = 'none';
+        if (valueElement) valueElement.textContent = '--';
+    }
+    
     closeParticipantModal();
 }
 
