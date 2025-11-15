@@ -471,6 +471,7 @@ export async function startStreaming(event) {
         // 1. Worker creation
         if (window.audioWorker) {
             console.log('🧹 Terminating old audio worker...');
+            window.audioWorker.onmessage = null;  // Break closure chain
             window.audioWorker.terminate();
             window.audioWorker = null; // 🧹 Clear reference before creating new worker
         }
@@ -768,9 +769,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.97 - Playback Region End Fix & Loop Position Fix');
-    console.log('📦 [0ms] v1.97 Fix: When paused at end of selection, clicking play now restarts from selection start instead of hanging');
-    console.log('📦 [0ms] v1.97 Fix: Fast looping now correctly jumps to selection start (not file start 0) during buffer transitions');
+    console.log('🌋 [0ms] volcano-audio v1.98 - Memory Leak Fix');
+    console.log('📦 [0ms] v1.98 Fix: Memory leak - break worker closure chains with onmessage=null before terminate to allow GC');
     
     // Start memory health monitoring
     startMemoryMonitoring();

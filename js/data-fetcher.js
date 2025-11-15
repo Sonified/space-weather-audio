@@ -804,6 +804,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 State.workletNode.port.removeEventListener('message', bufferStatusHandler);
                                 
                                 // Terminate worker (we're done!)
+                                worker.onmessage = null;  // Break closure chain
                                 worker.terminate();
                                 window.audioWorker = null; // 🧹 Clear global reference for GC
                                 console.log('🏭 Worker terminated and cleared');

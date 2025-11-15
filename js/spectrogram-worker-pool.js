@@ -168,6 +168,7 @@ export class SpectrogramWorkerPool {
         console.log(`🏭 Terminating worker pool (${this.numWorkers} workers)...`);
         
         for (const workerObj of this.workers) {
+            workerObj.worker.onmessage = null;  // Break closure chain
             workerObj.worker.terminate();
         }
         

@@ -624,6 +624,7 @@ export function updatePlaybackIndicator() {
 
 export function initWaveformWorker() {
     if (State.waveformWorker) {
+        State.waveformWorker.onmessage = null;  // Break closure chain
         State.waveformWorker.terminate();
     }
     
