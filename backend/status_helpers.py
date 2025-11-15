@@ -25,7 +25,13 @@ def load_run_log_from_cdn():
     try:
         with urllib.request.urlopen(RUN_LOG_URL, timeout=10) as response:
             data = json.loads(response.read().decode('utf-8'))
-            return data if isinstance(data, list) else None
+            # Handle both old format (direct list) and new format (object with 'runs' key)
+            if isinstance(data, list):
+                return data
+            elif isinstance(data, dict) and 'runs' in data:
+                return data['runs']
+            else:
+                return None
     except Exception as e:
         print(f"Warning: Could not load run log from CDN: {e}")
         return None
