@@ -46,7 +46,7 @@
           "channel": "HHZ",
           "distance_km": 1.1,
           "sample_rate": 100.0,
-          "active": true
+          "active": false
         },
         {
           "station": "SBL",
@@ -54,7 +54,7 @@
           "channel": "HHZ",
           "distance_km": 2.1,
           "sample_rate": 100.0,
-          "active": true
+          "active": false
         },
         {
           "station": "WRM",
@@ -62,7 +62,7 @@
           "channel": "HHZ",
           "distance_km": 2.1,
           "sample_rate": 100.0,
-          "active": true
+          "active": false
         },
         {
           "station": "HAT",
@@ -438,7 +438,7 @@
           "channel": "BHZ",
           "distance_km": 6.5,
           "sample_rate": 50.0,
-          "active": true
+          "active": false
         },
         {
           "station": "SSBA",
