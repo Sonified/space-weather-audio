@@ -33,12 +33,26 @@ def add_cors_headers(response):
 MAX_RADIUS_KM = 13.0 * 1.60934  # 13 miles converted to km
 REQUIRED_COMPONENT = 'Z'  # Z-component only (vertical)
 
-# Cloudflare R2 configuration (S3-compatible)
-R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
-R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL', f'https://pub-{R2_ACCOUNT_ID}.r2.dev')
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+# Cloudflare R2 configuration (S3-compatible) - loaded from .env file
+R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+
+# Validate that all R2 credentials are present
+if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
+    missing = []
+    if not R2_ACCOUNT_ID: missing.append('R2_ACCOUNT_ID')
+    if not R2_ACCESS_KEY_ID: missing.append('R2_ACCESS_KEY_ID')
+    if not R2_SECRET_ACCESS_KEY: missing.append('R2_SECRET_ACCESS_KEY')
+    if not R2_BUCKET_NAME: missing.append('R2_BUCKET_NAME')
+    raise ValueError(f"Missing required R2 environment variables: {', '.join(missing)}")
+
+R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL', f'https://pub-{R2_ACCOUNT_ID}.r2.dev') if R2_ACCOUNT_ID else None
 
 s3_client = boto3.client(
     's3',

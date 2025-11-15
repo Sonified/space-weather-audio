@@ -151,7 +151,7 @@ def load_metadata_for_date(network, station, location, channel, volcano, date_st
             return None
     else:
         # Local mode
-        metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / year / month / day / network / volcano / station / location_str / channel
+        metadata_dir = Path(__file__).parent.parent / 'cron_output' / 'data' / year / month / day / network / volcano / station / location_str / channel
         metadata_path = metadata_dir / metadata_filename
         
         if metadata_path.exists():
@@ -392,7 +392,7 @@ def create_10m_chunk(network, station, location, channel, volcano, sample_rate,
             print(f"      💾 Uploaded to R2")
         else:
             # Local save
-            base_dir = Path(__file__).parent / 'cron_output'
+            base_dir = Path(__file__).parent.parent / 'cron_output'
             chunk_dir = base_dir / 'data' / str(year) / month / day / network / volcano / station / location_str / channel / '10m'
             chunk_dir.mkdir(parents=True, exist_ok=True)
             chunk_path = chunk_dir / filename
@@ -451,7 +451,7 @@ def create_10m_chunk(network, station, location, channel, volcano, sample_rate,
             )
             print(f"      ✅ Metadata updated")
         else:
-            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+            metadata_dir = Path(__file__).parent.parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
             metadata_dir.mkdir(parents=True, exist_ok=True)
             metadata_path = metadata_dir / metadata_filename
             with open(metadata_path, 'w') as f:
@@ -530,7 +530,7 @@ def create_1h_chunk(network, station, location, channel, volcano, sample_rate,
             print(f"    💾 Uploaded to R2: {r2_key} [⏱️  {t_upload_end - t_upload_start:.3f}s]")
         else:
             # Local save
-            base_dir = Path(__file__).parent / 'cron_output'
+            base_dir = Path(__file__).parent.parent / 'cron_output'
             chunk_dir = base_dir / 'data' / str(year) / month / day / network / volcano / station / location_str / channel / '1h'
             chunk_dir.mkdir(parents=True, exist_ok=True)
             chunk_path = chunk_dir / filename
@@ -589,7 +589,7 @@ def create_1h_chunk(network, station, location, channel, volcano, sample_rate,
             )
             print(f"    💾 Updated metadata in R2")
         else:
-            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+            metadata_dir = Path(__file__).parent.parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
             metadata_dir.mkdir(parents=True, exist_ok=True)
             metadata_path = metadata_dir / metadata_filename
             with open(metadata_path, 'w') as f:
@@ -940,7 +940,7 @@ def create_6h_chunk(network, station, location, channel, volcano, sample_rate,
             print(f"    💾 Uploaded to R2: {r2_key} [⏱️  {t_upload_end - t_upload_start:.3f}s]")
         else:
             # Local save
-            base_dir = Path(__file__).parent / 'cron_output'
+            base_dir = Path(__file__).parent.parent / 'cron_output'
             chunk_dir = base_dir / 'data' / str(year) / month / day / network / volcano / station / location_str / channel / '6h'
             chunk_dir.mkdir(parents=True, exist_ok=True)
             chunk_path = chunk_dir / filename
@@ -999,7 +999,7 @@ def create_6h_chunk(network, station, location, channel, volcano, sample_rate,
             )
             print(f"    💾 Updated metadata in R2")
         else:
-            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
+            metadata_dir = Path(__file__).parent.parent / 'cron_output' / 'data' / str(year) / month / day / network / volcano / station / location_str / channel
             metadata_dir.mkdir(parents=True, exist_ok=True)
             metadata_path = metadata_dir / metadata_filename
             with open(metadata_path, 'w') as f:
@@ -1058,7 +1058,7 @@ def save_metadata_for_date(network, station, location, channel, volcano, sample_
                 ContentType='application/json'
             )
         else:
-            metadata_dir = Path(__file__).parent / 'cron_output' / 'data' / year / month / day / network / volcano / station / location_str / channel
+            metadata_dir = Path(__file__).parent.parent / 'cron_output' / 'data' / year / month / day / network / volcano / station / location_str / channel
             metadata_dir.mkdir(parents=True, exist_ok=True)
             metadata_path = metadata_dir / metadata_filename
             with open(metadata_path, 'w') as f:

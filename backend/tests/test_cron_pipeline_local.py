@@ -41,10 +41,23 @@ IRIS_DELAY_MINUTES = 2
 
 # R2 Configuration (optional - set SKIP_R2_UPLOAD=True to test without uploading)
 SKIP_R2_UPLOAD = True  # Change to False to test R2 upload
-R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
 R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
 R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
-R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+
+# Validate that all R2 credentials are present (if R2 upload is enabled)
+if not SKIP_R2_UPLOAD and not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
+    missing = []
+    if not R2_ACCOUNT_ID: missing.append('R2_ACCOUNT_ID')
+    if not R2_ACCESS_KEY_ID: missing.append('R2_ACCESS_KEY_ID')
+    if not R2_SECRET_ACCESS_KEY: missing.append('R2_SECRET_ACCESS_KEY')
+    if not R2_BUCKET_NAME: missing.append('R2_BUCKET_NAME')
+    raise ValueError(f"Missing required R2 environment variables: {', '.join(missing)}")
 
 print("=" * 80)
 print("CRON PIPELINE LOCAL TEST")

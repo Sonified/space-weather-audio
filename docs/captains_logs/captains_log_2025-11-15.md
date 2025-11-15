@@ -76,3 +76,42 @@ v1.99 - Commit: "v1.99 UI: Spectrogram scan line - changed to grey at 60% opacit
 
 ---
 
+## 🔐 Security & Code Organization: Credential Management & Gap Padding (v2.00)
+
+### Security Improvements
+Removed all hardcoded R2 credentials from the entire codebase (40+ Python files):
+- **Backend scripts**: 9 files updated
+- **Backend tests**: 16 files updated  
+- **Backend archive**: 7 files updated
+- **Root-level tests**: 4 files updated
+- **Archive scripts**: 1 file updated
+
+All files now:
+- Use `load_dotenv()` to load environment variables
+- Use `os.getenv()` without hardcoded defaults
+- Validate that all required credentials are present
+- Raise clear errors if credentials are missing
+
+### Code Organization
+- Created `backend/utilities/` folder for utility scripts
+- Moved `check_station_data.py`, `cdn_backfill.py`, `nuke_dates.py` to utilities
+- Removed duplicate files from backend root (kept scripts folder versions)
+- Cleaned up duplicate audit files
+
+### Data Processing Enhancement
+Added intelligent beginning gap padding:
+- When IRIS data starts late (e.g., 00:31:51 instead of 00:30:00), now pads beginning with zeros
+- Uses correct sample rate to calculate padding (same approach as end padding)
+- Tracks beginning gaps in metadata (`gap_samples_filled`)
+- Ensures chunks always have exact expected sample counts
+
+### Files Modified
+- `backend/collector_loop.py` - Beginning gap padding logic in `fetch_and_process_waveform()` and `process_station_window()`
+- `backend/utilities/` - New folder with organized utility scripts
+- 40+ Python files - Removed hardcoded credentials
+
+### Version
+v2.00 - Commit: "v2.00 Refactor: Removed all hardcoded R2 credentials, moved files to utilities folder, added beginning gap padding for late-starting data"
+
+---
+

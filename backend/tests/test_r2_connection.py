@@ -9,12 +9,25 @@ from botocore.exceptions import ClientError
 def test_r2_connection():
     """Test connection to Cloudflare R2 storage"""
     
-    # You'll need to set these environment variables or replace with your actual credentials
+    # Load environment variables from .env file
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    # R2 Configuration - loaded from .env file (local) or Railway dashboard (production)
     # Get them from: https://dash.cloudflare.com/ > R2 > Overview (Account ID is in the URL)
-    ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-    ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-    SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-    BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')  # Your bucket name
+    ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
+    ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+    SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+    BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+    
+    # Validate that all R2 credentials are present
+    if not all([ACCOUNT_ID, ACCESS_KEY_ID, SECRET_ACCESS_KEY, BUCKET_NAME]):
+        missing = []
+        if not ACCOUNT_ID: missing.append('R2_ACCOUNT_ID')
+        if not ACCESS_KEY_ID: missing.append('R2_ACCESS_KEY_ID')
+        if not SECRET_ACCESS_KEY: missing.append('R2_SECRET_ACCESS_KEY')
+        if not BUCKET_NAME: missing.append('R2_BUCKET_NAME')
+        raise ValueError(f"Missing required R2 environment variables: {', '.join(missing)}")
     
     # Cloudflare R2 endpoint format
     endpoint_url = f'https://{ACCOUNT_ID}.r2.cloudflarestorage.com'

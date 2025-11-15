@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_15_v1.99"
+__version__ = "2025_11_15_v2.00"
 import time
 import sys
 import os
@@ -711,20 +711,47 @@ def fetch_and_process_waveform(network, station, location, channel, start_time, 
         st.merge(method=1, fill_value='interpolate', interpolation_samples=0)
         trace = st[0]
         
+        # Check if data starts late (after requested start_time)
+        trace_start_utc = UTCDateTime(trace.stats.starttime)
+        trace_start_dt = datetime.fromtimestamp(trace_start_utc.timestamp, tz=timezone.utc)
+        
+        if trace_start_dt > start_time:
+            # Data starts late - pad beginning with zeros
+            start_gap_duration = (trace_start_dt - start_time).total_seconds()
+            start_gap_samples = int(round(start_gap_duration * sample_rate))
+            
+            if start_gap_samples > 0:
+                # Pad beginning with zeros
+                zero_padding = np.zeros(start_gap_samples, dtype=trace.data.dtype)
+                trace.data = np.concatenate([zero_padding, trace.data])
+                trace.stats.starttime = UTCDateTime(start_time)
+                trace.stats.npts = len(trace.data)
+                
+                # Add beginning gap to gaps list
+                gaps.insert(0, {
+                    'start': start_time.isoformat(),
+                    'end': trace_start_dt.isoformat(),
+                    'samples_filled': start_gap_samples
+                })
+        
         # Ensure exact sample count based on requested window
         requested_duration = end_time - start_time
         expected_samples = int(requested_duration.total_seconds() * sample_rate)
         actual_samples = len(trace.data)
         
         if actual_samples < expected_samples:
-            # Pad: Hold last sample value to fill to expected length
+            # Pad end: Hold last sample value to fill to expected length
             missing = expected_samples - actual_samples
-            last_value = trace.data[-1]
+            last_value = trace.data[-1] if len(trace.data) > 0 else 0
             padding = np.full(missing, last_value, dtype=trace.data.dtype)
             trace.data = np.concatenate([trace.data, padding])
         elif actual_samples > expected_samples:
             # Truncate: Remove extra samples
             trace.data = trace.data[:expected_samples]
+        
+        # Ensure trace starttime matches requested start_time (in case we padded beginning)
+        trace.stats.starttime = UTCDateTime(start_time)
+        trace.stats.npts = len(trace.data)
         
         return trace, gaps, None
         
@@ -1458,6 +1485,30 @@ def process_station_window(network, station, location, channel, volcano, sample_
         st.merge(method=1, fill_value='interpolate', interpolation_samples=0)
         trace = st[0]
         
+        # Check if data starts late (after requested start_time)
+        trace_start_utc = UTCDateTime(trace.stats.starttime)
+        trace_start_dt = datetime.fromtimestamp(trace_start_utc.timestamp, tz=timezone.utc)
+        
+        if trace_start_dt > start_time:
+            # Data starts late - pad beginning with zeros
+            start_gap_duration = (trace_start_dt - start_time).total_seconds()
+            start_gap_samples = int(round(start_gap_duration * sample_rate))
+            
+            if start_gap_samples > 0:
+                # Pad beginning with zeros
+                zero_padding = np.zeros(start_gap_samples, dtype=trace.data.dtype)
+                trace.data = np.concatenate([zero_padding, trace.data])
+                trace.stats.starttime = UTCDateTime(start_time)
+                trace.stats.npts = len(trace.data)
+                
+                # Add beginning gap to gaps list
+                gaps.insert(0, {
+                    'start': start_time.isoformat(),
+                    'end': trace_start_dt.isoformat(),
+                    'samples_filled': start_gap_samples
+                })
+                print(f"  ⚠️  Data starts late at {trace_start_dt.strftime('%H:%M:%S')}, padded {start_gap_samples} zeros at beginning")
+        
         # Step 3: Ensure exact sample count based on requested window (no rounding!)
         # We requested [start_time, end_time], so we MUST output exactly that many samples
         requested_duration = end_time - start_time
@@ -1465,12 +1516,12 @@ def process_station_window(network, station, location, channel, volcano, sample_
         actual_samples = len(trace.data)
         
         if actual_samples < expected_samples:
-            # Pad: Hold last sample value to fill to expected length
+            # Pad end: Hold last sample value to fill to expected length
             missing = expected_samples - actual_samples
-            last_value = trace.data[-1]
+            last_value = trace.data[-1] if len(trace.data) > 0 else 0
             padding = np.full(missing, last_value, dtype=trace.data.dtype)
             data = np.concatenate([trace.data, padding])
-            print(f"  ⚠️  Padded {missing} samples (IRIS returned {actual_samples:,}, expected {expected_samples:,})")
+            print(f"  ⚠️  Padded {missing} samples at end (IRIS returned {actual_samples:,}, expected {expected_samples:,})")
         elif actual_samples > expected_samples:
             # Truncate: Remove extra samples (shouldn't happen but safeguard)
             extra = actual_samples - expected_samples
@@ -5725,7 +5776,7 @@ def run_scheduler():
 def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git Commit: v1.99 UI: Spectrogram scan line - changed to grey at 60% opacity, disabled spectrogram click handlers, reduced waveform/spectrogram preview line opacity to 60%, fixed double line issue during scrubbing")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git Commit: v2.00 Refactor: Removed all hardcoded R2 credentials, moved files to utilities folder, added beginning gap padding for late-starting data")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] v1.89 UI: Panel styling improvements - replaced nth-child selectors with class-based selectors, reduced button/panel heights, improved slider styling, changed 'Tracked Regions' to 'Selected Regions'")

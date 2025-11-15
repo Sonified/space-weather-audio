@@ -61,11 +61,24 @@ def main():
     # Step 2: Upload to R2
     print("Step 2: Uploading to R2...")
     
-    # R2 credentials (same as other backend scripts)
-    account_id = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-    access_key = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-    secret_key = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-    bucket_name = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+    # Load environment variables from .env file
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    # R2 Configuration - loaded from .env file (local) or Railway dashboard (production)
+    account_id = os.getenv('R2_ACCOUNT_ID')
+    access_key = os.getenv('R2_ACCESS_KEY_ID')
+    secret_key = os.getenv('R2_SECRET_ACCESS_KEY')
+    bucket_name = os.getenv('R2_BUCKET_NAME')
+    
+    # Validate that all R2 credentials are present
+    if not all([account_id, access_key, secret_key, bucket_name]):
+        missing = []
+        if not account_id: missing.append('R2_ACCOUNT_ID')
+        if not access_key: missing.append('R2_ACCESS_KEY_ID')
+        if not secret_key: missing.append('R2_SECRET_ACCESS_KEY')
+        if not bucket_name: missing.append('R2_BUCKET_NAME')
+        raise ValueError(f"Missing required R2 environment variables: {', '.join(missing)}")
     
     # Create R2 client
     s3_client = boto3.client(

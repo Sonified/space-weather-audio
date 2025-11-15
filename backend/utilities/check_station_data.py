@@ -12,12 +12,28 @@ Usage:
     # Or modify the defaults below and run without arguments
     python check_station_data.py
 
+Active Stations (from stations_config.json):
+    1. HV.OBL.--.HHZ (Kilauea) - sample_rate: 100.0 Hz
+    2. HV.MOKD.--.HHZ (Maunaloa) - sample_rate: 100.0 Hz
+    3. AV.GSTD.--.BHZ (Great Sitkin) - sample_rate: 50.0 Hz
+    4. AV.SSLS.--.BHZ (Shishaldin) - sample_rate: 50.0 Hz
+    5. AV.SPCP.--.BHZ (Spurr) - sample_rate: 50.0 Hz
+
 Examples:
-    # Check SSLS for first 30 minutes of Nov 15, 2025
+    # Check SSLS (Shishaldin) for first 30 minutes of Nov 15, 2025
     python check_station_data.py AV SSLS -- BHZ 2025-11-15 00:00:00 00:30:00
     
-    # Check different station
-    python check_station_data.py HV NPOC -- HHZ 2025-11-15 00:00:00 01:00:00
+    # Check OBL (Kilauea)
+    python check_station_data.py HV OBL -- HHZ 2025-11-15 00:00:00 01:00:00
+    
+    # Check MOKD (Maunaloa)
+    python check_station_data.py HV MOKD -- HHZ 2025-11-15 00:00:00 01:00:00
+    
+    # Check GSTD (Great Sitkin)
+    python check_station_data.py AV GSTD -- BHZ 2025-11-15 00:00:00 01:00:00
+    
+    # Check SPCP (Spurr)
+    python check_station_data.py AV SPCP -- BHZ 2025-11-15 00:00:00 01:00:00
 """
 
 import sys
@@ -28,6 +44,13 @@ from obspy.clients.fdsn import Client
 # ============================================================================
 # DEFAULTS - Modify these for quick testing without command-line arguments
 # ============================================================================
+# Active stations from stations_config.json:
+# 1. HV.OBL.--.HHZ (Kilauea) - sample_rate: 100.0 Hz
+# 2. HV.MOKD.--.HHZ (Maunaloa) - sample_rate: 100.0 Hz
+# 3. AV.GSTD.--.BHZ (Great Sitkin) - sample_rate: 50.0 Hz
+# 4. AV.SSLS.--.BHZ (Shishaldin) - sample_rate: 50.0 Hz
+# 5. AV.SPCP.--.BHZ (Spurr) - sample_rate: 50.0 Hz
+
 DEFAULT_NETWORK = "AV"
 DEFAULT_STATION = "SSLS"
 DEFAULT_LOCATION = "--"  # Use "--" for empty location, will be converted to "" for IRIS
@@ -35,6 +58,50 @@ DEFAULT_CHANNEL = "BHZ"
 DEFAULT_SAMPLE_RATE = 50.0  # Used for expected sample calculation
 DEFAULT_START_TIME = datetime(2025, 11, 15, 0, 40, 0, tzinfo=timezone.utc)
 DEFAULT_END_TIME = datetime(2025, 11, 15, 0, 50, 0, tzinfo=timezone.utc)
+
+# Quick reference: Active station configurations
+ACTIVE_STATIONS = {
+    "OBL": {
+        "network": "HV",
+        "station": "OBL",
+        "location": "--",
+        "channel": "HHZ",
+        "sample_rate": 100.0,
+        "volcano": "Kilauea"
+    },
+    "MOKD": {
+        "network": "HV",
+        "station": "MOKD",
+        "location": "--",
+        "channel": "HHZ",
+        "sample_rate": 100.0,
+        "volcano": "Maunaloa"
+    },
+    "GSTD": {
+        "network": "AV",
+        "station": "GSTD",
+        "location": "--",
+        "channel": "BHZ",
+        "sample_rate": 50.0,
+        "volcano": "Great Sitkin"
+    },
+    "SSLS": {
+        "network": "AV",
+        "station": "SSLS",
+        "location": "--",
+        "channel": "BHZ",
+        "sample_rate": 50.0,
+        "volcano": "Shishaldin"
+    },
+    "SPCP": {
+        "network": "AV",
+        "station": "SPCP",
+        "location": "--",
+        "channel": "BHZ",
+        "sample_rate": 50.0,
+        "volcano": "Spurr"
+    }
+}
 
 
 def parse_datetime(date_str, time_str):
@@ -171,9 +238,19 @@ def main():
         print("  python check_station_data.py")
         print("  python check_station_data.py NETWORK STATION LOCATION CHANNEL DATE START_TIME END_TIME")
         print()
+        print("Active Stations:")
+        print("  1. HV.OBL.--.HHZ (Kilauea) - sample_rate: 100.0 Hz")
+        print("  2. HV.MOKD.--.HHZ (Maunaloa) - sample_rate: 100.0 Hz")
+        print("  3. AV.GSTD.--.BHZ (Great Sitkin) - sample_rate: 50.0 Hz")
+        print("  4. AV.SSLS.--.BHZ (Shishaldin) - sample_rate: 50.0 Hz")
+        print("  5. AV.SPCP.--.BHZ (Spurr) - sample_rate: 50.0 Hz")
+        print()
         print("Examples:")
         print("  python check_station_data.py AV SSLS -- BHZ 2025-11-15 00:40:00 00:50:00")
-        print("  python check_station_data.py HV NPOC -- HHZ 2025-11-15 00:00:00 01:00:00")
+        print("  python check_station_data.py HV OBL -- HHZ 2025-11-15 00:00:00 01:00:00")
+        print("  python check_station_data.py HV MOKD -- HHZ 2025-11-15 00:00:00 01:00:00")
+        print("  python check_station_data.py AV GSTD -- BHZ 2025-11-15 00:00:00 01:00:00")
+        print("  python check_station_data.py AV SPCP -- BHZ 2025-11-15 00:00:00 01:00:00")
         sys.exit(1)
 
 

@@ -15,6 +15,10 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify
 from flask_cors import CORS
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Simple Flask app for health/status endpoint
 app = Flask(__name__)
@@ -39,11 +43,20 @@ deploy_time = datetime.now(timezone.utc).isoformat()
 with open(deploy_time_file, 'w') as f:
     f.write(deploy_time)
 
-# R2 Configuration for failure logs
-R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+# R2 Configuration - loaded from .env file (local) or Railway dashboard (production)
+R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+
+# Validate that all R2 credentials are present
+if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
+    missing = []
+    if not R2_ACCOUNT_ID: missing.append('R2_ACCOUNT_ID')
+    if not R2_ACCESS_KEY_ID: missing.append('R2_ACCESS_KEY_ID')
+    if not R2_SECRET_ACCESS_KEY: missing.append('R2_SECRET_ACCESS_KEY')
+    if not R2_BUCKET_NAME: missing.append('R2_BUCKET_NAME')
+    raise ValueError(f"Missing required R2 environment variables: {', '.join(missing)}")
 FAILURE_LOG_KEY = 'collector_logs/failures.json'
 STATION_ACTIVATION_LOG_KEY = 'collector_logs/station_activations.json'
 
@@ -1756,11 +1769,14 @@ def get_status():
     
     # Collect data for response (build final response at the end)
     try:
-        # Initialize R2 client
-        R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-        R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-        R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-        R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+        # Initialize R2 client (use environment variables)
+        R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
+        R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+        R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+        R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+        
+        if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
+            return jsonify({'error': 'R2 credentials not configured'}), 500
         
         s3 = boto3.client(
             's3',
@@ -3473,11 +3489,14 @@ def nuke():
     Deletes everything under data/ prefix
     Use for development/testing only!
     """
-    # Initialize R2 client
-    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+    # Initialize R2 client (use environment variables)
+    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
+    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+    
+    if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
+        return jsonify({'error': 'R2 credentials not configured'}), 500
     
     s3 = boto3.client(
         's3',

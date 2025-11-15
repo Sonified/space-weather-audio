@@ -28,11 +28,25 @@ TEST_STATION = {
 }
 NUM_RUNS = 5  # Run each test multiple times for statistical significance
 
-# R2 Direct Access Configuration (requires credentials)
-R2_ENDPOINT = 'https://9c2d5104d6243f417ab1b63ecb1e8e7d.r2.cloudflarestorage.com'
-R2_ACCESS_KEY_ID = 'YOUR_ACCESS_KEY_ID'  # Would need to be configured
-R2_SECRET_ACCESS_KEY = 'YOUR_SECRET_ACCESS_KEY'  # Would need to be configured
-R2_BUCKET_NAME = 'hearts-data-cache'
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+# R2 Direct Access Configuration - loaded from .env file
+R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
+R2_ENDPOINT = f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com' if R2_ACCOUNT_ID else None
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+
+# Validate that all R2 credentials are present
+if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
+    missing = []
+    if not R2_ACCOUNT_ID: missing.append('R2_ACCOUNT_ID')
+    if not R2_ACCESS_KEY_ID: missing.append('R2_ACCESS_KEY_ID')
+    if not R2_SECRET_ACCESS_KEY: missing.append('R2_SECRET_ACCESS_KEY')
+    if not R2_BUCKET_NAME: missing.append('R2_BUCKET_NAME')
+    raise ValueError(f"Missing required R2 environment variables: {', '.join(missing)}")
 
 
 def test_worker_download():

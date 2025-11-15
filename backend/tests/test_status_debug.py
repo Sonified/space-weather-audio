@@ -21,10 +21,17 @@ except Exception as e:
 # Test 2: Create S3 client
 print("\n[2/6] Testing S3 client creation...")
 try:
-    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
+    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+    
+    if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
+        print("❌ Missing R2 credentials in environment")
+        return
     
     s3 = boto3.client(
         's3',
