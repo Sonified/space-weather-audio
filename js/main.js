@@ -5,7 +5,7 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio } from './audio-player.js';
+import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
@@ -344,7 +344,10 @@ export async function initAudioWorklet() {
             
             if (State.isLooping && State.allReceivedData && State.allReceivedData.length > 0) {
                 State.setPlaybackState(PlaybackState.PLAYING);
-                State.setCurrentAudioPosition(0);
+                
+                // Jump to selection start if we have one, otherwise beginning of file
+                const loopStartPosition = State.selectionStart !== null ? State.selectionStart : 0;
+                State.setCurrentAudioPosition(loopStartPosition);
                 State.setLastUpdateTime(State.audioContext.currentTime);
                 
                 State.workletNode.port.postMessage({ type: 'loop' });
@@ -360,6 +363,9 @@ export async function initAudioWorklet() {
                     requestAnimationFrame(updatePlaybackIndicator);
                 }
             } else {
+                // 🔥 FIX: Cancel animation frame loops to prevent memory leaks
+                cancelAllRAFLoops();
+                
                 State.setPlaybackState(PlaybackState.STOPPED);
                 
                 if (finishedTotalSamples && State.totalAudioDuration > 0) {
@@ -678,6 +684,10 @@ export async function startStreaming(event) {
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
             }
+            
+            // 🔥 FIX: Cancel animation frame loops to prevent memory leaks
+            cancelAllRAFLoops();
+            
             State.setPlaybackState(PlaybackState.STOPPED);
             
             console.log('🧹 Memory cleanup complete - old references cleared');
@@ -758,9 +768,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
-    console.log('🌋 [0ms] volcano-audio v1.92 - Memory Health Monitoring & Audio Buffer Optimization');
-    console.log('📦 [0ms] v1.92 Perf: Changed AudioContext latencyHint to "playback" - eliminated ALL buffer underruns with imperceptible 30ms latency');
-    console.log('📦 [0ms] v1.92 Feat: Added memory health monitoring system - tracks baseline, trends, and detects leaks every 10 seconds');
+    console.log('🌋 [0ms] volcano-audio v1.97 - Playback Region End Fix & Loop Position Fix');
+    console.log('📦 [0ms] v1.97 Fix: When paused at end of selection, clicking play now restarts from selection start instead of hanging');
+    console.log('📦 [0ms] v1.97 Fix: Fast looping now correctly jumps to selection start (not file start 0) during buffer transitions');
     
     // Start memory health monitoring
     startMemoryMonitoring();

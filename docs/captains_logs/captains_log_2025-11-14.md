@@ -729,3 +729,66 @@ if (!isMissing && nextIsMissing) {
 
 **Commit**: v1.96 Fix: Gap handling with silence and boundary smoothing - missing data chunks now filled with zeros of correct duration, linear interpolation smoothing (1000 samples) at boundaries to eliminate clicks, maintains perfect timestamp accuracy
 
+---
+
+## 🐛 FIX: Playback Region End & Loop Position Bugs (v1.97)
+
+### Problem #1: Can't Resume After Region Ends
+When playback reached the end of a selection region and paused, clicking play again would immediately pause - the playback appeared to "hang":
+
+Console showed:
+```
+🔧 setPlaybackState(PAUSED) - previous state: PLAYING
+🎵 Master play/pause button clicked - playbackState=PAUSED, position=107.07s
+▶️ Resuming playback
+🔧 setPlaybackState(PLAYING) - previous state: PAUSED
+▶️ Starting playback
+🔊 Fade-in on resume: 0.0001 → 1.00 over 50ms
+🔧 setPlaybackState(PAUSED) - previous state: PLAYING
+```
+
+**Root Cause**: When resuming from PAUSED state, if position was at the selection end (107.07s), it would start playing, immediately detect it's at the end, and pause again.
+
+### Problem #2: Playhead Jumps to File Start During Fast Loops
+When looping a selection quickly (e.g., 89.23s-107s), the playhead would momentarily jump back to position 0 (beginning of file) instead of staying at the selection start.
+
+**Root Cause**: In `main.js`, the `finished` event handler had:
+```javascript
+State.setCurrentAudioPosition(0);  // Always jumps to file start!
+```
+
+### Solutions
+
+**Fix #1: Smart Resume Logic (`audio-player.js`)**
+Modified `togglePlayPause()` PAUSED case to detect if we're at the end:
+```javascript
+case PlaybackState.PAUSED:
+    // Check if we're at the end of the selection - if so, restart from beginning
+    if (State.selectionStart !== null && State.selectionEnd !== null) {
+        const atEnd = Math.abs(State.currentAudioPosition - State.selectionEnd) < 0.1;
+        if (atEnd) {
+            seekToPosition(State.selectionStart, true);
+            break;
+        }
+    }
+```
+
+**Fix #2: Loop to Selection Start (`main.js`)**
+Modified `finished` event handler to use selection start:
+```javascript
+// Jump to selection start if we have one, otherwise beginning of file
+const loopStartPosition = State.selectionStart !== null ? State.selectionStart : 0;
+State.setCurrentAudioPosition(loopStartPosition);
+```
+
+### Files Modified
+- `js/audio-player.js` - Added end-of-region detection in togglePlayPause() PAUSED case
+- `js/main.js` - Changed loop position from hardcoded 0 to selectionStart
+
+### Result
+✅ **Clean resume behavior** - Clicking play after region ends restarts from selection start
+✅ **Accurate loop position** - Fast loops maintain correct position (selection start, not file start)
+✅ **Consistent with STOPPED state** - PAUSED and STOPPED now behave the same when at region end
+
+**Commit**: v1.97 Fix: Playback region end hanging and loop position jumping - when paused at selection end, play button now restarts from selection start; fast looping now correctly positions to selection start instead of file beginning
+

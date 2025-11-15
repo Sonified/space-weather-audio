@@ -16,11 +16,18 @@ let spectrogramEndY = null;
 let spectrogramSelectionBox = null;
 
 export function drawSpectrogram() {
+    // 🔥 FIX: Cancel any existing RAF to prevent closure chain memory leak
+    if (State.spectrogramRAF !== null) {
+        cancelAnimationFrame(State.spectrogramRAF);
+        State.setSpectrogramRAF(null);
+    }
+    
+    // Early exit: no analyser - stop the loop completely
     if (!State.analyserNode) return;
     
-    // Pause visualization when audio is not playing
+    // Early exit: not playing - schedule next frame to keep checking
     if (State.playbackState !== PlaybackState.PLAYING) {
-        requestAnimationFrame(drawSpectrogram);
+        State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
         return;
     }
     
@@ -42,6 +49,8 @@ export function drawSpectrogram() {
     const actualScrollSpeed = State.spectrogramScrollSpeed;
     
     if (actualScrollSpeed <= 0) {
+        // 🔥 FIX: Store RAF ID before returning
+        State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
         return;
     }
     
@@ -119,7 +128,8 @@ export function drawSpectrogram() {
         }
     }
     
-    requestAnimationFrame(drawSpectrogram);
+    // 🔥 FIX: Store RAF ID for proper cleanup
+    State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
 }
 
 export function changeSpectrogramScrollSpeed() {

@@ -57,6 +57,10 @@ export let spectrogramScrollSpeed = 1.0;
 export let spectrogramFrameCounter = 0;
 export let frequencyScale = 'sqrt'; // 'linear', 'sqrt', or 'logarithmic'
 
+// Animation frame IDs (for cleanup to prevent memory leaks)
+export let playbackIndicatorRAF = null;
+export let spectrogramRAF = null;
+
 // Waveform rendering
 export let cachedWaveformCanvas = null;
 export let waveformMinMaxData = null;
@@ -113,6 +117,8 @@ export function setJustSeeked(value) { justSeeked = value; }
 export function setSpectrogramScrollSpeed(value) { spectrogramScrollSpeed = value; }
 export function setSpectrogramFrameCounter(value) { spectrogramFrameCounter = value; }
 export function setFrequencyScale(value) { frequencyScale = value; }
+export function setPlaybackIndicatorRAF(value) { playbackIndicatorRAF = value; }
+export function setSpectrogramRAF(value) { spectrogramRAF = value; }
 export function setCachedWaveformCanvas(value) { cachedWaveformCanvas = value; }
 export function setWaveformMinMaxData(value) { waveformMinMaxData = value; }
 export function setWaveformWorker(value) { waveformWorker = value; }

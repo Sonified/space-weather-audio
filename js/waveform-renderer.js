@@ -560,11 +560,19 @@ export function setupWaveformInteraction() {
 let lastDiagnosticTime = 0;
 
 export function updatePlaybackIndicator() {
+    // 🔥 FIX: Cancel any existing RAF to prevent closure chain memory leak
+    if (State.playbackIndicatorRAF !== null) {
+        cancelAnimationFrame(State.playbackIndicatorRAF);
+        State.setPlaybackIndicatorRAF(null);
+    }
+    
+    // Early exit: dragging - schedule next frame but don't render
     if (State.isDragging) {
-        requestAnimationFrame(updatePlaybackIndicator);
+        State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
         return;
     }
     
+    // Early exit: not playing - stop the loop completely
     if (State.playbackState !== PlaybackState.PLAYING) {
         return;
     }
@@ -610,7 +618,8 @@ export function updatePlaybackIndicator() {
         drawSpectrogramPlayhead();  // Draw playhead on spectrogram too
     }
     
-    requestAnimationFrame(updatePlaybackIndicator);
+    // 🔥 FIX: Store RAF ID for proper cleanup
+    State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
 }
 
 export function initWaveformWorker() {

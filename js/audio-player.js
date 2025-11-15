@@ -10,6 +10,25 @@ import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization } from './spectrogram-renderer.js';
 import { updateActiveRegionPlayButton } from './region-tracker.js';
 
+// ===== RAF CLEANUP HELPER =====
+
+/**
+ * Cancel all active animation frame loops
+ * Prevents memory leaks from closure chains
+ */
+export function cancelAllRAFLoops() {
+    if (State.playbackIndicatorRAF !== null) {
+        cancelAnimationFrame(State.playbackIndicatorRAF);
+        State.setPlaybackIndicatorRAF(null);
+        console.log('🧹 Cancelled playback indicator RAF');
+    }
+    if (State.spectrogramRAF !== null) {
+        cancelAnimationFrame(State.spectrogramRAF);
+        State.setSpectrogramRAF(null);
+        console.log('🧹 Cancelled spectrogram RAF');
+    }
+}
+
 // ===== CENTRALIZED PLAYBACK CONTROL =====
 
 /**
@@ -74,6 +93,9 @@ export function pausePlayback() {
     
     console.log('⏸️ Pausing playback');
     
+    // 🔥 FIX: Cancel animation frame loops to prevent memory leaks
+    cancelAllRAFLoops();
+    
     // Fade volume
     if (State.gainNode && State.audioContext) {
         State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
@@ -131,7 +153,25 @@ export function togglePlayPause() {
             break;
             
         case PlaybackState.PAUSED:
-            console.log(`▶️ Resuming playback`);
+            // Check if we're at the end of the selection - if so, restart from beginning
+            if (State.selectionStart !== null && State.selectionEnd !== null) {
+                const atEnd = Math.abs(State.currentAudioPosition - State.selectionEnd) < 0.1;
+                if (atEnd) {
+                    console.log(`▶️ At selection end, restarting from ${State.selectionStart.toFixed(2)}s`);
+                    seekToPosition(State.selectionStart, true);
+                    break;
+                }
+            } else {
+                // No selection - check if at end of full audio
+                const atEnd = State.currentAudioPosition >= State.totalAudioDuration - 0.1;
+                if (atEnd) {
+                    console.log(`▶️ At audio end, restarting from beginning`);
+                    seekToPosition(0, true);
+                    break;
+                }
+            }
+            
+            console.log(`▶️ Resuming playback from ${State.currentAudioPosition.toFixed(2)}s`);
             startPlayback();
             break;
     }
