@@ -11,3 +11,7 @@ files/Audio_Files/*.deploy_time
 files/Plot_Files/*
 Logic_Pro/
 backend/cron_output/
+# Environment variables and secrets
+.env
+.env.local
+*.key

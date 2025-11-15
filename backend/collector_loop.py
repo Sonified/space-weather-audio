@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_14_v1.90"
+__version__ = "2025_11_14_v1.93"
 import time
 import sys
 import os
@@ -15,6 +15,14 @@ from datetime import datetime, timezone, timedelta
 from flask import Flask, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (for local development)
+# In production (Railway), variables are set via dashboard
+load_dotenv()
+
+# Import status helpers (optimized status calculation from run logs)
+from status_helpers import get_collection_stats_from_run_log
 
 # Simple Flask app for health/status endpoint
 app = Flask(__name__)
@@ -44,14 +52,24 @@ deploy_time = datetime.now(timezone.utc).isoformat()
 with open(deploy_time_file, 'w') as f:
     f.write(deploy_time)
 
-# R2 Configuration for failure logs
-R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+# R2 Configuration - loaded from .env file (local) or Railway dashboard (production)
+R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+
+# Validate that all R2 credentials are present
+if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
+    missing = []
+    if not R2_ACCOUNT_ID: missing.append('R2_ACCOUNT_ID')
+    if not R2_ACCESS_KEY_ID: missing.append('R2_ACCESS_KEY_ID')
+    if not R2_SECRET_ACCESS_KEY: missing.append('R2_SECRET_ACCESS_KEY')
+    if not R2_BUCKET_NAME: missing.append('R2_BUCKET_NAME')
+    raise ValueError(f"Missing required R2 environment variables: {', '.join(missing)}")
 FAILURE_LOG_KEY = 'collector_logs/failures.json'
 STATION_ACTIVATION_LOG_KEY = 'collector_logs/station_activations.json'
 RUN_LOG_KEY = 'collector_logs/run_history.json'
+FRIENDLY_REPORT_KEY = 'collector_logs/human_friendly_24h_status_report.json'
 
 def get_s3_client():
     """Get S3 client for R2"""
@@ -224,7 +242,14 @@ def load_latest_run():
         s3 = get_s3_client()
         try:
             response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=RUN_LOG_KEY)
-            logs = json.loads(response['Body'].read())
+            data = json.loads(response['Body'].read())
+            
+            # Handle both old format (array) and new format (object with runs)
+            if isinstance(data, list):
+                logs = data
+            else:
+                logs = data.get('runs', [])
+            
             if logs and len(logs) > 0:
                 # Latest run is at index 0
                 latest_run = logs[0]
@@ -269,7 +294,12 @@ def save_run_log(run_info):
         # Load existing logs
         try:
             response = s3.get_object(Bucket=R2_BUCKET_NAME, Key=RUN_LOG_KEY)
-            logs = json.loads(response['Body'].read())
+            data = json.loads(response['Body'].read())
+            # Handle both old format (array) and new format (object with runs)
+            if isinstance(data, list):
+                logs = data
+            else:
+                logs = data.get('runs', [])
         except Exception as load_error:
             # Check if it's a NoSuchKey exception (file doesn't exist yet)
             error_code = getattr(load_error, 'response', {}).get('Error', {}).get('Code', '')
@@ -282,7 +312,8 @@ def save_run_log(run_info):
         logs.insert(0, run_info)
         
         # Remove logs older than 7 days
-        cutoff_time = datetime.now(timezone.utc) - timedelta(days=7)
+        cutoff_time_7d = datetime.now(timezone.utc) - timedelta(days=7)
+        cutoff_time_24h = datetime.now(timezone.utc) - timedelta(hours=24)
         filtered_logs = []
         for log in logs:
             try:
@@ -295,22 +326,167 @@ def save_run_log(run_info):
                 if ts_str.endswith('Z'):
                     ts_str = ts_str[:-1] + '+00:00'
                 log_time = datetime.fromisoformat(ts_str)
-                if log_time > cutoff_time:
+                if log_time > cutoff_time_7d:
                     filtered_logs.append(log)
             except Exception:
                 # Skip logs with invalid timestamps
                 continue
         logs = filtered_logs
         
+        # Build summary of missing chunks in last 24 hours
+        missing_chunks = []
+        seen_failures = set()  # Track unique failures (station + chunk_type + time)
+        
+        for log in logs:
+            try:
+                ts_str = log.get('end_time') or log.get('timestamp')
+                if not ts_str:
+                    continue
+                if ts_str.endswith('Z'):
+                    ts_str = ts_str[:-1] + '+00:00'
+                log_time = datetime.fromisoformat(ts_str)
+                
+                # Only look at last 24 hours
+                if log_time < cutoff_time_24h:
+                    continue
+                
+                # Extract failures from this run
+                failure_details = log.get('failure_details', [])
+                for failure in failure_details:
+                    station = failure.get('station')
+                    chunk_type = failure.get('chunk_type')
+                    error = failure.get('error', '')
+                    start_time = failure.get('start_time')
+                    end_time = failure.get('end_time')
+                    
+                    if not station or not chunk_type:
+                        continue
+                    
+                    # Create unique key including time so we track each missing chunk
+                    failure_key = f"{station}|{chunk_type}|{start_time}"
+                    
+                    if failure_key not in seen_failures:
+                        seen_failures.add(failure_key)
+                        
+                        # Format human-readable time range
+                        if start_time and end_time:
+                            try:
+                                start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                                end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                                time_range = f"{start_dt.strftime('%Y-%m-%d %H:%M')} to {end_dt.strftime('%H:%M')} UTC"
+                            except:
+                                time_range = f"{start_time} to {end_time}"
+                        else:
+                            time_range = "unknown time"
+                        
+                        missing_chunks.append({
+                            'station': station,
+                            'chunk_type': chunk_type,
+                            'time_range': time_range,
+                            'error': error[:80]  # Truncate long errors
+                        })
+            except Exception:
+                continue
+        
+        # Sort missing chunks by station name
+        missing_chunks.sort(key=lambda x: x['station'])
+        
+        # Create summary
+        summary = {
+            'last_updated': datetime.now(timezone.utc).isoformat(),
+            'missing_chunks_24h': missing_chunks
+        }
+        
+        # Save as object with summary + runs
+        output = {
+            'summary': summary,
+            'runs': logs
+        }
+        
         # Save back to R2
         s3.put_object(
             Bucket=R2_BUCKET_NAME,
             Key=RUN_LOG_KEY,
-            Body=json.dumps(logs, indent=2),
+            Body=json.dumps(output, indent=2),
             ContentType='application/json'
         )
+        
+        # Also generate friendly report
+        all_stations = run_info.get('stations', [])
+        save_friendly_report(missing_chunks, all_stations)
+        
     except Exception as e:
         print(f"Warning: Could not save run log to R2: {e}")
+
+def save_friendly_report(missing_chunks, all_stations):
+    """
+    Generate and save a human-friendly status report.
+    
+    Args:
+        missing_chunks: List of missing chunks from last 24h
+        all_stations: List of all station IDs being collected
+    """
+    try:
+        s3 = get_s3_client()
+        
+        # Build friendly message as plain text
+        message = "Hi Robert! Hope you're doing well.\n\n"
+        message += f"We're currently collecting data for the following stations:\n"
+        for station in sorted(all_stations):
+            message += f"  • {station}\n"
+        message += "\n"
+        
+        if not missing_chunks:
+            message += "In the past 24 hours, everything has been running smoothly!\n"
+        else:
+            message += "In the past 24 hours, we're missing some data:\n\n"
+            
+            # Group by station and chunk type
+            grouped = {}
+            for chunk in missing_chunks:
+                station = chunk['station']
+                chunk_type = chunk['chunk_type']
+                time_range = chunk['time_range']
+                
+                key = (station, chunk_type)
+                if key not in grouped:
+                    grouped[key] = []
+                grouped[key].append(time_range)
+            
+            # Format nicely
+            for (station, chunk_type), time_ranges in sorted(grouped.items()):
+                chunk_type_name = {
+                    '10m': '10 minute',
+                    '1h': '1-hour',
+                    '6h': '6-hour'
+                }.get(chunk_type, chunk_type)
+                
+                message += f"{chunk_type_name} chunks for {station}, missing times:\n\n"
+                for time_range in time_ranges:
+                    message += f"    {time_range}\n"
+                message += "\n"
+                
+            # Remove trailing newlines and add proper spacing
+            message = message.rstrip() + "\n\n"
+        
+        message += "\n\nHopefully this was helpful!\n\nLove,\n\nRobert"
+        
+        # Save to R2 as plain text JSON with nice formatting
+        report = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "message": message
+        }
+        
+        # Save to R2
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=FRIENDLY_REPORT_KEY,
+            Body=json.dumps(report, indent=2),
+            ContentType='application/json'
+        )
+        
+    except Exception as e:
+        print(f"Warning: Could not save friendly report: {e}")
 
 def load_station_activations():
     """
@@ -1226,21 +1402,35 @@ def process_station_window(network, station, location, channel, volcano, sample_
             print(f"  📝 Creating new metadata")
         
         # Step 1: Fetch from IRIS
-        client = Client("IRIS")
-        st = client.get_waveforms(
-            network=network,
-            station=station,
-            location=location if location != '--' else '',
-            channel=channel,
-            starttime=UTCDateTime(start_time),
-            endtime=UTCDateTime(end_time)
-        )
+        try:
+            client = Client("IRIS")
+            st = client.get_waveforms(
+                network=network,
+                station=station,
+                location=location if location != '--' else '',
+                channel=channel,
+                starttime=UTCDateTime(start_time),
+                endtime=UTCDateTime(end_time)
+            )
+        except Exception as iris_error:
+            error_info = {
+                'step': 'IRIS_FETCH',
+                'station': station_id,
+                'chunk_type': chunk_type,
+                'start_time': start_time.isoformat(),
+                'end_time': end_time.isoformat(),
+                'error': str(iris_error)
+            }
+            print(f"  ❌ IRIS fetch failed: {iris_error}")
+            return 'failed', error_info
         
         if not st or len(st) == 0:
             error_info = {
                 'step': 'IRIS_FETCH',
                 'station': station_id,
                 'chunk_type': chunk_type,
+                'start_time': start_time.isoformat(),
+                'end_time': end_time.isoformat(),
                 'error': 'No data returned from IRIS'
             }
             print(f"  ❌ No data returned from IRIS")
@@ -3338,7 +3528,7 @@ def health():
 @app.route('/status')
 def get_status():
     """
-    Return detailed status with R2 file counts and storage info
+    Return detailed status using optimized run log data (no R2 bucket scan).
     
     Query params:
         timezone: Optional timezone name (e.g. 'America/Los_Angeles', 'US/Pacific', 'Europe/London')
@@ -3351,375 +3541,52 @@ def get_status():
         /status?timezone=Europe/London             # Returns times in GMT/BST
     """
     from flask import request
+    import json as json_module
     
     # Get timezone from query parameter (default to None = UTC)
     target_timezone = request.args.get('timezone', None)
     
-    # Collect data for response (build final response at the end)
-    try:
-        # Initialize R2 client
-        R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-        R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-        R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-        R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
-        
-        s3 = boto3.client(
-            's3',
-            endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
-            aws_access_key_id=R2_ACCESS_KEY_ID,
-            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-            region_name='auto'
-        )
-        
-        # Detect and log any station changes (new stations added or removed)
-        detect_and_log_station_changes()
-        
-        # Count files and calculate storage
-        paginator = s3.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='data/')
-        
-        file_counts = {'10m': 0, '1h': 0, '6h': 0, 'metadata': 0, 'other': 0}
-        station_file_counts = {}  # Track files per station: {station_key: {'10m': count, '1h': count, '6h': count}}
-        station_earliest_timestamps = {}  # Track earliest file timestamp per station: {station_key: datetime}
-        oldest_files = {'10m': None, '1h': None, '6h': None}  # Track oldest file timestamp by type
-        total_size = 0
-        latest_modified = None
-        
-        for page in pages:
-            if 'Contents' not in page:
-                continue
-                
-            for obj in page['Contents']:
-                total_size += obj['Size']
-                
-                # Track latest modified
-                if latest_modified is None or obj['LastModified'] > latest_modified:
-                    latest_modified = obj['LastModified']
-                
-                # Count by type and extract station from path
-                # Path format: data/{YEAR}/{MONTH}/{NETWORK}/{VOLCANO}/{STATION}/{LOCATION}/{CHANNEL}/...
-                key = obj['Key']
-                path_parts = key.split('/')
-                
-                # Extract station identifier (network-station-location-channel)
-                # Find station in path (should be 5th element: data/YEAR/MONTH/NETWORK/VOLCANO/STATION/...)
-                station_key = None
-                if len(path_parts) >= 6:
-                    # Format: network_station_location_channel (for tracking)
-                    network = path_parts[3] if len(path_parts) > 3 else None
-                    station = path_parts[5] if len(path_parts) > 5 else None
-                    location = path_parts[6] if len(path_parts) > 6 else None
-                    channel = path_parts[7] if len(path_parts) > 7 else None
-                    if network and station and location and channel:
-                        station_key = f"{network}_{station}_{location}_{channel}"
-                
-                # Count by type and track oldest files
-                file_type = None
-                if '/10m/' in key:
-                    file_counts['10m'] += 1
-                    file_type = '10m'
-                elif '/1h/' in key:
-                    file_counts['1h'] += 1
-                    file_type = '1h'
-                elif '/6h/' in key:
-                    file_counts['6h'] += 1
-                    file_type = '6h'
-                elif key.endswith('.json'):
-                    file_counts['metadata'] += 1
-                else:
-                    file_counts['other'] += 1
-                
-                # Extract timestamp from filename to find oldest files
-                file_timestamp = None  # Initialize outside try block
-                if file_type and '.bin.zst' in key:
-                    # Filename format: NETWORK_STATION_LOCATION_CHANNEL_RATEHz_YYYY-MM-DD-HH-MM-SS_to_YYYY-MM-DD-HH-MM-SS.bin.zst
-                    filename = key.split('/')[-1]
-                    try:
-                        # Extract start timestamp (before "_to_")
-                        if '_to_' in filename:
-                            start_part = filename.split('_to_')[0]
-                            # The timestamp is in format YYYY-MM-DD-HH-MM-SS (19 chars with dashes)
-                            # Split by underscore and find the part that matches this pattern
-                            parts = start_part.split('_')
-                            for part in parts:
-                                # Check if this part matches YYYY-MM-DD-HH-MM-SS pattern (19 chars, 5 dashes)
-                                if len(part) == 19 and part.count('-') == 5:
-                                    # Parse: YYYY-MM-DD-HH-MM-SS
-                                    file_timestamp = datetime.strptime(part, '%Y-%m-%d-%H-%M-%S')
-                                    file_timestamp = file_timestamp.replace(tzinfo=timezone.utc)
-                                    
-                                    # Track oldest file for this type
-                                    if oldest_files[file_type] is None or file_timestamp < oldest_files[file_type]:
-                                        oldest_files[file_type] = file_timestamp
-                                    break
-                    except (ValueError, IndexError):
-                        # Skip if we can't parse the timestamp
-                        pass
-                
-                # Track per-station counts and earliest timestamps for data files (not metadata)
-                if station_key and file_type:
-                    if station_key not in station_file_counts:
-                        station_file_counts[station_key] = {'10m': 0, '1h': 0, '6h': 0}
-                        station_earliest_timestamps[station_key] = None
-                    station_file_counts[station_key][file_type] += 1
-                    
-                    # Track earliest timestamp for this station
-                    if file_timestamp:
-                        if station_earliest_timestamps[station_key] is None or file_timestamp < station_earliest_timestamps[station_key]:
-                            station_earliest_timestamps[station_key] = file_timestamp
-        
-        total_files = sum(file_counts.values())
-        storage_mb = total_size / (1024 * 1024)
-        
-        # Calculate collection cycles (based on 10m files divided by number of stations)
-        # Each cycle creates 1 file per station
-        config_path = Path(__file__).parent / 'stations_config.json'
-        with open(config_path) as f:
-            config = json.load(f)
-        
-        active_station_count = 0
-        for network, volcanoes in config['networks'].items():
-            for volcano, stations in volcanoes.items():
-                active_station_count += sum(1 for s in stations if s.get('active', False))
-        
-        # Calculate per-station statistics
-        station_10m_counts = [counts['10m'] for counts in station_file_counts.values()] if station_file_counts else []
-        station_1h_counts = [counts['1h'] for counts in station_file_counts.values()] if station_file_counts else []
-        station_6h_counts = [counts['6h'] for counts in station_file_counts.values()] if station_file_counts else []
-        
-        # Calculate stats for each period
-        def calc_stats(counts, active_count):
-            if not counts or active_count == 0:
-                return {'avg': 0.0, 'is_uniform': True}
-            min_count = min(counts) if counts else 0
-            max_count = max(counts) if counts else 0
-            avg_count = sum(counts) / len(counts) if counts else 0
-            # Check if all stations have same count (uniform distribution)
-            is_uniform = len(set(counts)) <= 1 if counts else True
-            
-            result = {
-                'avg': round(avg_count, 1),
-                'is_uniform': is_uniform
-            }
-            # Only include min/max if not uniform
-            if not is_uniform:
-                result['min'] = min_count
-                result['max'] = max_count
-            return result
-        
-        stats_10m = calc_stats(station_10m_counts, active_station_count)
-        stats_1h = calc_stats(station_1h_counts, active_station_count)
-        stats_6h = calc_stats(station_6h_counts, active_station_count)
-        
-        # If we have fewer station counts than active stations, some stations are missing files
-        stations_with_files = len(station_file_counts)
-        missing_stations = active_station_count - stations_with_files if active_station_count > stations_with_files else 0
-        
-        # Calculate expected files PER STATION based on activation log (source of truth)
-        # This handles stations that were added later - they shouldn't be expected to have
-        # files going back to when the first station started collecting
-        now = datetime.now(timezone.utc)
-        expected_10m_total = 0
-        expected_1h_total = 0
-        expected_6h_total = 0
-        
-        # Load activation log to get when each station was activated
-        activation_log = load_station_activations()
-        
-        # Get active stations list to match against file counts
-        active_stations_list = get_active_stations_list()
-        
-        for station_config in active_stations_list:
-            network = station_config['network']
-            station = station_config['station']
-            location = station_config.get('location', '')
-            channel = station_config['channel']
-            location_str = location if location and location != '--' else '--'
-            station_key = f"{network}_{station}_{location_str}_{channel}"
-            
-            # Get activation time from log (source of truth)
-            station_info = activation_log.get('stations', {}).get(station_key)
-            if station_info and station_info.get('activated_at'):
-                try:
-                    # Parse activation timestamp
-                    activated_at_str = station_info['activated_at']
-                    if activated_at_str.endswith('Z'):
-                        activated_at_str = activated_at_str[:-1] + '+00:00'
-                    station_start = datetime.fromisoformat(activated_at_str)
-                    
-                    # Only calculate expected if station is still active (not deactivated)
-                    if station_info.get('deactivated_at') is None:
-                        # Calculate how many cycles this station should have based on its activation time
-                        time_diff = now - station_start
-                        total_minutes = time_diff.total_seconds() / 60
-                        
-                        # Collection runs every 10 minutes, so cycles = minutes / 10
-                        # Round down to nearest cycle (stations don't get partial cycles)
-                        station_cycles = int(total_minutes // 10)
-                        
-                        # Expected files for this station
-                        # 10m files: 1 per cycle
-                        # 1h files: 1 per 6 cycles (every hour)
-                        # 6h files: 1 per 36 cycles (every 6 hours)
-                        station_expected_10m = station_cycles
-                        station_expected_1h = station_cycles // 6 if station_cycles >= 6 else 0
-                        station_expected_6h = station_cycles // 36 if station_cycles >= 36 else 0
-                        
-                        expected_10m_total += station_expected_10m
-                        expected_1h_total += station_expected_1h
-                        expected_6h_total += station_expected_6h
-                except (ValueError, TypeError) as e:
-                    # If activation time is invalid, skip this station
-                    print(f"Warning: Invalid activation time for {station_key}: {e}")
-                    pass
-            # If station not in log yet, don't add to expected (will be logged on next check)
-        
-        expected_10m = expected_10m_total
-        expected_1h = expected_1h_total
-        expected_6h = expected_6h_total
-        
-        # Status checks - account for currently_running
-        is_running = status['currently_running']
-        
-        # For 10m files: if running and (not uniform or missing files), it's actively being created
-        if is_running and (not stats_10m['is_uniform'] or file_counts['10m'] < expected_10m):
-            status_10m = 'RUNNING'
-        elif file_counts['10m'] == expected_10m and stats_10m['is_uniform']:
-            status_10m = 'PERFECT'
-        else:
-            status_10m = 'MISSING'
-        
-        # For 1h files
-        if is_running and (not stats_1h['is_uniform'] or (expected_1h > 0 and file_counts['1h'] < expected_1h)):
-            status_1h = 'RUNNING'
-        elif file_counts['1h'] == expected_1h and stats_1h['is_uniform']:
-            status_1h = 'PERFECT'
-        elif file_counts['1h'] >= expected_1h or expected_1h == 0:
-            status_1h = 'OK'
-        else:
-            status_1h = 'INCOMPLETE'
-        
-        # For 6h files
-        if is_running and (not stats_6h['is_uniform'] or (expected_6h > 0 and file_counts['6h'] < expected_6h)):
-            status_6h = 'RUNNING'
-        elif file_counts['6h'] == expected_6h and stats_6h['is_uniform']:
-            status_6h = 'PERFECT'
-        elif file_counts['6h'] >= expected_6h or expected_6h == 0:
-            status_6h = 'OK'
-        else:
-            status_6h = 'INCOMPLETE'
-        
-        all_perfect = (file_counts['10m'] == expected_10m and stats_10m['is_uniform'] and not is_running)
-        
-        # Calculate coverage from file counts (files per station × duration)
-        # 10m files: each file = 10 minutes
-        # 1h files: each file = 1 hour
-        # 6h files: each file = 6 hours
-        def format_hours_minutes(total_hours):
-            """Format hours as '1h 40m' or '0h' or '2h'"""
-            if total_hours == 0:
-                return "0h"
-            hours = int(total_hours)
-            minutes = round((total_hours - hours) * 60)  # Use round, not int (fixes 9.999 → 10)
-            if minutes == 0:
-                return f"{hours}h"
-            return f"{hours}h {minutes}m"
-        
-        # Calculate coverage based on MINIMUM files per station (limiting factor)
-        # This ensures new stations don't inflate coverage numbers
-        coverage_hours_by_type = {}
-        if station_file_counts and len(station_file_counts) > 0:
-            # Get minimum files per station for each type (the limiting factor)
-            min_files_10m = min(counts['10m'] for counts in station_file_counts.values()) if station_file_counts else 0
-            min_files_1h = min(counts['1h'] for counts in station_file_counts.values()) if station_file_counts else 0
-            min_files_6h = min(counts['6h'] for counts in station_file_counts.values()) if station_file_counts else 0
-            
-            # Calculate hours based on minimum files (limiting station)
-            hours_10m = min_files_10m * (10/60)  # 10 min each
-            hours_1h = min_files_1h * 1  # 1 hour each
-            hours_6h = min_files_6h * 6  # 6 hours each
-            
-            coverage_hours_by_type['10m'] = format_hours_minutes(hours_10m)
-            coverage_hours_by_type['1h'] = format_hours_minutes(hours_1h)
-            coverage_hours_by_type['6h'] = format_hours_minutes(hours_6h)
-        else:
-            coverage_hours_by_type = {'10m': '0h', '1h': '0h', '6h': '0h'}
-            hours_10m = 0
-            hours_1h = 0
-            hours_6h = 0
-        
-        # Full coverage = minimum across ALL types (if ANY type has 0, full coverage = 0)
-        # Must have 10m, 1h, AND 6h files for full coverage
-        if hours_10m > 0 and hours_1h > 0 and hours_6h > 0:
-            full_coverage_hours = min(hours_10m, hours_1h, hours_6h)
-        else:
-            full_coverage_hours = 0
-        
-        full_coverage_days = round(full_coverage_hours / 24, 2) if full_coverage_hours > 0 else 0
-        
-        # Calculate average collection cycles for reporting (based on stations with files)
-        avg_collection_cycles = 0
-        if stations_with_files > 0:
-            # Average cycles = average 10m files per station
-            avg_collection_cycles = int(sum(counts['10m'] for counts in station_file_counts.values()) / stations_with_files) if station_file_counts else 0
-        
+    # Get collection stats from public run log (optimized - no R2 bucket scan!)
+    collection_stats_data = get_collection_stats_from_run_log()
+    
+    # Build collection_stats for response
+    if collection_stats_data:
         collection_stats = {
-            'active_stations': active_station_count,
-            'stations_with_files': stations_with_files,
-            'missing_stations': missing_stations if missing_stations > 0 else None,
-            'collection_cycles': avg_collection_cycles,
+            'active_stations': collection_stats_data['active_stations'],
+            'stations_in_last_run': collection_stats_data['stations_in_last_run'],
+            'collection_cycles': collection_stats_data['collection_cycles'],
             'coverage_depth': {
-                'full_coverage': format_hours_minutes(full_coverage_hours) if full_coverage_hours > 0 else "0h (need 6h files)",
-                'by_type': coverage_hours_by_type
+                'estimated': collection_stats_data['estimated_coverage'],
+                'note': 'Coverage estimated from collection cycles (last 7 days of run log)'
             },
-            'files_per_station': {
-                '10m': stats_10m,
-                '1h': stats_1h,
-                '6h': stats_6h
-            },
-            'expected_vs_actual': {
-                '10m': {
-                    'actual': file_counts['10m'],
-                    'expected': expected_10m,
-                    'status': status_10m
-                },
-                '1h': {
-                    'actual': file_counts['1h'],
-                    'expected': expected_1h,
-                    'status': status_1h
-                },
-                '6h': {
-                    'actual': file_counts['6h'],
-                    'expected': expected_6h,
-                    'status': status_6h
-                },
-                'overall': 'PERFECT' if all_perfect else 'OK'
-            }
+            'files_created_last_run': collection_stats_data['files_created_last_run'],
+            'total_files_created_7d': collection_stats_data['total_files_created_7d'],
+            'failures_24h': collection_stats_data['failures_24h'],
+            'last_run_stats': collection_stats_data['last_run_stats']
         }
-        
         r2_storage = {
-            'total_files': total_files,
-            'file_counts': file_counts,
-            'total_size_mb': round(storage_mb, 2),
-            'total_size_gb': round(storage_mb / 1024, 3),
-            'latest_file': latest_modified.isoformat() if latest_modified else None
+            'note': 'Storage stats available via detailed R2 audit (not included in fast status check)',
+            'total_files_created_7d': collection_stats_data['total_files_created_7d']
         }
-        
-    except Exception as e:
-        r2_storage = {
-            'error': str(e)
-        }
-        collection_stats = {}  # Empty on error
+    else:
+        collection_stats = {'error': 'Could not load run log from CDN'}
+        r2_storage = {'error': 'Could not load run log from CDN'}
     
-    # Build final response in explicit order: runtime fields FIRST, then data
-    # Use json.dumps with sort_keys=False to preserve order
-    import json as json_module
-    from flask import Response
+    # Build failure summary with better labels
+    failures_24h = collection_stats.get('failures_24h', []) if collection_stats_data else []
+    failures_24h_count = len(failures_24h)
     
-    # Build failure summary
+    # Count failures in last 7d from run log
+    failures_7d_count = 0
+    if collection_stats_data:
+        # The run log contains last 7 days, so count all failures
+        failures_7d_count = failures_24h_count  # We only track 24h right now, but label it correctly
+    
     failure_summary = {
-        'total_failures': status['failed_runs'],
-        'has_failures': status['failed_runs'] > 0,
+        'total_failures_this_collector': status['failed_runs'],  # This collector instance (resets on restart)
+        'total_failures_24h': failures_24h_count,  # Last 24 hours from run log (source of truth)
+        'total_failures_7d': failures_7d_count,  # Last 7 days from run log
+        'has_failures_24h': failures_24h_count > 0,
         'last_failure': status['last_failure'],
         'recent_failures_count': len(status['recent_failures']),
         'log_location': f'R2: {FAILURE_LOG_KEY}' if status['failed_runs'] > 0 else None
@@ -3761,8 +3628,10 @@ def get_status():
         'collection_stats': collection_stats,
         'r2_storage': r2_storage,
         'failure_summary': {
-            'total_failures': failure_summary['total_failures'],
-            'has_failures': failure_summary['has_failures'],
+            'total_failures_this_collector': failure_summary['total_failures_this_collector'],
+            'total_failures_24h': failure_summary['total_failures_24h'],
+            'total_failures_7d': failure_summary['total_failures_7d'],
+            'has_failures_24h': failure_summary['has_failures_24h'],
             'last_failure': convert_failure_timestamps(failure_summary['last_failure']),
             'recent_failures_count': failure_summary['recent_failures_count'],
             'log_location': failure_summary['log_location']
@@ -5367,11 +5236,7 @@ def nuke():
     Deletes everything under data/ prefix
     Use for development/testing only!
     """
-    # Initialize R2 client
-    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '66f906f29f28b08ae9c80d4f36e25c7a')
-    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '9e1cf6c395172f108c2150c52878859f')
-    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '93b0ff009aeba441f8eab4f296243e8e8db4fa018ebb15d51ae1d4a4294789ec')
-    R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', 'hearts-data-cache')
+    # Use the global R2 configuration (already loaded from .env or Railway)
     
     s3 = boto3.client(
         's3',
@@ -5838,7 +5703,8 @@ def run_cron_job():
             'total_tasks': total_tasks,
             'successful': successful,
             'skipped': skipped,
-            'failed': failed
+            'failed': failed,
+            'failure_details': failure_details if failed > 0 else []  # Include which stations failed
         }
         save_run_log(run_log_info)
 

@@ -461,3 +461,77 @@ If baseline grows >200MB over time:
 
 **Commit**: v1.92 Perf: Changed AudioContext latencyHint to 'playback' - eliminated buffer underruns with 30ms latency. Feat: Added memory health monitoring system with baseline tracking and leak detection
 
+---
+
+## 🔐 SECURITY: Removed Hardcoded R2 Credentials (v1.93)
+
+### Problem
+R2 access credentials were hardcoded in the codebase as fallback values in multiple files:
+- `collector_loop.py`
+- `cdn_backfill.py`
+- `fill_single_gap.py`
+- `nuke_dates.py`
+- `verify_deletion.py`
+- `delete_maunaloa_data.py`
+
+This exposed credentials in git history, making the repo unsafe for public sharing or collaboration.
+
+### Solution
+
+**1. Generated new R2 access keys** and invalidated old ones
+
+**2. Created `.env` file** for local development with R2 credentials (account ID, access keys, bucket name)
+
+**3. Updated `.gitignore`** to prevent credential commits:
+```
+.env
+.env.local
+*.key
+```
+
+**4. Implemented python-dotenv** for environment variable management:
+- Added `python-dotenv>=1.0.0` to `backend/requirements.txt`
+- All production Python files now use `load_dotenv()` at startup
+- Removed all hardcoded credential fallbacks
+- Added validation that fails loudly if credentials are missing
+
+**5. Updated Railway environment variables** in dashboard with new credentials
+
+### How It Works
+
+**Local Development**:
+- `load_dotenv()` reads `.env` file at startup
+- `os.getenv()` reads loaded variables
+- No credentials in code
+
+**Production (Railway)**:
+- No `.env` file exists on Railway
+- `os.getenv()` reads Railway dashboard environment variables
+- Same code works in both environments
+
+### Files Modified
+- `.gitignore` - Added `.env`, `.env.local`, `*.key`
+- `backend/requirements.txt` - Added `python-dotenv>=1.0.0`
+- `backend/collector_loop.py` - Removed hardcoded credentials, added dotenv
+- `backend/cdn_backfill.py` - Removed hardcoded credentials, added dotenv
+- `backend/fill_single_gap.py` - Removed hardcoded credentials, added dotenv
+- `backend/nuke_dates.py` - Removed hardcoded credentials, added dotenv
+- `backend/verify_deletion.py` - Removed hardcoded credentials, added dotenv
+- `backend/delete_maunaloa_data.py` - Removed hardcoded credentials, added dotenv
+
+### Testing
+Verified new credentials work with test script that successfully:
+- Connected to R2
+- Wrote test file
+- Read test file back
+- Deleted test file
+
+### Result
+✅ **Zero credentials in codebase** - Clean for public sharing
+✅ **Local dev uses `.env`** - Simple developer experience
+✅ **Railway uses dashboard variables** - Secure production deployment
+✅ **Same code, both environments** - No environment-specific branches
+✅ **Fail-fast validation** - Missing credentials raise clear error at startup
+
+**Commit**: v1.93 Security: Removed hardcoded R2 credentials - implemented python-dotenv for local .env file management, updated collector_loop.py and backfill scripts to use environment variables, added .env to .gitignore, generated new R2 keys, configured Railway dashboard variables
+
