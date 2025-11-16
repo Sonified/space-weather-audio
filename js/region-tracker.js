@@ -302,7 +302,7 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
         
         // Draw region number - position dynamically based on region width
         const regionNumber = index + 1; // 1-indexed for display
-        const paddingY = 17; // Padding from top edge
+        const paddingY = 6; // Padding from top edge (moved up more)
         
         // Position number outside to the left if region is too narrow, otherwise inside
         let labelX;
@@ -310,14 +310,14 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
             // Position number to the left, outside the box
             labelX = startX - 20;
         } else {
-            // Position inside, top-left corner (with padding from left edge)
-            labelX = startX + 15;
+            // Position inside, top-left corner (with padding from left edge, moved left a bit)
+            labelX = startX + 10;
         }
         const labelY = paddingY;
         
         // Set text style - white with 80% opacity
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.font = 'bold 30px -apple-system, BlinkMacSystemFont, "Segoe UI"';
+        ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI"';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         
