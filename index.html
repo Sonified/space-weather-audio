@@ -47,7 +47,7 @@
             <div class="controls">
                 <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px;">
                     <label for="volcano" style="margin-bottom: 0;">Volcano:</label>
-                    <select id="volcano">
+                    <select id="volcano" style="background: rgba(255, 255, 255, 0.8);">
                         <option value="kilauea">Kīlauea (HI)</option>
                         <option value="maunaloa">Mauna Loa (HI)</option>
                         <option value="greatsitkin">Great Sitkin (AK)</option>
@@ -167,14 +167,14 @@
             <canvas id="waveform-x-axis" width="1200" height="40"></canvas>
             <canvas id="spectrogram" width="1200" height="450"></canvas>
             <canvas id="spectrogram-axis" width="60" height="450"></canvas>
-            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 30px; margin-top: 10px; padding: 8px 0; padding-right: 40px;">
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-right: 40px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" id="playOnClick" checked style="width: 20px; height: 20px; cursor: pointer;">
                     <label for="playOnClick" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">Play on Click</label>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
                 <label for="frequencyScale" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Frequency Scale:</label>
-                <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: white; cursor: pointer;">
+                <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.9); cursor: pointer;">
                     <option value="linear">Linear</option>
                     <option value="sqrt" selected>Square Root</option>
                     <option value="logarithmic">Logarithmic</option>

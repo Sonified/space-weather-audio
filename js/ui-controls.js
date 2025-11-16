@@ -289,7 +289,17 @@ export async function purgeCloudflareCache() {
 }
 
 // Modal functions
+// 🔥 FIX: Track if listeners have been set up to prevent duplicate attachment
+let modalListenersSetup = false;
+
 export function setupModalEventListeners() {
+    // 🔥 FIX: Prevent duplicate event listener attachment
+    // If listeners are already set up, remove old ones first before re-adding
+    if (modalListenersSetup) {
+        console.warn('⚠️ Modal listeners already set up - removing old listeners first');
+        removeModalEventListeners();
+    }
+    
     // Participant modal event listeners
     const participantModal = document.getElementById('participantModal');
     if (!participantModal) {
@@ -596,7 +606,32 @@ export function setupModalEventListeners() {
         });
     }
     
+    modalListenersSetup = true;
     console.log('📋 Modal event listeners attached');
+}
+
+/**
+ * Remove all modal event listeners to prevent NativeContext accumulation
+ * Called before re-adding listeners to ensure old closures are broken
+ */
+function removeModalEventListeners() {
+    // 🔥 FIX: Clone modals to break all event listener references
+    // This ensures old closures (NativeContext instances) can be garbage collected
+    const modalIds = ['participantModal', 'preSurveyModal', 'postSurveyModal', 'activityLevelModal', 'awesfModal'];
+    
+    modalIds.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal && modal.parentNode) {
+            // Clone to break all event listeners
+            const cloned = modal.cloneNode(true); // Deep clone to preserve structure
+            modal.parentNode.replaceChild(cloned, modal);
+            // Replace clone back with original structure (but listeners are broken)
+            // Actually, keep the clone since it has the same structure but no listeners
+            // The original modal with listeners is now detached and can be GC'd
+        }
+    });
+    
+    modalListenersSetup = false;
 }
 
 export function openParticipantModal() {

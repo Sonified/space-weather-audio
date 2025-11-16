@@ -212,6 +212,13 @@ export function drawFrequencyAxis() {
         const elapsed = performance.now() - scaleTransitionStartTime;
         if (elapsed < scaleTransitionDuration) {
             scaleTransitionRAF = requestAnimationFrame(() => {
+                // 🔥 FIX: Check document connection before executing RAF callback
+                // This prevents RAF callbacks from retaining references to detached documents
+                if (!document.body || !document.body.isConnected) {
+                    scaleTransitionRAF = null;
+                    scaleTransitionInProgress = false;
+                    return;
+                }
                 drawFrequencyAxis();
             });
         } else {
@@ -368,8 +375,15 @@ function generateSqrtTicks(maxFreq, playbackRate = 1.0) {
 function generateLinearTicks(maxFreq, playbackRate) {
     const ticks = [0];
     
+    // Very high speed mode (10x and above): 0.1 Hz increments
+    if (playbackRate >= 10.0) {
+        // Add 0.1 Hz increments
+        for (let freq = 0.1; freq <= maxFreq; freq += 0.1) {
+            if (freq <= maxFreq) ticks.push(freq);
+        }
+    }
     // High speed mode (4.5x and above): 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10...
-    if (playbackRate >= 4.5) {
+    else if (playbackRate >= 4.5) {
         // Add .5 increments up to 5
         for (let freq = 0.5; freq <= 5; freq += 0.5) {
             if (freq <= maxFreq) ticks.push(freq);

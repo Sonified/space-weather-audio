@@ -109,8 +109,9 @@ h2 {
 .panel-visualization {
     background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
     border: 1px solid rgba(200, 100, 100, 0.3);
-    padding-top: 20px;
+    padding-top: 12px;
     padding-right: 40px;
+    padding-bottom: 15px;
 }
 
 /* Panel: Metrics panel */
@@ -143,13 +144,13 @@ select, input {
     border: 2px solid rgba(200, 100, 100, 0.3);
     border-radius: 6px;
     font-size: 14px;
-    background: white;
+    background: rgba(255, 255, 255, 0.9);
 }
 
 select:focus, input:focus {
     outline: none;
     border-color: #cc5533;
-    background: white;
+    background: rgba(255, 255, 255, 0.9);
     box-shadow: 0 0 0 3px rgba(204, 85, 51, 0.1);
 }
 

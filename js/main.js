@@ -799,8 +799,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.06 - Removed Scroll Speed Control');
-    console.log('🗑️ [0ms] v2.06 UI: Removed scroll speed bar and all related code from spectrogram');
+    console.log('🌋 [0ms] volcano-audio v2.07 - Memory Leak Fixes & UI Improvements');
+    console.log('🧹 [0ms] v2.07 Memory: Fixed NativeContext leaks in RAF callbacks (spectrogram-axis, spectrogram fade, waveform crossfade)');
+    console.log('🎨 [0ms] v2.07 UI: Added 0.1Hz ticks at 10x speed, adjusted padding, semi-transparent dropdowns');
     console.log('🔇 [0ms] Commented out worklet message logging to reduce console noise');
     
     // Start memory health monitoring

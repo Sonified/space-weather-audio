@@ -135,6 +135,13 @@ export function drawWaveformFromMinMax() {
         const duration = 300;
         
         const animate = () => {
+            // 🔥 FIX: Check document connection before executing RAF callback
+            // This prevents RAF callbacks from retaining references to detached documents
+            if (!document.body || !document.body.isConnected) {
+                State.setCrossfadeAnimation(null);
+                return; // Document is detached, stop the animation
+            }
+            
             const elapsed = performance.now() - startTime;
             const progress = Math.min(elapsed / duration, 1.0);
             
@@ -575,7 +582,7 @@ export function updatePlaybackIndicator() {
     // 🔥 FIX: Clear RAF ID immediately to prevent duplicate scheduling
     // This must happen FIRST before any early returns to prevent accumulation
     const currentRAF = State.playbackIndicatorRAF;
-    State.setPlaybackIndicatorRAF(null);
+        State.setPlaybackIndicatorRAF(null);
     if (currentRAF !== null) {
         cancelAnimationFrame(currentRAF);
     }
@@ -591,7 +598,7 @@ export function updatePlaybackIndicator() {
         // 🔥 FIX: Only schedule RAF if document is still connected and not already scheduled
         // This prevents creating RAF callbacks that will be retained by detached documents
         if (document.body && document.body.isConnected && State.playbackIndicatorRAF === null) {
-            State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
+        State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
         }
         return;
     }
@@ -620,7 +627,7 @@ export function updatePlaybackIndicator() {
     // Only schedule if document is still connected and not already scheduled
     // This prevents creating multiple RAF callbacks that accumulate
     if (document.body && document.body.isConnected && State.playbackIndicatorRAF === null) {
-        State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
+    State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
     } else {
         // Document is detached or already scheduled - stop the loop
         State.setPlaybackIndicatorRAF(null);

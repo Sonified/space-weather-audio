@@ -20,7 +20,7 @@ export function drawSpectrogram() {
     // 🔥 FIX: Clear RAF ID immediately to prevent duplicate scheduling
     // This must happen FIRST before any early returns to prevent accumulation
     const currentRAF = State.spectrogramRAF;
-    State.setSpectrogramRAF(null);
+        State.setSpectrogramRAF(null);
     if (currentRAF !== null) {
         cancelAnimationFrame(currentRAF);
     }
@@ -38,7 +38,7 @@ export function drawSpectrogram() {
     if (State.playbackState !== PlaybackState.PLAYING) {
         // 🔥 FIX: Only schedule RAF if document is still connected and not already scheduled
         if (document.body && document.body.isConnected && State.spectrogramRAF === null) {
-            State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
+        State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
         }
         return;
     }
@@ -82,32 +82,32 @@ export function drawSpectrogram() {
     };
     
     // Scroll 1 pixel per frame (standard scrolling behavior)
-    ctx.drawImage(canvas, -1, 0);
-    ctx.clearRect(width - 1, 0, 1, height);
-    
-    // Draw new column
-    for (let i = 0; i < bufferLength; i++) {
-        const value = dataArray[i];
-        const percent = value / 255;
-        const hue = percent * 60;
-        const saturation = 100;
-        const lightness = 10 + (percent * 60);
-        const y = getYPosition(i, bufferLength, height);
-        const nextY = getYPosition(i + 1, bufferLength, height);
-        const barHeight = Math.max(1, Math.abs(y - nextY));
-        ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-        ctx.fillRect(width - 1, nextY, 1, barHeight);
+            ctx.drawImage(canvas, -1, 0);
+            ctx.clearRect(width - 1, 0, 1, height);
+            
+            // Draw new column
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const percent = value / 255;
+                const hue = percent * 60;
+                const saturation = 100;
+                const lightness = 10 + (percent * 60);
+                const y = getYPosition(i, bufferLength, height);
+                const nextY = getYPosition(i + 1, bufferLength, height);
+                const barHeight = Math.max(1, Math.abs(y - nextY));
+                ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                ctx.fillRect(width - 1, nextY, 1, barHeight);
     }
     
     // 🔥 FIX: Store RAF ID for proper cleanup
     // Only schedule if document is still connected and not already scheduled
     // This prevents creating multiple RAF callbacks that accumulate
     if (document.body && document.body.isConnected && State.spectrogramRAF === null) {
-        State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
+    State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
     } else {
         // Document is detached or already scheduled - stop the loop
         State.setSpectrogramRAF(null);
-    }
+            }
 }
 
 
@@ -214,6 +214,12 @@ export async function changeFrequencyScale() {
             const fadeStart = performance.now();
             
             const fadeStep = () => {
+                // 🔥 FIX: Check document connection before executing RAF callback
+                // This prevents RAF callbacks from retaining references to detached documents
+                if (!document.body || !document.body.isConnected) {
+                    return; // Document is detached, stop the fade animation
+                }
+                
                 const elapsed = performance.now() - fadeStart;
                 const progress = Math.min(elapsed / fadeDuration, 1.0);
                 
