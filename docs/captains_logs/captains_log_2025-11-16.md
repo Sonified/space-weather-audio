@@ -2,6 +2,38 @@
 
 ---
 
+## 🎨 Logarithmic Spectrogram Tick Sync Fix (v2.10)
+
+### Problem
+Logarithmic spectrogram ticks were drifting out of sync with the spectrogram when playback speed changed. Linear and square root scales worked perfectly, but log scale had vertical drift.
+
+### Root Cause
+Logarithmic scale is **NOT homogeneous** (unlike linear/sqrt). The tick positioning was:
+1. Scaling frequency by playbackRate FIRST: `effectiveFreq = freq * playbackRate`
+2. Then applying log transform with FIXED denominator: `logMax = log10(originalNyquist)`
+
+But the spectrogram stretch factor was calculating with a CHANGING denominator based on playbackRate, causing a mismatch.
+
+### Solution
+For logarithmic scale, calculate the **1x position first** using the fixed denominator, then **apply the stretch factor to the position** (not the frequency):
+
+1. **Calculate 1x position** using fixed `logMax = log10(originalNyquist)`
+2. **Apply stretch factor** to the position itself (matches GPU stretching)
+3. Added `calculateStretchFactorForLog()` helper that matches spectrogram stretch factor logic
+
+### Key Insight
+- **Linear/sqrt**: Homogeneous transforms - scaling frequency first works ✓
+- **Logarithmic**: Non-homogeneous - must stretch positions, not scale frequencies ✓
+
+### Files Modified
+- `js/spectrogram-axis-renderer.js` - Updated `getYPositionForFrequencyScaled()` for log scale, added `calculateStretchFactorForLog()` helper
+- `js/spectrogram-complete-renderer.js` - Fixed spectrogram rendering to use actual frequencies (not bin indices) and match tick positioning
+
+### Version
+v2.10 - Commit: "v2.10 Fix: Logarithmic spectrogram tick sync - calculate 1x position first then apply stretch factor"
+
+---
+
 ## 🧹 ArrayBuffer Memory Leak Fix (v2.09)
 
 ### Changes Made

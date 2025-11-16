@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_15_v2.05"
+__version__ = "2025_11_16_v2.10"
 import time
 import sys
 import os
@@ -5776,7 +5776,7 @@ def run_scheduler():
 def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.05 Fix: Handle shrinking case for slow playback rates (<1.0x) in spectrogram viewport")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.10 Fix: Logarithmic spectrogram tick sync - calculate 1x position first then apply stretch factor")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git Commit: v2.01 Feature: Added feature time tracking and improved feature selection UI with time/frequency display")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Environment: {DEPLOYMENT_ENV}")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Deployed: {deploy_time}")

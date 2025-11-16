@@ -238,25 +238,34 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         
         // Helper function to calculate y position based on frequency scale
         // 🔥 RENDER AT NEUTRAL (1x) - NO playback rate scaling during rendering!
+        // CRITICAL: Convert bin indices to actual frequencies to match tick positioning!
         const getYPosition = (binIndex, totalBins, canvasHeight) => {
+            // Get original sample rate from metadata (matches spectrogram-axis-renderer.js)
+            const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+            const originalNyquist = originalSampleRate / 2;
+            
+            // Convert bin index to actual frequency in Hz
+            // Bin 0 = 0 Hz, Bin (totalBins-1) = Nyquist
+            const frequency = (binIndex / totalBins) * originalNyquist;
+            
             if (State.frequencyScale === 'logarithmic') {
-                // Logarithmic scale: strong emphasis on lower frequencies
-                const minFreq = 1;
-                const maxFreq = totalBins;
+                // Logarithmic scale: use same frequency range as tick positioning!
+                const minFreq = 0.1; // Match tick positioning (avoid log(0))
+                const freqSafe = Math.max(frequency, minFreq);
                 const logMin = Math.log10(minFreq);
-                const logMax = Math.log10(maxFreq);
-                const logFreq = Math.log10(Math.max(binIndex + 1, minFreq));
+                const logMax = Math.log10(originalNyquist);
+                const logFreq = Math.log10(freqSafe);
                 const normalizedLog = (logFreq - logMin) / (logMax - logMin);
                 
                 return canvasHeight - (normalizedLog * canvasHeight);
             } else if (State.frequencyScale === 'sqrt') {
-                // Square root scale: gentle emphasis on lower frequencies
-                const normalized = binIndex / totalBins;
+                // Square root scale: normalize by Nyquist, then apply sqrt
+                const normalized = frequency / originalNyquist;
                 const sqrtNormalized = Math.sqrt(normalized);
                 return canvasHeight - (sqrtNormalized * canvasHeight);
             } else {
-                // Linear scale (default)
-                const normalized = binIndex / totalBins;
+                // Linear scale: normalize by Nyquist
+                const normalized = frequency / originalNyquist;
                 return canvasHeight - (normalized * canvasHeight);
             }
         };
@@ -571,23 +580,36 @@ function calculateStretchFactor(playbackRate, frequencyScale) {
         // sqrt(1/15) ≈ 0.258 → need to stretch 0.258 → 1.0 = 1/0.258 ≈ sqrt(15)
         return Math.sqrt(playbackRate);
     } else if (frequencyScale === 'logarithmic') {
-        // Log: calculate from log range
-        // We need to find what fraction of the log range we're showing
-        const totalBins = 1024; // FFT bins (matches analyser node)
-        const minFreq = 1; // Avoid log(0)
-        const maxFreq = totalBins;
-        const targetMaxFreq = maxFreq / playbackRate; // Top edge at playbackRate
+        // Log: use logarithmic scaling similar to how sqrt uses sqrt(playbackRate)
+        // Get original sample rate from metadata (matches spectrogram-axis-renderer.js)
+        const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+        const originalNyquist = originalSampleRate / 2;
+        const minFreq = 0.1; // Match tick positioning (avoid log(0))
         
+        // Calculate the log-space equivalent of sqrt(playbackRate)
+        // For sqrt: sqrt(playbackRate) works because sqrt compresses by sqrt
+        // For log: we need the equivalent log-space compression factor
+        // The key insight: when frequencies scale by playbackRate, the log range scales differently
         const logMin = Math.log10(minFreq);
-        const logMax = Math.log10(maxFreq);
-        const logTarget = Math.log10(Math.max(targetMaxFreq, minFreq));
+        const logMax = Math.log10(originalNyquist);
+        const logRange = logMax - logMin;
         
-        // Fraction of log range we're showing
-        const fullRange = logMax - logMin;
-        const targetRange = logTarget - logMin;
-        const fraction = targetRange / fullRange;
+        // When playbackRate changes, the effective frequency range changes
+        // In log space: log(f * playbackRate) = log(f) + log(playbackRate)
+        // So the log range shifts by log(playbackRate)
+        // The stretch factor should compensate for this shift
+        // Try: similar to sqrt, but account for log compression
+        const logPlaybackRate = Math.log10(playbackRate);
         
-        // Stretch to fill viewport
+        // Adapted from old formula: targetMaxFreq = maxFreq / playbackRate
+        // But using actual frequencies: at higher playbackRate, we show a smaller portion
+        // of the frequency range (zooming in on lower frequencies)
+        const targetMaxFreq = originalNyquist / playbackRate;
+        const logTargetMax = Math.log10(Math.max(targetMaxFreq, minFreq));
+        const targetLogRange = logTargetMax - logMin;
+        const fraction = targetLogRange / logRange;
+        
+        // Stretch to fill viewport: if showing fraction of log space, stretch by 1/fraction
         return 1 / fraction;
     }
     
@@ -859,26 +881,37 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             await workerPool.initialize();
         }
         
-        // Get y position helper (same as full render)
+        // Get y position helper - convert bins to frequencies and match tick positioning
         const getYPosition = (binIndex, totalBins, canvasHeight) => {
             const currentPlaybackRate = State.currentPlaybackRate || 1.0;
             
+            // Get original sample rate from metadata (matches spectrogram-axis-renderer.js)
+            const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+            const originalNyquist = originalSampleRate / 2;
+            
+            // Convert bin index to actual frequency in Hz
+            const frequency = (binIndex / totalBins) * originalNyquist;
+            
             if (State.frequencyScale === 'logarithmic') {
-                const minFreq = 1;
-                const maxFreq = totalBins;
+                // Logarithmic scale: use same frequency range as tick positioning!
+                const minFreq = 0.1; // Match tick positioning (avoid log(0))
+                const freqSafe = Math.max(frequency, minFreq);
                 const logMin = Math.log10(minFreq);
-                const logMax = Math.log10(maxFreq);
-                const logFreq = Math.log10(Math.max(binIndex + 1, minFreq));
+                const logMax = Math.log10(originalNyquist);
+                const logFreq = Math.log10(freqSafe);
                 let normalizedLog = (logFreq - logMin) / (logMax - logMin);
+                // Apply playback rate scaling (this is for region rendering which may need it)
                 normalizedLog = Math.min(normalizedLog * currentPlaybackRate, 1.0);
                 return canvasHeight - (normalizedLog * canvasHeight);
             } else if (State.frequencyScale === 'sqrt') {
-                let normalized = binIndex / totalBins;
+                // Square root scale: normalize by Nyquist, then apply sqrt
+                let normalized = frequency / originalNyquist;
                 normalized = Math.min(normalized * currentPlaybackRate, 1.0);
                 const sqrtNormalized = Math.sqrt(normalized);
                 return canvasHeight - (sqrtNormalized * canvasHeight);
             } else {
-                let normalized = binIndex / totalBins;
+                // Linear scale: normalize by Nyquist
+                let normalized = frequency / originalNyquist;
                 normalized = Math.min(normalized * currentPlaybackRate, 1.0);
                 return canvasHeight - (normalized * canvasHeight);
             }

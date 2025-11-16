@@ -268,33 +268,67 @@ function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
 }
 
 /**
+ * Calculate stretch factor for logarithmic scale (matches spectrogram-complete-renderer.js logic)
+ * This is needed because log scale is NOT homogeneous - we must stretch positions, not scale frequencies
+ */
+function calculateStretchFactorForLog(playbackRate, originalNyquist) {
+    const minFreq = 0.1; // Match tick positioning (avoid log(0))
+    const logMin = Math.log10(minFreq);
+    const logMax = Math.log10(originalNyquist);
+    const logRange = logMax - logMin;
+    
+    // Adapted from spectrogram stretch factor: targetMaxFreq = originalNyquist / playbackRate
+    // At higher playbackRate, we show a smaller portion (zooming in on lower frequencies)
+    const targetMaxFreq = originalNyquist / playbackRate;
+    const logTargetMax = Math.log10(Math.max(targetMaxFreq, minFreq));
+    const targetLogRange = logTargetMax - logMin;
+    const fraction = targetLogRange / logRange;
+    
+    // Stretch to fill viewport: if showing fraction of log space, stretch by 1/fraction
+    return 1 / fraction;
+}
+
+/**
  * Calculate Y position for a frequency scaled by playback rate
- * For nonlinear scales (log/sqrt), scale the frequency FIRST, then apply the transform
- * This preserves the correct visual behavior - slower playback moves ticks DOWN
+ * 
+ * CRITICAL: Logarithmic scale uses a different approach than linear/sqrt!
+ * - Linear/sqrt: Scale frequency FIRST, then apply transform (homogeneous transforms)
+ * - Logarithmic: Calculate 1x position FIRST, then apply stretch factor to position (non-homogeneous)
+ * 
+ * This is because log scale is NOT homogeneous - stretching the position ≠ scaling the input
  */
 function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeight, scaleType, playbackRate) {
-    // Scale the frequency by playback rate FIRST (in frequency space)
-    // Slower playback = lower effective frequency = moves down
-    const effectiveFreq = freq * playbackRate;
-    
     if (scaleType === 'logarithmic') {
-        // Logarithmic scale: apply log transform to the SCALED frequency
+        // 🦋 LOGARITHMIC: Calculate position at 1x (no playback scaling in log space!)
+        // Use FIXED denominator (logMax = log10(originalNyquist)) to match spectrogram rendering
         const minFreq = 0.1; // Avoid log(0)
-        const freqSafe = Math.max(effectiveFreq, minFreq);
+        const freqSafe = Math.max(freq, minFreq);
         const logMin = Math.log10(minFreq);
-        const logMax = Math.log10(originalNyquist);
+        const logMax = Math.log10(originalNyquist); // FIXED denominator!
         const logFreq = Math.log10(freqSafe);
         const normalizedLog = (logFreq - logMin) / (logMax - logMin);
-        return canvasHeight - (normalizedLog * canvasHeight);
-    } else if (scaleType === 'sqrt') {
-        // Square root scale: normalize the SCALED frequency, then apply sqrt
-        const normalized = effectiveFreq / originalNyquist;
-        const sqrtNormalized = Math.sqrt(normalized);
-        return canvasHeight - (sqrtNormalized * canvasHeight);
+        const heightFromBottom_1x = normalizedLog * canvasHeight;
+        
+        // Apply stretch factor (matches spectrogram GPU stretching!)
+        const stretchFactor = calculateStretchFactorForLog(playbackRate, originalNyquist);
+        const heightFromBottom_scaled = heightFromBottom_1x * stretchFactor;
+        
+        return canvasHeight - heightFromBottom_scaled;
     } else {
-        // Linear scale: normalize the SCALED frequency
-        const normalized = effectiveFreq / originalNyquist;
-        return canvasHeight - (normalized * canvasHeight);
+        // Linear and sqrt: Scale the frequency by playback rate FIRST (in frequency space)
+        // Slower playback = lower effective frequency = moves down
+        const effectiveFreq = freq * playbackRate;
+        
+        if (scaleType === 'sqrt') {
+            // Square root scale: normalize the SCALED frequency, then apply sqrt
+            const normalized = effectiveFreq / originalNyquist;
+            const sqrtNormalized = Math.sqrt(normalized);
+            return canvasHeight - (sqrtNormalized * canvasHeight);
+        } else {
+            // Linear scale: normalize the SCALED frequency
+            const normalized = effectiveFreq / originalNyquist;
+            return canvasHeight - (normalized * canvasHeight);
+        }
     }
 }
 
