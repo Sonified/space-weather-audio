@@ -523,8 +523,8 @@ function calculateStretchFactor(playbackRate, frequencyScale) {
 /**
  * Update spectrogram viewport with GPU-accelerated stretching
  * NOW WITH FREQUENCY-SCALE-AWARE STRETCHING! 🎨✨
- * Called when playback rate changes - stretches neutral render on demand
- * @param {number} playbackRate - Current playback rate (1.0 = neutral, 15.0 = max)
+ * Called when playback rate changes - stretches/shrinks neutral render on demand
+ * @param {number} playbackRate - Current playback rate (0.1 = min, 1.0 = neutral, 15.0 = max)
  */
 export function updateSpectrogramViewport(playbackRate) {
     if (!infiniteSpectrogramCanvas || !completeSpectrogramRendered) {
@@ -542,30 +542,64 @@ export function updateSpectrogramViewport(playbackRate) {
     const stretchFactor = calculateStretchFactor(playbackRate, State.frequencyScale);
     const stretchedHeight = Math.floor(height * stretchFactor);
     
-    // Create temp canvas for stretching
-    const tempStretch = document.createElement('canvas');
-    tempStretch.width = width;
-    tempStretch.height = stretchedHeight;
-    const stretchCtx = tempStretch.getContext('2d');
-    
-    // GPU-stretch: Extract 450px from bottom of infinite canvas, stretch vertically
-    stretchCtx.drawImage(
-        infiniteSpectrogramCanvas,
-        0, infiniteSpectrogramCanvas.height - height,  // Source: bottom 450px
-        width, height,                                  // Source size
-        0, 0,                                          // Dest: top-left
-        width, stretchedHeight                          // Dest: stretched by scale-aware factor!
-    );
-    
-    // Extract bottom 450px of stretched image to viewport
+    // Clear viewport
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(
-        tempStretch,
-        0, stretchedHeight - height,  // Source: bottom of stretched
-        width, height,                // Source size
-        0, 0,                         // Dest: top-left
-        width, height                 // Dest size
-    );
+    
+    if (stretchedHeight >= height) {
+        // STRETCHING case (playbackRate >= 1.0): Show bottom slice of stretched image
+        const tempStretch = document.createElement('canvas');
+        tempStretch.width = width;
+        tempStretch.height = stretchedHeight;
+        const stretchCtx = tempStretch.getContext('2d');
+        
+        // Stretch the neutral render
+        stretchCtx.drawImage(
+            infiniteSpectrogramCanvas,
+            0, infiniteSpectrogramCanvas.height - height,  // Source: bottom 450px
+            width, height,                                  // Source size
+            0, 0,                                          // Dest: top-left
+            width, stretchedHeight                          // Dest: stretched by scale-aware factor!
+        );
+        
+        // Extract bottom 450px of stretched image
+        ctx.drawImage(
+            tempStretch,
+            0, stretchedHeight - height,  // Source: bottom of stretched
+            width, height,                // Source size
+            0, 0,                         // Dest: top-left
+            width, height                 // Dest size
+        );
+    } else {
+        // SHRINKING case (playbackRate < 1.0): Shrink render and fill top with silence
+        
+        // Fill with spectrogram "silence" color (dark red, matching spectrogram background)
+        const [r, g, b] = hslToRgb(0, 100, 10);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fillRect(0, 0, width, height);
+        
+        // Shrink the neutral render to stretchedHeight
+        const tempShrink = document.createElement('canvas');
+        tempShrink.width = width;
+        tempShrink.height = stretchedHeight;
+        const shrinkCtx = tempShrink.getContext('2d');
+        
+        shrinkCtx.drawImage(
+            infiniteSpectrogramCanvas,
+            0, infiniteSpectrogramCanvas.height - height,  // Source: bottom 450px
+            width, height,                                  // Source size
+            0, 0,                                          // Dest: top-left
+            width, stretchedHeight                          // Dest: shrunk!
+        );
+        
+        // Place shrunken render at BOTTOM of viewport
+        ctx.drawImage(
+            tempShrink,
+            0, 0,                          // Source: entire shrunken image
+            width, stretchedHeight,         // Source size
+            0, height - stretchedHeight,   // Dest: place at bottom!
+            width, stretchedHeight         // Dest size
+        );
+    }
     
     // Update cached canvas for playhead redrawing
     if (cachedSpectrogramCanvas) {

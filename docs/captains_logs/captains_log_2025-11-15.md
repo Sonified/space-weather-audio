@@ -324,3 +324,41 @@ v2.04 - Commit: "v2.04 Feature: Frequency-scale-aware spectrogram stretching and
 
 ---
 
+## 🐛 Bug Fix: Slow Playback Rate Shrinking Case (v2.05)
+
+### Problem
+When playback rate was less than 1.0 (slowing down), the `stretchedHeight` became smaller than the viewport height (450px). For example, at 0.1x playback rate with linear scale:
+- `stretchFactor = 0.1`
+- `stretchedHeight = 450 * 0.1 = 45px`
+
+The code then tried to extract the bottom 450px from a 45px image, which didn't work correctly!
+
+### Solution
+Added handling for two distinct cases:
+
+1. **STRETCHING case (playbackRate >= 1.0):**
+   - Stretch the neutral render vertically
+   - Extract bottom 450px slice to show higher frequencies pushed up
+
+2. **SHRINKING case (playbackRate < 1.0):**
+   - Fill viewport with dark red "silence" color (matching spectrogram background)
+   - Shrink the neutral render to smaller `stretchedHeight`
+   - Place shrunken render at BOTTOM of viewport
+   - Top portion shows silence (representing frequencies above what's visible at slower speeds)
+
+### Example at 0.1x Playback Rate
+- `stretchFactor = 0.1` (linear scale)
+- `stretchedHeight = 45px` (450 × 0.1)
+- Viewport fills with dark red silence color
+- 45px shrunken spectrogram placed at bottom
+- Top 405px shows silence (frequencies above visible range)
+
+### Files Modified
+- `js/spectrogram-complete-renderer.js` - Added shrinking case handling in `updateSpectrogramViewport()`
+- `backend/collector_loop.py` - Version bump
+
+### Version
+v2.05 - Commit: "v2.05 Fix: Handle shrinking case for slow playback rates (<1.0x) in spectrogram viewport"
+
+---
+
