@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSP FIELDS Magnetometer Audio Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            background: white;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        select {
+            cursor: pointer;
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .audio-container {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            display: none;
+        }
+        
+        .audio-container.active {
+            display: block;
+        }
+        
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .visualizer-container {
+            margin-top: 20px;
+            width: 100%;
+            height: 150px;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        #audioVisualizer {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .visualizer-label {
+            position: absolute;
+            top: 10px;
+            left: 15px;
+            color: rgba(255,255,255,0.6);
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .info {
+            margin-top: 15px;
+            padding: 15px;
+            background: #e8f4f8;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #555;
+        }
+        
+        .info strong {
+            color: #333;
+        }
+        
+        .info .diagnostics {
+            font-size: 16px;
+            line-height: 1.8;
+            margin-top: 10px;
+        }
+        
+        .info .diagnostics strong {
+            font-size: 18px;
+            color: #333;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #667eea;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        .error {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 8px;
+            color: #c33;
+            display: none;
+        }
+        
+        .error.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌌 Spacecraft Magnetometer Audio</h1>
+        <p class="subtitle">Create audio from magnetometer data (PSP FIELDS, Wind MFI, MMS FGM)</p>
+        
+        <form id="audioForm">
+            <div class="form-group">
+                <label for="spacecraft">Spacecraft</label>
+                <select id="spacecraft" name="spacecraft">
+                    <option value="PSP">Parker Solar Probe (PSP)</option>
+                    <option value="Wind">Wind</option>
+                    <option value="MMS">MMS (Magnetospheric Multiscale)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="dataType">Data Type</label>
+                <select id="dataType" name="dataType">
+                    <option value="PSP_FLD_L2_MAG_RTN">PSP_FLD_L2_MAG_RTN (Full Cadence)</option>
+                    <option value="PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC">PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="component">Component</label>
+                <select id="component" name="component">
+                    <option value="br">br (Radial)</option>
+                    <option value="bt">bt (Tangential)</option>
+                    <option value="bn">bn (Normal)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="startTime">Start Time (ISO format)</label>
+                <input 
+                    type="text" 
+                    id="startTime" 
+                    name="startTime" 
+                    value="2025-07-31T22:00:00Z"
+                    placeholder="2025-07-31T22:00:00Z"
+                >
+            </div>
+            
+            <div class="form-group">
+                <label for="duration">Duration (minutes)</label>
+                <input 
+                    type="number" 
+                    id="duration" 
+                    name="duration" 
+                    value="10"
+                    min="1"
+                >
+            </div>
+            
+            <button type="submit" id="createBtn">
+                🎵 Create Audio File
+            </button>
+        </form>
+        
+        <div class="loading" id="loading">
+            ⏳ Creating audio file via CDASWS API...
+        </div>
+        
+        <div class="error" id="error"></div>
+        
+        <div class="audio-container" id="audioContainer">
+            <h3>🎧 Audio Player</h3>
+            <audio id="audioPlayer" controls crossOrigin="anonymous"></audio>
+            <div class="visualizer-container">
+                <div class="visualizer-label">Frequency Spectrum</div>
+                <canvas id="audioVisualizer"></canvas>
+            </div>
+            <div class="info" id="fileInfo"></div>
+        </div>
+    </div>
+    
+    <script>
+        const CDASWS_BASE_URL = 'https://cdaweb.gsfc.nasa.gov/WS/cdasr/1';
+        const DATAVIEW = 'sp_phys';  // Space Physics dataview
+        
+        // Spacecraft to data types mapping
+        const SPACECRAFT_DATASETS = {
+            'PSP': [
+                { value: 'PSP_FLD_L2_MAG_RTN', label: 'PSP_FLD_L2_MAG_RTN (Full Cadence)' },
+                { value: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC', label: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)' }
+            ],
+            'Wind': [
+                { value: 'WI_H2_MFI', label: 'WI_H2_MFI (High-Resolution)' }
+            ],
+            'MMS': [
+                { value: 'MMS1_FGM_SRVY_L2', label: 'MMS1_FGM_SRVY_L2 (Survey)' },
+                { value: 'MMS1_FGM_BRST_L2', label: 'MMS1_FGM_BRST_L2 (Burst)' }
+            ]
+        };
+        
+        // Dataset to component mapping
+        // Some datasets use br/bt/bn, others use different variable names
+        // Note: Wind datasets return 3 files per vector variable (x, y, z components)
+        // MMS returns 4 files per vector variable (x, y, z, magnitude)
+        const DATASET_COMPONENTS = {
+            'PSP_FLD_L2_MAG_RTN': ['br', 'bt', 'bn'],
+            'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC': ['br', 'bt', 'bn'],
+            'WI_H2_MFI': ['BGSE', 'BGSM', 'BF1'], // BGSE/BGSM=3 files each (x,y,z), BF1=magnitude (1 file)
+            'MMS1_FGM_SRVY_L2': ['mms1_fgm_b_gse_srvy_l2', 'mms1_fgm_b_gse_srvy_l2_clean', 'mms1_fgm_b_gsm_srvy_l2'],
+            'MMS1_FGM_BRST_L2': ['mms1_fgm_b_gse_srvy_l2', 'mms1_fgm_b_gse_srvy_l2_clean', 'mms1_fgm_b_gsm_srvy_l2']
+        };
+        
+        const form = document.getElementById('audioForm');
+        const createBtn = document.getElementById('createBtn');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const audioContainer = document.getElementById('audioContainer');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const fileInfo = document.getElementById('fileInfo');
+        const visualizerCanvas = document.getElementById('audioVisualizer');
+        const visualizerCtx = visualizerCanvas.getContext('2d');
+        const spacecraftSelect = document.getElementById('spacecraft');
+        const dataTypeSelect = document.getElementById('dataType');
+        
+        const componentSelect = document.getElementById('component');
+        
+        // Update data type options when spacecraft changes
+        spacecraftSelect.addEventListener('change', () => {
+            const spacecraft = spacecraftSelect.value;
+            const datasets = SPACECRAFT_DATASETS[spacecraft] || [];
+            
+            // Clear and repopulate data type dropdown
+            dataTypeSelect.innerHTML = '';
+            datasets.forEach(dataset => {
+                const option = document.createElement('option');
+                option.value = dataset.value;
+                option.textContent = dataset.label;
+                dataTypeSelect.appendChild(option);
+            });
+            
+            // Update components based on first dataset
+            updateComponents();
+        });
+        
+        // Update component options when data type changes
+        dataTypeSelect.addEventListener('change', () => {
+            updateComponents();
+        });
+        
+        function updateComponents() {
+            const dataset = dataTypeSelect.value;
+            const components = DATASET_COMPONENTS[dataset] || ['br', 'bt', 'bn'];
+            
+            // Clear and repopulate component dropdown
+            componentSelect.innerHTML = '';
+            components.forEach(comp => {
+                const option = document.createElement('option');
+                option.value = comp;
+                
+                // Format labels nicely
+                let label = comp;
+                if (comp === 'br') label = 'br (Radial)';
+                else if (comp === 'bt') label = 'bt (Tangential)';
+                else if (comp === 'bn') label = 'bn (Normal)';
+                else if (comp === 'BF1') label = 'BF1 (Magnitude)';
+                else if (comp === 'BGSM') label = 'BGSM (GSM Vector - 3 files: x, y, z)';
+                else if (comp === 'BGSE') label = 'BGSE (GSE Vector - 3 files: x, y, z)';
+                else if (comp === 'mms1_fgm_b_gse_srvy_l2') label = 'B_GSE (GSE Vector - 4 files: x, y, z, magnitude)';
+                else if (comp === 'mms1_fgm_b_gse_srvy_l2_clean') label = 'B_GSE Clean (GSE Vector - 4 files: x, y, z, magnitude)';
+                else if (comp === 'mms1_fgm_b_gsm_srvy_l2') label = 'B_GSM (GSM Vector - 4 files: x, y, z, magnitude)';
+                
+                option.textContent = label;
+                componentSelect.appendChild(option);
+            });
+        }
+        
+        // Initialize data types for default spacecraft
+        spacecraftSelect.dispatchEvent(new Event('change'));
+        
+        // Audio visualization setup
+        let audioContext = null;
+        let analyser = null;
+        let dataArray = null;
+        let animationFrameId = null;
+        let audioSource = null;
+        let isVisualizerSetup = false;
+        let audioElementConnected = false; // Track if audio element has been connected
+        
+        function showError(message) {
+            error.textContent = `❌ Error: ${message}`;
+            error.classList.add('active');
+        }
+        
+        function hideError() {
+            error.classList.remove('active');
+        }
+        
+        // Convert ISO 8601 extended format to basic format (minimal separators)
+        // e.g., "2025-07-31T22:00:00Z" -> "20250731T220000Z"
+        // e.g., "2025-07-31T22:00:00.000Z" -> "20250731T220000Z"
+        function toBasicISO8601(isoString) {
+            // Remove milliseconds if present (e.g., .000)
+            let cleaned = isoString.replace(/\.\d{3}/g, '');
+            // Remove all dashes and colons, keep T and Z
+            cleaned = cleaned.replace(/-/g, '').replace(/:/g, '');
+            return cleaned;
+        }
+        
+        function calculateEndTime(startTime, durationMinutes) {
+            const start = new Date(startTime);
+            const end = new Date(start.getTime() + durationMinutes * 60000);
+            return end.toISOString();
+        }
+        
+        async function createAudio(startTime, durationMinutes, dataset, component, spacecraft) {
+            const requestStartTime = performance.now(); // Record start time for diagnostics
+            
+            const endTime = calculateEndTime(startTime, durationMinutes);
+            
+            // Convert to basic ISO 8601 format (required by CDASWS)
+            const startTimeBasic = toBasicISO8601(startTime);
+            const endTimeBasic = toBasicISO8601(endTime);
+            
+            // Use component directly (br, bt, bn) - tested and works
+            const variable = component;
+            
+            // CDASWS REST API endpoint format:
+            // /dataviews/{dataview}/datasets/{dataset}/data/{start-time},{stop-time}/{variables}?format=audio
+            const apiUrl = `${CDASWS_BASE_URL}/dataviews/${DATAVIEW}/datasets/${dataset}/data/${startTimeBasic},${endTimeBasic}/${variable}?format=audio`;
+            
+            console.log('Calling CDASWS API:', apiUrl);
+            
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                const apiResponseTime = performance.now(); // Time when API responded
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+                }
+                
+                const result = await response.json();
+                
+                // The response is a DataResult object with FileDescription array
+                if (!result || !result.FileDescription || result.FileDescription.length === 0) {
+                    throw new Error('No audio file created by CDASWS API');
+                }
+                
+                // Get the first audio file URL (for Wind datasets, there may be 3 files)
+                const audioFileUrl = result.FileDescription[0].Name;
+                const fileInfo = result.FileDescription[0];
+                const totalFiles = result.FileDescription.length;
+                
+                console.log('Audio file created:', audioFileUrl);
+                
+                return {
+                    audioUrl: audioFileUrl,
+                    fileInfo: fileInfo,
+                    allFiles: result.FileDescription, // All files (for multi-file results like Wind)
+                    totalFiles: totalFiles,
+                    startTime: startTime,
+                    endTime: endTime,
+                    durationMinutes: durationMinutes,
+                    requestStartTime: requestStartTime,
+                    apiResponseTime: apiResponseTime,
+                    dataset: dataset,
+                    component: component,
+                    spacecraft: spacecraft
+                };
+                
+            } catch (err) {
+                console.error('CDASWS API error:', err);
+                throw err;
+            }
+        }
+        
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        function formatSpeed(bytesPerSecond) {
+            return formatBytes(bytesPerSecond) + '/s';
+        }
+        
+        function formatSpeedMbps(bytesPerSecond) {
+            // Convert bytes/s to Mbps (megabits per second)
+            // 1 byte = 8 bits, 1 Mbps = 1,000,000 bits/s
+            const mbps = (bytesPerSecond * 8) / 1000000;
+            return mbps.toFixed(2) + ' Mbps';
+        }
+        
+        async function setupAudioVisualizer() {
+            // If audio element is already connected, just restart visualization with existing setup
+            if (audioElementConnected && analyser && dataArray) {
+                // Canvas might need resizing
+                visualizerCanvas.width = visualizerCanvas.offsetWidth;
+                visualizerCanvas.height = visualizerCanvas.offsetHeight;
+                
+                // Restart visualization if not already running
+                if (!animationFrameId) {
+                    visualize();
+                }
+                return;
+            }
+            
+            // Don't try to connect if already attempted and failed
+            if (isVisualizerSetup && audioElementConnected) {
+                return;
+            }
+            
+            try {
+                // Create audio context and analyser
+                if (!audioContext || audioContext.state === 'closed') {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.8;
+                
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                // Connect audio player to analyser (crossOrigin should allow this)
+                // Note: This can only be done ONCE per audio element lifetime
+                audioSource = audioContext.createMediaElementSource(audioPlayer);
+                audioSource.connect(analyser);
+                analyser.connect(audioContext.destination);
+                
+                audioElementConnected = true; // Mark as connected
+                
+                // Set canvas size
+                visualizerCanvas.width = visualizerCanvas.offsetWidth;
+                visualizerCanvas.height = visualizerCanvas.offsetHeight;
+                
+                isVisualizerSetup = true;
+                
+                // Start visualization
+                visualize();
+            } catch (err) {
+                console.warn('Could not set up audio visualizer:', err);
+                
+                // If it's the "already connected" error, mark it and continue
+                if (err.message && err.message.includes('already connected')) {
+                    audioElementConnected = true;
+                    // Try to use existing analyser if available
+                    if (analyser && dataArray) {
+                        visualizerCanvas.width = visualizerCanvas.offsetWidth;
+                        visualizerCanvas.height = visualizerCanvas.offsetHeight;
+                        visualize();
+                    }
+                    return;
+                }
+                
+                isVisualizerSetup = false;
+                
+                // If CORS or connection issue, show a message but don't break
+                visualizerCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                visualizerCtx.font = '14px sans-serif';
+                visualizerCtx.textAlign = 'center';
+                visualizerCtx.fillText('Visualization unavailable', 
+                    visualizerCanvas.width / 2, visualizerCanvas.height / 2);
+            }
+        }
+        
+        function visualize() {
+            if (!analyser || !dataArray) return;
+            
+            animationFrameId = requestAnimationFrame(visualize);
+            
+            analyser.getByteFrequencyData(dataArray);
+            
+            const width = visualizerCanvas.width;
+            const height = visualizerCanvas.height;
+            
+            // Clear canvas with fade effect
+            visualizerCtx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+            visualizerCtx.fillRect(0, 0, width, height);
+            
+            // Draw frequency bars
+            const barCount = 64; // Number of bars to display
+            const barWidth = width / barCount;
+            const barSpacing = 2;
+            
+            for (let i = 0; i < barCount; i++) {
+                const dataIndex = Math.floor((i / barCount) * dataArray.length);
+                const barHeight = (dataArray[dataIndex] / 255) * height * 0.9;
+                
+                if (barHeight < 2) continue; // Skip very small bars
+                
+                // Create gradient for each bar
+                const gradient = visualizerCtx.createLinearGradient(
+                    i * barWidth, height,
+                    i * barWidth, height - barHeight
+                );
+                
+                // Color based on frequency (low = blue, mid = purple, high = pink)
+                const hue = 240 - (i / barCount) * 120; // 240 (blue) to 120 (green)
+                gradient.addColorStop(0, `hsl(${hue}, 100%, 50%)`);
+                gradient.addColorStop(0.5, `hsl(${hue + 20}, 100%, 60%)`);
+                gradient.addColorStop(1, `hsl(${hue + 40}, 100%, 70%)`);
+                
+                // Reset shadow before drawing
+                visualizerCtx.shadowBlur = 0;
+                visualizerCtx.shadowColor = 'transparent';
+                
+                visualizerCtx.fillStyle = gradient;
+                visualizerCtx.fillRect(
+                    i * barWidth + barSpacing,
+                    height - barHeight,
+                    barWidth - barSpacing * 2,
+                    barHeight
+                );
+                
+                // Add glow effect for taller bars
+                if (barHeight > height * 0.3) {
+                    visualizerCtx.shadowBlur = 15;
+                    visualizerCtx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+                    visualizerCtx.fillRect(
+                        i * barWidth + barSpacing,
+                        height - barHeight,
+                        barWidth - barSpacing * 2,
+                        barHeight
+                    );
+                    visualizerCtx.shadowBlur = 0;
+                }
+            }
+            
+            // Draw center line
+            visualizerCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            visualizerCtx.lineWidth = 1;
+            visualizerCtx.beginPath();
+            visualizerCtx.moveTo(0, height / 2);
+            visualizerCtx.lineTo(width, height / 2);
+            visualizerCtx.stroke();
+        }
+        
+        function stopVisualization() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            
+            // Note: We don't disconnect the audio source/analyser because
+            // once connected, the audio element can't be reconnected.
+            // We just stop the animation loop.
+            
+            // Don't reset audioElementConnected - once connected, it stays connected
+            // Don't reset analyser/dataArray - keep them for reuse
+        }
+        
+        function resetVisualization() {
+            // Only call this when we want to completely reset (e.g., page reload)
+            stopVisualization();
+            
+            if (audioSource) {
+                try {
+                    if (audioSource.disconnect) {
+                        audioSource.disconnect();
+                    }
+                } catch (e) {
+                    // Ignore errors
+                }
+                audioSource = null;
+            }
+            
+            if (analyser) {
+                try {
+                    analyser.disconnect();
+                } catch (e) {
+                    // Ignore errors
+                }
+                analyser = null;
+            }
+            
+            if (audioContext) {
+                try {
+                    audioContext.close().catch(() => {});
+                } catch (e) {
+                    // Ignore errors
+                }
+                audioContext = null;
+            }
+            
+            dataArray = null;
+            isVisualizerSetup = false;
+            audioElementConnected = false;
+        }
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const startTime = document.getElementById('startTime').value.trim();
+            const durationMinutes = parseInt(document.getElementById('duration').value);
+            
+            // Validate inputs
+            if (!startTime || !durationMinutes || durationMinutes < 1) {
+                showError('Please provide valid start time and duration');
+                return;
+            }
+            
+            // Reset UI
+            createBtn.disabled = true;
+            loading.classList.add('active');
+            hideError();
+            audioContainer.classList.remove('active');
+            
+            try {
+                // Clean up any existing visualizer first
+                stopVisualization();
+                
+                // Get selected values
+                const spacecraft = document.getElementById('spacecraft').value;
+                const dataset = document.getElementById('dataType').value;
+                const component = document.getElementById('component').value;
+                
+                const result = await createAudio(startTime, durationMinutes, dataset, component, spacecraft);
+                
+                // Track when audio file starts loading
+                const fileLoadStartTime = performance.now();
+                let fileLoadCompleteTime = null;
+                
+                // Set up audio load tracking
+                const handleCanPlay = () => {
+                    fileLoadCompleteTime = performance.now();
+                    updateDiagnostics(result, fileLoadStartTime, fileLoadCompleteTime);
+                    audioPlayer.removeEventListener('canplay', handleCanPlay);
+                };
+                
+                audioPlayer.addEventListener('canplay', handleCanPlay);
+                
+                // Set up visualization when audio is ready
+                const handleLoadedMetadata = async () => {
+                    audioPlayer.removeEventListener('loadedmetadata', handleLoadedMetadata);
+                    try {
+                        // Small delay to ensure audio element is fully ready
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        await setupAudioVisualizer();
+                    } catch (err) {
+                        console.warn('Could not set up audio visualizer:', err);
+                    }
+                };
+                
+                audioPlayer.addEventListener('loadedmetadata', handleLoadedMetadata);
+                
+                // Stop visualization when audio ends
+                const handleEnded = () => {
+                    // Don't stop visualization on end - let it continue showing
+                    // stopVisualization();
+                };
+                
+                audioPlayer.addEventListener('ended', handleEnded);
+                
+                // Success - set audio player source (this triggers the load)
+                // Reset crossOrigin and src to ensure clean state
+                // Reset audio element to allow replay
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+                audioPlayer.crossOrigin = 'anonymous';
+                audioPlayer.src = result.audioUrl;
+                audioPlayer.load(); // Force reload to ensure clean state
+                audioContainer.classList.add('active');
+                
+                // If multiple files were created (e.g., Wind BGSE/BGSM), show info
+                if (result.totalFiles > 1) {
+                    console.log(`Note: ${result.totalFiles} audio files created (using first file for playback)`);
+                }
+                
+                // Show initial file info (will be updated when file loads)
+                const info = result.fileInfo;
+                const apiTime = ((result.apiResponseTime - result.requestStartTime) / 1000).toFixed(2);
+                fileInfo.innerHTML = `
+                    <strong>File Info:</strong><br>
+                    Size: ${formatBytes(info.Length)}<br>
+                    Format: ${info.MimeType}<br>
+                    Time Range: ${info.StartTime} to ${info.EndTime}<br>
+                    Duration: ${result.durationMinutes} minutes<br>
+                    <br>
+                    <strong>Performance Diagnostics:</strong><br>
+                    API Response Time: ${apiTime} seconds<br>
+                    File Loading...<br>
+                    <small style="color: #888; margin-top: 10px; display: block;">
+                        Audio URL: <a href="${result.audioUrl}" target="_blank">${result.audioUrl}</a>
+                    </small>
+                `;
+                
+            } catch (err) {
+                showError(err.message);
+                console.error('Error:', err);
+                stopVisualization();
+            } finally {
+                createBtn.disabled = false;
+                loading.classList.remove('active');
+            }
+        });
+        
+        // Note: Visualizer cleanup is handled in the form submit handler above
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (visualizerCanvas) {
+                visualizerCanvas.width = visualizerCanvas.offsetWidth;
+                visualizerCanvas.height = visualizerCanvas.offsetHeight;
+            }
+        });
+        
+        function updateDiagnostics(result, fileLoadStartTime, fileLoadCompleteTime) {
+            const info = result.fileInfo;
+            const fileSizeBytes = info.Length;
+            
+            // Calculate times
+            const apiTime = ((result.apiResponseTime - result.requestStartTime) / 1000).toFixed(2);
+            const fileLoadTime = ((fileLoadCompleteTime - fileLoadStartTime) / 1000).toFixed(2);
+            const totalTime = ((fileLoadCompleteTime - result.requestStartTime) / 1000).toFixed(2);
+            
+            // Calculate transfer speed
+            const transferSpeed = fileSizeBytes / (fileLoadCompleteTime - fileLoadStartTime) * 1000; // bytes per second
+            
+            // Update the file info with complete diagnostics
+            let filesInfo = '';
+            if (result.totalFiles > 1) {
+                filesInfo = `<br><strong>Note:</strong> ${result.totalFiles} files created (playing first file). `;
+                filesInfo += `All files:<br>`;
+                result.allFiles.forEach((file, idx) => {
+                    filesInfo += `  ${idx + 1}. <a href="${file.Name}" target="_blank">File ${idx + 1}</a><br>`;
+                });
+            }
+            
+            fileInfo.innerHTML = `
+                <strong>File Info:</strong><br>
+                Spacecraft: ${result.spacecraft}<br>
+                Dataset: ${result.dataset}<br>
+                Component: ${result.component}<br>
+                Size: ${formatBytes(fileSizeBytes)}<br>
+                Format: ${info.MimeType}<br>
+                Time Range: ${info.StartTime} to ${info.EndTime}<br>
+                Duration: ${result.durationMinutes} minutes${filesInfo}
+                <div class="diagnostics">
+                    <strong>Performance Diagnostics:</strong><br>
+                    API Response Time: ${apiTime} seconds<br>
+                    File Load Time: ${fileLoadTime} seconds<br>
+                    Total Time (Request → Ready): ${totalTime} seconds<br>
+                    Transfer Speed: ${formatSpeedMbps(transferSpeed)}<br>
+                </div>
+                <small style="color: #888; margin-top: 10px; display: block;">
+                    Audio URL: <a href="${result.audioUrl}" target="_blank">${result.audioUrl}</a>
+                </small>
+            `;
+        }
+    </script>
+</body>
+</html>
+

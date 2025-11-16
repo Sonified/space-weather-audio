@@ -107,8 +107,8 @@ function memoryHealthCheck() {
 export function startMemoryMonitoring() {
     if (memoryMonitorInterval) return;
     
-    console.log('🏥 Starting memory health monitoring (every 5 seconds)');
-    memoryMonitorInterval = setInterval(memoryHealthCheck, 5000);
+    console.log('🏥 Starting memory health monitoring (every 10 seconds)');
+    memoryMonitorInterval = setInterval(memoryHealthCheck, 10000);
     
     // Initial check
     memoryHealthCheck();

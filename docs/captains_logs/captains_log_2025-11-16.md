@@ -2,6 +2,49 @@
 
 ---
 
+## 🎵 Graceful Auto-Resume with Fade-In (v2.11)
+
+### Problem
+When playing back at high speeds (e.g., 10x), playback can catch up to the download stream. When the worklet's buffer runs dry (`samplesInBuffer === 0`), playback stops, but new data continues arriving. The worklet accumulates data silently without resuming playback, leaving the system in a confused state where:
+- Playback has stopped
+- Status still shows "downloading"
+- User can hit play, but the system is confused
+
+### Root Cause
+The worklet's `addSamples()` method has `autoResume` parameter support, but:
+1. Main thread wasn't setting `autoResume: true` during progressive download
+2. When buffer ran dry during download, `isPlaying` was set to false
+3. New chunks arrived but didn't trigger auto-resume because `autoResume` wasn't set
+
+### Solution
+1. **Added `autoResume: true` to chunk messages** during progressive streaming (both CDN and Railway paths)
+2. **Enhanced worklet's auto-resume logic** to start fade-in when resuming after buffer underrun
+
+### Key Changes
+- `js/data-fetcher.js` (line 591, 1349): Added `autoResume: true` when sending chunks to worklet
+- `workers/audio-worklet.js` (line 457): Enhanced auto-resume to call `startFade(+1, this.fadeTimeMs)` for graceful resumption
+
+### How It Works
+1. Playback at 10x speed → buffer runs dry → playback stops
+2. New chunks arrive → `addSamples()` receives `autoResume: true`
+3. When buffer reaches threshold (1,024 samples ≈ 23ms) → auto-resume with fade-in
+4. Playback resumes smoothly without user intervention
+
+### Benefits
+- ✅ Uses existing `autoResume` infrastructure (minimal code change)
+- ✅ Fast recovery (uses seek threshold, not initial threshold)
+- ✅ Graceful fade-in on resume (no clicks/pops)
+- ✅ No status confusion - worklet handles it autonomously
+
+### Files Modified
+- `js/data-fetcher.js` - Added `autoResume: true` to chunk messages
+- `workers/audio-worklet.js` - Enhanced auto-resume to start fade-in
+
+### Version
+v2.11 - Commit: "v2.11 Feat: Graceful auto-resume with fade-in when playback catches up to download stream"
+
+---
+
 ## 🎨 Logarithmic Spectrogram Tick Sync Fix (v2.10)
 
 ### Problem

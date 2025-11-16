@@ -453,6 +453,9 @@ class SeismicProcessor extends AudioWorkletProcessor {
         else if (autoResume && !this.isPlaying && this.samplesInBuffer >= this.minBufferBeforePlay) {
             if (DEBUG_WORKLET) console.log(`🎵 WORKLET addSamples: Auto-resuming! samplesInBuffer=${this.samplesInBuffer}, minBuffer=${this.minBufferBeforePlay}`);
             this.isPlaying = true;
+            // 🎯 Start fade-in for graceful resumption after buffer underrun
+            this.startFade(+1, this.fadeTimeMs);
+            if (DEBUG_WORKLET) console.log(`🎚️ WORKLET addSamples: Started fade-in for auto-resume`);
         } else if (autoResume && !this.isPlaying) {
             if (DEBUG_WORKLET) console.log(`⏳ WORKLET addSamples: Buffering for auto-resume... samplesInBuffer=${this.samplesInBuffer}, need ${this.minBufferBeforePlay}`);
         }

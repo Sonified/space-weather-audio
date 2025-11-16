@@ -320,14 +320,14 @@ function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeight, sca
         const effectiveFreq = freq * playbackRate;
         
         if (scaleType === 'sqrt') {
-            // Square root scale: normalize the SCALED frequency, then apply sqrt
-            const normalized = effectiveFreq / originalNyquist;
-            const sqrtNormalized = Math.sqrt(normalized);
-            return canvasHeight - (sqrtNormalized * canvasHeight);
-        } else {
-            // Linear scale: normalize the SCALED frequency
-            const normalized = effectiveFreq / originalNyquist;
-            return canvasHeight - (normalized * canvasHeight);
+        // Square root scale: normalize the SCALED frequency, then apply sqrt
+        const normalized = effectiveFreq / originalNyquist;
+        const sqrtNormalized = Math.sqrt(normalized);
+        return canvasHeight - (sqrtNormalized * canvasHeight);
+    } else {
+        // Linear scale: normalize the SCALED frequency
+        const normalized = effectiveFreq / originalNyquist;
+        return canvasHeight - (normalized * canvasHeight);
         }
     }
 }

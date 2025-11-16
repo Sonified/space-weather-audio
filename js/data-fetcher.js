@@ -587,7 +587,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
-                        data: workletChunk
+                        data: workletChunk,
+                        autoResume: true  // 🎯 Enable graceful auto-resume if playback stopped due to buffer underrun
                     });
                     
                     State.allReceivedData.push(workletChunk);
@@ -1344,7 +1345,8 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
         
         State.workletNode.port.postMessage({
             type: 'audio-data',
-            data: chunk
+            data: chunk,
+            autoResume: true  // 🎯 Enable graceful auto-resume if playback stopped due to buffer underrun
         });
         
         State.allReceivedData.push(chunk);
