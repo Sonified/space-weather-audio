@@ -225,3 +225,58 @@ v2.02 - Commit: "v2.02 Fix: Prevented double fade collision with justTeleported 
 
 ---
 
+## 🌊 Feature: Infinite Spectrogram Viewport with GPU-Accelerated Stretching (v2.03)
+
+### Concept
+Implemented infinite spectrogram space architecture: render once at neutral (1x) scale, then GPU-stretch on demand when playback rate changes. This allows smooth scaling from 0.5x to 15x without re-rendering.
+
+### Architecture
+1. **Neutral Render (One-Time):**
+   - Removed playback rate scaling from `getYPosition()` during rendering
+   - Renders spectrogram at 450px height (neutral 1x scale)
+   - FFT computation unchanged - only rendering logic modified
+
+2. **Infinite Canvas:**
+   - Creates 6750px tall canvas (450px × 15 max playback rate)
+   - Places neutral 450px render at bottom of infinite canvas
+   - Rest of canvas filled with black (represents frequencies above viewport)
+
+3. **GPU-Accelerated Viewport Updates:**
+   - When playback rate changes, GPU-stretches the 450px render vertically
+   - At 1x: stretch to 450px (no change) → extract bottom 450px → see everything (0-50Hz)
+   - At 15x: stretch to 6750px → extract bottom 450px → see bottom 1/15th (0-3.3Hz), rest pushed up
+   - Uses `drawImage()` for GPU-accelerated stretching (near-zero CPU hit)
+
+### Implementation Details
+- **`js/spectrogram-complete-renderer.js`:**
+  - Removed playback rate from `getYPosition()` - renders at neutral 1x
+  - Creates infinite canvas (6750px) and places neutral render at bottom
+  - Added `updateSpectrogramViewport(playbackRate)` function for GPU-stretching
+  - Updated cleanup to clear infinite canvas
+
+- **`js/audio-player.js`:**
+  - Calls `updateSpectrogramViewport()` when playback speed changes
+  - Uses dynamic import to avoid circular dependencies
+
+- **`tests/spectrogram_infinite_viewport.html`:**
+  - Created proof-of-concept demo showing the infinite canvas architecture
+  - Demonstrates GPU-accelerated stretching with CPU metrics
+  - Includes logarithmic slider matching production playback slider
+
+### Benefits
+- **Performance:** One-time render cost, then GPU-accelerated viewport updates (near-zero CPU)
+- **Smooth Scaling:** Instant viewport updates when playback rate changes
+- **Memory Efficient:** Only stores one neutral render + infinite canvas (same memory footprint)
+- **Future-Proof:** Can extend to higher playback rates without hitting browser canvas limits
+
+### Files Modified
+- `js/spectrogram-complete-renderer.js` - Neutral rendering, infinite canvas, GPU-stretching
+- `js/audio-player.js` - Hook up viewport updates to playback speed changes
+- `backend/collector_loop.py` - Version bump
+- `tests/spectrogram_infinite_viewport.html` - Proof-of-concept demo
+
+### Version
+v2.03 - Commit: "v2.03 Feature: Infinite spectrogram viewport with GPU-accelerated stretching - render once at neutral 1x, GPU-stretch on playback rate change"
+
+---
+

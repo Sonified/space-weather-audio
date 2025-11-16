@@ -97,7 +97,6 @@ class SeismicProcessor extends AudioWorkletProcessor {
         // All fades use 5ms (works beautifully for all conditions!)
         // Exception: Very short loops (<200ms) use 2ms to avoid fade artifacts
         this.fadeTimeMs = 5;        // Hard-coded 5ms for all fades
-        this.fadeTimeLoop = 5;       // ms for loop fades (calculated dynamically, shorter for tight loops)
     }
     
     initializePositionTracking() {
@@ -251,88 +250,6 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.isLooping = false;
         this.pendingSeekSample = null;
         this.justTeleported = false;
-    }
-    
-    // 🏎️ DEPRECATED: Loop is now handled autonomously in process()
-    // This method kept for backwards compatibility but shouldn't be called
-    loopToStart() {
-        const hasSelection = (this.selectionStart !== null && this.selectionEnd !== null);
-        const loopTargetSample = hasSelection ? Math.floor(this.selectionStart * 44100) : 0;
-        this.seekToPositionInstant(loopTargetSample);
-        if (this.isPlaying) {
-            this.startFade(+1, this.fadeTimeMs);
-        }
-    }
-    
-    // 🏎️ DEPRECATED: Use 'seek' message instead (worklet handles fades autonomously)
-    seekToPosition(targetSample, forceResume = false) {
-        // Clamp to selection bounds if selection exists
-        if (this.selectionStart !== null && this.selectionEnd !== null) {
-            const startSample = Math.floor(this.selectionStart * 44100);
-            const endSample = Math.floor(this.selectionEnd * 44100);
-            targetSample = Math.max(startSample, Math.min(targetSample, endSample));
-        }
-        
-        if (targetSample >= 0 && targetSample <= this.totalSamples) {
-            // ===== RANDOM-ACCESS MODE: Check if sample is in buffer =====
-            // Since we don't consume samples, ALL samples from 0 to samplesInBuffer are available
-            
-            if (targetSample < this.samplesInBuffer) {
-                // ⚡ INSTANT SEEK: Sample is in buffer - calculate its position
-                // writeIndex points to where next sample will be written
-                // We need to find where targetSample is in the circular buffer
-                
-                // In random-access mode, samples are at buffer[0] to buffer[samplesInBuffer-1]
-                // (assuming we loaded them sequentially from the start)
-                this.readIndex = targetSample % this.maxBufferSize;
-                this.totalSamplesConsumed = targetSample;
-                
-                const wasPlaying = this.isPlaying;
-                
-                // Resume if requested
-                if (forceResume || this.isPlaying) {
-                    this.isPlaying = true;
-                    
-                    // 🏎️ ALWAYS fade in when resuming playback - NO PARAMETER NEEDED
-                    this.startFade(+1, this.fadeTimeSeek);
-                }
-                
-                if (DEBUG_WORKLET) console.log(`⚡ INSTANT SEEK: Set readIndex to ${this.readIndex.toLocaleString()} for sample ${targetSample.toLocaleString()} (buffer has ${this.samplesInBuffer.toLocaleString()} samples) | wasPlaying=${wasPlaying}, forceResume=${forceResume}, isPlaying=${this.isPlaying}`);
-                
-                // Send position update
-                this.port.postMessage({
-                    type: 'position',
-                    samplePosition: targetSample,
-                    positionSeconds: targetSample / 44100
-                });
-                return; // Done! No refill needed.
-            }
-            
-            // ===== FALLBACK: Sample not in buffer (rare) =====
-            console.warn(`⚠️ SEEK OUT OF BUFFER: Target ${targetSample.toLocaleString()} >= samplesInBuffer ${this.samplesInBuffer.toLocaleString()}. Falling back to refill.`);
-            
-            const wasPlaying = this.isPlaying;
-            this.isPlaying = false;
-            
-            // Clear circular buffer - main thread will re-send samples from seek position
-            this.writeIndex = 0;
-            this.readIndex = 0;
-            this.samplesInBuffer = 0;
-            this.totalSamplesWritten = 0;
-            this.totalSamplesConsumed = targetSample;
-            this.finishSent = false;
-            this.loopWarningShown = false;
-            
-            // Tell main thread we need samples starting from target position
-            this.port.postMessage({
-                type: 'seek-ready',
-                targetSample: targetSample,
-                wasPlaying: wasPlaying,
-                forceResume: forceResume
-            });
-            
-            console.log(`🔄 SEEK REFILL: Cleared buffer, requesting samples from ${targetSample.toLocaleString()}`);
-        }
     }
     
     setSelection(start, end, loop) {
@@ -697,7 +614,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                 this.processDebugCounter < 10); // Just started or was silent
         
         if (needsAutoFadeIn && this.hasStarted) {
-            this.startFade(+1, this.fadeTimeSeek); // Auto fade-in from silence
+            this.startFade(+1, this.fadeTimeMs); // Auto fade-in from silence
             if (DEBUG_WORKLET) console.log('🎚️ AUTO-FADE: Started automatic fade-in from silence');
         }
         
@@ -749,14 +666,6 @@ class SeismicProcessor extends AudioWorkletProcessor {
             
             // Check if finished
             if (this.samplesInBuffer === 0) {
-                // 🏎️ FERRARI: Don't send 'finished' if we're looping after fade
-                // The fade-out is in progress, and when it completes we'll loop automatically
-                if (this.loopAfterFade) {
-                    if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Buffer empty but loopAfterFade=true, waiting for fade to complete...`);
-                    channel.fill(0);
-                    return true;
-                }
-                
                 if (!this.finishSent && this.hasStarted && this.dataLoadingComplete) {
                     this.isPlaying = false;
                     const expectedDuration = this.totalSamples / (44100 * this.speed);

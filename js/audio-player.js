@@ -222,6 +222,16 @@ export function updatePlaybackSpeed() {
     
     // Update spectrogram axis to reflect new playback speed
     updateAxisForPlaybackSpeed();
+    
+    // Update spectrogram viewport with GPU-accelerated stretching
+    // Import dynamically to avoid circular dependency
+    import('./spectrogram-complete-renderer.js').then(module => {
+        if (module.updateSpectrogramViewport) {
+            module.updateSpectrogramViewport(finalSpeed);
+        }
+    }).catch(() => {
+        // Module not loaded yet, that's okay - will be called after rendering completes
+    });
 }
 
 export function changePlaybackSpeed() {

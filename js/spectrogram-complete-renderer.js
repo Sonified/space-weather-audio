@@ -24,6 +24,11 @@ let workerPool = null;
 // Cached spectrogram canvas (for redrawing with playhead)
 let cachedSpectrogramCanvas = null;
 
+// Infinite canvas for GPU-accelerated viewport stretching
+// Rendered once at neutral (1x), then GPU-stretched on demand
+let infiniteSpectrogramCanvas = null;
+const MAX_PLAYBACK_RATE = 15.0; // Maximum playback rate for infinite canvas sizing
+
 // Memory monitoring
 let memoryMonitorInterval = null;
 let memoryBaseline = null;
@@ -226,9 +231,8 @@ export async function renderCompleteSpectrogram() {
         }
         
         // Helper function to calculate y position based on frequency scale
+        // 🔥 RENDER AT NEUTRAL (1x) - NO playback rate scaling during rendering!
         const getYPosition = (binIndex, totalBins, canvasHeight) => {
-            const currentPlaybackRate = State.currentPlaybackRate || 1.0;
-            
             if (State.frequencyScale === 'logarithmic') {
                 // Logarithmic scale: strong emphasis on lower frequencies
                 const minFreq = 1;
@@ -236,28 +240,17 @@ export async function renderCompleteSpectrogram() {
                 const logMin = Math.log10(minFreq);
                 const logMax = Math.log10(maxFreq);
                 const logFreq = Math.log10(Math.max(binIndex + 1, minFreq));
-                let normalizedLog = (logFreq - logMin) / (logMax - logMin);
-                
-                // Apply playback rate scaling
-                normalizedLog = Math.min(normalizedLog * currentPlaybackRate, 1.0);
+                const normalizedLog = (logFreq - logMin) / (logMax - logMin);
                 
                 return canvasHeight - (normalizedLog * canvasHeight);
             } else if (State.frequencyScale === 'sqrt') {
                 // Square root scale: gentle emphasis on lower frequencies
-                let normalized = binIndex / totalBins;
-                
-                // Apply playback rate scaling
-                normalized = Math.min(normalized * currentPlaybackRate, 1.0);
-                
+                const normalized = binIndex / totalBins;
                 const sqrtNormalized = Math.sqrt(normalized);
                 return canvasHeight - (sqrtNormalized * canvasHeight);
             } else {
                 // Linear scale (default)
-                let normalized = binIndex / totalBins;
-                
-                // Apply playback rate scaling
-                normalized = Math.min(normalized * currentPlaybackRate, 1.0);
-                
+                const normalized = binIndex / totalBins;
                 return canvasHeight - (normalized * canvasHeight);
             }
         };
@@ -351,15 +344,36 @@ export async function renderCompleteSpectrogram() {
             drawResults  // Callback fires immediately as each worker completes
         );
         
-        // Write ImageData to canvas in one shot (ultra fast!)
-        console.log(`🎨 Writing ImageData to canvas...`);
-        ctx.putImageData(imageData, 0, 0);
+        // Write ImageData to temp canvas (neutral 450px render)
+        console.log(`🎨 Writing ImageData to neutral render canvas...`);
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = width;
+        tempCanvas.height = height; // 450px - neutral render
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.putImageData(imageData, 0, 0);
         
-        // Cache the spectrogram for redrawing with playhead
-        cachedSpectrogramCanvas = document.createElement('canvas');
-        cachedSpectrogramCanvas.width = width;
-        cachedSpectrogramCanvas.height = height;
-        cachedSpectrogramCanvas.getContext('2d').drawImage(canvas, 0, 0);
+        // Create infinite canvas (6750px = 450 * 15)
+        const infiniteHeight = Math.floor(height * MAX_PLAYBACK_RATE);
+        infiniteSpectrogramCanvas = document.createElement('canvas');
+        infiniteSpectrogramCanvas.width = width;
+        infiniteSpectrogramCanvas.height = infiniteHeight;
+        const infiniteCtx = infiniteSpectrogramCanvas.getContext('2d');
+        
+        // Fill infinite canvas with black
+        infiniteCtx.fillStyle = '#000';
+        infiniteCtx.fillRect(0, 0, width, infiniteHeight);
+        
+        // Place neutral 450px render at BOTTOM of infinite canvas
+        infiniteCtx.drawImage(tempCanvas, 0, infiniteHeight - height);
+        
+        console.log(`🌊 Created infinite canvas: ${width} × ${infiniteHeight}px`);
+        console.log(`   Placed neutral ${width} × ${height}px render at bottom`);
+        
+        // Cache the spectrogram for redrawing with playhead (use temp canvas)
+        cachedSpectrogramCanvas = tempCanvas;
+        
+        // Update display canvas with initial viewport (will be called after function is defined)
+        // We'll call updateSpectrogramViewport at the end of this function
         
         const elapsed = performance.now() - startTime;
         console.log(`✅ Complete spectrogram rendered in ${elapsed.toFixed(0)}ms`);
@@ -374,6 +388,9 @@ export async function renderCompleteSpectrogram() {
         positionAxisCanvas();
         initializeAxisPlaybackRate();
         drawFrequencyAxis();
+        
+        // Update display canvas with initial viewport (now that function is defined)
+        updateSpectrogramViewport(State.currentPlaybackRate || 1.0);
         
     } catch (error) {
         console.error('❌ Error rendering complete spectrogram:', error);
@@ -412,6 +429,19 @@ export function clearCompleteSpectrogram() {
         cachedSpectrogramCanvas = null;
     }
     
+    // Clear infinite canvas
+    if (infiniteSpectrogramCanvas) {
+        try {
+            const infiniteCtx = infiniteSpectrogramCanvas.getContext('2d');
+            infiniteCtx.clearRect(0, 0, infiniteSpectrogramCanvas.width, infiniteSpectrogramCanvas.height);
+            infiniteSpectrogramCanvas.width = 0;
+            infiniteSpectrogramCanvas.height = 0;
+        } catch (e) {
+            console.warn('⚠️ Error clearing infinite canvas:', e);
+        }
+        infiniteSpectrogramCanvas = null;
+    }
+    
     completeSpectrogramRendered = false;
     renderingInProgress = false;
     State.setSpectrogramInitialized(false);
@@ -446,6 +476,57 @@ export function isCompleteSpectrogramRendered() {
  */
 export function getCachedSpectrogramCanvas() {
     return cachedSpectrogramCanvas;
+}
+
+/**
+ * Update spectrogram viewport with GPU-accelerated stretching
+ * Called when playback rate changes - stretches neutral render on demand
+ * @param {number} playbackRate - Current playback rate (1.0 = neutral, 15.0 = max)
+ */
+export function updateSpectrogramViewport(playbackRate) {
+    if (!infiniteSpectrogramCanvas || !completeSpectrogramRendered) {
+        return; // Not ready yet
+    }
+    
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height; // 450px viewport
+    
+    // Step 1: GPU-stretch the neutral 450px render vertically
+    const stretchedHeight = Math.floor(height * playbackRate);
+    
+    // Create temp canvas for stretching
+    const tempStretch = document.createElement('canvas');
+    tempStretch.width = width;
+    tempStretch.height = stretchedHeight;
+    const stretchCtx = tempStretch.getContext('2d');
+    
+    // GPU-stretch: Extract 450px from bottom of infinite canvas, stretch vertically
+    stretchCtx.drawImage(
+        infiniteSpectrogramCanvas,
+        0, infiniteSpectrogramCanvas.height - height,  // Source: bottom 450px
+        width, height,                                  // Source size
+        0, 0,                                          // Dest: top-left
+        width, stretchedHeight                          // Dest: stretched!
+    );
+    
+    // Step 2: Extract bottom 450px of stretched image to viewport
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(
+        tempStretch,
+        0, stretchedHeight - height,  // Source: bottom of stretched
+        width, height,                // Source size
+        0, 0,                         // Dest: top-left
+        width, height                 // Dest size
+    );
+    
+    // Update cached canvas for playhead redrawing
+    if (cachedSpectrogramCanvas) {
+        cachedSpectrogramCanvas.getContext('2d').drawImage(canvas, 0, 0);
+    }
 }
 
 /**
