@@ -579,10 +579,17 @@ export function startPlaybackIndicator() {
 }
 
 export function updatePlaybackIndicator() {
-    // 🔥 FIX: Clear RAF ID immediately to prevent duplicate scheduling
-    // This must happen FIRST before any early returns to prevent accumulation
+    // 🔥 FIX: Copy State values to local variables IMMEDIATELY to break closure chain
+    // This prevents RAF callbacks from capturing the entire State module
+    // Access State only once at the start, then use local variables throughout
     const currentRAF = State.playbackIndicatorRAF;
-        State.setPlaybackIndicatorRAF(null);
+    const isDragging = State.isDragging;
+    const playbackState = State.playbackState;
+    const totalAudioDuration = State.totalAudioDuration;
+    
+    // Clear RAF ID immediately to prevent duplicate scheduling
+    // This must happen FIRST before any early returns to prevent accumulation
+    State.setPlaybackIndicatorRAF(null);
     if (currentRAF !== null) {
         cancelAnimationFrame(currentRAF);
     }
@@ -594,7 +601,7 @@ export function updatePlaybackIndicator() {
     }
     
     // Early exit: dragging - schedule next frame but don't render
-    if (State.isDragging) {
+    if (isDragging) {
         // 🔥 FIX: Only schedule RAF if document is still connected and not already scheduled
         // This prevents creating RAF callbacks that will be retained by detached documents
         if (document.body && document.body.isConnected && State.playbackIndicatorRAF === null) {
@@ -604,7 +611,7 @@ export function updatePlaybackIndicator() {
     }
     
     // Early exit: not playing - stop the loop completely
-    if (State.playbackState !== PlaybackState.PLAYING) {
+    if (playbackState !== PlaybackState.PLAYING) {
         return;
     }
     
@@ -613,9 +620,9 @@ export function updatePlaybackIndicator() {
     // This created a closure chain: RAF callback → State module → allReceivedData → 4,237 Float32Array chunks (17MB)
     // Use State.completeSamplesArray.length instead if needed, or remove diagnostic code entirely
     
-    if (State.totalAudioDuration > 0) {
+    if (totalAudioDuration > 0) {
         // Check if we've reached the end of an active region and reset play button
-        if (State.playbackState === PlaybackState.PLAYING) {
+        if (playbackState === PlaybackState.PLAYING) {
             resetRegionPlayButtonIfFinished();
         }
         

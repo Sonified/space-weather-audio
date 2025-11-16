@@ -234,17 +234,23 @@ export async function initAudioWorklet() {
             const { targetSample, wasPlaying, forceResume } = event.data;
             console.log(`🎯 [SEEK-READY] Re-sending samples from ${targetSample.toLocaleString()}, wasPlaying=${wasPlaying}, forceResume=${forceResume}`);
             
-            if (State.completeSamplesArray && targetSample >= 0 && targetSample < State.completeSamplesArray.length) {
+            // 🔥 FIX: Copy completeSamplesArray to local variable to break closure chain
+            // This prevents the message handler closure from retaining the entire State module
+            const completeSamplesArray = State.completeSamplesArray;
+            
+            if (completeSamplesArray && targetSample >= 0 && targetSample < completeSamplesArray.length) {
                 // Tell worklet whether to auto-resume after buffering
                 const shouldAutoResume = wasPlaying || forceResume;
                 
                 // Send samples in chunks to avoid blocking
                 const chunkSize = 44100 * 10; // 10 seconds per chunk
-                const totalSamples = State.completeSamplesArray.length;
+                const totalSamples = completeSamplesArray.length;
                 
                 for (let i = targetSample; i < totalSamples; i += chunkSize) {
                     const end = Math.min(i + chunkSize, totalSamples);
-                    const chunk = State.completeSamplesArray.slice(i, end);
+                    // 🔥 OPTIMIZED: Use slice directly - worklet copies data into its own buffer anyway
+                    // postMessage also does structured clone, so no need to copy here
+                    const chunk = completeSamplesArray.slice(i, end);
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
@@ -252,10 +258,7 @@ export async function initAudioWorklet() {
                         autoResume: shouldAutoResume  // Tell worklet to auto-resume after buffering
                     });
                     
-                    // 🔥 FIX: Clear chunk reference after sending to allow GC
-                    // The slice shares the buffer, but clearing the reference helps
-                    // Note: postMessage transfers ownership, but clearing here ensures no local retention
-                    chunk = null;
+                    // No need to clear - postMessage transfers/copies, worklet copies into its buffer
                 }
                 
                 console.log(`📤 [SEEK-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}, autoResume=${shouldAutoResume}`);
@@ -274,7 +277,11 @@ export async function initAudioWorklet() {
             const { targetSample } = event.data;
             // console.log(`🔄 [LOOP-READY] Re-sending samples from ${targetSample.toLocaleString()} (loop restart)`);
             
-            if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+            // 🔥 FIX: Copy completeSamplesArray to local variable to break closure chain
+            // This prevents the message handler closure from retaining the entire State module
+            const completeSamplesArray = State.completeSamplesArray;
+            
+            if (completeSamplesArray && completeSamplesArray.length > 0) {
                 // Update position tracking to loop target
                 const newPositionSeconds = targetSample / 44100;
                 State.setCurrentAudioPosition(newPositionSeconds);
@@ -283,11 +290,13 @@ export async function initAudioWorklet() {
                 
                 // Send samples from target position onwards with auto-resume
                 const chunkSize = 44100 * 10; // 10 seconds per chunk
-                const totalSamples = State.completeSamplesArray.length;
+                const totalSamples = completeSamplesArray.length;
                 
                 for (let i = targetSample; i < totalSamples; i += chunkSize) {
                     const end = Math.min(i + chunkSize, totalSamples);
-                    const chunk = State.completeSamplesArray.slice(i, end);
+                    // 🔥 OPTIMIZED: Use slice directly - worklet copies data into its own buffer anyway
+                    // postMessage also does structured clone, so no need to copy here
+                    const chunk = completeSamplesArray.slice(i, end);
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
@@ -295,10 +304,7 @@ export async function initAudioWorklet() {
                         autoResume: true  // Auto-resume when buffer is ready
                     });
                     
-                    // 🔥 FIX: Clear chunk reference after sending to allow GC
-                    // The slice shares the buffer, but clearing the reference helps
-                    // Note: postMessage transfers ownership, but clearing here ensures no local retention
-                    chunk = null;
+                    // No need to clear - postMessage transfers/copies, worklet copies into its buffer
                 }
                 
                 // console.log(`🔄 [LOOP-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from ${newPositionSeconds.toFixed(2)}s, will auto-resume`);
@@ -320,7 +326,11 @@ export async function initAudioWorklet() {
             const { totalSamples: finishedTotalSamples, speed } = event.data;
             // console.log(`🏁 [FINISHED] Buffer empty: ${finishedTotalSamples.toLocaleString()} samples @ ${speed.toFixed(2)}x speed`);
             
-            if (State.isLooping && State.allReceivedData && State.allReceivedData.length > 0) {
+            // 🔥 FIX: Copy State values to local variables to break closure chain
+            const isLooping = State.isLooping;
+            const allReceivedData = State.allReceivedData;
+            
+            if (isLooping && allReceivedData && allReceivedData.length > 0) {
                 // 🏎️ AUTONOMOUS: Loop is handled by worklet, but if we get 'finished' it means
                 // we need to restart. Seek to start and play.
                 const loopStartPosition = State.selectionStart !== null ? State.selectionStart : 0;
@@ -799,7 +809,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.08 - Aggressive RAF Cleanup & Modal Fixes');
+    console.log('🌋 [0ms] volcano-audio v2.09 - ArrayBuffer Memory Leak Fix');
+    console.log('🧹 [0ms] v2.09 Memory: Fixed ArrayBuffer retention by copying slices when storing in allReceivedData, clearing allReceivedData after stitching to break RAF closure chain');
     console.log('🧹 [0ms] v2.08 Memory: Added page unload/visibility handlers to cancel RAF, improved modal cleanup, added cancelScaleTransitionRAF');
     console.log('🎨 [0ms] v2.07 UI: Added 0.1Hz ticks at 10x speed, adjusted padding, semi-transparent dropdowns');
     console.log('🔇 [0ms] Commented out worklet message logging to reduce console noise');
@@ -875,7 +886,12 @@ window.addEventListener('DOMContentLoaded', async () => {
             event.preventDefault();
             
             const playPauseBtn = document.getElementById('playPauseBtn');
-            if (!playPauseBtn.disabled && (State.playbackState !== PlaybackState.STOPPED || State.allReceivedData.length > 0)) {
+            
+            // 🔥 FIX: Copy State values to local variables to break closure chain
+            const playbackState = State.playbackState;
+            const allReceivedData = State.allReceivedData;
+            
+            if (!playPauseBtn.disabled && (playbackState !== PlaybackState.STOPPED || (allReceivedData && allReceivedData.length > 0))) {
                 // If there's an active region, set selection to that region before playing
                 if (setSelectionFromActiveRegionIfExists()) {
                     // Selection is now set to the active region, togglePlayPause will use it

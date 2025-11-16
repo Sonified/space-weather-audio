@@ -17,10 +17,18 @@ let spectrogramEndY = null;
 let spectrogramSelectionBox = null;
 
 export function drawSpectrogram() {
-    // 🔥 FIX: Clear RAF ID immediately to prevent duplicate scheduling
-    // This must happen FIRST before any early returns to prevent accumulation
+    // 🔥 FIX: Copy State values to local variables IMMEDIATELY to break closure chain
+    // This prevents RAF callbacks from capturing the entire State module
+    // Access State only once at the start, then use local variables throughout
     const currentRAF = State.spectrogramRAF;
-        State.setSpectrogramRAF(null);
+    const analyserNode = State.analyserNode;
+    const playbackState = State.playbackState;
+    const frequencyScale = State.frequencyScale;
+    const spectrogramInitialized = State.spectrogramInitialized;
+    
+    // Clear RAF ID immediately to prevent duplicate scheduling
+    // This must happen FIRST before any early returns to prevent accumulation
+    State.setSpectrogramRAF(null);
     if (currentRAF !== null) {
         cancelAnimationFrame(currentRAF);
     }
@@ -32,10 +40,10 @@ export function drawSpectrogram() {
     }
     
     // Early exit: no analyser - stop the loop completely
-    if (!State.analyserNode) return;
+    if (!analyserNode) return;
     
     // Early exit: not playing - schedule next frame to keep checking
-    if (State.playbackState !== PlaybackState.PLAYING) {
+    if (playbackState !== PlaybackState.PLAYING) {
         // 🔥 FIX: Only schedule RAF if document is still connected and not already scheduled
         if (document.body && document.body.isConnected && State.spectrogramRAF === null) {
         State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
@@ -49,18 +57,18 @@ export function drawSpectrogram() {
     const height = canvas.height;
     
     // Clear entire canvas only on first initialization
-    if (!State.spectrogramInitialized) {
+    if (!spectrogramInitialized) {
         ctx.clearRect(0, 0, width, height);
         State.setSpectrogramInitialized(true);
     }
     
-    const bufferLength = State.analyserNode.frequencyBinCount;
+    const bufferLength = analyserNode.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
-    State.analyserNode.getByteFrequencyData(dataArray);
+    analyserNode.getByteFrequencyData(dataArray);
     
     // Helper function to calculate y position based on frequency scale
     const getYPosition = (binIndex, totalBins, canvasHeight) => {
-        if (State.frequencyScale === 'logarithmic') {
+        if (frequencyScale === 'logarithmic') {
             // Logarithmic scale: strong emphasis on lower frequencies
             // Map bin index to log scale (avoiding log(0))
             const minFreq = 1; // Minimum frequency bin (avoid log(0))
@@ -70,7 +78,7 @@ export function drawSpectrogram() {
             const logFreq = Math.log10(Math.max(binIndex + 1, minFreq));
             const normalizedLog = (logFreq - logMin) / (logMax - logMin);
             return canvasHeight - (normalizedLog * canvasHeight);
-        } else if (State.frequencyScale === 'sqrt') {
+        } else if (frequencyScale === 'sqrt') {
             // Square root scale: gentle emphasis on lower frequencies (good middle ground)
             const normalized = binIndex / totalBins;
             const sqrtNormalized = Math.sqrt(normalized);

@@ -580,7 +580,10 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 const WORKLET_CHUNK_SIZE = 1024;
                 for (let i = 0; i < samples.length; i += WORKLET_CHUNK_SIZE) {
                     const size = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
-                    const workletChunk = samples.slice(i, i + size);
+                    // 🔥 FIX: Copy slice to new ArrayBuffer instead of sharing buffer
+                    // This allows GC of individual chunks independently
+                    const slice = samples.slice(i, i + size);
+                    const workletChunk = new Float32Array(slice); // Copy to new ArrayBuffer
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
@@ -855,12 +858,19 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 // Stitch samples for download button (lightweight operation)
                                 const stitched = new Float32Array(totalWorkletSamples);
                                 let offset = 0;
+                                const chunkCount = State.allReceivedData.length;
                                 for (const chunk of State.allReceivedData) {
                                     stitched.set(chunk, offset);
                                     offset += chunk.length;
                                 }
                                 State.setCompleteSamplesArray(stitched);
-                                console.log(`📦 ${logTime()} Stitched ${State.allReceivedData.length} chunks into completeSamplesArray for download`);
+                                console.log(`📦 ${logTime()} Stitched ${chunkCount} chunks into completeSamplesArray for download`);
+                                
+                                // 🔥 FIX: Clear allReceivedData after stitching to free 3,685+ Float32Array chunks
+                                // This breaks the closure chain: RAF callback → State → allReceivedData → chunks
+                                // Now State.allReceivedData is empty, so RAF callbacks won't retain old chunks
+                                State.setAllReceivedData([]);
+                                console.log(`🧹 ${logTime()} Cleared allReceivedData (${chunkCount} chunks) - memory freed`);
                                 
                                 // 🎨 Render complete spectrogram now that all data is ready
                                 console.log(`🎨 ${logTime()} Triggering complete spectrogram rendering...`);
@@ -956,6 +966,11 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             // Store for waveform drawing
             State.setCompleteSamplesArray(stitchedFloat32);
             window.rawWaveformData = stitchedRaw;
+            
+            // 🔥 FIX: Clear allReceivedData after stitching to free Float32Array chunks
+            // This breaks the closure chain: RAF callback → State → allReceivedData → chunks
+            // Now State.allReceivedData is empty, so RAF callbacks won't retain old chunks
+            State.setAllReceivedData([]);
             
             // Update UI metrics
             document.getElementById('sampleCount').textContent = stitchedFloat32.length.toLocaleString();
@@ -1322,7 +1337,10 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     
     for (let i = 0; i < samples.length; i += WORKLET_CHUNK_SIZE) {
         const chunkSize = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
-        const chunk = samples.slice(i, i + chunkSize);
+        // 🔥 FIX: Copy slice to new ArrayBuffer instead of sharing buffer
+        // This allows GC of individual chunks independently
+        const slice = samples.slice(i, i + chunkSize);
+        const chunk = new Float32Array(slice); // Copy to new ArrayBuffer
         
         State.workletNode.port.postMessage({
             type: 'audio-data',

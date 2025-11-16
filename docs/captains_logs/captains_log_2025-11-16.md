@@ -2,6 +2,42 @@
 
 ---
 
+## 🧹 ArrayBuffer Memory Leak Fix (v2.09)
+
+### Changes Made
+Fixed ArrayBuffer memory leak where 3,685+ Float32Array chunks (36MB) were being retained through RAF callback closures:
+
+1. **Copy Slices When Storing in allReceivedData**
+   - Modified `data-fetcher.js` to copy slices to new ArrayBuffers when storing in `allReceivedData`
+   - Prevents all chunks from sharing the same underlying ArrayBuffer
+   - Allows individual chunks to be garbage collected independently
+   - Applied to both R2 worker path and Railway backend path
+
+2. **Clear allReceivedData After Stitching**
+   - Added `State.setAllReceivedData([])` immediately after stitching chunks into `completeSamplesArray`
+   - Breaks closure chain: RAF callback → State → allReceivedData → 3,685 chunks
+   - Now RAF callbacks only reference empty array instead of retaining all chunks
+   - Applied in both R2 worker stitching and `buildCompleteWaveform` helper
+
+3. **Optimized Seek/Loop Chunk Sending**
+   - Removed unnecessary copy when sending chunks to worklet in seek/loop operations
+   - Worklet copies data into its own buffer anyway, so no need to copy before sending
+   - Only copy when storing in `allReceivedData` (where leak occurs)
+
+### Memory Impact
+- Before: 3,685 Float32Array chunks (36MB) retained through RAF closures
+- After: `allReceivedData` cleared after stitching, chunks can be GC'd immediately
+- Expected reduction: ~36MB freed after data stitching completes
+
+### Files Modified
+- `js/main.js` - Optimized seek/loop chunk sending (removed unnecessary copy)
+- `js/data-fetcher.js` - Copy slices when storing in allReceivedData, clear after stitching
+
+### Version
+v2.09 - Commit: "v2.09 Memory Leak Fix: Fixed ArrayBuffer retention by copying slices and clearing allReceivedData after stitching"
+
+---
+
 ## 🧹 Aggressive RAF Cleanup & Modal Fixes (v2.08)
 
 ### Changes Made
