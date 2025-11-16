@@ -43,6 +43,16 @@ export function cancelAllRAFLoops() {
         resizeRAFRef = null;
         console.log('🧹 Cancelled resize RAF');
     }
+    // 🔥 FIX: Cancel crossfade animation RAF if active
+    if (State.crossfadeAnimation !== null) {
+        cancelAnimationFrame(State.crossfadeAnimation);
+        State.setCrossfadeAnimation(null);
+        console.log('🧹 Cancelled crossfade animation RAF');
+    }
+    
+    // 🔥 FIX: Cancel scale transition RAF if active
+    // Note: This is handled separately via direct import in main.js unload handlers
+    // to avoid async import issues during page unload
 }
 
 // ===== CENTRALIZED PLAYBACK CONTROL =====

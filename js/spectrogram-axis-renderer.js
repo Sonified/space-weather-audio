@@ -17,6 +17,18 @@ let oldScaleType = null;
 let scaleTransitionRAF = null;
 
 /**
+ * Cancel scale transition RAF to prevent detached document leaks
+ * Called during cleanup to ensure RAF callbacks are cancelled
+ */
+export function cancelScaleTransitionRAF() {
+    if (scaleTransitionRAF !== null) {
+        cancelAnimationFrame(scaleTransitionRAF);
+        scaleTransitionRAF = null;
+        scaleTransitionInProgress = false;
+    }
+}
+
+/**
  * Draw frequency axis showing frequencies scaled by playback speed
  * 
  * When playback speed slows down, frequencies get lower:

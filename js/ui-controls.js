@@ -621,13 +621,24 @@ function removeModalEventListeners() {
     
     modalIds.forEach(modalId => {
         const modal = document.getElementById(modalId);
-        if (modal && modal.parentNode) {
-            // Clone to break all event listeners
-            const cloned = modal.cloneNode(true); // Deep clone to preserve structure
-            modal.parentNode.replaceChild(cloned, modal);
-            // Replace clone back with original structure (but listeners are broken)
-            // Actually, keep the clone since it has the same structure but no listeners
-            // The original modal with listeners is now detached and can be GC'd
+        if (modal) {
+            if (modal.parentNode) {
+                // Clone to break all event listeners
+                const cloned = modal.cloneNode(true); // Deep clone to preserve structure
+                modal.parentNode.replaceChild(cloned, modal);
+                // The original modal with listeners is now detached and can be GC'd
+                // Clear all child nodes from the cloned modal to break internal references
+                while (cloned.firstChild) {
+                    cloned.removeChild(cloned.firstChild);
+                }
+                // Remove the clone itself
+                cloned.parentNode.removeChild(cloned);
+            } else {
+                // Already detached, clear all child nodes to break internal references
+                while (modal.firstChild) {
+                    modal.removeChild(modal.firstChild);
+                }
+            }
         }
     });
     

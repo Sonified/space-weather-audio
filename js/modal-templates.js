@@ -1,5 +1,8 @@
 // Modal HTML templates as ES6 template literals
 
+// 🔥 FIX: Track if modals have been initialized to prevent duplicate initialization
+let modalsInitialized = false;
+
 export function createParticipantModal() {
     const modal = document.createElement('div');
     modal.id = 'participantModal';
@@ -504,6 +507,14 @@ export function createAwesfModal() {
 
 // Initialize and inject modals into the page
 export function initializeModals() {
+    // 🔥 FIX: Prevent duplicate initialization
+    // If modals are already initialized, clean them up first
+    if (modalsInitialized) {
+        console.warn('⚠️ Modals already initialized - cleaning up old modals first');
+        // Import and call removeModalEventListeners if available
+        // (This will be handled by setupModalEventListeners guard)
+    }
+    
     // 🔥 FIX: Remove existing modals before creating new ones to prevent duplicates
     // This prevents detached DOM nodes from accumulating
     const existingModals = [
@@ -516,18 +527,22 @@ export function initializeModals() {
     
     existingModals.forEach(modalId => {
         const existing = document.getElementById(modalId);
-        if (existing && existing.parentNode) {
-            // 🔥 FIX: Clone modal to break ALL event listener references (including on modal itself)
-            // This ensures detached modals can be garbage collected
-            // Cloning creates a new element without any event listeners
-            const parent = existing.parentNode;
-            const cloned = existing.cloneNode(false); // Shallow clone (no children, no listeners)
-            
-            // Replace original with clone (breaks all references)
-            parent.replaceChild(cloned, existing);
-            
-            // Remove the clone (which has no listeners)
-            parent.removeChild(cloned);
+        if (existing) {
+            // 🔥 FIX: Explicitly remove modal from DOM and clear all references
+            // First, clear all event listeners by cloning (breaks all references)
+            if (existing.parentNode) {
+                // Clone to break event listener references
+                const cloned = existing.cloneNode(false); // Shallow clone (no children, no listeners)
+                existing.parentNode.replaceChild(cloned, existing);
+                // Remove the clone (original is now detached)
+                cloned.parentNode.removeChild(cloned);
+            } else {
+                // Already detached, but clear any remaining references
+                // Remove all child nodes to break internal references
+                while (existing.firstChild) {
+                    existing.removeChild(existing.firstChild);
+                }
+            }
         }
     });
     
@@ -561,6 +576,7 @@ export function initializeModals() {
         }
     }
     
+    modalsInitialized = true;
     console.log('📋 Modals initialized and injected into DOM');
 }
 

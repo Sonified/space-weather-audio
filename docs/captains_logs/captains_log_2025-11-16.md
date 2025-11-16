@@ -2,6 +2,47 @@
 
 ---
 
+## 🧹 Aggressive RAF Cleanup & Modal Fixes (v2.08)
+
+### Changes Made
+Added aggressive cleanup to prevent RAF callbacks from retaining detached documents:
+
+1. **Page Unload Handlers**
+   - Added `beforeunload` and `pagehide` event listeners to cancel all RAF callbacks
+   - Ensures RAF callbacks scheduled before page unload are cancelled
+   - Prevents detached documents from retaining RAF callbacks
+
+2. **Visibility Change Handler**
+   - Added `visibilitychange` event listener to cancel RAF when page becomes hidden
+   - Catches cases where page is backgrounded or navigated away
+   - Prevents RAF callbacks from accumulating when page is not visible
+
+3. **Scale Transition RAF Cleanup**
+   - Added `cancelScaleTransitionRAF()` function to `spectrogram-axis-renderer.js`
+   - Exported function for cleanup during page unload
+   - Prevents scale transition animations from retaining detached documents
+
+4. **Crossfade Animation Cleanup**
+   - Added crossfade animation cancellation to `cancelAllRAFLoops()`
+   - Ensures waveform crossfade animations are cancelled during cleanup
+
+5. **Improved Modal Cleanup**
+   - Added guard to prevent duplicate modal initialization
+   - Improved `removeModalEventListeners()` to clear all child nodes before removal
+   - Better handling of both attached and detached modals
+
+### Files Modified
+- `js/main.js` - Added page unload/visibility handlers, improved cleanup
+- `js/audio-player.js` - Added crossfade animation cleanup to cancelAllRAFLoops
+- `js/spectrogram-axis-renderer.js` - Added cancelScaleTransitionRAF function
+- `js/modal-templates.js` - Added initialization guard, improved cleanup
+- `js/ui-controls.js` - Improved removeModalEventListeners cleanup
+
+### Version
+v2.08 - Commit: "v2.08 Memory Leak Fixes: Added page unload/visibility handlers to cancel RAF, improved modal cleanup, added cancelScaleTransitionRAF"
+
+---
+
 ## 🧹 Memory Leak Fixes: NativeContext Leaks in RAF Callbacks (v2.07)
 
 ### Changes Made

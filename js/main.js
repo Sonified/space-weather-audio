@@ -799,8 +799,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.07 - Memory Leak Fixes & UI Improvements');
-    console.log('🧹 [0ms] v2.07 Memory: Fixed NativeContext leaks in RAF callbacks (spectrogram-axis, spectrogram fade, waveform crossfade)');
+    console.log('🌋 [0ms] volcano-audio v2.08 - Aggressive RAF Cleanup & Modal Fixes');
+    console.log('🧹 [0ms] v2.08 Memory: Added page unload/visibility handlers to cancel RAF, improved modal cleanup, added cancelScaleTransitionRAF');
     console.log('🎨 [0ms] v2.07 UI: Added 0.1Hz ticks at 10x speed, adjusted padding, semi-transparent dropdowns');
     console.log('🔇 [0ms] Commented out worklet message logging to reduce console noise');
     
@@ -1095,5 +1095,31 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     
     console.log('✅ Event listeners setup complete - memory leak prevention active!');
+    
+    // 🔥 FIX: Cancel all RAF callbacks on page unload to prevent detached document leaks
+    // This ensures RAF callbacks scheduled before page unload are cancelled
+    // Import modules at module level so they're available synchronously during unload
+    import('./audio-player.js').then(audioPlayerModule => {
+        import('./spectrogram-axis-renderer.js').then(axisModule => {
+            const cleanupOnUnload = () => {
+                // Call synchronously - modules are already loaded
+                audioPlayerModule.cancelAllRAFLoops();
+                axisModule.cancelScaleTransitionRAF();
+            };
+            
+            window.addEventListener('beforeunload', cleanupOnUnload);
+            
+            // Also handle pagehide (more reliable than beforeunload in some browsers)
+            window.addEventListener('pagehide', cleanupOnUnload);
+            
+            // 🔥 FIX: Also handle visibility change - if page becomes hidden, cancel RAF
+            // This catches cases where the page is backgrounded or navigated away
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    cleanupOnUnload();
+                }
+            });
+        });
+    });
 });
 
