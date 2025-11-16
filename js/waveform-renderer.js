@@ -7,7 +7,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
-import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, resetRegionPlayButtonIfFinished } from './region-tracker.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
@@ -185,6 +185,9 @@ export function drawWaveformFromMinMax() {
                 ctx.stroke();
             }
             
+            // 🔥 Draw regions during crossfade so they stay visible throughout the transition
+            drawRegionHighlights(ctx, width, height);
+            
             if (progress < 1.0) {
                 State.setCrossfadeAnimation(requestAnimationFrame(animate));
             } else {
@@ -257,10 +260,75 @@ export function drawWaveformFromMinMax() {
     }
 }
 
+/**
+ * Draw waveform with smooth zoom interpolation during transitions
+ * Stretches the cached waveform to match the interpolating time range
+ */
+export function drawInterpolatedWaveform() {
+    const canvas = document.getElementById('waveform');
+    if (!canvas || !State.cachedWaveformCanvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Get the interpolated time range (same range the ticks are using)
+    const interpolatedRange = getInterpolatedTimeRange();
+
+    // Calculate what portion of the cached canvas to draw
+    const dataStartMs = State.dataStartTime.getTime();
+    const dataEndMs = State.dataEndTime.getTime();
+    const dataDurationMs = dataEndMs - dataStartMs;
+
+    const interpStartMs = interpolatedRange.startTime.getTime();
+    const interpEndMs = interpolatedRange.endTime.getTime();
+
+    // Calculate source rectangle in the cached canvas
+    const startProgress = (interpStartMs - dataStartMs) / dataDurationMs;
+    const endProgress = (interpEndMs - dataStartMs) / dataDurationMs;
+
+    const cachedWidth = State.cachedWaveformCanvas.width;
+    const sourceX = startProgress * cachedWidth;
+    const sourceWidth = (endProgress - startProgress) * cachedWidth;
+
+    // Clear and draw stretched portion
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(
+        State.cachedWaveformCanvas,
+        sourceX, 0, sourceWidth, State.cachedWaveformCanvas.height,  // source
+        0, 0, width, height  // destination (stretched to fill)
+    );
+
+    // Draw region highlights on top (they use the same interpolated range)
+    drawRegionHighlights(ctx, width, height);
+
+    // Draw playhead (also using interpolated time range for smooth positioning)
+    if (State.currentAudioPosition !== null && State.totalAudioDuration > 0 && State.currentAudioPosition >= 0) {
+        // Convert playhead position to timestamp
+        const playheadSample = zoomState.timeToSample(State.currentAudioPosition);
+        const playheadTimestamp = zoomState.sampleToRealTimestamp(playheadSample);
+
+        if (playheadTimestamp) {
+            const playheadMs = playheadTimestamp.getTime();
+
+            // Calculate playhead position within the interpolated time range
+            const progress = (playheadMs - interpStartMs) / (interpEndMs - interpStartMs);
+            const x = progress * width;
+
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+        }
+    }
+}
+
 export function drawWaveformWithSelection() {
     const canvas = document.getElementById('waveform');
     if (!canvas) return;
-    
+
     if (!State.cachedWaveformCanvas) {
         const ctx = canvas.getContext('2d');
         const width = canvas.width;

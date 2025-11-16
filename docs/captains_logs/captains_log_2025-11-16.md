@@ -2,6 +2,44 @@
 
 ---
 
+## 🎯 Region Visibility During Zoom Transitions (v2.12)
+
+### Problem
+Regions were disappearing during zoom transitions, specifically during the 300ms crossfade animation when the waveform worker finished rebuilding. Users would see regions disappear briefly at the end of transitions.
+
+### Root Cause
+The crossfade animation in `drawWaveformFromMinMax()` was drawing the old and new waveforms but **never calling `drawRegionHighlights()` during the animation**. Regions were only drawn AFTER the crossfade completed, creating a visible gap.
+
+### Solution
+1. **Added `drawRegionHighlights()` inside crossfade animation loop** - Regions now draw on every frame of the crossfade
+2. **Moved initial `drawWaveformWithSelection()` call** - Called immediately after updating `zoomState`, before animation starts
+
+### Key Changes
+- `js/waveform-renderer.js` (line 189): Added `drawRegionHighlights(ctx, width, height)` inside crossfade animation loop
+- `js/region-tracker.js` (line 1605): Moved `drawWaveformWithSelection()` to immediately after `zoomState` update
+
+### How It Works
+1. Update `zoomState` → regions immediately redraw at new positions
+2. RAF animation → regions drawn via `drawInterpolatedWaveform()`
+3. Animation completes → `drawWaveform()` sends to worker
+4. Worker finishes → `drawWaveformFromMinMax()` starts crossfade
+5. **Crossfade animation → regions drawn on EVERY frame** (fixes the gap!)
+6. Crossfade completes → `drawWaveformWithSelection()` called (regions already visible)
+
+### Benefits
+- ✅ Regions stay visible throughout entire transition
+- ✅ No flash or disappearance during crossfade
+- ✅ Smooth visual experience
+
+### Files Modified
+- `js/waveform-renderer.js` - Added region drawing to crossfade animation loop
+- `js/region-tracker.js` - Moved initial region draw to immediately after zoomState update
+
+### Version
+v2.12 - Commit: "v2.12 Fix: Region visibility during zoom transitions - regions now stay visible throughout crossfade animation"
+
+---
+
 ## ⌨️ Hourglass Button Spacebar Fix (v2.10)
 
 ### Problem

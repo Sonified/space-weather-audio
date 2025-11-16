@@ -19,10 +19,91 @@ import { zoomState } from './zoom-state.js';
 import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState } from './spectrogram-complete-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 
-// Region data structure
-let regions = [];
+// Region data structure - stored per volcano
+// Map<volcanoName, regions[]>
+let regionsByVolcano = new Map();
+let currentVolcano = null;
 let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
+
+/**
+ * Get the current volcano from the UI
+ */
+function getCurrentVolcano() {
+    const volcanoSelect = document.getElementById('volcano');
+    return volcanoSelect ? volcanoSelect.value : null;
+}
+
+/**
+ * Get regions for the current volcano
+ * Uses currentVolcano if set, otherwise reads from UI
+ */
+function getCurrentRegions() {
+    // Use currentVolcano if available (more reliable during volcano switches)
+    // Otherwise fall back to reading from UI
+    const volcano = currentVolcano || getCurrentVolcano();
+    if (!volcano) {
+        return [];
+    }
+    if (!regionsByVolcano.has(volcano)) {
+        regionsByVolcano.set(volcano, []);
+    }
+    return regionsByVolcano.get(volcano);
+}
+
+/**
+ * Set regions for the current volcano
+ * Uses currentVolcano if set, otherwise reads from UI
+ */
+function setCurrentRegions(newRegions) {
+    // Use currentVolcano if available (more reliable during volcano switches)
+    // Otherwise fall back to reading from UI
+    const volcano = currentVolcano || getCurrentVolcano();
+    if (!volcano) {
+        return;
+    }
+    regionsByVolcano.set(volcano, newRegions);
+}
+
+/**
+ * Switch to a different volcano's regions
+ * Called when volcano selection changes
+ * Note: This is called AFTER the UI select has already changed to the new volcano
+ */
+export function switchVolcanoRegions(newVolcano) {
+    if (!newVolcano) {
+        console.warn('⚠️ Cannot switch: no volcano specified');
+        return;
+    }
+    
+    // Save current regions before switching (if we have a current volcano and it's different)
+    // Since getCurrentRegions() now uses currentVolcano when available, we can safely get the old volcano's regions
+    if (currentVolcano && currentVolcano !== newVolcano) {
+        // Get the current regions (for the old volcano) and save them
+        const oldRegions = getCurrentRegions();
+        regionsByVolcano.set(currentVolcano, oldRegions);
+    }
+    
+    // Clear active region indices when switching volcanoes
+    activeRegionIndex = null;
+    activePlayingRegionIndex = null;
+    
+    // Update current volcano
+    currentVolcano = newVolcano;
+    
+    // Initialize regions array for new volcano if needed
+    if (!regionsByVolcano.has(newVolcano)) {
+        regionsByVolcano.set(newVolcano, []);
+    }
+    
+    // Re-render regions for the new volcano
+    renderRegions();
+    
+    // Redraw waveform to update region highlights
+    drawWaveformWithSelection();
+    
+    console.log(`🌋 Switched to volcano: ${newVolcano} (${regionsByVolcano.get(newVolcano).length} regions)`);
+}
 
 // Waveform selection state
 let isSelectingTime = false;
@@ -48,6 +129,15 @@ const maxFrequency = 50; // Hz - Nyquist frequency for 100 Hz sample rate
  */
 export function initRegionTracker() {
     console.log('🎯 Region tracker initialized');
+    
+    // Initialize current volcano
+    currentVolcano = getCurrentVolcano();
+    if (currentVolcano) {
+        // Initialize regions array for current volcano
+        if (!regionsByVolcano.has(currentVolcano)) {
+            regionsByVolcano.set(currentVolcano, []);
+        }
+    }
     
     // Region cards will appear dynamically in #regionsList
     // No wrapper panel needed
@@ -234,6 +324,9 @@ function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSecon
     console.log('   Region start time:', startTime);
     console.log('   Region end time:', endTime);
     
+    // Get current volcano's regions
+    const regions = getCurrentRegions();
+    
     // Collapse all existing regions before adding new one
     regions.forEach(region => {
         region.expanded = false;
@@ -266,6 +359,7 @@ function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSecon
     };
     
     regions.push(newRegion);
+    setCurrentRegions(regions);
     const newRegionIndex = regions.length - 1;
     
     // Render the new region (it will appear as a floating card)
@@ -323,6 +417,8 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
     if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
         return; // No data loaded yet
     }
+    
+    const regions = getCurrentRegions();
     
     if (regions.length === 0) {
         return; // No regions to draw
@@ -537,6 +633,7 @@ export function handleSpectrogramSelection(startY, endY, canvasHeight, startX, e
     }
     
     // Update feature data
+    const regions = getCurrentRegions();
     if (regions[regionIndex] && regions[regionIndex].features[featureIndex]) {
         regions[regionIndex].features[featureIndex].lowFreq = lowFreq.toFixed(2);
         regions[regionIndex].features[featureIndex].highFreq = highFreq.toFixed(2);
@@ -545,6 +642,8 @@ export function handleSpectrogramSelection(startY, endY, canvasHeight, startX, e
             regions[regionIndex].features[featureIndex].startTime = startTime;
             regions[regionIndex].features[featureIndex].endTime = endTime;
         }
+        
+        setCurrentRegions(regions);
         
         // Re-render the feature
         renderFeatures(regions[regionIndex].id, regionIndex);
@@ -648,6 +747,7 @@ function renderRegions() {
     
     container.innerHTML = '';
     
+    const regions = getCurrentRegions();
     regions.forEach((region, index) => {
         const regionCard = createRegionCard(region, index);
         container.appendChild(regionCard);
@@ -810,6 +910,7 @@ function renderFeatures(regionId, regionIndex) {
     const container = document.getElementById(`features-${regionId}`);
     if (!container) return;
     
+    const regions = getCurrentRegions();
     const region = regions[regionIndex];
     
     // Ensure featureCount matches features array length
@@ -917,6 +1018,7 @@ function renderFeatures(regionId, regionIndex) {
  * Toggle region expansion
  */
 export function toggleRegion(index) {
+    const regions = getCurrentRegions();
     const region = regions[index];
     const wasExpanded = region.expanded;
     
@@ -989,6 +1091,7 @@ export function toggleRegion(index) {
  * Set selection to match active region's time range
  */
 function setSelectionFromActiveRegion() {
+    const regions = getCurrentRegions();
     if (activeRegionIndex === null || activeRegionIndex >= regions.length) {
         return false;
     }
@@ -1035,6 +1138,7 @@ function setSelectionFromActiveRegion() {
  * Master play/pause and spacebar handle pause/resume
  */
 export function toggleRegionPlay(index) {
+    const regions = getCurrentRegions();
     const region = regions[index];
     const regionTime = `${formatTime(region.startTime)} – ${formatTime(region.stopTime)}`;
     console.log(`🎵 Region ${index + 1} play button clicked - ${regionTime} (Region ID: ${region.id})`);
@@ -1088,6 +1192,7 @@ export function toggleRegionPlay(index) {
  * Reset a region's play button to play state
  */
 function resetRegionPlayButton(index) {
+    const regions = getCurrentRegions();
     if (index === null || index >= regions.length) return;
     
     const region = regions[index];
@@ -1167,6 +1272,7 @@ export function isPlayingActiveRegion() {
  * Clears active playing region and resets button to play
  */
 export function resetRegionPlayButtonIfFinished() {
+    const regions = getCurrentRegions();
     if (activePlayingRegionIndex === null || activePlayingRegionIndex >= regions.length) {
         return;
     }
@@ -1220,6 +1326,7 @@ export function clearActiveRegion() {
  */
 export function resetAllRegionPlayButtons() {
     activePlayingRegionIndex = null; // Clear active playing region
+    const regions = getCurrentRegions();
     regions.forEach((region, index) => {
         region.playing = false;
         const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
@@ -1238,6 +1345,7 @@ export function resetAllRegionPlayButtons() {
  * Add a feature to a region
  */
 export function addFeature(regionIndex) {
+    const regions = getCurrentRegions();
     const region = regions[regionIndex];
     const currentCount = region.featureCount;
     
@@ -1268,6 +1376,7 @@ export function addFeature(regionIndex) {
         void details.offsetHeight;
         
         // Update the DOM
+        setCurrentRegions(regions);
         renderFeatures(region.id, regionIndex);
         
         // Animate to new height
@@ -1306,6 +1415,7 @@ export function addFeature(regionIndex) {
  * Delete a specific feature
  */
 function deleteSpecificFeature(regionIndex, featureIndex) {
+    const regions = getCurrentRegions();
     const region = regions[regionIndex];
     
     if (region.featureCount <= 1 || featureIndex === 0) {
@@ -1316,6 +1426,7 @@ function deleteSpecificFeature(regionIndex, featureIndex) {
     region.features.splice(featureIndex, 1);
     region.featureCount = region.features.length;
     
+    setCurrentRegions(regions);
     renderFeatures(region.id, regionIndex);
 }
 
@@ -1324,10 +1435,12 @@ function deleteSpecificFeature(regionIndex, featureIndex) {
  */
 export function updateFeature(regionIndex, featureIndex, property, value) {
     setActiveRegion(regionIndex);
+    const regions = getCurrentRegions();
     if (!regions[regionIndex].features[featureIndex]) {
         regions[regionIndex].features[featureIndex] = {};
     }
     regions[regionIndex].features[featureIndex][property] = value;
+    setCurrentRegions(regions);
     
     // If notes were updated and region is collapsed, update header preview
     if (property === 'notes' && featureIndex === 0 && !regions[regionIndex].expanded) {
@@ -1352,7 +1465,9 @@ export function updateFeature(regionIndex, featureIndex, property, value) {
  */
 export function deleteRegion(index) {
     if (confirm('Delete this region?')) {
+        const regions = getCurrentRegions();
         regions.splice(index, 1);
+        setCurrentRegions(regions);
         if (activeRegionIndex === index) {
             activeRegionIndex = null;
         } else if (activeRegionIndex > index) {
@@ -1390,6 +1505,7 @@ export function createTestRegion() {
     const startTimestamp = zoomState.sampleToRealTimestamp(startSample);
     const endTimestamp = zoomState.sampleToRealTimestamp(endSample);
     
+    const regions = getCurrentRegions();
     const newRegion = {
         id: regions.length > 0 ? Math.max(...regions.map(r => r.id)) + 1 : 1,
         
@@ -1416,6 +1532,7 @@ export function createTestRegion() {
     };
     
     regions.push(newRegion);
+    setCurrentRegions(regions);
     renderRegions();
     setActiveRegion(regions.length - 1);
     
@@ -1427,6 +1544,7 @@ export function createTestRegion() {
  * Makes the region fill the entire waveform/spectrogram view
  */
 export function zoomToRegion(regionIndex) {
+    const regions = getCurrentRegions();
     const region = regions[regionIndex];
     if (!region) {
         console.warn('⚠️ Cannot zoom: region not found');
@@ -1480,6 +1598,11 @@ export function zoomToRegion(regionIndex) {
     zoomState.currentViewStartSample = region.startSample;
     zoomState.currentViewEndSample = region.endSample;
     zoomState.activeRegionId = region.id;
+    
+    // 🔥 IMMEDIATELY redraw regions at their new positions (BEFORE animation starts)
+    // This prevents flash/delay - regions appear instantly at correct positions
+    // Regions will stay visible throughout the entire transition and worker rebuild
+    drawWaveformWithSelection();
     
     // 🚩 RAISE THE FLAG! We're respecting this temple's boundaries
     // 🏛️ DON'T set selection - let users make their own selections inside the temple!
@@ -1573,6 +1696,7 @@ export function zoomToFull() {
     });
 
     // Update ALL zoom buttons back to 🔍
+    const regions = getCurrentRegions();
     regions.forEach(region => {
         const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
         if (regionCard) {
@@ -1591,7 +1715,7 @@ export function zoomToFull() {
 
 // Export state getters for external access
 export function getRegions() {
-    return regions;
+    return getCurrentRegions();
 }
 
 export function isInFrequencySelectionMode() {
