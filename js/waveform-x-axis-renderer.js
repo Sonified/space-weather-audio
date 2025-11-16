@@ -267,7 +267,12 @@ function calculateHourlyTicks(startUTC, endUTC) {
     while (currentTickLocal.getTime() <= endLocalTime) {
         // Get local date string for day crossing detection
         const currentTickDate = currentTickLocal.toDateString();
-        const isDayCrossing = previousTickDate !== null && previousTickDate !== currentTickDate;
+        const currentHour = currentTickLocal.getHours();
+        // Mark as day crossing if:
+        // 1. Previous tick was on a different date, OR
+        // 2. This tick is at midnight (00:00) - always show date at midnight
+        const isDayCrossing = (previousTickDate !== null && previousTickDate !== currentTickDate) || 
+                              (currentHour === 0 && currentTickLocal.getMinutes() === 0);
         
         // Convert local time to UTC for positioning
         // JavaScript Date constructor with (year, month, day, hour) interprets as local time

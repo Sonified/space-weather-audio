@@ -98,7 +98,7 @@ export function drawFrequencyAxis() {
     if (scaleType === 'logarithmic') {
         tickFrequencies = generateLogTicks(originalNyquist);
     } else if (scaleType === 'sqrt') {
-        tickFrequencies = generateSqrtTicks(originalNyquist);
+        tickFrequencies = generateSqrtTicks(originalNyquist, smoothedRate);
     } else {
         tickFrequencies = generateLinearTicks(originalNyquist, smoothedRate);
     }
@@ -318,7 +318,7 @@ function generateLogTicks(maxFreq) {
 /**
  * Generate tick frequencies for square root scale
  */
-function generateSqrtTicks(maxFreq) {
+function generateSqrtTicks(maxFreq, playbackRate = 1.0) {
     const ticks = [0];
     
     // Denser at lower frequencies
@@ -332,6 +332,20 @@ function generateSqrtTicks(maxFreq) {
         [1, 2, 3, 4, 5, 7, 10, 12, 15, 17, 20, 25, 30, 35, 40, 45, 50].forEach(f => {
             if (f <= maxFreq) ticks.push(f);
         });
+        
+        // Add 6, 8, and 9 Hz when speed >= 1.6x
+        if (playbackRate >= 1.6) {
+            [6, 8, 9].forEach(f => {
+                if (f <= maxFreq && !ticks.includes(f)) ticks.push(f);
+            });
+        }
+        
+        // Add 0.5 Hz increments when speed >= 9x
+        if (playbackRate >= 9.0) {
+            for (let f = 0.5; f <= 9; f += 0.5) {
+                if (f <= maxFreq && !ticks.includes(f)) ticks.push(f);
+            }
+        }
     } else {
         // Higher frequency data
         [1, 5, 10, 20, 30, 40, 50, 75, 100, 150, 200].forEach(f => {
@@ -344,7 +358,8 @@ function generateSqrtTicks(maxFreq) {
         ticks.push(maxFreq);
     }
     
-    return ticks;
+    // Sort ticks to ensure proper order
+    return ticks.sort((a, b) => a - b);
 }
 
 /**

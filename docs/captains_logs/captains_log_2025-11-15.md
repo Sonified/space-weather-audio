@@ -432,3 +432,36 @@ v2.03 - Commit: "v2.03 Fix: Memory leak fixes - RAF callback accumulation, modul
 
 ---
 
+## 🎨 UI Improvements: Axis Styling & Frequency Tick Enhancements (v2.04)
+
+### Changes
+
+1. **X-Axis Font Size:**
+   - Reduced tick label font size from 15px to 14px for cleaner appearance
+   - Updated CSS variable `--axis-label-font-size` in `index.html`
+
+2. **X-Axis Day Crossing Detection:**
+   - Fixed day crossing detection to properly show MM/DD format at midnight
+   - Added check for ticks at 00:00 to always display date (not just "24:00")
+   - Date labels at day crossings now properly display in bold MM/DD format
+
+3. **Square Root Scale Frequency Ticks:**
+   - Added 6, 8, and 9 Hz ticks when playback speed >= 1.6x
+   - Added 0.5 Hz increments (0.5, 1.0, 1.5, ... up to 9.0 Hz) when speed >= 9.0x
+   - Provides finer granularity for frequency axis at higher playback speeds
+
+4. **Worklet Console Noise Reduction:**
+   - Commented out worklet message logging to reduce console spam
+   - Keeps console cleaner during normal operation
+
+### Files Modified
+- `index.html` - Reduced x-axis font size from 15px to 14px
+- `js/waveform-x-axis-renderer.js` - Fixed day crossing detection for midnight ticks
+- `js/spectrogram-axis-renderer.js` - Added conditional frequency ticks for square root scale
+- `workers/audio-worklet.js` - Commented out message logging
+
+### Version
+v2.04 - Commit: "v2.04 UI: Reduced x-axis font size, fixed day crossing detection, added frequency ticks for square root scale at high speeds, commented out worklet message logging"
+
+---
+

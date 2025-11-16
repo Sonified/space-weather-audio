@@ -779,9 +779,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.03 - Memory Leak Fixes & Performance Improvements');
-    console.log('🧹 [0ms] v2.03 Memory: Fixed RAF callback accumulation, module closure leaks, ArrayBuffer retention, and worklet warning spam');
-    console.log('⏱️ [0ms] Memory monitoring now runs every 5 seconds (was 10 seconds)');
+    console.log('🌋 [0ms] volcano-audio v2.04 - UI Improvements & Axis Enhancements');
+    console.log('🎨 [0ms] v2.04 UI: Reduced x-axis font size, fixed day crossing detection, added frequency ticks for square root scale');
+    console.log('🔇 [0ms] Commented out worklet message logging to reduce console noise');
     
     // Start memory health monitoring
     startMemoryMonitoring();

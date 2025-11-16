@@ -139,7 +139,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
             
             // 🔔 DEBUG: Log all incoming messages
             if (DEBUG_MESSAGES && type !== 'audio-data' && type !== 'get-buffer-status') {
-                console.log(`🔔 WORKLET received message: ${type}`);
+                // console.log(`🔔 WORKLET received message: ${type}`); // Commented out to reduce console noise
             }
             
             if (type === 'audio-data') {
