@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_16_v2.12"
+__version__ = "2025_11_16_v2.13"
 import time
 import sys
 import os
@@ -5776,6 +5776,7 @@ def run_scheduler():
 def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.13 Feat: Smooth opacity transitions for regions during zoom - active regions fade 50%→20%, inactive fade 25%→10%, all regions visible during transitions")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.12 Fix: Region visibility during zoom transitions - regions now stay visible throughout crossfade animation")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.11 Feat: Graceful auto-resume with fade-in when playback catches up to download stream")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git Commit: v2.01 Feature: Added feature time tracking and improved feature selection UI with time/frequency display")

@@ -2,6 +2,50 @@
 
 ---
 
+## 🎨 Smooth Opacity Transitions for Regions During Zoom (v2.13)
+
+### Problem
+Region highlights had fixed opacity that changed instantly when zooming, creating a jarring visual experience. Also, inactive regions disappeared immediately when zooming in, preventing smooth fade-out.
+
+### Solution
+1. **Smooth opacity interpolation during zoom transitions** - Opacity now smoothly fades over the 1-second transition period
+2. **Direction-aware transitions** - Tracks whether zooming IN (to region) or OUT (to full view) to interpolate correctly
+3. **All regions visible during transitions** - Non-active regions stay visible during transitions so they can fade out smoothly
+
+### Key Changes
+- `js/waveform-x-axis-renderer.js`:
+  - Added `isZoomingToRegion` flag to track transition direction
+  - Added `getRegionOpacityProgress()` function for opacity interpolation (0.0 = full view, 1.0 = zoomed in)
+  - Added `isZoomTransitionInProgress()` helper function
+  - Updated `animateZoomTransition()` to accept `zoomingToRegion` parameter
+- `js/region-tracker.js`:
+  - Active regions: Smoothly interpolate from 50% → 20% opacity (full view → zoomed in)
+  - Inactive regions: Smoothly interpolate from 25% → 10% opacity (full view → zoomed in)
+  - Only skip non-active regions when fully zoomed in AND not in transition
+  - Border opacity also interpolates smoothly (90% → 40% for active regions)
+
+### How It Works
+- **Zooming IN**: Opacity smoothly fades from full view values to zoomed values over 1 second
+- **Zooming OUT**: Opacity smoothly fades from zoomed values back to full view values over 1 second
+- **During transition**: All regions are drawn so they can fade smoothly
+- **After transition**: When fully zoomed in, only active region is shown (performance optimization)
+- Uses ease-out cubic easing for smooth deceleration
+
+### Benefits
+- ✅ Smooth, professional-looking transitions
+- ✅ Less visual intensity when zoomed in (easier to see waveform details)
+- ✅ Inactive regions fade out gracefully instead of disappearing instantly
+- ✅ Consistent visual experience in both zoom directions
+
+### Files Modified
+- `js/waveform-x-axis-renderer.js` - Added transition direction tracking and opacity progress helpers
+- `js/region-tracker.js` - Implemented smooth opacity interpolation for all regions
+
+### Version
+v2.13 - Commit: "v2.13 Feat: Smooth opacity transitions for regions during zoom - active regions fade 50%→20%, inactive fade 25%→10%, all regions visible during transitions"
+
+---
+
 ## 🎯 Region Visibility During Zoom Transitions (v2.12)
 
 ### Problem

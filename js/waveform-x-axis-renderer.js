@@ -5,9 +5,18 @@
 
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
+import { drawInterpolatedWaveform, drawWaveformWithSelection } from './waveform-renderer.js';
 
 // Debug flag for axis drawing logs (set to true to enable detailed logging)
 const DEBUG_AXIS = false;
+
+// 🏛️ Zoom transition animation state (for smooth tick interpolation)
+let zoomTransitionInProgress = false;
+let zoomTransitionStartTime = null;
+let zoomTransitionDuration = 1000; // 1 second
+let oldTimeRange = null; // { startTime, endTime }
+let zoomTransitionRAF = null;
+let isZoomingToRegion = false; // Track if we're zooming TO a region (true) or FROM a region (false)
 
 /**
  * Draw time axis for waveform
@@ -34,8 +43,9 @@ export function drawWaveformXAxis() {
     // Clear canvas (transparent background)
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
-    // 🏛️ Use zoom state for time range
+    // 🏛️ Use zoom state for time range (with interpolation during transition)
     let displayStartTime, displayEndTime;
+    let interpolationFactor = 1.0;
     
     // 🏛️ Inside the temple: show the temple's time range
     if (zoomState.isInRegion()) {
@@ -46,6 +56,27 @@ export function drawWaveformXAxis() {
         // Full view: show full time range
         displayStartTime = State.dataStartTime;
         displayEndTime = State.dataEndTime;
+    }
+    
+    // 🏛️ Interpolate during zoom transition
+    if (zoomTransitionInProgress && oldTimeRange !== null) {
+        const elapsed = performance.now() - zoomTransitionStartTime;
+        const progress = Math.min(elapsed / zoomTransitionDuration, 1.0);
+        
+        // Ease-out cubic for smooth deceleration (same as y-axis)
+        interpolationFactor = 1 - Math.pow(1 - progress, 3);
+        
+        // Interpolate between old and new time ranges
+        const oldStartMs = oldTimeRange.startTime.getTime();
+        const oldEndMs = oldTimeRange.endTime.getTime();
+        const newStartMs = displayStartTime.getTime();
+        const newEndMs = displayEndTime.getTime();
+        
+        const interpolatedStartMs = oldStartMs + (newStartMs - oldStartMs) * interpolationFactor;
+        const interpolatedEndMs = oldEndMs + (newEndMs - oldEndMs) * interpolationFactor;
+        
+        displayStartTime = new Date(interpolatedStartMs);
+        displayEndTime = new Date(interpolatedEndMs);
     }
     
     if (!displayStartTime || !displayEndTime) {
@@ -141,6 +172,34 @@ export function drawWaveformXAxis() {
         
         ctx.fillText(label, x, 10);
     });
+    
+    // 🏛️ Continue animation if in progress
+    if (zoomTransitionInProgress) {
+        const elapsed = performance.now() - zoomTransitionStartTime;
+        if (elapsed < zoomTransitionDuration) {
+            zoomTransitionRAF = requestAnimationFrame(() => {
+                // 🔥 FIX: Check document connection before executing RAF callback
+                if (!document.body || !document.body.isConnected) {
+                    zoomTransitionRAF = null;
+                    zoomTransitionInProgress = false;
+                    return;
+                }
+                drawWaveformXAxis();
+
+                // 🏛️ Trigger interpolated waveform draw so everything zooms together
+                drawInterpolatedWaveform();
+            });
+        } else {
+            // Animation complete
+            zoomTransitionInProgress = false;
+            oldTimeRange = null;
+            zoomTransitionRAF = null;
+
+            // 🏛️ Draw final frame to keep regions visible while waveform rebuilds
+            // This prevents the flash where regions disappear during worker rebuild
+            drawWaveformWithSelection();
+        }
+    }
 }
 
 /**
@@ -380,5 +439,144 @@ export function resizeWaveformDateCanvas() {
     // Reposition and redraw after resize
     positionWaveformDateCanvas();
     drawWaveformDate();
+}
+
+/**
+ * 🏛️ Cancel zoom transition RAF to prevent detached document leaks
+ * Called during cleanup to ensure RAF callbacks are cancelled
+ */
+export function cancelZoomTransitionRAF() {
+    if (zoomTransitionRAF !== null) {
+        cancelAnimationFrame(zoomTransitionRAF);
+        zoomTransitionRAF = null;
+        zoomTransitionInProgress = false;
+    }
+}
+
+/**
+ * 🏛️ Get current interpolated time range (for regions to follow tick interpolation)
+ * Returns the interpolated time range during zoom transitions, or current range otherwise
+ * @returns {Object} { startTime: Date, endTime: Date } - The current display time range
+ */
+export function getInterpolatedTimeRange() {
+    // 🏛️ Get the base time range (what we're interpolating TO)
+    let targetStartTime, targetEndTime;
+
+    if (zoomState.isInRegion()) {
+        const regionRange = zoomState.getRegionRange();
+        targetStartTime = zoomState.sampleToRealTimestamp(regionRange.startSample);
+        targetEndTime = zoomState.sampleToRealTimestamp(regionRange.endSample);
+    } else {
+        targetStartTime = State.dataStartTime;
+        targetEndTime = State.dataEndTime;
+    }
+
+    // If not in transition, return target range directly
+    if (!zoomTransitionInProgress || oldTimeRange === null) {
+        return {
+            startTime: targetStartTime,
+            endTime: targetEndTime
+        };
+    }
+
+    // Calculate interpolation (EXACT same logic as drawWaveformXAxis)
+    const elapsed = performance.now() - zoomTransitionStartTime;
+    const progress = Math.min(elapsed / zoomTransitionDuration, 1.0);
+
+    // Ease-out cubic for smooth deceleration
+    const interpolationFactor = 1 - Math.pow(1 - progress, 3);
+
+    // Interpolate between old and new time ranges
+    const oldStartMs = oldTimeRange.startTime.getTime();
+    const oldEndMs = oldTimeRange.endTime.getTime();
+    const newStartMs = targetStartTime.getTime();
+    const newEndMs = targetEndTime.getTime();
+
+    const interpolatedStartMs = oldStartMs + (newStartMs - oldStartMs) * interpolationFactor;
+    const interpolatedEndMs = oldEndMs + (newEndMs - oldEndMs) * interpolationFactor;
+
+    return {
+        startTime: new Date(interpolatedStartMs),
+        endTime: new Date(interpolatedEndMs)
+    };
+}
+
+/**
+ * 🏛️ Get interpolation factor for smooth transitions
+ * Returns 0.0 (start) to 1.0 (complete) with ease-out cubic easing
+ * @returns {number} Interpolation factor between 0.0 and 1.0
+ */
+export function getZoomTransitionProgress() {
+    if (!zoomTransitionInProgress || oldTimeRange === null) {
+        // Not in transition - return 1.0 if zoomed in, 0.0 if not
+        return zoomState.isInRegion() ? 1.0 : 0.0;
+    }
+    
+    const elapsed = performance.now() - zoomTransitionStartTime;
+    const progress = Math.min(elapsed / zoomTransitionDuration, 1.0);
+    
+    // Ease-out cubic for smooth deceleration (same as time range interpolation)
+    return 1 - Math.pow(1 - progress, 3);
+}
+
+/**
+ * 🏛️ Get opacity interpolation factor for region highlights
+ * Returns 0.0 (full view opacity) to 1.0 (zoomed in opacity) with smooth easing
+ * @returns {number} Interpolation factor between 0.0 and 1.0
+ */
+export function getRegionOpacityProgress() {
+    if (!zoomTransitionInProgress || oldTimeRange === null) {
+        // Not in transition - return 1.0 if zoomed in, 0.0 if not
+        return zoomState.isInRegion() ? 1.0 : 0.0;
+    }
+    
+    // Use the transition progress, but invert if zooming OUT (from region to full)
+    const progress = getZoomTransitionProgress();
+    return isZoomingToRegion ? progress : (1.0 - progress);
+}
+
+/**
+ * 🏛️ Check if zoom transition is in progress
+ * @returns {boolean} True if transition is active
+ */
+export function isZoomTransitionInProgress() {
+    return zoomTransitionInProgress;
+}
+
+/**
+ * 🏛️ Animate zoom transition for x-axis ticks
+ * Interpolates tick positions smoothly when zooming in/out
+ * @param {Date} oldStartTime - Previous start time
+ * @param {Date} oldEndTime - Previous end time
+ * @param {boolean} zoomingToRegion - True if zooming TO a region, false if zooming FROM a region
+ * @returns {Promise} Resolves when animation completes
+ */
+export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion = false) {
+    return new Promise((resolve) => {
+        // Cancel any existing transition
+        if (zoomTransitionRAF) {
+            cancelAnimationFrame(zoomTransitionRAF);
+        }
+
+        // Store old time range - we'll interpolate between old and new positions
+        oldTimeRange = {
+            startTime: new Date(oldStartTime),
+            endTime: new Date(oldEndTime)
+        };
+        zoomTransitionInProgress = true;
+        isZoomingToRegion = zoomingToRegion; // Track direction for opacity interpolation
+        zoomTransitionStartTime = performance.now();
+
+        // Start animation loop
+        drawWaveformXAxis();
+
+        // Resolve after animation duration
+        setTimeout(() => {
+            zoomTransitionInProgress = false;
+            oldTimeRange = null;
+            zoomTransitionRAF = null;
+            resolve();
+        }, zoomTransitionDuration);
+    });
 }
 

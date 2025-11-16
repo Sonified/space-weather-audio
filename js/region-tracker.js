@@ -17,7 +17,7 @@ import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
 import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState } from './spectrogram-complete-renderer.js';
-import { animateZoomTransition, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
+import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
 
 // Region data structure - stored per volcano
 // Map<volcanoName, regions[]>
@@ -430,12 +430,13 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
     // Draw highlights for each region
     regions.forEach((region, index) => {
         // 🏛️ Inside the temple, only render the active region (skip others for performance)
+        // BUT: During transitions, render all regions so they can fade out smoothly
         // When we're within sacred walls, we focus only on the current temple
-        if (zoomState.isInRegion()) {
+        if (zoomState.isInRegion() && !isZoomTransitionInProgress()) {
             // Check both activeRegionIndex and activeRegionId to ensure we render the correct region
             const isActiveRegion = index === activeRegionIndex || region.id === zoomState.getCurrentRegionId();
             if (!isActiveRegion) {
-                return; // Skip rendering non-active regions when inside the temple
+                return; // Skip rendering non-active regions when fully zoomed in (not in transition)
             }
         }
         
@@ -492,21 +493,31 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
         const highlightWidth = endX - startX;
         
         // Draw filled rectangle (EXACT same pattern as yellow box)
+        // Smoothly interpolate opacity during zoom transitions
         if (index === activeRegionIndex) {
-            // Active region: 50% opacity
-            ctx.fillStyle = 'rgba(68, 136, 255, 0.5)';
+            // Get opacity interpolation progress (0.0 = full view, 1.0 = zoomed in)
+            // This handles both directions: zooming IN (0.5→0.2) and OUT (0.2→0.5)
+            const opacityProgress = getRegionOpacityProgress();
+            
+            // Interpolate opacity: 0.5 (full view) → 0.2 (zoomed in)
+            const fillOpacity = 0.5 - (0.5 - 0.2) * opacityProgress;
+            ctx.fillStyle = `rgba(68, 136, 255, ${fillOpacity})`;
+            
+            // Interpolate border opacity: 0.9 (full view) → 0.4 (zoomed in)
+            const strokeOpacity = 0.9 - (0.9 - 0.4) * opacityProgress;
+            ctx.strokeStyle = `rgba(68, 136, 255, ${strokeOpacity})`;
         } else {
-            // Inactive region: 10% opacity (reduced from 20% for better performance)
-            ctx.fillStyle = 'rgba(68, 136, 255, 0.1)';
+            // Inactive region: opacity varies based on zoom state
+            // 25% opacity when zoomed out (full view), 10% when zoomed in
+            const opacityProgress = getRegionOpacityProgress();
+            const inactiveFillOpacity = 0.25 - (0.25 - 0.1) * opacityProgress;
+            ctx.fillStyle = `rgba(68, 136, 255, ${inactiveFillOpacity})`;
+            ctx.strokeStyle = 'rgba(68, 136, 255, 0.6)';
         }
         ctx.fillRect(startX, 0, highlightWidth, canvasHeight);
         
         // Draw border lines (EXACT same pattern as yellow box)
-        if (index === activeRegionIndex) {
-            ctx.strokeStyle = 'rgba(68, 136, 255, 0.9)';
-        } else {
-            ctx.strokeStyle = 'rgba(68, 136, 255, 0.6)';
-        }
+        // Border opacity already set above for active regions
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(startX, 0);
@@ -1626,7 +1637,8 @@ export function zoomToRegion(regionIndex) {
 
     // 🎬 Wait for animation to complete, THEN rebuild waveform/spectrogram
     // This keeps everything visible and smoothly interpolating during the transition
-    animateZoomTransition(oldStartTime, oldEndTime).then(() => {
+    // Pass true to indicate we're zooming TO a region (opacity goes from 0.5 → 0.2)
+    animateZoomTransition(oldStartTime, oldEndTime, true).then(() => {
         // Animation complete - now rebuild with high-detail zoomed data
         drawWaveform();
         renderCompleteSpectrogramForRegion(regionStartSeconds, regionEndSeconds);
@@ -1689,7 +1701,8 @@ export function zoomToFull() {
 
     // 🏛️ Animate x-axis tick interpolation (smooth transition back to full view)
     // 🎬 Wait for animation to complete, THEN rebuild waveform/spectrogram
-    animateZoomTransition(oldStartTime, oldEndTime).then(() => {
+    // Pass false to indicate we're zooming FROM a region (opacity goes from 0.2 → 0.5)
+    animateZoomTransition(oldStartTime, oldEndTime, false).then(() => {
         // Animation complete - now rebuild with full view data
         drawWaveform();
         renderCompleteSpectrogram();
