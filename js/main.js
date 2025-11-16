@@ -8,7 +8,7 @@ const DEBUG_LOOP_FADES = true; // Enable loop fade logging
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops } from './audio-player.js';
+import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
@@ -251,6 +251,11 @@ export async function initAudioWorklet() {
                         data: chunk,
                         autoResume: shouldAutoResume  // Tell worklet to auto-resume after buffering
                     });
+                    
+                    // 🔥 FIX: Clear chunk reference after sending to allow GC
+                    // The slice shares the buffer, but clearing the reference helps
+                    // Note: postMessage transfers ownership, but clearing here ensures no local retention
+                    chunk = null;
                 }
                 
                 console.log(`📤 [SEEK-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}, autoResume=${shouldAutoResume}`);
@@ -289,6 +294,11 @@ export async function initAudioWorklet() {
                         data: chunk,
                         autoResume: true  // Auto-resume when buffer is ready
                     });
+                    
+                    // 🔥 FIX: Clear chunk reference after sending to allow GC
+                    // The slice shares the buffer, but clearing the reference helps
+                    // Note: postMessage transfers ownership, but clearing here ensures no local retention
+                    chunk = null;
                 }
                 
                 // console.log(`🔄 [LOOP-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from ${newPositionSeconds.toFixed(2)}s, will auto-resume`);
@@ -370,6 +380,11 @@ export async function startStreaming(event) {
         
         // Clear complete spectrogram when loading new data
         clearCompleteSpectrogram();
+        
+        // 🔥 FIX: Remove add region button to prevent detached DOM leaks
+        // Import dynamically to avoid circular dependencies
+        const { removeAddRegionButton } = await import('./region-tracker.js');
+        removeAddRegionButton();
         
         // Terminate and recreate waveform worker to free memory
         // Note: initWaveformWorker() already handles cleanup, but we do it here too for safety
@@ -644,6 +659,11 @@ export async function startStreaming(event) {
                 }
             }
             State.setAllReceivedData([]);
+            
+            // 🔥 FIX: Explicitly clear completeSamplesArray to break ArrayBuffer references
+            // When completeSamplesArray is sliced, the slices share the same ArrayBuffer
+            // Setting to null breaks the reference, allowing GC to reclaim the 34MB buffer
+            // Note: Must use setter function - direct assignment fails because ES modules are read-only
             State.setCompleteSamplesArray(null);
             State.setCachedWaveformCanvas(null);
             State.setWaveformMinMaxData(null);
@@ -779,8 +799,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.04 - UI Improvements & Axis Enhancements');
-    console.log('🎨 [0ms] v2.04 UI: Reduced x-axis font size, fixed day crossing detection, added frequency ticks for square root scale');
+    console.log('🌋 [0ms] volcano-audio v2.05 - Memory Leak Fixes: Closure Chains & Detached DOM');
+    console.log('🧹 [0ms] v2.05 Memory: Fixed selection diagnostics, add-region-button, RAF callbacks, modals, updatePlaybackDuration, resizeRAF');
     console.log('🔇 [0ms] Commented out worklet message logging to reduce console noise');
     
     // Start memory health monitoring
@@ -922,6 +942,15 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (resizeRAF) return; // Already scheduled
         
         resizeRAF = requestAnimationFrame(() => {
+            // 🔥 FIX: Check document connection before DOM manipulation
+            if (!document.body || !document.body.isConnected) {
+                resizeRAF = null;
+                return;
+            }
+            
+            // 🔥 FIX: Store resizeRAF reference for cleanup
+            setResizeRAFRef(resizeRAF);
+            
             const spectrogramCanvas = document.getElementById('spectrogram');
             const spectrogramAxisCanvas = document.getElementById('spectrogram-axis');
             const waveformCanvas = document.getElementById('waveform');

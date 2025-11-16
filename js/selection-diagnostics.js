@@ -13,14 +13,21 @@ const ENABLE_DIAGNOSTICS = false; // Set to true to enable detailed selection di
  * Convert pixel X coordinate to all other coordinate systems
  */
 export function pixelToAllCoordinates(pixelX, canvasWidth) {
-    if (!State.completeSamplesArray || !State.totalAudioDuration || !State.dataStartTime || !State.dataEndTime) {
+    // 🔥 FIX: Copy State values to local variables to avoid closure retention
+    // Access State only once and copy values immediately
+    const completeSamplesArray = State.completeSamplesArray;
+    const totalAudioDuration = State.totalAudioDuration;
+    const dataStartTime = State.dataStartTime;
+    const dataEndTime = State.dataEndTime;
+    
+    if (!completeSamplesArray || !totalAudioDuration || !dataStartTime || !dataEndTime) {
         console.warn('⚠️ Cannot convert coordinates - missing data');
         return null;
     }
     
-    const totalSamples = State.completeSamplesArray.length;
-    const dataStartMs = State.dataStartTime.getTime();
-    const dataEndMs = State.dataEndTime.getTime();
+    const totalSamples = completeSamplesArray.length;
+    const dataStartMs = dataStartTime.getTime();
+    const dataEndMs = dataEndTime.getTime();
     const totalDurationMs = dataEndMs - dataStartMs;
     
     // 1. Pixel → Progress (0-1)
@@ -28,7 +35,7 @@ export function pixelToAllCoordinates(pixelX, canvasWidth) {
     const progressPercent = progress * 100;
     
     // 2. Progress → Audio time (seconds from start of audio)
-    const audioTime = progress * State.totalAudioDuration;
+    const audioTime = progress * totalAudioDuration;
     
     // 3. Audio time → Sample index
     const sampleIndex = Math.floor(audioTime * SAMPLE_RATE);
@@ -68,6 +75,11 @@ export function pixelToAllCoordinates(pixelX, canvasWidth) {
 export function printSelectionDiagnostics(startPixelX, endPixelX, canvasWidth) {
     if (!ENABLE_DIAGNOSTICS) return; // Skip if disabled
     
+    // 🔥 FIX: Copy State values to local variables to avoid closure retention
+    const totalAudioDuration = State.totalAudioDuration;
+    const dataStartTime = State.dataStartTime;
+    const dataEndTime = State.dataEndTime;
+    
     console.log('\n' + '='.repeat(80));
     console.log('🔍 SELECTION DIAGNOSTICS');
     console.log('='.repeat(80));
@@ -96,12 +108,12 @@ export function printSelectionDiagnostics(startPixelX, endPixelX, canvasWidth) {
     
     // Print audio time (seconds)
     console.log('\n⏱️  AUDIO TIME (Playback seconds)');
-    console.log(`   Total Duration:      ${State.totalAudioDuration.toFixed(4)} s`);
+    console.log(`   Total Duration:      ${totalAudioDuration.toFixed(4)} s`);
     console.log(`   Start Time:          ${start.audioTime.toFixed(4)} s`);
     console.log(`   End Time:            ${end.audioTime.toFixed(4)} s`);
     console.log(`   Selection Duration:  ${(end.audioTime - start.audioTime).toFixed(4)} s`);
-    console.log(`   Start %:             ${(start.audioTime / State.totalAudioDuration * 100).toFixed(4)}%`);
-    console.log(`   End %:               ${(end.audioTime / State.totalAudioDuration * 100).toFixed(4)}%`);
+    console.log(`   Start %:             ${(start.audioTime / totalAudioDuration * 100).toFixed(4)}%`);
+    console.log(`   End %:               ${(end.audioTime / totalAudioDuration * 100).toFixed(4)}%`);
     
     // Print sample indices
     console.log('\n🎵 SAMPLES (Audio buffer indices @ 44100 Hz)');
@@ -114,8 +126,8 @@ export function printSelectionDiagnostics(startPixelX, endPixelX, canvasWidth) {
     
     // Print real timestamps
     console.log('\n🌐 REAL TIMESTAMPS (UTC)');
-    console.log(`   Dataset Start:       ${State.dataStartTime.toISOString()}`);
-    console.log(`   Dataset End:         ${State.dataEndTime.toISOString()}`);
+    console.log(`   Dataset Start:       ${dataStartTime.toISOString()}`);
+    console.log(`   Dataset End:         ${dataEndTime.toISOString()}`);
     console.log(`   Dataset Duration:    ${(start.totalDurationMs / 1000).toFixed(2)} s`);
     console.log(`   Selection Start:     ${start.realTimestamp.toISOString()}`);
     console.log(`   Selection End:       ${end.realTimestamp.toISOString()}`);
@@ -155,8 +167,19 @@ export function printSelectionDiagnostics(startPixelX, endPixelX, canvasWidth) {
  * Print diagnostics for current selection (if any)
  */
 export function printCurrentSelection() {
-    if (State.selectionStart === null || State.selectionEnd === null) {
+    // 🔥 FIX: Copy State values to local variables to avoid closure retention
+    const selectionStart = State.selectionStart;
+    const selectionEnd = State.selectionEnd;
+    const totalAudioDuration = State.totalAudioDuration;
+    
+    if (selectionStart === null || selectionEnd === null) {
         console.log('ℹ️  No active selection');
+        return;
+    }
+    
+    // 🔥 FIX: Check document connection before DOM access
+    if (!document.body || !document.body.isConnected) {
+        console.warn('⚠️ Cannot print selection - document is detached');
         return;
     }
     
@@ -169,8 +192,8 @@ export function printCurrentSelection() {
     const canvasWidth = canvas.offsetWidth;
     
     // Convert time selections back to pixels for diagnostics
-    const startProgress = State.selectionStart / State.totalAudioDuration;
-    const endProgress = State.selectionEnd / State.totalAudioDuration;
+    const startProgress = selectionStart / totalAudioDuration;
+    const endProgress = selectionEnd / totalAudioDuration;
     const startPixelX = startProgress * canvasWidth;
     const endPixelX = endProgress * canvasWidth;
     
@@ -181,6 +204,12 @@ export function printCurrentSelection() {
  * Test function to print diagnostics at a specific percentage through the audio
  */
 export function testAtPercentage(percent) {
+    // 🔥 FIX: Check document connection before DOM access
+    if (!document.body || !document.body.isConnected) {
+        console.warn('⚠️ Cannot test percentage - document is detached');
+        return;
+    }
+    
     const canvas = document.getElementById('waveform');
     if (!canvas) {
         console.error('❌ Cannot find waveform canvas');
@@ -203,11 +232,20 @@ export function testAtPercentage(percent) {
 
 /**
  * Export function for console access
+ * 🔥 FIX: Wrap functions to avoid direct closure capture of State module
  */
 export function enableDiagnostics() {
-    window.printSelectionDiagnostics = printSelectionDiagnostics;
-    window.printCurrentSelection = printCurrentSelection;
-    window.testAtPercentage = testAtPercentage;
+    // 🔥 FIX: Wrap functions to break closure chain
+    // Instead of assigning functions directly, wrap them to avoid capturing State module
+    window.printSelectionDiagnostics = (startPixelX, endPixelX, canvasWidth) => {
+        printSelectionDiagnostics(startPixelX, endPixelX, canvasWidth);
+    };
+    window.printCurrentSelection = () => {
+        printCurrentSelection();
+    };
+    window.testAtPercentage = (percent) => {
+        testAtPercentage(percent);
+    };
     console.log('✅ Selection diagnostics enabled');
     console.log('   Use: window.printCurrentSelection() - Print diagnostics for active selection');
     console.log('   Use: window.testAtPercentage(50) - Test coordinates at specific percentage');

@@ -517,7 +517,17 @@ export function initializeModals() {
     existingModals.forEach(modalId => {
         const existing = document.getElementById(modalId);
         if (existing && existing.parentNode) {
-            existing.parentNode.removeChild(existing);
+            // 🔥 FIX: Clone modal to break ALL event listener references (including on modal itself)
+            // This ensures detached modals can be garbage collected
+            // Cloning creates a new element without any event listeners
+            const parent = existing.parentNode;
+            const cloned = existing.cloneNode(false); // Shallow clone (no children, no listeners)
+            
+            // Replace original with clone (breaks all references)
+            parent.replaceChild(cloned, existing);
+            
+            // Remove the clone (which has no listeners)
+            parent.removeChild(cloned);
         }
     });
     

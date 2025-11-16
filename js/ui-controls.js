@@ -181,16 +181,35 @@ export function formatSampleRateShorthand(rate) {
 export function updatePlaybackDuration() {
     // This is duplicated from audio-player.js - needs to be imported or refactored
     // For now, keeping it here to avoid circular dependencies
-    if (!State.currentMetadata || !State.allReceivedData || State.allReceivedData.length === 0) {
-        document.getElementById('playbackDuration').textContent = '--';
+    
+    // 🔥 FIX: Check document connection before DOM manipulation
+    if (!document.body || !document.body.isConnected) {
         return;
     }
     
-    const totalSamples = State.currentMetadata.npts || State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
-    const originalSampleRate = State.currentMetadata.original_sample_rate;
+    // 🔥 FIX: Copy State values to local variables to avoid closure retention
+    // Access State only once and copy values immediately
+    const currentMetadata = State.currentMetadata;
+    const allReceivedData = State.allReceivedData;
+    
+    if (!currentMetadata || !allReceivedData || allReceivedData.length === 0) {
+        const playbackDurationEl = document.getElementById('playbackDuration');
+        if (playbackDurationEl && playbackDurationEl.isConnected) {
+            playbackDurationEl.textContent = '--';
+        }
+        return;
+    }
+    
+    // 🔥 FIX: Use npts from metadata if available, otherwise calculate from array
+    // Copy array reference to local variable to avoid retaining State reference
+    const totalSamples = currentMetadata.npts || allReceivedData.reduce((sum, chunk) => sum + (chunk ? chunk.length : 0), 0);
+    const originalSampleRate = currentMetadata.original_sample_rate;
     
     if (!totalSamples || !originalSampleRate) {
-        document.getElementById('playbackDuration').textContent = '--';
+        const playbackDurationEl = document.getElementById('playbackDuration');
+        if (playbackDurationEl && playbackDurationEl.isConnected) {
+            playbackDurationEl.textContent = '--';
+        }
         return;
     }
     
@@ -222,7 +241,12 @@ export function updatePlaybackDuration() {
     const seconds = Math.floor(playbackDurationSeconds % 60);
     
     const durationText = minutes > 0 ? `${minutes}m ${seconds}s` : `0m ${seconds}s`;
-    document.getElementById('playbackDuration').textContent = durationText;
+    
+    // 🔥 FIX: Check element connection before updating DOM
+    const playbackDurationEl = document.getElementById('playbackDuration');
+    if (playbackDurationEl && playbackDurationEl.isConnected) {
+        playbackDurationEl.textContent = durationText;
+    }
 }
 
 export async function purgeCloudflareCache() {

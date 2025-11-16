@@ -843,6 +843,10 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         
         console.log(`🔧 FFT size: ${fftSize}, Hop size: ${hopSize.toLocaleString()}, Time slices: ${numTimeSlices.toLocaleString()}`);
         
+        // 🔥 FIX: Note - regionSamples is a slice that shares the ArrayBuffer with completeSamplesArray
+        // This is fine as long as we don't retain regionSamples after this function completes
+        // The slice will be GC'd when the function returns, allowing the buffer to be reclaimed
+        
         // Pre-compute Hann window
         const window = new Float32Array(fftSize);
         for (let i = 0; i < fftSize; i++) {

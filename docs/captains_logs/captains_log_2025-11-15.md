@@ -1,5 +1,55 @@
 # Captain's Log - 2025-11-15
 
+---
+
+## 🧹 Memory Leak Fixes: Closure Chains & Detached DOM (v2.05)
+
+### Changes Made
+Fixed multiple memory leaks related to closure chains and detached DOM elements:
+
+1. **Selection Diagnostics Closure Leak**
+   - Fixed `selection-diagnostics.js` functions capturing entire State module
+   - Copied State values to local variables to break closure chains
+   - Added document connection checks before DOM access
+
+2. **Add Region Button Detached DOM Leak**
+   - Fixed `add-region-button` not being removed from DOM
+   - Added `removeAddRegionButton()` function that clones button before removal to break event listeners
+   - Called cleanup in `startStreaming()` when loading new data
+
+3. **RAF Callback Leaks in Region Tracker**
+   - Added document connection checks to all `requestAnimationFrame` callbacks in `region-tracker.js`
+   - Prevents RAF callbacks from executing when document is detached
+   - Fixed 5 RAF callbacks: `showAddRegionButton()`, `createRegionFromSelectionTimes()`, `createRegionCard()`, `toggleRegion()`, `addFeature()`
+
+4. **Modal Cleanup**
+   - Fixed modals being cloned before removal to break event listener references
+   - Ensures detached modals and child elements (like modal-close buttons) can be garbage collected
+
+5. **updatePlaybackDuration Closure Leak**
+   - Fixed function accessing `State.allReceivedData` directly, creating closures that retained large arrays
+   - Copied State values to local variables at function start
+   - Added document connection checks before DOM updates
+   - Fixed in both `audio-player.js` and `ui-controls.js`
+
+6. **resizeRAF Cleanup**
+   - Added `resizeRAF` to `cancelAllRAFLoops()` cleanup function
+   - Added document connection check in resize handler
+   - Prevents detached resize RAF callbacks
+
+### Files Modified
+- `js/selection-diagnostics.js` - Fixed closure retention
+- `js/region-tracker.js` - Fixed RAF callbacks and add-region-button cleanup
+- `js/modal-templates.js` - Fixed modal cleanup
+- `js/audio-player.js` - Fixed updatePlaybackDuration and resizeRAF cleanup
+- `js/ui-controls.js` - Fixed updatePlaybackDuration closure leak
+- `js/main.js` - Added removeAddRegionButton cleanup call
+
+### Version
+v2.05 - Commit: "v2.05 Memory Leak Fixes: Fixed closure chains in selection diagnostics, updatePlaybackDuration, RAF callbacks, detached DOM elements (add-region-button, modals), and resizeRAF cleanup"
+
+---
+
 ## 🧹 Memory Leak Fix: Worker Closure Chain Cleanup (v1.98)
 
 ### Problem

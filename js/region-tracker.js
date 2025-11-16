@@ -66,6 +66,11 @@ function setupWaveformSelection() {
  * Called by waveform-renderer.js after a selection is made
  */
 export function showAddRegionButton(selectionStart, selectionEnd) {
+    // 🔥 FIX: Check document connection before DOM access
+    if (!document.body || !document.body.isConnected) {
+        return;
+    }
+    
     if (!State.dataStartTime || !State.dataEndTime) return;
     
     const canvas = document.getElementById('waveform');
@@ -119,6 +124,11 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
         addRegionButton.style.opacity = '0';
         
         setTimeout(() => {
+            // 🔥 FIX: Check document connection before DOM manipulation
+            if (!document.body || !document.body.isConnected || !addRegionButton) {
+                return;
+            }
+            
             // Move to new position while invisible
             addRegionButton.style.left = buttonX + 'px';
             addRegionButton.style.top = buttonTop + 'px';
@@ -126,6 +136,10 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
             
             // Fade in at new position
             requestAnimationFrame(() => {
+                // 🔥 FIX: Check document connection before DOM manipulation
+                if (!document.body || !document.body.isConnected || !addRegionButton) {
+                    return;
+                }
                 addRegionButton.style.transition = 'opacity 0.2s ease-in';
                 addRegionButton.style.opacity = '1';
             });
@@ -140,6 +154,10 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
         
         // Fade in quickly
         requestAnimationFrame(() => {
+            // 🔥 FIX: Check document connection before DOM manipulation
+            if (!document.body || !document.body.isConnected || !addRegionButton) {
+                return;
+            }
             addRegionButton.style.transition = 'opacity 0.2s ease-in';
             addRegionButton.style.opacity = '1';
         });
@@ -153,6 +171,31 @@ export function hideAddRegionButton() {
     if (addRegionButton) {
         addRegionButton.style.display = 'none';
         addRegionButton.style.opacity = '0';
+    }
+}
+
+/**
+ * Remove the "Add Region" button from DOM to prevent detached element leaks
+ * Called when clearing regions or loading new data
+ */
+export function removeAddRegionButton() {
+    if (addRegionButton) {
+        // 🔥 FIX: Clear onclick handler to break closure chain
+        addRegionButton.onclick = null;
+        
+        // 🔥 FIX: Clear all event listeners by cloning (breaks all references)
+        // This ensures detached elements can be garbage collected
+        if (addRegionButton.parentNode) {
+            const cloned = addRegionButton.cloneNode(false);
+            addRegionButton.parentNode.replaceChild(cloned, addRegionButton);
+            cloned.parentNode.removeChild(cloned);
+        } else {
+            // Already detached, just clear reference
+            addRegionButton = null;
+        }
+        
+        // Clear reference
+        addRegionButton = null;
     }
 }
 
@@ -209,12 +252,21 @@ function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSecon
     
     // Animate the new region's expansion
     requestAnimationFrame(() => {
+        // 🔥 FIX: Check document connection before DOM manipulation
+        if (!document.body || !document.body.isConnected) {
+            return;
+        }
+        
         const regionCard = document.querySelector(`[data-region-id="${newRegion.id}"]`);
         const details = regionCard ? regionCard.querySelector('.region-details') : null;
         
         if (details) {
             details.style.maxHeight = '0px';
             requestAnimationFrame(() => {
+                // 🔥 FIX: Check document connection before DOM manipulation
+                if (!document.body || !document.body.isConnected) {
+                    return;
+                }
                 const targetHeight = details.scrollHeight;
                 details.style.maxHeight = targetHeight + 'px';
             });
@@ -643,6 +695,10 @@ function createRegionCard(region, index) {
             details.style.transition = 'none';
             details.style.maxHeight = details.scrollHeight + 'px';
             requestAnimationFrame(() => {
+                // 🔥 FIX: Check document connection before DOM manipulation
+                if (!document.body || !document.body.isConnected) {
+                    return;
+                }
                 details.style.transition = '';
             });
         }
@@ -784,8 +840,16 @@ export function toggleRegion(index) {
         void details.offsetHeight;
         
         requestAnimationFrame(() => {
+            // 🔥 FIX: Check document connection before DOM manipulation
+            if (!document.body || !document.body.isConnected) {
+                return;
+            }
             details.style.maxHeight = '0px';
             setTimeout(() => {
+                // 🔥 FIX: Check document connection before DOM manipulation
+                if (!document.body || !document.body.isConnected) {
+                    return;
+                }
                 details.classList.remove('expanded');
                 
                 // Update header to show description preview
@@ -814,6 +878,10 @@ export function toggleRegion(index) {
         void details.offsetHeight;
         
         requestAnimationFrame(() => {
+            // 🔥 FIX: Check document connection before DOM manipulation
+            if (!document.body || !document.body.isConnected) {
+                return;
+            }
             const targetHeight = details.scrollHeight;
             details.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
             details.style.maxHeight = targetHeight + 'px';
@@ -1082,7 +1150,15 @@ export function addFeature(regionIndex) {
         
         // Animate to new height
         requestAnimationFrame(() => {
+            // 🔥 FIX: Check document connection before DOM manipulation
+            if (!document.body || !document.body.isConnected) {
+                return;
+            }
             requestAnimationFrame(() => {
+                // 🔥 FIX: Check document connection before DOM manipulation
+                if (!document.body || !document.body.isConnected) {
+                    return;
+                }
                 details.style.maxHeight = 'none';
                 const targetHeight = details.scrollHeight;
                 

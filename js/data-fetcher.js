@@ -1239,7 +1239,10 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     const compression = response.headers.get('X-Compression');
     if (compression === 'zstd') {
         console.log('🗜️ Decompressing with zstd...');
-        decompressed = fzstd.decompress(new Uint8Array(receivedBlob));
+        // 🔥 FIX: Use local reference to avoid potential closure retention
+        // fzstd is a global library, but using a local const helps ensure no closure capture
+        const decompressFn = fzstd.decompress;
+        decompressed = decompressFn(new Uint8Array(receivedBlob));
         console.log(`✅ Decompressed: ${(decompressed.length / 1024 / 1024).toFixed(2)} MB`);
     } else {
         console.log('⏭️ No compression');

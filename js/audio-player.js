@@ -19,6 +19,13 @@ import { updateActiveRegionPlayButton } from './region-tracker.js';
  * Cancel all active animation frame loops
  * Prevents memory leaks from closure chains
  */
+// 🔥 FIX: Store resizeRAF reference so it can be cancelled
+let resizeRAFRef = null;
+
+export function setResizeRAFRef(raf) {
+    resizeRAFRef = raf;
+}
+
 export function cancelAllRAFLoops() {
     if (State.playbackIndicatorRAF !== null) {
         cancelAnimationFrame(State.playbackIndicatorRAF);
@@ -29,6 +36,12 @@ export function cancelAllRAFLoops() {
         cancelAnimationFrame(State.spectrogramRAF);
         State.setSpectrogramRAF(null);
         console.log('🧹 Cancelled spectrogram RAF');
+    }
+    // 🔥 FIX: Cancel resize RAF to prevent detached callback leaks
+    if (resizeRAFRef !== null) {
+        cancelAnimationFrame(resizeRAFRef);
+        resizeRAFRef = null;
+        console.log('🧹 Cancelled resize RAF');
     }
 }
 
@@ -363,16 +376,34 @@ function getBaseSampleRateMultiplier() {
 }
 
 function updatePlaybackDuration() {
-    if (!State.currentMetadata || !State.allReceivedData || State.allReceivedData.length === 0) {
-        document.getElementById('playbackDuration').textContent = '--';
+    // 🔥 FIX: Check document connection before DOM manipulation
+    if (!document.body || !document.body.isConnected) {
         return;
     }
     
-    const totalSamples = State.currentMetadata.npts || State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
-    const originalSampleRate = State.currentMetadata.original_sample_rate;
+    // 🔥 FIX: Copy State values to local variables to avoid closure retention
+    // Access State only once and copy values immediately
+    const currentMetadata = State.currentMetadata;
+    const allReceivedData = State.allReceivedData;
+    
+    if (!currentMetadata || !allReceivedData || allReceivedData.length === 0) {
+        const playbackDurationEl = document.getElementById('playbackDuration');
+        if (playbackDurationEl && playbackDurationEl.isConnected) {
+            playbackDurationEl.textContent = '--';
+        }
+        return;
+    }
+    
+    // 🔥 FIX: Use npts from metadata if available, otherwise calculate from array
+    // Copy array reference to local variable to avoid retaining State reference
+    const totalSamples = currentMetadata.npts || allReceivedData.reduce((sum, chunk) => sum + (chunk ? chunk.length : 0), 0);
+    const originalSampleRate = currentMetadata.original_sample_rate;
     
     if (!totalSamples || !originalSampleRate) {
-        document.getElementById('playbackDuration').textContent = '--';
+        const playbackDurationEl = document.getElementById('playbackDuration');
+        if (playbackDurationEl && playbackDurationEl.isConnected) {
+            playbackDurationEl.textContent = '--';
+        }
         return;
     }
     
@@ -409,7 +440,11 @@ function updatePlaybackDuration() {
         durationText = `0m ${seconds}s`;
     }
     
-    document.getElementById('playbackDuration').textContent = durationText;
+    // 🔥 FIX: Check element connection before updating DOM
+    const playbackDurationEl = document.getElementById('playbackDuration');
+    if (playbackDurationEl && playbackDurationEl.isConnected) {
+        playbackDurationEl.textContent = durationText;
+    }
 }
 
 // Download audio as WAV file
