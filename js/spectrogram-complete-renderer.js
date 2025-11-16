@@ -161,7 +161,7 @@ function hslToRgb(h, s, l) {
  * Main function to render the complete spectrogram
  * Called once all audio data is available
  */
-export async function renderCompleteSpectrogram() {
+export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         console.log('⚠️ Cannot render complete spectrogram - no audio data available');
         return;
@@ -194,8 +194,10 @@ export async function renderCompleteSpectrogram() {
     const width = canvas.width;
     const height = canvas.height;
     
-    // Clear canvas
-    ctx.clearRect(0, 0, width, height);
+    // Clear canvas (skip if we're transitioning - old spectrogram stays visible!)
+    if (!skipViewportUpdate) {
+        ctx.clearRect(0, 0, width, height);
+    }
     
     try {
         const startTime = performance.now();
@@ -390,7 +392,10 @@ export async function renderCompleteSpectrogram() {
         drawFrequencyAxis();
         
         // Update display canvas with initial viewport (now that function is defined)
-        updateSpectrogramViewport(State.currentPlaybackRate || 1.0);
+        // Skip if we're in a transition (will be handled by caller)
+        if (!skipViewportUpdate) {
+            updateSpectrogramViewport(State.currentPlaybackRate || 1.0);
+        }
         
     } catch (error) {
         console.error('❌ Error rendering complete spectrogram:', error);
@@ -403,6 +408,42 @@ export async function renderCompleteSpectrogram() {
  * Clear the complete spectrogram and reset rendering state
  * Called when new audio is loaded
  */
+/**
+ * Reset spectrogram state without clearing the display canvas
+ * Used during transitions to allow re-rendering while keeping old spectrogram visible
+ */
+export function resetSpectrogramState() {
+    completeSpectrogramRendered = false;
+    renderingInProgress = false;
+    State.setSpectrogramInitialized(false);
+    
+    // Clear cached canvases but NOT the display canvas
+    if (cachedSpectrogramCanvas) {
+        try {
+            const cacheCtx = cachedSpectrogramCanvas.getContext('2d');
+            cacheCtx.clearRect(0, 0, cachedSpectrogramCanvas.width, cachedSpectrogramCanvas.height);
+            cachedSpectrogramCanvas.width = 0;
+            cachedSpectrogramCanvas.height = 0;
+        } catch (e) {
+            console.warn('⚠️ Error clearing cached canvas:', e);
+        }
+        cachedSpectrogramCanvas = null;
+    }
+    
+    // Clear infinite canvas
+    if (infiniteSpectrogramCanvas) {
+        try {
+            const infiniteCtx = infiniteSpectrogramCanvas.getContext('2d');
+            infiniteCtx.clearRect(0, 0, infiniteSpectrogramCanvas.width, infiniteSpectrogramCanvas.height);
+            infiniteSpectrogramCanvas.width = 0;
+            infiniteSpectrogramCanvas.height = 0;
+        } catch (e) {
+            console.warn('⚠️ Error clearing infinite canvas:', e);
+        }
+        infiniteSpectrogramCanvas = null;
+    }
+}
+
 export function clearCompleteSpectrogram() {
     console.log('🧹 Starting aggressive spectrogram cleanup...');
     
@@ -526,6 +567,91 @@ function calculateStretchFactor(playbackRate, frequencyScale) {
  * Called when playback rate changes - stretches/shrinks neutral render on demand
  * @param {number} playbackRate - Current playback rate (0.1 = min, 1.0 = neutral, 15.0 = max)
  */
+/**
+ * Get the viewport image for a given playback rate without updating the display canvas
+ * Returns a canvas element with the viewport rendered
+ */
+export function getSpectrogramViewport(playbackRate) {
+    if (!infiniteSpectrogramCanvas || !completeSpectrogramRendered) {
+        return null;
+    }
+    
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return null;
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Create output canvas
+    const viewportCanvas = document.createElement('canvas');
+    viewportCanvas.width = width;
+    viewportCanvas.height = height;
+    const ctx = viewportCanvas.getContext('2d');
+    
+    // Calculate scale-aware stretch factor
+    const stretchFactor = calculateStretchFactor(playbackRate, State.frequencyScale);
+    const stretchedHeight = Math.floor(height * stretchFactor);
+    
+    ctx.clearRect(0, 0, width, height);
+    
+    if (stretchedHeight >= height) {
+        // STRETCHING case (playbackRate >= 1.0): Show bottom slice of stretched image
+        const tempStretch = document.createElement('canvas');
+        tempStretch.width = width;
+        tempStretch.height = stretchedHeight;
+        const stretchCtx = tempStretch.getContext('2d');
+        
+        // Stretch the neutral render
+        stretchCtx.drawImage(
+            infiniteSpectrogramCanvas,
+            0, infiniteSpectrogramCanvas.height - height,
+            width, height,
+            0, 0,
+            width, stretchedHeight
+        );
+        
+        // Extract bottom 450px
+        ctx.drawImage(
+            tempStretch,
+            0, stretchedHeight - height,
+            width, height,
+            0, 0,
+            width, height
+        );
+    } else {
+        // SHRINKING case (playbackRate < 1.0): Shrink render and fill top with silence
+        // Fill with spectrogram "silence" color
+        const [r, g, b] = hslToRgb(0, 100, 10);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fillRect(0, 0, width, height);
+        
+        // Shrink the neutral render to stretchedHeight
+        const tempShrink = document.createElement('canvas');
+        tempShrink.width = width;
+        tempShrink.height = stretchedHeight;
+        const shrinkCtx = tempShrink.getContext('2d');
+        
+        shrinkCtx.drawImage(
+            infiniteSpectrogramCanvas,
+            0, infiniteSpectrogramCanvas.height - height,
+            width, height,
+            0, 0,
+            width, stretchedHeight
+        );
+        
+        // Place shrunken render at BOTTOM of viewport
+        ctx.drawImage(
+            tempShrink,
+            0, 0,
+            width, stretchedHeight,
+            0, height - stretchedHeight,
+            width, stretchedHeight
+        );
+    }
+    
+    return viewportCanvas;
+}
+
 export function updateSpectrogramViewport(playbackRate) {
     if (!infiniteSpectrogramCanvas || !completeSpectrogramRendered) {
         return; // Not ready yet

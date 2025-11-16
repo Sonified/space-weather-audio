@@ -9,6 +9,13 @@ import * as State from './audio-state.js';
 let previousPlaybackRate = 1.0;
 const SMOOTHING_FACTOR = 0.15; // Light smoothing (0 = no smoothing, 1 = full smoothing)
 
+// Scale transition animation state
+let scaleTransitionInProgress = false;
+let scaleTransitionStartTime = null;
+let scaleTransitionDuration = 1000; // 1 second
+let oldScaleType = null;
+let scaleTransitionRAF = null;
+
 /**
  * Draw frequency axis showing frequencies scaled by playback speed
  * 
@@ -69,8 +76,20 @@ export function drawFrequencyAxis() {
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
     
-    // Get current frequency scale
-    const scaleType = State.frequencyScale;
+    // Get current frequency scale (or interpolate during transition)
+    let scaleType = State.frequencyScale;
+    let interpolationFactor = 1.0;
+    
+    if (scaleTransitionInProgress && oldScaleType !== null) {
+        const elapsed = performance.now() - scaleTransitionStartTime;
+        const progress = Math.min(elapsed / scaleTransitionDuration, 1.0);
+        
+        // Ease-out cubic for smooth deceleration
+        interpolationFactor = 1 - Math.pow(1 - progress, 3);
+        
+        // During transition, we'll interpolate between old and new scale positions
+        // scaleType stays as new scale, but we'll blend Y positions
+    }
     
     // Generate tick frequencies based on ORIGINAL Nyquist (keep labels consistent)
     // But scale their positions based on effective Nyquist
@@ -81,7 +100,7 @@ export function drawFrequencyAxis() {
     } else if (scaleType === 'sqrt') {
         tickFrequencies = generateSqrtTicks(originalNyquist);
     } else {
-        tickFrequencies = generateLinearTicks(originalNyquist);
+        tickFrequencies = generateLinearTicks(originalNyquist, smoothedRate);
     }
     
     // For all scales, add 50 Hz when speed drops below 0.95x
@@ -128,19 +147,30 @@ export function drawFrequencyAxis() {
             }
         }
         
-        // For linear scale at 0.4x speed or slower, remove specific frequencies to reduce clutter
-        if (scaleType === 'linear' && smoothedRate <= 0.4) {
-            if (originalFreq === 5 || originalFreq === 15 || originalFreq === 25 || originalFreq === 35 || originalFreq === 45) {
-                return;
-            }
-        }
+        // Linear scale tick filtering is now handled in generateLinearTicks()
         
         // Calculate Y position: normalize by originalNyquist, then scale by playback rate
         // This way: slower playback = smaller multiplier = tick moves DOWN
         // Example: 20 Hz / 50 Hz = 0.4 normalized
         //   At 1x: y = canvasHeight - (0.4 * 1.0 * canvasHeight) = 60% from bottom
         //   At 0.5x: y = canvasHeight - (0.4 * 0.5 * canvasHeight) = 80% from bottom (moved DOWN)
-        const y = getYPositionForFrequencyScaled(originalFreq, originalNyquist, canvasHeight, scaleType, smoothedRate);
+        
+        // During scale transition, interpolate between the TWO MAPPING FUNCTIONS
+        // This creates a smooth cross-fade between old and new scale mappings
+        let y;
+        if (scaleTransitionInProgress && oldScaleType !== null && interpolationFactor < 1.0) {
+            // Calculate Y using OLD mapping function
+            const oldY = getYPositionForFrequencyScaled(originalFreq, originalNyquist, canvasHeight, oldScaleType, smoothedRate);
+            
+            // Calculate Y using NEW mapping function
+            const newY = getYPositionForFrequencyScaled(originalFreq, originalNyquist, canvasHeight, scaleType, smoothedRate);
+            
+            // Interpolate between the two mapping function results
+            y = oldY + (newY - oldY) * interpolationFactor;
+        } else {
+            // No transition - use current scale
+            y = getYPositionForFrequencyScaled(originalFreq, originalNyquist, canvasHeight, scaleType, smoothedRate);
+        }
         
         // For logarithmic scale, hide ticks in the bottom 6% to avoid overlap with "Hz" label
         if (scaleType === 'logarithmic' && y > bottomThreshold) return;
@@ -173,10 +203,24 @@ export function drawFrequencyAxis() {
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
     // Position at bottom: with middle baseline, y position is center of text
-    // Estimate text height ~16px, so center should be at canvasHeight - 5 - 8 = canvasHeight - 13
-    // But let's use a simpler approach: position near bottom accounting for half text height
+    // Move it down a bit lower than before
     const textHeight = 16; // Approximate height of 16px font
-    ctx.fillText('Hz', 8, canvasHeight - 5 - (textHeight / 2));  // Left aligned, positioned near bottom
+    ctx.fillText('Hz', 8, canvasHeight - 2 - (textHeight / 2));  // Left aligned, positioned lower near bottom
+    
+    // Continue animation if in progress
+    if (scaleTransitionInProgress) {
+        const elapsed = performance.now() - scaleTransitionStartTime;
+        if (elapsed < scaleTransitionDuration) {
+            scaleTransitionRAF = requestAnimationFrame(() => {
+                drawFrequencyAxis();
+            });
+        } else {
+            // Animation complete
+            scaleTransitionInProgress = false;
+            oldScaleType = null;
+            scaleTransitionRAF = null;
+        }
+    }
 }
 
 /**
@@ -306,32 +350,55 @@ function generateSqrtTicks(maxFreq) {
 /**
  * Generate tick frequencies for linear scale
  */
-function generateLinearTicks(maxFreq) {
+function generateLinearTicks(maxFreq, playbackRate) {
     const ticks = [0];
     
-    // Calculate nice tick spacing
-    let spacing;
-    if (maxFreq <= 10) {
-        spacing = 1;
-    } else if (maxFreq <= 50) {
-        spacing = 5;
-    } else if (maxFreq <= 100) {
-        spacing = 10;
-    } else if (maxFreq <= 200) {
-        spacing = 20;
-    } else {
-        spacing = 50;
+    // High speed mode (4.5x and above): 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10...
+    if (playbackRate >= 4.5) {
+        // Add .5 increments up to 5
+        for (let freq = 0.5; freq <= 5; freq += 0.5) {
+            if (freq <= maxFreq) ticks.push(freq);
+        }
+        // Then add whole numbers
+        for (let freq = 6; freq <= maxFreq; freq += 1) {
+            ticks.push(freq);
+        }
+    }
+    // Medium-high speed mode (2.3x and above): 1, 2, 3, 4, 5, 6, 7, 8, 9, 10...
+    else if (playbackRate >= 2.3) {
+        for (let freq = 1; freq <= maxFreq; freq += 1) {
+            ticks.push(freq);
+        }
+    }
+    // Normal speed mode: increments of 5 Hz (5, 10, 15, 20, 25, 30, 35, 40, 45, 50...)
+    else {
+        // Generate ticks in 5 Hz increments
+        for (let freq = 5; freq <= maxFreq; freq += 5) {
+            ticks.push(freq);
+        }
+        
+        // Below 0.6x: remove 5 Hz
+        if (playbackRate <= 0.6) {
+            const index5 = ticks.indexOf(5);
+            if (index5 > -1) ticks.splice(index5, 1);
+        }
+        
+        // Below 0.34x: remove 15, 25, 35, 45 Hz
+        if (playbackRate <= 0.34) {
+            [15, 25, 35, 45].forEach(freq => {
+                const index = ticks.indexOf(freq);
+                if (index > -1) ticks.splice(index, 1);
+            });
+        }
     }
     
-    // Generate evenly-spaced ticks
-    for (let freq = spacing; freq < maxFreq; freq += spacing) {
-        ticks.push(freq);
+    // Add max frequency if not already included
+    if (!ticks.includes(maxFreq)) {
+        ticks.push(maxFreq);
     }
     
-    // Add max frequency
-    ticks.push(maxFreq);
-    
-    return ticks;
+    // Sort and return
+    return ticks.sort((a, b) => a - b);
 }
 
 /**
@@ -347,7 +414,7 @@ function formatFrequencyLabel(freq) {
         // One decimal for 1-10 Hz
         return freq.toFixed(Number.isInteger(freq) ? 0 : 1);
     } else {
-        // No decimals for >= 10 Hz
+        // No decimals for >= 10 Hz (just whole numbers)
         return Math.round(freq).toString();
     }
 }
@@ -422,5 +489,36 @@ export function updateAxisForPlaybackSpeed() {
 export function initializeAxisPlaybackRate() {
     previousPlaybackRate = State.currentPlaybackRate || 1.0;
     drawFrequencyAxis();
+}
+
+/**
+ * Start scale transition animation
+ * Animates axis ticks from old scale to new scale over 1 second
+ * @param {string} oldScale - Previous scale type ('linear', 'sqrt', 'logarithmic')
+ * @returns {Promise} Resolves when animation completes
+ */
+export function animateScaleTransition(oldScale) {
+    return new Promise((resolve) => {
+        // Cancel any existing transition
+        if (scaleTransitionRAF) {
+            cancelAnimationFrame(scaleTransitionRAF);
+        }
+        
+        // Store old scale type - we'll interpolate between old and new mapping functions
+        oldScaleType = oldScale;
+        scaleTransitionInProgress = true;
+        scaleTransitionStartTime = performance.now();
+        
+        // Start animation loop
+        drawFrequencyAxis();
+        
+        // Resolve after animation duration
+        setTimeout(() => {
+            scaleTransitionInProgress = false;
+            oldScaleType = null;
+            scaleTransitionRAF = null;
+            resolve();
+        }, scaleTransitionDuration);
+    });
 }
 

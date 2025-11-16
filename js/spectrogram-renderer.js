@@ -251,29 +251,174 @@ export function loadSpectrogramScrollSpeed() {
     changeSpectrogramScrollSpeed();
 }
 
+/**
+ * Load frequency scale from localStorage and apply it
+ * Called on page load to restore user's preferred frequency scale
+ */
+export function loadFrequencyScale() {
+    const select = document.getElementById('frequencyScale');
+    if (!select) return;
+    
+    // Load saved value from localStorage (default: 'sqrt')
+    const savedValue = localStorage.getItem('frequencyScale');
+    if (savedValue !== null) {
+        // Validate value is one of the allowed options
+        const validValues = ['linear', 'sqrt', 'logarithmic'];
+        if (validValues.includes(savedValue)) {
+            select.value = savedValue;
+            State.setFrequencyScale(savedValue);
+            console.log(`📊 Loaded saved frequency scale: ${savedValue}`);
+        }
+    } else {
+        // No saved value, use default and save it
+        const defaultValue = 'sqrt';
+        select.value = defaultValue;
+        State.setFrequencyScale(defaultValue);
+        localStorage.setItem('frequencyScale', defaultValue);
+    }
+}
+
 export async function changeFrequencyScale() {
     const select = document.getElementById('frequencyScale');
     const value = select.value; // 'linear', 'sqrt', or 'logarithmic'
+    
+    // Save to localStorage for persistence
+    localStorage.setItem('frequencyScale', value);
+    
+    // Store old scale for animation
+    const oldScale = State.frequencyScale;
     
     State.setFrequencyScale(value);
     
     console.log(`📊 Frequency scale changed to: ${value}`);
     
-    // If complete spectrogram is rendered, re-render with new scale
+    // If complete spectrogram is rendered, animate transition
     if (isCompleteSpectrogramRendered()) {
-        console.log('🎨 Re-rendering spectrogram with new frequency scale...');
+        console.log('🎨 Animating scale transition...');
         
-        // Clear existing render
-        clearCompleteSpectrogram();
+        // Step 1: Animate axis ticks to new positions (1 second)
+        const { animateScaleTransition } = await import('./spectrogram-axis-renderer.js');
+        await animateScaleTransition(oldScale);
         
-        // Re-render with new scale
-        await renderCompleteSpectrogram();
+        // Step 2: Fade transition to new spectrogram
+        console.log('🎨 Fading to new spectrogram...');
+        
+        // 🔥 PAUSE playhead updates during fade!
+        const playbackWasActive = State.playbackState === State.PlaybackState.PLAYING;
+        const originalRAF = State.playbackIndicatorRAF;
+        if (originalRAF !== null) {
+            cancelAnimationFrame(originalRAF);
+            State.setPlaybackIndicatorRAF(null);
+        }
+        
+        const canvas = document.getElementById('spectrogram');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // OLD SPECTROGRAM IS ALREADY ON SCREEN - DON'T TOUCH IT!
+            // Reset state flag so we can re-render (but don't clear the canvas!)
+            const { resetSpectrogramState } = await import('./spectrogram-complete-renderer.js');
+            resetSpectrogramState();
+            
+            // Just render new spectrogram in background (skip viewport update)
+            await renderCompleteSpectrogram(true); // Skip viewport update - old stays visible!
+            
+            // Get the new spectrogram viewport without updating display canvas
+            const { getSpectrogramViewport, updateSpectrogramViewport } = await import('./spectrogram-complete-renderer.js');
+            const playbackRate = State.currentPlaybackRate || 1.0;
+            const newSpectrogram = getSpectrogramViewport(playbackRate);
+            
+            if (!newSpectrogram) {
+                // Fallback: just update normally
+                updateSpectrogramViewport(playbackRate);
+                // Resume playhead if it was active
+                if (playbackWasActive) {
+                    import('./waveform-renderer.js').then(module => {
+                        module.startPlaybackIndicator();
+                    });
+                }
+                return;
+            }
+            
+            // 🔥 Capture old spectrogram for crossfade (BEFORE we start fading)
+            const oldSpectrogram = document.createElement('canvas');
+            oldSpectrogram.width = width;
+            oldSpectrogram.height = height;
+            oldSpectrogram.getContext('2d').drawImage(canvas, 0, 0);
+            
+            // Old spectrogram is STILL visible on display canvas
+            // Now fade in the new one on top (300ms)
+            const fadeDuration = 300;
+            const fadeStart = performance.now();
+            
+            const fadeStep = () => {
+                const elapsed = performance.now() - fadeStart;
+                const progress = Math.min(elapsed / fadeDuration, 1.0);
+                
+                // Ease-out for smooth fade
+                const alpha = 1 - Math.pow(1 - progress, 2);
+                
+                // 🔥 CLEAR CANVAS - start fresh each frame!
+                ctx.clearRect(0, 0, width, height);
+                
+                // Draw old spectrogram fading OUT
+                ctx.globalAlpha = 1.0 - alpha;
+                ctx.drawImage(oldSpectrogram, 0, 0);
+                
+                // Draw new spectrogram fading IN
+                ctx.globalAlpha = alpha;
+                ctx.drawImage(newSpectrogram, 0, 0);
+                
+                // Draw playhead on top with full opacity
+                ctx.globalAlpha = 1.0;
+                
+                // 🔥 Draw playhead as medium grey during transition (WE control it during fade)
+                if (State.currentAudioPosition !== null && State.totalAudioDuration > 0) {
+                    const playheadX = (State.currentAudioPosition / State.totalAudioDuration) * width;
+                    
+                    ctx.strokeStyle = '#616161'; // A little darker grey
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(playheadX, 0);
+                    ctx.lineTo(playheadX, height);
+                    ctx.stroke();
+                }
+                
+                // Reset alpha after drawing playhead
+                ctx.globalAlpha = 1.0;
+                
+                if (progress < 1.0) {
+                    requestAnimationFrame(fadeStep);
+                } else {
+                    // 🔥 FADE COMPLETE - LOCK IN THE NEW SPECTROGRAM!
+                    // This updates cachedSpectrogramCanvas with the new frequency scale
+                    updateSpectrogramViewport(playbackRate);
+                    
+                    // 🔥 RESUME playhead updates!
+                    if (playbackWasActive) {
+                        import('./waveform-renderer.js').then(module => {
+                            module.startPlaybackIndicator();
+                        });
+                    }
+                    
+                    console.log('✅ Scale transition complete, cache updated, playhead resumed');
+                }
+            };
+            
+            fadeStep();
+        } else {
+            // Fallback: just re-render without fade
+            clearCompleteSpectrogram();
+            await renderCompleteSpectrogram();
+        }
+    } else {
+        // No spectrogram yet, just update axis
+        positionAxisCanvas();
+        initializeAxisPlaybackRate();
+        drawFrequencyAxis();
     }
-    
-    // Redraw axis with new scale (respects current playback speed)
-    positionAxisCanvas();
-    initializeAxisPlaybackRate();
-    drawFrequencyAxis();
 }
 
 export function startVisualization() {
