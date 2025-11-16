@@ -115,9 +115,17 @@ export function drawWaveformXAxis() {
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
     
-    // Calculate hourly ticks
-    // Quantize at midnight (00:00), find first hour boundary within region
-    const ticks = calculateHourlyTicks(startTimeUTC, endTimeUTC);
+    // Calculate ticks based on region size
+    // If region is less than 2 hours, use 5-minute intervals; otherwise use hourly intervals
+    const timeSpanHours = actualTimeSpanSeconds / 3600;
+    let ticks;
+    if (timeSpanHours < 2) {
+        // Region is less than 2 hours - use 5-minute ticks
+        ticks = calculateFiveMinuteTicks(startTimeUTC, endTimeUTC);
+    } else {
+        // Region is 2+ hours - use hourly ticks
+        ticks = calculateHourlyTicks(startTimeUTC, endTimeUTC);
+    }
     
     // Draw each tick
     ticks.forEach((tick, index) => {
@@ -377,6 +385,89 @@ function calculateHourlyTicks(startUTC, endUTC) {
         
         // Move to next hour block (in local time)
         currentTickLocal.setHours(currentTickLocal.getHours() + 1);
+    }
+    
+    return ticks;
+}
+
+/**
+ * Calculate 5-minute tick positions
+ * Quantizes at 5-minute boundaries (00:00, 00:05, 00:10, ..., 00:55)
+ * Used when region is less than 2 hours for finer granularity
+ */
+function calculateFiveMinuteTicks(startUTC, endUTC) {
+    const ticks = [];
+    
+    // Convert start time to local time to find boundaries
+    const startLocal = new Date(startUTC);
+    
+    // Get local time components
+    const startYear = startLocal.getFullYear();
+    const startMonth = startLocal.getMonth();
+    const startDay = startLocal.getDate();
+    const startHours = startLocal.getHours();
+    const startMinutes = startLocal.getMinutes();
+    
+    // Find first 5-minute block (quantized at 5-minute boundaries)
+    // 5-minute blocks: 00:00, 00:05, 00:10, ..., 00:55 (local time)
+    let firstTickLocal = new Date(startYear, startMonth, startDay, startHours, 0, 0, 0);
+    
+    // Round down to nearest 5-minute boundary
+    const roundedMinutes = Math.floor(startMinutes / 5) * 5;
+    firstTickLocal.setMinutes(roundedMinutes, 0, 0);
+    
+    // If we're not starting at a 5-minute boundary, find the first one within the region
+    if (firstTickLocal < startLocal) {
+        // Move forward to next 5-minute block
+        firstTickLocal.setMinutes(firstTickLocal.getMinutes() + 5);
+    }
+    
+    // Generate ticks every 5 minutes until we exceed end time
+    let currentTickLocal = new Date(firstTickLocal);
+    let previousTickDate = null;
+    
+    // Convert end time to local for comparison
+    const endLocal = new Date(endUTC);
+    const endLocalTime = endLocal.getTime();
+    
+    while (currentTickLocal.getTime() <= endLocalTime) {
+        // Get local date string for day crossing detection
+        const currentTickDate = currentTickLocal.toDateString();
+        const currentHour = currentTickLocal.getHours();
+        const currentMinutes = currentTickLocal.getMinutes();
+        
+        // Mark as day crossing if:
+        // 1. Previous tick was on a different date, OR
+        // 2. This tick is at midnight (00:00) - always show date at midnight
+        const isDayCrossing = (previousTickDate !== null && previousTickDate !== currentTickDate) || 
+                              (currentHour === 0 && currentMinutes === 0);
+        
+        // Convert local time to UTC for positioning
+        const localYear = currentTickLocal.getFullYear();
+        const localMonth = currentTickLocal.getMonth();
+        const localDay = currentTickLocal.getDate();
+        const localHour = currentTickLocal.getHours();
+        const localMinute = currentTickLocal.getMinutes();
+        
+        // Create date from local components (browser interprets as local time)
+        const tickDateLocal = new Date(localYear, localMonth, localDay, localHour, localMinute, 0, 0);
+        
+        // getTime() gives UTC milliseconds - use for positioning
+        const tickUTCForPosition = new Date(tickDateLocal.getTime());
+        
+        // Check if this UTC time falls within our data range
+        if (tickUTCForPosition.getTime() >= startUTC.getTime() && tickUTCForPosition.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: tickUTCForPosition, // UTC time for positioning
+                localTime: new Date(currentTickLocal), // Local time for display
+                isDayCrossing: isDayCrossing
+            });
+        }
+        
+        previousTickDate = currentTickDate;
+        
+        // Move to next 5-minute block (in local time)
+        currentTickLocal.setMinutes(currentTickLocal.getMinutes() + 5);
     }
     
     return ticks;

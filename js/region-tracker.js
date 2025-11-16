@@ -1322,6 +1322,16 @@ function setSelectionFromActiveRegion() {
         return false;
     }
     
+    // 🎯 FIX: Only set selection if there isn't one already
+    // If user made a selection, respect it!
+    if (State.selectionStart !== null && State.selectionEnd !== null) {
+        // Already have a selection - just update worklet and redraw
+        updateWorkletSelection();
+        drawWaveformWithSelection();
+        return true;
+    }
+    
+    // No existing selection - set it to match region bounds
     // 🏛️ Use sample indices if available (new format), otherwise fall back to timestamps (backward compatibility)
     let regionStartSeconds, regionEndSeconds;
     
