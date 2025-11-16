@@ -11,6 +11,7 @@ import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCan
 import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, resetRegionPlayButtonIfFinished } from './region-tracker.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
+import { zoomState } from './zoom-state.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -63,14 +64,25 @@ export function drawWaveform() {
     
     const sampleRate = 44100;
     State.setTotalAudioDuration(State.completeSamplesArray.length / sampleRate);
-    console.log(`📏 Total audio duration: ${State.totalAudioDuration.toFixed(2)}s (${State.completeSamplesArray.length.toLocaleString()} samples @ 44100 Hz)`);
     
     const removeDC = document.getElementById('removeDCOffset').checked;
     const slider = document.getElementById('waveformFilterSlider');
     const sliderValue = parseInt(slider.value);
     const alpha = 0.95 + (sliderValue / 100) * (0.9999 - 0.95);
     
-    console.log(`🎨 Sending to waveform worker: ${width}px wide, ${State.completeSamplesArray.length.toLocaleString()} samples`);
+    // 🏛️ Check if we're zoomed into a region
+    let startSample = 0;
+    let endSample = State.completeSamplesArray.length;
+    let zoomInfo = 'full view';
+    
+    if (zoomState.mode === 'temple' && zoomState.isInitialized()) {
+        startSample = zoomState.currentViewStartSample;
+        endSample = zoomState.currentViewEndSample;
+        const zoomLevel = zoomState.getZoomLevel();
+        zoomInfo = `zoomed ${zoomLevel.toFixed(1)}x (samples ${startSample.toLocaleString()}-${endSample.toLocaleString()})`;
+    }
+    
+    console.log(`🎨 Sending to waveform worker: ${width}px wide, ${zoomInfo}`);
     
     State.waveformWorker.postMessage({
         type: 'build-waveform',
@@ -79,7 +91,10 @@ export function drawWaveform() {
         removeDC: removeDC,
         alpha: alpha,
         isComplete: true,
-        totalExpectedSamples: State.completeSamplesArray.length
+        totalExpectedSamples: State.completeSamplesArray.length,
+        // 🏛️ NEW: Send zoom range to worker
+        startSample: startSample,
+        endSample: endSample
     });
 }
 
@@ -250,8 +265,16 @@ export function drawWaveformWithSelection() {
         const height = canvas.height;
         
         if (State.totalAudioDuration > 0 && State.currentAudioPosition >= 0) {
+            // 🏛️ Use zoom-aware conversion
+            let x;
+            if (zoomState.isInitialized()) {
+                const sample = zoomState.timeToSample(State.currentAudioPosition);
+                x = zoomState.sampleToPixel(sample, width);
+            } else {
+                // Fallback to old behavior if zoom state not initialized
             const progress = Math.min(State.currentAudioPosition / State.totalAudioDuration, 1.0);
-            const x = progress * width;
+                x = progress * width;
+            }
             
             ctx.strokeStyle = '#ff0000';
             ctx.lineWidth = 2;
@@ -276,10 +299,20 @@ export function drawWaveformWithSelection() {
     // Only draw yellow selection box if NOT playing an active region
     // When playing a region, we only want the blue region highlight, not the yellow selection box
     if (State.selectionStart !== null && State.selectionEnd !== null && !isPlayingActiveRegion()) {
+        // 🏛️ Use zoom-aware conversion
+        let startX, endX;
+        if (zoomState.isInitialized()) {
+            const startSample = zoomState.timeToSample(State.selectionStart);
+            const endSample = zoomState.timeToSample(State.selectionEnd);
+            startX = zoomState.sampleToPixel(startSample, width);
+            endX = zoomState.sampleToPixel(endSample, width);
+        } else {
+            // Fallback to old behavior if zoom state not initialized
         const startProgress = State.selectionStart / State.totalAudioDuration;
         const endProgress = State.selectionEnd / State.totalAudioDuration;
-        const startX = startProgress * width;
-        const endX = endProgress * width;
+            startX = startProgress * width;
+            endX = endProgress * width;
+        }
         const selectionWidth = endX - startX;
         
         ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
@@ -304,8 +337,16 @@ export function drawWaveformWithSelection() {
     }
     
     if (playheadPosition !== null && State.totalAudioDuration > 0 && playheadPosition >= 0) {
+        // 🏛️ Use zoom-aware conversion
+        let x;
+        if (zoomState.isInitialized()) {
+            const sample = zoomState.timeToSample(playheadPosition);
+            x = zoomState.sampleToPixel(sample, width);
+        } else {
+            // Fallback to old behavior if zoom state not initialized
         const progress = Math.min(playheadPosition / State.totalAudioDuration, 1.0);
-        const x = progress * width;
+            x = progress * width;
+        }
         
         ctx.strokeStyle = '#ff0000';
         ctx.lineWidth = 2;
@@ -323,8 +364,18 @@ export function setupWaveformInteraction() {
     function getPositionFromMouse(event) {
         const rect = canvas.getBoundingClientRect();
         const x = event.clientX - rect.left;
-        const progress = Math.max(0, Math.min(1, x / rect.width));
-        const targetPosition = progress * State.totalAudioDuration;
+        const progress = Math.max(0, Math.min(1, x / rect.width)); // Still needed for canvas pixel positioning
+        
+        // 🏛️ Use zoom-aware conversion
+        let targetPosition;
+        if (zoomState.isInitialized()) {
+            const sample = zoomState.pixelToSample(x, rect.width);
+            targetPosition = zoomState.sampleToTime(sample);
+        } else {
+            // Fallback to old behavior if zoom state not initialized
+            targetPosition = progress * State.totalAudioDuration;
+        }
+        
         return { targetPosition, progress, x, width: rect.width };
     }
     
@@ -408,14 +459,27 @@ export function setupWaveformInteraction() {
                 canvas.style.cursor = 'col-resize';
                 console.log('📏 Selection drag detected');
                 
-                // Clear active region when starting new waveform selection
-                clearActiveRegion();
+                // 🏛️ Only clear active region if NOT in temple mode
+                // In temple mode, selections are within temple walls, flag stays up
+                if (zoomState.mode !== 'temple') {
+                    clearActiveRegion();
+                }
             }
             
             if (State.isSelecting) {
                 const { targetPosition } = getPositionFromMouse(e);
-                const startProgress = Math.max(0, Math.min(1, State.selectionStartX / rect.width));
-                const startPos = startProgress * State.totalAudioDuration;
+                const rect = canvas.getBoundingClientRect();
+                
+                // 🏛️ Use zoom-aware conversion for start position too!
+                let startPos;
+                if (zoomState.isInitialized()) {
+                    const startSample = zoomState.pixelToSample(State.selectionStartX, rect.width);
+                    startPos = zoomState.sampleToTime(startSample);
+                } else {
+                    // Fallback to old behavior if zoom state not initialized
+                    const startProgress = Math.max(0, Math.min(1, State.selectionStartX / rect.width));
+                    startPos = startProgress * State.totalAudioDuration;
+                }
                 const endPos = targetPosition;
                 
                 State.setSelectionStart(Math.min(startPos, endPos));
@@ -436,8 +500,17 @@ export function setupWaveformInteraction() {
             if (State.isSelecting) {
                 const { targetPosition } = getPositionFromMouse(e);
                 const rect = canvas.getBoundingClientRect();
-                const startProgress = Math.max(0, Math.min(1, (State.selectionStartX || 0) / rect.width));
-                const startPos = startProgress * State.totalAudioDuration;
+                
+                // 🏛️ Use zoom-aware conversion for start position too!
+                let startPos;
+                if (zoomState.isInitialized()) {
+                    const startSample = zoomState.pixelToSample(State.selectionStartX || 0, rect.width);
+                    startPos = zoomState.sampleToTime(startSample);
+                } else {
+                    // Fallback to old behavior if zoom state not initialized
+                    const startProgress = Math.max(0, Math.min(1, (State.selectionStartX || 0) / rect.width));
+                    startPos = startProgress * State.totalAudioDuration;
+                }
                 const endPos = targetPosition;
                 
                 State.setIsSelecting(false);
@@ -446,7 +519,10 @@ export function setupWaveformInteraction() {
                 const newSelectionEnd = Math.max(startPos, endPos);
                 const newIsLooping = State.isLooping;
                 
+                const zoomMode = zoomState.mode === 'temple' ? 'temple (zoomed)' : 'full view';
+                const zoomLevel = zoomState.isInitialized() ? zoomState.getZoomLevel().toFixed(1) : 'N/A';
                 console.log(`🖱️ Waveform selection created: ${newSelectionStart.toFixed(2)}s - ${newSelectionEnd.toFixed(2)}s (duration: ${(newSelectionEnd - newSelectionStart).toFixed(3)}s)`);
+                console.log(`   📍 Zoom mode: ${zoomMode} (${zoomLevel}x)`);
                 
                 // Print comprehensive diagnostics for the selection
                 const currentX = e.clientX - rect.left;
@@ -454,11 +530,17 @@ export function setupWaveformInteraction() {
                 
                 State.setSelectionStartX(null);
                 
-                // Reset all region play buttons since user is making a new selection (not playing within a region)
-                resetAllRegionPlayButtons();
+                // 🏛️ Only reset region buttons if NOT in temple mode
+                // In temple mode, selections are within temple walls, flag stays up
+                if (zoomState.mode !== 'temple') {
+                    resetAllRegionPlayButtons();
+                }
                 
-                // Show "Add Region" button for region tracker
-                showAddRegionButton(newSelectionStart, newSelectionEnd);
+                // 🏛️ Show "Add Region" button only if NOT in temple mode (region zoom)
+                // When inside a region, we don't want to add new regions
+                if (zoomState.mode !== 'temple') {
+                    showAddRegionButton(newSelectionStart, newSelectionEnd);
+                }
                 
                 // 🏠 AUTONOMOUS: Set selection state and send to worklet immediately
                 // No timeout needed - worklet uses selection when making decisions, no coordination required!
@@ -499,11 +581,17 @@ export function setupWaveformInteraction() {
                     drawRegionHighlights(ctx, canvas.width, canvas.height);
                 }
                 
-                // Reset all region play buttons since user is clicking to seek (not playing within a region)
-                resetAllRegionPlayButtons();
+                // 🏛️ Only reset region buttons if NOT in temple mode
+                // In temple mode, clicking seeks within temple walls, flag stays up
+                if (zoomState.mode !== 'temple') {
+                    resetAllRegionPlayButtons();
+                }
                 
                 const { targetPosition } = getPositionFromMouse(e);
+                const zoomMode = zoomState.mode === 'temple' ? 'temple (zoomed)' : 'full view';
+                const zoomLevel = zoomState.isInitialized() ? zoomState.getZoomLevel().toFixed(1) : 'N/A';
                 console.log(`🖱️ Waveform clicked at ${targetPosition.toFixed(2)}s - seeking to position`);
+                console.log(`   📍 Zoom mode: ${zoomMode} (${zoomLevel}x)`);
                 clearSpectrogramScrubPreview();  // Clear scrub preview
                 performSeek();
                 drawSpectrogramPlayhead();  // Update spectrogram immediately after seek

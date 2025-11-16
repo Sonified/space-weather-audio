@@ -39,27 +39,48 @@ self.addEventListener('message', (e) => {
         
     } else if (type === 'build-waveform') {
         // Build optimized waveform for display
-        const { canvasWidth, canvasHeight, removeDC, alpha, isComplete, totalExpectedSamples } = e.data;
+        const { canvasWidth, canvasHeight, removeDC, alpha, isComplete, totalExpectedSamples, startSample, endSample } = e.data;
         
         const t0 = performance.now();
         if (DEBUG_WAVEFORM) console.log(`🎨 Building waveform: ${canvasWidth}px wide, ${allSamples.length.toLocaleString()} samples, removeDC=${removeDC}, alpha=${alpha}`);
         
-        // Determine which samples to use
+        // 🏛️ Determine which samples to use (zoom-aware)
         let displaySamples = allSamples;
+        let sampleRangeInfo = 'full';
+        
+        // If zoom range specified, slice to that range
+        if (startSample !== undefined && endSample !== undefined && startSample >= 0 && endSample <= allSamples.length) {
+            displaySamples = allSamples.slice(startSample, endSample);
+            sampleRangeInfo = `zoomed (${startSample.toLocaleString()}-${endSample.toLocaleString()})`;
+            if (DEBUG_WAVEFORM) console.log(`🔍 Zoom mode: using ${displaySamples.length.toLocaleString()} samples ${sampleRangeInfo}`);
+        }
         
         // Apply drift removal if requested (for final complete waveform)
         if (removeDC && rawSamples.length > 0) {
             console.log(`  🎛️ Applying drift removal (alpha=${alpha.toFixed(4)})...`);
-            const filtered = removeDCOffset(rawSamples, alpha);
+            // 🏛️ Use same zoom range for raw samples if zoomed
+            let rawSamplesToProcess = rawSamples;
+            if (startSample !== undefined && endSample !== undefined && startSample >= 0 && endSample <= rawSamples.length) {
+                rawSamplesToProcess = rawSamples.slice(startSample, endSample);
+            }
+            const filtered = removeDCOffset(rawSamplesToProcess, alpha);
             displaySamples = normalize(filtered);
             console.log(`  ✅ Drift removal complete`);
         }
         
         // Build min/max arrays for efficient rendering
-        // For progressive rendering: only fill the LEFT portion based on samples received so far
-        const effectiveWidth = totalExpectedSamples 
-            ? Math.floor((displaySamples.length / totalExpectedSamples) * canvasWidth)
-            : canvasWidth;
+        // 🏛️ When zoomed, we want to fill the FULL canvas with the zoomed samples
+        // For progressive rendering (not zoomed): only fill the LEFT portion based on samples received so far
+        let effectiveWidth;
+        if (startSample !== undefined && endSample !== undefined) {
+            // Zoomed: fill full canvas with zoomed samples
+            effectiveWidth = canvasWidth;
+        } else {
+            // Progressive rendering: calculate partial width based on samples received
+            effectiveWidth = totalExpectedSamples 
+                ? Math.floor((displaySamples.length / totalExpectedSamples) * canvasWidth)
+                : canvasWidth;
+        }
         
         const waveformData = buildMinMaxWaveform(displaySamples, effectiveWidth);
         

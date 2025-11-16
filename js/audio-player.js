@@ -12,6 +12,7 @@ import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndica
 import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization } from './spectrogram-renderer.js';
 import { updateActiveRegionPlayButton } from './region-tracker.js';
+import { zoomState } from './zoom-state.js';
 
 // ===== RAF CLEANUP HELPER =====
 
@@ -30,7 +31,7 @@ export function cancelAllRAFLoops() {
     if (State.playbackIndicatorRAF !== null) {
         cancelAnimationFrame(State.playbackIndicatorRAF);
         State.setPlaybackIndicatorRAF(null);
-        console.log('🧹 Cancelled playback indicator RAF');
+        // console.log('🧹 Cancelled playback indicator RAF');
     }
     if (State.spectrogramRAF !== null) {
         cancelAnimationFrame(State.spectrogramRAF);
@@ -47,7 +48,7 @@ export function cancelAllRAFLoops() {
     if (State.crossfadeAnimation !== null) {
         cancelAnimationFrame(State.crossfadeAnimation);
         State.setCrossfadeAnimation(null);
-        console.log('🧹 Cancelled crossfade animation RAF');
+        // console.log('🧹 Cancelled crossfade animation RAF');
     }
     
     // 🔥 FIX: Cancel scale transition RAF if active
@@ -202,14 +203,33 @@ export function toggleLoop() {
 export function updateWorkletSelection() {
     if (!State.workletNode) return;
     
+    let start = State.selectionStart;
+    let end = State.selectionEnd;
+    let loop = State.isLooping;
+    
+    // 🏛️ If in temple mode and no yellow selection, use temple boundaries!
+    if (start === null && end === null) {
+        if (zoomState.mode === 'temple' && zoomState.isInitialized()) {
+            // We're in a temple with no yellow selection - use temple walls!
+            start = zoomState.sampleToTime(zoomState.currentViewStartSample);
+            end = zoomState.sampleToTime(zoomState.currentViewEndSample);
+            loop = State.isLooping; // 🙏 Respect user's loop toggle!
+            
+            console.log(`🏛️ Temple mode: Using boundaries ${start.toFixed(2)}s - ${end.toFixed(2)}s, loop=${loop}`);
+        }
+    }
+    
+    // Send to worklet
     State.workletNode.port.postMessage({
         type: 'set-selection',
-        start: State.selectionStart,
-        end: State.selectionEnd,
-        loop: State.isLooping
+        start: start,
+        end: end,
+        loop: loop
     });
     
-    if (DEBUG_LOOP_FADES) console.log(`📤 Sent to worklet: selection=${State.selectionStart !== null ? State.selectionStart.toFixed(2) : 'null'}-${State.selectionEnd !== null ? State.selectionEnd.toFixed(2) : 'null'}, loop=${State.isLooping}`);
+    if (DEBUG_LOOP_FADES) {
+        console.log(`📤 Sent to worklet: selection=${start !== null ? start.toFixed(2) : 'null'}-${end !== null ? end.toFixed(2) : 'null'}, loop=${loop}`);
+    }
 }
 
 export function updatePlaybackSpeed() {
@@ -246,7 +266,7 @@ export function updatePlaybackSpeed() {
     // Update spectrogram axis to reflect new playback speed
     updateAxisForPlaybackSpeed();
     
-    // Update spectrogram viewport with GPU-accelerated stretching
+    // Update spectrogram viewport (works for both full and temple - GPU stretching!)
     // Import dynamically to avoid circular dependency
     import('./spectrogram-complete-renderer.js').then(module => {
         if (module.updateSpectrogramViewport) {

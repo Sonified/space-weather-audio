@@ -13,6 +13,7 @@
 import * as State from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
+import { zoomState } from './zoom-state.js';
 
 // Track if we've rendered the complete spectrogram
 let completeSpectrogramRendered = false;
@@ -27,6 +28,15 @@ let cachedSpectrogramCanvas = null;
 // Infinite canvas for GPU-accelerated viewport stretching
 // Rendered once at neutral (1x), then GPU-stretched on demand
 let infiniteSpectrogramCanvas = null;
+
+// 🏛️ Track the context of the current infinite canvas
+// Each zoom level = new self (new infinite canvas)
+// Speed changes = same self, different expression (GPU stretch)
+let infiniteCanvasContext = {
+    startSample: null,
+    endSample: null,
+    frequencyScale: null
+};
 const MAX_PLAYBACK_RATE = 15.0; // Maximum playback rate for infinite canvas sizing
 
 // Reusable temporary canvases (to avoid creating/destroying many canvases)
@@ -176,9 +186,33 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         return;
     }
     
+    // 🏛️ Check zoom state FIRST - if zoomed, always render region (ignore completeSpectrogramRendered flag)
+    if (zoomState.mode === 'temple' && zoomState.isInitialized()) {
+        const startSeconds = zoomState.sampleToTime(zoomState.currentViewStartSample);
+        const endSeconds = zoomState.sampleToTime(zoomState.currentViewEndSample);
+        console.log(`🔍 Zoomed mode detected - rendering region instead`);
+        return await renderCompleteSpectrogramForRegion(startSeconds, endSeconds);
+    }
+    
+    // Only check completeSpectrogramRendered for full view (not zoomed)
     if (completeSpectrogramRendered) {
         console.log('✅ Complete spectrogram already rendered');
         return;
+    }
+    
+    // 🏛️ Check if we need to re-render due to context change
+    const audioData = State.completeSamplesArray;
+    const totalSamples = audioData ? audioData.length : 0;
+    const needsRerender = infiniteSpectrogramCanvas && 
+        (infiniteCanvasContext.startSample !== 0 ||
+         infiniteCanvasContext.endSample !== totalSamples ||
+         infiniteCanvasContext.frequencyScale !== State.frequencyScale);
+    
+    if (needsRerender) {
+        console.log('🔄 Context changed - clearing old self and re-rendering');
+        console.log(`   Old: ${infiniteCanvasContext.startSample}-${infiniteCanvasContext.endSample}, scale=${infiniteCanvasContext.frequencyScale}`);
+        console.log(`   New: 0-${totalSamples}, scale=${State.frequencyScale}`);
+        clearInfiniteCanvas();
     }
     
     renderingInProgress = true;
@@ -389,6 +423,14 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         console.log(`🌊 Created infinite canvas: ${width} × ${infiniteHeight}px`);
         console.log(`   Placed neutral ${width} × ${height}px render at bottom`);
         
+        // 🏛️ Record the context of this render
+        infiniteCanvasContext = {
+            startSample: 0,
+            endSample: totalSamples,
+            frequencyScale: State.frequencyScale
+        };
+        console.log(`🏛️ New self created: Full view (0-${totalSamples.toLocaleString()}), scale=${State.frequencyScale}`);
+        
         // Cache the spectrogram for redrawing with playhead (use temp canvas)
         cachedSpectrogramCanvas = tempCanvas;
         
@@ -427,6 +469,30 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
  * Called when new audio is loaded
  */
 /**
+ * Clear the infinite canvas and its context
+ * Called when fundamental rendering parameters change (zoom, frequency scale)
+ * Each zoom level = new self (new infinite canvas)
+ */
+function clearInfiniteCanvas() {
+    if (infiniteSpectrogramCanvas) {
+        const ctx = infiniteSpectrogramCanvas.getContext('2d');
+        ctx.clearRect(0, 0, infiniteSpectrogramCanvas.width, infiniteSpectrogramCanvas.height);
+        infiniteSpectrogramCanvas.width = 0;
+        infiniteSpectrogramCanvas.height = 0;
+        infiniteSpectrogramCanvas = null;
+    }
+    
+    // Clear context
+    infiniteCanvasContext = {
+        startSample: null,
+        endSample: null,
+        frequencyScale: null
+    };
+    
+    console.log('🧹 Infinite canvas cleared - ready for new self');
+}
+
+/**
  * Reset spectrogram state without clearing the display canvas
  * Used during transitions to allow re-rendering while keeping old spectrogram visible
  */
@@ -434,6 +500,9 @@ export function resetSpectrogramState() {
     completeSpectrogramRendered = false;
     renderingInProgress = false;
     State.setSpectrogramInitialized(false);
+    
+    // 🏛️ Clear infinite canvas and context (handles both canvas and context)
+    clearInfiniteCanvas();
     
     // Clear cached canvases but NOT the display canvas
     if (cachedSpectrogramCanvas) {
@@ -446,19 +515,6 @@ export function resetSpectrogramState() {
             console.warn('⚠️ Error clearing cached canvas:', e);
         }
         cachedSpectrogramCanvas = null;
-    }
-    
-    // Clear infinite canvas
-    if (infiniteSpectrogramCanvas) {
-        try {
-            const infiniteCtx = infiniteSpectrogramCanvas.getContext('2d');
-            infiniteCtx.clearRect(0, 0, infiniteSpectrogramCanvas.width, infiniteSpectrogramCanvas.height);
-            infiniteSpectrogramCanvas.width = 0;
-            infiniteSpectrogramCanvas.height = 0;
-        } catch (e) {
-            console.warn('⚠️ Error clearing infinite canvas:', e);
-        }
-        infiniteSpectrogramCanvas = null;
     }
     
     // Clean up temporary canvases
@@ -627,7 +683,8 @@ function calculateStretchFactor(playbackRate, frequencyScale) {
  * Returns a canvas element with the viewport rendered
  */
 export function getSpectrogramViewport(playbackRate) {
-    if (!infiniteSpectrogramCanvas || !completeSpectrogramRendered) {
+    // 🏛️ Check for infinite canvas (works for both full view and temple mode!)
+    if (!infiniteSpectrogramCanvas) {
         return null;
     }
     
@@ -720,13 +777,34 @@ export function getSpectrogramViewport(playbackRate) {
     return viewportCanvas;
 }
 
+/**
+ * Update spectrogram viewport with GPU-accelerated stretching
+ * 
+ * PLAYBACK RATE PHYSICS:
+ * - Slower playback (< 1.0) = lower frequencies (like slowing a record)
+ *   → All content shifts DOWN in frequency space
+ *   → Spectrogram compresses vertically (less space needed)
+ *   → Black gap appears at TOP (no high-frequency content)
+ * 
+ * - Faster playback (> 1.0) = higher frequencies (like speeding a record)
+ *   → All content shifts UP in frequency space  
+ *   → Spectrogram stretches vertically (more space needed for higher freqs)
+ *   → Content fills viewport and beyond
+ */
 export function updateSpectrogramViewport(playbackRate) {
-    if (!infiniteSpectrogramCanvas || !completeSpectrogramRendered) {
-        return; // Not ready yet
+    // 🏛️ Check for infinite canvas (works for both full view and temple mode!)
+    if (!infiniteSpectrogramCanvas) {
+        console.log(`⚠️ updateSpectrogramViewport: No infinite canvas! playbackRate=${playbackRate}`);
+        return; // Not ready yet (no infinite canvas created)
     }
     
     const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
+    if (!canvas) {
+        console.log(`⚠️ updateSpectrogramViewport: No spectrogram canvas!`);
+        return;
+    }
+    
+    console.log(`🎨 updateSpectrogramViewport: stretching with playbackRate=${playbackRate}, frequencyScale=${State.frequencyScale}`);
     
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
@@ -735,6 +813,7 @@ export function updateSpectrogramViewport(playbackRate) {
     // 🔥 Calculate stretch factor based on frequency scale!
     const stretchFactor = calculateStretchFactor(playbackRate, State.frequencyScale);
     const stretchedHeight = Math.floor(height * stretchFactor);
+    console.log(`   Stretch factor: ${stretchFactor.toFixed(3)}, stretchedHeight: ${stretchedHeight}px (from ${height}px)`);
     
     // Clear viewport
     ctx.clearRect(0, 0, width, height);
@@ -840,13 +919,26 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
     
+    // Calculate sample range (needed for context check)
+    const sampleRate = 44100;
+    const startSample = Math.floor(startSeconds * sampleRate);
+    const endSample = Math.floor(endSeconds * sampleRate);
+    
+    // 🏛️ Check if we need to re-render due to context change
+    const needsRerender = infiniteSpectrogramCanvas &&
+        (infiniteCanvasContext.startSample !== startSample ||
+         infiniteCanvasContext.endSample !== endSample ||
+         infiniteCanvasContext.frequencyScale !== State.frequencyScale);
+    
+    if (needsRerender) {
+        console.log('🔄 Context changed - clearing old self and re-rendering');
+        console.log(`   Old: ${infiniteCanvasContext.startSample}-${infiniteCanvasContext.endSample}, scale=${infiniteCanvasContext.frequencyScale}`);
+        console.log(`   New: ${startSample}-${endSample}, scale=${State.frequencyScale}`);
+        clearInfiniteCanvas();
+    }
+    
     try {
         const startTime = performance.now();
-        
-        // Calculate sample range
-        const sampleRate = 44100;
-        const startSample = Math.floor(startSeconds * sampleRate);
-        const endSample = Math.floor(endSeconds * sampleRate);
         const regionSamples = State.completeSamplesArray.slice(startSample, endSample);
         const totalSamples = regionSamples.length;
         const duration = endSeconds - startSeconds;
@@ -881,15 +973,16 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             await workerPool.initialize();
         }
         
-        // Get y position helper - convert bins to frequencies and match tick positioning
+        // Helper function to calculate y position based on frequency scale
+        // 🔥 RENDER AT NEUTRAL (1x) - NO playback rate scaling during rendering!
+        // CRITICAL: Convert bin indices to actual frequencies to match tick positioning!
         const getYPosition = (binIndex, totalBins, canvasHeight) => {
-            const currentPlaybackRate = State.currentPlaybackRate || 1.0;
-            
             // Get original sample rate from metadata (matches spectrogram-axis-renderer.js)
             const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
             const originalNyquist = originalSampleRate / 2;
             
             // Convert bin index to actual frequency in Hz
+            // Bin 0 = 0 Hz, Bin (totalBins-1) = Nyquist
             const frequency = (binIndex / totalBins) * originalNyquist;
             
             if (State.frequencyScale === 'logarithmic') {
@@ -899,20 +992,17 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
                 const logMin = Math.log10(minFreq);
                 const logMax = Math.log10(originalNyquist);
                 const logFreq = Math.log10(freqSafe);
-                let normalizedLog = (logFreq - logMin) / (logMax - logMin);
-                // Apply playback rate scaling (this is for region rendering which may need it)
-                normalizedLog = Math.min(normalizedLog * currentPlaybackRate, 1.0);
+                const normalizedLog = (logFreq - logMin) / (logMax - logMin);
+                
                 return canvasHeight - (normalizedLog * canvasHeight);
             } else if (State.frequencyScale === 'sqrt') {
                 // Square root scale: normalize by Nyquist, then apply sqrt
-                let normalized = frequency / originalNyquist;
-                normalized = Math.min(normalized * currentPlaybackRate, 1.0);
+                const normalized = frequency / originalNyquist;
                 const sqrtNormalized = Math.sqrt(normalized);
                 return canvasHeight - (sqrtNormalized * canvasHeight);
             } else {
                 // Linear scale: normalize by Nyquist
-                let normalized = frequency / originalNyquist;
-                normalized = Math.min(normalized * currentPlaybackRate, 1.0);
+                const normalized = frequency / originalNyquist;
                 return canvasHeight - (normalized * canvasHeight);
             }
         };
@@ -988,8 +1078,41 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             drawResults
         );
         
-        // Write to canvas
-        ctx.putImageData(imageData, 0, 0);
+        // Write ImageData to temp canvas (neutral render at 1x)
+        console.log(`🎨 Writing ImageData to neutral render canvas...`);
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.putImageData(imageData, 0, 0);
+        
+        // 🏛️ Create/reuse infinite canvas (same as full view!)
+        const infiniteHeight = Math.floor(height * MAX_PLAYBACK_RATE);
+        infiniteSpectrogramCanvas = document.createElement('canvas');
+        infiniteSpectrogramCanvas.width = width;
+        infiniteSpectrogramCanvas.height = infiniteHeight;
+        const infiniteCtx = infiniteSpectrogramCanvas.getContext('2d');
+        
+        // Fill infinite canvas with black (silence color)
+        infiniteCtx.fillStyle = '#000';
+        infiniteCtx.fillRect(0, 0, width, infiniteHeight);
+        
+        // Place neutral render at BOTTOM of infinite canvas
+        infiniteCtx.drawImage(tempCanvas, 0, infiniteHeight - height);
+        
+        console.log(`🌊 Temple infinite canvas: ${width} × ${infiniteHeight}px`);
+        console.log(`   Placed neutral ${width} × ${height}px render at bottom`);
+        
+        // 🏛️ Record the context of this render
+        infiniteCanvasContext = {
+            startSample: startSample,
+            endSample: endSample,
+            frequencyScale: State.frequencyScale
+        };
+        console.log(`🏛️ New temple self created: Region (${startSample.toLocaleString()}-${endSample.toLocaleString()}), scale=${State.frequencyScale}`);
+        
+        // Cache for playhead redrawing (use temp canvas)
+        cachedSpectrogramCanvas = tempCanvas;
         
         const elapsed = performance.now() - startTime;
         console.log(`✅ Region spectrogram rendered in ${elapsed.toFixed(0)}ms`);
@@ -1001,6 +1124,12 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         positionAxisCanvas();
         initializeAxisPlaybackRate();
         drawFrequencyAxis();
+        
+        // 🏛️ Update viewport with current playback rate (GPU stretch!)
+        const playbackRate = State.currentPlaybackRate || 1.0;
+        console.log(`🏛️ Calling updateSpectrogramViewport with playbackRate=${playbackRate}, infiniteCanvas exists=${!!infiniteSpectrogramCanvas}`);
+        updateSpectrogramViewport(playbackRate);
+        console.log(`🏛️ Viewport update complete`);
         
     } catch (error) {
         console.error('❌ Error rendering region spectrogram:', error);

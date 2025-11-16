@@ -4,6 +4,7 @@
  */
 
 import * as State from './audio-state.js';
+import { zoomState } from './zoom-state.js';
 
 // Debug flag for axis drawing logs (set to true to enable detailed logging)
 const DEBUG_AXIS = false;
@@ -33,13 +34,25 @@ export function drawWaveformXAxis() {
     // Clear canvas (transparent background)
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
-    // Need start/end times to calculate tick positions
-    if (!State.dataStartTime || !State.dataEndTime) {
+    // 🏛️ Use zoom state for time range
+    let displayStartTime, displayEndTime;
+    
+    if (zoomState.mode === 'temple' && zoomState.isInitialized()) {
+        // Zoomed: show zoomed time range
+        displayStartTime = zoomState.sampleToRealTimestamp(zoomState.currentViewStartSample);
+        displayEndTime = zoomState.sampleToRealTimestamp(zoomState.currentViewEndSample);
+    } else {
+        // Full view: show full time range
+        displayStartTime = State.dataStartTime;
+        displayEndTime = State.dataEndTime;
+    }
+    
+    if (!displayStartTime || !displayEndTime) {
         return; // No data loaded yet
     }
     
-    const startTimeUTC = new Date(State.dataStartTime);
-    const endTimeUTC = new Date(State.dataEndTime);
+    const startTimeUTC = new Date(displayStartTime);
+    const endTimeUTC = new Date(displayEndTime);
     
     // Calculate actual time span in seconds (not playback duration!)
     const actualTimeSpanSeconds = (endTimeUTC.getTime() - startTimeUTC.getTime()) / 1000;

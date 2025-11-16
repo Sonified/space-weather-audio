@@ -5,6 +5,7 @@
 
 import * as State from './audio-state.js';
 import { getCachedSpectrogramCanvas } from './spectrogram-complete-renderer.js';
+import { zoomState } from './zoom-state.js';
 
 // Track last playhead position to avoid unnecessary redraws
 let lastPlayheadX = -1;
@@ -30,8 +31,16 @@ export function drawSpectrogramPlayhead() {
     
     // Calculate playhead position
     if (State.totalAudioDuration > 0 && State.currentAudioPosition >= 0) {
+        // 🏛️ Use zoom-aware conversion
+        let playheadX;
+        if (zoomState.isInitialized()) {
+            const sample = zoomState.timeToSample(State.currentAudioPosition);
+            playheadX = Math.floor(zoomState.sampleToPixel(sample, width));
+        } else {
+            // Fallback to old behavior if zoom state not initialized
         const progress = Math.min(State.currentAudioPosition / State.totalAudioDuration, 1.0);
-        const playheadX = Math.floor(progress * width);
+            playheadX = Math.floor(progress * width);
+        }
         
         // Only redraw if playhead moved to a different pixel
         if (playheadX === lastPlayheadX) {
@@ -96,8 +105,16 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
     
     if (!State.totalAudioDuration || State.totalAudioDuration === 0) return;
     
+    // 🏛️ Use zoom-aware conversion
+    let previewX;
+    if (zoomState.isInitialized()) {
+        const sample = zoomState.timeToSample(targetPosition);
+        previewX = Math.floor(zoomState.sampleToPixel(sample, width));
+    } else {
+        // Fallback to old behavior if zoom state not initialized
     const progress = Math.min(targetPosition / State.totalAudioDuration, 1.0);
-    const previewX = Math.floor(progress * width);
+        previewX = Math.floor(progress * width);
+    }
     
     // KEEP IT SIMPLE: Clear and redraw from cache (like waveform does)
     ctx.clearRect(0, 0, width, height);

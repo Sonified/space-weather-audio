@@ -13,8 +13,10 @@
  */
 
 import * as State from './audio-state.js';
-import { drawWaveformWithSelection, updatePlaybackIndicator } from './waveform-renderer.js';
+import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
+import { zoomState } from './zoom-state.js';
+import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState } from './spectrogram-complete-renderer.js';
 
 // Region data structure
 let regions = [];
@@ -205,18 +207,29 @@ export function removeAddRegionButton() {
 function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSeconds) {
     if (!State.dataStartTime || !State.dataEndTime) return;
     
+    // 🏛️ Check if zoom state is initialized (required for sample calculations)
+    if (!zoomState.isInitialized()) {
+        console.warn('⚠️ Cannot create region: zoom state not initialized yet');
+        return;
+    }
+    
     console.log('🎯 Creating region from selection:', selectionStartSeconds, '-', selectionEndSeconds, 'seconds');
     console.log('   Data start:', State.dataStartTime);
     console.log('   Total audio duration:', State.totalAudioDuration);
     
-    // Convert selection times (in seconds from start of audio) to ISO timestamps
-    const dataStartMs = State.dataStartTime.getTime();
-    const startTimeMs = dataStartMs + (selectionStartSeconds * 1000);
-    const endTimeMs = dataStartMs + (selectionEndSeconds * 1000);
+    // 🏛️ Convert selection times to absolute sample indices (the eternal truth)
+    const startSample = zoomState.timeToSample(selectionStartSeconds);
+    const endSample = zoomState.timeToSample(selectionEndSeconds);
     
-    const startTime = new Date(startTimeMs).toISOString();
-    const endTime = new Date(endTimeMs).toISOString();
+    // Convert to real-world timestamps (for display/export)
+    const startTimestamp = zoomState.sampleToRealTimestamp(startSample);
+    const endTimestamp = zoomState.sampleToRealTimestamp(endSample);
     
+    const startTime = startTimestamp ? startTimestamp.toISOString() : null;
+    const endTime = endTimestamp ? endTimestamp.toISOString() : null;
+    
+    console.log('   Region start sample:', startSample.toLocaleString());
+    console.log('   Region end sample:', endSample.toLocaleString());
     console.log('   Region start time:', startTime);
     console.log('   Region end time:', endTime);
     
@@ -225,11 +238,18 @@ function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSecon
         region.expanded = false;
     });
     
-    // Create new region
+    // Create new region with both sample indices and timestamps
     const newRegion = {
         id: regions.length > 0 ? Math.max(...regions.map(r => r.id)) + 1 : 1,
+        
+        // 🏛️ Sacred walls (STORED as absolute sample indices)
+        startSample: startSample,
+        endSample: endSample,
+        
+        // 📅 Display timestamps (DERIVED, kept for export/labels)
         startTime: startTime,
         stopTime: endTime,
+        
         featureCount: 1,
         features: [{
             type: 'Impulsive',
@@ -312,20 +332,36 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
     
     // Draw highlights for each region
     regions.forEach((region, index) => {
-        // Convert region times to seconds from start (same as selectionStart/End)
-        const regionStartMs = new Date(region.startTime).getTime();
-        const regionEndMs = new Date(region.stopTime).getTime();
+        // 🏛️ Use sample indices if available (new format), otherwise fall back to timestamps (backward compatibility)
+        let regionStartSeconds, regionEndSeconds;
         
-        const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
-        const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+        if (region.startSample !== undefined && region.endSample !== undefined) {
+            // New format: convert from eternal sample indices
+            regionStartSeconds = zoomState.sampleToTime(region.startSample);
+            regionEndSeconds = zoomState.sampleToTime(region.endSample);
+        } else {
+            // Old format: convert from timestamps (backward compatibility)
+            const regionStartMs = new Date(region.startTime).getTime();
+            const regionEndMs = new Date(region.stopTime).getTime();
+            regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+            regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+        }
         
         // console.log(`   Drawing region ${index}: ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
         
-        // Use EXACT same logic as yellow selection box
-        const startProgress = regionStartSeconds / State.totalAudioDuration;
-        const endProgress = regionEndSeconds / State.totalAudioDuration;
-        const startX = startProgress * canvasWidth;
-        const endX = endProgress * canvasWidth;
+        // 🏛️ Use zoom-aware conversion for pixel positioning
+        let startX, endX;
+        if (zoomState.isInitialized()) {
+            // Convert from sample indices to pixels using zoom state
+            startX = zoomState.sampleToPixel(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds), canvasWidth);
+            endX = zoomState.sampleToPixel(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds), canvasWidth);
+        } else {
+            // Fallback to old behavior if zoom state not initialized
+            const startProgress = regionStartSeconds / State.totalAudioDuration;
+            const endProgress = regionEndSeconds / State.totalAudioDuration;
+            startX = startProgress * canvasWidth;
+            endX = endProgress * canvasWidth;
+        }
         const highlightWidth = endX - startX;
         
         // Draw filled rectangle (EXACT same pattern as yellow box)
@@ -430,25 +466,43 @@ export function handleSpectrogramSelection(startY, endY, canvasHeight, startX, e
     let startTime = null;
     let endTime = null;
     
-    if (startX !== null && endX !== null && State.dataStartTime && State.dataEndTime && State.totalAudioDuration) {
-        const dataStartMs = State.dataStartTime.getTime();
-        const dataEndMs = State.dataEndTime.getTime();
-        const totalDurationMs = dataEndMs - dataStartMs;
-        
-        // Convert pixel positions to progress (0-1)
-        const startProgress = Math.max(0, Math.min(1, startX / canvasWidth));
-        const endProgress = Math.max(0, Math.min(1, endX / canvasWidth));
-        
-        // Convert progress to timestamps
-        const startTimeMs = dataStartMs + (startProgress * totalDurationMs);
-        const endTimeMs = dataStartMs + (endProgress * totalDurationMs);
-        
-        // Ensure start is before end
-        const actualStartMs = Math.min(startTimeMs, endTimeMs);
-        const actualEndMs = Math.max(startTimeMs, endTimeMs);
-        
-        startTime = new Date(actualStartMs).toISOString();
-        endTime = new Date(actualEndMs).toISOString();
+    if (startX !== null && endX !== null && State.dataStartTime && State.dataEndTime) {
+        // 🏛️ Use zoom-aware conversion
+        if (zoomState.isInitialized()) {
+            const startSample = zoomState.pixelToSample(startX, canvasWidth);
+            const endSample = zoomState.pixelToSample(endX, canvasWidth);
+            const startTimestamp = zoomState.sampleToRealTimestamp(startSample);
+            const endTimestamp = zoomState.sampleToRealTimestamp(endSample);
+            
+            if (startTimestamp && endTimestamp) {
+                // Ensure start is before end
+                const actualStartMs = Math.min(startTimestamp.getTime(), endTimestamp.getTime());
+                const actualEndMs = Math.max(startTimestamp.getTime(), endTimestamp.getTime());
+                
+                startTime = new Date(actualStartMs).toISOString();
+                endTime = new Date(actualEndMs).toISOString();
+            }
+        } else {
+            // Fallback to old behavior if zoom state not initialized
+            const dataStartMs = State.dataStartTime.getTime();
+            const dataEndMs = State.dataEndTime.getTime();
+            const totalDurationMs = dataEndMs - dataStartMs;
+            
+            // Convert pixel positions to progress (0-1)
+            const startProgress = Math.max(0, Math.min(1, startX / canvasWidth));
+            const endProgress = Math.max(0, Math.min(1, endX / canvasWidth));
+            
+            // Convert progress to timestamps
+            const startTimeMs = dataStartMs + (startProgress * totalDurationMs);
+            const endTimeMs = dataEndMs + (endProgress * totalDurationMs);
+            
+            // Ensure start is before end
+            const actualStartMs = Math.min(startTimeMs, endTimeMs);
+            const actualEndMs = Math.max(startTimeMs, endTimeMs);
+            
+            startTime = new Date(actualStartMs).toISOString();
+            endTime = new Date(actualEndMs).toISOString();
+        }
     }
     
     // Update feature data
@@ -629,7 +683,15 @@ function createRegionCard(region, index) {
     });
     header.querySelector('.zoom-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        // Zoom functionality can be added here
+        
+        // Check if we're already zoomed into THIS region
+        if (zoomState.mode === 'temple' && zoomState.activeTempleId === region.id) {
+            // We're zoomed in - zoom back out
+            zoomToFull();
+        } else {
+            // Zoom into this region
+            zoomToRegion(index);
+        }
     });
     header.querySelector('.play-btn').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -902,13 +964,21 @@ function setSelectionFromActiveRegion() {
         return false;
     }
     
-    // Convert region ISO timestamps to seconds from start of audio
-    const dataStartMs = State.dataStartTime.getTime();
-    const regionStartMs = new Date(region.startTime).getTime();
-    const regionEndMs = new Date(region.stopTime).getTime();
+    // 🏛️ Use sample indices if available (new format), otherwise fall back to timestamps (backward compatibility)
+    let regionStartSeconds, regionEndSeconds;
     
-    const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
-    const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    if (region.startSample !== undefined && region.endSample !== undefined) {
+        // New format: convert from eternal sample indices
+        regionStartSeconds = zoomState.sampleToTime(region.startSample);
+        regionEndSeconds = zoomState.sampleToTime(region.endSample);
+    } else {
+        // Old format: convert from timestamps (backward compatibility)
+        const dataStartMs = State.dataStartTime.getTime();
+        const regionStartMs = new Date(region.startTime).getTime();
+        const regionEndMs = new Date(region.stopTime).getTime();
+        regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+        regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    }
     
     // Set selection to region's time range
     State.setSelectionStart(regionStartSeconds);
@@ -951,10 +1021,17 @@ export function toggleRegionPlay(index) {
         return;
     }
     
-    // Calculate region start position
-    const dataStartMs = State.dataStartTime.getTime();
-    const regionStartMs = new Date(region.startTime).getTime();
-    const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+    // 🏛️ Calculate region start position (use sample indices if available)
+    let regionStartSeconds;
+    if (region.startSample !== undefined) {
+        // New format: convert from eternal sample index
+        regionStartSeconds = zoomState.sampleToTime(region.startSample);
+    } else {
+        // Old format: convert from timestamp (backward compatibility)
+        const dataStartMs = State.dataStartTime.getTime();
+        const regionStartMs = new Date(region.startTime).getTime();
+        regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+    }
     
     // Update region button to GREEN (playing state)
     region.playing = true;
@@ -1070,13 +1147,24 @@ export function resetRegionPlayButtonIfFinished() {
         return;
     }
     
-    // Check if current position is at or past the end of the region
-    const dataStartMs = State.dataStartTime.getTime();
-    const regionEndMs = new Date(region.stopTime).getTime();
-    const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    // 🏛️ Check if current position is at or past the end of the region (use sample indices if available)
+    let regionEndSeconds;
+    if (region.endSample !== undefined) {
+        // New format: convert from eternal sample index
+        regionEndSeconds = zoomState.sampleToTime(region.endSample);
+    } else {
+        // Old format: convert from timestamp (backward compatibility)
+        const dataStartMs = State.dataStartTime.getTime();
+        const regionEndMs = new Date(region.stopTime).getTime();
+        regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    }
     
     // If we're at or past the end of the region, reset it
     if (State.currentAudioPosition >= regionEndSeconds - 0.1) { // Small tolerance for timing
+        const region = regions[activePlayingRegionIndex];
+        const regionTime = `${formatTime(region.startTime)} – ${formatTime(region.stopTime)}`;
+        console.log(`🚪 PLAYHEAD EXITED REGION: Region ${activePlayingRegionIndex + 1} (${regionTime})`);
+        console.log(`   📍 Position: ${State.currentAudioPosition.toFixed(2)}s (region end: ${regionEndSeconds.toFixed(2)}s)`);
         resetRegionPlayButton(activePlayingRegionIndex);
         activePlayingRegionIndex = null;
         console.log('✅ Region playback finished - reset button');
@@ -1249,18 +1337,36 @@ export function createTestRegion() {
         return;
     }
     
-    const dataStartMs = State.dataStartTime.getTime();
-    const dataEndMs = State.dataEndTime.getTime();
-    const duration = dataEndMs - dataStartMs;
+    // 🏛️ Check if zoom state is initialized
+    if (!zoomState.isInitialized()) {
+        console.log('Zoom state not initialized - cannot create test region');
+        return;
+    }
     
     // Create a region in the middle 10% of the data
-    const startMs = dataStartMs + (duration * 0.45);
-    const endMs = dataStartMs + (duration * 0.55);
+    const totalDuration = State.totalAudioDuration;
+    const startSeconds = totalDuration * 0.45;
+    const endSeconds = totalDuration * 0.55;
+    
+    // 🏛️ Convert to sample indices
+    const startSample = zoomState.timeToSample(startSeconds);
+    const endSample = zoomState.timeToSample(endSeconds);
+    
+    // Convert to timestamps
+    const startTimestamp = zoomState.sampleToRealTimestamp(startSample);
+    const endTimestamp = zoomState.sampleToRealTimestamp(endSample);
     
     const newRegion = {
         id: regions.length > 0 ? Math.max(...regions.map(r => r.id)) + 1 : 1,
-        startTime: new Date(startMs).toISOString(),
-        stopTime: new Date(endMs).toISOString(),
+        
+        // 🏛️ Sacred walls (STORED as absolute sample indices)
+        startSample: startSample,
+        endSample: endSample,
+        
+        // 📅 Display timestamps (DERIVED)
+        startTime: startTimestamp ? startTimestamp.toISOString() : null,
+        stopTime: endTimestamp ? endTimestamp.toISOString() : null,
+        
         featureCount: 1,
         features: [{
             type: 'Impulsive',
@@ -1280,6 +1386,134 @@ export function createTestRegion() {
     setActiveRegion(regions.length - 1);
     
     console.log('✅ Test region created');
+}
+
+/**
+ * Zoom into a region (the introspective lens!)
+ * Makes the region fill the entire waveform/spectrogram view
+ */
+export function zoomToRegion(regionIndex) {
+    const region = regions[regionIndex];
+    if (!region) {
+        console.warn('⚠️ Cannot zoom: region not found');
+        return;
+    }
+    
+    // 🏛️ Check if zoom state is initialized
+    if (!zoomState.isInitialized()) {
+        console.warn('⚠️ Cannot zoom: zoom state not initialized');
+        return;
+    }
+    
+    // 🏛️ Handle backward compatibility: if region doesn't have sample indices, we can't zoom
+    if (region.startSample === undefined || region.endSample === undefined) {
+        console.warn('⚠️ Cannot zoom: region missing sample indices (old format). Please recreate this region.');
+        return;
+    }
+    
+    console.log(`🔍 Zooming into region ${regionIndex + 1} (samples ${region.startSample.toLocaleString()}-${region.endSample.toLocaleString()})`);
+    
+    // 🏛️ Hide "Add Region" button when entering temple mode
+    hideAddRegionButton();
+    
+    // If we were zoomed into a different region, reset its button first
+    if (zoomState.mode === 'temple' && zoomState.activeTempleId !== region.id) {
+        const oldRegionCard = document.querySelector(`[data-region-id="${zoomState.activeTempleId}"]`);
+        if (oldRegionCard) {
+            const oldZoomBtn = oldRegionCard.querySelector('.zoom-btn');
+            if (oldZoomBtn) {
+                oldZoomBtn.textContent = '🔍';
+                oldZoomBtn.title = 'Zoom to region';
+            }
+        }
+    }
+    
+    // Update zoom state to this region's bounds
+    zoomState.mode = 'temple';
+    zoomState.currentViewStartSample = region.startSample;
+    zoomState.currentViewEndSample = region.endSample;
+    zoomState.activeTempleId = region.id;
+    
+    // 🚩 RAISE THE FLAG! We're respecting this temple's boundaries
+    // Set selection to region bounds (for worklet boundaries)
+    const regionStartSeconds = zoomState.sampleToTime(region.startSample);
+    const regionEndSeconds = zoomState.sampleToTime(region.endSample);
+    State.setSelectionStart(regionStartSeconds);
+    State.setSelectionEnd(regionEndSeconds);
+    // DON'T force looping - let user control it via loop toggle!
+    // State.setIsLooping stays whatever the user set it to
+    updateWorkletSelection(); // Send boundaries to worklet
+    
+    // Set as active region
+    setActiveRegion(regionIndex);
+    
+    // Re-render waveform for zoomed range
+    drawWaveform();
+    
+    // Re-render spectrogram for zoomed range
+    renderCompleteSpectrogramForRegion(regionStartSeconds, regionEndSeconds);
+    
+    // Update zoom button for THIS region
+    const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+    if (regionCard) {
+        const zoomBtn = regionCard.querySelector('.zoom-btn');
+        if (zoomBtn) {
+            zoomBtn.textContent = '↩️';
+            zoomBtn.title = 'Return to full view';
+        }
+    }
+    
+    console.log(`🔍 Temple boundaries set: ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
+    console.log(`🚩 Flag raised - respecting temple walls`);
+    console.log(`🔍 Zoomed to ${zoomState.getZoomLevel().toFixed(1)}x - the introspective lens is open! 🦋`);
+    console.log(`🔄 ZOOM MODE TOGGLE: full view → temple mode (region ${regionIndex + 1})`);
+}
+
+/**
+ * Zoom back out to full view
+ */
+export function zoomToFull() {
+    if (!zoomState.isInitialized()) {
+        return;
+    }
+    
+    console.log('🌍 Zooming to full view');
+    
+    // 🚩 LOWER THE FLAG! No longer respecting boundaries
+    // Clear selection (free roaming)
+    State.setSelectionStart(null);
+    State.setSelectionEnd(null);
+    updateWorkletSelection(); // Clear boundaries in worklet
+    
+    // Reset zoom state to full view
+    zoomState.mode = 'full';
+    zoomState.currentViewStartSample = 0;
+    zoomState.currentViewEndSample = zoomState.totalSamples;
+    zoomState.activeTempleId = null;
+    
+    // Reset spectrogram state to allow re-rendering
+    resetSpectrogramState();
+    
+    // Re-render waveform for full view
+    drawWaveform();
+    
+    // Re-render spectrogram for full view
+    renderCompleteSpectrogram();
+    
+    // Update ALL zoom buttons back to 🔍
+    regions.forEach(region => {
+        const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+        if (regionCard) {
+            const zoomBtn = regionCard.querySelector('.zoom-btn');
+            if (zoomBtn) {
+                zoomBtn.textContent = '🔍';
+                zoomBtn.title = 'Zoom to region';
+            }
+        }
+    });
+    
+    console.log('🌍 Returned to full view - flag lowered, free roaming restored! 🏛️');
+    console.log(`🔄 ZOOM MODE TOGGLE: temple mode → full view`);
 }
 
 // Export state getters for external access

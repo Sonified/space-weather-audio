@@ -10,6 +10,7 @@ import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } fro
 import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
 import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
+import { zoomState } from './zoom-state.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -795,6 +796,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     document.getElementById('sampleCount').textContent = totalWorkletSamples.toLocaleString(); // Update with actual
                     console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / 44100).toFixed(2)}s (actual samples: ${totalWorkletSamples.toLocaleString()}, expected: ${totalSamples.toLocaleString()})`);
                     
+                    // 🏛️ Initialize zoom state with total sample count
+                    zoomState.initialize(totalWorkletSamples);
+                    
                     // 🎯 CRITICAL FIX: Wait for worklet to confirm it has buffered all samples
                     // Set up one-time listener for buffer confirmation
                     const bufferStatusHandler = (event) => {
@@ -1408,6 +1412,10 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     
     // 🎯 CRITICAL FIX: Wait for worklet to confirm it has buffered all samples (Railway path)
     const totalRailwaySamples = samples.length;
+    
+    // 🏛️ Initialize zoom state with total sample count (Railway path)
+    zoomState.initialize(totalRailwaySamples);
+    
     const railwayBufferStatusHandler = (event) => {
         if (event.data.type === 'buffer-status') {
             const { samplesInBuffer, totalSamplesWritten } = event.data;
