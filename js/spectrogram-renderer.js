@@ -17,10 +17,18 @@ let spectrogramEndY = null;
 let spectrogramSelectionBox = null;
 
 export function drawSpectrogram() {
-    // 🔥 FIX: Cancel any existing RAF to prevent closure chain memory leak
-    if (State.spectrogramRAF !== null) {
-        cancelAnimationFrame(State.spectrogramRAF);
-        State.setSpectrogramRAF(null);
+    // 🔥 FIX: Clear RAF ID immediately to prevent duplicate scheduling
+    // This must happen FIRST before any early returns to prevent accumulation
+    const currentRAF = State.spectrogramRAF;
+    State.setSpectrogramRAF(null);
+    if (currentRAF !== null) {
+        cancelAnimationFrame(currentRAF);
+    }
+    
+    // 🔥 FIX: Check if document is still connected (not detached) before proceeding
+    // This prevents RAF callbacks from retaining references to detached documents
+    if (!document.body || !document.body.isConnected) {
+        return; // Document is detached, stop the loop
     }
     
     // Early exit: no analyser - stop the loop completely
@@ -28,7 +36,10 @@ export function drawSpectrogram() {
     
     // Early exit: not playing - schedule next frame to keep checking
     if (State.playbackState !== PlaybackState.PLAYING) {
-        State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
+        // 🔥 FIX: Only schedule RAF if document is still connected and not already scheduled
+        if (document.body && document.body.isConnected && State.spectrogramRAF === null) {
+            State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
+        }
         return;
     }
     
@@ -50,8 +61,10 @@ export function drawSpectrogram() {
     const actualScrollSpeed = State.spectrogramScrollSpeed;
     
     if (actualScrollSpeed <= 0) {
-        // 🔥 FIX: Store RAF ID before returning
-        State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
+        // 🔥 FIX: Store RAF ID before returning, but only if document is connected and not already scheduled
+        if (document.body && document.body.isConnected && State.spectrogramRAF === null) {
+            State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
+        }
         return;
     }
     
@@ -130,7 +143,14 @@ export function drawSpectrogram() {
     }
     
     // 🔥 FIX: Store RAF ID for proper cleanup
-    State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
+    // Only schedule if document is still connected and not already scheduled
+    // This prevents creating multiple RAF callbacks that accumulate
+    if (document.body && document.body.isConnected && State.spectrogramRAF === null) {
+        State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
+    } else {
+        // Document is detached or already scheduled - stop the loop
+        State.setSpectrogramRAF(null);
+    }
 }
 
 export function changeSpectrogramScrollSpeed() {

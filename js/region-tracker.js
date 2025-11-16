@@ -914,8 +914,14 @@ function resetRegionPlayButton(index) {
     const region = regions[index];
     region.playing = false;
     
+    // 🔥 FIX: Check if document.body exists (not detached) before querying DOM
+    // This prevents retaining references to detached documents
+    if (!document.body || !document.body.isConnected) {
+        return;
+    }
+    
     const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
-    if (regionCard) {
+    if (regionCard && regionCard.isConnected) {
         const playBtn = regionCard.querySelector('.play-btn');
         if (playBtn) {
             playBtn.classList.remove('playing');

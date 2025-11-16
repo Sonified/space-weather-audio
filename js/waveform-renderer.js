@@ -553,25 +553,46 @@ let lastDiagnosticTime = 0;
 
 // 🔥 HELPER: Start playback indicator loop (ensures cleanup before starting)
 export function startPlaybackIndicator() {
-    // Cancel any existing RAF to prevent parallel loops
-    if (State.playbackIndicatorRAF !== null) {
-        cancelAnimationFrame(State.playbackIndicatorRAF);
-        State.setPlaybackIndicatorRAF(null);
+    // 🔥 FIX: Check if document is connected before starting RAF
+    // This prevents creating RAF callbacks that will be retained by detached documents
+    if (!document.body || !document.body.isConnected) {
+        console.warn('⚠️ Cannot start playback indicator - document is detached');
+        return;
     }
+    
+    // 🔥 FIX: Prevent multiple simultaneous RAF loops
+    // If RAF is already scheduled, don't create another one
+    if (State.playbackIndicatorRAF !== null) {
+        // Already running, don't create duplicate
+        return;
+    }
+    
     // Start new loop
     State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
 }
 
 export function updatePlaybackIndicator() {
-    // 🔥 FIX: Cancel any existing RAF to prevent closure chain memory leak
-    if (State.playbackIndicatorRAF !== null) {
-        cancelAnimationFrame(State.playbackIndicatorRAF);
-        State.setPlaybackIndicatorRAF(null);
+    // 🔥 FIX: Clear RAF ID immediately to prevent duplicate scheduling
+    // This must happen FIRST before any early returns to prevent accumulation
+    const currentRAF = State.playbackIndicatorRAF;
+    State.setPlaybackIndicatorRAF(null);
+    if (currentRAF !== null) {
+        cancelAnimationFrame(currentRAF);
+    }
+    
+    // 🔥 FIX: Check if document is still connected (not detached) before proceeding
+    // This prevents RAF callbacks from retaining references to detached documents
+    if (!document.body || !document.body.isConnected) {
+        return; // Document is detached, stop the loop
     }
     
     // Early exit: dragging - schedule next frame but don't render
     if (State.isDragging) {
-        State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
+        // 🔥 FIX: Only schedule RAF if document is still connected and not already scheduled
+        // This prevents creating RAF callbacks that will be retained by detached documents
+        if (document.body && document.body.isConnected && State.playbackIndicatorRAF === null) {
+            State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
+        }
         return;
     }
     
@@ -596,7 +617,14 @@ export function updatePlaybackIndicator() {
     }
     
     // 🔥 FIX: Store RAF ID for proper cleanup
-    State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
+    // Only schedule if document is still connected and not already scheduled
+    // This prevents creating multiple RAF callbacks that accumulate
+    if (document.body && document.body.isConnected && State.playbackIndicatorRAF === null) {
+        State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
+    } else {
+        // Document is detached or already scheduled - stop the loop
+        State.setPlaybackIndicatorRAF(null);
+    }
 }
 
 export function initWaveformWorker() {
@@ -626,6 +654,11 @@ export function initWaveformWorker() {
             if (State.totalAudioDuration > 0) {
                 drawWaveformWithSelection();
             }
+            
+            // 🔥 FIX: Clear waveformData references after use to allow GC of transferred ArrayBuffers
+            // The mins/maxs buffers were transferred from worker - clearing helps GC
+            // Note: We've already copied the data to State, so it's safe to clear here
+            e.data.waveformData = null;
         } else if (type === 'reset-complete') {
             console.log('🎨 Waveform worker reset complete');
         }

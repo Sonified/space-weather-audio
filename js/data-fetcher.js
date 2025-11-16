@@ -810,6 +810,17 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 // Remove this handler
                                 State.workletNode.port.removeEventListener('message', bufferStatusHandler);
                                 
+                                // 🔥 FIX: Clear processedChunks array to release Float32Array references
+                                // This prevents the worker closure from retaining old audio data
+                                for (let i = 0; i < processedChunks.length; i++) {
+                                    if (processedChunks[i]) {
+                                        processedChunks[i].samples = null;
+                                        processedChunks[i].rawSamples = null;
+                                        processedChunks[i] = null;
+                                    }
+                                }
+                                processedChunks.length = 0;
+                                
                                 // Terminate worker (we're done!)
                                 worker.onmessage = null;  // Break closure chain
                                 worker.terminate();

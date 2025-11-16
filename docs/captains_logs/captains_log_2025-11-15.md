@@ -362,3 +362,73 @@ v2.05 - Commit: "v2.05 Fix: Handle shrinking case for slow playback rates (<1.0x
 
 ---
 
+## 🧹 Memory Leak Fixes: RAF Callbacks, Module Closures & ArrayBuffer Cleanup (v2.03)
+
+### Problem
+Memory profiler showed massive accumulation of:
+- **1,046,352 Function instances** (~4.7GB) - RAF callbacks accumulating
+- **Detached ScriptedAnimationController** - RAF loops retaining detached documents
+- **Float32Array/ArrayBuffer** - Module closures retaining large data arrays
+- **Worklet warning spam** - Console flooded when playback ends
+
+### Root Causes
+
+1. **RAF Callback Accumulation:**
+   - Multiple `requestAnimationFrame()` calls creating parallel loops
+   - RAF IDs not cleared immediately before early returns
+   - No duplicate prevention when scheduling new RAF callbacks
+
+2. **Module Closure Leaks:**
+   - Functions in same ES6 module capturing State module scope
+   - `updateCurrentPositionFromSamples()` called from worklet handler closure
+   - Module scope retaining all Float32Arrays and ArrayBuffers
+
+3. **Detached Document Leaks:**
+   - RAF callbacks executing after document detached
+   - Closures retaining references to detached DOM nodes
+   - No checks for `document.body.isConnected` before DOM access
+
+4. **Worklet Warning Spam:**
+   - Warning logged with 1% random chance every process() call
+   - Process() called ~344 times/second, causing spam
+
+### Solutions
+
+1. **RAF Callback Fixes:**
+   - Clear RAF ID immediately at start of `updatePlaybackIndicator()` and `drawSpectrogram()`
+   - Prevent duplicate RAF loops in `startPlaybackIndicator()` (return if already scheduled)
+   - Check `State.playbackIndicatorRAF === null` before scheduling new RAF
+   - Added document connection checks before all RAF scheduling
+
+2. **Module Closure Fixes:**
+   - Added `document.body.isConnected` checks in `updateCurrentPositionFromSamples()`
+   - Copy State values to local variables instead of repeated State access
+   - Check element connection before DOM updates
+
+3. **Detached Document Fixes:**
+   - Added `document.body.isConnected` checks in all RAF loops
+   - Stop RAF loops when document becomes detached
+   - Guard DOM access in `resetRegionPlayButton()` and `updatePlaybackIndicator()`
+
+4. **Worklet Warning Fix:**
+   - Added `stoppedWarningLogged` flag to log warning only once
+   - Reset flag when playback resumes
+   - Removed random chance logging
+
+5. **Memory Monitoring:**
+   - Changed interval from 10 seconds to 5 seconds
+   - Updated comment to reflect new interval
+
+### Files Modified
+- `js/waveform-renderer.js` - RAF cleanup, duplicate prevention, document checks
+- `js/spectrogram-renderer.js` - RAF cleanup, duplicate prevention, document checks
+- `js/main.js` - Module closure fixes, document checks
+- `js/region-tracker.js` - Document connection check
+- `js/spectrogram-complete-renderer.js` - Memory monitoring interval change
+- `workers/audio-worklet.js` - Warning spam fix
+
+### Version
+v2.03 - Commit: "v2.03 Fix: Memory leak fixes - RAF callback accumulation, module closure leaks, ArrayBuffer retention, worklet warning spam, memory monitoring every 5s"
+
+---
+

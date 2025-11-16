@@ -29,11 +29,15 @@ let cachedSpectrogramCanvas = null;
 let infiniteSpectrogramCanvas = null;
 const MAX_PLAYBACK_RATE = 15.0; // Maximum playback rate for infinite canvas sizing
 
+// Reusable temporary canvases (to avoid creating/destroying many canvases)
+let tempStretchCanvas = null;
+let tempShrinkCanvas = null;
+
 // Memory monitoring
 let memoryMonitorInterval = null;
 let memoryBaseline = null;
 let memoryHistory = [];
-const MEMORY_HISTORY_SIZE = 20; // Keep last 20 readings (3+ minutes at 10s intervals)
+const MEMORY_HISTORY_SIZE = 20; // Keep last 20 readings (1.7 minutes at 5s intervals)
 
 /**
  * Log memory usage for monitoring
@@ -103,8 +107,8 @@ function memoryHealthCheck() {
 export function startMemoryMonitoring() {
     if (memoryMonitorInterval) return;
     
-    console.log('🏥 Starting memory health monitoring (every 10 seconds)');
-    memoryMonitorInterval = setInterval(memoryHealthCheck, 10000);
+    console.log('🏥 Starting memory health monitoring (every 5 seconds)');
+    memoryMonitorInterval = setInterval(memoryHealthCheck, 5000);
     
     // Initial check
     memoryHealthCheck();
@@ -330,6 +334,11 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
                         }
                     }
                 }
+                
+                // 🔥 FIX: Clear magnitudes reference after processing to allow GC of ArrayBuffer
+                // The magnitudes Float32Array's buffer was transferred from worker
+                // Clearing the reference helps GC reclaim the ArrayBuffer
+                result.magnitudes = null;
             }
             
             // Log progress with worker info
@@ -442,6 +451,18 @@ export function resetSpectrogramState() {
         }
         infiniteSpectrogramCanvas = null;
     }
+    
+    // Clean up temporary canvases
+    if (tempStretchCanvas) {
+        tempStretchCanvas.width = 0;
+        tempStretchCanvas.height = 0;
+        tempStretchCanvas = null;
+    }
+    if (tempShrinkCanvas) {
+        tempShrinkCanvas.width = 0;
+        tempShrinkCanvas.height = 0;
+        tempShrinkCanvas = null;
+    }
 }
 
 export function clearCompleteSpectrogram() {
@@ -481,6 +502,18 @@ export function clearCompleteSpectrogram() {
             console.warn('⚠️ Error clearing infinite canvas:', e);
         }
         infiniteSpectrogramCanvas = null;
+    }
+    
+    // Clean up temporary canvases
+    if (tempStretchCanvas) {
+        tempStretchCanvas.width = 0;
+        tempStretchCanvas.height = 0;
+        tempStretchCanvas = null;
+    }
+    if (tempShrinkCanvas) {
+        tempShrinkCanvas.width = 0;
+        tempShrinkCanvas.height = 0;
+        tempShrinkCanvas = null;
     }
     
     completeSpectrogramRendered = false;
@@ -596,10 +629,17 @@ export function getSpectrogramViewport(playbackRate) {
     
     if (stretchedHeight >= height) {
         // STRETCHING case (playbackRate >= 1.0): Show bottom slice of stretched image
-        const tempStretch = document.createElement('canvas');
-        tempStretch.width = width;
-        tempStretch.height = stretchedHeight;
-        const stretchCtx = tempStretch.getContext('2d');
+        // Reuse or create temporary stretch canvas
+        if (!tempStretchCanvas || tempStretchCanvas.width !== width || tempStretchCanvas.height !== stretchedHeight) {
+            if (tempStretchCanvas) {
+                tempStretchCanvas.width = 0;
+                tempStretchCanvas.height = 0;
+            }
+            tempStretchCanvas = document.createElement('canvas');
+            tempStretchCanvas.width = width;
+            tempStretchCanvas.height = stretchedHeight;
+        }
+        const stretchCtx = tempStretchCanvas.getContext('2d');
         
         // Stretch the neutral render
         stretchCtx.drawImage(
@@ -612,7 +652,7 @@ export function getSpectrogramViewport(playbackRate) {
         
         // Extract bottom 450px
         ctx.drawImage(
-            tempStretch,
+            tempStretchCanvas,
             0, stretchedHeight - height,
             width, height,
             0, 0,
@@ -625,11 +665,17 @@ export function getSpectrogramViewport(playbackRate) {
         ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.fillRect(0, 0, width, height);
         
-        // Shrink the neutral render to stretchedHeight
-        const tempShrink = document.createElement('canvas');
-        tempShrink.width = width;
-        tempShrink.height = stretchedHeight;
-        const shrinkCtx = tempShrink.getContext('2d');
+        // Reuse or create temporary shrink canvas
+        if (!tempShrinkCanvas || tempShrinkCanvas.width !== width || tempShrinkCanvas.height !== stretchedHeight) {
+            if (tempShrinkCanvas) {
+                tempShrinkCanvas.width = 0;
+                tempShrinkCanvas.height = 0;
+            }
+            tempShrinkCanvas = document.createElement('canvas');
+            tempShrinkCanvas.width = width;
+            tempShrinkCanvas.height = stretchedHeight;
+        }
+        const shrinkCtx = tempShrinkCanvas.getContext('2d');
         
         shrinkCtx.drawImage(
             infiniteSpectrogramCanvas,
@@ -641,7 +687,7 @@ export function getSpectrogramViewport(playbackRate) {
         
         // Place shrunken render at BOTTOM of viewport
         ctx.drawImage(
-            tempShrink,
+            tempShrinkCanvas,
             0, 0,
             width, stretchedHeight,
             0, height - stretchedHeight,
@@ -673,10 +719,17 @@ export function updateSpectrogramViewport(playbackRate) {
     
     if (stretchedHeight >= height) {
         // STRETCHING case (playbackRate >= 1.0): Show bottom slice of stretched image
-        const tempStretch = document.createElement('canvas');
-        tempStretch.width = width;
-        tempStretch.height = stretchedHeight;
-        const stretchCtx = tempStretch.getContext('2d');
+        // Reuse or create temporary stretch canvas
+        if (!tempStretchCanvas || tempStretchCanvas.width !== width || tempStretchCanvas.height !== stretchedHeight) {
+            if (tempStretchCanvas) {
+                tempStretchCanvas.width = 0;
+                tempStretchCanvas.height = 0;
+            }
+            tempStretchCanvas = document.createElement('canvas');
+            tempStretchCanvas.width = width;
+            tempStretchCanvas.height = stretchedHeight;
+        }
+        const stretchCtx = tempStretchCanvas.getContext('2d');
         
         // Stretch the neutral render
         stretchCtx.drawImage(
@@ -689,7 +742,7 @@ export function updateSpectrogramViewport(playbackRate) {
         
         // Extract bottom 450px of stretched image
         ctx.drawImage(
-            tempStretch,
+            tempStretchCanvas,
             0, stretchedHeight - height,  // Source: bottom of stretched
             width, height,                // Source size
             0, 0,                         // Dest: top-left
@@ -703,11 +756,17 @@ export function updateSpectrogramViewport(playbackRate) {
         ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.fillRect(0, 0, width, height);
         
-        // Shrink the neutral render to stretchedHeight
-        const tempShrink = document.createElement('canvas');
-        tempShrink.width = width;
-        tempShrink.height = stretchedHeight;
-        const shrinkCtx = tempShrink.getContext('2d');
+        // Reuse or create temporary shrink canvas
+        if (!tempShrinkCanvas || tempShrinkCanvas.width !== width || tempShrinkCanvas.height !== stretchedHeight) {
+            if (tempShrinkCanvas) {
+                tempShrinkCanvas.width = 0;
+                tempShrinkCanvas.height = 0;
+            }
+            tempShrinkCanvas = document.createElement('canvas');
+            tempShrinkCanvas.width = width;
+            tempShrinkCanvas.height = stretchedHeight;
+        }
+        const shrinkCtx = tempShrinkCanvas.getContext('2d');
         
         shrinkCtx.drawImage(
             infiniteSpectrogramCanvas,
@@ -719,7 +778,7 @@ export function updateSpectrogramViewport(playbackRate) {
         
         // Place shrunken render at BOTTOM of viewport
         ctx.drawImage(
-            tempShrink,
+            tempShrinkCanvas,
             0, 0,                          // Source: entire shrunken image
             width, stretchedHeight,         // Source size
             0, height - stretchedHeight,   // Dest: place at bottom!

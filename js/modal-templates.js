@@ -504,6 +504,23 @@ export function createAwesfModal() {
 
 // Initialize and inject modals into the page
 export function initializeModals() {
+    // 🔥 FIX: Remove existing modals before creating new ones to prevent duplicates
+    // This prevents detached DOM nodes from accumulating
+    const existingModals = [
+        'participantModal',
+        'preSurveyModal',
+        'postSurveyModal',
+        'activityLevelModal',
+        'awesfModal'
+    ];
+    
+    existingModals.forEach(modalId => {
+        const existing = document.getElementById(modalId);
+        if (existing && existing.parentNode) {
+            existing.parentNode.removeChild(existing);
+        }
+    });
+    
     const participantModal = createParticipantModal();
     const preSurveyModal = createPreSurveyModal();
     const postSurveyModal = createPostSurveyModal();

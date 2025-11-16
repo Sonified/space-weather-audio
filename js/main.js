@@ -70,7 +70,14 @@ function formatDuration(seconds) {
 }
 
 function updateCurrentPositionFromSamples(samplesConsumed, totalSamples) {
-    if (!State.currentMetadata || !totalSamples || totalSamples <= 0 || samplesConsumed < 0) {
+    // 🔥 FIX: Check document connection first to prevent detached document leaks
+    if (!document.body || !document.body.isConnected) {
+        return;
+    }
+    
+    // 🔥 FIX: Access State.currentMetadata only when needed, don't retain reference
+    const currentMetadata = State.currentMetadata;
+    if (!currentMetadata || !totalSamples || totalSamples <= 0 || samplesConsumed < 0) {
         return;
     }
     
@@ -87,12 +94,22 @@ function updateCurrentPositionFromSamples(samplesConsumed, totalSamples) {
         return;
     }
     
-    document.getElementById('currentPosition').textContent = formatDuration(playbackPositionSeconds);
+    const currentPositionEl = document.getElementById('currentPosition');
+    if (currentPositionEl && currentPositionEl.isConnected) {
+        currentPositionEl.textContent = formatDuration(playbackPositionSeconds);
+    }
 }
 
 function stopPositionTracking() {
-    if (State.playbackPositionInterval) {
-        clearInterval(State.playbackPositionInterval);
+    // 🔥 FIX: Check document connection first to prevent detached document leaks
+    if (!document.body || !document.body.isConnected) {
+        return;
+    }
+    
+    // 🔥 FIX: Access State only when needed, don't retain reference
+    const interval = State.playbackPositionInterval;
+    if (interval) {
+        clearInterval(interval);
         State.setPlaybackPositionInterval(null);
     }
 }
@@ -355,7 +372,9 @@ export async function startStreaming(event) {
         clearCompleteSpectrogram();
         
         // Terminate and recreate waveform worker to free memory
+        // Note: initWaveformWorker() already handles cleanup, but we do it here too for safety
         if (State.waveformWorker) {
+            State.waveformWorker.onmessage = null;  // Break closure chain
             State.waveformWorker.terminate();
             console.log('🧹 Terminated waveform worker');
         }
@@ -599,7 +618,11 @@ export async function startStreaming(event) {
             console.log('🧹 Starting AGGRESSIVE memory cleanup...');
             // 🔥 FIX: Cancel RAF loops FIRST to prevent new detached callbacks
             cancelAllRAFLoops();
+            
+            // 🔥 FIX: Clear worklet message handler FIRST before clearing State arrays
+            // This prevents the closure from retaining references to old Float32Arrays
             State.workletNode.port.onmessage = null;
+            
             // Worklet handles fades internally now, just disconnect
             State.workletNode.disconnect();
             State.setWorkletNode(null);
@@ -609,6 +632,7 @@ export async function startStreaming(event) {
             }
             
             // 🧹 AGGRESSIVE CLEANUP: Explicitly null out large arrays
+            // NOTE: Worklet handler is already cleared above, so these won't be retained
             const oldDataLength = State.allReceivedData?.length || 0;
             const oldSamplesLength = State.completeSamplesArray?.length || 0;
             console.log(`🧹 Clearing old audio data: ${oldDataLength} chunks, ${oldSamplesLength.toLocaleString()} samples`);
@@ -755,9 +779,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.02 - Full Ferrari: Sample-Accurate Fades');
-    console.log('🏎️ [0ms] v2.02 Ferrari Solution: Moved ALL fades into worklet (loop, pause, resume, seek) for sample-accurate synchronization across all time domains');
-    console.log('🎚️ [0ms] GainNode is now ONLY for master volume control - worklet handles ALL time-based fades internally');
+    console.log('🌋 [0ms] volcano-audio v2.03 - Memory Leak Fixes & Performance Improvements');
+    console.log('🧹 [0ms] v2.03 Memory: Fixed RAF callback accumulation, module closure leaks, ArrayBuffer retention, and worklet warning spam');
+    console.log('⏱️ [0ms] Memory monitoring now runs every 5 seconds (was 10 seconds)');
     
     // Start memory health monitoring
     startMemoryMonitoring();

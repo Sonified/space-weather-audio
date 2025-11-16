@@ -68,6 +68,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.dataLoadingComplete = false;
         this.totalSamples = 0;
         this.processStartLogged = false; // For debugging TTFA
+        this.stoppedWarningLogged = false; // Track if we've logged the stopped warning
         
         // 🏎️ Pending seek (only used during crossfade seek)
         this.pendingSeekSample = null;
@@ -599,10 +600,20 @@ class SeismicProcessor extends AudioWorkletProcessor {
         
         if (!this.isPlaying) {
             channel.fill(0);
-            if (DEBUG_WORKLET && this.hasStarted && Math.random() < 0.01) {
+            // 🔥 FIX: Only log stopped warning once to prevent spam
+            // The worklet's process() continues to be called even after playback stops
+            // This is normal behavior - we just output silence
+            if (DEBUG_WORKLET && this.hasStarted && !this.stoppedWarningLogged) {
                 console.warn(`⚠️ WORKLET process(): isPlaying=FALSE - outputting silence! (readIndex=${this.readIndex}, samplesInBuffer=${this.samplesInBuffer})`);
+                this.stoppedWarningLogged = true;
             }
             return true;
+        }
+        
+        // 🔥 FIX: Reset warning flag when playback resumes
+        // This allows the warning to be logged again if playback stops again
+        if (this.stoppedWarningLogged) {
+            this.stoppedWarningLogged = false;
         }
         
         // 🏎️ AUTO-FADE: If we just started playing and we're not already fading in, START a fade-in!
