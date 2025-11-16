@@ -7,6 +7,7 @@
 import * as State from './audio-state.js';
 
 const SAMPLE_RATE = 44100; // Hz
+const ENABLE_DIAGNOSTICS = false; // Set to true to enable detailed selection diagnostics logging
 
 /**
  * Convert pixel X coordinate to all other coordinate systems
@@ -65,6 +66,8 @@ export function pixelToAllCoordinates(pixelX, canvasWidth) {
  * Print comprehensive diagnostic information for a selection
  */
 export function printSelectionDiagnostics(startPixelX, endPixelX, canvasWidth) {
+    if (!ENABLE_DIAGNOSTICS) return; // Skip if disabled
+    
     console.log('\n' + '='.repeat(80));
     console.log('🔍 SELECTION DIAGNOSTICS');
     console.log('='.repeat(80));

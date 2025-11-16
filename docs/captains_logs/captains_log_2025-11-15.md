@@ -188,3 +188,40 @@ v2.01 - Commit: "v2.01 Feature: Added feature time tracking and improved feature
 
 ---
 
+## 🎭 Bug Fix: Double Fade Prevention & Fade Time Optimization (v2.02)
+
+### Problem
+When seeking near the end of audio, two fades were happening simultaneously:
+1. **Seek fade-in** (from crossfade teleport)
+2. **Loop fade-out** (triggered by boundary check)
+
+This caused a collision where the seek fade wanted to fade IN while the loop fade wanted to fade OUT, resulting in clicks.
+
+### Root Cause
+The boundary check was running immediately after a seek teleport, before the seek fade-in completed. The worklet didn't know it had just teleported, so it panicked and started a loop fade-out while the seek fade-in was still running.
+
+### Solution
+Added `justTeleported` flag to give the worklet self-knowledge:
+- Set to `true` when completing a seek teleport (after fade-out, before fade-in)
+- Prevents boundary checks while flag is `true`
+- Cleared to `false` when fade-in completes
+- One flag, self-knowledge, no external grace periods
+
+### Fade Time Optimization
+- Hard-coded fade time to 5ms (works beautifully for all conditions!)
+- Removed fade time slider from UI
+- Exception: Very short loops (<200ms) still use 2ms to avoid fade artifacts
+- Kept the logic that skips fade entirely for audio-rate loops (<50ms)
+
+### Files Modified
+- `workers/audio-worklet.js` - Added justTeleported flag, hard-coded fade time to 5ms, removed set-fade-time handler
+- `index.html` - Removed fade time slider
+- `js/audio-player.js` - Removed changeFadeTime() and resetFadeTimeTo20() functions
+- `js/main.js` - Removed fade time imports and event listeners
+- `backend/collector_loop.py` - Version bump
+
+### Version
+v2.02 - Commit: "v2.02 Fix: Prevented double fade collision with justTeleported flag, hard-coded fade time to 5ms and removed fade time slider"
+
+---
+

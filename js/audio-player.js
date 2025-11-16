@@ -3,6 +3,9 @@
  * Playback controls: play/pause, speed, volume, loop, seek
  */
 
+// ===== DEBUG FLAGS =====
+const DEBUG_LOOP_FADES = true; // Enable loop fade logging
+
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
@@ -56,29 +59,14 @@ export function startPlayback() {
         State.audioContext.resume();
     }
     
-    // Tell worklet to resume
-    State.workletNode?.port.postMessage({ type: 'resume' });
-    
-    // Fade volume back to target level
-    if (State.gainNode && State.audioContext) {
-        const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-        State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-        State.gainNode.gain.setValueAtTime(State.gainNode.gain.value, State.audioContext.currentTime);
-        State.gainNode.gain.exponentialRampToValueAtTime(Math.max(0.01, targetVolume), State.audioContext.currentTime + 0.05);
-        console.log(`🔊 Fade-in on resume: ${State.gainNode.gain.value.toFixed(4)} → ${targetVolume.toFixed(2)} over 50ms`);
-    }
+    // 🏎️ AUTONOMOUS: Just tell worklet to play - it handles fade-in automatically
+    State.workletNode?.port.postMessage({ type: 'play' });
     
     // Restart playback indicator
     if (State.audioContext && State.totalAudioDuration > 0) {
         State.setLastUpdateTime(State.audioContext.currentTime);
         startPlaybackIndicator();
     }
-    
-    // COMMENTED OUT: Using complete spectrogram renderer instead of streaming
-    // // Restart spectrogram if needed
-    // if (State.analyserNode && !State.visualizationStarted) {
-    //     startVisualization();
-    // }
     
     // Update active region button
     updateActiveRegionPlayButton(true);
@@ -96,17 +84,9 @@ export function pausePlayback() {
     // 🔥 FIX: Cancel animation frame loops to prevent memory leaks
     cancelAllRAFLoops();
     
-    // Fade volume
-    if (State.gainNode && State.audioContext) {
-        State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-        State.gainNode.gain.setValueAtTime(State.gainNode.gain.value, State.audioContext.currentTime);
-        State.gainNode.gain.exponentialRampToValueAtTime(0.0001, State.audioContext.currentTime + 0.05);
-    }
-    
-    // Tell worklet to pause
-    setTimeout(() => {
-        State.workletNode?.port.postMessage({ type: 'pause' });
-    }, 50);
+    // 🏎️ AUTONOMOUS: Just tell worklet to pause - it handles fade-out automatically
+    // UI will update when worklet sends 'fade-complete' message
+    State.workletNode?.port.postMessage({ type: 'pause' });
     
     // Update master button
     const btn = document.getElementById('playPauseBtn');
@@ -126,7 +106,7 @@ export function pausePlayback() {
 
 export function togglePlayPause() {
     const currentState = `playbackState=${State.playbackState}, position=${State.currentAudioPosition?.toFixed(2) || 0}s`;
-    console.log(`🎵 Master play/pause button clicked - ${currentState}`);
+    if (DEBUG_LOOP_FADES) console.log(`🎵 Master play/pause button clicked - ${currentState}`);
     
     if (!State.audioContext) return;
     
@@ -206,7 +186,7 @@ export function updateWorkletSelection() {
         loop: State.isLooping
     });
     
-    console.log(`📤 Sent to worklet: selection=${State.selectionStart !== null ? State.selectionStart.toFixed(2) : 'null'}-${State.selectionEnd !== null ? State.selectionEnd.toFixed(2) : 'null'}, loop=${State.isLooping}`);
+    if (DEBUG_LOOP_FADES) console.log(`📤 Sent to worklet: selection=${State.selectionStart !== null ? State.selectionStart.toFixed(2) : 'null'}-${State.selectionEnd !== null ? State.selectionEnd.toFixed(2) : 'null'}, loop=${State.isLooping}`);
 }
 
 export function updatePlaybackSpeed() {
@@ -255,12 +235,13 @@ export function changeVolume() {
     
     document.getElementById('volumeValue').textContent = volume.toFixed(2);
     
-    if (State.gainNode && State.audioContext) {
-        // Linear ramp for volume slider (direct user control)
-        State.gainNode.gain.setValueAtTime(State.gainNode.gain.value, State.audioContext.currentTime);
-        State.gainNode.gain.linearRampToValueAtTime(volume, State.audioContext.currentTime + 0.05);
+    if (State.gainNode) {
+        // 🏎️ FERRARI: Direct volume control (constant gain, no time-based fades)
+        // GainNode is ONLY for master volume, worklet handles all time-based fades
+        State.gainNode.gain.value = volume;
     }
 }
+
 
 export function resetSpeedTo1() {
     const slider = document.getElementById('playbackSpeed');
@@ -288,23 +269,13 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         targetPosition = Math.max(0, Math.min(targetPosition, State.totalAudioDuration));
     }
     
-    console.log(`🎯 Seeking to ${targetPosition.toFixed(2)}s (shouldStartPlayback=${shouldStartPlayback})`);
+    if (DEBUG_LOOP_FADES) console.log(`🎯 Seeking to ${targetPosition.toFixed(2)}s (shouldStartPlayback=${shouldStartPlayback})`);
     
     // Set flag to prevent race condition in region finish detection
     State.setJustSeeked(true);
     
     const targetSample = Math.floor(targetPosition * 44100);
-    const CROSSFADE_TIME = 0.020;
-    const now = State.audioContext.currentTime;
     const wasPlaying = State.playbackState === PlaybackState.PLAYING;
-    
-    // Crossfade out if playing
-    if (State.gainNode && wasPlaying) {
-        const currentGain = State.gainNode.gain.value;
-        State.gainNode.gain.cancelScheduledValues(now);
-        State.gainNode.gain.setValueAtTime(currentGain, now);
-        State.gainNode.gain.linearRampToValueAtTime(0.0001, now + CROSSFADE_TIME);
-    }
     
     const performSeek = () => {
         // Update position tracking
@@ -313,29 +284,37 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         State.setLastWorkletUpdateTime(State.audioContext.currentTime);
         State.setLastUpdateTime(State.audioContext.currentTime);
         
-        // Send seek command to worklet
+        // 🏎️ AUTONOMOUS: Just tell worklet to seek - it handles crossfade automatically if playing
         State.workletNode.port.postMessage({ 
             type: 'seek',
-            samplePosition: targetSample,
-            forceResume: shouldStartPlayback  // Tell seek-ready handler if we want to start playback
+            position: targetPosition  // Send position in seconds, worklet converts to samples
         });
         
-        // Crossfade back in if playing or should start
-        if (State.gainNode && (wasPlaying || shouldStartPlayback)) {
-            const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-            const fadeStart = State.audioContext.currentTime;
-            State.gainNode.gain.cancelScheduledValues(fadeStart);
-            State.gainNode.gain.setValueAtTime(0.0001, fadeStart);
-            State.gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), fadeStart + CROSSFADE_TIME);
+        if (DEBUG_LOOP_FADES) {
+            console.log(`🎯 SEEK: Position ${targetPosition.toFixed(2)}s (${targetSample.toLocaleString()} samples), wasPlaying=${wasPlaying}`);
         }
         
-        // NOTE: No need to call startPlayback() here!
-        // The forceResume flag in the seek message will trigger auto-resume 
-        // once the buffer has samples (via the seek-ready handler)
+        // Check audio flow after a delay for debugging
+        if (DEBUG_LOOP_FADES) {
+            setTimeout(() => {
+                // Double-check audio is actually flowing
+                if (State.analyserNode) {
+                    const dataArray = new Float32Array(State.analyserNode.fftSize);
+                    State.analyserNode.getFloatTimeDomainData(dataArray);
+                    let nonZero = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        if (Math.abs(dataArray[i]) > 0.001) nonZero++;
+                    }
+                    console.log(`🔊 ANALYSER CHECK: ${nonZero}/${dataArray.length} non-zero samples in analyser`);
+                }
+            }, 15); // Check 15ms later
+        }
         
-        // Update playback state if starting
+        // 🏎️ AUTONOMOUS: If we want to start playback, tell worklet to play
+        // (It will handle fade-in automatically if needed)
         if (shouldStartPlayback) {
             State.setPlaybackState(PlaybackState.PLAYING);
+            State.workletNode.port.postMessage({ type: 'play' });
             
             // Update play/pause button to show "Pause"
             const btn = document.getElementById('playPauseBtn');
@@ -355,12 +334,8 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         }, 100);
     };
     
-    // Delay seek if we need to crossfade out first
-    if (wasPlaying) {
-        setTimeout(performSeek, CROSSFADE_TIME * 1000);
-    } else {
-        performSeek();
-    }
+    // 🏎️ FERRARI: Perform seek immediately - worklet handles fades internally!
+    performSeek();
     
     // Update status text
     const targetMinutes = Math.floor(targetPosition / 60);

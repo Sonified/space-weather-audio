@@ -453,34 +453,24 @@ export function setupWaveformInteraction() {
                 // Show "Add Region" button for region tracker
                 showAddRegionButton(newSelectionStart, newSelectionEnd);
                 
-                if (State.workletNode) {
-                    State.workletNode.port.postMessage({
-                        type: 'set-selection',
-                        start: null,
-                        end: null,
-                        loop: false
-                    });
-                }
+                // 🏠 AUTONOMOUS: Set selection state and send to worklet immediately
+                // No timeout needed - worklet uses selection when making decisions, no coordination required!
+                State.setSelectionStart(newSelectionStart);
+                State.setSelectionEnd(newSelectionEnd);
+                State.setIsLooping(newIsLooping);
+                updateWorkletSelection();  // Send selection to worklet immediately
                 
+                // Update visuals
                 State.setCurrentAudioPosition(newSelectionStart);
                 if (State.audioContext) {
                     State.setLastUpdateTime(State.audioContext.currentTime);
                 }
-                
-                State.setSelectionStart(newSelectionStart);
-                State.setSelectionEnd(newSelectionEnd);
                 drawWaveformWithSelection();
                 clearSpectrogramScrubPreview();  // Clear scrub preview
                 drawSpectrogramPlayhead();  // Update spectrogram immediately
                 
-                setTimeout(() => {
-                    State.setSelectionStart(newSelectionStart);
-                    State.setSelectionEnd(newSelectionEnd);
-                    State.setIsLooping(newIsLooping);
-                    updateWorkletSelection();
-                }, 25);
-                
                 // Seek to start and optionally start playback if playOnClick is enabled
+                // Worklet handles fades autonomously based on its current state
                 const shouldAutoPlay = document.getElementById('playOnClick').checked;
                 seekToPosition(newSelectionStart, shouldAutoPlay);
             } else {

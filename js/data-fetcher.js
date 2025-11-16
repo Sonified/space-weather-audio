@@ -605,6 +605,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                             });
                             console.log(`🚀 Sent 'start-immediately' to worklet`);
                             
+                            // Update playback state
+                            State.setPlaybackState(PlaybackState.PLAYING);
+                            
                             if (State.gainNode && State.audioContext) {
                                 const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
                                 State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
@@ -625,8 +628,12 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                             const playPauseBtn = document.getElementById('playPauseBtn');
                             playPauseBtn.disabled = false;
                             playPauseBtn.textContent = '⏸️ Pause';
-                            playPauseBtn.classList.remove('play-active');
+                            playPauseBtn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
                             playPauseBtn.classList.add('pause-active');
+                            
+                            // Update status
+                            document.getElementById('status').className = 'status info';
+                            document.getElementById('status').textContent = 'Playing...';
                             
                             // Start playback indicator (will draw when waveform is ready)
                             startPlaybackIndicator();

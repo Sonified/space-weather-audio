@@ -3,6 +3,9 @@
  * Main orchestration: initialization, startStreaming, event handlers
  */
 
+// ===== DEBUG FLAGS =====
+const DEBUG_LOOP_FADES = true; // Enable loop fade logging
+
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops } from './audio-player.js';
@@ -146,7 +149,9 @@ export async function initAudioWorklet() {
     State.setAnalyserNode(analyser);
     
     const gain = State.audioContext.createGain();
-    gain.gain.value = 0.0001;
+    // Set to user's volume setting (worklet now handles fades internally)
+    const volumeSlider = document.getElementById('volumeSlider');
+    gain.gain.value = volumeSlider ? parseFloat(volumeSlider.value) / 100 : 1.0;
     State.setGainNode(gain);
     
     worklet.connect(gain);
@@ -172,60 +177,6 @@ export async function initAudioWorklet() {
             State.setCurrentAudioPosition(positionSeconds);
             State.setLastWorkletPosition(positionSeconds);
             State.setLastWorkletUpdateTime(State.audioContext.currentTime);
-        } else if (type === 'selection-end-approaching') {
-            const { secondsToEnd, isLooping: workletIsLooping, loopDuration } = event.data;
-            
-            if (!workletIsLooping && State.gainNode && State.audioContext) {
-                const currentGain = State.gainNode.gain.value;
-                const fadeTime = 0.020;
-                State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                State.gainNode.gain.setValueAtTime(currentGain, State.audioContext.currentTime);
-                State.gainNode.gain.linearRampToValueAtTime(0.0001, State.audioContext.currentTime + fadeTime);
-            } else if (workletIsLooping && State.gainNode && State.audioContext) {
-                if (loopDuration < 0.050) {
-                    // Audio-rate loop - no fade
-                } else {
-                    const currentGain = State.gainNode.gain.value;
-                    let fadeTime;
-                    
-                    if (loopDuration < 0.200) {
-                        fadeTime = Math.min(secondsToEnd, 0.002);
-                    } else {
-                        fadeTime = Math.min(secondsToEnd, 0.005);
-                    }
-                    
-                    State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                    State.gainNode.gain.setValueAtTime(currentGain, State.audioContext.currentTime);
-                    State.gainNode.gain.linearRampToValueAtTime(0.0001, State.audioContext.currentTime + fadeTime);
-                }
-            }
-        } else if (type === 'selection-loop') {
-            const { newPosition } = event.data;
-            
-            State.setCurrentAudioPosition(newPosition);
-            State.setLastWorkletPosition(newPosition);
-            State.setLastWorkletUpdateTime(State.audioContext.currentTime);
-            
-            if (State.gainNode && State.audioContext && State.selectionStart !== null && State.selectionEnd !== null) {
-                const loopDuration = State.selectionEnd - State.selectionStart;
-                
-                if (loopDuration < 0.050) {
-                    // Audio-rate loop - no fade-in
-                } else {
-                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                    let fadeTime;
-                    
-                    if (loopDuration < 0.200) {
-                        fadeTime = 0.002;
-                    } else {
-                        fadeTime = 0.005;
-                    }
-                    
-                    State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                    State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
-                    State.gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), State.audioContext.currentTime + fadeTime);
-                }
-            }
         } else if (type === 'selection-end-reached') {
             // CRITICAL: Ignore stale 'selection-end-reached' messages after a seek
             if (State.justSeeked) {
@@ -247,6 +198,12 @@ export async function initAudioWorklet() {
             document.getElementById('status').textContent = '⏸️ Paused at selection end';
             
             drawWaveformWithSelection();
+        } else if (type === 'buffer-status') {
+            // 📊 Buffer status report from worklet
+            const { samplesInBuffer, totalSamplesWritten } = event.data;
+            const bufferSeconds = samplesInBuffer / 44100;
+            const maxBufferSeconds = (44100 * 300) / 44100; // 5 minutes max
+            console.log(`📊 Buffer Status: ${samplesInBuffer.toLocaleString()} samples (${bufferSeconds.toFixed(2)}s) / ${(44100 * 300).toLocaleString()} max (${maxBufferSeconds.toFixed(0)}min) | Total written: ${totalSamplesWritten.toLocaleString()}`);
         } else if (type === 'metrics') {
             if (samplesConsumed !== undefined && totalSamples && totalSamples > 0) {
                 updateCurrentPositionFromSamples(samplesConsumed, totalSamples);
@@ -255,27 +212,6 @@ export async function initAudioWorklet() {
             const ttfa = performance.now() - window.streamingStartTime;
             document.getElementById('ttfa').textContent = `${ttfa.toFixed(0)}ms`;
             console.log(`⏱️ [${ttfa.toFixed(0)}ms] Worklet confirmed playback`);
-        } else if (type === 'loop-soon') {
-            const { samplesRemaining, secondsRemaining, speed } = event.data;
-            
-            if (State.isLooping) {
-                const LOOP_FADE_TIME = 0.005;
-                if (State.gainNode && State.audioContext) {
-                    const currentGain = State.gainNode.gain.value;
-                    State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                    State.gainNode.gain.setValueAtTime(currentGain, State.audioContext.currentTime);
-                    State.gainNode.gain.linearRampToValueAtTime(0.0001, State.audioContext.currentTime + LOOP_FADE_TIME);
-                }
-            } else {
-                const realTimeRemaining = secondsRemaining / speed;
-                const fadeDuration = Math.min(realTimeRemaining, 0.1);
-                if (State.gainNode && State.audioContext) {
-                    const currentGain = State.gainNode.gain.value;
-                    State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                    State.gainNode.gain.setValueAtTime(currentGain, State.audioContext.currentTime);
-                    State.gainNode.gain.linearRampToValueAtTime(0.0001, State.audioContext.currentTime + fadeDuration);
-                }
-            }
         } else if (type === 'seek-ready') {
             // Worklet has cleared its buffer and is ready for samples at seek position
             const { targetSample, wasPlaying, forceResume } = event.data;
@@ -304,6 +240,13 @@ export async function initAudioWorklet() {
             } else {
                 console.error(`❌ [SEEK-READY] Cannot re-send: completeSamplesArray unavailable or invalid target ${targetSample}`);
             }
+        } else if (type === 'looped-fast') {
+            // 🔥 FAST LOOP: Worklet wrapped readIndex without clearing buffer
+            // Fades are now handled inside worklet (sample-accurate, no jitter!)
+            const { position } = event.data;
+            State.setCurrentAudioPosition(position);
+            State.setLastWorkletPosition(position);
+            State.setLastWorkletUpdateTime(State.audioContext.currentTime);
         } else if (type === 'loop-ready') {
             // Worklet has cleared buffer and is ready to loop from target position
             const { targetSample } = event.data;
@@ -351,26 +294,26 @@ export async function initAudioWorklet() {
             // console.log(`🏁 [FINISHED] Buffer empty: ${finishedTotalSamples.toLocaleString()} samples @ ${speed.toFixed(2)}x speed`);
             
             if (State.isLooping && State.allReceivedData && State.allReceivedData.length > 0) {
-                State.setPlaybackState(PlaybackState.PLAYING);
-                
-                // Jump to selection start if we have one, otherwise beginning of file
+                // 🏎️ AUTONOMOUS: Loop is handled by worklet, but if we get 'finished' it means
+                // we need to restart. Seek to start and play.
                 const loopStartPosition = State.selectionStart !== null ? State.selectionStart : 0;
                 State.setCurrentAudioPosition(loopStartPosition);
                 State.setLastUpdateTime(State.audioContext.currentTime);
                 
-                State.workletNode.port.postMessage({ type: 'loop' });
+                // Use seek + play (worklet handles fades autonomously)
+                State.workletNode.port.postMessage({ 
+                    type: 'seek',
+                    position: loopStartPosition
+                });
+                State.workletNode.port.postMessage({ type: 'play' });
                 
-                if (State.gainNode) {
-                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                    State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                    State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
-                    State.gainNode.gain.linearRampToValueAtTime(Math.max(0.01, targetVolume), State.audioContext.currentTime + 0.005);
-                }
+                State.setPlaybackState(PlaybackState.PLAYING);
                 
                 if (State.totalAudioDuration > 0) {
                     startPlaybackIndicator();
                 }
             } else {
+                // Playback finished - worklet already handled fade-out
                 // 🔥 FIX: Cancel animation frame loops to prevent memory leaks
                 cancelAllRAFLoops();
                 
@@ -657,11 +600,7 @@ export async function startStreaming(event) {
             // 🔥 FIX: Cancel RAF loops FIRST to prevent new detached callbacks
             cancelAllRAFLoops();
             State.workletNode.port.onmessage = null;
-            if (State.gainNode && State.audioContext && State.playbackState === PlaybackState.PLAYING) {
-                State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                State.gainNode.gain.setValueAtTime(State.gainNode.gain.value, State.audioContext.currentTime);
-                State.gainNode.gain.exponentialRampToValueAtTime(0.0001, State.audioContext.currentTime + 0.05);
-            }
+            // Worklet handles fades internally now, just disconnect
             State.workletNode.disconnect();
             State.setWorkletNode(null);
             if (State.gainNode) {
@@ -765,7 +704,15 @@ export async function startStreaming(event) {
         console.error('❌ Error:', error);
         console.error('Stack:', error.stack);
         document.getElementById('status').className = 'status error';
-        document.getElementById('status').textContent = `Error: ${error.message}`;
+        
+        // Check if it's a fetch/network error and provide user-friendly message
+        let errorMessage = error.message;
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || 
+            (error.name === 'TypeError' && error.message.includes('fetch'))) {
+            errorMessage = 'Data fetch unsuccessful. Please check your internet connection and try again.';
+        }
+        
+        document.getElementById('status').textContent = errorMessage;
         
         const startBtn = document.getElementById('startBtn');
         startBtn.disabled = false;
@@ -808,8 +755,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.01 - Participant ID Display & Modal Updates');
-    console.log('📦 [0ms] v2.01 UI: Added participant ID display in header, updated participant setup modal with improved styling and "Confirm" button');
+    console.log('🌋 [0ms] volcano-audio v2.02 - Full Ferrari: Sample-Accurate Fades');
+    console.log('🏎️ [0ms] v2.02 Ferrari Solution: Moved ALL fades into worklet (loop, pause, resume, seek) for sample-accurate synchronization across all time domains');
+    console.log('🎚️ [0ms] GainNode is now ONLY for master volume control - worklet handles ALL time-based fades internally');
     
     // Start memory health monitoring
     startMemoryMonitoring();
@@ -898,7 +846,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Blur sliders after interaction
     const playbackSpeedSlider = document.getElementById('playbackSpeed');
     const volumeSlider = document.getElementById('volumeSlider');
-    
     [playbackSpeedSlider, volumeSlider].forEach(slider => {
         slider.addEventListener('mouseup', () => slider.blur());
         slider.addEventListener('change', () => slider.blur());

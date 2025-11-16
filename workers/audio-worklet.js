@@ -10,6 +10,12 @@
  * - Sample-accurate seeking
  */
 
+// ===== DEBUG FLAGS =====
+const DEBUG_WORKLET = true; // Enable verbose worklet logging
+const DEBUG_MESSAGES = true; // Log all incoming messages
+const DEBUG_PROCESS = false; // Log process() calls every 100 frames
+const DEBUG_SAMPLES = false; // Log sample content analysis
+
 class SeismicProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
@@ -37,20 +43,61 @@ class SeismicProcessor extends AudioWorkletProcessor {
     initializePlaybackState() {
         this.isPlaying = false;
         this.hasStarted = false;
-        this.minBufferBeforePlay = 0; // YOLO - start immediately!
+        
+        // 🏎️ AUTONOMOUS MODE: No coordination flags needed!
+        // Worklet decides when to fade based on its own state
+        
+        // ===== BUFFER THRESHOLDS (chunk-aligned for clean processing) =====
+        // Audio worklet processes in 128-sample render quanta
+        // All thresholds align to multiples of 128 for SIMD-friendly processing
+        
+        // INITIAL LOAD: Wait for streaming data to arrive
+        // 86 chunks × 128 = 11,008 samples = ~249.7ms
+        this.minBufferBeforePlayInitial = 128 * 86; // 11,008 samples (~250ms)
+        
+        // SEEK/LOOP: Quick refill after buffer clear
+        // 8 chunks × 128 = 1,024 samples = ~23.2ms
+        this.minBufferBeforePlaySeek = 128 * 8; // 1,024 samples (~23ms)
+        
+        // Use initial threshold for first load
+        this.minBufferBeforePlay = this.minBufferBeforePlayInitial;
+        
         this.speed = 1.0;
         this.finishSent = false;
         this.loopWarningShown = false;
         this.dataLoadingComplete = false;
         this.totalSamples = 0;
         this.processStartLogged = false; // For debugging TTFA
+        
+        // 🏎️ Pending seek (only used during crossfade seek)
+        this.pendingSeekSample = null;
+        
+        // 🦋 Self-knowledge: Remember if we just teleported (to prevent double fade)
+        this.justTeleported = false;
     }
     
     initializeSelectionState() {
         this.selectionStart = null; // in seconds
         this.selectionEnd = null; // in seconds
         this.isLooping = false;
-        this.selectionEndWarned = false;
+        // 🕉️ ONE LOVE: No selectionEndWarned flag - fadeState.isFading is sufficient!
+        
+        // 🎛️ SAMPLE-ACCURATE FADE STATE (Ferrari solution)
+        // Fades happen in worklet's sample domain, perfectly synced with loop points
+        this.fadeState = {
+            isFading: false,
+            fadeDirection: 0,  // -1 = fade out, +1 = fade in
+            fadeStartGain: 1.0,
+            fadeEndGain: 1.0,
+            fadeSamplesTotal: 0,
+            fadeSamplesCurrent: 0
+        };
+        
+        // 🎚️ FADE TIME SETTINGS (hard-coded for optimal performance)
+        // All fades use 5ms (works beautifully for all conditions!)
+        // Exception: Very short loops (<200ms) use 2ms to avoid fade artifacts
+        this.fadeTimeMs = 5;        // Hard-coded 5ms for all fades
+        this.fadeTimeLoop = 5;       // ms for loop fades (calculated dynamically, shorter for tight loops)
     }
     
     initializePositionTracking() {
@@ -90,12 +137,45 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.port.onmessage = (event) => {
             const { type, data, speed, enabled, autoResume } = event.data;
             
+            // 🔔 DEBUG: Log all incoming messages
+            if (DEBUG_MESSAGES && type !== 'audio-data' && type !== 'get-buffer-status') {
+                console.log(`🔔 WORKLET received message: ${type}`);
+            }
+            
             if (type === 'audio-data') {
                 this.addSamples(data, autoResume);
+            } else if (type === 'play') {
+                // 🏎️ AUTONOMOUS: Worklet decides how to start based on current state
+                if (!this.isPlaying) {
+                    this.isPlaying = true;
+                    // If we're not already fading in, start a fade-in
+                    if (!this.fadeState.isFading || this.fadeState.fadeDirection !== 1) {
+                        this.startFade(+1, this.fadeTimeMs);
+                    }
+                    if (DEBUG_MESSAGES) console.log(`▶️ WORKLET: Starting playback with ${this.fadeTimeMs}ms fade-in`);
+                }
             } else if (type === 'pause') {
-                this.isPlaying = false;
-            } else if (type === 'resume') {
-                this.isPlaying = true;
+                // 🏎️ AUTONOMOUS: Worklet decides how to pause based on current state
+                if (this.isPlaying) {
+                    // Start fade-out, will set isPlaying=false when fade completes
+                    // Keep isPlaying=true during fade so audio continues smoothly
+                    this.startFade(-1, this.fadeTimeMs);
+                    if (DEBUG_MESSAGES) console.log(`⏸️ WORKLET: Starting ${this.fadeTimeMs}ms fade-out before pause`);
+                }
+            } else if (type === 'seek') {
+                // 🏎️ AUTONOMOUS: Worklet decides how to seek based on current state
+                const { position } = event.data;
+                const targetSample = Math.floor(position * 44100);
+                
+                if (this.isPlaying) {
+                    // Crossfade seek: fade out → jump → fade in
+                    this.pendingSeekSample = targetSample;
+                    this.startFade(-1, this.fadeTimeMs); // Fade out first
+                    if (DEBUG_MESSAGES) console.log(`🎯 WORKLET: Crossfade seek - fade out ${this.fadeTimeMs}ms, jump to ${targetSample}, fade in ${this.fadeTimeMs}ms`);
+                } else {
+                    // Instant seek: just jump (no fade needed when paused)
+                    this.seekToPositionInstant(targetSample);
+                }
             } else if (type === 'set-speed') {
                 this.setSpeed(speed);
             } else if (type === 'set-anti-aliasing') {
@@ -106,10 +186,6 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 this.markDataComplete(event.data.totalSamples);
             } else if (type === 'reset') {
                 this.resetState();
-            } else if (type === 'loop') {
-                this.loopToStart();
-            } else if (type === 'seek') {
-                this.seekToPosition(event.data.samplePosition, event.data.forceResume);
             } else if (type === 'set-selection') {
                 this.setSelection(event.data.start, event.data.end, event.data.loop);
             } else if (type === 'get-buffer-status') {
@@ -139,13 +215,21 @@ class SeismicProcessor extends AudioWorkletProcessor {
     
     startImmediately() {
         this.hasStarted = true;
+        this.isPlaying = true;  // 🔥 CRITICAL: Must set isPlaying=true for audio output!
         this.minBuffer = 0;
-        console.log('🚀 WORKLET: Forced immediate start! minBuffer=0, hasStarted=true');
+        
+        // ✅ CRITICAL: Switch to seek threshold for future seeks/loops
+        this.minBufferBeforePlay = this.minBufferBeforePlaySeek;
+        
+        console.log(`🚀 WORKLET: Forced immediate start! minBuffer=0, hasStarted=true, isPlaying=true, switched to seek threshold (${this.minBufferBeforePlaySeek} samples)`);
     }
     
     markDataComplete(totalSamples) {
         this.dataLoadingComplete = true;
         this.totalSamples = totalSamples || this.samplesInBuffer;
+        const bufferSeconds = this.samplesInBuffer / 44100;
+        const bufferMinutes = bufferSeconds / 60;
+        console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
         console.log('🎵 WORKLET: Data complete. Total samples set to ' + this.totalSamples + ' (samplesInBuffer=' + this.samplesInBuffer + ')');
     }
     
@@ -165,44 +249,22 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.selectionStart = null;
         this.selectionEnd = null;
         this.isLooping = false;
-        this.selectionEndWarned = false;
+        this.pendingSeekSample = null;
+        this.justTeleported = false;
     }
     
+    // 🏎️ DEPRECATED: Loop is now handled autonomously in process()
+    // This method kept for backwards compatibility but shouldn't be called
     loopToStart() {
-        // Loop to selection start if we have a selection, otherwise position 0
         const hasSelection = (this.selectionStart !== null && this.selectionEnd !== null);
-        const loopTarget = hasSelection ? Math.floor(this.selectionStart * 44100) : 0;
-        
-        this.isPlaying = false; // Pause during buffer rebuild
-        
-        // Clear circular buffer
-        this.writeIndex = 0;
-        this.readIndex = 0;
-        this.samplesInBuffer = 0;
-        this.totalSamplesWritten = 0;
-        this.totalSamplesConsumed = loopTarget; // Reset to loop target
-        this.finishSent = false;
-        this.loopWarningShown = false;
-        this.selectionEndWarned = false;
-        this.samplesSinceLastPositionUpdate = 0; // Reset position update counter
-        
-        // Send immediate position update so UI updates
-        this.port.postMessage({
-            type: 'position',
-            samplePosition: loopTarget,
-            positionSeconds: loopTarget / 44100
-        });
-        
-        // Tell main thread we need samples from loop target
-        this.port.postMessage({
-            type: 'loop-ready',
-            targetSample: loopTarget
-        });
-        
-        const loopDesc = hasSelection ? `selection start (${this.selectionStart.toFixed(2)}s)` : 'file start';
-        // console.log(`🔄 WORKLET LOOP: Cleared buffer, requesting samples from ${loopDesc}`);
+        const loopTargetSample = hasSelection ? Math.floor(this.selectionStart * 44100) : 0;
+        this.seekToPositionInstant(loopTargetSample);
+        if (this.isPlaying) {
+            this.startFade(+1, this.fadeTimeMs);
+        }
     }
     
+    // 🏎️ DEPRECATED: Use 'seek' message instead (worklet handles fades autonomously)
     seekToPosition(targetSample, forceResume = false) {
         // Clamp to selection bounds if selection exists
         if (this.selectionStart !== null && this.selectionEnd !== null) {
@@ -212,7 +274,43 @@ class SeismicProcessor extends AudioWorkletProcessor {
         }
         
         if (targetSample >= 0 && targetSample <= this.totalSamples) {
-            // Pause to prevent process() from triggering finished during buffer rebuild
+            // ===== RANDOM-ACCESS MODE: Check if sample is in buffer =====
+            // Since we don't consume samples, ALL samples from 0 to samplesInBuffer are available
+            
+            if (targetSample < this.samplesInBuffer) {
+                // ⚡ INSTANT SEEK: Sample is in buffer - calculate its position
+                // writeIndex points to where next sample will be written
+                // We need to find where targetSample is in the circular buffer
+                
+                // In random-access mode, samples are at buffer[0] to buffer[samplesInBuffer-1]
+                // (assuming we loaded them sequentially from the start)
+                this.readIndex = targetSample % this.maxBufferSize;
+                this.totalSamplesConsumed = targetSample;
+                
+                const wasPlaying = this.isPlaying;
+                
+                // Resume if requested
+                if (forceResume || this.isPlaying) {
+                    this.isPlaying = true;
+                    
+                    // 🏎️ ALWAYS fade in when resuming playback - NO PARAMETER NEEDED
+                    this.startFade(+1, this.fadeTimeSeek);
+                }
+                
+                if (DEBUG_WORKLET) console.log(`⚡ INSTANT SEEK: Set readIndex to ${this.readIndex.toLocaleString()} for sample ${targetSample.toLocaleString()} (buffer has ${this.samplesInBuffer.toLocaleString()} samples) | wasPlaying=${wasPlaying}, forceResume=${forceResume}, isPlaying=${this.isPlaying}`);
+                
+                // Send position update
+                this.port.postMessage({
+                    type: 'position',
+                    samplePosition: targetSample,
+                    positionSeconds: targetSample / 44100
+                });
+                return; // Done! No refill needed.
+            }
+            
+            // ===== FALLBACK: Sample not in buffer (rare) =====
+            console.warn(`⚠️ SEEK OUT OF BUFFER: Target ${targetSample.toLocaleString()} >= samplesInBuffer ${this.samplesInBuffer.toLocaleString()}. Falling back to refill.`);
+            
             const wasPlaying = this.isPlaying;
             this.isPlaying = false;
             
@@ -221,20 +319,19 @@ class SeismicProcessor extends AudioWorkletProcessor {
             this.readIndex = 0;
             this.samplesInBuffer = 0;
             this.totalSamplesWritten = 0;
-            this.totalSamplesConsumed = targetSample; // Set absolute position to seek target
+            this.totalSamplesConsumed = targetSample;
             this.finishSent = false;
             this.loopWarningShown = false;
-            this.selectionEndWarned = false;
             
             // Tell main thread we need samples starting from target position
             this.port.postMessage({
                 type: 'seek-ready',
                 targetSample: targetSample,
                 wasPlaying: wasPlaying,
-                forceResume: forceResume  // Pass forceResume to main thread
+                forceResume: forceResume
             });
             
-            console.log(`🎯 WORKLET SEEK: Paused and cleared buffer, set position to ${targetSample.toLocaleString()}`);
+            console.log(`🔄 SEEK REFILL: Cleared buffer, requesting samples from ${targetSample.toLocaleString()}`);
         }
     }
     
@@ -242,8 +339,81 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.selectionStart = start;
         this.selectionEnd = end;
         this.isLooping = loop;
-        this.selectionEndWarned = false;
-        console.log('🎯 WORKLET SELECTION: Start=' + start + 's, End=' + end + 's, Loop=' + loop);
+        
+        // 🏎️ AUTONOMOUS: Reset loop warning state when selection changes
+        this.loopWarningShown = false;
+        
+        // Cancel any pending seek (selection change takes priority)
+        this.pendingSeekSample = null;
+        
+        if (DEBUG_WORKLET) console.log('🎯 WORKLET SELECTION: Start=' + start + 's, End=' + end + 's, Loop=' + loop);
+    }
+    
+    // 🏎️ Instant seek (no fade) - used when paused or during crossfade completion
+    seekToPositionInstant(targetSample) {
+        // Clamp to selection bounds if selection exists
+        if (this.selectionStart !== null && this.selectionEnd !== null) {
+            const startSample = Math.floor(this.selectionStart * 44100);
+            const endSample = Math.floor(this.selectionEnd * 44100);
+            targetSample = Math.max(startSample, Math.min(targetSample, endSample));
+        }
+        
+        if (targetSample >= 0 && targetSample <= this.totalSamples) {
+            if (targetSample < this.samplesInBuffer) {
+                // Sample is in buffer - instant jump
+                this.readIndex = targetSample % this.maxBufferSize;
+                this.totalSamplesConsumed = targetSample;
+                
+                if (DEBUG_WORKLET) console.log(`⚡ INSTANT SEEK: Set readIndex to ${this.readIndex.toLocaleString()} for sample ${targetSample.toLocaleString()}`);
+                
+                // Send position update
+                this.port.postMessage({
+                    type: 'position',
+                    samplePosition: targetSample,
+                    positionSeconds: targetSample / 44100
+                });
+                return true;
+            } else {
+                // Sample not in buffer - need refill
+                console.warn(`⚠️ SEEK OUT OF BUFFER: Target ${targetSample.toLocaleString()} >= samplesInBuffer ${this.samplesInBuffer.toLocaleString()}`);
+                const wasPlaying = this.isPlaying;
+                this.isPlaying = false;
+                
+                // Clear buffer and request refill
+                this.writeIndex = 0;
+                this.readIndex = 0;
+                this.samplesInBuffer = 0;
+                this.totalSamplesWritten = 0;
+                this.totalSamplesConsumed = targetSample;
+                this.finishSent = false;
+                this.loopWarningShown = false;
+                
+                this.port.postMessage({
+                    type: 'seek-ready',
+                    targetSample: targetSample,
+                    wasPlaying: wasPlaying,
+                    forceResume: false
+                });
+                
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    startFade(direction, durationMs) {
+        // Sample-accurate fade: direction = -1 (fade out), +1 (fade in)
+        const durationSamples = Math.floor(durationMs * 44.1); // ms to samples at 44.1kHz
+        this.fadeState.isFading = true;
+        this.fadeState.fadeDirection = direction;
+        this.fadeState.fadeSamplesTotal = durationSamples;
+        this.fadeState.fadeSamplesCurrent = 0;
+        this.fadeState.fadeStartGain = direction === -1 ? 1.0 : 0.0001;
+        this.fadeState.fadeEndGain = direction === -1 ? 0.0001 : 1.0;
+        
+        if (DEBUG_WORKLET) {
+            console.log(`🎚️ WORKLET FADE: ${direction === -1 ? 'OUT' : 'IN'} over ${durationMs}ms (${durationSamples} samples)`);
+        }
     }
     
     // ===== FILTER MODULES =====
@@ -328,7 +498,12 @@ class SeismicProcessor extends AudioWorkletProcessor {
         for (let i = 0; i < samples.length; i++) {
             this.buffer[this.writeIndex] = samples[i];
             this.writeIndex = (this.writeIndex + 1) % this.maxBufferSize;
-            this.samplesInBuffer++;
+            
+            // 🔥 RANDOM-ACCESS FIX: Only increment if buffer not full
+            if (this.samplesInBuffer < this.maxBufferSize) {
+                this.samplesInBuffer++;
+            }
+            
             this.totalSamplesWritten++;
         }
     }
@@ -343,76 +518,122 @@ class SeismicProcessor extends AudioWorkletProcessor {
         
         // Check if we can start playback (initial load)
         if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
+            const bufferSeconds = this.samplesInBuffer / 44100;
+            const bufferMinutes = bufferSeconds / 60;
+            console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
             console.log('🎵 WORKLET addSamples: Threshold reached! samplesInBuffer=' + this.samplesInBuffer + ', minBuffer=' + this.minBufferBeforePlay);
             this.readIndex = 0;
             this.isPlaying = true;
             this.hasStarted = true;
+            
+            // After first start, switch to seek threshold for future seeks/loops
+            this.minBufferBeforePlay = this.minBufferBeforePlaySeek;
+            
             this.port.postMessage({ type: 'started' });
         }
         // Auto-resume after seek/loop if requested and buffer is ready
         else if (autoResume && !this.isPlaying && this.samplesInBuffer >= this.minBufferBeforePlay) {
-            // console.log('🎵 WORKLET addSamples: Auto-resuming after buffering ' + this.samplesInBuffer + ' samples');
+            if (DEBUG_WORKLET) console.log(`🎵 WORKLET addSamples: Auto-resuming! samplesInBuffer=${this.samplesInBuffer}, minBuffer=${this.minBufferBeforePlay}`);
             this.isPlaying = true;
+        } else if (autoResume && !this.isPlaying) {
+            if (DEBUG_WORKLET) console.log(`⏳ WORKLET addSamples: Buffering for auto-resume... samplesInBuffer=${this.samplesInBuffer}, need ${this.minBufferBeforePlay}`);
+        }
+        
+        // 🔍 DEBUG: Check if isPlaying got set to false somehow
+        if (DEBUG_WORKLET && this.hasStarted && !this.isPlaying) {
+            console.warn(`⚠️ addSamples EXIT: isPlaying=FALSE (autoResume=${autoResume}, samplesInBuffer=${this.samplesInBuffer})`);
         }
     }
     
     // ===== SELECTION & LOOP MODULE =====
     
     handleSelectionBoundaries() {
-        if (this.selectionStart === null || this.selectionEnd === null) {
-            return false; // No selection active
-        }
+        // 🏎️ AUTONOMOUS: Works for both selection loops AND full-file loops
+        // If no selection, treat entire buffer as the "selection"
+        const isFullFileLoop = (this.selectionStart === null || this.selectionEnd === null);
         
-        const selectionEndSample = Math.floor(this.selectionEnd * 44100);
-        const samplesToEnd = selectionEndSample - this.totalSamplesConsumed;
+        const loopEndSample = isFullFileLoop 
+            ? this.samplesInBuffer 
+            : Math.floor(this.selectionEnd * 44100);
         
-        // Warn 20ms before selection end to match fade time
-        const WARNING_THRESHOLD = 882; // 20ms at 44.1kHz (matches fade time)
-        if (samplesToEnd <= WARNING_THRESHOLD && samplesToEnd > 0 && !this.selectionEndWarned) {
-            this.selectionEndWarned = true;
-            const secondsToEnd = samplesToEnd / 44100 / this.speed; // Real-time seconds
-            const loopDuration = this.selectionEnd - this.selectionStart; // Loop duration in seconds
-            this.port.postMessage({
-                type: 'selection-end-approaching',
-                samplesToEnd: samplesToEnd,
-                secondsToEnd: secondsToEnd,
-                isLooping: this.isLooping,
-                loopDuration: loopDuration
-            });
-        }
+        const samplesToEnd = loopEndSample - this.totalSamplesConsumed;
         
-        // At selection end: stop or loop
-        if (this.totalSamplesConsumed >= selectionEndSample) {
-            if (this.isLooping) {
-                // Manually trigger loop to selection start
-                this.loopToStart();
-                return true;
+        const loopDuration = isFullFileLoop 
+            ? this.samplesInBuffer / 44100  // Full file duration in seconds
+            : (this.selectionEnd - this.selectionStart); // Selection duration in seconds
+        
+        // 🎚️ AUTONOMOUS FADE TRIGGER: Start fade-out early enough to complete EXACTLY at boundary
+        // 🕉️ ONE LOVE: Trust fadeState.isFading - no need for selectionEndWarned flag!
+        // 🦋 Self-knowledge: Don't check boundaries if we just teleported (prevent double fade)
+        if (samplesToEnd > 0 && this.isPlaying && !this.fadeState.isFading && this.pendingSeekSample === null && !this.justTeleported) {
+            if (loopDuration < 0.050) {
+                // Audio-rate loop (<50ms) - no fade, embrace the granular character
+                // Just check if we're close enough (no fade needed)
+                const AUDIO_RATE_WARNING = 441; // ~10ms warning
+                if (samplesToEnd <= AUDIO_RATE_WARNING) {
+                    // Close enough - will loop naturally without fade
+                }
             } else {
-                // Just stop
-                this.isPlaying = false;
-                this.port.postMessage({ 
-                    type: 'selection-end-reached',
-                    position: this.selectionEnd
-                });
-                return true;
+                // 🏎️ SPEED-AWARE: Calculate fade time and convert to INPUT samples
+                // Fade duration is always in wall-clock time (consistent UX)
+                // But we need to know how many INPUT samples to fade over based on speed
+                const fadeTime = this.isLooping && loopDuration < 0.200 ? 2 : this.fadeTimeMs;
+                const FADE_SAMPLES_OUTPUT = Math.floor(fadeTime * 44.1); // Output samples (always same duration)
+                const FADE_SAMPLES_INPUT = Math.floor(FADE_SAMPLES_OUTPUT / this.speed); // Convert to INPUT samples!
+                
+                // 🔍 DIAGNOSTIC LOG - Only print when playing
+                // if (this.isPlaying) {
+                //     console.log(`🔍 BOUNDARY CHECK: totalSamplesConsumed=${this.totalSamplesConsumed.toLocaleString()}, samplesInBuffer=${this.samplesInBuffer.toLocaleString()}, loopEndSample=${loopEndSample.toLocaleString()}, samplesToEnd=${samplesToEnd.toLocaleString()}, FADE_SAMPLES_INPUT=${FADE_SAMPLES_INPUT}, isFullFileLoop=${isFullFileLoop}, selectionEnd=${this.selectionEnd}`);
+                // }
+                
+                if (samplesToEnd <= FADE_SAMPLES_INPUT) {
+                    this.startFade(-1, fadeTime); // Fade out
+                    
+                    // 🏎️ AUTONOMOUS: Set pending seek for loop (will be handled when fade completes)
+                    if (this.isLooping) {
+                        const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * 44100);
+                        this.pendingSeekSample = loopTargetSample;
+                        if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Starting fade-out for loop (${fadeTime}ms, ${FADE_SAMPLES_INPUT} input samples @ ${this.speed.toFixed(2)}x), will jump to ${loopTargetSample.toLocaleString()} when fade completes`);
+                    }
+                }
+            }
+        }
+        
+        // 🏎️ AUTONOMOUS: At boundary - check if fade completed, then loop or stop
+        if (this.totalSamplesConsumed >= loopEndSample && this.isPlaying) {
+            if (this.fadeState.isFading && this.fadeState.fadeDirection === -1) {
+                // Fade-out still in progress - wait for it to complete (handled in fade completion)
+                return false;
+            } else {
+                // No fade in progress - handle boundary immediately
+                if (this.isLooping) {
+                    // Loop: jump to start (fade-in will happen if we were fading)
+                    const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * 44100);
+                    if (this.seekToPositionInstant(loopTargetSample)) {
+                        // Jump successful - fade in if we were playing
+                        if (this.isPlaying) {
+                            this.startFade(+1, this.fadeTimeMs);
+                        }
+                        this.loopWarningShown = false;
+                        return true;
+                    }
+                } else {
+                    // Not looping: stop at end
+                    this.isPlaying = false;
+                    const stopPosition = isFullFileLoop 
+                        ? (this.samplesInBuffer / 44100) 
+                        : this.selectionEnd;
+                    this.port.postMessage({ 
+                        type: 'selection-end-reached',
+                        position: stopPosition
+                    });
+                    if (DEBUG_WORKLET) console.log('⏹️ WORKLET: Reached selection end, stopped');
+                    return true;
+                }
             }
         }
         
         return false;
-    }
-    
-    handleFullBufferLoop() {
-        const loopWarningThreshold = 44100 * 0.020;
-        if (this.samplesInBuffer < loopWarningThreshold && !this.loopWarningShown && this.hasStarted) {
-            const remainingSeconds = this.samplesInBuffer / 44100;
-            this.port.postMessage({ 
-                type: 'loop-soon',
-                samplesRemaining: this.samplesInBuffer,
-                secondsRemaining: remainingSeconds,
-                speed: this.speed
-            });
-            this.loopWarningShown = true;
-        }
     }
     
     // ===== POSITION TRACKING MODULE =====
@@ -455,19 +676,43 @@ class SeismicProcessor extends AudioWorkletProcessor {
             this.processStartLogged = true;
         }
         
+        // 🔍 DEBUG: Log process() state every 100 calls when playing
+        if (!this.processDebugCounter) this.processDebugCounter = 0;
+        this.processDebugCounter++;
+        
         if (!this.isPlaying) {
             channel.fill(0);
+            if (DEBUG_WORKLET && this.hasStarted && Math.random() < 0.01) {
+                console.warn(`⚠️ WORKLET process(): isPlaying=FALSE - outputting silence! (readIndex=${this.readIndex}, samplesInBuffer=${this.samplesInBuffer})`);
+            }
             return true;
+        }
+        
+        // 🏎️ AUTO-FADE: If we just started playing and we're not already fading in, START a fade-in!
+        // This catches ALL cases: resume, selection start, seek without explicit fade, etc.
+        const AUTO_FADE_THRESHOLD = 0.001; // If current gain is near silence
+        const needsAutoFadeIn = !this.fadeState.isFading && 
+                               this.fadeState.fadeDirection !== 1 && // Not already fading in
+                               (this.fadeState.fadeEndGain < AUTO_FADE_THRESHOLD || 
+                                this.processDebugCounter < 10); // Just started or was silent
+        
+        if (needsAutoFadeIn && this.hasStarted) {
+            this.startFade(+1, this.fadeTimeSeek); // Auto fade-in from silence
+            if (DEBUG_WORKLET) console.log('🎚️ AUTO-FADE: Started automatic fade-in from silence');
+        }
+        
+        // 🔍 DEBUG: Log every 100 process() calls when playing
+        if (DEBUG_PROCESS && this.processDebugCounter % 100 === 0) {
+            // Check what samples we're about to read
+            const samplePeek = this.buffer[this.readIndex];
+            const nextSamplePeek = this.buffer[(this.readIndex + 1) % this.maxBufferSize];
+            console.log(`🔊 WORKLET process(): isPlaying=TRUE, readIndex=${this.readIndex}, samplesInBuffer=${this.samplesInBuffer}, totalSamplesConsumed=${this.totalSamplesConsumed}, samplePeek=${samplePeek?.toFixed(4)}, nextSample=${nextSamplePeek?.toFixed(4)}`);
         }
         
         const samplesToRead = Math.ceil(channel.length * this.speed);
         
-        // Handle selection boundaries and looping (delegated to clean methods)
-        if (this.selectionStart !== null && this.selectionEnd !== null) {
-            this.handleSelectionBoundaries();
-        } else {
-            this.handleFullBufferLoop();
-        }
+        // 🏎️ UNIFIED LOOP HANDLER: Handles both selection loops AND full-file loops
+        this.handleSelectionBoundaries();
         
         // Track minimum buffer level (for diagnostics)
         if (this.samplesInBuffer < this.minBufferSeen) {
@@ -477,8 +722,9 @@ class SeismicProcessor extends AudioWorkletProcessor {
         // CRITICAL HOT PATH: Buffer reading (kept inline for performance)
         if (this.samplesInBuffer < samplesToRead) {
             // Underrun case - log it!
+            console.warn(`⚠️ BUFFER UNDERRUN: only ${this.samplesInBuffer} samples available, need ${samplesToRead} (readIndex=${this.readIndex})`);
             if (this.hasStarted && this.samplesInBuffer > 0) {
-                console.warn(`⚠️ BUFFER UNDERRUN: only ${this.samplesInBuffer} samples available, need ${samplesToRead}`);
+                console.warn(`⚠️ UNDERRUN DETAILS: hasStarted=true, playing partial buffer`);
             }
             const availableForOutput = Math.min(this.samplesInBuffer, channel.length);
             for (let i = 0; i < availableForOutput; i++) {
@@ -494,7 +740,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 
                 channel[i] = sample;
                 this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
-                this.samplesInBuffer--;
+                // this.samplesInBuffer--;  // 🧪 TEST: Don't consume samples (random-access, not FIFO)
                 this.totalSamplesConsumed++; // Track absolute position
             }
             for (let i = availableForOutput; i < channel.length; i++) {
@@ -503,6 +749,14 @@ class SeismicProcessor extends AudioWorkletProcessor {
             
             // Check if finished
             if (this.samplesInBuffer === 0) {
+                // 🏎️ FERRARI: Don't send 'finished' if we're looping after fade
+                // The fade-out is in progress, and when it completes we'll loop automatically
+                if (this.loopAfterFade) {
+                    if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Buffer empty but loopAfterFade=true, waiting for fade to complete...`);
+                    channel.fill(0);
+                    return true;
+                }
+                
                 if (!this.finishSent && this.hasStarted && this.dataLoadingComplete) {
                     this.isPlaying = false;
                     const expectedDuration = this.totalSamples / (44100 * this.speed);
@@ -538,8 +792,32 @@ class SeismicProcessor extends AudioWorkletProcessor {
             // Normal case: enough samples available
             if (this.speed === 1.0) {
                 // Fast path: no interpolation needed
+                let nonZeroCount = 0;
+                let sampleSum = 0;
+                
+                // 🎚️ CALCULATE FADE RANGE FOR THIS QUANTUM (128 samples)
+                let fadeStartGainThisQuantum = 1.0;
+                let fadeEndGainThisQuantum = 1.0;
+                
+                if (this.fadeState.isFading) {
+                    const startSample = this.fadeState.fadeSamplesCurrent;
+                    const endSample = Math.min(startSample + channel.length, this.fadeState.fadeSamplesTotal);
+                    
+                    const startProgress = startSample / this.fadeState.fadeSamplesTotal;
+                    const endProgress = endSample / this.fadeState.fadeSamplesTotal;
+                    
+                    fadeStartGainThisQuantum = this.fadeState.fadeStartGain + 
+                        (this.fadeState.fadeEndGain - this.fadeState.fadeStartGain) * startProgress;
+                    fadeEndGainThisQuantum = this.fadeState.fadeStartGain + 
+                        (this.fadeState.fadeEndGain - this.fadeState.fadeStartGain) * endProgress;
+                }
+                
                 for (let i = 0; i < channel.length; i++) {
                     let sample = this.buffer[this.readIndex];
+                    
+                    // 🔍 DEBUG: Track non-zero samples
+                    if (Math.abs(sample) > 0.0001) nonZeroCount++;
+                    sampleSum += Math.abs(sample);
                     
                     // Apply high-pass filter if enabled
                     if (this.enableHighPass) {
@@ -549,13 +827,122 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         sample = y;
                     }
                     
+                    // 🎚️ SAMPLE-ACCURATE FADE APPLICATION (interpolate across quantum)
+                    if (this.fadeState.isFading) {
+                        const t = i / channel.length; // 0.0 to 1.0 across this quantum
+                        const currentGain = fadeStartGainThisQuantum + 
+                            (fadeEndGainThisQuantum - fadeStartGainThisQuantum) * t;
+                        sample *= currentGain;
+                    }
+                    
                     channel[i] = sample;
                     this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
-                    this.samplesInBuffer--;
+                    // this.samplesInBuffer--;  // 🧪 TEST: Don't consume samples (random-access, not FIFO)
                     this.totalSamplesConsumed++; // Track absolute position
+                    
+                    // 🏎️ RANDOM-ACCESS MODE: Handle end-of-buffer behavior
+                    // (Loop handling is now autonomous in handleSelectionBoundaries())
+                    if (this.totalSamplesConsumed >= this.samplesInBuffer && this.samplesInBuffer > 0 && !this.fadeState.isFading) {
+                        // Reached end of loaded audio - wrap to beginning immediately
+                        // (Only if not fading - otherwise handleSelectionBoundaries() will handle it)
+                        this.readIndex = 0;
+                        this.totalSamplesConsumed = 0;
+                        this.loopWarningShown = false; // 🔥 RESET for next loop!
+                    }
+                }
+                
+                // 🎚️ UPDATE FADE COUNTER ONCE PER QUANTUM (not per sample!)
+                if (this.fadeState.isFading) {
+                    this.fadeState.fadeSamplesCurrent += channel.length;
+                    if (this.fadeState.fadeSamplesCurrent >= this.fadeState.fadeSamplesTotal) {
+                        // 🏎️ AUTONOMOUS: Handle fade completion based on context
+                        const wasFadingOut = (this.fadeState.fadeDirection === -1);
+                        this.fadeState.isFading = false;
+                        
+                        if (wasFadingOut) {
+                            // Fade-out completed - check what to do next
+                            if (this.pendingSeekSample !== null) {
+                                // Pending seek (from user seek OR loop): jump to target and fade in
+                                const targetSample = this.pendingSeekSample;
+                                this.pendingSeekSample = null;
+                                this.justTeleported = true; // 🦋 "I just arrived via teleport!"
+                                if (DEBUG_WORKLET) console.log(`🎯 WORKLET: Fade-out complete, jumping to ${targetSample.toLocaleString()} and fading in`);
+                                if (this.seekToPositionInstant(targetSample)) {
+                                    // Jump successful - fade in if we're playing
+                                    if (this.isPlaying) {
+                                        this.startFade(+1, this.fadeTimeMs);
+                                    }
+                                }
+                            } else {
+                                // No pending seek - check if we're at a boundary
+                                const isFullFileLoop = (this.selectionStart === null || this.selectionEnd === null);
+                                const loopEndSample = isFullFileLoop 
+                                    ? this.samplesInBuffer 
+                                    : Math.floor(this.selectionEnd * 44100);
+                                
+                                if (this.totalSamplesConsumed >= loopEndSample) {
+                                    // At boundary - handle loop or stop
+                                    if (this.isLooping) {
+                                        // Loop: jump to start and fade in
+                                        const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * 44100);
+                                        if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Fade-out complete at boundary, looping to ${loopTargetSample.toLocaleString()}`);
+                                        if (this.seekToPositionInstant(loopTargetSample)) {
+                                            this.startFade(+1, this.fadeTimeMs);
+                                            this.loopWarningShown = false;
+                                        }
+                                    } else {
+                                        // Not looping: stop at end
+                                        this.isPlaying = false;
+                                        const stopPosition = isFullFileLoop 
+                                            ? (this.samplesInBuffer / 44100) 
+                                            : this.selectionEnd;
+                                        this.port.postMessage({ 
+                                            type: 'selection-end-reached',
+                                            position: stopPosition
+                                        });
+                                        if (DEBUG_WORKLET) console.log('⏹️ WORKLET: Fade-out complete at boundary, stopped');
+                                    }
+                                } else {
+                                    // No pending seek, not at boundary - must be pause
+                                    this.isPlaying = false;
+                                    this.port.postMessage({ type: 'fade-complete', action: 'pause' });
+                                    if (DEBUG_WORKLET) console.log('⏸️ WORKLET: Fade-out complete, paused');
+                                }
+                            }
+                        } else {
+                            // 🦋 FADE-IN COMPLETION: Clear the teleport flag!
+                            this.justTeleported = false;
+                            if (DEBUG_WORKLET) console.log('✅ WORKLET: Fade-in complete, cleared justTeleported flag');
+                        }
+                        // Fade-in completion: nothing special needed, just continue playing
+                    }
+                }
+                
+                // 🔍 DEBUG: Log sample content every 100 calls
+                if (DEBUG_SAMPLES && this.processDebugCounter % 100 === 0) {
+                    const avgSample = sampleSum / channel.length;
+                    console.log(`📊 WORKLET samples: ${nonZeroCount}/${channel.length} non-zero, avg magnitude: ${avgSample.toFixed(6)}`);
                 }
             } else {
                 // Interpolation path for variable speed
+                
+                // 🎚️ CALCULATE FADE RANGE FOR THIS QUANTUM (128 samples)
+                let fadeStartGainThisQuantum = 1.0;
+                let fadeEndGainThisQuantum = 1.0;
+                
+                if (this.fadeState.isFading) {
+                    const startSample = this.fadeState.fadeSamplesCurrent;
+                    const endSample = Math.min(startSample + channel.length, this.fadeState.fadeSamplesTotal);
+                    
+                    const startProgress = startSample / this.fadeState.fadeSamplesTotal;
+                    const endProgress = endSample / this.fadeState.fadeSamplesTotal;
+                    
+                    fadeStartGainThisQuantum = this.fadeState.fadeStartGain + 
+                        (this.fadeState.fadeEndGain - this.fadeState.fadeStartGain) * startProgress;
+                    fadeEndGainThisQuantum = this.fadeState.fadeStartGain + 
+                        (this.fadeState.fadeEndGain - this.fadeState.fadeStartGain) * endProgress;
+                }
+                
                 let sourcePos = 0;
                 for (let i = 0; i < channel.length; i++) {
                     const readPos = Math.floor(sourcePos);
@@ -594,16 +981,100 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         this.filterY2 = this.filterY1;
                         this.filterY1 = filtered;
                         
-                        channel[i] = filtered;
-                    } else {
-                        channel[i] = sample;
+                        sample = filtered;
                     }
                     
+                    // 🎚️ SAMPLE-ACCURATE FADE APPLICATION (interpolate across quantum)
+                    if (this.fadeState.isFading) {
+                        const t = i / channel.length; // 0.0 to 1.0 across this quantum
+                        const currentGain = fadeStartGainThisQuantum + 
+                            (fadeEndGainThisQuantum - fadeStartGainThisQuantum) * t;
+                        sample *= currentGain;
+                    }
+                    
+                    channel[i] = sample;
                     sourcePos += this.speed;
                 }
                 this.readIndex = (this.readIndex + samplesToRead) % this.maxBufferSize;
-                this.samplesInBuffer -= samplesToRead;
+                // this.samplesInBuffer -= samplesToRead;  // 🧪 TEST: Don't consume samples (random-access, not FIFO)
                 this.totalSamplesConsumed += samplesToRead; // Track absolute position
+                
+                // 🏎️ RANDOM-ACCESS MODE: Handle end-of-buffer behavior
+                // (Loop handling is now autonomous in handleSelectionBoundaries())
+                if (this.totalSamplesConsumed >= this.samplesInBuffer && this.samplesInBuffer > 0 && !this.fadeState.isFading) {
+                    // Reached end of loaded audio - wrap to beginning immediately
+                    // (Only if not fading - otherwise handleSelectionBoundaries() will handle it)
+                    this.readIndex = 0;
+                    this.totalSamplesConsumed = 0;
+                    this.loopWarningShown = false; // 🔥 RESET for next loop!
+                }
+                
+                // 🎚️ UPDATE FADE COUNTER ONCE PER QUANTUM (not per sample!)
+                if (this.fadeState.isFading) {
+                    this.fadeState.fadeSamplesCurrent += channel.length;
+                    if (this.fadeState.fadeSamplesCurrent >= this.fadeState.fadeSamplesTotal) {
+                        // 🏎️ AUTONOMOUS: Handle fade completion based on context
+                        const wasFadingOut = (this.fadeState.fadeDirection === -1);
+                        this.fadeState.isFading = false;
+                        
+                        if (wasFadingOut) {
+                            // Fade-out completed - check what to do next
+                            if (this.pendingSeekSample !== null) {
+                                // Pending seek (from user seek OR loop): jump to target and fade in
+                                const targetSample = this.pendingSeekSample;
+                                this.pendingSeekSample = null;
+                                this.justTeleported = true; // 🦋 "I just arrived via teleport!"
+                                if (DEBUG_WORKLET) console.log(`🎯 WORKLET: Fade-out complete, jumping to ${targetSample.toLocaleString()} and fading in`);
+                                if (this.seekToPositionInstant(targetSample)) {
+                                    // Jump successful - fade in if we're playing
+                                    if (this.isPlaying) {
+                                        this.startFade(+1, this.fadeTimeMs);
+                                    }
+                                }
+                            } else {
+                                // No pending seek - check if we're at a boundary
+                                const isFullFileLoop = (this.selectionStart === null || this.selectionEnd === null);
+                                const loopEndSample = isFullFileLoop 
+                                    ? this.samplesInBuffer 
+                                    : Math.floor(this.selectionEnd * 44100);
+                                
+                                if (this.totalSamplesConsumed >= loopEndSample) {
+                                    // At boundary - handle loop or stop
+                                    if (this.isLooping) {
+                                        // Loop: jump to start and fade in
+                                        const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * 44100);
+                                        if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Fade-out complete at boundary, looping to ${loopTargetSample.toLocaleString()}`);
+                                        if (this.seekToPositionInstant(loopTargetSample)) {
+                                            this.startFade(+1, this.fadeTimeMs);
+                                            this.loopWarningShown = false;
+                                        }
+                                    } else {
+                                        // Not looping: stop at end
+                                        this.isPlaying = false;
+                                        const stopPosition = isFullFileLoop 
+                                            ? (this.samplesInBuffer / 44100) 
+                                            : this.selectionEnd;
+                                        this.port.postMessage({ 
+                                            type: 'selection-end-reached',
+                                            position: stopPosition
+                                        });
+                                        if (DEBUG_WORKLET) console.log('⏹️ WORKLET: Fade-out complete at boundary, stopped');
+                                    }
+                                } else {
+                                    // No pending seek, not at boundary - must be pause
+                                    this.isPlaying = false;
+                                    this.port.postMessage({ type: 'fade-complete', action: 'pause' });
+                                    if (DEBUG_WORKLET) console.log('⏸️ WORKLET: Fade-out complete, paused');
+                                }
+                            }
+                        } else {
+                            // 🦋 FADE-IN COMPLETION: Clear the teleport flag!
+                            this.justTeleported = false;
+                            if (DEBUG_WORKLET) console.log('✅ WORKLET: Fade-in complete, cleared justTeleported flag');
+                        }
+                        // Fade-in completion: nothing special needed, just continue playing
+                    }
+                }
             }
         }
         
