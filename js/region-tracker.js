@@ -17,6 +17,7 @@ import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
 import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState } from './spectrogram-complete-renderer.js';
+import { animateZoomTransition, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 
 // Region data structure
 let regions = [];
@@ -358,13 +359,33 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
         }
         
         // console.log(`   Drawing region ${index}: ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
-        
-        // 🏛️ Use zoom-aware conversion for pixel positioning
+
+        // 🏛️ Use interpolated time range for pixel positioning (makes regions surf the zoom animation!)
+        // This keeps region boundaries aligned with the interpolating tick marks
         let startX, endX;
         if (zoomState.isInitialized()) {
-            // Convert from sample indices to pixels using zoom state
-            startX = zoomState.sampleToPixel(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds), canvasWidth);
-            endX = zoomState.sampleToPixel(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds), canvasWidth);
+            // Get the current interpolated time range (same range the x-axis ticks are using)
+            const interpolatedRange = getInterpolatedTimeRange();
+
+            // Convert region samples to real-world timestamps (eternal truth)
+            const regionStartTimestamp = zoomState.sampleToRealTimestamp(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds));
+            const regionEndTimestamp = zoomState.sampleToRealTimestamp(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds));
+
+            // Calculate where these timestamps fall within the interpolated display range
+            const displayStartMs = interpolatedRange.startTime.getTime();
+            const displayEndMs = interpolatedRange.endTime.getTime();
+            const displaySpanMs = displayEndMs - displayStartMs;
+
+            const regionStartMs = regionStartTimestamp.getTime();
+            const regionEndMs = regionEndTimestamp.getTime();
+
+            // Progress within the interpolated time range (0.0 to 1.0)
+            const startProgress = (regionStartMs - displayStartMs) / displaySpanMs;
+            const endProgress = (regionEndMs - displayStartMs) / displaySpanMs;
+
+            // Convert to pixel positions
+            startX = startProgress * canvasWidth;
+            endX = endProgress * canvasWidth;
         } else {
             // Fallback to old behavior if zoom state not initialized
             const startProgress = regionStartSeconds / State.totalAudioDuration;
@@ -702,6 +723,9 @@ function createRegionCard(region, index) {
             // Zoom into this region
             zoomToRegion(index);
         }
+        
+        // Blur the button so spacebar works immediately after clicking
+        e.target.blur();
     });
     header.querySelector('.play-btn').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1423,6 +1447,18 @@ export function zoomToRegion(regionIndex) {
     
     console.log(`🔍 Zooming into region ${regionIndex + 1} (samples ${region.startSample.toLocaleString()}-${region.endSample.toLocaleString()})`);
     
+    // 🏛️ Store old time range for smooth tick interpolation
+    let oldStartTime, oldEndTime;
+    if (zoomState.isInRegion()) {
+        const oldRange = zoomState.getRegionRange();
+        oldStartTime = zoomState.sampleToRealTimestamp(oldRange.startSample);
+        oldEndTime = zoomState.sampleToRealTimestamp(oldRange.endSample);
+    } else {
+        // Coming from full view
+        oldStartTime = State.dataStartTime;
+        oldEndTime = State.dataEndTime;
+    }
+    
     // 🏛️ Hide "Add Region" button when entering the temple
     hideAddRegionButton();
     
@@ -1460,12 +1496,18 @@ export function zoomToRegion(regionIndex) {
     
     // Set as active region
     setActiveRegion(regionIndex);
-    
-    // Re-render waveform for zoomed range
-    drawWaveform();
-    
-    // Re-render spectrogram for zoomed range
-    renderCompleteSpectrogramForRegion(regionStartSeconds, regionEndSeconds);
+
+    // 🏛️ Animate x-axis tick interpolation (smooth transition to new time range)
+    const newStartTime = zoomState.sampleToRealTimestamp(region.startSample);
+    const newEndTime = zoomState.sampleToRealTimestamp(region.endSample);
+
+    // 🎬 Wait for animation to complete, THEN rebuild waveform/spectrogram
+    // This keeps everything visible and smoothly interpolating during the transition
+    animateZoomTransition(oldStartTime, oldEndTime).then(() => {
+        // Animation complete - now rebuild with high-detail zoomed data
+        drawWaveform();
+        renderCompleteSpectrogramForRegion(regionStartSeconds, regionEndSeconds);
+    });
     
     // Update zoom button for THIS region
     const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
@@ -1494,6 +1536,18 @@ export function zoomToFull() {
     
     console.log('🌍 Zooming to full view');
     
+    // 🏛️ Store old time range for smooth tick interpolation
+    let oldStartTime, oldEndTime;
+    if (zoomState.isInRegion()) {
+        const oldRange = zoomState.getRegionRange();
+        oldStartTime = zoomState.sampleToRealTimestamp(oldRange.startSample);
+        oldEndTime = zoomState.sampleToRealTimestamp(oldRange.endSample);
+    } else {
+        // Already in full view, no transition needed
+        oldStartTime = State.dataStartTime;
+        oldEndTime = State.dataEndTime;
+    }
+    
     // 🚩 LOWER THE FLAG! No longer respecting boundaries
     // Clear selection (free roaming)
     State.setSelectionStart(null);
@@ -1509,13 +1563,15 @@ export function zoomToFull() {
     
     // Reset spectrogram state to allow re-rendering
     resetSpectrogramState();
-    
-    // Re-render waveform for full view
-    drawWaveform();
-    
-    // Re-render spectrogram for full view
-    renderCompleteSpectrogram();
-    
+
+    // 🏛️ Animate x-axis tick interpolation (smooth transition back to full view)
+    // 🎬 Wait for animation to complete, THEN rebuild waveform/spectrogram
+    animateZoomTransition(oldStartTime, oldEndTime).then(() => {
+        // Animation complete - now rebuild with full view data
+        drawWaveform();
+        renderCompleteSpectrogram();
+    });
+
     // Update ALL zoom buttons back to 🔍
     regions.forEach(region => {
         const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);

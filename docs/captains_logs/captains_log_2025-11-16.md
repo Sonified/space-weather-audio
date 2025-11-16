@@ -2,6 +2,33 @@
 
 ---
 
+## ⌨️ Hourglass Button Spacebar Fix (v2.10)
+
+### Problem
+When clicking the hourglass button (zoom button) for region zooming, the button would capture focus and prevent spacebar from working to play/pause audio. Users had to click elsewhere before spacebar would work.
+
+### Solution
+1. **Updated spacebar handler** to specifically allow zoom buttons (`.zoom-btn`) to work with spacebar
+2. **Added blur() to zoom button click handler** so the button doesn't maintain focus after clicking
+
+### Key Changes
+- `js/main.js` (line 878-883): Added check for zoom button class, allowing spacebar to work with zoom buttons
+- `js/region-tracker.js` (line 728): Added `e.target.blur()` after zoom button click to remove focus
+
+### How It Works
+- Spacebar handler now checks if button is a zoom button (`isZoomButton`)
+- If it's a zoom button, spacebar handler continues (doesn't return early)
+- Zoom button automatically blurs after click, so spacebar works immediately
+
+### Files Modified
+- `js/main.js` - Updated spacebar handler to allow zoom buttons
+- `js/region-tracker.js` - Added blur() to zoom button click handler
+
+### Version
+v2.10 - Commit: "v2.10 Fix: Hourglass button spacebar fix - zoom buttons no longer capture spacebar"
+
+---
+
 ## 🎵 Graceful Auto-Resume with Fade-In (v2.11)
 
 ### Problem

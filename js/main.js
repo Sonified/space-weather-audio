@@ -809,7 +809,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.09 - ArrayBuffer Memory Leak Fix');
+    console.log('🌋 [0ms] volcano-audio v2.10 - Hourglass Button Spacebar Fix');
+    console.log('⌨️ [0ms] v2.10 UI: Fixed hourglass button to allow spacebar play/pause after clicking - zoom buttons no longer capture spacebar');
     console.log('🧹 [0ms] v2.09 Memory: Fixed ArrayBuffer retention by copying slices when storing in allReceivedData, clearing allReceivedData after stitching to break RAF closure chain');
     console.log('🧹 [0ms] v2.08 Memory: Added page unload/visibility handlers to cancel RAF, improved modal cleanup, added cancelScaleTransitionRAF');
     console.log('🎨 [0ms] v2.07 UI: Added 0.1Hz ticks at 10x speed, adjusted padding, semi-transparent dropdowns');
@@ -875,10 +876,12 @@ window.addEventListener('DOMContentLoaded', async () => {
             const isTextarea = event.target.tagName === 'TEXTAREA';
             const isSelect = event.target.tagName === 'SELECT';
             const isButton = event.target.tagName === 'BUTTON';
+            const isZoomButton = isButton && event.target.classList.contains('zoom-btn');
             const isContentEditable = event.target.isContentEditable;
             
             // Return early (don't handle) if user is interacting with any form element
-            if (isTextInput || isTextarea || isSelect || isButton || isContentEditable) {
+            // BUT allow spacebar to work with zoom buttons (hourglass buttons)
+            if (isTextInput || isTextarea || isSelect || (isButton && !isZoomButton) || isContentEditable) {
                 return; // Let browser handle spacebar normally
             }
             
@@ -1117,23 +1120,26 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Import modules at module level so they're available synchronously during unload
     import('./audio-player.js').then(audioPlayerModule => {
         import('./spectrogram-axis-renderer.js').then(axisModule => {
-            const cleanupOnUnload = () => {
-                // Call synchronously - modules are already loaded
-                audioPlayerModule.cancelAllRAFLoops();
-                axisModule.cancelScaleTransitionRAF();
-            };
+            import('./waveform-x-axis-renderer.js').then(xAxisModule => {
+                const cleanupOnUnload = () => {
+                    // Call synchronously - modules are already loaded
+                    audioPlayerModule.cancelAllRAFLoops();
+                    axisModule.cancelScaleTransitionRAF();
+                    xAxisModule.cancelZoomTransitionRAF();
+                };
             
-            window.addEventListener('beforeunload', cleanupOnUnload);
-            
-            // Also handle pagehide (more reliable than beforeunload in some browsers)
-            window.addEventListener('pagehide', cleanupOnUnload);
-            
-            // 🔥 FIX: Also handle visibility change - if page becomes hidden, cancel RAF
-            // This catches cases where the page is backgrounded or navigated away
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden) {
-                    cleanupOnUnload();
-                }
+                window.addEventListener('beforeunload', cleanupOnUnload);
+                
+                // Also handle pagehide (more reliable than beforeunload in some browsers)
+                window.addEventListener('pagehide', cleanupOnUnload);
+                
+                // 🔥 FIX: Also handle visibility change - if page becomes hidden, cancel RAF
+                // This catches cases where the page is backgrounded or navigated away
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) {
+                        cleanupOnUnload();
+                    }
+                });
             });
         });
     });
