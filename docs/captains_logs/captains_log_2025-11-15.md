@@ -280,3 +280,47 @@ v2.03 - Commit: "v2.03 Feature: Infinite spectrogram viewport with GPU-accelerat
 
 ---
 
+## 🎨 Feature: Frequency-Scale-Aware Stretching & Scale Change Re-Rendering (v2.04)
+
+### Frequency-Scale-Aware Stretching
+Implemented correct stretch factors for each frequency scale type. Different scales compress frequency ranges differently, so we need different stretch amounts:
+
+1. **Linear Scale:**
+   - Stretch factor = `playbackRate` (direct proportion)
+   - At 15x: stretch 15x → top edge represents 1/15th of frequency range linearly
+
+2. **Square Root Scale:**
+   - Stretch factor = `sqrt(playbackRate)`
+   - At 15x: stretch ~3.87x (sqrt(15)) → top edge represents 1/15th of frequency range in sqrt space
+   - Because `sqrt(1/15) ≈ 0.258` of canvas needs to become full canvas = `1/0.258 ≈ sqrt(15)`
+
+3. **Logarithmic Scale:**
+   - Stretch factor = `1 / fraction` where fraction is the portion of log range being shown
+   - Calculates what fraction of the log range we're displaying at current playback rate
+   - Stretches that fraction to fill the viewport
+
+### Scale Change Re-Rendering
+When user changes frequency scale (Linear/Sqrt/Log), the spectrogram now automatically re-renders:
+- Clears existing render and infinite canvas
+- Re-renders with new frequency scale
+- Updates axis to match new scale
+- Applies current playback rate with correct stretch factor
+
+### Why This Works
+The spectrogram pixels are already in the correct frequency-scaled space (rendered with sqrt/log/linear transforms). We just need to stretch by the amount that matches the scale's compression:
+- Linear compresses evenly → stretch evenly
+- Sqrt compresses by sqrt → stretch by sqrt  
+- Log compresses logarithmically → stretch by inverse log fraction
+
+The axis and spectrogram stay perfectly aligned because the stretch matches the scale's compression!
+
+### Files Modified
+- `js/spectrogram-complete-renderer.js` - Added `calculateStretchFactor()` function with scale-aware math, updated `updateSpectrogramViewport()` to use it
+- `js/spectrogram-renderer.js` - Updated `changeFrequencyScale()` to trigger re-render when scale changes
+- `backend/collector_loop.py` - Version bump
+
+### Version
+v2.04 - Commit: "v2.04 Feature: Frequency-scale-aware spectrogram stretching and scale change re-rendering"
+
+---
+

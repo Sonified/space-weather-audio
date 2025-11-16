@@ -7,6 +7,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode } from './region-tracker.js';
+import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered } from './spectrogram-complete-renderer.js';
 
 // Spectrogram selection state
 let spectrogramSelectionActive = false;
@@ -250,7 +251,7 @@ export function loadSpectrogramScrollSpeed() {
     changeSpectrogramScrollSpeed();
 }
 
-export function changeFrequencyScale() {
+export async function changeFrequencyScale() {
     const select = document.getElementById('frequencyScale');
     const value = select.value; // 'linear', 'sqrt', or 'logarithmic'
     
@@ -258,9 +259,21 @@ export function changeFrequencyScale() {
     
     console.log(`📊 Frequency scale changed to: ${value}`);
     
+    // If complete spectrogram is rendered, re-render with new scale
+    if (isCompleteSpectrogramRendered()) {
+        console.log('🎨 Re-rendering spectrogram with new frequency scale...');
+        
+        // Clear existing render
+        clearCompleteSpectrogram();
+        
+        // Re-render with new scale
+        await renderCompleteSpectrogram();
+    }
+    
     // Redraw axis with new scale (respects current playback speed)
     positionAxisCanvas();
     initializeAxisPlaybackRate();
+    drawFrequencyAxis();
 }
 
 export function startVisualization() {

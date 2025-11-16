@@ -479,7 +479,50 @@ export function getCachedSpectrogramCanvas() {
 }
 
 /**
+ * Calculate stretch factor based on frequency scale
+ * Different scales compress frequency range differently!
+ * 
+ * @param {number} playbackRate - Current playback rate
+ * @param {string} frequencyScale - 'linear', 'sqrt', or 'logarithmic'
+ * @returns {number} Stretch factor to apply
+ */
+function calculateStretchFactor(playbackRate, frequencyScale) {
+    if (frequencyScale === 'linear') {
+        // Linear: direct proportion
+        // At 15x: Show 1/15th of frequency range → stretch 15x
+        return playbackRate;
+    } else if (frequencyScale === 'sqrt') {
+        // Sqrt: stretch by sqrt(playbackRate)
+        // Because sqrt(1/15) of canvas needs to become full canvas
+        // sqrt(1/15) ≈ 0.258 → need to stretch 0.258 → 1.0 = 1/0.258 ≈ sqrt(15)
+        return Math.sqrt(playbackRate);
+    } else if (frequencyScale === 'logarithmic') {
+        // Log: calculate from log range
+        // We need to find what fraction of the log range we're showing
+        const totalBins = 1024; // FFT bins (matches analyser node)
+        const minFreq = 1; // Avoid log(0)
+        const maxFreq = totalBins;
+        const targetMaxFreq = maxFreq / playbackRate; // Top edge at playbackRate
+        
+        const logMin = Math.log10(minFreq);
+        const logMax = Math.log10(maxFreq);
+        const logTarget = Math.log10(Math.max(targetMaxFreq, minFreq));
+        
+        // Fraction of log range we're showing
+        const fullRange = logMax - logMin;
+        const targetRange = logTarget - logMin;
+        const fraction = targetRange / fullRange;
+        
+        // Stretch to fill viewport
+        return 1 / fraction;
+    }
+    
+    return playbackRate; // Fallback to linear
+}
+
+/**
  * Update spectrogram viewport with GPU-accelerated stretching
+ * NOW WITH FREQUENCY-SCALE-AWARE STRETCHING! 🎨✨
  * Called when playback rate changes - stretches neutral render on demand
  * @param {number} playbackRate - Current playback rate (1.0 = neutral, 15.0 = max)
  */
@@ -495,8 +538,9 @@ export function updateSpectrogramViewport(playbackRate) {
     const width = canvas.width;
     const height = canvas.height; // 450px viewport
     
-    // Step 1: GPU-stretch the neutral 450px render vertically
-    const stretchedHeight = Math.floor(height * playbackRate);
+    // 🔥 Calculate stretch factor based on frequency scale!
+    const stretchFactor = calculateStretchFactor(playbackRate, State.frequencyScale);
+    const stretchedHeight = Math.floor(height * stretchFactor);
     
     // Create temp canvas for stretching
     const tempStretch = document.createElement('canvas');
@@ -510,10 +554,10 @@ export function updateSpectrogramViewport(playbackRate) {
         0, infiniteSpectrogramCanvas.height - height,  // Source: bottom 450px
         width, height,                                  // Source size
         0, 0,                                          // Dest: top-left
-        width, stretchedHeight                          // Dest: stretched!
+        width, stretchedHeight                          // Dest: stretched by scale-aware factor!
     );
     
-    // Step 2: Extract bottom 450px of stretched image to viewport
+    // Extract bottom 450px of stretched image to viewport
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(
         tempStretch,
