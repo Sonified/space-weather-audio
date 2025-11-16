@@ -481,6 +481,45 @@ export function resetSpectrogramState() {
     }
 }
 
+/**
+ * Restore infinite canvas from cached elastic friend
+ * Used when zooming back to full view - no FFT needed!
+ */
+export function restoreInfiniteCanvasFromCache() {
+    if (!cachedFullSpectrogramCanvas) {
+        console.warn('⚠️ Cannot restore - no elastic friend cached!');
+        return;
+    }
+    
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    
+    console.log('🏠 Restoring infinite canvas from elastic friend (no FFT!)');
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    const infiniteHeight = Math.floor(height * MAX_PLAYBACK_RATE);
+    
+    // Recreate infinite canvas from elastic friend
+    infiniteSpectrogramCanvas = document.createElement('canvas');
+    infiniteSpectrogramCanvas.width = width;
+    infiniteSpectrogramCanvas.height = infiniteHeight;
+    const infiniteCtx = infiniteSpectrogramCanvas.getContext('2d');
+    
+    infiniteCtx.fillStyle = '#000';
+    infiniteCtx.fillRect(0, 0, width, infiniteHeight);
+    infiniteCtx.drawImage(cachedFullSpectrogramCanvas, 0, infiniteHeight - height);
+    
+    // Record context
+    infiniteCanvasContext = {
+        startSample: 0,
+        endSample: State.completeSamplesArray ? State.completeSamplesArray.length : 0,
+        frequencyScale: State.frequencyScale
+    };
+    
+    console.log('✅ Infinite canvas restored from cache - ready for stretching!');
+}
+
 export function clearCompleteSpectrogram() {
     console.log('🧹 [spectrogram-complete-renderer.js] clearCompleteSpectrogram CALLED');
     console.trace('📍 Call stack:');

@@ -16,7 +16,7 @@ let lastPreviewX = -1;
  * Called during playback to show current position
  */
 export function drawSpectrogramPlayhead() {
-    console.log(`▶️ [spectrogram-playhead.js] drawSpectrogramPlayhead CALLED`);
+    // console.log(`▶️ [spectrogram-playhead.js] drawSpectrogramPlayhead CALLED`);
     
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
@@ -104,7 +104,7 @@ export function drawSpectrogramPlayhead() {
  * Mirrors the waveform scrub preview behavior
  */
 export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) {
-    console.log(`👆 [spectrogram-playhead.js] drawSpectrogramScrubPreview CALLED: targetPosition=${targetPosition.toFixed(2)}, isDragging=${isDragging}`);
+    // console.log(`👆 [spectrogram-playhead.js] drawSpectrogramScrubPreview CALLED: targetPosition=${targetPosition.toFixed(2)}, isDragging=${isDragging}`);
     
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;

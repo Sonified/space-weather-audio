@@ -16,7 +16,7 @@ import * as State from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
-import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport } from './spectrogram-complete-renderer.js';
+import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache } from './spectrogram-complete-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 
 // Region data structure - stored per volcano
@@ -1929,23 +1929,33 @@ export function zoomToFull() {
     // 💾 Cache the zoomed spectrogram BEFORE resetting (so we can crossfade it)
     cacheZoomedSpectrogram();
     
-    // Reset zoom state to full view
     // 🏛️ Exit the temple - return to full view
     zoomState.mode = 'full';
     zoomState.currentViewStartSample = 0;
     zoomState.currentViewEndSample = zoomState.totalSamples;
     zoomState.activeRegionId = null;
     
-    // Reset spectrogram state to allow re-rendering
+    // 🔧 FIX: Only reset spectrogram state (clears infinite canvas)
+    // DON'T clear the elastic friend - we need it for the transition!
     resetSpectrogramState();
 
     // 🏛️ Animate x-axis tick interpolation (smooth transition back to full view)
-    // 🎬 Wait for animation to complete, THEN rebuild waveform/spectrogram
-    // Pass false to indicate we're zooming FROM a region (opacity goes from 0.2 → 0.5)
+    // 🎬 Wait for animation to complete, THEN rebuild infinite canvas for full view
     animateZoomTransition(oldStartTime, oldEndTime, false).then(() => {
-        // Animation complete - now rebuild with full view data
+        console.log('🎬 Zoom-out animation complete - restoring full view');
+        
+        // Animation complete - rebuild waveform for full view
         drawWaveform();
-        renderCompleteSpectrogram();
+        
+        // 🔧 FIX: Restore infinite canvas from elastic friend WITHOUT re-rendering spectrogram!
+        // The elastic friend already has the full-view spectrogram at neutral resolution
+        // We just need to recreate the infinite canvas from it
+        restoreInfiniteCanvasFromCache();
+        
+        // Update viewport with current playback rate
+        const playbackRate = State.currentPlaybackRate || 1.0;
+        updateSpectrogramViewport(playbackRate);
+        
         // Clear cached spectrograms after transition (no longer needed)
         clearCachedFullSpectrogram();
         clearCachedZoomedSpectrogram();
