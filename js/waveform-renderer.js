@@ -8,7 +8,7 @@ import { PlaybackState } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
-import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, resetRegionPlayButtonIfFinished } from './region-tracker.js';
+import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, resetRegionPlayButtonIfFinished, checkCanvasZoomButtonClick, zoomToRegion, zoomToFull, getRegions } from './region-tracker.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
@@ -566,6 +566,52 @@ export function setupWaveformInteraction() {
         if (State.isDragging) {
             State.setIsDragging(false);
             canvas.style.cursor = 'pointer';
+            
+            // Check if click is on a canvas zoom button (only if not selecting/dragging)
+            // Only check if it was a simple click, not a drag
+            const rect = canvas.getBoundingClientRect();
+            const startX = State.selectionStartX || 0;
+            const endX = e.clientX - rect.left;
+            const dragDistance = Math.abs(endX - startX);
+            
+            // Only check for button click if it was a simple click (not a drag)
+            if (!State.isSelecting && dragDistance < 5) {
+                const clickX = endX;
+                const clickY = e.clientY - rect.top;
+                const clickedRegionIndex = checkCanvasZoomButtonClick(clickX, clickY, canvas.width, canvas.height);
+                
+                if (clickedRegionIndex !== null) {
+                    // Clicked on a zoom button - handle zoom
+                    e.stopPropagation();
+                    e.preventDefault();
+                    
+                    const regions = getRegions();
+                    const region = regions[clickedRegionIndex];
+                    
+                    if (region) {
+                        // Check if we're already inside THIS temple
+                        if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
+                            // We're inside - exit the temple and return to full view
+                            zoomToFull();
+                        } else {
+                            // Zoom into this region
+                            zoomToRegion(clickedRegionIndex);
+                        }
+                    }
+                    
+                    // Clear selection state
+                    State.setSelectionStartX(null);
+                    State.setIsSelecting(false);
+                    State.setSelectionStart(null);
+                    State.setSelectionEnd(null);
+                    updateWorkletSelection();
+                    hideAddRegionButton();
+                    
+                    // Redraw to update button states (canvas buttons will update via redraw)
+                    drawWaveformWithSelection();
+                    return; // Don't process as normal waveform click
+                }
+            }
             
             if (State.isSelecting) {
                 const { targetPosition } = getPositionFromMouse(e);

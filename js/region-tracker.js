@@ -17,7 +17,7 @@ import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
 import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState } from './spectrogram-complete-renderer.js';
-import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
+import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 
 // Region data structure - stored per volcano
 // Map<volcanoName, regions[]>
@@ -25,6 +25,10 @@ let regionsByVolcano = new Map();
 let currentVolcano = null;
 let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
+
+// Store zoom button positions on canvas for click detection
+// Map<regionId, { x, y, width, height, regionIndex }>
+let canvasZoomButtonPositions = new Map();
 
 /**
  * Get the current volcano from the UI
@@ -87,6 +91,9 @@ export function switchVolcanoRegions(newVolcano) {
     // Clear active region indices when switching volcanoes
     activeRegionIndex = null;
     activePlayingRegionIndex = null;
+    
+    // Clear canvas button positions when switching volcanoes
+    canvasZoomButtonPositions.clear();
     
     // Update current volcano
     currentVolcano = newVolcano;
@@ -526,29 +533,232 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
         ctx.lineTo(endX, canvasHeight);
         ctx.stroke();
         
-        // Draw region number - position dynamically based on region width
+        // Draw region number - smoothly interpolate position during zoom transitions
+        // The number should "surf" the transition just like ticks and regions do! 🏄‍♂️
         const regionNumber = index + 1; // 1-indexed for display
-        const paddingY = 6; // Padding from top edge (moved up more)
+        const paddingY = 6; // Padding from top edge
         
-        // Position number outside to the left if region is too narrow, otherwise inside
+        // Calculate target positions (where number will be at start/end of transition)
+        const insidePosition = startX + 10; // Position inside, top-left corner
+        const outsidePosition = startX - 20; // Position outside, to the left
+        
         let labelX;
-        if (highlightWidth < 30) {
-            // Position number to the left, outside the box
-            labelX = startX - 20;
+        if (isZoomTransitionInProgress()) {
+            // During transition, interpolate between old and new positions
+            const transitionProgress = getZoomTransitionProgress();
+            const oldRange = getOldTimeRange();
+            
+            if (oldRange) {
+                // Calculate old positions (where number WAS before zoom)
+                const regionStartTimestamp = zoomState.sampleToRealTimestamp(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds));
+                const regionEndTimestamp = zoomState.sampleToRealTimestamp(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds));
+                const oldStartMs = regionStartTimestamp.getTime();
+                const oldEndMs = regionEndTimestamp.getTime();
+                
+                const oldDisplayStartMs = oldRange.startTime.getTime();
+                const oldDisplayEndMs = oldRange.endTime.getTime();
+                const oldDisplaySpanMs = oldDisplayEndMs - oldDisplayStartMs;
+                
+                const oldStartProgress = (oldStartMs - oldDisplayStartMs) / oldDisplaySpanMs;
+                const oldEndProgress = (oldEndMs - oldDisplayStartMs) / oldDisplaySpanMs;
+                const oldStartX = oldStartProgress * canvasWidth;
+                const oldEndX = oldEndProgress * canvasWidth;
+                const oldWidth = oldEndX - oldStartX;
+                
+                // Calculate old position (inside vs outside based on old width)
+                const oldPosition = oldWidth < 30 ? (oldStartX - 20) : (oldStartX + 10);
+                
+                // Calculate NEW position (where number will be after transition completes)
+                // Need to calculate target width based on FINAL time range, not interpolated
+                let targetStartTime, targetEndTime;
+                if (zoomState.isInRegion()) {
+                    const regionRange = zoomState.getRegionRange();
+                    targetStartTime = zoomState.sampleToRealTimestamp(regionRange.startSample);
+                    targetEndTime = zoomState.sampleToRealTimestamp(regionRange.endSample);
+                } else {
+                    targetStartTime = State.dataStartTime;
+                    targetEndTime = State.dataEndTime;
+                }
+                
+                const targetStartMs = targetStartTime.getTime();
+                const targetEndMs = targetEndTime.getTime();
+                const targetSpanMs = targetEndMs - targetStartMs;
+                
+                const targetStartProgress = (oldStartMs - targetStartMs) / targetSpanMs;
+                const targetEndProgress = (oldEndMs - targetStartMs) / targetSpanMs;
+                const targetStartX = targetStartProgress * canvasWidth;
+                const targetEndX = targetEndProgress * canvasWidth;
+                const targetWidth = targetEndX - targetStartX;
+                
+                // Calculate new position (inside vs outside based on FINAL target width)
+                const newInsidePos = targetStartX + 10;
+                const newOutsidePos = targetStartX - 20;
+                const newPosition = targetWidth < 30 ? newOutsidePos : newInsidePos;
+                
+                // Smoothly interpolate between old and new positions
+                // Use ease-out cubic (same as other transitions)
+                const easedProgress = 1 - Math.pow(1 - transitionProgress, 3);
+                labelX = oldPosition + (newPosition - oldPosition) * easedProgress;
+            } else {
+                // Fallback if oldRange is null
+                labelX = highlightWidth < 30 ? outsidePosition : insidePosition;
+            }
         } else {
-            // Position inside, top-left corner (with padding from left edge, moved left a bit)
-            labelX = startX + 10;
+            // Not in transition - use simple threshold logic
+            labelX = highlightWidth < 30 ? outsidePosition : insidePosition;
         }
         const labelY = paddingY;
         
-        // Set text style - white with 80% opacity
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI"';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
+        // Check if number is on screen (with some padding for button)
+        const buttonWidth = 21; // 25% smaller: 28 * 0.75 = 21px
+        const buttonHeight = 15; // 25% smaller: 20 * 0.75 = 15px
+        const buttonPadding = 4; // Space between number and button
+        const isOnScreen = labelX + 50 > 0 && labelX < canvasWidth; // 50px accounts for number + button + padding (reduced)
         
-        ctx.fillText(regionNumber.toString(), labelX, labelY);
+        if (isOnScreen) {
+            // Set text style - white with 80% opacity
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI"';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            
+            ctx.fillText(regionNumber.toString(), labelX, labelY);
+            
+            // Draw zoom button next to the number, aligned to middle-left (vertically centered with number)
+            const buttonX = labelX + 18; // Position button closer to the number (number is ~20px wide)
+            const numberTextHeight = 20; // Number font size
+            const buttonY = labelY + (numberTextHeight - buttonHeight) / 2; // Center button vertically with number
+            
+            // Determine button state (same as panel button)
+            const isZoomedIntoThisRegion = zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id;
+            const buttonIcon = isZoomedIntoThisRegion ? '↩️' : '🔍';
+            
+            // Draw button with 3D effect to match panel buttons
+            // Ensure button is fully opaque and drawn on top by resetting globalAlpha
+            ctx.save(); // Save current context state
+            ctx.globalAlpha = 1.0; // Force 100% opacity for button
+            
+            const radius = 3; // Match panel button border-radius
+            
+            // Create gradient for button background (145deg = top-left to bottom-right)
+            let gradient;
+            if (isZoomedIntoThisRegion) {
+                // Orange gradient for return button (matches panel .return-mode)
+                gradient = ctx.createLinearGradient(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight);
+                gradient.addColorStop(0, '#ff8c00'); // Top-left (lighter)
+                gradient.addColorStop(1, '#ff6600'); // Bottom-right (darker)
+            } else {
+                // Blue gradient for zoom button (matches panel default)
+                gradient = ctx.createLinearGradient(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight);
+                gradient.addColorStop(0, '#2196F3'); // Top-left (lighter)
+                gradient.addColorStop(1, '#1565C0'); // Bottom-right (darker)
+            }
+            
+            // Draw button background with gradient
+            ctx.beginPath();
+            ctx.moveTo(buttonX + radius, buttonY);
+            ctx.lineTo(buttonX + buttonWidth - radius, buttonY);
+            ctx.quadraticCurveTo(buttonX + buttonWidth, buttonY, buttonX + buttonWidth, buttonY + radius);
+            ctx.lineTo(buttonX + buttonWidth, buttonY + buttonHeight - radius);
+            ctx.quadraticCurveTo(buttonX + buttonWidth, buttonY + buttonHeight, buttonX + buttonWidth - radius, buttonY + buttonHeight);
+            ctx.lineTo(buttonX + radius, buttonY + buttonHeight);
+            ctx.quadraticCurveTo(buttonX, buttonY + buttonHeight, buttonX, buttonY + buttonHeight - radius);
+            ctx.lineTo(buttonX, buttonY + radius);
+            ctx.quadraticCurveTo(buttonX, buttonY, buttonX + radius, buttonY);
+            ctx.closePath();
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // Draw border highlights (light on top/left, dark on bottom/right)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            // Top border (light)
+            ctx.moveTo(buttonX + radius, buttonY);
+            ctx.lineTo(buttonX + buttonWidth - radius, buttonY);
+            ctx.stroke();
+            // Left border (light)
+            ctx.beginPath();
+            ctx.moveTo(buttonX, buttonY + radius);
+            ctx.lineTo(buttonX, buttonY + buttonHeight - radius);
+            ctx.stroke();
+            
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.beginPath();
+            // Bottom border (dark)
+            ctx.moveTo(buttonX + radius, buttonY + buttonHeight);
+            ctx.lineTo(buttonX + buttonWidth - radius, buttonY + buttonHeight);
+            ctx.stroke();
+            // Right border (dark)
+            ctx.beginPath();
+            ctx.moveTo(buttonX + buttonWidth, buttonY + radius);
+            ctx.lineTo(buttonX + buttonWidth, buttonY + buttonHeight - radius);
+            ctx.stroke();
+            
+            // Draw inset highlights (top highlight)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.beginPath();
+            ctx.moveTo(buttonX + radius, buttonY);
+            ctx.lineTo(buttonX + buttonWidth - radius, buttonY);
+            ctx.lineTo(buttonX + buttonWidth - radius, buttonY + 1);
+            ctx.lineTo(buttonX + radius, buttonY + 1);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Draw inset shadow (bottom shadow)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.beginPath();
+            ctx.moveTo(buttonX + radius, buttonY + buttonHeight - 1);
+            ctx.lineTo(buttonX + buttonWidth - radius, buttonY + buttonHeight - 1);
+            ctx.lineTo(buttonX + buttonWidth - radius, buttonY + buttonHeight);
+            ctx.lineTo(buttonX + radius, buttonY + buttonHeight);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Draw button icon (fully opaque white) - scaled down 25% to match smaller button
+            ctx.fillStyle = 'rgba(255, 255, 255, 1.0)';
+            ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI"'; // 25% smaller: 16 * 0.75 = 12px
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(buttonIcon, buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
+            ctx.restore(); // Restore context state
+            
+            // Store button position for click detection
+            canvasZoomButtonPositions.set(region.id, {
+                x: buttonX,
+                y: buttonY,
+                width: buttonWidth,
+                height: buttonHeight,
+                regionIndex: index
+            });
+        } else {
+            // Number is off screen, remove button position
+            canvasZoomButtonPositions.delete(region.id);
+        }
     });
+}
+
+/**
+ * Check if click is on a canvas zoom button
+ * x, y are in CSS pixels (from event coordinates)
+ * canvasWidth, canvasHeight are in device pixels (from canvas.width/height)
+ * Returns region index if clicked, null otherwise
+ */
+export function checkCanvasZoomButtonClick(x, y, canvasWidth, canvasHeight) {
+    // Convert CSS pixel coordinates to device pixel coordinates
+    // Button positions are stored in device pixel coordinates (same as canvas.width/height)
+    const dpr = window.devicePixelRatio || 1;
+    const scaledX = x * dpr;
+    const scaledY = y * dpr;
+    
+    // Check each button position
+    for (const [regionId, button] of canvasZoomButtonPositions.entries()) {
+        if (scaledX >= button.x && scaledX <= button.x + button.width &&
+            scaledY >= button.y && scaledY <= button.y + button.height) {
+            return button.regionIndex;
+        }
+    }
+    return null;
 }
 
 /**
@@ -804,7 +1014,7 @@ function createRegionCard(region, index) {
                 title="Play region">
             ${region.playing ? '⏸' : '▶'}
         </button>
-        <span class="region-label">Region ${region.id}</span>
+        <span class="region-label">Region ${index + 1}</span>
         <div class="region-summary">
             <div class="region-time-display">
                 ${formatTime(region.startTime)} – ${formatTime(region.stopTime)}
@@ -1327,6 +1537,8 @@ export function resetRegionPlayButtonIfFinished() {
  */
 export function clearActiveRegion() {
     activeRegionIndex = null;
+    // Clear canvas button positions when clearing active region
+    canvasZoomButtonPositions.clear();
     // Trigger waveform redraw to update region highlights
     drawWaveformWithSelection();
 }
@@ -1477,6 +1689,13 @@ export function updateFeature(regionIndex, featureIndex, property, value) {
 export function deleteRegion(index) {
     if (confirm('Delete this region?')) {
         const regions = getCurrentRegions();
+        const deletedRegion = regions[index];
+        
+        // Remove button position for deleted region (before deleting from array)
+        if (deletedRegion) {
+            canvasZoomButtonPositions.delete(deletedRegion.id);
+        }
+        
         regions.splice(index, 1);
         setCurrentRegions(regions);
         if (activeRegionIndex === index) {
@@ -1485,6 +1704,9 @@ export function deleteRegion(index) {
             activeRegionIndex--;
         }
         renderRegions();
+        
+        // Redraw waveform to update button positions
+        drawWaveformWithSelection();
     }
 }
 
@@ -1600,6 +1822,7 @@ export function zoomToRegion(regionIndex) {
             if (oldZoomBtn) {
                 oldZoomBtn.textContent = '🔍';
                 oldZoomBtn.title = 'Zoom to region';
+                oldZoomBtn.classList.remove('return-mode'); // Remove orange styling
             }
         }
     }
@@ -1651,6 +1874,7 @@ export function zoomToRegion(regionIndex) {
         if (zoomBtn) {
             zoomBtn.textContent = '↩️';
             zoomBtn.title = 'Return to full view';
+            zoomBtn.classList.add('return-mode'); // Add class for orange styling
         }
     }
     
@@ -1717,6 +1941,7 @@ export function zoomToFull() {
             if (zoomBtn) {
                 zoomBtn.textContent = '🔍';
                 zoomBtn.title = 'Zoom to region';
+                zoomBtn.classList.remove('return-mode'); // Remove orange styling
             }
         }
     });

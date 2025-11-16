@@ -544,6 +544,15 @@ export function isZoomTransitionInProgress() {
 }
 
 /**
+ * Get the old time range (before transition started)
+ * Returns null if not in transition
+ * @returns {Object|null} { startTime: Date, endTime: Date } or null
+ */
+export function getOldTimeRange() {
+    return oldTimeRange;
+}
+
+/**
  * 🏛️ Animate zoom transition for x-axis ticks
  * Interpolates tick positions smoothly when zooming in/out
  * @param {Date} oldStartTime - Previous start time

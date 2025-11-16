@@ -21,7 +21,7 @@ import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
-import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, resetRegionPlayButtonIfFinished, getActivePlayingRegionIndex } from './region-tracker.js';
+import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, resetRegionPlayButtonIfFinished, getActivePlayingRegionIndex, switchVolcanoRegions } from './region-tracker.js';
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 // See data-fetcher.js for centralized flags documentation
@@ -423,6 +423,10 @@ export async function startStreaming(event) {
         const highpassFreq = document.getElementById('highpassFreq').value;
         const enableNormalize = document.getElementById('enableNormalize').checked;
         const volcano = document.getElementById('volcano').value;
+        
+        // Switch to this volcano's regions (regions are scoped per volcano)
+        // This happens when data is actually being fetched, not just when the dropdown changes
+        switchVolcanoRegions(volcano);
         
         // Log what we're fetching
         const stationLabel = `${stationData.network}.${stationData.station}.${stationData.location || '--'}.${stationData.channel}`;

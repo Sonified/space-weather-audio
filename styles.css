@@ -1125,6 +1125,20 @@ input[type="checkbox"] {
         inset 0 0 2px rgba(0, 0, 0, 0.2);
 }
 
+.region-card .zoom-btn.return-mode {
+    background: linear-gradient(145deg, #ff8c00, #ff6600);
+}
+
+.region-card .zoom-btn.return-mode:hover {
+    background: linear-gradient(145deg, #ff9d1a, #ff7700);
+    box-shadow: 
+        0 3px 6px rgba(255, 140, 0, 0.4),
+        0 2px 3px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+    transform: translateY(-1px);
+}
+
 .region-card .play-btn {
     width: 32px;
     height: 24px;

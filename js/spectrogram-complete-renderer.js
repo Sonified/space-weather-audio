@@ -919,9 +919,9 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
     ctx.clearRect(0, 0, width, height);
     
     // Calculate sample range (needed for context check)
-    const sampleRate = 44100;
-    const startSample = Math.floor(startSeconds * sampleRate);
-    const endSample = Math.floor(endSeconds * sampleRate);
+        const sampleRate = 44100;
+        const startSample = Math.floor(startSeconds * sampleRate);
+        const endSample = Math.floor(endSeconds * sampleRate);
     
     // 🏛️ Check if we need to re-render due to context change
     const needsRerender = infiniteSpectrogramCanvas &&

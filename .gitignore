@@ -24,3 +24,5 @@ __pycache__/
 *.bak
 # Auto-generated
 .deploy_time
+# Claude instructions
+claude_instructions/

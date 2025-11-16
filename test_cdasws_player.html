@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSP FIELDS Magnetometer Audio Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .audio-container {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            display: none;
+        }
+        
+        .audio-container.active {
+            display: block;
+        }
+        
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .info {
+            margin-top: 15px;
+            padding: 15px;
+            background: #e8f4f8;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #555;
+        }
+        
+        .info strong {
+            color: #333;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #667eea;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        .error {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 8px;
+            color: #c33;
+            display: none;
+        }
+        
+        .error.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌌 PSP FIELDS Magnetometer</h1>
+        <p class="subtitle">Create audio from Parker Solar Probe fluxgate magnetometer data</p>
+        
+        <form id="audioForm">
+            <div class="form-group">
+                <label for="startTime">Start Time (ISO format)</label>
+                <input 
+                    type="text" 
+                    id="startTime" 
+                    name="startTime" 
+                    value="2025-07-31T22:00:00Z"
+                    placeholder="2025-07-31T22:00:00Z"
+                >
+            </div>
+            
+            <div class="form-group">
+                <label for="duration">Duration (minutes)</label>
+                <input 
+                    type="number" 
+                    id="duration" 
+                    name="duration" 
+                    value="10"
+                    min="1"
+                    max="60"
+                >
+            </div>
+            
+            <button type="submit" id="createBtn">
+                🎵 Create Audio File
+            </button>
+        </form>
+        
+        <div class="loading" id="loading">
+            ⏳ Creating audio file via CDASWS API...
+        </div>
+        
+        <div class="error" id="error"></div>
+        
+        <div class="audio-container" id="audioContainer">
+            <h3>🎧 Audio Player</h3>
+            <audio id="audioPlayer" controls></audio>
+            <div class="info" id="fileInfo"></div>
+        </div>
+    </div>
+    
+    <script>
+        const form = document.getElementById('audioForm');
+        const createBtn = document.getElementById('createBtn');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const audioContainer = document.getElementById('audioContainer');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const fileInfo = document.getElementById('fileInfo');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const startTime = document.getElementById('startTime').value;
+            const durationMinutes = parseInt(document.getElementById('duration').value);
+            
+            // Validate inputs
+            if (!startTime || !durationMinutes || durationMinutes < 1) {
+                showError('Please provide valid start time and duration');
+                return;
+            }
+            
+            // Reset UI
+            createBtn.disabled = true;
+            loading.classList.add('active');
+            error.classList.remove('active');
+            audioContainer.classList.remove('active');
+            
+            try {
+                const response = await fetch('/api/create-audio', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        start_time: startTime,
+                        duration_minutes: durationMinutes
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to create audio');
+                }
+                
+                // Success - show audio player
+                audioPlayer.src = data.audio_url;
+                audioContainer.classList.add('active');
+                
+                // Show file info
+                const info = data.file_info;
+                const params = data.parameters;
+                fileInfo.innerHTML = `
+                    <strong>File Info:</strong><br>
+                    Size: ${(info.size / 1024).toFixed(2)} KB<br>
+                    Format: ${info.format}<br>
+                    Time Range: ${info.start_time} to ${info.end_time}<br>
+                    Duration: ${params.duration_minutes} minutes
+                `;
+                
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                createBtn.disabled = false;
+                loading.classList.remove('active');
+            }
+        });
+        
+        function showError(message) {
+            error.textContent = `❌ Error: ${message}`;
+            error.classList.add('active');
+        }
+    </script>
+</body>
+</html>
+
