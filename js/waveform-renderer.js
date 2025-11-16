@@ -674,6 +674,11 @@ export function setupWaveformInteraction() {
                 clearSpectrogramScrubPreview();  // Clear scrub preview
                 drawSpectrogramPlayhead();  // Update spectrogram immediately
                 
+                // 🔧 FIX: Restore spectrogram viewport state
+                import('./spectrogram-complete-renderer.js').then(({ restoreViewportState }) => {
+                    restoreViewportState();
+                });
+                
                 // Seek to start and optionally start playback if playOnClick is enabled
                 // Worklet handles fades autonomously based on its current state
                 const shouldAutoPlay = document.getElementById('playOnClick').checked;
@@ -711,6 +716,11 @@ export function setupWaveformInteraction() {
                 clearSpectrogramScrubPreview();  // Clear scrub preview
                 performSeek();
                 drawSpectrogramPlayhead();  // Update spectrogram immediately after seek
+                
+                // 🔧 FIX: Restore spectrogram viewport state
+                import('./spectrogram-complete-renderer.js').then(({ restoreViewportState }) => {
+                    restoreViewportState();
+                });
             }
         }
     });

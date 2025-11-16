@@ -6,6 +6,7 @@
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
 import { drawInterpolatedWaveform, drawWaveformWithSelection } from './waveform-renderer.js';
+import { drawInterpolatedSpectrogram } from './spectrogram-complete-renderer.js';
 
 // Debug flag for axis drawing logs (set to true to enable detailed logging)
 const DEBUG_AXIS = false;
@@ -196,6 +197,9 @@ export function drawWaveformXAxis() {
 
                 // 🏛️ Trigger interpolated waveform draw so everything zooms together
                 drawInterpolatedWaveform();
+                
+                // 🏄‍♂️ Stretch spectrogram to match interpolated time range - everything moves together!
+                drawInterpolatedSpectrogram();
             });
         } else {
             // Animation complete
@@ -632,6 +636,14 @@ export function getRegionOpacityProgress() {
  */
 export function isZoomTransitionInProgress() {
     return zoomTransitionInProgress;
+}
+
+/**
+ * Get zoom direction (true = zooming TO region, false = zooming FROM region)
+ * @returns {boolean} True if zooming to region, false if zooming from region
+ */
+export function getZoomDirection() {
+    return isZoomingToRegion;
 }
 
 /**

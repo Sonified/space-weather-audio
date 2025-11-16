@@ -17,6 +17,9 @@ let spectrogramEndY = null;
 let spectrogramSelectionBox = null;
 
 export function drawSpectrogram() {
+    console.log(`📺 [spectrogram-renderer.js] drawSpectrogram CALLED`);
+    console.trace('📍 Call stack:');
+    
     // 🔥 FIX: Copy State values to local variables IMMEDIATELY to break closure chain
     // This prevents RAF callbacks from capturing the entire State module
     // Access State only once at the start, then use local variables throughout
@@ -181,6 +184,9 @@ export async function changeFrequencyScale() {
         
         const canvas = document.getElementById('spectrogram');
         if (canvas) {
+            console.log(`🎨 [spectrogram-renderer.js] changeFrequencyScale: Starting fade animation`);
+            console.trace('📍 Call stack:');
+            
             const ctx = canvas.getContext('2d');
             const width = canvas.width;
             const height = canvas.height;
@@ -222,6 +228,7 @@ export async function changeFrequencyScale() {
             const fadeStart = performance.now();
             
             const fadeStep = () => {
+                console.log(`🎬 [spectrogram-renderer.js] changeFrequencyScale fadeStep: Drawing frame`);
                 // 🔥 FIX: Check document connection before executing RAF callback
                 // This prevents RAF callbacks from retaining references to detached documents
                 if (!document.body || !document.body.isConnected) {

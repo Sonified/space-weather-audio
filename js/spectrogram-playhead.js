@@ -4,7 +4,7 @@
  */
 
 import * as State from './audio-state.js';
-import { getCachedSpectrogramCanvas } from './spectrogram-complete-renderer.js';
+import { getSpectrogramViewport } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
 
 // Track last playhead position to avoid unnecessary redraws
@@ -16,14 +16,25 @@ let lastPreviewX = -1;
  * Called during playback to show current position
  */
 export function drawSpectrogramPlayhead() {
+    console.log(`▶️ [spectrogram-playhead.js] drawSpectrogramPlayhead CALLED`);
+    
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
     
-    const cachedCanvas = getCachedSpectrogramCanvas();
-    if (!cachedCanvas) return;  // No cached spectrogram yet
+    // 🔧 FIX: Get the CURRENT viewport (stretched for playback rate), not the unstretched cache!
+    const playbackRate = State.currentPlaybackRate || 1.0;
+    const viewportCanvas = getSpectrogramViewport(playbackRate);
+    
+    if (!viewportCanvas) {
+        console.log(`⚠️ [spectrogram-playhead.js] drawSpectrogramPlayhead: No viewport canvas`);
+        return;  // No viewport available yet
+    }
     
     // Don't draw playhead while user is scrubbing
-    if (State.isDragging) return;
+    if (State.isDragging) {
+        console.log(`⚠️ [spectrogram-playhead.js] drawSpectrogramPlayhead: Skipping (dragging)`);
+        return;
+    }
     
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
@@ -56,22 +67,22 @@ export function drawSpectrogramPlayhead() {
         
         const stripWidth = 4;  // Redraw 4px wide strips (2px line + 1px margin each side)
         
-        // Restore old playhead area (if it exists)
+        // Restore old playhead area from VIEWPORT (not cache!)
         if (oldPlayheadX >= 0) {
             const oldX = Math.max(0, oldPlayheadX - stripWidth);
             const oldW = Math.min(stripWidth * 2, width - oldX);
             ctx.drawImage(
-                cachedCanvas,
+                viewportCanvas,  // 🔧 FIX: Use viewport, not cache!
                 oldX, 0, oldW, height,  // Source
                 oldX, 0, oldW, height   // Dest
             );
         }
         
-        // Restore new playhead area first
+        // Restore new playhead area from VIEWPORT
         const newX = Math.max(0, playheadX - stripWidth);
         const newW = Math.min(stripWidth * 2, width - newX);
         ctx.drawImage(
-            cachedCanvas,
+            viewportCanvas,  // 🔧 FIX: Use viewport, not cache!
             newX, 0, newW, height,  // Source
             newX, 0, newW, height   // Dest
         );
@@ -93,11 +104,19 @@ export function drawSpectrogramPlayhead() {
  * Mirrors the waveform scrub preview behavior
  */
 export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) {
+    console.log(`👆 [spectrogram-playhead.js] drawSpectrogramScrubPreview CALLED: targetPosition=${targetPosition.toFixed(2)}, isDragging=${isDragging}`);
+    
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
     
-    const cachedCanvas = getCachedSpectrogramCanvas();
-    if (!cachedCanvas) return;
+    // 🔧 FIX: Get the CURRENT viewport (stretched for playback rate), not the unstretched cache!
+    const playbackRate = State.currentPlaybackRate || 1.0;
+    const viewportCanvas = getSpectrogramViewport(playbackRate);
+    
+    if (!viewportCanvas) {
+        console.log(`⚠️ [spectrogram-playhead.js] drawSpectrogramScrubPreview: No viewport canvas`);
+        return;
+    }
     
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
@@ -116,9 +135,9 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
         previewX = Math.floor(progress * width);
     }
     
-    // KEEP IT SIMPLE: Clear and redraw from cache (like waveform does)
+    // KEEP IT SIMPLE: Clear and redraw from VIEWPORT (not cache!)
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(cachedCanvas, 0, 0);
+    ctx.drawImage(viewportCanvas, 0, 0);  // 🔧 FIX: Use viewport, not cache!
     
     // Draw preview line (gray if dragging, white if just hovering)
     ctx.globalAlpha = 0.6;
@@ -139,9 +158,15 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
 export function clearSpectrogramScrubPreview() {
     if (lastPreviewX < 0) return;
     
+    console.log(`🧹 [spectrogram-playhead.js] clearSpectrogramScrubPreview CALLED`);
+    
     const canvas = document.getElementById('spectrogram');
-    const cachedCanvas = getCachedSpectrogramCanvas();
-    if (!canvas || !cachedCanvas) return;
+    if (!canvas) return;
+    
+    // 🔧 FIX: Get the CURRENT viewport (stretched for playback rate), not the unstretched cache!
+    const playbackRate = State.currentPlaybackRate || 1.0;
+    const viewportCanvas = getSpectrogramViewport(playbackRate);
+    if (!viewportCanvas) return;
     
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
@@ -151,9 +176,9 @@ export function clearSpectrogramScrubPreview() {
     const oldX = Math.max(0, lastPreviewX - stripWidth);
     const oldW = Math.min(stripWidth * 2, width - oldX);
     
-    // Restore the area
+    // Restore the area from VIEWPORT (not cache!)
     ctx.drawImage(
-        cachedCanvas,
+        viewportCanvas,  // 🔧 FIX: Use viewport, not cache!
         oldX, 0, oldW, height,
         oldX, 0, oldW, height
     );
@@ -177,16 +202,22 @@ export function clearSpectrogramScrubPreview() {
  * Reset playhead tracking (call when loading new audio)
  */
 export function resetSpectrogramPlayhead() {
+    console.log(`🔄 [spectrogram-playhead.js] resetSpectrogramPlayhead CALLED`);
+    
     lastPlayheadX = -1;
     lastPreviewX = -1;
     
-    // Fully redraw from cache to clear any old playhead
+    // Fully redraw from VIEWPORT to clear any old playhead
     const canvas = document.getElementById('spectrogram');
-    const cachedCanvas = getCachedSpectrogramCanvas();
-    if (canvas && cachedCanvas) {
+    if (!canvas) return;
+    
+    // 🔧 FIX: Get the CURRENT viewport (stretched for playback rate), not the unstretched cache!
+    const playbackRate = State.currentPlaybackRate || 1.0;
+    const viewportCanvas = getSpectrogramViewport(playbackRate);
+    if (viewportCanvas) {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(cachedCanvas, 0, 0);
+        ctx.drawImage(viewportCanvas, 0, 0);  // 🔧 FIX: Use viewport, not cache!
     }
 }
 

@@ -16,7 +16,7 @@ import * as State from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
-import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState } from './spectrogram-complete-renderer.js';
+import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport } from './spectrogram-complete-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 
 // Region data structure - stored per volcano
@@ -1808,22 +1808,21 @@ export function zoomToRegion(regionIndex) {
     
     console.log(`🔍 Zooming into region ${regionIndex + 1} (samples ${region.startSample.toLocaleString()}-${region.endSample.toLocaleString()})`);
     
-    // 🏛️ Store old time range for smooth tick interpolation
+    // Store old time range for smooth interpolation
     let oldStartTime, oldEndTime;
     if (zoomState.isInRegion()) {
         const oldRange = zoomState.getRegionRange();
         oldStartTime = zoomState.sampleToRealTimestamp(oldRange.startSample);
         oldEndTime = zoomState.sampleToRealTimestamp(oldRange.endSample);
     } else {
-        // Coming from full view
+        // Coming from full view - elastic friend is ready!
         oldStartTime = State.dataStartTime;
         oldEndTime = State.dataEndTime;
     }
     
-    // 🏛️ Hide "Add Region" button when entering the temple
     hideAddRegionButton();
     
-    // If we were inside a different temple, reset its button first
+    // Reset old region button if needed
     if (zoomState.isInRegion() && zoomState.getCurrentRegionId() !== region.id) {
         const oldRegionId = zoomState.getCurrentRegionId();
         const oldRegionCard = oldRegionId ? document.querySelector(`[data-region-id="${oldRegionId}"]`) : null;
@@ -1832,49 +1831,53 @@ export function zoomToRegion(regionIndex) {
             if (oldZoomBtn) {
                 oldZoomBtn.textContent = '🔍';
                 oldZoomBtn.title = 'Zoom to region';
-                oldZoomBtn.classList.remove('return-mode'); // Remove orange styling
+                oldZoomBtn.classList.remove('return-mode');
             }
         }
     }
     
-    // 🏛️ Enter the temple - update zoom state to this region's bounds
+    // Enter the temple
     zoomState.mode = 'region';
     zoomState.currentViewStartSample = region.startSample;
     zoomState.currentViewEndSample = region.endSample;
     zoomState.activeRegionId = region.id;
     
-    // 🔥 IMMEDIATELY redraw regions at their new positions (BEFORE animation starts)
-    // This prevents flash/delay - regions appear instantly at correct positions
-    // Regions will stay visible throughout the entire transition and worker rebuild
+    // Immediately redraw regions at new positions
     drawWaveformWithSelection();
     
-    // 🚩 RAISE THE FLAG! We're respecting this temple's boundaries
-    // 🏛️ DON'T set selection - let users make their own selections inside the temple!
-    // The worklet will automatically use temple boundaries when there's no selection
-    // (see updateWorkletSelection() in audio-player.js)
     const regionStartSeconds = zoomState.sampleToTime(region.startSample);
     const regionEndSeconds = zoomState.sampleToTime(region.endSample);
-    // Clear any existing selection so worklet uses temple boundaries instead
+    
     State.setSelectionStart(null);
     State.setSelectionEnd(null);
-    // DON'T force looping - let user control it via loop toggle!
-    // State.setIsLooping stays whatever the user set it to
-    updateWorkletSelection(); // Worklet will use temple boundaries automatically
+    updateWorkletSelection();
     
-    // Set as active region
     setActiveRegion(regionIndex);
-
-    // 🏛️ Animate x-axis tick interpolation (smooth transition to new time range)
+    
     const newStartTime = zoomState.sampleToRealTimestamp(region.startSample);
     const newEndTime = zoomState.sampleToRealTimestamp(region.endSample);
-
-    // 🎬 Wait for animation to complete, THEN rebuild waveform/spectrogram
-    // This keeps everything visible and smoothly interpolating during the transition
-    // Pass true to indicate we're zooming TO a region (opacity goes from 0.5 → 0.2)
+    
+    // 🔬 START HIGH-RES RENDER IN BACKGROUND (don't wait!)
+    console.log('🔬 Starting high-res render in background...');
+    const renderPromise = renderCompleteSpectrogramForRegion(
+        regionStartSeconds, 
+        regionEndSeconds,
+        true  // renderInBackground = true
+    );
+    
+    // 🎬 Animate with elastic friend - no waiting!
     animateZoomTransition(oldStartTime, oldEndTime, true).then(() => {
-        // Animation complete - now rebuild with high-detail zoomed data
+        console.log('🎬 Zoom animation complete');
+        
+        // Rebuild waveform (fast)
         drawWaveform();
-        renderCompleteSpectrogramForRegion(regionStartSeconds, regionEndSeconds);
+        
+        // Wait for high-res spectrogram if needed, then crossfade
+        renderPromise.then(() => {
+            console.log('🔬 High-res ready - updating viewport');
+            const playbackRate = State.currentPlaybackRate || 1.0;
+            updateSpectrogramViewport(playbackRate);
+        });
     });
     
     // Update zoom button for THIS region
@@ -1923,6 +1926,9 @@ export function zoomToFull() {
     State.setSelectionEnd(null);
     updateWorkletSelection(); // Clear boundaries in worklet
     
+    // 💾 Cache the zoomed spectrogram BEFORE resetting (so we can crossfade it)
+    cacheZoomedSpectrogram();
+    
     // Reset zoom state to full view
     // 🏛️ Exit the temple - return to full view
     zoomState.mode = 'full';
@@ -1940,6 +1946,9 @@ export function zoomToFull() {
         // Animation complete - now rebuild with full view data
         drawWaveform();
         renderCompleteSpectrogram();
+        // Clear cached spectrograms after transition (no longer needed)
+        clearCachedFullSpectrogram();
+        clearCachedZoomedSpectrogram();
     });
 
     // Update ALL zoom buttons back to 🔍

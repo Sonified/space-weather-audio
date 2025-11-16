@@ -2,6 +2,50 @@
 
 ---
 
+## 🐛 Spectrogram Playback Rate Stretch Bug Fix (v2.14)
+
+### Problem
+When changing playback speed, the spectrogram would show ghosting/flickering - the correctly stretched spectrogram would appear, then immediately get overwritten by an unstretched version. The spectrogram appeared to "fight" between two different renderings.
+
+### Root Cause
+The `drawSpectrogramPlayhead()` function was using `getCachedSpectrogramCanvas()` which returns the **unstretched "elastic friend"** (stored at neutral 1x playback rate). When the playback rate changed:
+1. `updateSpectrogramViewport()` correctly drew the stretched spectrogram ✅
+2. Playback RAF loop called `drawSpectrogramPlayhead()` 
+3. `drawSpectrogramPlayhead()` restored strips from the **unstretched cache**, overwriting the stretched version ❌
+
+The same issue affected `drawSpectrogramScrubPreview()`, `clearSpectrogramScrubPreview()`, and `resetSpectrogramPlayhead()`.
+
+### Solution
+Changed all playhead functions to use `getSpectrogramViewport(playbackRate)` instead of `getCachedSpectrogramCanvas()`. This ensures they always restore from the **correctly stretched viewport** that matches the current playback rate.
+
+### Key Changes
+- `js/spectrogram-playhead.js`:
+  - Changed import from `getCachedSpectrogramCanvas` to `getSpectrogramViewport`
+  - `drawSpectrogramPlayhead()`: Now gets viewport with current playback rate and restores from stretched viewport
+  - `drawSpectrogramScrubPreview()`: Now draws stretched viewport when showing scrub preview
+  - `clearSpectrogramScrubPreview()`: Now restores from stretched viewport
+  - `resetSpectrogramPlayhead()`: Now redraws from stretched viewport
+
+### How It Works
+- `getSpectrogramViewport(playbackRate)` returns a canvas with the spectrogram correctly stretched for the given playback rate
+- All playhead operations now use this stretched viewport instead of the unstretched cache
+- The spectrogram stays correctly stretched at all playback rates without ghosting
+
+### Benefits
+- ✅ No more ghosting/flickering when changing playback speed
+- ✅ Spectrogram stays correctly stretched at all playback rates
+- ✅ Playhead operations are consistent with the displayed spectrogram
+- ✅ Works correctly for all frequency scales (linear, sqrt, logarithmic)
+
+### Files Modified
+- `js/spectrogram-playhead.js` - Changed all functions to use stretched viewport instead of unstretched cache
+- `js/spectrogram-complete-renderer.js` - Added logging to track all spectrogram drawing operations (debugging)
+
+### Version
+v2.14 - Commit: "v2.14 Fix: Spectrogram playback rate stretch bug - playhead now uses stretched viewport instead of unstretched cache"
+
+---
+
 ## 🎨 Smooth Opacity Transitions for Regions During Zoom (v2.13)
 
 ### Problem
