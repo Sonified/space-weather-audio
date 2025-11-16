@@ -53,8 +53,6 @@ export let isShowingFinalWaveform = false;
 export let justSeeked = false;  // Track if we just performed a seek (to avoid race conditions)
 
 // Visualization state
-export let spectrogramScrollSpeed = 1.0;
-export let spectrogramFrameCounter = 0;
 export let frequencyScale = 'sqrt'; // 'linear', 'sqrt', or 'logarithmic'
 
 // Animation frame IDs (for cleanup to prevent memory leaks)
@@ -114,8 +112,6 @@ export function setSpectrogramInitialized(value) { spectrogramInitialized = valu
 export function setVisualizationStarted(value) { visualizationStarted = value; }
 export function setIsShowingFinalWaveform(value) { isShowingFinalWaveform = value; }
 export function setJustSeeked(value) { justSeeked = value; }
-export function setSpectrogramScrollSpeed(value) { spectrogramScrollSpeed = value; }
-export function setSpectrogramFrameCounter(value) { spectrogramFrameCounter = value; }
 export function setFrequencyScale(value) { frequencyScale = value; }
 export function setPlaybackIndicatorRAF(value) { playbackIndicatorRAF = value; }
 export function setSpectrogramRAF(value) { spectrogramRAF = value; }

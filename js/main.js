@@ -10,7 +10,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
-import { changeSpectrogramScrollSpeed, loadSpectrogramScrollSpeed, changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
+import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
 import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
@@ -799,8 +799,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.05 - Memory Leak Fixes: Closure Chains & Detached DOM');
-    console.log('🧹 [0ms] v2.05 Memory: Fixed selection diagnostics, add-region-button, RAF callbacks, modals, updatePlaybackDuration, resizeRAF');
+    console.log('🌋 [0ms] volcano-audio v2.06 - Removed Scroll Speed Control');
+    console.log('🗑️ [0ms] v2.06 UI: Removed scroll speed bar and all related code from spectrogram');
     console.log('🔇 [0ms] Commented out worklet message logging to reduce console noise');
     
     // Start memory health monitoring
@@ -823,7 +823,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Load saved preferences immediately to avoid visual jumps
     // (Must be done before other initialization that might trigger change handlers)
-    loadSpectrogramScrollSpeed();
     loadFrequencyScale();
     
     initWaveformWorker();
@@ -849,9 +848,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     document.getElementById('speedLabel').addEventListener('click', resetSpeedTo1);
     document.getElementById('volumeLabel').addEventListener('click', resetVolumeTo1);
-    
-    document.getElementById('spectrogramScrollSpeed').addEventListener('input', changeSpectrogramScrollSpeed);
-    // Note: loadSpectrogramScrollSpeed() is called earlier in initialization to avoid visual jump
     
     document.getElementById('frequencyScale').addEventListener('change', changeFrequencyScale);
     

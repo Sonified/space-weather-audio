@@ -228,41 +228,6 @@ input[type="range"]::-moz-range-thumb:hover {
     background: #ff3333;
 }
 
-/* Enhanced styling for spectrogram scroll speed slider */
-#spectrogramScrollSpeed::-webkit-slider-track {
-    background: #5a1a1a !important;
-    height: 3px !important;
-    border-radius: 2px !important;
-}
-
-#spectrogramScrollSpeed::-webkit-slider-thumb {
-    background: #cc3333 !important;
-    height: 18px !important;
-    width: 18px !important;
-    border: 2px solid #ffffff !important;
-    margin-top: -7.5px !important;
-}
-
-#spectrogramScrollSpeed::-webkit-slider-thumb:hover {
-    background: #ff3333 !important;
-}
-
-#spectrogramScrollSpeed::-moz-range-track {
-    background: #5a1a1a !important;
-    height: 3px !important;
-    border-radius: 2px !important;
-}
-
-#spectrogramScrollSpeed::-moz-range-thumb {
-    background: #cc3333 !important;
-    height: 18px !important;
-    width: 18px !important;
-    border: 2px solid #ffffff !important;
-}
-
-#spectrogramScrollSpeed::-moz-range-thumb:hover {
-    background: #ff3333 !important;
-}
 
 button {
     padding: 9px 18px;

@@ -2,6 +2,44 @@
 
 ---
 
+## 🗑️ UI: Removed Scroll Speed Control (v2.06)
+
+### Changes Made
+Removed the scroll speed control bar and all related code from the spectrogram:
+
+1. **HTML Removal**
+   - Removed scroll speed slider and label from `index.html`
+   - Removed the entire scroll speed control div from the spectrogram panel
+
+2. **JavaScript Functions Removed**
+   - Removed `changeSpectrogramScrollSpeed()` function
+   - Removed `loadSpectrogramScrollSpeed()` function
+   - Simplified `drawSpectrogram()` to always scroll at 1 pixel per frame (fixed speed)
+
+3. **State Cleanup**
+   - Removed `spectrogramScrollSpeed` state variable
+   - Removed `spectrogramFrameCounter` state variable (was only used for scroll speed)
+   - Removed `setSpectrogramScrollSpeed()` setter function
+   - Removed `setSpectrogramFrameCounter()` setter function
+
+4. **Code Cleanup**
+   - Removed scroll speed imports from `main.js`
+   - Removed scroll speed event listeners from `main.js`
+   - Removed scroll speed CSS styles from `styles.css`
+   - Updated file header comment in `spectrogram-renderer.js`
+
+### Files Modified
+- `index.html` - Removed scroll speed HTML elements
+- `js/spectrogram-renderer.js` - Removed scroll speed functions, simplified drawSpectrogram()
+- `js/audio-state.js` - Removed scroll speed state variables and setters
+- `js/main.js` - Removed scroll speed imports and event listeners
+- `styles.css` - Removed scroll speed slider styles
+
+### Version
+v2.06 - Commit: "v2.06 UI: Removed scroll speed control bar and all related code from spectrogram"
+
+---
+
 ## 🧹 Memory Leak Fixes: Closure Chains & Detached DOM (v2.05)
 
 ### Changes Made

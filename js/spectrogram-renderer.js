@@ -1,6 +1,6 @@
 /**
  * spectrogram-renderer.js
- * Spectrogram visualization and scroll speed control
+ * Spectrogram visualization
  */
 
 import * as State from './audio-state.js';
@@ -58,16 +58,6 @@ export function drawSpectrogram() {
     const dataArray = new Uint8Array(bufferLength);
     State.analyserNode.getByteFrequencyData(dataArray);
     
-    const actualScrollSpeed = State.spectrogramScrollSpeed;
-    
-    if (actualScrollSpeed <= 0) {
-        // 🔥 FIX: Store RAF ID before returning, but only if document is connected and not already scheduled
-        if (document.body && document.body.isConnected && State.spectrogramRAF === null) {
-            State.setSpectrogramRAF(requestAnimationFrame(drawSpectrogram));
-        }
-        return;
-    }
-    
     // Helper function to calculate y position based on frequency scale
     const getYPosition = (binIndex, totalBins, canvasHeight) => {
         if (State.frequencyScale === 'logarithmic') {
@@ -91,55 +81,22 @@ export function drawSpectrogram() {
         }
     };
     
-    if (actualScrollSpeed < 1.0) {
-        // Slow speed: skip frames
-        State.setSpectrogramFrameCounter(State.spectrogramFrameCounter + 1);
-        const skipFrames = Math.max(1, Math.round(1.0 / actualScrollSpeed));
-        const shouldScroll = (State.spectrogramFrameCounter % skipFrames === 0);
-        
-        if (shouldScroll) {
-            ctx.drawImage(canvas, -1, 0);
-            ctx.clearRect(width - 1, 0, 1, height);
-            
-            // Draw new column
-            for (let i = 0; i < bufferLength; i++) {
-                const value = dataArray[i];
-                const percent = value / 255;
-                const hue = percent * 60;
-                const saturation = 100;
-                const lightness = 10 + (percent * 60);
-                const y = getYPosition(i, bufferLength, height);
-                const nextY = getYPosition(i + 1, bufferLength, height);
-                const barHeight = Math.max(1, Math.abs(y - nextY));
-                ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-                ctx.fillRect(width - 1, nextY, 1, barHeight);
-            }
-        }
-    } else {
-        // Fast speed: scroll multiple pixels per frame
-        const scrollPixels = Math.round(actualScrollSpeed);
-        for (let p = 0; p < scrollPixels; p++) {
-            ctx.drawImage(canvas, -1, 0);
-        }
-        
-        // Clear the rightmost columns
-        ctx.clearRect(width - scrollPixels, 0, scrollPixels, height);
-        
-        // Draw new columns on the right
-        for (let p = 0; p < scrollPixels; p++) {
-            for (let i = 0; i < bufferLength; i++) {
-                const value = dataArray[i];
-                const percent = value / 255;
-                const hue = percent * 60;
-                const saturation = 100;
-                const lightness = 10 + (percent * 60);
-                const y = getYPosition(i, bufferLength, height);
-                const nextY = getYPosition(i + 1, bufferLength, height);
-                const barHeight = Math.max(1, Math.abs(y - nextY));
-                ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-                ctx.fillRect(width - scrollPixels + p, nextY, 1, barHeight);
-            }
-        }
+    // Scroll 1 pixel per frame (standard scrolling behavior)
+    ctx.drawImage(canvas, -1, 0);
+    ctx.clearRect(width - 1, 0, 1, height);
+    
+    // Draw new column
+    for (let i = 0; i < bufferLength; i++) {
+        const value = dataArray[i];
+        const percent = value / 255;
+        const hue = percent * 60;
+        const saturation = 100;
+        const lightness = 10 + (percent * 60);
+        const y = getYPosition(i, bufferLength, height);
+        const nextY = getYPosition(i + 1, bufferLength, height);
+        const barHeight = Math.max(1, Math.abs(y - nextY));
+        ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        ctx.fillRect(width - 1, nextY, 1, barHeight);
     }
     
     // 🔥 FIX: Store RAF ID for proper cleanup
@@ -153,123 +110,6 @@ export function drawSpectrogram() {
     }
 }
 
-export function changeSpectrogramScrollSpeed() {
-    const slider = document.getElementById('spectrogramScrollSpeed');
-    const value = parseFloat(slider.value);
-    
-    // Save slider value to localStorage for persistence across sessions
-    localStorage.setItem('spectrogramScrollSpeed', value.toString());
-    
-    // Logarithmic mapping
-    let rawSpeed;
-    if (value <= 66.67) {
-        const normalized = value / 66.67;
-        rawSpeed = Math.pow(10, normalized * 0.903 - 0.903);
-    } else {
-        const normalized = (value - 66.67) / 33.33;
-        rawSpeed = Math.pow(10, normalized * Math.log10(5));
-    }
-    
-    // Snap to discrete achievable speeds
-    // Rescaled so old 0.25x is now 1x, with more granular slow speeds
-    const discreteSpeeds = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 20.0];
-    let displaySpeed = discreteSpeeds[0];
-    for (let i = 0; i < discreteSpeeds.length - 1; i++) {
-        const midpoint = (discreteSpeeds[i] + discreteSpeeds[i + 1]) / 2;
-        if (rawSpeed >= midpoint) {
-            displaySpeed = discreteSpeeds[i + 1];
-        } else {
-            displaySpeed = discreteSpeeds[i];
-            break;
-        }
-    }
-    
-    State.setSpectrogramScrollSpeed(displaySpeed);
-    
-    // Update display - remove unnecessary zeros
-    let displayText;
-    if (displaySpeed < 1.0) {
-        let speedStr = displaySpeed.toString();
-        if (speedStr.startsWith('0.')) {
-            speedStr = speedStr.substring(1);
-        }
-        speedStr = speedStr.replace(/\.?0+$/, '');
-        displayText = speedStr + 'x';
-    } else {
-        displayText = displaySpeed.toFixed(0) + 'x';
-    }
-    document.getElementById('spectrogramScrollSpeedValue').textContent = displayText;
-}
-
-/**
- * Load spectrogram scroll speed from localStorage and apply it
- * Called on page load to restore user's preferred scroll speed
- * Updates the slider and display immediately to avoid visual jump
- */
-export function loadSpectrogramScrollSpeed() {
-    const slider = document.getElementById('spectrogramScrollSpeed');
-    const displayElement = document.getElementById('spectrogramScrollSpeedValue');
-    if (!slider) return;
-    
-    // Load saved value from localStorage (default: 67, which maps to 1.0x)
-    const savedValue = localStorage.getItem('spectrogramScrollSpeed');
-    if (savedValue !== null) {
-        const value = parseFloat(savedValue);
-        // Validate value is within slider range (0-100)
-        if (!isNaN(value) && value >= 0 && value <= 100) {
-            slider.value = value;
-            
-            // Calculate and update display immediately to avoid visual jump
-            // (Same logic as changeSpectrogramScrollSpeed but without saving to localStorage)
-            let rawSpeed;
-            if (value <= 66.67) {
-                const normalized = value / 66.67;
-                rawSpeed = Math.pow(10, normalized * 0.903 - 0.903);
-            } else {
-                const normalized = (value - 66.67) / 33.33;
-                rawSpeed = Math.pow(10, normalized * Math.log10(5));
-            }
-            
-            const discreteSpeeds = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 20.0];
-            let displaySpeed = discreteSpeeds[0];
-            for (let i = 0; i < discreteSpeeds.length - 1; i++) {
-                const midpoint = (discreteSpeeds[i] + discreteSpeeds[i + 1]) / 2;
-                if (rawSpeed >= midpoint) {
-                    displaySpeed = discreteSpeeds[i + 1];
-                } else {
-                    displaySpeed = discreteSpeeds[i];
-                    break;
-                }
-            }
-            
-            // Update state
-            State.setSpectrogramScrollSpeed(displaySpeed);
-            
-            // Update display text immediately
-            let displayText;
-            if (displaySpeed < 1.0) {
-                let speedStr = displaySpeed.toString();
-                if (speedStr.startsWith('0.')) {
-                    speedStr = speedStr.substring(1);
-                }
-                speedStr = speedStr.replace(/\.?0+$/, '');
-                displayText = speedStr + 'x';
-            } else {
-                displayText = displaySpeed.toFixed(0) + 'x';
-            }
-            
-            if (displayElement) {
-                displayElement.textContent = displayText;
-            }
-            
-            console.log('💾 Restored spectrogram scroll speed:', value, '→', displayText);
-            return; // Don't call changeSpectrogramScrollSpeed to avoid saving default again
-        }
-    }
-    
-    // If no saved value, apply default (this will also update display)
-    changeSpectrogramScrollSpeed();
-}
 
 /**
  * Load frequency scale from localStorage and apply it
