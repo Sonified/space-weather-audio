@@ -78,8 +78,8 @@ self.addEventListener('message', (e) => {
         } else {
             // Progressive rendering: calculate partial width based on samples received
             effectiveWidth = totalExpectedSamples 
-                ? Math.floor((displaySamples.length / totalExpectedSamples) * canvasWidth)
-                : canvasWidth;
+            ? Math.floor((displaySamples.length / totalExpectedSamples) * canvasWidth)
+            : canvasWidth;
         }
         
         const waveformData = buildMinMaxWaveform(displaySamples, effectiveWidth);

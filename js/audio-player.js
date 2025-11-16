@@ -207,15 +207,16 @@ export function updateWorkletSelection() {
     let end = State.selectionEnd;
     let loop = State.isLooping;
     
-    // 🏛️ If in temple mode and no yellow selection, use temple boundaries!
+    // 🏛️ If inside a region (temple) and no yellow selection, use temple boundaries!
     if (start === null && end === null) {
-        if (zoomState.mode === 'temple' && zoomState.isInitialized()) {
-            // We're in a temple with no yellow selection - use temple walls!
-            start = zoomState.sampleToTime(zoomState.currentViewStartSample);
-            end = zoomState.sampleToTime(zoomState.currentViewEndSample);
+        if (zoomState.isInRegion()) {
+            // We're inside the temple with no yellow selection - use sacred walls!
+            const regionRange = zoomState.getRegionRange();
+            start = regionRange.startTime;
+            end = regionRange.endTime;
             loop = State.isLooping; // 🙏 Respect user's loop toggle!
             
-            console.log(`🏛️ Temple mode: Using boundaries ${start.toFixed(2)}s - ${end.toFixed(2)}s, loop=${loop}`);
+            console.log(`🏛️ Inside temple: Using boundaries ${start.toFixed(2)}s - ${end.toFixed(2)}s, loop=${loop}`);
         }
     }
     

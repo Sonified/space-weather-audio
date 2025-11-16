@@ -37,10 +37,11 @@ export function drawWaveformXAxis() {
     // 🏛️ Use zoom state for time range
     let displayStartTime, displayEndTime;
     
-    if (zoomState.mode === 'temple' && zoomState.isInitialized()) {
-        // Zoomed: show zoomed time range
-        displayStartTime = zoomState.sampleToRealTimestamp(zoomState.currentViewStartSample);
-        displayEndTime = zoomState.sampleToRealTimestamp(zoomState.currentViewEndSample);
+    // 🏛️ Inside the temple: show the temple's time range
+    if (zoomState.isInRegion()) {
+        const regionRange = zoomState.getRegionRange();
+        displayStartTime = zoomState.sampleToRealTimestamp(regionRange.startSample);
+        displayEndTime = zoomState.sampleToRealTimestamp(regionRange.endSample);
     } else {
         // Full view: show full time range
         displayStartTime = State.dataStartTime;

@@ -186,12 +186,11 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         return;
     }
     
-    // 🏛️ Check zoom state FIRST - if zoomed, always render region (ignore completeSpectrogramRendered flag)
-    if (zoomState.mode === 'temple' && zoomState.isInitialized()) {
-        const startSeconds = zoomState.sampleToTime(zoomState.currentViewStartSample);
-        const endSeconds = zoomState.sampleToTime(zoomState.currentViewEndSample);
-        console.log(`🔍 Zoomed mode detected - rendering region instead`);
-        return await renderCompleteSpectrogramForRegion(startSeconds, endSeconds);
+    // 🏛️ Check zoom state FIRST - if inside a region (temple), always render region (ignore completeSpectrogramRendered flag)
+    if (zoomState.isInRegion()) {
+        const regionRange = zoomState.getRegionRange();
+        console.log(`🔍 Inside temple - rendering region instead`);
+        return await renderCompleteSpectrogramForRegion(regionRange.startTime, regionRange.endTime);
     }
     
     // Only check completeSpectrogramRendered for full view (not zoomed)

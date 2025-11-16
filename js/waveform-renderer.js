@@ -75,9 +75,11 @@ export function drawWaveform() {
     let endSample = State.completeSamplesArray.length;
     let zoomInfo = 'full view';
     
-    if (zoomState.mode === 'temple' && zoomState.isInitialized()) {
-        startSample = zoomState.currentViewStartSample;
-        endSample = zoomState.currentViewEndSample;
+    // 🏛️ Check if we're inside a region (within the temple walls)
+    if (zoomState.isInRegion()) {
+        const regionRange = zoomState.getRegionRange();
+        startSample = regionRange.startSample;
+        endSample = regionRange.endSample;
         const zoomLevel = zoomState.getZoomLevel();
         zoomInfo = `zoomed ${zoomLevel.toFixed(1)}x (samples ${startSample.toLocaleString()}-${endSample.toLocaleString()})`;
     }
@@ -459,9 +461,9 @@ export function setupWaveformInteraction() {
                 canvas.style.cursor = 'col-resize';
                 console.log('📏 Selection drag detected');
                 
-                // 🏛️ Only clear active region if NOT in temple mode
-                // In temple mode, selections are within temple walls, flag stays up
-                if (zoomState.mode !== 'temple') {
+                // 🏛️ Only clear active region if NOT inside a region (outside the temple)
+                // Inside the temple, selections are within sacred walls, flag stays up
+                if (!zoomState.isInRegion()) {
                     clearActiveRegion();
                 }
             }
@@ -519,7 +521,7 @@ export function setupWaveformInteraction() {
                 const newSelectionEnd = Math.max(startPos, endPos);
                 const newIsLooping = State.isLooping;
                 
-                const zoomMode = zoomState.mode === 'temple' ? 'temple (zoomed)' : 'full view';
+                const zoomMode = zoomState.isInRegion() ? 'temple (zoomed)' : 'full view';
                 const zoomLevel = zoomState.isInitialized() ? zoomState.getZoomLevel().toFixed(1) : 'N/A';
                 console.log(`🖱️ Waveform selection created: ${newSelectionStart.toFixed(2)}s - ${newSelectionEnd.toFixed(2)}s (duration: ${(newSelectionEnd - newSelectionStart).toFixed(3)}s)`);
                 console.log(`   📍 Zoom mode: ${zoomMode} (${zoomLevel}x)`);
@@ -530,15 +532,15 @@ export function setupWaveformInteraction() {
                 
                 State.setSelectionStartX(null);
                 
-                // 🏛️ Only reset region buttons if NOT in temple mode
-                // In temple mode, selections are within temple walls, flag stays up
-                if (zoomState.mode !== 'temple') {
+                // 🏛️ Only reset region buttons if NOT inside a region (outside the temple)
+                // Inside the temple, selections are within sacred walls, flag stays up
+                if (!zoomState.isInRegion()) {
                     resetAllRegionPlayButtons();
                 }
                 
-                // 🏛️ Show "Add Region" button only if NOT in temple mode (region zoom)
-                // When inside a region, we don't want to add new regions
-                if (zoomState.mode !== 'temple') {
+                // 🏛️ Show "Add Region" button only if NOT inside a region (outside the temple)
+                // When inside the temple, we don't want to add new regions
+                if (!zoomState.isInRegion()) {
                     showAddRegionButton(newSelectionStart, newSelectionEnd);
                 }
                 
@@ -581,14 +583,14 @@ export function setupWaveformInteraction() {
                     drawRegionHighlights(ctx, canvas.width, canvas.height);
                 }
                 
-                // 🏛️ Only reset region buttons if NOT in temple mode
-                // In temple mode, clicking seeks within temple walls, flag stays up
-                if (zoomState.mode !== 'temple') {
+                // 🏛️ Only reset region buttons if NOT inside a region (outside the temple)
+                // Inside the temple, clicking seeks within sacred walls, flag stays up
+                if (!zoomState.isInRegion()) {
                     resetAllRegionPlayButtons();
                 }
                 
                 const { targetPosition } = getPositionFromMouse(e);
-                const zoomMode = zoomState.mode === 'temple' ? 'temple (zoomed)' : 'full view';
+                const zoomMode = zoomState.isInRegion() ? 'temple (zoomed)' : 'full view';
                 const zoomLevel = zoomState.isInitialized() ? zoomState.getZoomLevel().toFixed(1) : 'N/A';
                 console.log(`🖱️ Waveform clicked at ${targetPosition.toFixed(2)}s - seeking to position`);
                 console.log(`   📍 Zoom mode: ${zoomMode} (${zoomLevel}x)`);

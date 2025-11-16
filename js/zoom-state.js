@@ -12,7 +12,8 @@ import * as State from './audio-state.js';
 class ZoomState {
     constructor() {
         // Current view mode
-        this.mode = 'full';  // 'full' | 'temple' (zoomed into a region)
+        // 🏛️ 'full' = viewing the entire audio, 'region' = zoomed into a region (entering the temple)
+        this.mode = 'full';  // 'full' | 'region'
         
         // Viewport bounds (in absolute sample indices)
         this.currentViewStartSample = 0;
@@ -22,8 +23,8 @@ class ZoomState {
         this.totalSamples = 0;  // Set when audio loads
         this.sampleRate = 44100;  // AudioContext sample rate (constant)
         
-        // Active temple (if zoomed into a region)
-        this.activeTempleId = null;
+        // 🏛️ Active region ID when zoomed (the temple we're currently inside)
+        this.activeRegionId = null;
     }
     
     /**
@@ -163,6 +164,49 @@ class ZoomState {
         const viewRange = this.getViewRangeSamples();
         if (viewRange === 0) return 1.0;
         return this.totalSamples / viewRange;
+    }
+    
+    /**
+     * 🏛️ Helper: Check if we're inside a region (entering the temple)
+     * When zoomed into a region, we're within its sacred walls
+     * Replaces verbose: zoomState.mode === 'region' && zoomState.isInitialized()
+     */
+    isInRegion() {
+        return this.mode === 'region' && this.isInitialized();
+    }
+    
+    /**
+     * 🏛️ Helper: Check if we're in full view mode (outside the temple)
+     * Replaces: zoomState.mode === 'full'
+     */
+    isInFullView() {
+        return this.mode === 'full';
+    }
+    
+    /**
+     * 🏛️ Helper: Get current region ID (the temple we're inside)
+     * Returns null if not zoomed into a region (still outside the temple)
+     * Replaces: zoomState.mode === 'region' ? zoomState.activeRegionId : null
+     */
+    getCurrentRegionId() {
+        return this.mode === 'region' ? this.activeRegionId : null;
+    }
+    
+    /**
+     * 🏛️ Helper: Get current region range (the temple boundaries)
+     * Returns object with startSample, endSample, startTime, endTime
+     * Returns null if not zoomed into a region (outside the temple)
+     */
+    getRegionRange() {
+        if (this.mode !== 'region' || !this.isInitialized()) {
+            return null;
+        }
+        return {
+            startSample: this.currentViewStartSample,
+            endSample: this.currentViewEndSample,
+            startTime: this.sampleToTime(this.currentViewStartSample),
+            endTime: this.sampleToTime(this.currentViewEndSample)
+        };
     }
 }
 

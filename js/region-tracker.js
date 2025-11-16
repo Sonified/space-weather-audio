@@ -332,6 +332,16 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
     
     // Draw highlights for each region
     regions.forEach((region, index) => {
+        // 🏛️ Inside the temple, only render the active region (skip others for performance)
+        // When we're within sacred walls, we focus only on the current temple
+        if (zoomState.isInRegion()) {
+            // Check both activeRegionIndex and activeRegionId to ensure we render the correct region
+            const isActiveRegion = index === activeRegionIndex || region.id === zoomState.getCurrentRegionId();
+            if (!isActiveRegion) {
+                return; // Skip rendering non-active regions when inside the temple
+            }
+        }
+        
         // 🏛️ Use sample indices if available (new format), otherwise fall back to timestamps (backward compatibility)
         let regionStartSeconds, regionEndSeconds;
         
@@ -369,8 +379,8 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
             // Active region: 50% opacity
             ctx.fillStyle = 'rgba(68, 136, 255, 0.5)';
         } else {
-            // Inactive region: 20% opacity
-            ctx.fillStyle = 'rgba(68, 136, 255, 0.2)';
+            // Inactive region: 10% opacity (reduced from 20% for better performance)
+            ctx.fillStyle = 'rgba(68, 136, 255, 0.1)';
         }
         ctx.fillRect(startX, 0, highlightWidth, canvasHeight);
         
@@ -684,9 +694,9 @@ function createRegionCard(region, index) {
     header.querySelector('.zoom-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         
-        // Check if we're already zoomed into THIS region
-        if (zoomState.mode === 'temple' && zoomState.activeTempleId === region.id) {
-            // We're zoomed in - zoom back out
+        // 🏛️ Check if we're already inside THIS temple
+        if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
+            // We're inside - exit the temple and return to full view
             zoomToFull();
         } else {
             // Zoom into this region
@@ -1413,12 +1423,13 @@ export function zoomToRegion(regionIndex) {
     
     console.log(`🔍 Zooming into region ${regionIndex + 1} (samples ${region.startSample.toLocaleString()}-${region.endSample.toLocaleString()})`);
     
-    // 🏛️ Hide "Add Region" button when entering temple mode
+    // 🏛️ Hide "Add Region" button when entering the temple
     hideAddRegionButton();
     
-    // If we were zoomed into a different region, reset its button first
-    if (zoomState.mode === 'temple' && zoomState.activeTempleId !== region.id) {
-        const oldRegionCard = document.querySelector(`[data-region-id="${zoomState.activeTempleId}"]`);
+    // If we were inside a different temple, reset its button first
+    if (zoomState.isInRegion() && zoomState.getCurrentRegionId() !== region.id) {
+        const oldRegionId = zoomState.getCurrentRegionId();
+        const oldRegionCard = oldRegionId ? document.querySelector(`[data-region-id="${oldRegionId}"]`) : null;
         if (oldRegionCard) {
             const oldZoomBtn = oldRegionCard.querySelector('.zoom-btn');
             if (oldZoomBtn) {
@@ -1428,21 +1439,24 @@ export function zoomToRegion(regionIndex) {
         }
     }
     
-    // Update zoom state to this region's bounds
-    zoomState.mode = 'temple';
+    // 🏛️ Enter the temple - update zoom state to this region's bounds
+    zoomState.mode = 'region';
     zoomState.currentViewStartSample = region.startSample;
     zoomState.currentViewEndSample = region.endSample;
-    zoomState.activeTempleId = region.id;
+    zoomState.activeRegionId = region.id;
     
     // 🚩 RAISE THE FLAG! We're respecting this temple's boundaries
-    // Set selection to region bounds (for worklet boundaries)
+    // 🏛️ DON'T set selection - let users make their own selections inside the temple!
+    // The worklet will automatically use temple boundaries when there's no selection
+    // (see updateWorkletSelection() in audio-player.js)
     const regionStartSeconds = zoomState.sampleToTime(region.startSample);
     const regionEndSeconds = zoomState.sampleToTime(region.endSample);
-    State.setSelectionStart(regionStartSeconds);
-    State.setSelectionEnd(regionEndSeconds);
+    // Clear any existing selection so worklet uses temple boundaries instead
+    State.setSelectionStart(null);
+    State.setSelectionEnd(null);
     // DON'T force looping - let user control it via loop toggle!
     // State.setIsLooping stays whatever the user set it to
-    updateWorkletSelection(); // Send boundaries to worklet
+    updateWorkletSelection(); // Worklet will use temple boundaries automatically
     
     // Set as active region
     setActiveRegion(regionIndex);
@@ -1467,6 +1481,7 @@ export function zoomToRegion(regionIndex) {
     console.log(`🚩 Flag raised - respecting temple walls`);
     console.log(`🔍 Zoomed to ${zoomState.getZoomLevel().toFixed(1)}x - the introspective lens is open! 🦋`);
     console.log(`🔄 ZOOM MODE TOGGLE: full view → temple mode (region ${regionIndex + 1})`);
+    console.log(`🏛️ Entering the temple - sacred walls at ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
 }
 
 /**
@@ -1486,10 +1501,11 @@ export function zoomToFull() {
     updateWorkletSelection(); // Clear boundaries in worklet
     
     // Reset zoom state to full view
+    // 🏛️ Exit the temple - return to full view
     zoomState.mode = 'full';
     zoomState.currentViewStartSample = 0;
     zoomState.currentViewEndSample = zoomState.totalSamples;
-    zoomState.activeTempleId = null;
+    zoomState.activeRegionId = null;
     
     // Reset spectrogram state to allow re-rendering
     resetSpectrogramState();
@@ -1514,6 +1530,7 @@ export function zoomToFull() {
     
     console.log('🌍 Returned to full view - flag lowered, free roaming restored! 🏛️');
     console.log(`🔄 ZOOM MODE TOGGLE: temple mode → full view`);
+    console.log(`🏛️ Exiting the temple - returning to full view`);
 }
 
 // Export state getters for external access
