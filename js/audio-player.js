@@ -74,11 +74,7 @@ export function startPlayback() {
     btn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
     btn.classList.add('pause-active');
     
-    // Update status
-    // TODO: Re-enable this later when we want to show selection tutorial
-    // import('./tutorial.js').then(({ setStatusText }) => {
-    //     setStatusText('Click on the waveform and drag with your mouse to make a selection.', 'status info');
-    // });
+    // Update status (selection tutorial message moved to waveform-renderer.js)
     
     // Resume AudioContext if needed
     if (State.audioContext?.state === 'suspended') {

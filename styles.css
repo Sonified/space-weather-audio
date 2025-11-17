@@ -221,6 +221,47 @@ input[type="range"]::-webkit-slider-thumb:hover {
     background: #ff6666 !important;
 }
 
+/* Volume slider glow effect */
+#volumeSlider.volume-slider-glow {
+    animation: speedSliderKnobPulse 1s ease-in-out infinite !important;
+    transition: opacity 0.5s ease-out;
+}
+
+#volumeSlider.volume-slider-glow.fading-in {
+    opacity: 0;
+    animation: none;
+}
+
+#volumeSlider.volume-slider-glow.fading-out {
+    animation: none;
+}
+
+/* Make the knob brighter so the glow is more visible */
+#volumeSlider.volume-slider-glow::-webkit-slider-thumb {
+    background: #ff6666 !important;
+}
+
+#volumeSlider.volume-slider-glow::-moz-range-thumb {
+    background: #ff6666 !important;
+}
+
+#volumeLabel.volume-label-glow {
+    text-shadow: 0 0 10px rgba(255, 100, 100, 0.8), 0 0 20px rgba(255, 100, 100, 0.6);
+    animation: speedSliderKnobPulse 1s ease-in-out infinite !important;
+    transition: text-shadow 0.5s ease-out, opacity 0.5s ease-out;
+}
+
+#volumeLabel.volume-label-glow.fading-in {
+    opacity: 0;
+    text-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    animation: none;
+}
+
+#volumeLabel.volume-label-glow.fading-out {
+    animation: none;
+    text-shadow: 0 0 0px rgba(255, 100, 100, 0);
+}
+
 @keyframes speedSliderKnobPulse {
     0%, 100% {
         filter: drop-shadow(0 0 8px rgba(255, 100, 100, 0.8))
@@ -590,6 +631,24 @@ canvas {
     animation: none;
     box-shadow: 0 0 0px rgba(255, 100, 100, 0);
     opacity: 0.8;
+}
+
+/* Regions panel glow effect */
+#trackedRegionsPanel.regions-panel-glow {
+    box-shadow: 0 0 15px rgba(255, 100, 100, 0.4), 0 0 30px rgba(255, 100, 100, 0.3);
+    animation: spectrogramPulse 1.2s ease-in-out infinite;
+    transition: box-shadow 0.5s ease-out, opacity 0.5s ease-out;
+}
+
+#trackedRegionsPanel.regions-panel-glow.fading-in {
+    opacity: 0;
+    box-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    animation: none;
+}
+
+#trackedRegionsPanel.regions-panel-glow.fading-out {
+    animation: none;
+    box-shadow: 0 0 0px rgba(255, 100, 100, 0);
 }
 
 @keyframes spectrogramPulse {

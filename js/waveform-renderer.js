@@ -512,9 +512,12 @@ export function setupWaveformInteraction() {
     canvas.addEventListener('mousedown', (e) => {
         if (!State.completeSamplesArray || State.totalAudioDuration === 0) return;
         
-        // Check if waveform clicks are disabled (during tutorial flow)
-        if (canvas.style.pointerEvents === 'none') {
-            return; // Clicks disabled during spectrogram explanation
+        // 🔥 FIX: Resolve tutorial promise FIRST (before any early returns)
+        // This ensures the tutorial progresses even if clicks are disabled
+        if (State._waveformClickResolve) {
+            console.log('🎯 Waveform clicked: Resolving promise');
+            State._waveformClickResolve();
+            State.setWaveformClickResolve(null);
         }
         
         // Stop pulsing animation and hide tutorial on first click
@@ -522,7 +525,12 @@ export function setupWaveformInteraction() {
             State.setWaveformHasBeenClicked(true);
             canvas.classList.remove('pulse');
             hideTutorialOverlay();
-            // Message sequence now happens after download completes, not here
+        }
+        
+        // Check if waveform clicks are disabled (during tutorial flow)
+        // After resolving promise, we can return early for actual seek behavior
+        if (canvas.style.pointerEvents === 'none') {
+            return; // Clicks disabled during spectrogram explanation
         }
         
         const rect = canvas.getBoundingClientRect();
@@ -552,6 +560,13 @@ export function setupWaveformInteraction() {
             
             // console.log(`  Zoom button hit: ${clickedZoomRegionIndex !== null ? `Region ${clickedZoomRegionIndex + 1}` : 'none'}`);
             // console.log(`  Play button hit: ${clickedPlayRegionIndex !== null ? `Region ${clickedPlayRegionIndex + 1}` : 'none'}`);
+            
+            // 🔥 Check if region buttons are disabled (during tutorial)
+            if (State.regionButtonsDisabled && (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null)) {
+                e.stopPropagation();
+                e.preventDefault();
+                return; // Ignore clicks on disabled buttons
+            }
             
             if (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null) {
                 // Clicked on a button - don't start dragging/scrub preview
@@ -622,6 +637,11 @@ export function setupWaveformInteraction() {
         const clickY = e.clientY - rect.top;
         const clickedZoomRegionIndex = checkCanvasZoomButtonClick(clickX, clickY);
         const clickedPlayRegionIndex = checkCanvasPlayButtonClick(clickX, clickY);
+        
+        // 🔥 Check if region buttons are disabled (during tutorial)
+        if (State.regionButtonsDisabled && (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null)) {
+            return; // Ignore clicks on disabled buttons
+        }
         
         if (clickedZoomRegionIndex !== null) {
             // Clicked on a zoom button - handle zoom
@@ -798,8 +818,16 @@ export function setupWaveformInteraction() {
                     // Update status message
                     const statusEl = document.getElementById('status');
                     if (statusEl) {
+                    // Resolve selection tutorial promise if waiting
+                    if (State.waitingForSelection && State._selectionTutorialResolve) {
+                        State._selectionTutorialResolve();
+                        State.setSelectionTutorialResolve(null);
+                        State.setWaitingForSelection(false);
+                    } else {
+                        // Regular non-tutorial flow
                         statusEl.className = 'status info';
                         statusEl.textContent = 'Type (R) or click Add Region to create a new region.';
+                    }
                     }
                 }
                 

@@ -412,6 +412,13 @@ export function createRegionFromSelectionTimes(selectionStartSeconds, selectionE
     // Hide the add region button
     hideAddRegionButton();
     
+    // 🔥 Resolve tutorial promise if waiting for region creation
+    if (State.waitingForRegionCreation && State._regionCreationResolve) {
+        State._regionCreationResolve();
+        State.setRegionCreationResolve(null);
+        State.setWaitingForRegionCreation(false);
+    }
+    
     // Update status message with region number (1-indexed)
     const regionNumber = newRegionIndex + 1;
     const statusEl = document.getElementById('status');
@@ -1362,6 +1369,11 @@ function createRegionCard(region, index) {
     header.querySelector('.zoom-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         
+        // 🔥 Check if region buttons are disabled (during tutorial)
+        if (State.regionButtonsDisabled) {
+            return;
+        }
+        
         // 🏛️ Check if we're already inside THIS temple
         if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
             // We're inside - exit the temple and return to full view
@@ -1376,6 +1388,12 @@ function createRegionCard(region, index) {
     });
     header.querySelector('.play-btn').addEventListener('click', (e) => {
         e.stopPropagation();
+        
+        // 🔥 Check if region buttons are disabled (during tutorial)
+        if (State.regionButtonsDisabled) {
+            return;
+        }
+        
         toggleRegionPlay(index);
     });
     header.querySelector('.delete-region-btn').addEventListener('click', (e) => {

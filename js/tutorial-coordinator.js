@@ -7,7 +7,13 @@
 import { 
     setStatusText, 
     addSpectrogramGlow, 
-    removeSpectrogramGlow, 
+    removeSpectrogramGlow,
+    addRegionsPanelGlow,
+    removeRegionsPanelGlow,
+    addVolumeSliderGlow,
+    removeVolumeSliderGlow,
+    disableRegionButtons,
+    enableRegionButtons,
     enableWaveformClicks, 
     shouldShowPulse, 
     markPulseShown, 
@@ -20,19 +26,115 @@ import {
     startPauseButtonTutorial, 
     endPauseButtonTutorial, 
     startSpeedSliderTutorial, 
-    endSpeedSliderTutorial 
+    endSpeedSliderTutorial,
+    isPauseButtonTutorialActive
 } from './tutorial-sequence.js';
+
+import * as State from './audio-state.js';
+
+// Track last status message for replay on resume
+let lastStatusMessage = null;
+let lastStatusClassName = 'status info';
+
+/**
+ * Wrapper for setStatusText that tracks the last message
+ */
+function setStatusTextAndTrack(text, className = 'status info') {
+    lastStatusMessage = text;
+    lastStatusClassName = className;
+    setStatusText(text, className);
+}
+
+/**
+ * Helper: Wait for playback to resume if paused
+ * Can be cancelled via a cancellation flag
+ * Replays the last status message when playback resumes
+ */
+async function waitForPlaybackResume(cancelled) {
+    // If already playing, no need to wait
+    if (State.playbackState === State.PlaybackState.PLAYING) {
+        return;
+    }
+    
+    // Wait for playback to resume
+    return new Promise((resolve) => {
+        const checkPlayback = () => {
+            if (cancelled && cancelled.value) {
+                resolve();
+                return;
+            }
+            if (State.playbackState === State.PlaybackState.PLAYING) {
+                // Playback resumed - replay the last message if we have one
+                // (but NOT during pause button tutorial, as that has its own flow)
+                if (lastStatusMessage && !isPauseButtonTutorialActive()) {
+                    setStatusText(lastStatusMessage, lastStatusClassName);
+                }
+                resolve();
+            } else {
+                setTimeout(checkPlayback, 100); // Check every 100ms
+            }
+        };
+        checkPlayback();
+    });
+}
 
 /**
  * Helper: Create a skippable wait (for timed sections)
  * Enter key can skip these
+ * Also pauses when user pauses playback and resumes when they resume
+ * EXCEPT during pause button tutorial - in that case, timer continues normally
  */
 function skippableWait(durationMs) {
-    return new Promise((resolve) => {
-        const timeoutId = setTimeout(resolve, durationMs);
+    return new Promise(async (resolve) => {
+        let elapsed = 0;
+        const checkInterval = 50; // Check every 50ms
+        let timeoutId = null;
+        let isResolved = false;
+        const cancelled = { value: false }; // Cancellation flag for waitForPlaybackResume
+        
+        const cleanup = () => {
+            cancelled.value = true; // Cancel any pending playback resume wait
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+        };
+        
+        const tick = () => {
+            if (isResolved) return;
+            
+            // Check if playback is paused (but NOT during pause button tutorial)
+            // During pause button tutorial, we want timer to continue so we can show unpause instructions
+            if (State.playbackState === State.PlaybackState.PAUSED && !isPauseButtonTutorialActive()) {
+                // Pause the timer - wait for playback to resume
+                waitForPlaybackResume(cancelled).then(() => {
+                    if (!isResolved && !cancelled.value) {
+                        // Playback resumed - continue timer
+                        timeoutId = setTimeout(tick, checkInterval);
+                    }
+                });
+                return;
+            }
+            
+            elapsed += checkInterval;
+            
+            if (elapsed >= durationMs) {
+                isResolved = true;
+                cleanup();
+                resolve();
+            } else {
+                timeoutId = setTimeout(tick, checkInterval);
+            }
+        };
+        
+        timeoutId = setTimeout(tick, checkInterval);
         
         // Store timeout so Enter key can skip it
-        setTutorialPhase('timed_wait', [timeoutId], resolve);
+        setTutorialPhase('timed_wait', [timeoutId], () => {
+            isResolved = true;
+            cleanup();
+            resolve();
+        });
     });
 }
 
@@ -60,7 +162,7 @@ function userActionPromise(setupFn, phase) {
  */
 
 async function showWellDoneMessage() {
-    setStatusText('Well done!', 'status success');
+    setStatusTextAndTrack('Success!', 'status success');
     await skippableWait(2000);
 }
 
@@ -75,8 +177,49 @@ async function showVolcanoMessage() {
         'spurr': 'Mount Spurr'
     };
     const volcanoName = volcanoNameMap[volcanoValue] || 'the volcano';
-    setStatusText(`This is the sound of ${volcanoName}, recorded over the past 24 hours.`, 'status info');
+    setStatusTextAndTrack(`This is the sound of seismic activity recorded at ${volcanoName} over the past 24 hours.`, 'status info');
     await skippableWait(5000);
+}
+
+async function showStationMetadataMessage() {
+    // Get the currently selected station data from the dropdown
+    const stationSelect = document.getElementById('station');
+    if (!stationSelect || !stationSelect.value) {
+        // Skip if no station selected
+        return;
+    }
+    
+    try {
+        const stationData = JSON.parse(stationSelect.value);
+        const distanceKm = stationData.distance_km || 0;
+        const channel = stationData.channel || '';
+        
+        // Determine component description from channel
+        // Channel format is typically like BHZ, HHZ, etc. where Z = vertical
+        const component = channel.endsWith('Z') ? 'vertical (Z)' : 
+                          channel.endsWith('N') ? 'north (N)' :
+                          channel.endsWith('E') ? 'east (E)' : 'seismic';
+        
+        setStatusTextAndTrack(`The station is ${distanceKm}km from the volcano, and is measuring activity in the ${component} component.`, 'status info');
+        await skippableWait(7000);
+    } catch (error) {
+        console.warn('Could not parse station data for metadata message:', error);
+        // Skip if parsing fails
+    }
+}
+
+async function showVolumeSliderTutorial() {
+    // Add glow to volume slider
+    addVolumeSliderGlow();
+    
+    // Show message about volume adjustment
+    setStatusTextAndTrack('The volume can be adjusted here.', 'status info');
+    
+    // Wait 5 seconds
+    await skippableWait(5000);
+    
+    // Remove glow
+    removeVolumeSliderGlow();
 }
 
 async function runPauseButtonTutorial() {
@@ -101,24 +244,28 @@ async function showSpectrogramExplanation() {
     addSpectrogramGlow();
     
     // First message introducing the spectrogram
-    setStatusText('This is a spectrogram of the data.', 'status info');
+    setStatusTextAndTrack('This is a spectrogram of the data.', 'status info');
     await skippableWait(3000);
     
-    // Second message about time flow
-    setStatusText('Time flows from left to right 👉', 'status info');
+    // Second message about interesting features
+    setStatusTextAndTrack('You may notice a variety of interesting features.', 'status info');
     await skippableWait(5000);
     
-    // Third message about frequency
-    setStatusText('And frequency spans from low to high.', 'status info');
+    // Third message about time flow
+    setStatusTextAndTrack('Time flows from left to right 👉', 'status info');
+    await skippableWait(5000);
+    
+    // Fourth message about frequency
+    setStatusTextAndTrack('And frequency spans from low to high 👆', 'status info');
     await skippableWait(5000);
     
     // Additional message about selecting features (keep glow)
-    setStatusText('A bit later we will use this space for selecting features.', 'status info');
+    setStatusTextAndTrack('A bit later we will use this space for selecting features.', 'status info');
     await skippableWait(5000);
     
     // Transition message before speed slider (keep glow)
-    setStatusText('For now let\'s explore some more controls...', 'status info');
-    await skippableWait(6000);
+    setStatusTextAndTrack('For now let\'s explore some more controls...', 'status info');
+    await skippableWait(5000);
     
     // Remove glow when transitioning to speed slider
     removeSpectrogramGlow();
@@ -159,9 +306,139 @@ async function enableWaveformTutorial() {
     }
     
     // Show final message
-    setStatusText('Click on the waveform to move the playhead somewhere interesting.', 'status success');
+    setStatusTextAndTrack('Now click on the waveform to move the playhead somewhere interesting.', 'status success');
+}
+
+/**
+ * Wait for user to click waveform (first click)
+ * IMPORTANT: This must be called BEFORE showing the message to avoid race conditions
+ */
+function waitForWaveformClick() {
+    return new Promise((resolve) => {
+        console.log('🎯 waitForWaveformClick: Setting up promise, waveformHasBeenClicked:', State.waveformHasBeenClicked);
+        
+        // Check if already clicked
+        if (State.waveformHasBeenClicked) {
+            console.log('🎯 waitForWaveformClick: Already clicked, resolving immediately');
+            resolve();
+            return;
+        }
+        
+        // Store resolve function FIRST to avoid race condition
+        // This ensures that if a click happens immediately after, it will resolve the promise
+        State.setWaveformClickResolve(resolve);
+        console.log('🎯 waitForWaveformClick: Promise set up, waiting for click...');
+        
+        // Ensure clicks are enabled (in case they weren't already)
+        enableWaveformClicks();
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_waveform_click', [], () => {
+            console.log('🎯 waitForWaveformClick: Skipped via Enter key');
+            if (State._waveformClickResolve) {
+                State._waveformClickResolve();
+                State.setWaveformClickResolve(null);
+            }
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to make a selection (drag and release)
+ */
+function waitForSelection() {
+    return new Promise((resolve) => {
+        // Set flag so waveform-renderer.js knows to resolve this promise
+        State.setWaitingForSelection(true);
+        State.setSelectionTutorialResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_selection', [], () => {
+            State.setWaitingForSelection(false);
+            State.setSelectionTutorialResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to create a region (press R or click Add Region button)
+ */
+function waitForRegionCreation() {
+    return new Promise((resolve) => {
+        // Set flag so region-tracker.js knows to resolve this promise
+        State.setWaitingForRegionCreation(true);
+        State.setRegionCreationResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_region_creation', [], () => {
+            State.setWaitingForRegionCreation(false);
+            State.setRegionCreationResolve(null);
+            resolve();
+        });
+    });
+}
+
+async function runSelectionTutorial() {
+    // Set up the promise FIRST before showing the message to avoid race conditions
+    const clickPromise = waitForWaveformClick();
     
-    // Clear tutorial phase - we're done!
+    // Now enable waveform tutorial (shows message and enables clicks)
+    await enableWaveformTutorial();
+    
+    // Wait for user to click waveform first
+    await clickPromise;
+    
+    // Wait 6 seconds after waveform click, then show drag message
+    await skippableWait(6000);
+    
+    setStatusTextAndTrack('Now click on the waveform and DRAG and RELEASE to make a selection.', 'status info');
+    
+    // Wait for user to make a selection
+    await waitForSelection();
+    
+    // Wait 0.5 seconds, then show "Nice!" for 1 second
+    await skippableWait(500);
+    setStatusTextAndTrack('Nice!', 'status success');
+    await skippableWait(1000);
+    
+    // Selection tutorial complete - transition to region introduction
+    // Clear tutorial phase
+    clearTutorialPhase();
+}
+
+async function runRegionIntroduction() {
+    // Show the "Type (R)" message
+    setStatusTextAndTrack('Type (R) or click the Add Region button to create a new region.', 'status info');
+    
+    // Wait for user to create a region
+    await waitForRegionCreation();
+    
+    // Show "You just created your first region!" message
+    setStatusTextAndTrack('You just created your first region!', 'status success');
+    await skippableWait(4000);
+    
+    // Disable all region buttons during tutorial explanation
+    disableRegionButtons();
+    
+    // Add glow to regions panel and show message about regions being added below
+    addRegionsPanelGlow();
+    setStatusTextAndTrack('When a new region is created, it gets added down below.', 'status info');
+    await skippableWait(4000);
+    
+    // Show explanation about regions
+    setStatusTextAndTrack('Regions will help us move around and identify features.', 'status info');
+    await skippableWait(4000);
+    
+    // Remove glow and re-enable buttons
+    removeRegionsPanelGlow();
+    enableRegionButtons();
+    
+    // Show zoom message
+    setStatusTextAndTrack('Type 1 to zoom or click the play button on the region to explore it.', 'status info');
+    
+    // Clear tutorial phase
     clearTutorialPhase();
 }
 
@@ -177,10 +454,13 @@ async function enableWaveformTutorial() {
 export async function runMainTutorial() {
     await showWellDoneMessage();           // 2s
     await showVolcanoMessage();            // 5s  
+    await showStationMetadataMessage();    // 7s
+    await showVolumeSliderTutorial();      // 5s - volume slider glow and message
     await runPauseButtonTutorial();        // wait for user to pause & resume
     await showSpectrogramExplanation();    // 5s + 600ms fade
     await runSpeedSliderTutorial();        // wait for user to complete slider actions
-    await enableWaveformTutorial();        // final step - enable waveform clicks
+    await runSelectionTutorial();          // enable waveform clicks, show message, wait for click, then wait for selection
+    await runRegionIntroduction();         // region introduction tutorial
     
     console.log('🎓 Tutorial complete!');
 }

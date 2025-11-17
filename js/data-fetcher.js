@@ -673,7 +673,11 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 if (processedChunks[i] && processedChunks[i].samples !== null) {
                     // Only clear if this chunk has also been sent to waveform worker
                     if (i < nextWaveformChunk) {
+                        // 🔥 FIX: Explicitly null out ArrayBuffer references to allow GC
+                        // The samples Float32Array holds a reference to its ArrayBuffer
+                        // Setting samples to null breaks the reference chain
                         processedChunks[i].samples = null; // Free main thread memory (rawSamples kept for final waveform)
+                        // Note: rawSamples is kept for final waveform build, will be cleared later
                         if (DEBUG_CHUNKS && i % 10 === 0) console.log(`🧹 Freed chunk ${i} samples from main thread memory`);
                     }
                 }
@@ -827,15 +831,20 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                     State.setWorkletBufferStatusHandler(null);
                                 }
                                 
-                                // 🔥 FIX: Clear processedChunks array to release Float32Array references
+                                // 🔥 FIX: Clear processedChunks array to release Float32Array and ArrayBuffer references
                                 // This prevents the worker closure from retaining old audio data
+                                // Explicitly null out each ArrayBuffer reference to allow GC
                                 for (let i = 0; i < processedChunks.length; i++) {
                                     if (processedChunks[i]) {
+                                        // Null out Float32Array references (which hold ArrayBuffer references)
                                         processedChunks[i].samples = null;
                                         processedChunks[i].rawSamples = null;
+                                        // Clear the object itself
                                         processedChunks[i] = null;
                                     }
                                 }
+                                // 🔥 FIX: Clear the array length after nulling all elements
+                                // Setting length to 0 helps GC reclaim the array structure
                                 processedChunks.length = 0;
                                 
                                 // Terminate worker (we're done!)
@@ -880,11 +889,16 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 State.setCompleteSamplesArray(stitched);
                                 console.log(`📦 ${logTime()} Stitched ${chunkCount} chunks into completeSamplesArray for download`);
                                 
-                                // 🔥 FIX: Clear allReceivedData after stitching to free 3,685+ Float32Array chunks
-                                // This breaks the closure chain: RAF callback → State → allReceivedData → chunks
-                                // Now State.allReceivedData is empty, so RAF callbacks won't retain old chunks
+                                // 🔥 FIX: Clear allReceivedData after stitching to free 3,685+ Float32Array chunks and their ArrayBuffers
+                                // This breaks the closure chain: RAF callback → State → allReceivedData → chunks → ArrayBuffers
+                                // Explicitly null out each chunk's ArrayBuffer reference before clearing
+                                if (State.allReceivedData && State.allReceivedData.length > 0) {
+                                    for (let i = 0; i < State.allReceivedData.length; i++) {
+                                        State.allReceivedData[i] = null; // Break ArrayBuffer reference
+                                    }
+                                }
                                 State.setAllReceivedData([]);
-                                console.log(`🧹 ${logTime()} Cleared allReceivedData (${chunkCount} chunks) - memory freed`);
+                                console.log(`🧹 ${logTime()} Cleared allReceivedData (${chunkCount} chunks) - ArrayBuffers freed`);
                                 
                                 // 🎨 Render complete spectrogram now that all data is ready
                                 console.log(`🎨 ${logTime()} Triggering complete spectrogram rendering...`);
@@ -1022,9 +1036,14 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             State.setCompleteSamplesArray(stitchedFloat32);
             window.rawWaveformData = stitchedRaw;
             
-            // 🔥 FIX: Clear allReceivedData after stitching to free Float32Array chunks
-            // This breaks the closure chain: RAF callback → State → allReceivedData → chunks
-            // Now State.allReceivedData is empty, so RAF callbacks won't retain old chunks
+            // 🔥 FIX: Clear allReceivedData after stitching to free Float32Array chunks and their ArrayBuffers
+            // This breaks the closure chain: RAF callback → State → allReceivedData → chunks → ArrayBuffers
+            // Explicitly null out each chunk's ArrayBuffer reference before clearing
+            if (State.allReceivedData && State.allReceivedData.length > 0) {
+                for (let i = 0; i < State.allReceivedData.length; i++) {
+                    State.allReceivedData[i] = null; // Break ArrayBuffer reference
+                }
+            }
             State.setAllReceivedData([]);
             
             // Update UI metrics

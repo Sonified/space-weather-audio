@@ -4,7 +4,7 @@
  * Contains logic for specific tutorials like speed slider tutorial
  */
 
-import { setStatusText, appendStatusText, showTutorialOverlay } from './tutorial-effects.js';
+import { setStatusText, appendStatusText, showTutorialOverlay, cancelTyping } from './tutorial-effects.js';
 import { resetSpeedTo1, togglePlayPause } from './audio-player.js';
 import * as State from './audio-state.js';
 import { setTutorialPhase } from './tutorial-state.js';
@@ -20,6 +20,10 @@ let speedSliderInteractionResolve = null;
 let speedSliderDirectionResolve = null;
 let speedSliderThresholdResolve = null;
 let speedSliderClickResolve = null;
+// 🔥 FIX: Track setTimeout IDs for cleanup to prevent memory leaks
+let speedSliderInteractionTimeout = null;
+let speedSliderDirectionTimeout = null;
+let speedSliderThresholdTimeout = null;
 
 /**
  * Helper: Wait for slider interaction (user starts dragging)
@@ -29,7 +33,16 @@ function waitForSliderInteraction(speedSlider) {
         speedSliderInteractionResolve = resolve;
         const initialValue = parseFloat(speedSlider.value);
         
+        // 🔥 FIX: Clear any existing timeout to prevent accumulation
+        if (speedSliderInteractionTimeout !== null) {
+            clearTimeout(speedSliderInteractionTimeout);
+            speedSliderInteractionTimeout = null;
+        }
+        
         const checkInteraction = () => {
+            // 🔥 FIX: Clear timeout ID when done
+            speedSliderInteractionTimeout = null;
+            
             if (!speedSliderTutorialActive) {
                 resolve();
                 return;
@@ -39,7 +52,8 @@ function waitForSliderInteraction(speedSlider) {
                 resolve();
                 return;
             }
-            setTimeout(checkInteraction, 100);
+            // 🔥 FIX: Store timeout ID for cleanup
+            speedSliderInteractionTimeout = setTimeout(checkInteraction, 100);
         };
         checkInteraction();
     });
@@ -51,7 +65,17 @@ function waitForSliderInteraction(speedSlider) {
 function waitForDirectionDetection() {
     return new Promise((resolve) => {
         speedSliderDirectionResolve = resolve;
+        
+        // 🔥 FIX: Clear any existing timeout to prevent accumulation
+        if (speedSliderDirectionTimeout !== null) {
+            clearTimeout(speedSliderDirectionTimeout);
+            speedSliderDirectionTimeout = null;
+        }
+        
         const checkDirection = () => {
+            // 🔥 FIX: Clear timeout ID when done
+            speedSliderDirectionTimeout = null;
+            
             if (!speedSliderTutorialActive) {
                 resolve();
                 return;
@@ -60,7 +84,8 @@ function waitForDirectionDetection() {
                 resolve();
                 return;
             }
-            setTimeout(checkDirection, 100);
+            // 🔥 FIX: Store timeout ID for cleanup
+            speedSliderDirectionTimeout = setTimeout(checkDirection, 100);
         };
         checkDirection();
     });
@@ -72,7 +97,17 @@ function waitForDirectionDetection() {
 function waitForThresholdCross() {
     return new Promise((resolve) => {
         speedSliderThresholdResolve = resolve;
+        
+        // 🔥 FIX: Clear any existing timeout to prevent accumulation
+        if (speedSliderThresholdTimeout !== null) {
+            clearTimeout(speedSliderThresholdTimeout);
+            speedSliderThresholdTimeout = null;
+        }
+        
         const checkThreshold = () => {
+            // 🔥 FIX: Clear timeout ID when done
+            speedSliderThresholdTimeout = null;
+            
             if (!speedSliderTutorialActive) {
                 resolve();
                 return;
@@ -81,7 +116,8 @@ function waitForThresholdCross() {
                 resolve();
                 return;
             }
-            setTimeout(checkThreshold, 100);
+            // 🔥 FIX: Store timeout ID for cleanup
+            speedSliderThresholdTimeout = setTimeout(checkThreshold, 100);
         };
         checkThreshold();
     });
@@ -269,16 +305,19 @@ export async function startSpeedSliderTutorial() {
             
             // Show initial message with typing animation
             const initialSpeedText = speedValueEl.textContent || '1.0x';
-            setStatusText(`Click on the text that says "Speed: ${initialSpeedText}" to reset the playback speed.`, 'status info');
+            setStatusText(`↙️ Click on the text that says "Speed: ${initialSpeedText}" to reset the playback speed.`, 'status info');
             
             // Function to update just the speed value without retyping
             const updateSpeedMessage = () => {
                 if (speedSliderTutorialActive && speedValueEl) {
                     const statusEl = document.getElementById('status');
                     if (statusEl) {
+                        // Cancel any active typing animation first
+                        cancelTyping();
+                        
                         const currentSpeedText = speedValueEl.textContent || '1.0x';
                         // Update text directly without typing animation
-                        statusEl.textContent = `Click on the text that says "Speed: ${currentSpeedText}" to reset the playback speed.`;
+                        statusEl.textContent = `↙️ Click on the text that says "Speed: ${currentSpeedText}" to reset the playback speed.`;
                     }
                 }
             };
@@ -304,9 +343,14 @@ export async function startSpeedSliderTutorial() {
             speedValueObserver.disconnect();
             speedSlider._speedValueObserver = null;
             
-            // Reset speed and show success
+            // Reset speed
             resetSpeedTo1();
             speedLabel.classList.remove('speed-value-glow');
+            
+            // Wait 1 second, then show "Excellent"
+            await skippableWait(1000, 'speed_excellent_wait');
+            if (!speedSliderTutorialActive) return;
+            
             setStatusText('Excellent!', 'status success');
             
             // Wait 2 seconds, then complete
@@ -327,6 +371,20 @@ export async function startSpeedSliderTutorial() {
  */
 export function endSpeedSliderTutorial() {
     speedSliderTutorialActive = false;
+    
+    // 🔥 FIX: Clear all setTimeout chains to prevent memory leaks
+    if (speedSliderInteractionTimeout !== null) {
+        clearTimeout(speedSliderInteractionTimeout);
+        speedSliderInteractionTimeout = null;
+    }
+    if (speedSliderDirectionTimeout !== null) {
+        clearTimeout(speedSliderDirectionTimeout);
+        speedSliderDirectionTimeout = null;
+    }
+    if (speedSliderThresholdTimeout !== null) {
+        clearTimeout(speedSliderThresholdTimeout);
+        speedSliderThresholdTimeout = null;
+    }
     
     const speedSlider = document.getElementById('playbackSpeed');
     if (speedSlider) {
@@ -381,6 +439,16 @@ function getSpeedFromSliderValue(value) {
 // Pause button tutorial state
 let pauseButtonTutorialActive = false;
 let pauseButtonTutorialResolve = null;
+// 🔥 FIX: Track setTimeout ID for cleanup to prevent memory leaks
+let pauseButtonStateTimeout = null;
+
+/**
+ * Check if pause button tutorial is currently active
+ * Used by tutorial-coordinator to override pause detection
+ */
+export function isPauseButtonTutorialActive() {
+    return pauseButtonTutorialActive;
+}
 
 /**
  * Helper: Create a skippable wait (for timed sections)
@@ -399,7 +467,16 @@ function skippableWait(durationMs, phase) {
  */
 function waitForPlaybackState(targetState, checkInterval = 100) {
     return new Promise((resolve) => {
+        // 🔥 FIX: Clear any existing timeout to prevent accumulation
+        if (pauseButtonStateTimeout !== null) {
+            clearTimeout(pauseButtonStateTimeout);
+            pauseButtonStateTimeout = null;
+        }
+        
         const checkState = () => {
+            // 🔥 FIX: Clear timeout ID when done
+            pauseButtonStateTimeout = null;
+            
             if (!pauseButtonTutorialActive) {
                 resolve();
                 return;
@@ -408,7 +485,8 @@ function waitForPlaybackState(targetState, checkInterval = 100) {
                 resolve();
                 return;
             }
-            setTimeout(checkState, checkInterval);
+            // 🔥 FIX: Store timeout ID for cleanup
+            pauseButtonStateTimeout = setTimeout(checkState, checkInterval);
         };
         checkState();
     });
@@ -485,6 +563,12 @@ export async function startPauseButtonTutorial(onComplete = null) {
  */
 export function endPauseButtonTutorial() {
     pauseButtonTutorialActive = false;
+    
+    // 🔥 FIX: Clear setTimeout chain to prevent memory leaks
+    if (pauseButtonStateTimeout !== null) {
+        clearTimeout(pauseButtonStateTimeout);
+        pauseButtonStateTimeout = null;
+    }
     
     const pauseButton = document.getElementById('playPauseBtn');
     if (pauseButton) {

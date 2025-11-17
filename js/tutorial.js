@@ -18,8 +18,14 @@ export {
     appendStatusText,
     addSpectrogramGlow,
     removeSpectrogramGlow,
+    addRegionsPanelGlow,
+    removeRegionsPanelGlow,
+    addVolumeSliderGlow,
+    removeVolumeSliderGlow,
     disableWaveformClicks,
-    enableWaveformClicks
+    enableWaveformClicks,
+    disableRegionButtons,
+    enableRegionButtons
 } from './tutorial-effects.js';
 
 // Re-export all sequences

@@ -79,6 +79,12 @@ export let selectionEnd = null;
 export let isSelecting = false;
 export let selectionStartX = null;
 export let waveformHasBeenClicked = false;
+export let waitingForSelection = false;
+export let waitingForRegionCreation = false;
+export let _selectionTutorialResolve = null;
+export let _waveformClickResolve = null;
+export let _regionCreationResolve = null;
+export let regionButtonsDisabled = false;
 
 // Region tracking state
 export let regions = [];
@@ -144,6 +150,12 @@ export function setSelectionEnd(value) { selectionEnd = value; }
 export function setIsSelecting(value) { isSelecting = value; }
 export function setSelectionStartX(value) { selectionStartX = value; }
 export function setWaveformHasBeenClicked(value) { waveformHasBeenClicked = value; }
+export function setWaitingForSelection(value) { waitingForSelection = value; }
+export function setWaitingForRegionCreation(value) { waitingForRegionCreation = value; }
+export function setSelectionTutorialResolve(value) { _selectionTutorialResolve = value; }
+export function setWaveformClickResolve(value) { _waveformClickResolve = value; }
+export function setRegionCreationResolve(value) { _regionCreationResolve = value; }
+export function setRegionButtonsDisabled(value) { regionButtonsDisabled = value; }
 export function setRegions(value) { regions = value; }
 export function setActiveRegionIndex(value) { activeRegionIndex = value; }
 export function setIsSelectingFrequency(value) { isSelectingFrequency = value; }

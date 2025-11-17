@@ -428,6 +428,152 @@ export function removeSpectrogramGlow() {
 }
 
 /**
+ * Add glow effect to regions panel with fade-in
+ */
+export function addRegionsPanelGlow() {
+    const regionsPanel = document.getElementById('trackedRegionsPanel');
+    if (regionsPanel) {
+        // Add fading-in class first to start from opacity 0
+        regionsPanel.classList.add('fading-in');
+        
+        // Force reflow to ensure the fade-in class is applied before adding glow
+        regionsPanel.offsetHeight;
+        
+        // Add glow class which will fade in via CSS transition
+        regionsPanel.classList.add('regions-panel-glow');
+        
+        // Remove fade-in class after transition completes
+        setTimeout(() => {
+            regionsPanel.classList.remove('fading-in');
+        }, 500); // Match CSS transition duration
+    }
+}
+
+/**
+ * Remove glow effect from regions panel with fade-out
+ */
+export function removeRegionsPanelGlow() {
+    const regionsPanel = document.getElementById('trackedRegionsPanel');
+    if (regionsPanel) {
+        // Add fading-out class to trigger fade transition
+        regionsPanel.classList.add('fading-out');
+        
+        // Remove glow class after fade completes
+        setTimeout(() => {
+            regionsPanel.classList.remove('regions-panel-glow', 'fading-out');
+        }, 500); // Match CSS transition duration
+    }
+}
+
+/**
+ * Disable all region buttons (both on waveform canvas and in panel)
+ */
+export function disableRegionButtons() {
+    // Disable buttons in the regions panel
+    const regionsPanel = document.getElementById('trackedRegionsPanel');
+    if (regionsPanel) {
+        const zoomButtons = regionsPanel.querySelectorAll('.zoom-btn');
+        const playButtons = regionsPanel.querySelectorAll('.play-btn');
+        
+        zoomButtons.forEach(btn => {
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.5';
+        });
+        playButtons.forEach(btn => {
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.5';
+        });
+    }
+    
+    // Disable buttons on waveform canvas by setting a flag
+    // The waveform buttons renderer will check this flag
+    State.setRegionButtonsDisabled(true);
+}
+
+/**
+ * Enable all region buttons (both on waveform canvas and in panel)
+ */
+export function enableRegionButtons() {
+    // Enable buttons in the regions panel
+    const regionsPanel = document.getElementById('trackedRegionsPanel');
+    if (regionsPanel) {
+        const zoomButtons = regionsPanel.querySelectorAll('.zoom-btn');
+        const playButtons = regionsPanel.querySelectorAll('.play-btn');
+        
+        zoomButtons.forEach(btn => {
+            btn.style.pointerEvents = 'auto';
+            btn.style.opacity = '1';
+        });
+        playButtons.forEach(btn => {
+            btn.style.pointerEvents = 'auto';
+            btn.style.opacity = '1';
+        });
+    }
+    
+    // Enable buttons on waveform canvas
+    State.setRegionButtonsDisabled(false);
+}
+
+/**
+ * Add glow effect to volume slider with fade-in
+ */
+export function addVolumeSliderGlow() {
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumeLabel = document.getElementById('volumeLabel');
+    
+    if (volumeSlider) {
+        // Add fading-in class first to start from opacity 0
+        volumeSlider.classList.add('fading-in');
+        
+        // Force reflow to ensure the fade-in class is applied before adding glow
+        volumeSlider.offsetHeight;
+        
+        // Add glow class which will fade in via CSS transition
+        volumeSlider.classList.add('volume-slider-glow');
+        
+        // Remove fade-in class after transition completes
+        setTimeout(() => {
+            volumeSlider.classList.remove('fading-in');
+        }, 500); // Match CSS transition duration
+    }
+    
+    if (volumeLabel) {
+        // Also add glow to the label
+        volumeLabel.classList.add('fading-in');
+        volumeLabel.offsetHeight;
+        volumeLabel.classList.add('volume-label-glow');
+        setTimeout(() => {
+            volumeLabel.classList.remove('fading-in');
+        }, 500);
+    }
+}
+
+/**
+ * Remove glow effect from volume slider with fade-out
+ */
+export function removeVolumeSliderGlow() {
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumeLabel = document.getElementById('volumeLabel');
+    
+    if (volumeSlider) {
+        // Add fading-out class to trigger fade transition
+        volumeSlider.classList.add('fading-out');
+        
+        // Remove glow class after fade completes
+        setTimeout(() => {
+            volumeSlider.classList.remove('volume-slider-glow', 'fading-out');
+        }, 500); // Match CSS transition duration
+    }
+    
+    if (volumeLabel) {
+        volumeLabel.classList.add('fading-out');
+        setTimeout(() => {
+            volumeLabel.classList.remove('volume-label-glow', 'fading-out');
+        }, 500);
+    }
+}
+
+/**
  * Disable waveform canvas clicks
  */
 export function disableWaveformClicks() {
