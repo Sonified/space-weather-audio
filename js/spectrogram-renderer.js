@@ -167,8 +167,17 @@ export async function changeFrequencyScale() {
     
     console.log(`📊 Frequency scale changed to: ${value}`);
     
+    // 🔍 Diagnostic: Check state before animation decision
+    console.log(`🎨 [changeFrequencyScale] Checking if we should animate:`, {
+        hasComplete: isCompleteSpectrogramRendered(),
+        oldScale: oldScale,
+        newScale: value,
+        inRegion: zoomState.isInRegion()
+    });
+    
     // If complete spectrogram is rendered, animate transition
     if (isCompleteSpectrogramRendered()) {
+        console.log('✅ Animation path - have rendered spectrogram');
         console.log('🎨 Animating scale transition...');
         
         // Step 1: Animate axis ticks to new positions (1 second)
@@ -195,29 +204,105 @@ export async function changeFrequencyScale() {
             const width = canvas.width;
             const height = canvas.height;
             
-            // 🔧 FIX: Check if we're zoomed into a region - handle differently!
+            // 🔧 FIX: Check if we're zoomed into a region - handle with fade animation!
             if (zoomState.isInitialized() && zoomState.isInRegion()) {
                 const regionRange = zoomState.getRegionRange();
-                console.log(`🔍 Inside region - re-rendering region with new scale`);
+                console.log(`🔍 Inside region - animating scale transition`);
                 
-                // Re-render region with new frequency scale
-                // renderCompleteSpectrogramForRegion() will detect the frequency scale change
-                // and automatically clear/re-render as needed - no need to reset state!
+                // 🔥 Capture old spectrogram BEFORE re-rendering
+                const oldSpectrogram = document.createElement('canvas');
+                oldSpectrogram.width = width;
+                oldSpectrogram.height = height;
+                oldSpectrogram.getContext('2d').drawImage(canvas, 0, 0);
+                
+                // Re-render region with new frequency scale (in "background")
                 const spectrogramModule = await import('./spectrogram-complete-renderer.js');
-                await spectrogramModule.renderCompleteSpectrogramForRegion(regionRange.startTime, regionRange.endTime, false);
+                const { resetSpectrogramState } = spectrogramModule;
+                resetSpectrogramState(); // Clear state so it will re-render
                 
-                // Update viewport with current playback rate
+                await spectrogramModule.renderCompleteSpectrogramForRegion(
+                    regionRange.startTime, 
+                    regionRange.endTime, 
+                    true  // Skip viewport update - we'll fade manually
+                );
+                
+                // Get the new spectrogram (without displaying it yet)
+                const { getSpectrogramViewport } = spectrogramModule;
                 const playbackRate = State.currentPlaybackRate || 1.0;
-                spectrogramModule.updateSpectrogramViewport(playbackRate);
+                const newSpectrogram = getSpectrogramViewport(playbackRate);
                 
-                // Resume playhead if it was active
-                if (playbackWasActive) {
-                    import('./waveform-renderer.js').then(module => {
-                        module.startPlaybackIndicator();
-                    });
+                if (!newSpectrogram) {
+                    // Fallback: just update normally
+                    spectrogramModule.updateSpectrogramViewport(playbackRate);
+                    if (playbackWasActive) {
+                        import('./waveform-renderer.js').then(module => {
+                            module.startPlaybackIndicator();
+                        });
+                    }
+                    console.log('✅ Region scale transition complete (no fade)');
+                    return;
                 }
                 
-                console.log('✅ Region scale transition complete');
+                // 🎨 Crossfade old → new (300ms)
+                const fadeDuration = 300;
+                const fadeStart = performance.now();
+                
+                const fadeStep = () => {
+                    if (!document.body || !document.body.isConnected) {
+                        return;
+                    }
+                    
+                    const elapsed = performance.now() - fadeStart;
+                    const progress = Math.min(elapsed / fadeDuration, 1.0);
+                    const alpha = 1 - Math.pow(1 - progress, 2); // Ease-out
+                    
+                    // Clear and draw blend
+                    ctx.clearRect(0, 0, width, height);
+                    
+                    // Old fading OUT
+                    ctx.globalAlpha = 1.0 - alpha;
+                    ctx.drawImage(oldSpectrogram, 0, 0);
+                    
+                    // New fading IN
+                    ctx.globalAlpha = alpha;
+                    ctx.drawImage(newSpectrogram, 0, 0);
+                    
+                    // Playhead on top
+                    ctx.globalAlpha = 1.0;
+                    if (State.currentAudioPosition !== null && State.totalAudioDuration > 0) {
+                        // Calculate playhead position relative to region
+                        const regionDuration = regionRange.endTime - regionRange.startTime;
+                        const positionInRegion = State.currentAudioPosition - regionRange.startTime;
+                        const playheadX = (positionInRegion / regionDuration) * width;
+                        
+                        ctx.strokeStyle = '#616161';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(playheadX, 0);
+                        ctx.lineTo(playheadX, height);
+                        ctx.stroke();
+                    }
+                    
+                    ctx.globalAlpha = 1.0;
+                    
+                    if (progress < 1.0) {
+                        requestAnimationFrame(fadeStep);
+                    } else {
+                        // Fade complete - lock in new spectrogram
+                        spectrogramModule.updateSpectrogramViewport(playbackRate);
+                        
+                        // Resume playhead
+                        if (playbackWasActive) {
+                            import('./waveform-renderer.js').then(module => {
+                                module.startPlaybackIndicator();
+                            });
+                        }
+                        
+                        console.log('✅ Region scale transition complete (with fade)');
+                    }
+                };
+                
+                fadeStep();
                 return;
             }
             
@@ -325,6 +410,7 @@ export async function changeFrequencyScale() {
             await renderCompleteSpectrogram();
         }
     } else {
+        console.log('⚠️ No animation - no rendered spectrogram');
         // No spectrogram yet, just update axis
         positionAxisCanvas();
         initializeAxisPlaybackRate();

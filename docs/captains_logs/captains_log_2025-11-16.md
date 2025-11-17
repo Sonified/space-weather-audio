@@ -2,6 +2,43 @@
 
 ---
 
+## 🎨 Frequency Scale Transition Fixes & Memory Leak Fixes (v2.20)
+
+### Memory Leak Fixes
+1. **Analyser Node Not Disconnected** - Fixed analyser node accumulation by adding cleanup in `initAudioWorklet()` and `startStreaming()`
+2. **Worker Pool Event Listeners** - Fixed worker pool to clear pending promises and break closure chains before terminating
+3. **Worker Ready Listener** - Fixed worker ready listener cleanup to prevent accumulation
+
+### Frequency Scale Transition Fixes
+1. **Flag Lost After Zoom Out** - Fixed `restoreInfiniteCanvasFromCache()` to set `completeSpectrogramRendered = true` so frequency scale changes work after zooming out
+2. **Region Scale Changes Skip Animation** - Added fade animation for frequency scale changes when zoomed into regions (previously skipped animation entirely)
+3. **Flag Lost After Region Render** - Fixed `renderCompleteSpectrogramForRegion()` to set `completeSpectrogramRendered = true` so subsequent scale changes animate correctly
+
+### Diagnostic Logging
+Added comprehensive diagnostic logging to track infinite canvas lifecycle:
+- `logInfiniteCanvasState()` helper function tracks canvas state at key points
+- Logs added to all major render/restore/clear operations
+- Enhanced `changeFrequencyScale()` with diagnostic output
+- Region zoom tracking logs added
+
+### Key Changes
+- `js/main.js` - Added analyser node cleanup in both `initAudioWorklet()` and `startStreaming()`
+- `js/spectrogram-worker-pool.js` - Clear pending promises before terminating workers
+- `js/spectrogram-complete-renderer.js` - Set flags in `restoreInfiniteCanvasFromCache()` and `renderCompleteSpectrogramForRegion()`, added diagnostic logging
+- `js/spectrogram-renderer.js` - Added fade animation for region frequency scale changes, enhanced diagnostics
+
+### Benefits
+- ✅ No more analyser node accumulation (memory leak fixed)
+- ✅ Frequency scale changes work after zooming out
+- ✅ Region frequency scale changes now have smooth fade animation
+- ✅ Subsequent scale changes in regions animate correctly
+- ✅ Comprehensive diagnostic logging for debugging canvas lifecycle issues
+
+### Version
+v2.20 - Commit: "v2.20 Fix: Frequency scale transitions after zoom/region changes, analyser node memory leak, added diagnostic logging"
+
+---
+
 ## 🦋 Unified Playback Boundaries System (v2.19)
 
 ### Problem

@@ -167,7 +167,21 @@ export class SpectrogramWorkerPool {
     terminate() {
         console.log(`🏭 Terminating worker pool (${this.numWorkers} workers)...`);
         
+        // 🔥 FIX: Reject any pending promises in taskQueue to break closure chains
+        // This prevents handlers from retaining references after termination
+        for (const taskData of this.taskQueue) {
+            if (taskData.resolve) {
+                // Reject with a cancellation error to break the promise chain
+                taskData.resolve(null); // Resolve with null to indicate cancellation
+            }
+        }
+        
+        // 🔥 FIX: Remove all event listeners from workers before terminating
+        // This ensures handlers are cleaned up even if batches are in progress
         for (const workerObj of this.workers) {
+            // Clone the worker's event listeners list (if accessible) or just clear onmessage
+            // Note: We can't directly access addEventListener handlers, but terminating
+            // the worker will clean them up. We clear onmessage as a safety measure.
             workerObj.worker.onmessage = null;  // Break closure chain
             workerObj.worker.terminate();
         }

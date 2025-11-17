@@ -1990,6 +1990,14 @@ export function zoomToRegion(regionIndex) {
     const newStartTime = zoomState.sampleToRealTimestamp(region.startSample);
     const newEndTime = zoomState.sampleToRealTimestamp(region.endSample);
     
+    // 🔍 Diagnostic: Track region zoom start
+    console.log('🔍 REGION ZOOM IN starting:', {
+        startTime: regionStartSeconds,
+        endTime: regionEndSeconds,
+        startSample: region.startSample,
+        endSample: region.endSample
+    });
+    
     // 🔬 START HIGH-RES RENDER IN BACKGROUND (don't wait!)
     console.log('🔬 Starting high-res render in background...');
     const renderPromise = renderCompleteSpectrogramForRegion(
@@ -2010,6 +2018,10 @@ export function zoomToRegion(regionIndex) {
             console.log('🔬 High-res ready - updating viewport');
             const playbackRate = State.currentPlaybackRate || 1.0;
             updateSpectrogramViewport(playbackRate);
+            
+            // 🔍 Diagnostic: Track region zoom complete
+            console.log('✅ REGION ZOOM IN complete');
+            // Note: logInfiniteCanvasState would need to be imported/accessible here
         });
     });
     
@@ -2040,6 +2052,7 @@ export function zoomToFull() {
     }
     
     console.log('🌍 Zooming to full view');
+    console.log('🔙 ZOOMING OUT TO FULL VIEW starting');
     
     // 🏛️ Store old time range for smooth tick interpolation
     let oldStartTime, oldEndTime;
@@ -2142,6 +2155,9 @@ export function zoomToFull() {
         
         // Clear cached full waveform after transition (no longer needed)
         State.setCachedFullWaveformCanvas(null);
+        
+        // 🔍 Diagnostic: Track zoom out complete
+        console.log('✅ ZOOM OUT complete');
     });
 
     // Update ALL zoom buttons back to 🔍

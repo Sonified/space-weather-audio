@@ -48,6 +48,18 @@ let tempShrinkCanvas = null;
 // Memory monitoring
 let memoryMonitorInterval = null;
 let memoryBaseline = null;
+
+// 🔍 Diagnostic helper: Track infinite canvas lifecycle
+function logInfiniteCanvasState(location) {
+    console.log(`🏛️ [${location}] Infinite canvas state:`, {
+        exists: !!infiniteSpectrogramCanvas,
+        context: infiniteCanvasContext,
+        cachedFull: !!cachedFullSpectrogramCanvas,
+        cachedZoomed: !!cachedZoomedSpectrogramCanvas,
+        completeRendered: completeSpectrogramRendered,
+        inRegion: zoomState.isInRegion()
+    });
+}
 let memoryHistory = [];
 const MEMORY_HISTORY_SIZE = 20;
 
@@ -207,6 +219,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
     
     renderingInProgress = true;
     console.log('🎨 Starting complete spectrogram rendering...');
+    logInfiniteCanvasState('renderCompleteSpectrogram START');
     logMemory('Before FFT computation');
     
     const canvas = document.getElementById('spectrogram');
@@ -396,6 +409,8 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         // 🏠 STORE AS ELASTIC FRIEND (our source of truth for transitions!)
         cachedFullSpectrogramCanvas = tempCanvas;
         
+        logInfiniteCanvasState('renderCompleteSpectrogram COMPLETE - infinite canvas created');
+        
         const elapsed = performance.now() - startTime;
         console.log(`✅ Complete spectrogram rendered in ${elapsed.toFixed(0)}ms`);
         console.log(`🏠 Elastic friend ready for duty!`);
@@ -441,6 +456,7 @@ function clearInfiniteCanvas() {
     };
     
     console.log('🧹 Infinite canvas cleared - ready for new self');
+    logInfiniteCanvasState('clearInfiniteCanvas COMPLETE');
 }
 
 /**
@@ -487,6 +503,8 @@ export function resetSpectrogramState() {
  * Used when zooming back to full view - no FFT needed!
  */
 export function restoreInfiniteCanvasFromCache() {
+    logInfiniteCanvasState('restoreInfiniteCanvasFromCache START');
+    
     if (!cachedFullSpectrogramCanvas) {
         console.warn('⚠️ Cannot restore - no elastic friend cached!');
         return;
@@ -518,7 +536,13 @@ export function restoreInfiniteCanvasFromCache() {
         frequencyScale: State.frequencyScale
     };
     
+    // 🔥 THE FIX: Ring the doorbell! The butterfly is home!
+    completeSpectrogramRendered = true;  // Mark spectrogram as rendered for animation system
+    State.setSpectrogramInitialized(true);  // Ensure initialization flag is set
+    
     console.log('✅ Infinite canvas restored from cache - ready for stretching!');
+    
+    logInfiniteCanvasState('restoreInfiniteCanvasFromCache COMPLETE - full view restored');
 }
 
 export function clearCompleteSpectrogram() {
@@ -1045,6 +1069,8 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
     const startSample = Math.floor(startSeconds * sampleRate);
     const endSample = Math.floor(endSeconds * sampleRate);
     
+    logInfiniteCanvasState('renderCompleteSpectrogramForRegion START');
+    
     // Check if we need to re-render
     const needsRerender = infiniteSpectrogramCanvas &&
         (infiniteCanvasContext.startSample !== startSample ||
@@ -1215,6 +1241,8 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         };
         console.log(`🏛️ New temple self created: Region (${startSample.toLocaleString()}-${endSample.toLocaleString()}), scale=${State.frequencyScale}`);
         
+        logInfiniteCanvasState('renderCompleteSpectrogramForRegion COMPLETE - region canvas created');
+        
         const elapsed = performance.now() - startTime;
         console.log(`✅ Region spectrogram rendered in ${elapsed.toFixed(0)}ms`);
         
@@ -1235,6 +1263,10 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         } else {
             console.log(`🔬 High-res render complete (background) - ready for crossfade`);
         }
+        
+        // 🔥 THE FIX: Set the flag so next scale change knows we have a rendered spectrogram!
+        completeSpectrogramRendered = true;
+        State.setSpectrogramInitialized(true);
         
     } catch (error) {
         console.error('❌ Error rendering region spectrogram:', error);

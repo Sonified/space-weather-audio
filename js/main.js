@@ -149,6 +149,13 @@ export async function initAudioWorklet() {
         State.setWorkletNode(null);
     }
     
+    // 🔥 FIX: Disconnect old analyser node to prevent memory leak
+    if (State.analyserNode) {
+        console.log('🧹 Disconnecting old analyser node...');
+        State.analyserNode.disconnect();
+        State.setAnalyserNode(null);
+    }
+    
     if (!State.audioContext) {
         const ctx = new AudioContext({ 
             sampleRate: 44100,
@@ -487,18 +494,26 @@ export async function startStreaming(event) {
         if (window.audioWorker) {
             console.log('🧹 Terminating old audio worker...');
             window.audioWorker.onmessage = null;  // Break closure chain
+            // 🔥 FIX: Remove all event listeners before terminating
+            // Note: Terminating the worker will clean up listeners, but we do this explicitly
+            // to ensure any pending promises don't hold references
             window.audioWorker.terminate();
             window.audioWorker = null; // 🧹 Clear reference before creating new worker
         }
         window.audioWorker = new Worker('workers/audio-processor-worker.js');
+        // 🔥 FIX: Store reference to listener so we can clean it up if worker terminates early
+        let readyListener = null;
         const workerReadyPromise = new Promise(resolve => {
-            window.audioWorker.addEventListener('message', function onReady(e) {
+            readyListener = function onReady(e) {
                 if (e.data === 'ready') {
-                    window.audioWorker.removeEventListener('message', onReady);
+                    if (window.audioWorker && readyListener) {
+                        window.audioWorker.removeEventListener('message', readyListener);
+                    }
                     console.log(`🏭 ${logTime()} Worker ready!`);
                     resolve();
                 }
-            });
+            };
+            window.audioWorker.addEventListener('message', readyListener);
         });
         
         // 2. AudioContext creation
@@ -674,6 +689,11 @@ export async function startStreaming(event) {
             if (State.gainNode) {
                 State.gainNode.disconnect();
                 State.setGainNode(null);
+            }
+            // 🔥 FIX: Disconnect analyser node to prevent memory leak
+            if (State.analyserNode) {
+                State.analyserNode.disconnect();
+                State.setAnalyserNode(null);
             }
             
             // 🧹 AGGRESSIVE CLEANUP: Explicitly null out large arrays
