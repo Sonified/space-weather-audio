@@ -1057,11 +1057,8 @@ export function startFrequencySelection(regionIndex, featureIndex) {
         return;
     }
     
-    // 🎓 Prevent feature selection during tutorial
-    if (isTutorialActive()) {
-        console.warn('⚠️ Cannot start feature selection: tutorial in progress');
-        return;
-    }
+    // 🎓 Allow feature selection during tutorial (tutorial will manage it)
+    // Removed the check that prevented feature selection during tutorial
     
     // console.log(`🎯 Starting frequency selection for region ${regionIndex}, feature ${featureIndex}`);
     
@@ -1222,6 +1219,13 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
                 }, 150);
             }
         }, 50);
+        
+        // 🎓 Resolve tutorial promise if waiting for feature selection
+        if (State.waitingForFeatureSelection && State._featureSelectionResolve) {
+            State._featureSelectionResolve();
+            State.setWaitingForFeatureSelection(false);
+            State.setFeatureSelectionResolve(null);
+        }
     }
     
     // Clear selection state
@@ -1583,10 +1587,7 @@ function renderFeatures(regionId, regionIndex) {
             if (!zoomState.isInRegion()) {
                 return;
             }
-            // 🎓 Prevent feature selection during tutorial
-            if (isTutorialActive()) {
-                return;
-            }
+            // 🎓 Allow feature selection during tutorial (tutorial will manage it)
             startFrequencySelection(regionIndex, featureIndex);
         });
         

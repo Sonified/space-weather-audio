@@ -366,3 +366,52 @@ v2.34 - Commit: "v2.34 UI: Tutorial system improvements - status text typing ani
 
 ---
 
+## 🎓 Feature Selection Tutorial Implementation (v2.39)
+
+### Overview
+Implemented comprehensive feature selection tutorial that guides users through the entire feature selection workflow, including drawing boxes on the spectrogram, adding descriptions, and using dropdown menus.
+
+### Implementation Details
+
+1. **Tutorial Flow**
+   - Starts after frequency scale tutorial completes
+   - Guides users to explore the region and adjust playback speed
+   - Enables feature selection mode and highlights spectrogram
+   - Waits for user to draw a feature box
+   - Guides through adding description and using dropdowns
+   - Shows how to add additional features
+
+2. **New Helper Functions**
+   - `waitForFeatureSelection()` - Waits for user to complete drawing a feature box
+   - `waitForFeatureDescription()` - Waits for user to type description and press Enter
+   - `waitForRepetitionDropdown()` - Waits for user to click repetition dropdown
+   - `waitForTypeDropdown()` - Waits for user to click type dropdown
+
+3. **UI Effects**
+   - Added glow effects for select feature button, repetition dropdown, type dropdown, and add feature button
+   - Functions to enable/disable add feature button
+   - Functions to enable select feature button and make it active (red)
+
+4. **State Management**
+   - Added state variables for tracking feature selection tutorial progress
+   - Integrated with existing tutorial state system
+   - Allows feature selection during tutorial (removed blocking checks)
+
+5. **Tutorial Sequence Updates**
+   - Reordered main tutorial: Success message → Volume slider → Volcano message → Station metadata
+   - Feature selection tutorial integrated into frequency scale tutorial flow
+
+### Files Changed
+- `js/tutorial-coordinator.js` - Added feature selection tutorial function and wait helpers
+- `js/tutorial-effects.js` - Added glow effects and button enable/disable functions
+- `js/audio-state.js` - Added state variables for feature selection tutorial
+- `js/region-tracker.js` - Added resolve call for feature selection completion, removed tutorial blocking
+- `js/tutorial.js` - Exported new helper functions
+- `backend/collector_loop.py` - Updated version to v2.39
+
+### Version Tag
+- **Version**: v2.39
+- **Commit Message**: v2.39 Feat: Feature selection tutorial - guides users through selecting features, adding descriptions, and using dropdowns
+
+---
+

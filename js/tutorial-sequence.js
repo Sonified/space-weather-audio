@@ -362,14 +362,11 @@ export async function startSpeedSliderTutorial() {
             resetSpeedTo1();
             speedLabel.classList.remove('speed-value-glow');
             
-            // Wait 1 second, then show "Excellent"
-            await skippableWait(1000, 'speed_excellent_wait');
-            if (!speedSliderTutorialActive) return;
-            
-            setStatusText('Excellent!', 'status success');
+            // Immediately update status text to show reset
+            setStatusText('The playback speed has been reset.', 'status success');
             
             // Wait 2 seconds, then complete
-            await skippableWait(2000, 'speed_complete');
+            await skippableWait(2000, 'speed_reset_complete');
         }
         
     } finally {

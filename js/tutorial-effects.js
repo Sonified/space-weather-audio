@@ -5,6 +5,7 @@
  */
 
 import * as State from './audio-state.js';
+import { getCurrentRegions } from './region-tracker.js';
 
 // Overlay state
 let tutorialOverlay = null;
@@ -737,4 +738,175 @@ export function removeFrequencyScaleGlow() {
         }, 500); // Match CSS transition duration
     }
 }
+
+/**
+ * Add glow effect to select feature button
+ */
+export function addSelectFeatureButtonGlow(regionIndex, featureIndex) {
+    const button = document.getElementById(`select-btn-${regionIndex}-${featureIndex}`);
+    if (button) {
+        button.classList.add('fading-in');
+        button.offsetHeight; // Force reflow
+        button.classList.add('select-feature-button-glow');
+        setTimeout(() => {
+            button.classList.remove('fading-in');
+        }, 500);
+    }
+}
+
+/**
+ * Remove glow effect from select feature button
+ */
+export function removeSelectFeatureButtonGlow(regionIndex, featureIndex) {
+    const button = document.getElementById(`select-btn-${regionIndex}-${featureIndex}`);
+    if (button) {
+        button.classList.add('fading-out');
+        setTimeout(() => {
+            button.classList.remove('select-feature-button-glow', 'fading-out');
+        }, 500);
+    }
+}
+
+/**
+ * Enable select feature button and make it active (red)
+ */
+export function enableSelectFeatureButton(regionIndex, featureIndex) {
+    const button = document.getElementById(`select-btn-${regionIndex}-${featureIndex}`);
+    if (button) {
+        button.disabled = false;
+        button.classList.add('active');
+        button.classList.remove('disabled');
+    }
+}
+
+/**
+ * Add glow effect to repetition dropdown
+ */
+export function addRepetitionDropdownGlow(regionIndex, featureIndex) {
+    const select = document.getElementById(`repetition-${regionIndex}-${featureIndex}`);
+    if (select) {
+        select.classList.add('fading-in');
+        select.offsetHeight; // Force reflow
+        select.classList.add('repetition-dropdown-glow');
+        setTimeout(() => {
+            select.classList.remove('fading-in');
+        }, 500);
+    }
+}
+
+/**
+ * Remove glow effect from repetition dropdown
+ */
+export function removeRepetitionDropdownGlow(regionIndex, featureIndex) {
+    const select = document.getElementById(`repetition-${regionIndex}-${featureIndex}`);
+    if (select) {
+        select.classList.add('fading-out');
+        setTimeout(() => {
+            select.classList.remove('repetition-dropdown-glow', 'fading-out');
+        }, 500);
+    }
+}
+
+/**
+ * Add glow effect to type dropdown
+ */
+export function addTypeDropdownGlow(regionIndex, featureIndex) {
+    const select = document.getElementById(`type-${regionIndex}-${featureIndex}`);
+    if (select) {
+        select.classList.add('fading-in');
+        select.offsetHeight; // Force reflow
+        select.classList.add('type-dropdown-glow');
+        setTimeout(() => {
+            select.classList.remove('fading-in');
+        }, 500);
+    }
+}
+
+/**
+ * Remove glow effect from type dropdown
+ */
+export function removeTypeDropdownGlow(regionIndex, featureIndex) {
+    const select = document.getElementById(`type-${regionIndex}-${featureIndex}`);
+    if (select) {
+        select.classList.add('fading-out');
+        setTimeout(() => {
+            select.classList.remove('type-dropdown-glow', 'fading-out');
+        }, 500);
+    }
+}
+
+/**
+ * Add glow effect to add feature button
+ */
+export function addAddFeatureButtonGlow(regionIndex) {
+    const regionCard = document.querySelector(`[data-region-id="${getCurrentRegions()[regionIndex]?.id}"]`);
+    if (regionCard) {
+        const button = regionCard.querySelector('.add-feature-btn');
+        if (button) {
+            button.classList.add('fading-in');
+            button.offsetHeight; // Force reflow
+            button.classList.add('add-feature-button-glow');
+            setTimeout(() => {
+                button.classList.remove('fading-in');
+            }, 500);
+        }
+    }
+}
+
+/**
+ * Remove glow effect from add feature button
+ */
+export function removeAddFeatureButtonGlow(regionIndex) {
+    const regionCard = document.querySelector(`[data-region-id="${getCurrentRegions()[regionIndex]?.id}"]`);
+    if (regionCard) {
+        const button = regionCard.querySelector('.add-feature-btn');
+        if (button) {
+            button.classList.add('fading-out');
+            setTimeout(() => {
+                button.classList.remove('add-feature-button-glow', 'fading-out');
+            }, 500);
+        }
+    }
+}
+
+/**
+ * Disable add feature button
+ */
+export function disableAddFeatureButton(regionIndex) {
+    const regionCard = document.querySelector(`[data-region-id="${getCurrentRegions()[regionIndex]?.id}"]`);
+    if (regionCard) {
+        const button = regionCard.querySelector('.add-feature-btn');
+        const label = regionCard.querySelector('.add-feature-label');
+        if (button) {
+            button.disabled = true;
+            button.style.pointerEvents = 'none';
+            button.style.opacity = '0.5';
+        }
+        if (label) {
+            label.classList.add('disabled');
+            label.style.pointerEvents = 'none';
+        }
+    }
+}
+
+/**
+ * Enable add feature button
+ */
+export function enableAddFeatureButton(regionIndex) {
+    const regionCard = document.querySelector(`[data-region-id="${getCurrentRegions()[regionIndex]?.id}"]`);
+    if (regionCard) {
+        const button = regionCard.querySelector('.add-feature-btn');
+        const label = regionCard.querySelector('.add-feature-label');
+        if (button) {
+            button.disabled = false;
+            button.style.pointerEvents = 'auto';
+            button.style.opacity = '1';
+        }
+        if (label) {
+            label.classList.remove('disabled');
+            label.style.pointerEvents = 'auto';
+        }
+    }
+}
+
 

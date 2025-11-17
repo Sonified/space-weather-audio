@@ -27,7 +27,18 @@ import {
     setTutorialPhase, 
     clearTutorialPhase,
     disableFrequencyScaleDropdown,
-    enableFrequencyScaleDropdown
+    enableFrequencyScaleDropdown,
+    addSelectFeatureButtonGlow,
+    removeSelectFeatureButtonGlow,
+    enableSelectFeatureButton,
+    addRepetitionDropdownGlow,
+    removeRepetitionDropdownGlow,
+    addTypeDropdownGlow,
+    removeTypeDropdownGlow,
+    addAddFeatureButtonGlow,
+    removeAddFeatureButtonGlow,
+    disableAddFeatureButton,
+    enableAddFeatureButton
 } from './tutorial.js';
 
 import { 
@@ -41,6 +52,7 @@ import {
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
 import { isTutorialActive } from './tutorial-state.js';
+import { getCurrentRegions, getActiveRegionIndex, startFrequencySelection } from './region-tracker.js';
 
 // Track last status message for replay on resume
 let lastStatusMessage = null;
@@ -662,6 +674,185 @@ function waitForFrequencyScaleKeys() {
     });
 }
 
+/**
+ * Wait for user to complete feature selection (draw a box on spectrogram)
+ */
+function waitForFeatureSelection() {
+    return new Promise((resolve) => {
+        // Check if feature is already selected
+        const activeRegionIndex = getActiveRegionIndex();
+        if (activeRegionIndex !== null) {
+            const regions = getCurrentRegions();
+            const region = regions[activeRegionIndex];
+            if (region && region.features && region.features[0]) {
+                const feature = region.features[0];
+                if (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime) {
+                    resolve();
+                    return;
+                }
+            }
+        }
+        
+        // Set flag so handleSpectrogramSelection can resolve this promise
+        State.setWaitingForFeatureSelection(true);
+        State.setFeatureSelectionResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_feature_selection', [], () => {
+            State.setWaitingForFeatureSelection(false);
+            State.setFeatureSelectionResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to type description and press Enter
+ */
+function waitForFeatureDescription(regionIndex, featureIndex) {
+    return new Promise((resolve) => {
+        const notesField = document.getElementById(`notes-${regionIndex}-${featureIndex}`);
+        if (!notesField) {
+            resolve();
+            return;
+        }
+        
+        // Check if already has content
+        if (notesField.value.trim()) {
+            // Wait for Enter key
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter') {
+                    notesField.removeEventListener('keydown', handleKeyDown);
+                    notesField.removeEventListener('blur', handleBlur);
+                    State.setWaitingForFeatureDescription(false);
+                    State.setFeatureDescriptionResolve(null);
+                    resolve();
+                }
+            };
+            
+            const handleBlur = () => {
+                notesField.removeEventListener('keydown', handleKeyDown);
+                notesField.removeEventListener('blur', handleBlur);
+                State.setWaitingForFeatureDescription(false);
+                State.setFeatureDescriptionResolve(null);
+                resolve();
+            };
+            
+            notesField.addEventListener('keydown', handleKeyDown);
+            notesField.addEventListener('blur', handleBlur);
+            return;
+        }
+        
+        // Set flag so we can resolve when user types and presses Enter
+        State.setWaitingForFeatureDescription(true);
+        State.setFeatureDescriptionResolve(resolve);
+        
+        const handleKeyDown = (e) => {
+            if (e.key === 'Enter' && notesField.value.trim()) {
+                notesField.removeEventListener('keydown', handleKeyDown);
+                notesField.removeEventListener('blur', handleBlur);
+                State.setWaitingForFeatureDescription(false);
+                State.setFeatureDescriptionResolve(null);
+                clearTutorialPhase();
+                resolve();
+            }
+        };
+        
+        const handleBlur = () => {
+            if (notesField.value.trim()) {
+                notesField.removeEventListener('keydown', handleKeyDown);
+                notesField.removeEventListener('blur', handleBlur);
+                State.setWaitingForFeatureDescription(false);
+                State.setFeatureDescriptionResolve(null);
+                clearTutorialPhase();
+                resolve();
+            }
+        };
+        
+        notesField.addEventListener('keydown', handleKeyDown);
+        notesField.addEventListener('blur', handleBlur);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_feature_description', [], () => {
+            notesField.removeEventListener('keydown', handleKeyDown);
+            notesField.removeEventListener('blur', handleBlur);
+            State.setWaitingForFeatureDescription(false);
+            State.setFeatureDescriptionResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to click repetition dropdown
+ */
+function waitForRepetitionDropdown(regionIndex, featureIndex) {
+    return new Promise((resolve) => {
+        const select = document.getElementById(`repetition-${regionIndex}-${featureIndex}`);
+        if (!select) {
+            resolve();
+            return;
+        }
+        
+        // Set flag
+        State.setWaitingForRepetitionDropdown(true);
+        State.setRepetitionDropdownResolve(resolve);
+        
+        const handleClick = () => {
+            select.removeEventListener('click', handleClick);
+            State.setWaitingForRepetitionDropdown(false);
+            State.setRepetitionDropdownResolve(null);
+            clearTutorialPhase();
+            resolve();
+        };
+        
+        select.addEventListener('click', handleClick, { once: true });
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_repetition_dropdown', [], () => {
+            select.removeEventListener('click', handleClick);
+            State.setWaitingForRepetitionDropdown(false);
+            State.setRepetitionDropdownResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to click type dropdown
+ */
+function waitForTypeDropdown(regionIndex, featureIndex) {
+    return new Promise((resolve) => {
+        const select = document.getElementById(`type-${regionIndex}-${featureIndex}`);
+        if (!select) {
+            resolve();
+            return;
+        }
+        
+        // Set flag
+        State.setWaitingForTypeDropdown(true);
+        State.setTypeDropdownResolve(resolve);
+        
+        const handleClick = () => {
+            select.removeEventListener('click', handleClick);
+            State.setWaitingForTypeDropdown(false);
+            State.setTypeDropdownResolve(null);
+            clearTutorialPhase();
+            resolve();
+        };
+        
+        select.addEventListener('click', handleClick, { once: true });
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_type_dropdown', [], () => {
+            select.removeEventListener('click', handleClick);
+            State.setWaitingForTypeDropdown(false);
+            State.setTypeDropdownResolve(null);
+            resolve();
+        });
+    });
+}
+
 async function runSelectionTutorial() {
     // 🎓 Check if user already made a selection (got ahead of tutorial)
     // Check if selection exists AND we're waiting for region creation (meaning user got ahead)
@@ -804,19 +995,48 @@ async function runRegionZoomingTutorial() {
     
     // Add glow and introduce it
     addLoopButtonGlow();
+    
+    // Set up loop button click resolver early to detect if user clicks before being asked
+    let loopButtonClickedEarly = false;
+    const earlyClickPromise = new Promise((resolve) => {
+        State.setWaitingForLoopButtonClick(true);
+        State.setLoopButtonClickResolve(() => {
+            loopButtonClickedEarly = true;
+            State.setWaitingForLoopButtonClick(false);
+            State.setLoopButtonClickResolve(null);
+            resolve();
+        });
+    });
+    
     setStatusTextAndTrack('This is the loop button.', 'status info');
     console.log('🎓 Tutorial: Showing loop button message');
-    await skippableWait(3000);
     
-    // Ask user to click it
-    setStatusTextAndTrack('Try clicking it now to enable looping over this region.', 'status info');
+    // Wait 3s, but check if loop was clicked during this time
+    await Promise.race([
+        skippableWait(3000),
+        earlyClickPromise
+    ]);
     
-    // Wait for user to click loop button
-    await waitForLoopButtonClick();
-    
-    // 1s after click, say "Loop is now enabled."
-    await skippableWait(1000);
-    setStatusTextAndTrack('Loop is now enabled.', 'status success');
+    // If loop was clicked early, skip to "Loop is now enabled." message
+    if (loopButtonClickedEarly) {
+        // Reset the resolver since we already handled it
+        State.setWaitingForLoopButtonClick(false);
+        State.setLoopButtonClickResolve(null);
+        
+        // Show "Loop is now enabled." immediately
+        setStatusTextAndTrack('Loop is now enabled.', 'status success');
+    } else {
+        // User didn't click early, continue with normal flow
+        // Ask user to click it
+        setStatusTextAndTrack('Try clicking it now to enable looping over this region.', 'status info');
+        
+        // Wait for user to click loop button
+        await waitForLoopButtonClick();
+        
+        // 1s after click, say "Loop is now enabled."
+        await skippableWait(1000);
+        setStatusTextAndTrack('Loop is now enabled.', 'status success');
+    }
     
     // Wait 2s
     await skippableWait(2000);
@@ -824,12 +1044,15 @@ async function runRegionZoomingTutorial() {
     // Remove glow from loop button
     removeLoopButtonGlow();
     
-    // Enable region play button again and ask to press it (or use spacebar/resume)
-    enableRegionPlayButton(0);
-    setStatusTextAndTrack('Now Press the region play button again to loop from the beginning.', 'status info');
+    // Ask user to press spacebar to play region from beginning
+    setStatusTextAndTrack('Press the (space bar) to play this region from the beginning now', 'status info');
     
-    // Wait for user to click region play button OR press spacebar/resume button
+    // Wait for user to press spacebar (or click region play button/resume)
     await waitForRegionPlayOrResume();
+    
+    // Give freedom message and keep it on screen longer
+    setStatusTextAndTrack('Feel free to play and pause as you wish from here on out!', 'status info');
+    await skippableWait(5000);
     
     // Clear tutorial phase
     clearTutorialPhase();
@@ -854,7 +1077,7 @@ async function runFrequencyScaleTutorial() {
     await skippableWait(5000);
     
     // Invite user to click and change to another frequency scale
-    setStatusTextAndTrack('Try changing to another frequency scale in the lower right hand corner 👇.', 'status info');
+    setStatusTextAndTrack('Try changing to another frequency scale in the lower right hand corner 👇', 'status info');
     
     // Wait for user to click the dropdown (then remove glow)
     await waitForFrequencyScaleClick();
@@ -886,7 +1109,147 @@ async function runFrequencyScaleTutorial() {
     // Final message
     await skippableWait(2000);
     setStatusTextAndTrack('Pick a scaling that works well and let\'s select a feature.', 'status info');
+    await skippableWait(6000);
+    
+    // Clear tutorial phase
+    clearTutorialPhase();
+    
+    // Continue to feature selection tutorial
+    await runFeatureSelectionTutorial();
+}
+
+/**
+ * Feature selection tutorial section
+ * Guides user through selecting a feature, adding description, and using dropdowns
+ */
+async function runFeatureSelectionTutorial() {
+    // Ensure we're zoomed into a region
+    if (!zoomState.isInRegion()) {
+        console.warn('⚠️ Feature selection tutorial: Not zoomed into a region');
+        return;
+    }
+    
+    const activeRegionIndex = getActiveRegionIndex();
+    if (activeRegionIndex === null) {
+        console.warn('⚠️ Feature selection tutorial: No active region');
+        return;
+    }
+    
+    const regions = getCurrentRegions();
+    const region = regions[activeRegionIndex];
+    if (!region || !region.features || region.features.length === 0) {
+        console.warn('⚠️ Feature selection tutorial: No features in region');
+        return;
+    }
+    
+    const featureIndex = 0; // First feature
+    
+    // Disable add feature button
+    disableAddFeatureButton(activeRegionIndex);
+    
+    // "Have a look and listen around this region... what do you notice?" (8s)
+    setStatusTextAndTrack('Have a look and listen around this region... what do you notice?', 'status info');
+    await skippableWait(8000);
+    
+    // "Feel free to change the playback speed!" (10s)
+    setStatusTextAndTrack('Feel free to change the playback speed!', 'status info');
+    await skippableWait(10000);
+    
+    // "Once you've found something interesting, let's mark it as a feature."
+    setStatusTextAndTrack('Once you\'ve found something interesting, let\'s mark it as a feature.', 'status info');
+    await skippableWait(3000);
+    
+    // Enable select feature button and make it red (active)
+    enableSelectFeatureButton(activeRegionIndex, featureIndex);
+    
+    // Start feature selection mode
+    startFrequencySelection(activeRegionIndex, featureIndex);
+    
+    // Highlight spectrogram window
+    addSpectrogramGlow();
+    
+    // "Now click and drag to create a box around a feature of interest." (15s)
+    setStatusTextAndTrack('Now click and drag to create a box around a feature of interest.', 'status info');
+    
+    // Set up conditional message after 15s if they haven't drawn yet
+    let hasDrawnBox = false;
+    const conditionalMessageTimeout = setTimeout(() => {
+        if (!hasDrawnBox && State.waitingForFeatureSelection) {
+            setStatusTextAndTrack('Click on the spectrogram and drag your mouse to draw a box.', 'status info');
+        }
+    }, 15000);
+    
+    // Wait for feature selection
+    await waitForFeatureSelection();
+    hasDrawnBox = true;
+    clearTimeout(conditionalMessageTimeout);
+    
+    // Remove spectrogram glow
+    removeSpectrogramGlow();
+    
+    // "You've identified a feature!" - wait 3s
+    setStatusTextAndTrack('You\'ve identified a feature!', 'status success');
+    await skippableWait(3000);
+    
+    // "You can start typing now to provide a description." - wait 10s
+    setStatusTextAndTrack('You can start typing now to provide a description.', 'status info');
+    await skippableWait(10000);
+    
+    // "When you are done, hit enter/return."
+    setStatusTextAndTrack('When you are done, hit enter/return.', 'status info');
+    
+    // Wait for description completion
+    await waitForFeatureDescription(activeRegionIndex, featureIndex);
+    
+    // Pause 1s
+    await skippableWait(1000);
+    
+    // Highlight repetition dropdown (far left)
+    addRepetitionDropdownGlow(activeRegionIndex, featureIndex);
+    setStatusTextAndTrack('Click the drop down menu on the far left to choose whether this event is unique or repeating', 'status info');
+    
+    // Wait for dropdown click with timeout
+    const dropdownClickPromise = waitForRepetitionDropdown(activeRegionIndex, featureIndex);
+    const dropdownTimeoutPromise = skippableWait(10000);
+    
+    const dropdownResult = await Promise.race([dropdownClickPromise, dropdownTimeoutPromise]);
+    
+    // If they clicked, wait 4s, otherwise just continue
+    if (!State.waitingForRepetitionDropdown) {
+        // They clicked
+        await skippableWait(4000);
+    }
+    
+    // Remove repetition dropdown glow
+    removeRepetitionDropdownGlow(activeRegionIndex, featureIndex);
+    
+    // Highlight type dropdown (impulsive/continuous)
+    addTypeDropdownGlow(activeRegionIndex, featureIndex);
+    setStatusTextAndTrack('Impulsive events are short, and continuous events are long', 'status info');
+    await skippableWait(7000);
+    
+    // Remove type dropdown glow
+    removeTypeDropdownGlow(activeRegionIndex, featureIndex);
+    
+    // Glow select feature button (but don't make it red, just enabled)
+    enableSelectFeatureButton(activeRegionIndex, featureIndex);
+    addSelectFeatureButtonGlow(activeRegionIndex, featureIndex);
+    setStatusTextAndTrack('You can click here if you ever change your mind and would like to change your selection.', 'status info');
     await skippableWait(5000);
+    
+    // Remove select feature button glow
+    removeSelectFeatureButtonGlow(activeRegionIndex, featureIndex);
+    
+    // Enable add feature button
+    enableAddFeatureButton(activeRegionIndex);
+    
+    // Highlight add feature button
+    addAddFeatureButtonGlow(activeRegionIndex);
+    setStatusTextAndTrack('Click this button now to add another feature.', 'status info');
+    await skippableWait(5000);
+    
+    // Remove add feature button glow
+    removeAddFeatureButtonGlow(activeRegionIndex);
     
     // Clear tutorial phase
     clearTutorialPhase();
@@ -906,17 +1269,17 @@ export async function runMainTutorial() {
         // Frequency scale dropdown is already disabled by runInitialTutorial()
         // (which runs before this function)
         
-        await showWellDoneMessage();           // 2s
+        await showWellDoneMessage();           // 2s - "Success!"
+        await showVolumeSliderTutorial();      // 5s - volume slider glow and message
         await showVolcanoMessage();            // 5s  
         await showStationMetadataMessage();    // 7s
-        await showVolumeSliderTutorial();      // 5s - volume slider glow and message
-        // await runPauseButtonTutorial();        // wait for user to pause & resume - DISABLED
+        await runPauseButtonTutorial();        // wait for user to pause & resume
         await showSpectrogramExplanation();    // 5s + 600ms fade
         await runSpeedSliderTutorial();        // wait for user to complete slider actions
         await runSelectionTutorial();          // enable waveform clicks, show message, wait for click, then wait for selection
         await runRegionIntroduction();         // region introduction tutorial
         await runRegionZoomingTutorial();      // region zooming tutorial (includes loop button)
-        await runFrequencyScaleTutorial();     // frequency scale tutorial
+        await runFrequencyScaleTutorial();     // frequency scale tutorial (includes feature selection tutorial)
         
         console.log('🎓 Tutorial complete!');
     } finally {

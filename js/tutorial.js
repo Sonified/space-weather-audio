@@ -33,7 +33,18 @@ export {
     addLoopButtonGlow,
     removeLoopButtonGlow,
     addFrequencyScaleGlow,
-    removeFrequencyScaleGlow
+    removeFrequencyScaleGlow,
+    addSelectFeatureButtonGlow,
+    removeSelectFeatureButtonGlow,
+    enableSelectFeatureButton,
+    addRepetitionDropdownGlow,
+    removeRepetitionDropdownGlow,
+    addTypeDropdownGlow,
+    removeTypeDropdownGlow,
+    addAddFeatureButtonGlow,
+    removeAddFeatureButtonGlow,
+    disableAddFeatureButton,
+    enableAddFeatureButton
 } from './tutorial-effects.js';
 
 // Re-export all sequences
