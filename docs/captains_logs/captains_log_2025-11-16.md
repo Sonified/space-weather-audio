@@ -2,6 +2,52 @@
 
 ---
 
+## 🔄 Zoom State Reset Fix (v2.18)
+
+### Problem
+When zoomed into a region and then selecting a new volcano to listen to, the new file would load but the playhead wouldn't begin rendering immediately. The playhead rendering was using stale zoom state from the previous volcano.
+
+### Root Cause
+When loading new data in `startStreaming()`, the zoom state wasn't being reset. If you were zoomed into a region from volcano A, then switched to volcano B:
+- `zoomState.mode` was still 'region'
+- `zoomState.currentViewStartSample` and `currentViewEndSample` still had old region bounds
+- `zoomState.activeRegionId` still referenced the old region
+- When new data loaded, `zoomState.initialize()` set `totalSamples` but didn't reset the mode or view bounds
+- Playhead rendering used `zoomState.sampleToPixel()` which used the stale region bounds, causing incorrect positioning
+
+### Solution
+Reset zoom state to full view when loading new data in `startStreaming()`, before the new data is fetched. This ensures:
+1. `mode` is reset to 'full'
+2. `currentViewStartSample` is reset to 0
+3. `activeRegionId` is cleared
+4. When new data loads, `zoomState.initialize()` sets `currentViewEndSample` to the new total samples
+
+### Key Changes
+- `js/main.js`: Added zoom state reset in `startStreaming()` before loading new data
+- Added import for `zoomState` from `zoom-state.js`
+
+### How It Works
+1. User switches volcano while zoomed into a region
+2. `startStreaming()` is called
+3. **NEW**: Zoom state is reset to full view (mode='full', startSample=0, activeRegionId=null)
+4. New data is fetched and loaded
+5. `zoomState.initialize()` sets `totalSamples` and `currentViewEndSample` for new data
+6. Playhead rendering uses correct full-view bounds
+
+### Benefits
+- ✅ Playhead renders immediately when switching volcanoes
+- ✅ No state leakage between different volcanoes
+- ✅ Clean zoom state for each new dataset
+- ✅ Prevents rendering issues from stale region bounds
+
+### Files Modified
+- `js/main.js` - Added zoom state reset in `startStreaming()`
+
+### Version
+v2.18 - Commit: "v2.18 Fix: Reset zoom state when loading new data - prevents playhead rendering issues when switching volcanoes while zoomed into a region"
+
+---
+
 ## ⌨️ Spacebar Play/Pause Fix (v2.17)
 
 ### Problem

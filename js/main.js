@@ -22,6 +22,7 @@ import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxis
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, resetRegionPlayButtonIfFinished, getActivePlayingRegionIndex, switchVolcanoRegions } from './region-tracker.js';
+import { zoomState } from './zoom-state.js';
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 // See data-fetcher.js for centralized flags documentation
@@ -390,6 +391,15 @@ export async function startStreaming(event) {
         
         // Clear complete spectrogram when loading new data
         clearCompleteSpectrogram();
+        
+        // 🔧 FIX: Reset zoom state to full view when loading new data
+        // Prevents state leakage when switching volcanoes while zoomed into a region
+        if (zoomState.isInitialized()) {
+            zoomState.mode = 'full';
+            zoomState.currentViewStartSample = 0;
+            zoomState.activeRegionId = null;
+            console.log('🔄 Reset zoom state to full view for new data');
+        }
         
         // 🔥 FIX: Remove add region button to prevent detached DOM leaks
         // Import dynamically to avoid circular dependencies
@@ -813,6 +823,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.18 - Zoom State Reset Fix');
+    console.log('🔄 [0ms] v2.18 Fix: Reset zoom state when loading new data - prevents playhead rendering issues when switching volcanoes while zoomed into a region');
     console.log('🌋 [0ms] volcano-audio v2.17 - Spacebar Play/Pause Fix');
     console.log('⌨️ [0ms] v2.17 Fix: Spacebar play/pause now mirrors button behavior exactly - removed auto-selection logic that was causing issues');
     console.log('🌋 [0ms] volcano-audio v2.16 - Spectrogram Regions & Selections');
