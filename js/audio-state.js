@@ -61,6 +61,7 @@ export let spectrogramRAF = null;
 
 // Waveform rendering
 export let cachedWaveformCanvas = null;
+export let cachedFullWaveformCanvas = null; // Full view cached before zooming in (like spectrogram's elastic friend)
 export let waveformMinMaxData = null;
 export let waveformWorker = null;
 export let crossfadeAnimation = null;
@@ -116,6 +117,7 @@ export function setFrequencyScale(value) { frequencyScale = value; }
 export function setPlaybackIndicatorRAF(value) { playbackIndicatorRAF = value; }
 export function setSpectrogramRAF(value) { spectrogramRAF = value; }
 export function setCachedWaveformCanvas(value) { cachedWaveformCanvas = value; }
+export function setCachedFullWaveformCanvas(value) { cachedFullWaveformCanvas = value; }
 export function setWaveformMinMaxData(value) { waveformMinMaxData = value; }
 export function setWaveformWorker(value) { waveformWorker = value; }
 export function setCrossfadeAnimation(value) { crossfadeAnimation = value; }

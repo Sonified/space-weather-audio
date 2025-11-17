@@ -510,6 +510,19 @@ export function setupWaveformInteraction() {
         
         const rect = canvas.getBoundingClientRect();
         const startX = e.clientX - rect.left;
+        const startY = e.clientY - rect.top;
+        
+        // 🔧 FIX: Check if click is on a canvas zoom button BEFORE starting scrub preview
+        // This prevents the white playhead from appearing when clicking zoom buttons
+        const clickedRegionIndex = checkCanvasZoomButtonClick(startX, startY, canvas.width, canvas.height);
+        if (clickedRegionIndex !== null) {
+            // Clicked on a zoom button - don't start dragging/scrub preview
+            // The zoom will be handled in mouseup, but we prevent the scrub preview here
+            e.stopPropagation();
+            e.preventDefault();
+            return; // Don't process as normal waveform click
+        }
+        
         State.setSelectionStartX(startX);
         
         State.setIsDragging(true);
@@ -563,30 +576,74 @@ export function setupWaveformInteraction() {
     });
     
     canvas.addEventListener('mouseup', (e) => {
+        // 🔧 FIX: Check for zoom button clicks even when not dragging
+        // (in case we returned early from mousedown to prevent scrub preview)
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        const clickedRegionIndex = checkCanvasZoomButtonClick(clickX, clickY, canvas.width, canvas.height);
+        
+        if (clickedRegionIndex !== null) {
+            // Clicked on a zoom button - handle zoom
+            e.stopPropagation();
+            e.preventDefault();
+            
+            // Clear any dragging state
+            State.setIsDragging(false);
+            canvas.style.cursor = 'pointer';
+            
+            const regions = getRegions();
+            const region = regions[clickedRegionIndex];
+            
+            if (region) {
+                // Check if we're already inside THIS temple
+                if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
+                    // We're inside - exit the temple and return to full view
+                    zoomToFull();
+                } else {
+                    // Zoom into this region
+                    zoomToRegion(clickedRegionIndex);
+                }
+            }
+            
+            // Clear selection state
+            State.setSelectionStartX(null);
+            State.setIsSelecting(false);
+            State.setSelectionStart(null);
+            State.setSelectionEnd(null);
+            updateWorkletSelection();
+            hideAddRegionButton();
+            
+            // Clear scrub preview if it was shown
+            clearSpectrogramScrubPreview();
+            
+            // Redraw to update button states (canvas buttons will update via redraw)
+            drawWaveformWithSelection();
+            return; // Don't process as normal waveform click
+        }
+        
         if (State.isDragging) {
             State.setIsDragging(false);
             canvas.style.cursor = 'pointer';
             
             // Check if click is on a canvas zoom button (only if not selecting/dragging)
             // Only check if it was a simple click, not a drag
-            const rect = canvas.getBoundingClientRect();
             const startX = State.selectionStartX || 0;
             const endX = e.clientX - rect.left;
             const dragDistance = Math.abs(endX - startX);
             
             // Only check for button click if it was a simple click (not a drag)
             if (!State.isSelecting && dragDistance < 5) {
-                const clickX = endX;
-                const clickY = e.clientY - rect.top;
-                const clickedRegionIndex = checkCanvasZoomButtonClick(clickX, clickY, canvas.width, canvas.height);
+                // Already checked above, but keep this as fallback for edge cases
+                const checkAgain = checkCanvasZoomButtonClick(endX, clickY, canvas.width, canvas.height);
                 
-                if (clickedRegionIndex !== null) {
+                if (checkAgain !== null) {
                     // Clicked on a zoom button - handle zoom
                     e.stopPropagation();
                     e.preventDefault();
                     
                     const regions = getRegions();
-                    const region = regions[clickedRegionIndex];
+                    const region = regions[checkAgain];
                     
                     if (region) {
                         // Check if we're already inside THIS temple
@@ -595,7 +652,7 @@ export function setupWaveformInteraction() {
                             zoomToFull();
                         } else {
                             // Zoom into this region
-                            zoomToRegion(clickedRegionIndex);
+                            zoomToRegion(checkAgain);
                         }
                     }
                     
@@ -606,6 +663,9 @@ export function setupWaveformInteraction() {
                     State.setSelectionEnd(null);
                     updateWorkletSelection();
                     hideAddRegionButton();
+                    
+                    // Clear scrub preview
+                    clearSpectrogramScrubPreview();
                     
                     // Redraw to update button states (canvas buttons will update via redraw)
                     drawWaveformWithSelection();

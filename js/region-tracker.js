@@ -1840,6 +1840,18 @@ export function zoomToRegion(regionIndex) {
         }
     }
     
+    // 💾 Cache full waveform BEFORE zooming in (like spectrogram's elastic friend)
+    // This allows us to crossfade back to it when zooming out
+    if (!zoomState.isInRegion() && State.cachedWaveformCanvas) {
+        // Coming from full view - cache the full waveform canvas
+        const cachedCopy = document.createElement('canvas');
+        cachedCopy.width = State.cachedWaveformCanvas.width;
+        cachedCopy.height = State.cachedWaveformCanvas.height;
+        cachedCopy.getContext('2d').drawImage(State.cachedWaveformCanvas, 0, 0);
+        State.setCachedFullWaveformCanvas(cachedCopy);
+        console.log('💾 Cached full waveform canvas before zooming in');
+    }
+    
     // Enter the temple
     zoomState.mode = 'region';
     zoomState.currentViewStartSample = region.startSample;
@@ -1943,13 +1955,28 @@ export function zoomToFull() {
     // DON'T clear the elastic friend - we need it for the transition!
     resetSpectrogramState();
 
+    // 💾 Restore cached full waveform immediately (like spectrogram's elastic friend)
+    // This allows drawInterpolatedWaveform() to stretch it during the transition
+    if (State.cachedFullWaveformCanvas) {
+        // Restore cached full waveform to State.cachedWaveformCanvas
+        // drawInterpolatedWaveform() will use this and stretch it during animation
+        State.setCachedWaveformCanvas(State.cachedFullWaveformCanvas);
+        console.log('💾 Restored cached full waveform - ready for interpolation');
+    } else {
+        // No cached full waveform - rebuild it (fallback)
+        console.log('⚠️ No cached full waveform - rebuilding');
+        drawWaveform();
+    }
+
     // 🏛️ Animate x-axis tick interpolation (smooth transition back to full view)
     // 🎬 Wait for animation to complete, THEN rebuild infinite canvas for full view
     animateZoomTransition(oldStartTime, oldEndTime, false).then(() => {
         console.log('🎬 Zoom-out animation complete - restoring full view');
         
-        // Animation complete - rebuild waveform for full view
-        drawWaveform();
+        // Rebuild waveform to ensure it's up to date (if we used cached version)
+        if (State.cachedFullWaveformCanvas) {
+            drawWaveform();
+        }
         
         // 🔧 FIX: Restore infinite canvas from elastic friend WITHOUT re-rendering spectrogram!
         // The elastic friend already has the full-view spectrogram at neutral resolution
@@ -1963,6 +1990,9 @@ export function zoomToFull() {
         // Clear cached spectrograms after transition (no longer needed)
         clearCachedFullSpectrogram();
         clearCachedZoomedSpectrogram();
+        
+        // Clear cached full waveform after transition (no longer needed)
+        State.setCachedFullWaveformCanvas(null);
     });
 
     // Update ALL zoom buttons back to 🔍

@@ -2,6 +2,66 @@
 
 ---
 
+## 🔍 Waveform Zoom-Out & Zoom Button Click Fixes (v2.15)
+
+### Problem 1: Waveform Zoom-Out Issue
+When zooming back out from a region, the waveform would zoom back out to the zoomed-in region itself rather than immediately showing the full view. The animation was stretching the zoomed-in cached canvas instead of using the full waveform.
+
+### Problem 2: Zoom Button Clicks Triggering Scrub Preview
+Clicking the zoom buttons (🔍/↩️) on the canvas would trigger the white playhead/scrub preview to appear, which was distracting and not intended behavior.
+
+### Root Cause 1
+The waveform wasn't caching the full view before zooming in (unlike the spectrogram which has an "elastic friend"). When zooming out:
+1. `zoomToFull()` would set zoom state to 'full'
+2. Animation would start, calling `drawInterpolatedWaveform()`
+3. `drawInterpolatedWaveform()` used `State.cachedWaveformCanvas` which still contained the zoomed-in waveform
+4. The full waveform was only rebuilt AFTER the animation completed
+5. Result: Animation stretched the zoomed-in waveform instead of the full waveform
+
+### Root Cause 2
+The `mousedown` handler immediately called `updateScrubPreview()` which draws the white playhead, but the zoom button check only happened in `mouseup`. So the scrub preview would appear before the zoom button click was detected.
+
+### Solution 1: Cache Full Waveform Before Zooming In
+1. **Added `cachedFullWaveformCanvas` to state** - Stores the full waveform before zooming in (like spectrogram's elastic friend)
+2. **Cache before zooming in** - In `zoomToRegion()`, cache the full waveform canvas before changing zoom state
+3. **Restore when zooming out** - In `zoomToFull()`, immediately restore the cached full waveform to `State.cachedWaveformCanvas`
+4. **Let interpolation handle transition** - `drawInterpolatedWaveform()` now uses the cached full waveform and stretches it during animation
+
+### Solution 2: Check Zoom Buttons in mousedown
+1. **Check zoom buttons BEFORE scrub preview** - In `mousedown` handler, check for zoom button clicks before calling `updateScrubPreview()`
+2. **Return early if zoom button** - If a zoom button is clicked, return early to prevent scrub preview from starting
+3. **Handle zoom in mouseup** - Check for zoom buttons in `mouseup` even when not dragging (in case we returned early from mousedown)
+
+### Key Changes
+- `js/audio-state.js`: Added `cachedFullWaveformCanvas` state variable and setter
+- `js/region-tracker.js`:
+  - `zoomToRegion()`: Cache full waveform before zooming in
+  - `zoomToFull()`: Restore cached full waveform immediately, clear cache after transition
+- `js/waveform-renderer.js`:
+  - `mousedown`: Check for zoom buttons before starting scrub preview
+  - `mouseup`: Check for zoom buttons first, even when not dragging
+
+### How It Works
+1. **Zooming IN**: Full waveform is cached before zoom state changes
+2. **Zooming OUT**: Cached full waveform is restored immediately, `drawInterpolatedWaveform()` stretches it during animation
+3. **Zoom button clicks**: Detected in `mousedown` before scrub preview starts, preventing white playhead from appearing
+
+### Benefits
+- ✅ Instant visual feedback when zooming out (uses cached full waveform)
+- ✅ Smooth interpolation transition (stretches cached full waveform)
+- ✅ No scrub preview when clicking zoom buttons
+- ✅ Consistent with spectrogram behavior (both use cached full view)
+
+### Files Modified
+- `js/audio-state.js` - Added `cachedFullWaveformCanvas` state
+- `js/region-tracker.js` - Cache/restore full waveform for zoom transitions
+- `js/waveform-renderer.js` - Prevent scrub preview on zoom button clicks
+
+### Version
+v2.15 - Commit: "v2.15 Fix: Waveform zoom-out now uses cached full waveform (like spectrogram), zoom button clicks no longer trigger scrub preview"
+
+---
+
 ## 🐛 Spectrogram Playback Rate Stretch Bug Fix (v2.14)
 
 ### Problem
