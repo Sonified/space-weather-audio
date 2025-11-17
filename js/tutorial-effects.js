@@ -524,6 +524,51 @@ export function enableRegionButtons() {
 }
 
 /**
+ * Enable only a specific region's play button (for tutorial)
+ * @param {number} regionIndex - 0-indexed region index
+ */
+export function enableRegionPlayButton(regionIndex) {
+    // Enable play button in the regions panel
+    const regionsPanel = document.getElementById('trackedRegionsPanel');
+    if (regionsPanel) {
+        const regionCards = regionsPanel.querySelectorAll('.region-card');
+        if (regionCards[regionIndex]) {
+            const playBtn = regionCards[regionIndex].querySelector('.play-btn');
+            if (playBtn) {
+                playBtn.style.pointerEvents = 'auto';
+                playBtn.style.opacity = '1';
+            }
+        }
+    }
+    
+    // Enable play button on waveform canvas by setting a flag
+    // The waveform buttons renderer will check this flag
+    State.setRegionPlayButtonEnabled(regionIndex, true);
+}
+
+/**
+ * Enable a specific region's zoom button (for tutorial)
+ * @param {number} regionIndex - 0-indexed region index
+ */
+export function enableRegionZoomButton(regionIndex) {
+    // Enable zoom button in the regions panel
+    const regionsPanel = document.getElementById('trackedRegionsPanel');
+    if (regionsPanel) {
+        const regionCards = regionsPanel.querySelectorAll('.region-card');
+        if (regionCards[regionIndex]) {
+            const zoomBtn = regionCards[regionIndex].querySelector('.zoom-btn');
+            if (zoomBtn) {
+                zoomBtn.style.pointerEvents = 'auto';
+                zoomBtn.style.opacity = '1';
+            }
+        }
+    }
+    
+    // Enable zoom button on waveform canvas by setting a flag
+    State.setRegionZoomButtonEnabled(regionIndex, true);
+}
+
+/**
  * Add glow effect to volume slider with fade-in
  * Only glows the slider bar, not the label text
  */
@@ -614,6 +659,82 @@ export function enableFrequencyScaleDropdown() {
         frequencyScaleSelect.style.opacity = '1';
         frequencyScaleSelect.style.cursor = 'pointer';
         frequencyScaleSelect.style.pointerEvents = 'auto';
+    }
+}
+
+/**
+ * Add glow effect to loop button with fade-in
+ */
+export function addLoopButtonGlow() {
+    const loopBtn = document.getElementById('loopBtn');
+    if (loopBtn) {
+        // Add fading-in class first to start from opacity 0
+        loopBtn.classList.add('fading-in');
+        
+        // Force reflow to ensure the fade-in class is applied before adding glow
+        loopBtn.offsetHeight;
+        
+        // Add glow class which will fade in via CSS transition
+        loopBtn.classList.add('loop-button-glow');
+        
+        // Remove fade-in class after transition completes
+        setTimeout(() => {
+            loopBtn.classList.remove('fading-in');
+        }, 500); // Match CSS transition duration
+    }
+}
+
+/**
+ * Remove glow effect from loop button with fade-out
+ */
+export function removeLoopButtonGlow() {
+    const loopBtn = document.getElementById('loopBtn');
+    if (loopBtn) {
+        // Add fading-out class to trigger fade transition
+        loopBtn.classList.add('fading-out');
+        
+        // Remove glow class after fade completes
+        setTimeout(() => {
+            loopBtn.classList.remove('loop-button-glow', 'fading-out');
+        }, 500); // Match CSS transition duration
+    }
+}
+
+/**
+ * Add glow effect to frequency scale dropdown with fade-in
+ */
+export function addFrequencyScaleGlow() {
+    const frequencyScaleSelect = document.getElementById('frequencyScale');
+    if (frequencyScaleSelect) {
+        // Add fading-in class first to start from opacity 0
+        frequencyScaleSelect.classList.add('fading-in');
+        
+        // Force reflow to ensure the fade-in class is applied before adding glow
+        frequencyScaleSelect.offsetHeight;
+        
+        // Add glow class which will fade in via CSS transition
+        frequencyScaleSelect.classList.add('frequency-scale-glow');
+        
+        // Remove fade-in class after transition completes
+        setTimeout(() => {
+            frequencyScaleSelect.classList.remove('fading-in');
+        }, 500); // Match CSS transition duration
+    }
+}
+
+/**
+ * Remove glow effect from frequency scale dropdown with fade-out
+ */
+export function removeFrequencyScaleGlow() {
+    const frequencyScaleSelect = document.getElementById('frequencyScale');
+    if (frequencyScaleSelect) {
+        // Add fading-out class to trigger fade transition
+        frequencyScaleSelect.classList.add('fading-out');
+        
+        // Remove glow class after fade completes
+        setTimeout(() => {
+            frequencyScaleSelect.classList.remove('frequency-scale-glow', 'fading-out');
+        }, 500); // Match CSS transition duration
     }
 }
 

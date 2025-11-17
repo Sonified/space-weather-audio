@@ -651,6 +651,66 @@ canvas {
     box-shadow: 0 0 0px rgba(255, 100, 100, 0);
 }
 
+/* Loop button glow effect - gentle pulsing glow */
+#loopBtn.loop-button-glow {
+    animation: loopButtonPulse 1.5s ease-in-out infinite !important;
+    filter: drop-shadow(0 0 5px rgba(255, 120, 120, 0.8))
+            drop-shadow(0 0 10px rgba(255, 100, 100, 0.6));
+    transition: filter 0.5s ease-out, opacity 0.5s ease-out;
+}
+
+@keyframes loopButtonPulse {
+    0%, 100% {
+        filter: drop-shadow(0 0 5px rgba(255, 120, 120, 0.8))
+                drop-shadow(0 0 10px rgba(255, 100, 100, 0.6));
+    }
+    50% {
+        filter: drop-shadow(0 0 12px rgba(255, 150, 150, 1))
+                drop-shadow(0 0 24px rgba(255, 130, 130, 0.9));
+    }
+}
+
+#loopBtn.loop-button-glow.fading-in {
+    opacity: 0;
+    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    animation: none;
+}
+
+#loopBtn.loop-button-glow.fading-out {
+    animation: none;
+    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+}
+
+/* Frequency scale dropdown glow effect - bigger and brighter pulse */
+#frequencyScale.frequency-scale-glow {
+    animation: frequencyScalePulse 1.2s ease-in-out infinite !important;
+    filter: drop-shadow(0 0 8px rgba(255, 130, 130, 0.9))
+            drop-shadow(0 0 16px rgba(255, 110, 110, 0.7));
+    transition: filter 0.5s ease-out, opacity 0.5s ease-out;
+}
+
+@keyframes frequencyScalePulse {
+    0%, 100% {
+        filter: drop-shadow(0 0 8px rgba(255, 130, 130, 0.9))
+                drop-shadow(0 0 16px rgba(255, 110, 110, 0.7));
+    }
+    50% {
+        filter: drop-shadow(0 0 18px rgba(255, 170, 170, 1))
+                drop-shadow(0 0 35px rgba(255, 150, 150, 0.95));
+    }
+}
+
+#frequencyScale.frequency-scale-glow.fading-in {
+    opacity: 0;
+    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    animation: none;
+}
+
+#frequencyScale.frequency-scale-glow.fading-out {
+    animation: none;
+    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+}
+
 @keyframes spectrogramPulse {
     0%, 100% {
         box-shadow: 0 0 15px rgba(255, 100, 100, 0.4), 0 0 30px rgba(255, 100, 100, 0.3);

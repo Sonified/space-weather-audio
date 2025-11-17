@@ -12,15 +12,22 @@ import {
     removeRegionsPanelGlow,
     addVolumeSliderGlow,
     removeVolumeSliderGlow,
+    addLoopButtonGlow,
+    removeLoopButtonGlow,
+    addFrequencyScaleGlow,
+    removeFrequencyScaleGlow,
     disableRegionButtons,
     enableRegionButtons,
+    enableRegionPlayButton,
+    enableRegionZoomButton,
     enableWaveformClicks, 
     shouldShowPulse, 
     markPulseShown, 
     showTutorialOverlay, 
     setTutorialPhase, 
     clearTutorialPhase,
-    disableFrequencyScaleDropdown
+    disableFrequencyScaleDropdown,
+    enableFrequencyScaleDropdown
 } from './tutorial.js';
 
 import { 
@@ -32,6 +39,8 @@ import {
 } from './tutorial-sequence.js';
 
 import * as State from './audio-state.js';
+import { zoomState } from './zoom-state.js';
+import { isTutorialActive } from './tutorial-state.js';
 
 // Track last status message for replay on resume
 let lastStatusMessage = null;
@@ -127,10 +136,11 @@ function skippableWait(durationMs) {
         const tick = () => {
             if (isResolved) return;
             
-            // Check if playback is paused (but NOT during pause button tutorial)
+            // Check if playback is paused (but NOT during pause button tutorial OR during any tutorial)
             // During pause button tutorial, we want timer to continue so we can show unpause instructions
-            if (State.playbackState === State.PlaybackState.PAUSED && !isPauseButtonTutorialActive()) {
-                // Pause the timer - wait for playback to resume
+            // During any tutorial, we don't want waits to pause when playback ends/pauses
+            if (State.playbackState === State.PlaybackState.PAUSED && !isPauseButtonTutorialActive() && !isTutorialActive()) {
+                // Pause the timer - wait for playback to resume (only if NOT in tutorial)
                 waitForPlaybackResume(cancelled).then(() => {
                     if (!isResolved && !cancelled.value) {
                         // Playback resumed - RESTART timer from 0 (reset elapsed)
@@ -242,7 +252,7 @@ async function showInitialFetchTutorial() {
     }
     
     // Show message guiding user to select volcano and fetch data
-    setStatusTextAndTrack('Select a volcano and click Fetch Data.', 'status info');
+    setStatusTextAndTrack('<- Select a volcano and click Fetch Data.', 'status info');
     
     // Wait for user to fetch data
     await waitForDataFetch();
@@ -360,7 +370,7 @@ async function showSpectrogramExplanation() {
     
     // Transition message before speed slider (keep glow)
     setStatusTextAndTrack('For now let\'s explore some more controls...', 'status info');
-    await skippableWait(5000);
+    await skippableWait(4000);
     
     // Remove glow when transitioning to speed slider
     removeSpectrogramGlow();
@@ -430,6 +440,8 @@ function waitForWaveformClick() {
         // Store phase for Enter key skipping
         setTutorialPhase('waiting_for_waveform_click', [], () => {
             console.log('🎯 waitForWaveformClick: Skipped via Enter key');
+            // Mark waveform click as satisfied when skipping
+            State.setWaveformHasBeenClicked(true);
             if (State._waveformClickResolve) {
                 State._waveformClickResolve();
                 State.setWaveformClickResolve(null);
@@ -475,7 +487,206 @@ function waitForRegionCreation() {
     });
 }
 
+/**
+ * Wait for user to click a region's play button
+ */
+function waitForRegionPlayClick() {
+    return new Promise((resolve) => {
+        // Set flag so region-tracker.js knows to resolve this promise
+        State.setWaitingForRegionPlayClick(true);
+        State.setRegionPlayClickResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_region_play_click', [], () => {
+            State.setWaitingForRegionPlayClick(false);
+            State.setRegionPlayClickResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to click region play button OR press spacebar/resume button
+ */
+function waitForRegionPlayOrResume() {
+    return new Promise((resolve) => {
+        // Set flag so we can resolve from multiple sources
+        State.setWaitingForRegionPlayOrResume(true);
+        State.setRegionPlayOrResumeResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_region_play_or_resume', [], () => {
+            State.setWaitingForRegionPlayOrResume(false);
+            State.setRegionPlayOrResumeResolve(null);
+            resolve();
+        });
+        
+        // Also set up region play click handler (will resolve this promise too)
+        State.setWaitingForRegionPlayClick(true);
+        State.setRegionPlayClickResolve(resolve);
+        
+        // Monitor playback state - if it starts playing, resolve
+        const checkPlayback = () => {
+            if (State.playbackState === State.PlaybackState.PLAYING && State.waitingForRegionPlayOrResume) {
+                State.setWaitingForRegionPlayOrResume(false);
+                State.setWaitingForRegionPlayClick(false);
+                State.setRegionPlayOrResumeResolve(null);
+                State.setRegionPlayClickResolve(null);
+                clearTutorialPhase();
+                resolve();
+            } else if (State.waitingForRegionPlayOrResume) {
+                setTimeout(checkPlayback, 100);
+            }
+        };
+        checkPlayback();
+    });
+}
+
+/**
+ * Wait for user to zoom into a region
+ */
+function waitForRegionZoom() {
+    return new Promise((resolve) => {
+        // Check if already zoomed
+        if (zoomState.isInRegion()) {
+            resolve();
+            return;
+        }
+        
+        // Set flag so zoomToRegion can resolve this promise when zoom happens
+        State.setWaitingForRegionZoom(true);
+        State.setRegionZoomResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_region_zoom', [], () => {
+            State.setWaitingForRegionZoom(false);
+            State.setRegionZoomResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to click the loop button
+ */
+function waitForLoopButtonClick() {
+    return new Promise((resolve) => {
+        // Set flag so toggleLoop can resolve this promise when clicked
+        State.setWaitingForLoopButtonClick(true);
+        State.setLoopButtonClickResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_loop_button_click', [], () => {
+            State.setWaitingForLoopButtonClick(false);
+            State.setLoopButtonClickResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to click the frequency scale dropdown (before changing)
+ */
+function waitForFrequencyScaleClick() {
+    return new Promise((resolve) => {
+        const frequencyScaleSelect = document.getElementById('frequencyScale');
+        if (!frequencyScaleSelect) {
+            resolve();
+            return;
+        }
+        
+        const handleClick = () => {
+            frequencyScaleSelect.removeEventListener('click', handleClick);
+            resolve();
+        };
+        
+        frequencyScaleSelect.addEventListener('click', handleClick, { once: true });
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_frequency_scale_click', [], () => {
+            frequencyScaleSelect.removeEventListener('click', handleClick);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to change frequency scale (via dropdown)
+ */
+function waitForFrequencyScaleChange() {
+    return new Promise((resolve) => {
+        // Set flag so changeFrequencyScale can resolve this promise when changed
+        State.setWaitingForFrequencyScaleChange(true);
+        State.setFrequencyScaleChangeResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_frequency_scale_change', [], () => {
+            State.setWaitingForFrequencyScaleChange(false);
+            State.setFrequencyScaleChangeResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to press 2 frequency scale keyboard shortcuts (C, V, or B)
+ * Also resolves after 8 seconds if they don't press 2 keys
+ */
+function waitForFrequencyScaleKeys() {
+    return new Promise((resolve) => {
+        // Reset counter
+        State.setFrequencyScaleKeyPressCount(0);
+        
+        // Set flag so keyboard shortcuts can resolve this promise
+        State.setWaitingForFrequencyScaleKeys(true);
+        State.setFrequencyScaleKeysResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_frequency_scale_keys', [], () => {
+            State.setWaitingForFrequencyScaleKeys(false);
+            State.setFrequencyScaleKeysResolve(null);
+            State.setFrequencyScaleKeyPressCount(0);
+            resolve();
+        });
+        
+        // Timeout after 8 seconds if they don't press 2 keys
+        setTimeout(() => {
+            if (State.waitingForFrequencyScaleKeys) {
+                State.setWaitingForFrequencyScaleKeys(false);
+                State.setFrequencyScaleKeysResolve(null);
+                State.setFrequencyScaleKeyPressCount(0);
+                clearTutorialPhase();
+                resolve();
+            }
+        }, 8000);
+    });
+}
+
 async function runSelectionTutorial() {
+    // 🎓 Check if user already made a selection (got ahead of tutorial)
+    // Check if selection exists AND we're waiting for region creation (meaning user got ahead)
+    if (State.selectionStart !== null && State.selectionEnd !== null) {
+        if (State.waitingForRegionCreation) {
+            // User already made selection - skip selection tutorial and go straight to region creation
+            console.log('🎓 Tutorial: User already made selection, skipping selection tutorial');
+            return; // Will continue to runRegionIntroduction
+        }
+        // If selection exists but we're not waiting for region creation yet, 
+        // it means selection was made during this tutorial - resolve immediately
+        if (State.waitingForSelection && State._selectionTutorialResolve) {
+            console.log('🎓 Tutorial: Selection already exists, resolving immediately');
+            State._selectionTutorialResolve();
+            State.setSelectionTutorialResolve(null);
+            State.setWaitingForSelection(false);
+            // Show "Nice!" message
+            await skippableWait(500);
+            setStatusTextAndTrack('Nice!', 'status success');
+            await skippableWait(1000);
+            clearTutorialPhase();
+            return; // Skip the rest of selection tutorial
+        }
+    }
+    
     // Set up the promise FIRST before showing the message to avoid race conditions
     const clickPromise = waitForWaveformClick();
     
@@ -485,8 +696,20 @@ async function runSelectionTutorial() {
     // Wait for user to click waveform first
     await clickPromise;
     
+    // 🎓 Check again if selection was made while waiting for click
+    if (State.selectionStart !== null && State.selectionEnd !== null && State.waitingForRegionCreation) {
+        console.log('🎓 Tutorial: Selection made during click wait, skipping drag message');
+        return; // Skip drag message and go to region creation
+    }
+    
     // Wait 5 seconds after waveform click, then show drag message
     await skippableWait(5000);
+    
+    // 🎓 Check one more time before showing drag message
+    if (State.selectionStart !== null && State.selectionEnd !== null && State.waitingForRegionCreation) {
+        console.log('🎓 Tutorial: Selection made during wait, skipping drag message');
+        return; // Skip drag message and go to region creation
+    }
     
     setStatusTextAndTrack('Now click on the waveform and DRAG and RELEASE to make a selection.', 'status info');
     
@@ -504,15 +727,21 @@ async function runSelectionTutorial() {
 }
 
 async function runRegionIntroduction() {
-    // Show the "Type (R)" message
-    setStatusTextAndTrack('Type (R) or click the Add Region button to create a new region.', 'status info');
+    // 🎓 Check if user already made a selection - if so, message was already shown
+    if (State.selectionStart !== null && State.selectionEnd !== null && State.waitingForRegionCreation) {
+        // User got ahead - message already shown, just wait for region creation
+        console.log('🎓 Tutorial: User already made selection, waiting for region creation');
+    } else {
+        // Show the "Click Add Region" message
+        setStatusTextAndTrack('Click Add Region or type (R) to create a new region.', 'status info');
+    }
     
     // Wait for user to create a region
     await waitForRegionCreation();
     
     // Show "You just created your first region!" message
     setStatusTextAndTrack('You just created your first region!', 'status success');
-    await skippableWait(4000);
+    await skippableWait(3000);
     
     // Disable all region buttons during tutorial explanation
     disableRegionButtons();
@@ -522,16 +751,142 @@ async function runRegionIntroduction() {
     setStatusTextAndTrack('When a new region is created, it gets added down below.', 'status info');
     await skippableWait(4000);
     
-    // Show explanation about regions
-    setStatusTextAndTrack('Regions will help us move around and identify features.', 'status info');
-    await skippableWait(4000);
-    
-    // Remove glow and re-enable buttons
+    // Remove glow and enable play button for region 1 (index 0)
     removeRegionsPanelGlow();
-    enableRegionButtons();
+    enableRegionPlayButton(0);
+    setStatusTextAndTrack('Press the play button for region 1 to have a listen.', 'status info');
     
-    // Show zoom message
-    setStatusTextAndTrack('Type 1 to zoom or click the play button on the region to explore it.', 'status info');
+    // Wait for user to click the play button
+    await waitForRegionPlayClick();
+    
+    // Wait 2s before transitioning to next section (magnifier message)
+    await skippableWait(2000);
+    
+    // Clear tutorial phase
+    clearTutorialPhase();
+}
+
+/**
+ * Region zooming tutorial section
+ * Guides user to zoom into a region and notice features
+ */
+async function runRegionZoomingTutorial() {
+    // Enable hourglass (loading indicator) and show message about zoom button
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.classList.add('loading');
+    }
+    
+    setStatusTextAndTrack('Click the magnifier 🔍 to the left of the play button to zoom in.', 'status info');
+    
+    // Enable zoom button for region 1 (index 0)
+    enableRegionZoomButton(0);
+    
+    // Wait for user to zoom in
+    await waitForRegionZoom();
+    
+    // Remove loading indicator
+    if (statusEl) {
+        statusEl.classList.remove('loading');
+    }
+    
+    // Pause for a moment, then show message about features
+    await skippableWait(2000);
+    setStatusTextAndTrack('Notice that within regions it\'s easier to see features on the spectrogram.', 'status info');
+    await skippableWait(5000);
+    
+    // Enable loop button first (before showing message)
+    const loopBtn = document.getElementById('loopBtn');
+    if (loopBtn) {
+        loopBtn.disabled = false;
+        console.log('🎓 Tutorial: Loop button enabled');
+    }
+    
+    // Add glow and introduce it
+    addLoopButtonGlow();
+    setStatusTextAndTrack('This is the loop button.', 'status info');
+    console.log('🎓 Tutorial: Showing loop button message');
+    await skippableWait(3000);
+    
+    // Ask user to click it
+    setStatusTextAndTrack('Try clicking it now to enable looping over this region.', 'status info');
+    
+    // Wait for user to click loop button
+    await waitForLoopButtonClick();
+    
+    // 1s after click, say "Loop is now enabled."
+    await skippableWait(1000);
+    setStatusTextAndTrack('Loop is now enabled.', 'status success');
+    
+    // Wait 2s
+    await skippableWait(2000);
+    
+    // Remove glow from loop button
+    removeLoopButtonGlow();
+    
+    // Enable region play button again and ask to press it (or use spacebar/resume)
+    enableRegionPlayButton(0);
+    setStatusTextAndTrack('Now Press the region play button again to loop from the beginning.', 'status info');
+    
+    // Wait for user to click region play button OR press spacebar/resume button
+    await waitForRegionPlayOrResume();
+    
+    // Clear tutorial phase
+    clearTutorialPhase();
+}
+
+/**
+ * Frequency scale tutorial section
+ * Guides user to change frequency scale and use keyboard shortcuts
+ */
+async function runFrequencyScaleTutorial() {
+    // Enable the frequency scale dropdown
+    enableFrequencyScaleDropdown();
+    
+    // Make the box glow
+    addFrequencyScaleGlow();
+    
+    // Wait 2s before showing message
+    await skippableWait(2000);
+    
+    // Show message about frequency scaling
+    setStatusTextAndTrack('Changing the frequency scaling of the spectrogram can help reveal more details.', 'status info');
+    await skippableWait(5000);
+    
+    // Invite user to click and change to another frequency scale
+    setStatusTextAndTrack('Try changing to another frequency scale in the lower right hand corner 👇.', 'status info');
+    
+    // Wait for user to click the dropdown (then remove glow)
+    await waitForFrequencyScaleClick();
+    
+    // Remove glow after click
+    removeFrequencyScaleGlow();
+    
+    // Wait for user to change frequency scale
+    await waitForFrequencyScaleChange();
+    
+    // Briefly congratulate using same pacing as before (1s wait, "Great!", 2s wait)
+    await skippableWait(1000);
+    setStatusTextAndTrack('Great!', 'status success');
+    await skippableWait(2000);
+    
+    // Tell user about keyboard shortcuts
+    setStatusTextAndTrack('You can also press (C) (V) and (B) on the keyboard to switch between modes, try this now.', 'status info');
+    
+    // Wait for user to press any 2 of these keys (or timeout after 8s)
+    await waitForFrequencyScaleKeys();
+    
+    // Pause for 2s and say "Well done!"
+    await skippableWait(2000);
+    setStatusTextAndTrack('Well done!', 'status success');
+    
+    // Remove glow from frequency scale dropdown
+    removeFrequencyScaleGlow();
+    
+    // Final message
+    await skippableWait(2000);
+    setStatusTextAndTrack('Pick a scaling that works well and let\'s select a feature.', 'status info');
+    await skippableWait(5000);
     
     // Clear tutorial phase
     clearTutorialPhase();
@@ -555,11 +910,13 @@ export async function runMainTutorial() {
         await showVolcanoMessage();            // 5s  
         await showStationMetadataMessage();    // 7s
         await showVolumeSliderTutorial();      // 5s - volume slider glow and message
-        await runPauseButtonTutorial();        // wait for user to pause & resume
+        // await runPauseButtonTutorial();        // wait for user to pause & resume - DISABLED
         await showSpectrogramExplanation();    // 5s + 600ms fade
         await runSpeedSliderTutorial();        // wait for user to complete slider actions
         await runSelectionTutorial();          // enable waveform clicks, show message, wait for click, then wait for selection
         await runRegionIntroduction();         // region introduction tutorial
+        await runRegionZoomingTutorial();      // region zooming tutorial (includes loop button)
+        await runFrequencyScaleTutorial();     // frequency scale tutorial
         
         console.log('🎓 Tutorial complete!');
     } finally {

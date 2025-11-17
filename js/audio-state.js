@@ -81,10 +81,25 @@ export let selectionStartX = null;
 export let waveformHasBeenClicked = false;
 export let waitingForSelection = false;
 export let waitingForRegionCreation = false;
+export let waitingForRegionPlayClick = false;
+export let waitingForRegionPlayOrResume = false;
+export let waitingForRegionZoom = false;
+export let waitingForLoopButtonClick = false;
+export let waitingForFrequencyScaleChange = false;
+export let waitingForFrequencyScaleKeys = false;
+export let frequencyScaleKeyPressCount = 0;
 export let _selectionTutorialResolve = null;
 export let _waveformClickResolve = null;
 export let _regionCreationResolve = null;
+export let _regionPlayClickResolve = null;
+export let _regionPlayOrResumeResolve = null;
+export let _regionZoomResolve = null;
+export let _loopButtonClickResolve = null;
+export let _frequencyScaleChangeResolve = null;
+export let _frequencyScaleKeysResolve = null;
 export let regionButtonsDisabled = false;
+export let enabledRegionPlayButtons = new Map(); // Map<regionIndex, enabled>
+export let enabledRegionZoomButtons = new Map(); // Map<regionIndex, enabled>
 
 // Region tracking state
 export let regions = [];
@@ -152,10 +167,43 @@ export function setSelectionStartX(value) { selectionStartX = value; }
 export function setWaveformHasBeenClicked(value) { waveformHasBeenClicked = value; }
 export function setWaitingForSelection(value) { waitingForSelection = value; }
 export function setWaitingForRegionCreation(value) { waitingForRegionCreation = value; }
+export function setWaitingForRegionPlayClick(value) { waitingForRegionPlayClick = value; }
+export function setWaitingForRegionPlayOrResume(value) { waitingForRegionPlayOrResume = value; }
+export function setWaitingForRegionZoom(value) { waitingForRegionZoom = value; }
+export function setWaitingForLoopButtonClick(value) { waitingForLoopButtonClick = value; }
+export function setWaitingForFrequencyScaleChange(value) { waitingForFrequencyScaleChange = value; }
+export function setWaitingForFrequencyScaleKeys(value) { waitingForFrequencyScaleKeys = value; }
+export function setFrequencyScaleKeyPressCount(value) { frequencyScaleKeyPressCount = value; }
 export function setSelectionTutorialResolve(value) { _selectionTutorialResolve = value; }
 export function setWaveformClickResolve(value) { _waveformClickResolve = value; }
 export function setRegionCreationResolve(value) { _regionCreationResolve = value; }
+export function setRegionPlayClickResolve(value) { _regionPlayClickResolve = value; }
+export function setRegionPlayOrResumeResolve(value) { _regionPlayOrResumeResolve = value; }
+export function setRegionZoomResolve(value) { _regionZoomResolve = value; }
+export function setLoopButtonClickResolve(value) { _loopButtonClickResolve = value; }
+export function setFrequencyScaleChangeResolve(value) { _frequencyScaleChangeResolve = value; }
+export function setFrequencyScaleKeysResolve(value) { _frequencyScaleKeysResolve = value; }
 export function setRegionButtonsDisabled(value) { regionButtonsDisabled = value; }
+export function setRegionPlayButtonEnabled(regionIndex, enabled) {
+    if (enabled) {
+        enabledRegionPlayButtons.set(regionIndex, true);
+    } else {
+        enabledRegionPlayButtons.delete(regionIndex);
+    }
+}
+export function setRegionZoomButtonEnabled(regionIndex, enabled) {
+    if (enabled) {
+        enabledRegionZoomButtons.set(regionIndex, true);
+    } else {
+        enabledRegionZoomButtons.delete(regionIndex);
+    }
+}
+export function isRegionPlayButtonEnabled(regionIndex) {
+    return enabledRegionPlayButtons.has(regionIndex);
+}
+export function isRegionZoomButtonEnabled(regionIndex) {
+    return enabledRegionZoomButtons.has(regionIndex);
+}
 export function setRegions(value) { regions = value; }
 export function setActiveRegionIndex(value) { activeRegionIndex = value; }
 export function setIsSelectingFrequency(value) { isSelectingFrequency = value; }

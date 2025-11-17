@@ -30,6 +30,13 @@ export function clearTutorialPhase() {
 }
 
 /**
+ * Check if tutorial is currently active
+ */
+export function isTutorialActive() {
+    return tutorialPhase !== null;
+}
+
+/**
  * Advance to the next tutorial phase
  */
 export function advanceTutorialPhase() {

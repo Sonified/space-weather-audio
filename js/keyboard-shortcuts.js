@@ -146,6 +146,18 @@ function handleKeyboardShortcut(event) {
             changeFrequencyScale();
             console.log('📊 Frequency scale changed to: Linear');
         }
+        
+        // 🎓 Tutorial: Track keyboard shortcut presses
+        if (State.waitingForFrequencyScaleKeys) {
+            State.setFrequencyScaleKeyPressCount(State.frequencyScaleKeyPressCount + 1);
+            if (State.frequencyScaleKeyPressCount >= 2 && State._frequencyScaleKeysResolve) {
+                State.setWaitingForFrequencyScaleKeys(false);
+                const resolve = State._frequencyScaleKeysResolve;
+                State.setFrequencyScaleKeysResolve(null);
+                State.setFrequencyScaleKeyPressCount(0);
+                resolve();
+            }
+        }
         return;
     }
     
@@ -157,6 +169,18 @@ function handleKeyboardShortcut(event) {
             changeFrequencyScale();
             console.log('📊 Frequency scale changed to: Square Root');
         }
+        
+        // 🎓 Tutorial: Track keyboard shortcut presses
+        if (State.waitingForFrequencyScaleKeys) {
+            State.setFrequencyScaleKeyPressCount(State.frequencyScaleKeyPressCount + 1);
+            if (State.frequencyScaleKeyPressCount >= 2 && State._frequencyScaleKeysResolve) {
+                State.setWaitingForFrequencyScaleKeys(false);
+                const resolve = State._frequencyScaleKeysResolve;
+                State.setFrequencyScaleKeysResolve(null);
+                State.setFrequencyScaleKeyPressCount(0);
+                resolve();
+            }
+        }
         return;
     }
     
@@ -167,6 +191,18 @@ function handleKeyboardShortcut(event) {
             select.value = 'logarithmic';
             changeFrequencyScale();
             console.log('📊 Frequency scale changed to: Logarithmic');
+        }
+        
+        // 🎓 Tutorial: Track keyboard shortcut presses
+        if (State.waitingForFrequencyScaleKeys) {
+            State.setFrequencyScaleKeyPressCount(State.frequencyScaleKeyPressCount + 1);
+            if (State.frequencyScaleKeyPressCount >= 2 && State._frequencyScaleKeysResolve) {
+                State.setWaitingForFrequencyScaleKeys(false);
+                const resolve = State._frequencyScaleKeysResolve;
+                State.setFrequencyScaleKeysResolve(null);
+                State.setFrequencyScaleKeyPressCount(0);
+                resolve();
+            }
         }
         return;
     }

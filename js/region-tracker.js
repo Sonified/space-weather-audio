@@ -21,6 +21,7 @@ import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpe
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
+import { isTutorialActive } from './tutorial-state.js';
 
 // Region data structure - stored per volcano
 // Map<volcanoName, regions[]>
@@ -1056,6 +1057,12 @@ export function startFrequencySelection(regionIndex, featureIndex) {
         return;
     }
     
+    // 🎓 Prevent feature selection during tutorial
+    if (isTutorialActive()) {
+        console.warn('⚠️ Cannot start feature selection: tutorial in progress');
+        return;
+    }
+    
     // console.log(`🎯 Starting frequency selection for region ${regionIndex}, feature ${featureIndex}`);
     
     isSelectingFrequency = true;
@@ -1371,7 +1378,10 @@ function createRegionCard(region, index) {
         
         // 🔥 Check if region buttons are disabled (during tutorial)
         if (State.regionButtonsDisabled) {
-            return;
+            // Check if this specific zoom button is enabled for tutorial
+            if (!State.isRegionZoomButtonEnabled(index)) {
+                return;
+            }
         }
         
         // 🏛️ Check if we're already inside THIS temple
@@ -1391,7 +1401,10 @@ function createRegionCard(region, index) {
         
         // 🔥 Check if region buttons are disabled (during tutorial)
         if (State.regionButtonsDisabled) {
-            return;
+            // Check if this specific play button is enabled for tutorial
+            if (!State.isRegionPlayButtonEnabled(index)) {
+                return;
+            }
         }
         
         toggleRegionPlay(index);
@@ -1530,11 +1543,11 @@ function renderFeatures(regionId, regionIndex) {
                 <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
             </select>
             
-            <button class="select-freq-btn ${!zoomState.isInRegion() ? 'disabled' : (!feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime ? 'pulse' : 'completed')}" 
+            <button class="select-freq-btn ${!zoomState.isInRegion() || isTutorialActive() ? 'disabled' : (!feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime ? 'pulse' : 'completed')}" 
                     id="select-btn-${regionIndex}-${featureIndex}"
                     data-region-index="${regionIndex}" data-feature-index="${featureIndex}"
-                    ${!zoomState.isInRegion() ? 'disabled' : ''}
-                    title="${!zoomState.isInRegion() ? 'Zoom into region to select features' : (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 'click to select' : '')}">
+                    ${!zoomState.isInRegion() || isTutorialActive() ? 'disabled' : ''}
+                    title="${!zoomState.isInRegion() ? 'Zoom into region to select features' : isTutorialActive() ? 'Tutorial in progress' : (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 'click to select' : '')}">
                 ${feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 
                     formatFeatureButtonText(feature) :
                     'Select feature'
@@ -1568,6 +1581,10 @@ function renderFeatures(regionId, regionIndex) {
         freqBtn.addEventListener('click', () => {
             // Prevent click when zoomed out
             if (!zoomState.isInRegion()) {
+                return;
+            }
+            // 🎓 Prevent feature selection during tutorial
+            if (isTutorialActive()) {
                 return;
             }
             startFrequencySelection(regionIndex, featureIndex);
@@ -1825,6 +1842,24 @@ export function toggleRegionPlay(index) {
     const region = regions[index];
     
     // console.log(`🎵 Region ${index + 1} play button clicked`);
+    
+    // 🎓 Tutorial: Resolve promise if waiting for region play click
+    if (State.waitingForRegionPlayClick && State._regionPlayClickResolve) {
+        State.setWaitingForRegionPlayClick(false);
+        const resolve = State._regionPlayClickResolve;
+        State.setRegionPlayClickResolve(null);
+        resolve();
+    }
+    
+    // 🎓 Tutorial: Also resolve if waiting for region play or resume
+    if (State.waitingForRegionPlayOrResume && State._regionPlayOrResumeResolve) {
+        State.setWaitingForRegionPlayOrResume(false);
+        State.setWaitingForRegionPlayClick(false);
+        const resolve = State._regionPlayOrResumeResolve;
+        State.setRegionPlayOrResumeResolve(null);
+        State.setRegionPlayClickResolve(null);
+        resolve();
+    }
     
     // Reset old playing region button (if different)
     if (activePlayingRegionIndex !== null && activePlayingRegionIndex !== index) {
@@ -2343,6 +2378,15 @@ export function zoomToRegion(regionIndex) {
     zoomState.currentViewEndSample = region.endSample;
     zoomState.activeRegionId = region.id;
     
+    // 🎓 Tutorial: Resolve promise if waiting for region zoom
+    if (State.waitingForRegionZoom && State._regionZoomResolve) {
+        State.setWaitingForRegionZoom(false);
+        const resolve = State._regionZoomResolve;
+        State.setRegionZoomResolve(null);
+        // Resolve after a small delay to ensure zoom state is fully updated
+        setTimeout(() => resolve(), 50);
+    }
+    
     // Immediately redraw regions at new positions
     drawWaveformWithSelection();
     
@@ -2359,11 +2403,15 @@ export function zoomToRegion(regionIndex) {
     expandRegionAndCollapseOthers(regionIndex);
     
     // Update status message with region number (1-indexed)
+    // 🎓 Suppress standard interaction message during tutorial
     const regionNumber = regionIndex + 1;
     const statusEl = document.getElementById('status');
     if (statusEl) {
-        statusEl.className = 'status info';
-        statusEl.textContent = `Type (${regionNumber}) again to play this region, (f) to select a feature, (esc) to zoom out.`;
+        // Check if tutorial is active - if so, don't override tutorial messages
+        if (!isTutorialActive()) {
+            statusEl.className = 'status info';
+            statusEl.textContent = `Type (${regionNumber}) again to play this region, (f) to select a feature, (esc) to zoom out.`;
+        }
     }
     
     const newStartTime = zoomState.sampleToRealTimestamp(region.startSample);
@@ -2474,15 +2522,18 @@ export function zoomToRegion(regionIndex) {
     // console.log(`🏛️ Entering the temple - sacred walls at ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
     
     // Auto-enter selection mode for the first incomplete feature when zooming in
-    // Find the first feature that needs selection (missing frequency or time data)
-    const firstIncompleteFeatureIndex = region.features.findIndex(feature => 
-        !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
-    );
-    
-    if (firstIncompleteFeatureIndex !== -1) {
-        setTimeout(() => {
-            startFrequencySelection(regionIndex, firstIncompleteFeatureIndex);
-        }, 100);
+    // 🎓 Skip this during tutorial to avoid interrupting tutorial flow
+    if (!isTutorialActive()) {
+        // Find the first feature that needs selection (missing frequency or time data)
+        const firstIncompleteFeatureIndex = region.features.findIndex(feature => 
+            !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
+        );
+        
+        if (firstIncompleteFeatureIndex !== -1) {
+            setTimeout(() => {
+                startFrequencySelection(regionIndex, firstIncompleteFeatureIndex);
+            }, 100);
+        }
     }
 }
 

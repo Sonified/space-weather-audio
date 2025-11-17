@@ -639,8 +639,19 @@ export function setupWaveformInteraction() {
         const clickedPlayRegionIndex = checkCanvasPlayButtonClick(clickX, clickY);
         
         // 🔥 Check if region buttons are disabled (during tutorial)
-        if (State.regionButtonsDisabled && (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null)) {
-            return; // Ignore clicks on disabled buttons
+        if (State.regionButtonsDisabled) {
+            if (clickedZoomRegionIndex !== null) {
+                // Check if this specific zoom button is enabled for tutorial
+                if (!State.isRegionZoomButtonEnabled(clickedZoomRegionIndex)) {
+                    return; // Ignore clicks on disabled buttons
+                }
+            }
+            if (clickedPlayRegionIndex !== null) {
+                // Check if this specific play button is enabled for tutorial
+                if (!State.isRegionPlayButtonEnabled(clickedPlayRegionIndex)) {
+                    return; // Ignore clicks on disabled buttons
+                }
+            }
         }
         
         if (clickedZoomRegionIndex !== null) {
@@ -824,9 +835,29 @@ export function setupWaveformInteraction() {
                         State.setSelectionTutorialResolve(null);
                         State.setWaitingForSelection(false);
                     } else {
-                        // Regular non-tutorial flow
-                        statusEl.className = 'status info';
-                        statusEl.textContent = 'Type (R) or click Add Region to create a new region.';
+                        // 🎓 Check if tutorial is active but user made selection early
+                        import('./tutorial-state.js').then(({ isTutorialActive }) => {
+                            if (isTutorialActive() && !State.waitingForSelection) {
+                                // User got ahead - show message and set up to skip to region creation
+                                statusEl.className = 'status success';
+                                statusEl.textContent = 'Nice! You just created a selection! Click Add Region or type (R) to create a new region.';
+                                
+                                // Mark waveform as clicked so tutorial overlay disappears
+                                State.setWaveformHasBeenClicked(true);
+                                
+                                // Set up to wait for region creation so tutorial can continue
+                                State.setWaitingForRegionCreation(true);
+                                // The promise will be set up when runRegionIntroduction is called
+                            } else {
+                                // Regular non-tutorial flow
+                                statusEl.className = 'status info';
+                                statusEl.textContent = 'Type (R) or click Add Region to create a new region.';
+                            }
+                        }).catch(() => {
+                            // Fallback if import fails
+                            statusEl.className = 'status info';
+                            statusEl.textContent = 'Type (R) or click Add Region to create a new region.';
+                        });
                     }
                     }
                 }

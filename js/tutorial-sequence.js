@@ -7,7 +7,7 @@
 import { setStatusText, appendStatusText, showTutorialOverlay, cancelTyping } from './tutorial-effects.js';
 import { resetSpeedTo1, togglePlayPause } from './audio-player.js';
 import * as State from './audio-state.js';
-import { setTutorialPhase } from './tutorial-state.js';
+import { setTutorialPhase, clearTutorialPhase } from './tutorial-state.js';
 
 // Speed slider tutorial state
 let speedSliderTutorialActive = false;
@@ -104,21 +104,36 @@ function waitForThresholdCross() {
             speedSliderThresholdTimeout = null;
         }
         
+        // Store phase for Enter key skipping BEFORE starting the check loop
+        // This allows Enter key to skip the wait
+        setTutorialPhase('waiting_for_threshold_cross', [], () => {
+            if (speedSliderThresholdTimeout !== null) {
+                clearTimeout(speedSliderThresholdTimeout);
+                speedSliderThresholdTimeout = null;
+            }
+            // Mark threshold as crossed so tutorial can continue
+            speedSliderCrossedThreshold = true;
+            resolve();
+        });
+        
         const checkThreshold = () => {
             // 🔥 FIX: Clear timeout ID when done
             speedSliderThresholdTimeout = null;
             
             if (!speedSliderTutorialActive) {
+                clearTutorialPhase();
                 resolve();
                 return;
             }
             if (speedSliderCrossedThreshold) {
+                clearTutorialPhase();
                 resolve();
                 return;
             }
             // 🔥 FIX: Store timeout ID for cleanup
             speedSliderThresholdTimeout = setTimeout(checkThreshold, 100);
         };
+        
         checkThreshold();
     });
 }

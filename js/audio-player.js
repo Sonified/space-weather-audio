@@ -68,6 +68,16 @@ export function startPlayback() {
     
     console.log('▶️ Starting playback');
     
+    // 🎓 Tutorial: Resolve promise if waiting for region play or resume
+    if (State.waitingForRegionPlayOrResume && State._regionPlayOrResumeResolve) {
+        State.setWaitingForRegionPlayOrResume(false);
+        State.setWaitingForRegionPlayClick(false);
+        const resolve = State._regionPlayOrResumeResolve;
+        State.setRegionPlayOrResumeResolve(null);
+        State.setRegionPlayClickResolve(null);
+        resolve();
+    }
+    
     // Update master button
     const btn = document.getElementById('playPauseBtn');
     btn.textContent = '⏸️ Pause';
@@ -201,6 +211,14 @@ export function togglePlayPause() {
 export function toggleLoop() {
     State.setIsLooping(!State.isLooping);
     const btn = document.getElementById('loopBtn');
+    
+    // 🎓 Tutorial: Resolve promise if waiting for loop button click
+    if (State.waitingForLoopButtonClick && State._loopButtonClickResolve) {
+        State.setWaitingForLoopButtonClick(false);
+        const resolve = State._loopButtonClickResolve;
+        State.setLoopButtonClickResolve(null);
+        resolve();
+    }
     
     if (State.isLooping) {
         btn.classList.remove('secondary');

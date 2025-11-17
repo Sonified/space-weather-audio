@@ -173,6 +173,14 @@ export async function changeFrequencyScale() {
     
     State.setFrequencyScale(value);
     
+    // 🎓 Tutorial: Resolve promise if waiting for frequency scale change
+    if (State.waitingForFrequencyScaleChange && State._frequencyScaleChangeResolve) {
+        State.setWaitingForFrequencyScaleChange(false);
+        const resolve = State._frequencyScaleChangeResolve;
+        State.setFrequencyScaleChangeResolve(null);
+        resolve();
+    }
+    
     // Blur dropdown so spacebar can toggle play/pause
     select.blur();
     

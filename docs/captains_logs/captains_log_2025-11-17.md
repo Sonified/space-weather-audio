@@ -340,3 +340,29 @@ v2.34 - Commit: "v2.34 UI: Tutorial system improvements - status text typing ani
 
 ---
 
+## 🎓 Tutorial Starts Before Fetch Data Message (v2.38)
+
+### Changes Made
+- **Tutorial now starts immediately on page load** - Before the "Select a volcano and click Fetch Data" message appears
+- **Frequency scale dropdown disabled at tutorial start** - Disabled right at the very beginning before any other tutorial actions
+- **Fetching data is part of the tutorial** - The tutorial now guides users through selecting a volcano and fetching data as part of the tutorial flow
+
+### Implementation Details
+- Created `runInitialTutorial()` function that starts on page load
+- Created `showInitialFetchTutorial()` that guides user to select volcano and fetch data
+- Created `waitForDataFetch()` function that waits for data to be loaded before continuing
+- Removed external message code from `main.js` - message is now part of tutorial system
+- Removed `runMainTutorial()` calls from `data-fetcher.js` - tutorial is now managed by `runInitialTutorial()`
+
+### Files Changed
+- `js/tutorial-coordinator.js` - Added initial tutorial section, removed conditional skip
+- `js/main.js` - Replaced external message with tutorial start
+- `js/data-fetcher.js` - Removed direct tutorial calls (now managed by initial tutorial)
+- `js/tutorial.js` - Exported `runInitialTutorial`
+
+### Version Tag
+- **Version**: v2.38
+- **Commit Message**: v2.38 Feat: Tutorial starts before fetch data message, frequency dropdown disabled at start, fetching data is part of tutorial
+
+---
+
