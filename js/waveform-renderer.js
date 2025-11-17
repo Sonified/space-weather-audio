@@ -187,7 +187,7 @@ export function drawWaveformFromMinMax() {
             }
             
             // 🔥 Draw regions during crossfade so they stay visible throughout the transition
-            drawRegionHighlights(ctx);
+            drawRegionHighlights(ctx, canvas.width, canvas.height);
             drawRegionButtons(); // Draw buttons on overlay canvas
             
             if (progress < 1.0) {
@@ -302,7 +302,7 @@ export function drawInterpolatedWaveform() {
     );
 
     // Draw region highlights on top (they use the same interpolated range)
-    drawRegionHighlights(ctx);
+    drawRegionHighlights(ctx, canvas.width, canvas.height);
     drawRegionButtons(); // Draw buttons on overlay canvas
 
     // Draw playhead (also using interpolated time range for smooth positioning)
@@ -365,7 +365,7 @@ export function drawWaveformWithSelection() {
     ctx.drawImage(State.cachedWaveformCanvas, 0, 0);  // ✅ Sizes match now!
     
     // Draw region highlights (before selection box)
-    drawRegionHighlights(ctx);
+    drawRegionHighlights(ctx, canvas.width, canvas.height);
     drawRegionButtons(); // Draw buttons on overlay canvas
     
     // Only draw yellow selection box if NOT playing an active region
@@ -466,7 +466,7 @@ export function setupWaveformInteraction() {
             ctx.drawImage(State.cachedWaveformCanvas, 0, 0);
             
             // Draw region highlights during scrub preview
-            drawRegionHighlights(ctx);
+            drawRegionHighlights(ctx, canvas.width, canvas.height);
             drawRegionButtons(); // Draw buttons on overlay canvas
         }
         
@@ -824,7 +824,7 @@ export function setupWaveformInteraction() {
                     ctx.drawImage(State.cachedWaveformCanvas, 0, 0);
                     
                     // Draw region highlights after clearing selection
-                    drawRegionHighlights(ctx);
+                    drawRegionHighlights(ctx, canvas.width, canvas.height);
                     drawRegionButtons(); // Draw buttons on overlay canvas
                 }
                 

@@ -2,6 +2,30 @@
 
 ---
 
+## 🐛 Critical Bug Fixes: Region Rendering & Zoom Behavior (v2.25)
+
+### Bugs Fixed
+
+1. **Missing Canvas Dimensions in drawRegionHighlights()**
+   - **Bug**: When buttons were split to a separate canvas, the `canvasWidth` and `canvasHeight` parameters were removed from `drawRegionHighlights()` calls in `waveform-renderer.js`, but the function in `region-tracker.js` still expected them
+   - **Impact**: `canvasWidth` and `canvasHeight` were undefined inside `drawRegionHighlights()`, breaking ALL position calculations for regions and selections
+   - **Fix**: Restored `canvas.width` and `canvas.height` parameters to all 5 calls in `waveform-renderer.js` and updated function signature in `region-tracker.js` to accept these parameters
+
+2. **Auto-Play Region Preservation on Zoom Out**
+   - **Bug**: `zoomToFull()` was automatically treating regions as "playing" when zooming out, even if you were just viewing (not playing)
+   - **Impact**: ALL clicks got constrained to region boundaries after zooming out, preventing free roaming
+   - **Fix**: Removed the entire `if (wasInTemple && templeRegionId !== null && activePlayingRegionIndex === null)` block that was auto-setting regions as playing
+   - **Result**: Now only preserves boundaries if you were actually playing (via existing `activePlayingRegionIndex`), otherwise boundaries clear and free roaming is restored
+
+### Key Changes
+- `js/waveform-renderer.js`: Added `canvas.width, canvas.height` parameters to all 5 `drawRegionHighlights()` calls
+- `js/region-tracker.js`: Updated `drawRegionHighlights()` function signature to accept `canvasWidth` and `canvasHeight` parameters, removed auto-play preservation logic from `zoomToFull()`
+
+### Version
+v2.25 - Commit: "v2.25 Fix: Restore canvas dimensions parameter in drawRegionHighlights, remove auto-play region preservation on zoom out"
+
+---
+
 ## 🎯 Region Feature Selection & Volcano Data Tracking (v2.24)
 
 ### Features & Fixes

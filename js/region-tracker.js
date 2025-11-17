@@ -442,18 +442,19 @@ export { drawRegionButtons, positionWaveformButtonsCanvas, resizeWaveformButtons
  * Called from waveform-renderer after drawing waveform
  * Uses EXACT same approach as yellow selection box
  */
-export function drawRegionHighlights(ctx) {
+export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
     if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
         return; // No data loaded yet
     }
     
-    // Read FRESH dimensions from DOM (just like x-axis does!)
-    // Don't use stale parameters - they can be from minutes ago
-    const canvas = document.getElementById('waveform');
-    if (!canvas) return;
-    
-    const canvasWidth = canvas.width;   // Current device pixels
-    const canvasHeight = canvas.height; // Current device pixels
+    // Use provided dimensions (passed from caller to avoid DOM lookups)
+    if (!canvasWidth || !canvasHeight) {
+        // Fallback to reading from DOM if not provided
+        const canvas = document.getElementById('waveform');
+        if (!canvas) return;
+        canvasWidth = canvas.width;
+        canvasHeight = canvas.height;
+    }
     
     const regions = getCurrentRegions();
     
@@ -2153,11 +2154,6 @@ export function zoomToFull() {
     State.setSelectionStart(null);
     State.setSelectionEnd(null);
     
-    // 🦋 If we were in temple mode, preserve the region playback
-    // This ensures boundaries persist after zooming out
-    const wasInTemple = zoomState.isInRegion();
-    const templeRegionId = wasInTemple ? zoomState.getCurrentRegionId() : null;
-    
     // 💾 Cache the zoomed spectrogram BEFORE resetting (so we can crossfade it)
     cacheZoomedSpectrogram();
     
@@ -2166,29 +2162,6 @@ export function zoomToFull() {
     zoomState.currentViewStartSample = 0;
     zoomState.currentViewEndSample = zoomState.totalSamples;
     zoomState.activeRegionId = null;
-    
-    // 🦋 If we were in temple mode and not already playing a specific region,
-    // set activePlayingRegionIndex to preserve boundaries after zoom out
-    if (wasInTemple && templeRegionId !== null && activePlayingRegionIndex === null) {
-        const regions = getCurrentRegions();
-        const matchingRegionIndex = regions.findIndex(r => r.id === templeRegionId);
-        if (matchingRegionIndex !== -1) {
-            // Set active playing region so boundaries persist after zoom out
-            activePlayingRegionIndex = matchingRegionIndex;
-            const region = regions[matchingRegionIndex];
-            region.playing = true;
-            
-            // Update region button to GREEN
-            const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
-            const playBtn = regionCard?.querySelector('.play-btn');
-            if (playBtn) {
-                playBtn.classList.add('playing');
-                playBtn.textContent = '▶';
-            }
-            
-            console.log(`🦋 Preserving region ${matchingRegionIndex + 1} playback after zoom out`);
-        }
-    }
     
     // 🦋 Update worklet boundaries AFTER exiting temple
     // If activePlayingRegionIndex is set, boundaries will still be the region
