@@ -778,15 +778,24 @@ export async function startStreaming(event) {
         }, 500);
         State.setLoadingInterval(interval);
         
-        if (forceIrisFetch) {
-            console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Using Railway backend`);
-            await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
-        } else if (isActiveStation) {
-            console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
-            await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart);
-        } else {
-            console.log(`🚂 ${logTime()} Using Railway backend (inactive station)`);
-            await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
+        try {
+            if (forceIrisFetch) {
+                console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Using Railway backend`);
+                await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
+            } else if (isActiveStation) {
+                console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
+                await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart);
+            } else {
+                console.log(`🚂 ${logTime()} Using Railway backend (inactive station)`);
+                await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
+            }
+            
+            // Data fetch completed successfully - mark this volcano as having data
+            State.setVolcanoWithData(volcano);
+            console.log(`✅ Data fetch complete - marked ${volcano} as having data`);
+        } catch (fetchError) {
+            // Don't set volcanoWithData if fetch failed
+            throw fetchError;
         }
     } catch (error) {
         State.setIsFetchingNewData(false);
@@ -905,7 +914,24 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Add event listeners
     document.getElementById('volcano').addEventListener('change', (e) => {
-        enableFetchButton();
+        const selectedVolcano = e.target.value;
+        const volcanoWithData = State.volcanoWithData;
+        
+        // If switching back to the volcano that already has data, disable fetch button
+        if (volcanoWithData && selectedVolcano === volcanoWithData) {
+            const fetchBtn = document.getElementById('startBtn');
+            fetchBtn.disabled = true;
+            fetchBtn.title = 'This volcano already has data loaded. Select a different volcano to fetch new data.';
+            console.log(`🚫 Fetch button disabled - ${selectedVolcano} already has data`);
+        } else {
+            // Switching to a different volcano - enable fetch button
+            enableFetchButton();
+            const fetchBtn = document.getElementById('startBtn');
+            if (fetchBtn) {
+                fetchBtn.title = '';
+            }
+        }
+        
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
     document.getElementById('dataType').addEventListener('change', (e) => {

@@ -84,13 +84,16 @@ export function drawSpectrogramPlayhead() {
             );
             
             // 🎨 Redraw regions/selections in this strip
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(oldX, 0, oldW, height);
-            ctx.clip();
-            drawSpectrogramRegionHighlights(ctx, width, height);
-            drawSpectrogramSelection(ctx, width, height);
-            ctx.restore();
+            // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
+            // ctx.save();
+            // ctx.beginPath();
+            // ctx.rect(oldX, 0, oldW, height);
+            // ctx.clip();
+            // if (!zoomState.isInRegion()) {
+            //     drawSpectrogramRegionHighlights(ctx, width, height);
+            //     drawSpectrogramSelection(ctx, width, height);
+            // }
+            // ctx.restore();
         }
         
         // Restore new playhead area from VIEWPORT
@@ -103,13 +106,16 @@ export function drawSpectrogramPlayhead() {
         );
         
         // 🎨 Redraw regions/selections in this strip
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(newX, 0, newW, height);
-        ctx.clip();
-        drawSpectrogramRegionHighlights(ctx, width, height);
-        drawSpectrogramSelection(ctx, width, height);
-        ctx.restore();
+        // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
+        // ctx.save();
+        // ctx.beginPath();
+        // ctx.rect(newX, 0, newW, height);
+        // ctx.clip();
+        // if (!zoomState.isInRegion()) {
+        //     drawSpectrogramRegionHighlights(ctx, width, height);
+        //     drawSpectrogramSelection(ctx, width, height);
+        // }
+        // ctx.restore();
         
         // Draw faint grey playhead line (non-interactive)
         ctx.globalAlpha = 0.6;
@@ -169,8 +175,11 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
     ctx.drawImage(viewportCanvas, 0, 0);  // 🔧 FIX: Use viewport, not cache!
     
     // 🎨 Redraw regions/selections on top
-    drawSpectrogramRegionHighlights(ctx, width, height);
-    drawSpectrogramSelection(ctx, width, height);
+    // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
+    // if (!zoomState.isInRegion()) {
+    //     drawSpectrogramRegionHighlights(ctx, width, height);
+    //     drawSpectrogramSelection(ctx, width, height);
+    // }
     
     // Draw preview line (gray if dragging, white if just hovering)
     ctx.globalAlpha = 0.6;
@@ -217,13 +226,16 @@ export function clearSpectrogramScrubPreview() {
     );
     
     // 🎨 Redraw regions/selections in this strip
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(oldX, 0, oldW, height);
-    ctx.clip();
-    drawSpectrogramRegionHighlights(ctx, width, height);
-    drawSpectrogramSelection(ctx, width, height);
-    ctx.restore();
+    // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
+    // ctx.save();
+    // ctx.beginPath();
+    // ctx.rect(oldX, 0, oldW, height);
+    // ctx.clip();
+    // if (!zoomState.isInRegion()) {
+    //     drawSpectrogramRegionHighlights(ctx, width, height);
+    //     drawSpectrogramSelection(ctx, width, height);
+    // }
+    // ctx.restore();
     
     // Redraw faint grey playhead if it was in that area
     if (lastPlayheadX >= 0 && Math.abs(lastPlayheadX - lastPreviewX) < stripWidth * 2) {
@@ -262,8 +274,11 @@ export function resetSpectrogramPlayhead() {
         ctx.drawImage(viewportCanvas, 0, 0);  // 🔧 FIX: Use viewport, not cache!
         
         // 🎨 Redraw regions/selections on top
-        drawSpectrogramRegionHighlights(ctx, canvas.width, canvas.height);
-        drawSpectrogramSelection(ctx, canvas.width, canvas.height);
+        // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
+        // if (!zoomState.isInRegion()) {
+        //     drawSpectrogramRegionHighlights(ctx, canvas.width, canvas.height);
+        //     drawSpectrogramSelection(ctx, canvas.width, canvas.height);
+        // }
     }
 }
 

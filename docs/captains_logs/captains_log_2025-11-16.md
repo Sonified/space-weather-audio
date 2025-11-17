@@ -2,6 +2,46 @@
 
 ---
 
+## 🎯 Region Feature Selection & Volcano Data Tracking (v2.24)
+
+### Features & Fixes
+
+1. **Deferred Feature Selection Activation**
+   - Removed automatic activation of select feature mode when a region is created
+   - Now activates select feature mode only when user zooms into a region
+   - Finds first incomplete feature (missing frequency/time data) and activates selection for it
+   - Better UX: users can create regions without immediately entering selection mode
+
+2. **Volcano Data Fetch Prevention**
+   - Added tracking of which volcano currently has data loaded (`volcanoWithData` state)
+   - Prevents re-fetching data for the same volcano after switching away and back
+   - Fetch button is disabled when switching back to a volcano that already has data
+   - Tooltip explains: "This volcano already has data loaded. Select a different volcano to fetch new data."
+   - Changing other parameters (station, duration, etc.) won't re-enable fetch if on volcano with data
+
+### Key Changes
+- `js/region-tracker.js`:
+  - Removed auto-activation of `startFrequencySelection()` in `createRegionFromSelectionTimes()`
+  - Added activation logic in `zoomToRegion()` to find and activate first incomplete feature
+- `js/audio-state.js`:
+  - Added `volcanoWithData` state variable and setter
+- `js/main.js`:
+  - Set `volcanoWithData` after successful data fetch
+  - Updated volcano change handler to disable fetch button when switching back to volcano with data
+- `js/ui-controls.js`:
+  - Updated `enableFetchButton()` to check if current volcano has data and keep disabled if so
+
+### Benefits
+- ✅ Cleaner workflow: create regions without immediate selection mode
+- ✅ Prevents accidental re-fetching of same volcano data
+- ✅ Better user guidance with tooltip messages
+- ✅ More intuitive UX flow
+
+### Version
+v2.24 - Commit: "v2.24 Feat: Defer feature selection until zoom, prevent re-fetching same volcano data"
+
+---
+
 ## 🕐 X-Axis Tick Improvements & Cache Fix (v2.24)
 
 ### Features & Fixes

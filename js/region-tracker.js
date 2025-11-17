@@ -408,11 +408,6 @@ function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSecon
     // Set as active region (this will deselect old regions and select the new one)
     setActiveRegion(newRegionIndex);
     
-    // Auto-enter selection mode for the first feature
-    setTimeout(() => {
-        startFrequencySelection(newRegionIndex, 0);
-    }, 100);
-    
     // Hide the add region button
     hideAddRegionButton();
     
@@ -2116,6 +2111,18 @@ export function zoomToRegion(regionIndex) {
     console.log(`🔍 Zoomed to ${zoomState.getZoomLevel().toFixed(1)}x - the introspective lens is open! 🦋`);
     console.log(`🔄 ZOOM MODE TOGGLE: full view → temple mode (region ${regionIndex + 1})`);
     console.log(`🏛️ Entering the temple - sacred walls at ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
+    
+    // Auto-enter selection mode for the first incomplete feature when zooming in
+    // Find the first feature that needs selection (missing frequency or time data)
+    const firstIncompleteFeatureIndex = region.features.findIndex(feature => 
+        !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
+    );
+    
+    if (firstIncompleteFeatureIndex !== -1) {
+        setTimeout(() => {
+            startFrequencySelection(regionIndex, firstIncompleteFeatureIndex);
+        }, 100);
+    }
 }
 
 /**

@@ -117,9 +117,21 @@ export function updateStationList() {
 
 export function enableFetchButton() {
     const fetchBtn = document.getElementById('startBtn');
-    fetchBtn.disabled = false;
-    fetchBtn.classList.remove('streaming');
-    console.log('✅ Fetch button re-enabled due to parameter change');
+    const volcanoSelect = document.getElementById('volcano');
+    const currentVolcano = volcanoSelect ? volcanoSelect.value : null;
+    const volcanoWithData = State.volcanoWithData;
+    
+    // If we're on the volcano that already has data, keep fetch button disabled
+    if (volcanoWithData && currentVolcano === volcanoWithData) {
+        fetchBtn.disabled = true;
+        fetchBtn.title = 'This volcano already has data loaded. Select a different volcano to fetch new data.';
+        console.log(`🚫 Fetch button remains disabled - ${currentVolcano} already has data`);
+    } else {
+        fetchBtn.disabled = false;
+        fetchBtn.classList.remove('streaming');
+        fetchBtn.title = '';
+        console.log('✅ Fetch button re-enabled due to parameter change');
+    }
 }
 
 export function changeBaseSampleRate() {

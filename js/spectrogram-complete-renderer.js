@@ -811,8 +811,11 @@ export function drawInterpolatedSpectrogram() {
     }
     
     // Draw regions and selection on top
-    drawSpectrogramRegionHighlights(ctx, width, height);
-    drawSpectrogramSelection(ctx, width, height);
+    // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
+    // if (!zoomState.isInRegion()) {
+    //     drawSpectrogramRegionHighlights(ctx, width, height);
+    //     drawSpectrogramSelection(ctx, width, height);
+    // }
 }
 
 /**
@@ -1032,8 +1035,11 @@ export function updateSpectrogramViewport(playbackRate) {
     }
     
     // Draw regions and selection on top
-    drawSpectrogramRegionHighlights(ctx, width, height);
-    drawSpectrogramSelection(ctx, width, height);
+    // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
+    // if (!zoomState.isInRegion()) {
+    //     drawSpectrogramRegionHighlights(ctx, width, height);
+    //     drawSpectrogramSelection(ctx, width, height);
+    // }
 }
 
 /**
