@@ -817,7 +817,10 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 });
                                 
                                 // Remove this handler
-                                State.workletNode.port.removeEventListener('message', bufferStatusHandler);
+                                if (State.workletNode && State.workletBufferStatusHandler) {
+                                    State.workletNode.port.removeEventListener('message', State.workletBufferStatusHandler);
+                                    State.setWorkletBufferStatusHandler(null);
+                                }
                                 
                                 // 🔥 FIX: Clear processedChunks array to release Float32Array references
                                 // This prevents the worker closure from retaining old audio data
@@ -960,6 +963,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                         }
                     };
                     
+                    // 🔥 FIX: Store handler reference so it can be removed during cleanup
+                    State.setWorkletBufferStatusHandler(bufferStatusHandler);
                     State.workletNode.port.addEventListener('message', bufferStatusHandler);
                     
                     // Request initial buffer status
@@ -1459,7 +1464,10 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
                 });
                 
                 // Remove this handler
-                State.workletNode.port.removeEventListener('message', railwayBufferStatusHandler);
+                if (State.workletNode && State.workletRailwayBufferStatusHandler) {
+                    State.workletNode.port.removeEventListener('message', State.workletRailwayBufferStatusHandler);
+                    State.setWorkletRailwayBufferStatusHandler(null);
+                }
                 
                 // Set playback speed
                 updatePlaybackSpeed();
@@ -1503,6 +1511,8 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
         }
     };
     
+    // 🔥 FIX: Store handler reference so it can be removed during cleanup
+    State.setWorkletRailwayBufferStatusHandler(railwayBufferStatusHandler);
     State.workletNode.port.addEventListener('message', railwayBufferStatusHandler);
     
     // Request initial buffer status

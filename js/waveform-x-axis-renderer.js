@@ -910,20 +910,24 @@ export function stopZoomTransition() {
         if (wasZoomingToRegion && zoomState.isInRegion()) {
             // Schedule viewport update for next frame to ensure it happens after
             // any pending promise resolutions, but still displays the final canvas
-            requestAnimationFrame(() => {
-                import('./spectrogram-complete-renderer.js').then(module => {
-                    // Check if infinite canvas exists (high-res render is ready)
-                    // If it exists, update the viewport to display it
-                    const playbackRate = State.currentPlaybackRate || 1.0;
-                    if (module.updateSpectrogramViewport) {
-                        // This will only update if infiniteSpectrogramCanvas exists
-                        // (i.e., if the high-res render has completed)
-                        module.updateSpectrogramViewport(playbackRate);
-                    }
-                }).catch(err => {
-                    console.warn('⚠️ Could not update spectrogram viewport after emergency stop:', err);
+            // 🔥 FIX: Store RAF ID to prevent multiple callbacks if stopZoomTransition is called repeatedly
+            if (zoomTransitionRAF === null) {
+                zoomTransitionRAF = requestAnimationFrame(() => {
+                    zoomTransitionRAF = null; // Clear ID immediately to allow GC
+                    import('./spectrogram-complete-renderer.js').then(module => {
+                        // Check if infinite canvas exists (high-res render is ready)
+                        // If it exists, update the viewport to display it
+                        const playbackRate = State.currentPlaybackRate || 1.0;
+                        if (module.updateSpectrogramViewport) {
+                            // This will only update if infiniteSpectrogramCanvas exists
+                            // (i.e., if the high-res render has completed)
+                            module.updateSpectrogramViewport(playbackRate);
+                        }
+                    }).catch(err => {
+                        console.warn('⚠️ Could not update spectrogram viewport after emergency stop:', err);
+                    });
                 });
-            });
+            }
         }
     } else {
         // Transition wasn't in progress, just clean up

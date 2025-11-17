@@ -1062,6 +1062,11 @@ export function changeWaveformFilter() {
         }
         
         const normalized = normalize(processedData);
+        // 🔥 FIX: Clear old displayWaveformData before setting new one to prevent memory leak
+        // The old Float32Array might be retained if we don't explicitly clear it
+        if (window.displayWaveformData) {
+            window.displayWaveformData = null;
+        }
         window.displayWaveformData = normalized;
         State.setCompleteSamplesArray(normalized);
         

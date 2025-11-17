@@ -20,7 +20,7 @@ import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
-import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth } from './waveform-x-axis-renderer.js';
+import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
@@ -264,17 +264,16 @@ export async function initAudioWorklet() {
                 
                 for (let i = targetSample; i < totalSamples; i += chunkSize) {
                     const end = Math.min(i + chunkSize, totalSamples);
-                    // 🔥 OPTIMIZED: Use slice directly - worklet copies data into its own buffer anyway
-                    // postMessage also does structured clone, so no need to copy here
-                    const chunk = completeSamplesArray.slice(i, end);
+                    // 🔥 FIX: Copy slice to new ArrayBuffer to prevent retaining reference to completeSamplesArray's buffer
+                    // Slices share the same ArrayBuffer, which prevents GC of the original buffer
+                    const slice = completeSamplesArray.slice(i, end);
+                    const chunk = new Float32Array(slice); // Copy to new ArrayBuffer
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
                         data: chunk,
                         autoResume: shouldAutoResume  // Tell worklet to auto-resume after buffering
                     });
-                    
-                    // No need to clear - postMessage transfers/copies, worklet copies into its buffer
                 }
                 
                 console.log(`📤 [SEEK-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}, autoResume=${shouldAutoResume}`);
@@ -310,17 +309,16 @@ export async function initAudioWorklet() {
                 
                 for (let i = targetSample; i < totalSamples; i += chunkSize) {
                     const end = Math.min(i + chunkSize, totalSamples);
-                    // 🔥 OPTIMIZED: Use slice directly - worklet copies data into its own buffer anyway
-                    // postMessage also does structured clone, so no need to copy here
-                    const chunk = completeSamplesArray.slice(i, end);
+                    // 🔥 FIX: Copy slice to new ArrayBuffer to prevent retaining reference to completeSamplesArray's buffer
+                    // Slices share the same ArrayBuffer, which prevents GC of the original buffer
+                    const slice = completeSamplesArray.slice(i, end);
+                    const chunk = new Float32Array(slice); // Copy to new ArrayBuffer
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
                         data: chunk,
                         autoResume: true  // Auto-resume when buffer is ready
                     });
-                    
-                    // No need to clear - postMessage transfers/copies, worklet copies into its buffer
                 }
                 
                 // console.log(`🔄 [LOOP-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from ${newPositionSeconds.toFixed(2)}s, will auto-resume`);
@@ -708,9 +706,20 @@ export async function startStreaming(event) {
             // 🔥 FIX: Cancel RAF loops FIRST to prevent new detached callbacks
             cancelAllRAFLoops();
             
-            // 🔥 FIX: Clear worklet message handler FIRST before clearing State arrays
-            // This prevents the closure from retaining references to old Float32Arrays
+            // 🔥 FIX: Clear worklet message handlers FIRST before clearing State arrays
+            // This prevents the closures from retaining references to old Float32Arrays
             State.workletNode.port.onmessage = null;
+            
+            // 🔥 FIX: Remove addEventListener handlers that might retain ArrayBuffer references
+            // These handlers have closures that capture processedChunks and other variables
+            if (State.workletBufferStatusHandler) {
+                State.workletNode.port.removeEventListener('message', State.workletBufferStatusHandler);
+                State.setWorkletBufferStatusHandler(null);
+            }
+            if (State.workletRailwayBufferStatusHandler) {
+                State.workletNode.port.removeEventListener('message', State.workletRailwayBufferStatusHandler);
+                State.setWorkletRailwayBufferStatusHandler(null);
+            }
             
             // Worklet handles fades internally now, just disconnect
             State.workletNode.disconnect();
@@ -1356,34 +1365,60 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // 🔥 FIX: Cancel all RAF callbacks on page unload to prevent detached document leaks
     // This ensures RAF callbacks scheduled before page unload are cancelled
-    // Import modules at module level so they're available synchronously during unload
-    import('./audio-player.js').then(audioPlayerModule => {
-        import('./spectrogram-axis-renderer.js').then(axisModule => {
-            import('./waveform-x-axis-renderer.js').then(xAxisModule => {
+    // 🔥 FIX: Use static imports instead of dynamic imports to prevent Context leaks
+    // Dynamic imports create new Context instances each time, causing massive memory leaks
+    // Since waveform-x-axis-renderer.js is already imported statically at the top, use it directly
+    if (!window._volcanoAudioCleanupHandlers) {
+        window._volcanoAudioCleanupHandlers = {};
+        
+        // Import only modules that aren't already statically imported
+        import('./audio-player.js').then(audioPlayerModule => {
+            import('./spectrogram-axis-renderer.js').then(axisModule => {
+                // 🔥 FIX: Use statically imported functions instead of dynamic import
+                // This prevents creating new Context instances (147k+ Context leak!)
                 const cleanupOnUnload = () => {
                     // Call synchronously - modules are already loaded
                     audioPlayerModule.cancelAllRAFLoops();
                     axisModule.cancelScaleTransitionRAF();
-                    xAxisModule.cancelZoomTransitionRAF();
+                    // Use statically imported function instead of dynamic import
+                    cancelZoomTransitionRAF();
                 };
+                window._volcanoAudioCleanupHandlers.cleanupOnUnload = cleanupOnUnload;
             
-                // 🆘 EMERGENCY: Expose stop function to window for console access
-                window.stopZoomTransition = () => xAxisModule.stopZoomTransition();
+                // 🔥 FIX: Only set window.stopZoomTransition once to prevent function accumulation
+                // Use statically imported function instead of dynamic import
+                if (!window.stopZoomTransition) {
+                    window.stopZoomTransition = stopZoomTransition;
+                }
             
+                // 🔥 FIX: Remove old listeners before adding new ones to prevent accumulation
+                // Use stored reference so removeEventListener can match
+                if (window._volcanoAudioCleanupHandlers.beforeunload) {
+                    window.removeEventListener('beforeunload', window._volcanoAudioCleanupHandlers.beforeunload);
+                }
+                if (window._volcanoAudioCleanupHandlers.pagehide) {
+                    window.removeEventListener('pagehide', window._volcanoAudioCleanupHandlers.pagehide);
+                }
                 window.addEventListener('beforeunload', cleanupOnUnload);
+                window._volcanoAudioCleanupHandlers.beforeunload = cleanupOnUnload;
                 
                 // Also handle pagehide (more reliable than beforeunload in some browsers)
                 window.addEventListener('pagehide', cleanupOnUnload);
+                window._volcanoAudioCleanupHandlers.pagehide = cleanupOnUnload;
                 
-                // 🔥 FIX: Also handle visibility change - if page becomes hidden, cancel RAF
-                // This catches cases where the page is backgrounded or navigated away
-                document.addEventListener('visibilitychange', () => {
+                // 🔥 FIX: Store visibility change handler reference for cleanup
+                const visibilityChangeHandler = () => {
                     if (document.hidden) {
                         cleanupOnUnload();
                     }
-                });
+                };
+                if (window._volcanoAudioCleanupHandlers.visibilitychange) {
+                    document.removeEventListener('visibilitychange', window._volcanoAudioCleanupHandlers.visibilitychange);
+                }
+                document.addEventListener('visibilitychange', visibilityChangeHandler);
+                window._volcanoAudioCleanupHandlers.visibilitychange = visibilityChangeHandler;
             });
         });
-    });
+    }
 });
 

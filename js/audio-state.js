@@ -60,6 +60,10 @@ export let frequencyScale = 'sqrt'; // 'linear', 'sqrt', or 'logarithmic'
 export let playbackIndicatorRAF = null;
 export let spectrogramRAF = null;
 
+// Worklet event listeners (for cleanup to prevent memory leaks)
+export let workletBufferStatusHandler = null;
+export let workletRailwayBufferStatusHandler = null;
+
 // Waveform rendering
 export let cachedWaveformCanvas = null;
 export let cachedFullWaveformCanvas = null; // Full view cached before zooming in (like spectrogram's elastic friend)
@@ -103,7 +107,14 @@ export function setPausedPosition(value) { pausedPosition = value; }
 export function setPlaybackDurationSeconds(value) { playbackDurationSeconds = value; }
 export function setAvailableStations(value) { availableStations = value; }
 export function setAllReceivedData(value) { allReceivedData = value; }
-export function setCompleteSamplesArray(value) { completeSamplesArray = value; }
+export function setCompleteSamplesArray(value) { 
+    // 🔥 FIX: Explicitly null old value before setting new one to help GC
+    // This ensures the old Float32Array reference is broken before assignment
+    if (completeSamplesArray !== value) {
+        completeSamplesArray = null;
+    }
+    completeSamplesArray = value; 
+}
 export function setCurrentMetadata(value) { currentMetadata = value; }
 export function setTotalAudioDuration(value) { totalAudioDuration = value; }
 export function setCurrentAudioPosition(value) { currentAudioPosition = value; }
@@ -119,6 +130,8 @@ export function setFrequencyScale(value) { frequencyScale = value; }
 export function setVolcanoWithData(value) { volcanoWithData = value; }
 export function setPlaybackIndicatorRAF(value) { playbackIndicatorRAF = value; }
 export function setSpectrogramRAF(value) { spectrogramRAF = value; }
+export function setWorkletBufferStatusHandler(value) { workletBufferStatusHandler = value; }
+export function setWorkletRailwayBufferStatusHandler(value) { workletRailwayBufferStatusHandler = value; }
 export function setCachedWaveformCanvas(value) { cachedWaveformCanvas = value; }
 export function setCachedFullWaveformCanvas(value) { cachedFullWaveformCanvas = value; }
 export function setWaveformMinMaxData(value) { waveformMinMaxData = value; }

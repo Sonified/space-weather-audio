@@ -64,3 +64,49 @@ v2.32 - Commit: "v2.32 Feat: Tutorial system with 'Click me!' overlay, waveform 
 
 ---
 
+## 🧹 Critical Memory Leak Fixes (v2.33)
+
+### Problem Discovered
+Heap snapshot analysis revealed massive memory leaks:
+- **2081 ArrayBuffer instances** holding **1.9GB** of memory
+- **1,116,143 Function instances** holding **1.7GB** of memory  
+- **147,758 Context instances** holding **1.6GB** of memory
+- Total leak: **~5.2GB** preventing garbage collection
+
+### Root Causes & Fixes
+
+1. **ArrayBuffer Leaks**
+   - **Problem**: Event listeners (`addEventListener`) on worklet port weren't being removed, retaining closures that captured `processedChunks` with Float32Array references
+   - **Problem**: Float32Array slices created from `completeSamplesArray` shared the same ArrayBuffer, preventing GC
+   - **Fix**: Store handler references in State and remove them during cleanup
+   - **Fix**: Copy slices to new ArrayBuffers before sending to worklet
+   - **Fix**: Explicitly null old values before reassignment in setters
+
+2. **Function Leaks**
+   - **Problem**: Event listeners were being added multiple times without cleanup, creating duplicate closures
+   - **Problem**: `window.stopZoomTransition` was creating new closures each time
+   - **Problem**: RAF callbacks in `stopZoomTransition()` weren't being tracked
+   - **Fix**: Guard to ensure event listeners are only added once
+   - **Fix**: Store handler references for proper cleanup
+   - **Fix**: Track RAF IDs to prevent duplicate callbacks
+
+3. **Context Leaks**
+   - **Problem**: `waveform-x-axis-renderer.js` was imported both statically and dynamically, creating duplicate Context instances
+   - **Fix**: Removed dynamic import, use static imports directly
+
+### Files Changed
+- `js/audio-state.js` - Added handler state tracking, improved setter to null old values
+- `js/data-fetcher.js` - Store and remove event listener handlers properly
+- `js/main.js` - Fixed event listener setup, use static imports instead of dynamic
+- `js/waveform-x-axis-renderer.js` - Track RAF IDs to prevent duplicates
+- `js/waveform-renderer.js` - Clear old displayWaveformData before reassignment
+
+### Memory Impact
+**Before**: ~5.2GB memory leak, growing indefinitely  
+**After**: Proper cleanup, memory should remain stable
+
+### Version
+v2.33 - Commit: "v2.33 Fix: Critical memory leak fixes - ArrayBuffer, Function, and Context leaks"
+
+---
+
