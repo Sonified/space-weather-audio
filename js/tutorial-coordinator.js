@@ -19,7 +19,8 @@ import {
     markPulseShown, 
     showTutorialOverlay, 
     setTutorialPhase, 
-    clearTutorialPhase 
+    clearTutorialPhase,
+    disableFrequencyScaleDropdown
 } from './tutorial.js';
 
 import { 
@@ -184,6 +185,76 @@ function userActionPromise(setupFn, phase) {
  * LEGO BLOCKS - Each section is a clean async function
  * ═══════════════════════════════════════════════════════════
  */
+
+/**
+ * Wait for user to fetch data (detects when data fetching completes)
+ */
+function waitForDataFetch() {
+    return new Promise((resolve) => {
+        // Check if data is already loaded
+        if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+            resolve();
+            return;
+        }
+        
+        // Set up a check interval to watch for data
+        const checkInterval = 100; // Check every 100ms
+        let timeoutId = null;
+        
+        const checkForData = () => {
+            if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+                // Data is loaded!
+                if (timeoutId !== null) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
+                resolve();
+            } else {
+                // Keep checking
+                timeoutId = setTimeout(checkForData, checkInterval);
+            }
+        };
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_data_fetch', [timeoutId], () => {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            resolve();
+        });
+        
+        // Start checking
+        checkForData();
+    });
+}
+
+/**
+ * Initial tutorial section - guides user to select volcano and fetch data
+ */
+async function showInitialFetchTutorial() {
+    // Frequency scale dropdown is already disabled by runInitialTutorial()
+    
+    // Add glow to volcano selector
+    const volcanoSelect = document.getElementById('volcano');
+    if (volcanoSelect) {
+        volcanoSelect.classList.add('pulse-glow');
+    }
+    
+    // Show message guiding user to select volcano and fetch data
+    setStatusTextAndTrack('Select a volcano and click Fetch Data.', 'status info');
+    
+    // Wait for user to fetch data
+    await waitForDataFetch();
+    
+    // Remove glow from volcano selector
+    if (volcanoSelect) {
+        volcanoSelect.classList.remove('pulse-glow');
+    }
+    
+    // Clear tutorial phase
+    clearTutorialPhase();
+}
 
 async function showWellDoneMessage() {
     setStatusTextAndTrack('Success!', 'status success');
@@ -414,8 +485,8 @@ async function runSelectionTutorial() {
     // Wait for user to click waveform first
     await clickPromise;
     
-    // Wait 6 seconds after waveform click, then show drag message
-    await skippableWait(6000);
+    // Wait 5 seconds after waveform click, then show drag message
+    await skippableWait(5000);
     
     setStatusTextAndTrack('Now click on the waveform and DRAG and RELEASE to make a selection.', 'status info');
     
@@ -477,6 +548,9 @@ async function runRegionIntroduction() {
  */
 export async function runMainTutorial() {
     try {
+        // Frequency scale dropdown is already disabled by runInitialTutorial()
+        // (which runs before this function)
+        
         await showWellDoneMessage();           // 2s
         await showVolcanoMessage();            // 5s  
         await showStationMetadataMessage();    // 7s
@@ -493,6 +567,30 @@ export async function runMainTutorial() {
         if (window._onSpeedSliderTutorialComplete) {
             window._onSpeedSliderTutorialComplete = null;
         }
+    }
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════
+ * INITIAL TUTORIAL - Starts on page load, guides user to fetch data
+ * ═══════════════════════════════════════════════════════════
+ */
+export async function runInitialTutorial() {
+    try {
+        // Disable frequency scale dropdown IMMEDIATELY at the very start
+        disableFrequencyScaleDropdown();
+        
+        // Show initial fetch tutorial (always, even if data is already loaded)
+        await showInitialFetchTutorial();
+        
+        // After data is fetched, continue with main tutorial
+        // Small delay to let the UI settle after data loads
+        await skippableWait(200);
+        
+        // Run the main tutorial sequence
+        await runMainTutorial();
+    } catch (error) {
+        console.error('Initial tutorial error:', error);
     }
 }
 

@@ -586,3 +586,34 @@ export function enableWaveformClicks() {
     }
 }
 
+/**
+ * Disable frequency scale dropdown
+ */
+export function disableFrequencyScaleDropdown() {
+    const frequencyScaleSelect = document.getElementById('frequencyScale');
+    if (frequencyScaleSelect) {
+        frequencyScaleSelect.disabled = true;
+        frequencyScaleSelect.setAttribute('disabled', 'disabled');
+        frequencyScaleSelect.style.opacity = '0.5';
+        frequencyScaleSelect.style.cursor = 'not-allowed';
+        frequencyScaleSelect.style.pointerEvents = 'none';
+        console.log('🔒 Frequency scale dropdown disabled');
+    } else {
+        console.warn('⚠️ Could not find frequencyScale element to disable');
+    }
+}
+
+/**
+ * Enable frequency scale dropdown
+ */
+export function enableFrequencyScaleDropdown() {
+    const frequencyScaleSelect = document.getElementById('frequencyScale');
+    if (frequencyScaleSelect) {
+        frequencyScaleSelect.disabled = false;
+        frequencyScaleSelect.removeAttribute('disabled');
+        frequencyScaleSelect.style.opacity = '1';
+        frequencyScaleSelect.style.cursor = 'pointer';
+        frequencyScaleSelect.style.pointerEvents = 'auto';
+    }
+}
+

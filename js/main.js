@@ -25,7 +25,7 @@ import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionB
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
-import { setStatusText, appendStatusText, initTutorial } from './tutorial.js';
+import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown } from './tutorial.js';
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 // See data-fetcher.js for centralized flags documentation
@@ -918,6 +918,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.38 - Tutorial Starts Before Fetch Data Message');
+    console.log('🎓 [0ms] v2.38 Feat: Tutorial now starts immediately on page load, before "Select a volcano and click Fetch Data" message');
+    console.log('🎓 [0ms] v2.38 Feat: Frequency scale dropdown disabled right at the start of tutorial before anything else');
+    console.log('🎓 [0ms] v2.38 Feat: Fetching data is now part of the tutorial flow - tutorial guides user through entire process');
     console.log('🌋 [0ms] volcano-audio v2.37 - Memory Leak Fixes');
     console.log('🧹 [0ms] v2.37 Fix: Memory leak fixes - ResizeObserver cleanup, event listener accumulation prevention, setTimeout chain cleanup');
     console.log('🧹 [0ms] v2.37 Fix: ResizeObserver in tutorial overlay now properly disconnected to prevent memory leaks');
@@ -998,30 +1002,17 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Load saved volcano selection (or use default)
     loadSavedVolcano();
     
-    // Add pulsing glow to volcano selector initially
-    const volcanoSelect = document.getElementById('volcano');
-    if (volcanoSelect) {
-        volcanoSelect.classList.add('pulse-glow');
-    }
-    
-    // Animate initial status message with typing effect (only if not already dismissed)
-    setTimeout(() => {
+    // Start the tutorial immediately on page load
+    // The tutorial will guide the user to select a volcano and fetch data
+    // If data is already loaded, it will skip to the main tutorial
+    setTimeout(async () => {
         if (!window._initialMessageDismissed) {
-            setStatusText('<- Select a volcano and click Fetch Data.', 'status info');
+            const { runInitialTutorial } = await import('./tutorial.js');
+            runInitialTutorial().catch(err => {
+                console.error('Tutorial error:', err);
+            });
         }
-    }, 300); // Small delay to let page settle
-    
-    // If user hasn't fetched data in 10 seconds, add encouragement
-    let encouragementTimeout = setTimeout(() => {
-        // Check if data has been fetched (State will have data if fetched)
-        // Also check if initial message has been dismissed
-        if (!State.completeSamplesArray && !State.isFetchingNewData && !window._initialMessageDismissed) {
-            appendStatusText('You got this!', 20, 10);
-        }
-    }, 10000); // 10 seconds
-    
-    // Store timeout so we can clear it if data is fetched
-    window._encouragementTimeout = encouragementTimeout;
+    }, 100); // Small delay to let page settle
     
     // Add event listeners
     document.getElementById('volcano').addEventListener('change', (e) => {

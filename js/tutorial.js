@@ -25,7 +25,9 @@ export {
     disableWaveformClicks,
     enableWaveformClicks,
     disableRegionButtons,
-    enableRegionButtons
+    enableRegionButtons,
+    disableFrequencyScaleDropdown,
+    enableFrequencyScaleDropdown
 } from './tutorial-effects.js';
 
 // Re-export all sequences
@@ -45,4 +47,4 @@ export {
 } from './tutorial-state.js';
 
 // Re-export the coordinator
-export { runMainTutorial } from './tutorial-coordinator.js';
+export { runMainTutorial, runInitialTutorial } from './tutorial-coordinator.js';

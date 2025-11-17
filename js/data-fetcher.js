@@ -12,7 +12,6 @@ import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCan
 import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks } from './tutorial.js';
-import { runMainTutorial } from './tutorial-coordinator.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -932,19 +931,14 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 // Disable waveform clicks immediately - will be enabled when tutorial appears
                                 disableWaveformClicks();
                                 
-                                // Tutorial flow: Well done → Spectrogram explanation → Click me tutorial
-                                // Clear any previous tutorial phase (handled by coordinator)
+                                // Tutorial is now managed by runInitialTutorial() which waits for data to be fetched
+                                // No need to call runMainTutorial() here - it will be called automatically
                                 
                                 setTimeout(() => {
                                     const statusEl = document.getElementById('status');
                                     if (statusEl) {
                                         statusEl.classList.remove('loading');
                                         statusEl.className = 'status success';
-                                        
-                                        // Run the beautiful linear tutorial sequence
-                                        runMainTutorial().catch(err => {
-                                            console.error('Tutorial error:', err);
-                                        });
                                     }
                                 }, 200);
                                 
@@ -1542,17 +1536,13 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
                 // Disable waveform clicks immediately - will be enabled when tutorial appears
                 disableWaveformClicks();
                 
-                // Tutorial flow: Well done → Spectrogram explanation → Click me tutorial
+                // Tutorial is now managed by runInitialTutorial() which waits for data to be fetched
+                // No need to call runMainTutorial() here - it will be called automatically
                 setTimeout(() => {
                     const statusEl = document.getElementById('status');
                     if (statusEl) {
                         statusEl.classList.remove('loading');
                         statusEl.className = 'status success';
-                        
-                        // Run the beautiful linear tutorial sequence
-                        runMainTutorial().catch(err => {
-                            console.error('Tutorial error:', err);
-                        });
                     }
                 }, 200);
             } else {
