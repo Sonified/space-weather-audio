@@ -945,8 +945,8 @@ export function getSpectrogramViewport(playbackRate) {
  * Update spectrogram viewport with GPU-accelerated stretching
  */
 export function updateSpectrogramViewport(playbackRate) {
-    console.log(`🎨 [spectrogram-complete-renderer.js] updateSpectrogramViewport CALLED: playbackRate=${playbackRate.toFixed(2)}, infiniteCanvas=${!!infiniteSpectrogramCanvas}`);
-    console.trace('📍 Call stack:'); // This shows us WHO called this function
+    // console.log(`🎨 [spectrogram-complete-renderer.js] updateSpectrogramViewport CALLED: playbackRate=${playbackRate.toFixed(2)}, infiniteCanvas=${!!infiniteSpectrogramCanvas}`);
+    // console.trace('📍 Call stack:'); // This shows us WHO called this function
     
     if (!infiniteSpectrogramCanvas) {
         console.log(`⚠️ updateSpectrogramViewport: No infinite canvas! playbackRate=${playbackRate}`);

@@ -23,6 +23,19 @@ let isZoomingToRegion = false; // Track if we're zooming TO a region (true) or F
 let maxCanvasWidth = null;
 
 /**
+ * Initialize maxCanvasWidth baseline on page load
+ * Sets baseline to 1200px or actual canvas width if larger
+ */
+export function initializeMaxCanvasWidth() {
+    const waveformCanvas = document.getElementById('waveform');
+    if (!waveformCanvas) return;
+    
+    const currentWidth = waveformCanvas.offsetWidth;
+    // Set baseline to 1200px minimum, or actual width if larger
+    maxCanvasWidth = Math.max(1200, currentWidth);
+}
+
+/**
  * Draw time axis for waveform
  * Shows 2-hour ticks with date at left, handles day crossings
  */
@@ -127,7 +140,9 @@ export function drawWaveformXAxis() {
     // Calculate ticks based on region size and canvas width
     // If canvas is <= 1/2 of maximum width, use 4-hour ticks starting at midnight
     // Else if canvas is <= 3/4 of maximum width, use 2-hour ticks starting at midnight
-    // Otherwise, if region is less than 2 hours, use 5-minute intervals; otherwise use hourly intervals
+    // Otherwise, if region is less than 2 hours, use 5-minute intervals
+    // Else if region is less than 6 hours, use 30-minute intervals
+    // Otherwise use hourly intervals
     const timeSpanHours = actualTimeSpanSeconds / 3600;
     let ticks;
     
@@ -144,8 +159,11 @@ export function drawWaveformXAxis() {
     } else if (timeSpanHours < 2) {
         // Region is less than 2 hours - use 5-minute ticks
         ticks = calculateFiveMinuteTicks(startTimeUTC, endTimeUTC);
+    } else if (timeSpanHours < 6) {
+        // Region is less than 6 hours - use 30-minute ticks
+        ticks = calculateThirtyMinuteTicks(startTimeUTC, endTimeUTC);
     } else {
-        // Region is 2+ hours - use hourly ticks
+        // Region is 6+ hours - use hourly ticks
         ticks = calculateHourlyTicks(startTimeUTC, endTimeUTC);
     }
     
@@ -672,6 +690,89 @@ function calculateFiveMinuteTicks(startUTC, endUTC) {
         
         // Move to next 5-minute block (in local time)
         currentTickLocal.setMinutes(currentTickLocal.getMinutes() + 5);
+    }
+    
+    return ticks;
+}
+
+/**
+ * Calculate 30-minute tick positions
+ * Quantizes at 30-minute boundaries (00:00, 00:30, 01:00, 01:30, ..., 23:30)
+ * Used when region is less than 6 hours but 2+ hours
+ */
+function calculateThirtyMinuteTicks(startUTC, endUTC) {
+    const ticks = [];
+    
+    // Convert start time to local time to find boundaries
+    const startLocal = new Date(startUTC);
+    
+    // Get local time components
+    const startYear = startLocal.getFullYear();
+    const startMonth = startLocal.getMonth();
+    const startDay = startLocal.getDate();
+    const startHours = startLocal.getHours();
+    const startMinutes = startLocal.getMinutes();
+    
+    // Find first 30-minute block (quantized at 30-minute boundaries)
+    // 30-minute blocks: 00:00, 00:30, 01:00, 01:30, ..., 23:30 (local time)
+    let firstTickLocal = new Date(startYear, startMonth, startDay, startHours, 0, 0, 0);
+    
+    // Round down to nearest 30-minute boundary
+    const roundedMinutes = Math.floor(startMinutes / 30) * 30;
+    firstTickLocal.setMinutes(roundedMinutes, 0, 0);
+    
+    // If we're not starting at a 30-minute boundary, find the first one within the region
+    if (firstTickLocal < startLocal) {
+        // Move forward to next 30-minute block
+        firstTickLocal.setMinutes(firstTickLocal.getMinutes() + 30);
+    }
+    
+    // Generate ticks every 30 minutes until we exceed end time
+    let currentTickLocal = new Date(firstTickLocal);
+    let previousTickDate = null;
+    
+    // Convert end time to local for comparison
+    const endLocal = new Date(endUTC);
+    const endLocalTime = endLocal.getTime();
+    
+    while (currentTickLocal.getTime() <= endLocalTime) {
+        // Get local date string for day crossing detection
+        const currentTickDate = currentTickLocal.toDateString();
+        const currentHour = currentTickLocal.getHours();
+        const currentMinutes = currentTickLocal.getMinutes();
+        
+        // Mark as day crossing if:
+        // 1. Previous tick was on a different date, OR
+        // 2. This tick is at midnight (00:00) - always show date at midnight
+        const isDayCrossing = (previousTickDate !== null && previousTickDate !== currentTickDate) || 
+                              (currentHour === 0 && currentMinutes === 0);
+        
+        // Convert local time to UTC for positioning
+        const localYear = currentTickLocal.getFullYear();
+        const localMonth = currentTickLocal.getMonth();
+        const localDay = currentTickLocal.getDate();
+        const localHour = currentTickLocal.getHours();
+        const localMinute = currentTickLocal.getMinutes();
+        
+        // Create date from local components (browser interprets as local time)
+        const tickDateLocal = new Date(localYear, localMonth, localDay, localHour, localMinute, 0, 0);
+        
+        // getTime() gives UTC milliseconds - use for positioning
+        const tickUTCForPosition = new Date(tickDateLocal.getTime());
+        
+        // Check if this UTC time falls within our data range
+        if (tickUTCForPosition.getTime() >= startUTC.getTime() && tickUTCForPosition.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: tickUTCForPosition, // UTC time for positioning
+                localTime: new Date(currentTickLocal), // Local time for display
+                isDayCrossing: isDayCrossing
+            });
+        }
+        
+        previousTickDate = currentTickDate;
+        
+        // Move to next 30-minute block (in local time)
+        currentTickLocal.setMinutes(currentTickLocal.getMinutes() + 30);
     }
     
     return ticks;

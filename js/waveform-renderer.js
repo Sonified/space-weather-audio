@@ -335,22 +335,6 @@ export function drawWaveformWithSelection() {
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     const height = canvas.height;
-    
-    // 🔥 FIX: If cached canvas size doesn't match current canvas, regenerate NOW!
-    // This prevents stretching/squishing when canvas resizes but cache hasn't updated yet
-    if (State.cachedWaveformCanvas && 
-        (State.cachedWaveformCanvas.width !== width || 
-         State.cachedWaveformCanvas.height !== height)) {
-        console.log(`🔧 Cache size mismatch! Cached: ${State.cachedWaveformCanvas.width}×${State.cachedWaveformCanvas.height}, Current: ${width}×${height} - regenerating...`);
-        
-        // Regenerate cached canvas at correct size immediately
-        if (State.waveformMinMaxData) {
-            drawWaveformFromMinMax();  // This updates State.cachedWaveformCanvas to match canvas size
-        } else {
-            // If no min/max data yet, clear cache to avoid drawing stretched canvas
-            State.cachedWaveformCanvas = null;
-        }
-    }
 
     if (!State.cachedWaveformCanvas) {
         // No cached canvas - draw playhead only if needed
@@ -506,7 +490,7 @@ export function setupWaveformInteraction() {
         }
         
         if (State.scrubTargetPosition !== null) {
-            console.log(`🖱️ Mouse released - seeking to ${State.scrubTargetPosition.toFixed(2)}s`);
+            // console.log(`🖱️ Mouse released - seeking to ${State.scrubTargetPosition.toFixed(2)}s`);
             
             let clampedPosition = State.scrubTargetPosition;
             if (State.selectionStart !== null && State.selectionEnd !== null) {
@@ -535,15 +519,15 @@ export function setupWaveformInteraction() {
         const waveformCanvas = document.getElementById('waveform');
         const buttonsCanvas = document.getElementById('waveform-buttons');
         
-        console.log('🖱️ CLICK DIAGNOSTICS:');
-        console.log(`  Click position: (${startX.toFixed(1)}, ${startY.toFixed(1)}) CSS pixels`);
-        console.log(`  Click % across: ${((startX / rect.width) * 100).toFixed(1)}%`);
-        console.log(`  Waveform canvas: ${waveformCanvas.offsetWidth}px × ${waveformCanvas.offsetHeight}px (CSS)`);
-        console.log(`  Waveform canvas: ${waveformCanvas.width}px × ${waveformCanvas.height}px (device)`);
-        if (buttonsCanvas) {
-            console.log(`  Buttons canvas: ${buttonsCanvas.width}px × ${buttonsCanvas.height}px (device)`);
-        }
-        console.log(`  DPR: ${window.devicePixelRatio}`);
+        // console.log('🖱️ CLICK DIAGNOSTICS:');
+        // console.log(`  Click position: (${startX.toFixed(1)}, ${startY.toFixed(1)}) CSS pixels`);
+        // console.log(`  Click % across: ${((startX / rect.width) * 100).toFixed(1)}%`);
+        // console.log(`  Waveform canvas: ${waveformCanvas.offsetWidth}px × ${waveformCanvas.offsetHeight}px (CSS)`);
+        // console.log(`  Waveform canvas: ${waveformCanvas.width}px × ${waveformCanvas.height}px (device)`);
+        // if (buttonsCanvas) {
+        //     console.log(`  Buttons canvas: ${buttonsCanvas.width}px × ${buttonsCanvas.height}px (device)`);
+        // }
+        // console.log(`  DPR: ${window.devicePixelRatio}`);
         
         // 🔧 FIX: Check if click is on a canvas button BEFORE starting scrub preview
         // This prevents the white playhead from appearing when clicking buttons
@@ -552,8 +536,8 @@ export function setupWaveformInteraction() {
             const clickedZoomRegionIndex = checkCanvasZoomButtonClick(startX, startY);
             const clickedPlayRegionIndex = checkCanvasPlayButtonClick(startX, startY);
             
-            console.log(`  Zoom button hit: ${clickedZoomRegionIndex !== null ? `Region ${clickedZoomRegionIndex + 1}` : 'none'}`);
-            console.log(`  Play button hit: ${clickedPlayRegionIndex !== null ? `Region ${clickedPlayRegionIndex + 1}` : 'none'}`);
+            // console.log(`  Zoom button hit: ${clickedZoomRegionIndex !== null ? `Region ${clickedZoomRegionIndex + 1}` : 'none'}`);
+            // console.log(`  Play button hit: ${clickedPlayRegionIndex !== null ? `Region ${clickedPlayRegionIndex + 1}` : 'none'}`);
             
             if (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null) {
                 // Clicked on a button - don't start dragging/scrub preview
@@ -569,7 +553,7 @@ export function setupWaveformInteraction() {
         State.setIsDragging(true);
         canvas.style.cursor = 'grabbing';
         updateScrubPreview(e);
-        console.log('🖱️ Mouse down - waiting to detect drag vs click');
+        // console.log('🖱️ Mouse down - waiting to detect drag vs click');
     });
     
     canvas.addEventListener('mousemove', (e) => {
@@ -853,8 +837,8 @@ export function setupWaveformInteraction() {
                 const { targetPosition } = getPositionFromMouse(e);
                 const zoomMode = zoomState.isInRegion() ? 'temple (zoomed)' : 'full view';
                 const zoomLevel = zoomState.isInitialized() ? zoomState.getZoomLevel().toFixed(1) : 'N/A';
-                console.log(`🖱️ Waveform clicked at ${targetPosition.toFixed(2)}s - seeking to position`);
-                console.log(`   📍 Zoom mode: ${zoomMode} (${zoomLevel}x)`);
+                // console.log(`🖱️ Waveform clicked at ${targetPosition.toFixed(2)}s - seeking to position`);
+                // console.log(`   📍 Zoom mode: ${zoomMode} (${zoomLevel}x)`);
                 clearSpectrogramScrubPreview();  // Clear scrub preview
                 performSeek();
                 drawSpectrogramPlayhead();  // Update spectrogram immediately after seek

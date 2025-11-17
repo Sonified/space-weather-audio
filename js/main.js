@@ -20,7 +20,7 @@ import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
-import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
@@ -850,6 +850,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.24 - X-Axis Tick Improvements & Cache Fix');
+    console.log('🕐 [0ms] v2.24 Feat: Added 30-minute tick intervals for regions less than 6 hours');
+    console.log('🔧 [0ms] v2.24 Fix: Clear waveform cache immediately on resize to prevent stretching');
+    console.log('📏 [0ms] v2.24 Fix: Initialize maxCanvasWidth baseline (1200px) on page load for proper tick spacing');
     console.log('🌋 [0ms] volcano-audio v2.22 - Master Pause Region Button Fix');
     console.log('⏸️ [0ms] v2.22 Fix: Master pause button now toggles all region play buttons to red state');
     console.log('🌋 [0ms] volcano-audio v2.18 - Zoom State Reset Fix');
@@ -1146,22 +1150,12 @@ window.addEventListener('DOMContentLoaded', async () => {
                     waveformCanvas.width = currentWidth * dpr;
                     waveformCanvas.height = currentHeight * dpr;
                     
-                    // CRITICAL: Redraw IMMEDIATELY to prevent squished buttons
-                    // during the debounce period. drawWaveformFromMinMax() is synchronous
-                    // and uses cached min/max data, so it's fast enough to do immediately.
-                    if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
-                        if (State.waveformMinMaxData) {
-                            // Synchronous redraw from cached min/max data
-                            drawWaveformFromMinMax();
-                            drawWaveformWithSelection();
-                        } else {
-                            // If no min/max data yet, trigger async generation
-                            drawWaveform();
-                        }
-                    }
+                    // 🔥 CRITICAL: Clear cache immediately to prevent stretching!
+                    // During the debounce period, any RAF or draw call would use the OLD cached canvas
+                    // (at old size) drawn onto the NEW canvas (at new size) = STRETCHED WAVEFORM!
+                    State.setCachedWaveformCanvas(null);
                     
-                    // OPTIONAL: Still debounce a final high-quality redraw
-                    // (but the immediate redraw above prevents visual glitches)
+                    // Then regenerate with debounce
                     if (waveformResizeTimer !== null) {
                         clearTimeout(waveformResizeTimer);
                     }
@@ -1172,10 +1166,10 @@ window.addEventListener('DOMContentLoaded', async () => {
                             return;
                         }
                         
-                        // Final redraw (probably redundant, but ensures quality)
+                        // Regenerate cache at correct size
                         if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
                             if (State.waveformMinMaxData) {
-                                drawWaveformFromMinMax();
+                                drawWaveformFromMinMax();  // Regenerates cache at correct size
                                 drawWaveformWithSelection();
                             }
                         }
@@ -1199,6 +1193,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         initializeAxisPlaybackRate();
         positionWaveformAxisCanvas();
         drawWaveformAxis();
+        // Initialize maxCanvasWidth baseline (1200px) for tick spacing logic
+        initializeMaxCanvasWidth();
         positionWaveformXAxisCanvas();
         drawWaveformXAxis();
         positionWaveformDateCanvas();

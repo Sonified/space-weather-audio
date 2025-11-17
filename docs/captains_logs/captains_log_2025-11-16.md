@@ -2,6 +2,48 @@
 
 ---
 
+## 🕐 X-Axis Tick Improvements & Cache Fix (v2.24)
+
+### Features & Fixes
+
+1. **30-Minute Tick Intervals for Medium Zoom Levels**
+   - Added 30-minute tick intervals when zoomed into regions less than 6 hours
+   - Provides better granularity between 2-hour (5-minute ticks) and 6+ hour (hourly ticks) ranges
+   - Tick selection logic: < 2 hours = 5-min, < 6 hours = 30-min, ≥ 6 hours = hourly
+
+2. **Waveform Cache Stretching Fix**
+   - Fixed cache mismatch bug where old cached canvas (at old size) was drawn onto new canvas (at new size) during resize debounce period
+   - Solution: Clear cache immediately when canvas resizes, then regenerate after debounce
+   - Prevents stretched/squished waveform during resize transitions
+   - Removed mismatch check from `drawWaveformWithSelection()` since cache is now cleared proactively
+
+3. **Max Canvas Width Baseline Initialization**
+   - Added `initializeMaxCanvasWidth()` function that sets baseline to 1200px minimum on page load
+   - Ensures tick spacing logic works correctly from the start, even on smaller screens
+   - Called during initialization before first x-axis draw
+
+### Key Changes
+- `js/waveform-x-axis-renderer.js`:
+  - Added `calculateThirtyMinuteTicks()` function for 30-minute intervals
+  - Updated tick selection logic to include 30-minute ticks for 2-6 hour ranges
+  - Added `initializeMaxCanvasWidth()` function for baseline initialization
+- `js/main.js`:
+  - Clear waveform cache immediately on resize (before debounce)
+  - Call `initializeMaxCanvasWidth()` during initialization
+- `js/waveform-renderer.js`:
+  - Removed cache mismatch check (no longer needed)
+
+### Benefits
+- ✅ Better time granularity for medium zoom levels (2-6 hours)
+- ✅ No more stretched waveforms during resize
+- ✅ Proper tick spacing from page load, regardless of screen size
+- ✅ Cleaner code without mismatch checks
+
+### Version
+v2.24 - Commit: "v2.24 Feat: 30-minute tick intervals for <6h regions, fix waveform cache stretching on resize, initialize maxCanvasWidth baseline"
+
+---
+
 ## 🐛 Canvas Play Button Fixes & Debug Cleanup (v2.23)
 
 ### Problems Fixed

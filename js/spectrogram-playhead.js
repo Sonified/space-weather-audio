@@ -19,6 +19,11 @@ let lastPreviewX = -1;
 export function drawSpectrogramPlayhead() {
     // console.log(`▶️ [spectrogram-playhead.js] drawSpectrogramPlayhead CALLED`);
     
+    // ✅ Wait for spectrogram to be ready before trying to draw playhead
+    if (!State.spectrogramInitialized) {
+        return;  // Spectrogram not rendered yet - wait for it
+    }
+    
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
     
@@ -27,8 +32,8 @@ export function drawSpectrogramPlayhead() {
     const viewportCanvas = getSpectrogramViewport(playbackRate);
     
     if (!viewportCanvas) {
-        console.log(`⚠️ [spectrogram-playhead.js] drawSpectrogramPlayhead: No viewport canvas`);
-        return;  // No viewport available yet
+        // No viewport available yet - fallback check (shouldn't happen if spectrogramInitialized is true)
+        return;
     }
     
     // Don't draw playhead while user is scrubbing
@@ -125,6 +130,11 @@ export function drawSpectrogramPlayhead() {
 export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) {
     // console.log(`👆 [spectrogram-playhead.js] drawSpectrogramScrubPreview CALLED: targetPosition=${targetPosition.toFixed(2)}, isDragging=${isDragging}`);
     
+    // ✅ Wait for spectrogram to be ready before trying to draw scrub preview
+    if (!State.spectrogramInitialized) {
+        return;  // Spectrogram not rendered yet - wait for it
+    }
+    
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
     
@@ -133,7 +143,7 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
     const viewportCanvas = getSpectrogramViewport(playbackRate);
     
     if (!viewportCanvas) {
-        console.log(`⚠️ [spectrogram-playhead.js] drawSpectrogramScrubPreview: No viewport canvas`);
+        // No viewport available yet - fallback check (shouldn't happen if spectrogramInitialized is true)
         return;
     }
     
@@ -181,7 +191,7 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
 export function clearSpectrogramScrubPreview() {
     if (lastPreviewX < 0) return;
     
-    console.log(`🧹 [spectrogram-playhead.js] clearSpectrogramScrubPreview CALLED`);
+    // console.log(`🧹 [spectrogram-playhead.js] clearSpectrogramScrubPreview CALLED`);
     
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
