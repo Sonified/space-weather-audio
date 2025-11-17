@@ -11,8 +11,9 @@ import { PlaybackState } from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization } from './spectrogram-renderer.js';
-import { updateActiveRegionPlayButton } from './region-tracker.js';
+import { updateActiveRegionPlayButton, getActivePlayingRegionIndex, getCurrentRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
+import { getCurrentPlaybackBoundaries, isAtBoundaryEnd, getRestartPosition, formatBoundaries } from './playback-boundaries.js';
 
 // ===== RAF CLEANUP HELPER =====
 
@@ -136,17 +137,7 @@ export function togglePlayPause() {
     
     switch (State.playbackState) {
         case PlaybackState.STOPPED:
-            // Determine start position
-            let startPosition;
-            if (State.selectionStart !== null && State.selectionEnd !== null) {
-                startPosition = State.selectionStart;
-            } else {
-                // If we're at/near the end (within last 0.1s), restart from beginning
-                startPosition = (State.currentAudioPosition >= State.totalAudioDuration - 0.1) 
-                    ? 0 
-                    : State.currentAudioPosition;
-            }
-            
+            const startPosition = isAtBoundaryEnd() ? getRestartPosition() : State.currentAudioPosition;
             console.log(`▶️ Starting playback from ${startPosition.toFixed(2)}s`);
             seekToPosition(startPosition, true);
             break;
@@ -157,22 +148,12 @@ export function togglePlayPause() {
             break;
             
         case PlaybackState.PAUSED:
-            // Check if we're at the end of the selection - if so, restart from beginning
-            if (State.selectionStart !== null && State.selectionEnd !== null) {
-                const atEnd = Math.abs(State.currentAudioPosition - State.selectionEnd) < 0.1;
-                if (atEnd) {
-                    console.log(`▶️ At selection end, restarting from ${State.selectionStart.toFixed(2)}s`);
-                    seekToPosition(State.selectionStart, true);
-                    break;
-                }
-            } else {
-                // No selection - check if at end of full audio
-                const atEnd = State.currentAudioPosition >= State.totalAudioDuration - 0.1;
-                if (atEnd) {
-                    console.log(`▶️ At audio end, restarting from beginning`);
-                    seekToPosition(0, true);
-                    break;
-                }
+            // Check if at end of current boundaries
+            if (isAtBoundaryEnd()) {
+                const restartPos = getRestartPosition();
+                console.log(`▶️ At boundary end, restarting from ${restartPos.toFixed(2)}s`);
+                seekToPosition(restartPos, true);
+                break;
             }
             
             console.log(`▶️ Resuming playback from ${State.currentAudioPosition.toFixed(2)}s`);
@@ -206,33 +187,17 @@ export function toggleLoop() {
 export function updateWorkletSelection() {
     if (!State.workletNode) return;
     
-    let start = State.selectionStart;
-    let end = State.selectionEnd;
-    let loop = State.isLooping;
+    const b = getCurrentPlaybackBoundaries();
     
-    // 🏛️ If inside a region (temple) and no yellow selection, use temple boundaries!
-    if (start === null && end === null) {
-        if (zoomState.isInRegion()) {
-            // We're inside the temple with no yellow selection - use sacred walls!
-            const regionRange = zoomState.getRegionRange();
-            start = regionRange.startTime;
-            end = regionRange.endTime;
-            loop = State.isLooping; // 🙏 Respect user's loop toggle!
-            
-            console.log(`🏛️ Inside temple: Using boundaries ${start.toFixed(2)}s - ${end.toFixed(2)}s, loop=${loop}`);
-        }
-    }
-    
-    // Send to worklet
     State.workletNode.port.postMessage({
         type: 'set-selection',
-        start: start,
-        end: end,
-        loop: loop
+        start: b.start,
+        end: b.end,
+        loop: b.loop
     });
     
     if (DEBUG_LOOP_FADES) {
-        console.log(`📤 Sent to worklet: selection=${start !== null ? start.toFixed(2) : 'null'}-${end !== null ? end.toFixed(2) : 'null'}, loop=${loop}`);
+        console.log(`📤 Sent to worklet: ${formatBoundaries(b)}`);
     }
 }
 
@@ -319,12 +284,9 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         return;
     }
     
-    // Clamp position to selection bounds if selection exists, otherwise full range
-    if (State.selectionStart !== null && State.selectionEnd !== null) {
-        targetPosition = Math.max(State.selectionStart, Math.min(targetPosition, State.selectionEnd));
-    } else {
-        targetPosition = Math.max(0, Math.min(targetPosition, State.totalAudioDuration));
-    }
+    // Clamp position to current playback boundaries
+    const b = getCurrentPlaybackBoundaries();
+    targetPosition = Math.max(b.start, Math.min(targetPosition, b.end));
     
     if (DEBUG_LOOP_FADES) console.log(`🎯 Seeking to ${targetPosition.toFixed(2)}s (shouldStartPlayback=${shouldStartPlayback})`);
     

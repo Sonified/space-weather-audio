@@ -16,6 +16,7 @@ import * as State from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
+import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
 import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache } from './spectrogram-complete-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 
@@ -42,7 +43,7 @@ function getCurrentVolcano() {
  * Get regions for the current volcano
  * Uses currentVolcano if set, otherwise reads from UI
  */
-function getCurrentRegions() {
+export function getCurrentRegions() {
     // Use currentVolcano if available (more reliable during volcano switches)
     // Otherwise fall back to reading from UI
     const volcano = currentVolcano || getCurrentVolcano();
@@ -1516,9 +1517,8 @@ function setSelectionFromActiveRegion() {
 export function toggleRegionPlay(index) {
     const regions = getCurrentRegions();
     const region = regions[index];
-    const regionTime = `${formatTime(region.startTime)} – ${formatTime(region.stopTime)}`;
-    console.log(`🎵 Region ${index + 1} play button clicked - ${regionTime} (Region ID: ${region.id})`);
     
+    console.log(`🎵 Region ${index + 1} play button clicked`);
     
     // Reset old playing region button (if different)
     if (activePlayingRegionIndex !== null && activePlayingRegionIndex !== index) {
@@ -1529,23 +1529,10 @@ export function toggleRegionPlay(index) {
     activePlayingRegionIndex = index;
     setActiveRegion(index);
     
-    // Set selection to region bounds
-    if (!setSelectionFromActiveRegion()) {
-        console.warn('⚠️ Could not set selection from region');
-        return;
-    }
-    
-    // 🏛️ Calculate region start position (use sample indices if available)
-    let regionStartSeconds;
-    if (region.startSample !== undefined) {
-        // New format: convert from eternal sample index
-        regionStartSeconds = zoomState.sampleToTime(region.startSample);
-    } else {
-        // Old format: convert from timestamp (backward compatibility)
-        const dataStartMs = State.dataStartTime.getTime();
-        const regionStartMs = new Date(region.startTime).getTime();
-        regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
-    }
+    // 🦋 Clear selection when region button is clicked - region play takes priority!
+    // The region button is an explicit choice to play that region, so it overrides any selection
+    State.setSelectionStart(null);
+    State.setSelectionEnd(null);
     
     // Update region button to GREEN (playing state)
     region.playing = true;
@@ -1557,11 +1544,16 @@ export function toggleRegionPlay(index) {
         playBtn.title = 'Play region from start';
     }
     
-    // Seek to region start AND start playback
-    // This handles everything: seeking, starting playback, updating master button
-    seekToPosition(regionStartSeconds, true);
+    // 🦋 Get boundaries (getCurrentPlaybackBoundaries will return region bounds since selection is cleared)
+    const b = getCurrentPlaybackBoundaries();
     
-    console.log(`▶️ Region ${index + 1} playing from ${regionStartSeconds.toFixed(2)}s`);
+    // Update worklet with region boundaries BEFORE seeking
+    updateWorkletSelection();
+    
+    // Seek to start and play
+    seekToPosition(b.start, true);
+    
+    console.log(`▶️ Region ${index + 1} playing from ${b.start.toFixed(2)}s`);
 }
 
 /**
@@ -1644,47 +1636,31 @@ export function isPlayingActiveRegion() {
 }
 
 /**
- * Reset region play button if playback has reached the end of the region
- * Clears active playing region and resets button to play
+ * Clear active playing region (called when worklet reaches selection end)
+ * The worklet is the single source of truth - it tells us when boundaries are reached
  */
-export function resetRegionPlayButtonIfFinished() {
+export function clearActivePlayingRegion() {
+    if (activePlayingRegionIndex === null) {
+        return;
+    }
+    
     const regions = getCurrentRegions();
-    if (activePlayingRegionIndex === null || activePlayingRegionIndex >= regions.length) {
-        return;
-    }
-    
-    // Skip check if we just seeked (avoids race condition with stale position)
-    if (State.justSeeked) {
-        return;
-    }
-    
-    const region = regions[activePlayingRegionIndex];
-    if (!region.playing || !State.dataStartTime || !State.totalAudioDuration) {
-        return;
-    }
-    
-    // 🏛️ Check if current position is at or past the end of the region (use sample indices if available)
-    let regionEndSeconds;
-    if (region.endSample !== undefined) {
-        // New format: convert from eternal sample index
-        regionEndSeconds = zoomState.sampleToTime(region.endSample);
-    } else {
-        // Old format: convert from timestamp (backward compatibility)
-        const dataStartMs = State.dataStartTime.getTime();
-        const regionEndMs = new Date(region.stopTime).getTime();
-        regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
-    }
-    
-    // If we're at or past the end of the region, reset it
-    if (State.currentAudioPosition >= regionEndSeconds - 0.1) { // Small tolerance for timing
+    if (activePlayingRegionIndex < regions.length) {
         const region = regions[activePlayingRegionIndex];
         const regionTime = `${formatTime(region.startTime)} – ${formatTime(region.stopTime)}`;
-        console.log(`🚪 PLAYHEAD EXITED REGION: Region ${activePlayingRegionIndex + 1} (${regionTime})`);
-        console.log(`   📍 Position: ${State.currentAudioPosition.toFixed(2)}s (region end: ${regionEndSeconds.toFixed(2)}s)`);
+        console.log(`🚪 WORKLET REACHED REGION END: Region ${activePlayingRegionIndex + 1} (${regionTime})`);
+        
         resetRegionPlayButton(activePlayingRegionIndex);
-        activePlayingRegionIndex = null;
-        console.log('✅ Region playback finished - reset button');
     }
+    
+    activePlayingRegionIndex = null;
+    
+    // Clear selection when region playback finishes
+    State.setSelectionStart(null);
+    State.setSelectionEnd(null);
+    updateWorkletSelection();
+    
+    console.log('✅ Region playback finished - reset button and cleared selection');
 }
 
 /**
@@ -2077,11 +2053,15 @@ export function zoomToFull() {
         oldEndTime = State.dataEndTime;
     }
     
-    // 🚩 LOWER THE FLAG! No longer respecting boundaries
-    // Clear selection (free roaming)
+    // 🦋 Clear selection, but preserve active playing region if it exists
+    // If we're playing a region, we should keep playing it even after zooming out
     State.setSelectionStart(null);
     State.setSelectionEnd(null);
-    updateWorkletSelection(); // Clear boundaries in worklet
+    
+    // 🦋 If we were in temple mode, preserve the region playback
+    // This ensures boundaries persist after zooming out
+    const wasInTemple = zoomState.isInRegion();
+    const templeRegionId = wasInTemple ? zoomState.getCurrentRegionId() : null;
     
     // 💾 Cache the zoomed spectrogram BEFORE resetting (so we can crossfade it)
     cacheZoomedSpectrogram();
@@ -2091,6 +2071,34 @@ export function zoomToFull() {
     zoomState.currentViewStartSample = 0;
     zoomState.currentViewEndSample = zoomState.totalSamples;
     zoomState.activeRegionId = null;
+    
+    // 🦋 If we were in temple mode and not already playing a specific region,
+    // set activePlayingRegionIndex to preserve boundaries after zoom out
+    if (wasInTemple && templeRegionId !== null && activePlayingRegionIndex === null) {
+        const regions = getCurrentRegions();
+        const matchingRegionIndex = regions.findIndex(r => r.id === templeRegionId);
+        if (matchingRegionIndex !== -1) {
+            // Set active playing region so boundaries persist after zoom out
+            activePlayingRegionIndex = matchingRegionIndex;
+            const region = regions[matchingRegionIndex];
+            region.playing = true;
+            
+            // Update region button to GREEN
+            const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+            const playBtn = regionCard?.querySelector('.play-btn');
+            if (playBtn) {
+                playBtn.classList.add('playing');
+                playBtn.textContent = '▶';
+            }
+            
+            console.log(`🦋 Preserving region ${matchingRegionIndex + 1} playback after zoom out`);
+        }
+    }
+    
+    // 🦋 Update worklet boundaries AFTER exiting temple
+    // If activePlayingRegionIndex is set, boundaries will still be the region
+    // Otherwise, boundaries will be full audio
+    updateWorkletSelection();
     
     // 🔧 FIX: Only reset spectrogram state (clears infinite canvas)
     // DON'T clear the elastic friend - we need it for the transition!

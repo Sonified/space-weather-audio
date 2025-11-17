@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_16_v2.18"
+__version__ = "2025_11_16_v2.19"
 import time
 import sys
 import os
@@ -5776,6 +5776,7 @@ def run_scheduler():
 def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.19 Refactor: Unified playback boundaries system - single source of truth for selections, regions, temple, and full audio")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.18 Fix: Reset zoom state when loading new data - prevents playhead rendering issues when switching volcanoes while zoomed into a region")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.17 Fix: Spacebar play/pause now mirrors button behavior exactly - removed auto-selection logic that was causing issues")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.16 Feat: Spectrogram regions and selections - lightweight blue highlights and yellow selection boxes, fade out when zooming into regions")

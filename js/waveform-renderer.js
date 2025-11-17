@@ -8,7 +8,7 @@ import { PlaybackState } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
-import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, resetRegionPlayButtonIfFinished, checkCanvasZoomButtonClick, zoomToRegion, zoomToFull, getRegions } from './region-tracker.js';
+import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, zoomToRegion, zoomToFull, getRegions } from './region-tracker.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
@@ -895,10 +895,8 @@ export function updatePlaybackIndicator() {
     // Use State.completeSamplesArray.length instead if needed, or remove diagnostic code entirely
     
     if (totalAudioDuration > 0) {
-        // Check if we've reached the end of an active region and reset play button
-        if (playbackState === PlaybackState.PLAYING) {
-            resetRegionPlayButtonIfFinished();
-        }
+        // Region button reset is handled by 'selection-end-reached' message from worklet
+        // The worklet is the single source of truth for when boundaries are reached
         
         drawWaveformWithSelection();
         drawSpectrogramPlayhead();  // Draw playhead on spectrogram too

@@ -21,7 +21,7 @@ import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
-import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, resetRegionPlayButtonIfFinished, getActivePlayingRegionIndex, switchVolcanoRegions } from './region-tracker.js';
+import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
@@ -207,6 +207,12 @@ export async function initAudioWorklet() {
             State.setPlaybackState(PlaybackState.PAUSED);
             State.setCurrentAudioPosition(position);
             
+            // 🚩 Worklet reached boundary - reset region button if we were playing a region
+            // The worklet is the single source of truth for boundaries
+            if (getActivePlayingRegionIndex() !== null) {
+                clearActivePlayingRegion();
+            }
+            
             const playBtn = document.getElementById('playPauseBtn');
             playBtn.disabled = false;
             playBtn.textContent = '▶️ Resume';
@@ -363,8 +369,8 @@ export async function initAudioWorklet() {
                     drawWaveformWithSelection();
                 }
                 
-                // Check if we were playing a region and reset its play button if finished
-                resetRegionPlayButtonIfFinished();
+                // Region button reset is handled by 'selection-end-reached' message from worklet
+                // The worklet is the single source of truth for when boundaries are reached
                 
                 stopPositionTracking();
                 const playBtn = document.getElementById('playPauseBtn');

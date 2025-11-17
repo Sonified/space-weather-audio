@@ -2,6 +2,51 @@
 
 ---
 
+## 🦋 Unified Playback Boundaries System (v2.19)
+
+### Problem
+Playback boundary logic was scattered across multiple files with duplicated code. Different sources of boundaries (selections, regions, temple mode, full audio) were handled inconsistently, leading to bugs where boundaries weren't respected correctly.
+
+### Solution
+Created a single source of truth for playback boundaries in `playback-boundaries.js` that unifies all boundary sources with a clear priority order:
+1. Yellow selection (explicit user choice)
+2. Active playing region (region button clicked)
+3. Temple walls (zoomed into region)
+4. Full audio (no boundaries)
+
+### Key Changes
+- **New file**: `js/playback-boundaries.js` - Single source of truth for all playback boundaries
+- **`js/audio-player.js`**: 
+  - Simplified `updateWorkletSelection()` to use `getCurrentPlaybackBoundaries()`
+  - Simplified `togglePlayPause()` to use `isAtBoundaryEnd()` and `getRestartPosition()`
+  - Updated `seekToPosition()` to clamp to current boundaries
+- **`js/region-tracker.js`**:
+  - Simplified `toggleRegionPlay()` to use `getCurrentPlaybackBoundaries()`
+  - Fixed zoom-out to preserve active playing region when exiting temple mode
+
+### How It Works
+- `getCurrentPlaybackBoundaries()` checks priority order and returns appropriate boundaries
+- All playback code uses this single function instead of duplicating logic
+- When zooming out from temple mode while playing, `activePlayingRegionIndex` is set to preserve boundaries
+- Region play buttons clear selection and set `activePlayingRegionIndex` to ensure region takes priority
+
+### Benefits
+- ✅ Single source of truth - no more duplicated boundary logic
+- ✅ Consistent behavior across all playback scenarios
+- ✅ Easier to maintain and debug
+- ✅ Region boundaries persist when zooming out from temple mode
+- ✅ ~80 lines of duplicated code removed
+
+### Files Modified
+- `js/playback-boundaries.js` - New unified boundary system
+- `js/audio-player.js` - Simplified to use unified boundaries
+- `js/region-tracker.js` - Simplified region play and zoom-out logic
+
+### Version
+v2.19 - Commit: "v2.19 Refactor: Unified playback boundaries system - single source of truth for selections, regions, temple, and full audio"
+
+---
+
 ## 🔄 Zoom State Reset Fix (v2.18)
 
 ### Problem
