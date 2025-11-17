@@ -5,7 +5,8 @@
  */
 
 import { 
-    setStatusText, 
+    setStatusText,
+    appendStatusText,
     addSpectrogramGlow, 
     removeSpectrogramGlow,
     addRegionsPanelGlow,
@@ -878,6 +879,68 @@ function waitForTypeDropdown(regionIndex, featureIndex) {
     });
 }
 
+/**
+ * Wait for user to click add feature button
+ */
+function waitForAddFeatureButtonClick(regionIndex) {
+    return new Promise((resolve) => {
+        // Set flag so region-tracker.js knows to resolve this promise
+        State.setWaitingForAddFeatureButtonClick(true);
+        State.setAddFeatureButtonClickResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_add_feature_button_click', [], () => {
+            State.setWaitingForAddFeatureButtonClick(false);
+            State.setAddFeatureButtonClickResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to zoom out (press ESC or click return arrow)
+ */
+function waitForZoomOut() {
+    return new Promise((resolve) => {
+        // Check if already zoomed out
+        if (!zoomState.isInRegion()) {
+            resolve();
+            return;
+        }
+        
+        // Set flag so zoomToFull can resolve this promise when zoom happens
+        State.setWaitingForZoomOut(true);
+        State.setZoomOutResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_zoom_out', [], () => {
+            State.setWaitingForZoomOut(false);
+            State.setZoomOutResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to press a specific number key (1 or 2) to jump to a region
+ */
+function waitForNumberKeyPress(targetKey) {
+    return new Promise((resolve) => {
+        // Set flag so keyboard-shortcuts.js knows to resolve this promise
+        State.setWaitingForNumberKeyPress(true);
+        State.setTargetNumberKey(targetKey);
+        State.setNumberKeyPressResolve(resolve);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_number_key_press', [], () => {
+            State.setWaitingForNumberKeyPress(false);
+            State.setTargetNumberKey(null);
+            State.setNumberKeyPressResolve(null);
+            resolve();
+        });
+    });
+}
+
 async function runSelectionTutorial() {
     // 🎓 Check if user already made a selection (got ahead of tutorial)
     // Check if selection exists AND we're waiting for region creation (meaning user got ahead)
@@ -939,8 +1002,25 @@ async function runSelectionTutorial() {
     
     setStatusTextAndTrack('Now click on the waveform and DRAG and RELEASE to make a selection.', 'status info');
     
-    // Wait for user to make a selection
-    await waitForSelection();
+    // Set up selection promise first
+    const selectionPromise = waitForSelection();
+    
+    // Race between 10 second wait and selection completion
+    // If selection completes first, skip the append message
+    const timeoutPromise = skippableWait(10000).then(() => 'timeout');
+    const selectionRacePromise = selectionPromise.then(() => 'selection');
+    
+    const raceResult = await Promise.race([selectionRacePromise, timeoutPromise]);
+    
+    // Only append if timeout won AND selection hasn't happened yet
+    if (raceResult === 'timeout' && (State.selectionStart === null || State.selectionEnd === null)) {
+        appendStatusText('Just click and draaaaag.', 20, 10);
+        // Wait for selection to complete
+        await selectionPromise;
+    } else if (raceResult === 'selection') {
+        // Selection completed first - no need to append or wait further
+        // The promise already resolved
+    }
     
     // Wait 0.5 seconds, then show "Nice!" for 1 second
     await skippableWait(500);
@@ -983,8 +1063,8 @@ async function runRegionIntroduction() {
     
     // Add glow to regions panel and show message about regions being added below
     addRegionsPanelGlow();
-    setStatusTextAndTrack('When a new region is created, it gets added down below.', 'status info');
-    await skippableWait(4000);
+    setStatusTextAndTrack('When a new region is created, it gets added down below 👇', 'status info');
+    await skippableWait(6000);
     
     // Remove glow and enable play button for region 1 (index 0)
     removeRegionsPanelGlow();
@@ -1096,7 +1176,7 @@ async function runRegionZoomingTutorial() {
     
     // Give freedom message and keep it on screen longer
     setStatusTextAndTrack('Feel free to play and pause as you wish from here on out!', 'status info');
-    await skippableWait(5000);
+    await skippableWait(4000);
     
     // Clear tutorial phase
     clearTutorialPhase();
@@ -1195,6 +1275,10 @@ async function runFeatureSelectionTutorial() {
     setStatusTextAndTrack('Have a look and listen around this region... what do you notice?', 'status info');
     await skippableWait(8000);
     
+    // "Click anywhere on the waveform and create new selections." (5s)
+    setStatusTextAndTrack('Click anywhere on the waveform and create new selections.', 'status info');
+    await skippableWait(5000);
+    
     // "Feel free to change the playback speed!" (10s)
     setStatusTextAndTrack('Feel free to change the playback speed!', 'status info');
     await skippableWait(10000);
@@ -1219,7 +1303,7 @@ async function runFeatureSelectionTutorial() {
     let hasDrawnBox = false;
     const conditionalMessageTimeout = setTimeout(() => {
         if (!hasDrawnBox && State.waitingForFeatureSelection) {
-            setStatusTextAndTrack('Drag on the spectrogram to draw a box.', 'status info');
+            appendStatusText('Click and drag', 20, 10);
         }
     }, 15000);
     
@@ -1235,6 +1319,18 @@ async function runFeatureSelectionTutorial() {
     setStatusTextAndTrack('You\'ve identified a feature!', 'status success');
     await skippableWait(3000);
     
+    // "Add any notes here about what you're noticing." (8s)
+    setStatusTextAndTrack('Add any notes here about what you\'re noticing.', 'status info');
+    await skippableWait(8000);
+    
+    // "There are no right or wrong answers, just observations" (8s)
+    setStatusTextAndTrack('There are no right or wrong answers, just observations', 'status info');
+    await skippableWait(8000);
+    
+    // "When you are done, you can hit enter/return." (4s)
+    setStatusTextAndTrack('When you are done, you can hit enter/return.', 'status info');
+    await skippableWait(4000);
+    
     // "You can start typing now to provide a description."
     setStatusTextAndTrack('You can start typing now to provide a description.', 'status info');
     
@@ -1247,7 +1343,7 @@ async function runFeatureSelectionTutorial() {
         typingListener = () => {
             if (!messageSwitched && notesField.value.trim().length > 0) {
                 messageSwitched = true;
-                setStatusTextAndTrack('When you are done, hit enter/return.', 'status info');
+                setStatusTextAndTrack('When you are done, you can hit enter/return.', 'status info');
                 notesField.removeEventListener('input', typingListener);
             }
         };
@@ -1259,7 +1355,7 @@ async function runFeatureSelectionTutorial() {
     
     // If they haven't started typing yet, show the "When you are done" message now
     if (!messageSwitched) {
-        setStatusTextAndTrack('When you are done, hit enter/return.', 'status info');
+        setStatusTextAndTrack('When you are done, you can hit enter/return.', 'status info');
         if (notesField && typingListener) {
             notesField.removeEventListener('input', typingListener);
         }
@@ -1301,7 +1397,7 @@ async function runFeatureSelectionTutorial() {
     // Glow select feature button (but don't make it red/active, just glow it)
     // Don't call enableSelectFeatureButton - keep it in normal mode
     addSelectFeatureButtonGlow(activeRegionIndex, featureIndex);
-    setStatusTextAndTrack('You can click here if you ever change your mind and would like to change your selection.', 'status info');
+    setStatusTextAndTrack('Click this box to re-do your selection.', 'status info');
     await skippableWait(9000);
     
     // Remove select feature button glow
@@ -1313,13 +1409,135 @@ async function runFeatureSelectionTutorial() {
     // Small delay to ensure button is rendered
     await skippableWait(100);
     
-    // Highlight add feature button
+    // Highlight add feature button (keep glow until clicked)
     addAddFeatureButtonGlow(activeRegionIndex);
-    setStatusTextAndTrack('Click this button now to add another feature.', 'status info');
-    await skippableWait(5000);
+    setStatusTextAndTrack('Click the green circle 🟢 in the lower left corner to add another feature.', 'status info');
+    
+    // Wait for user to click add feature button (glow stays until clicked)
+    await waitForAddFeatureButtonClick(activeRegionIndex);
     
     // Remove add feature button glow
     removeAddFeatureButtonGlow(activeRegionIndex);
+    
+    // Say "Great!" and wait 4s
+    setStatusTextAndTrack('Great! There\'s no need to select another feature now.', 'status success');
+    await skippableWait(4000);
+    
+    // Clear tutorial phase
+    clearTutorialPhase();
+    
+    // Continue to zoom out tutorial
+    await runZoomOutTutorial();
+}
+
+/**
+ * Zoom out tutorial section
+ * Guides user to zoom back out to full-day view
+ */
+async function runZoomOutTutorial() {
+    // Ensure we're zoomed into a region
+    if (!zoomState.isInRegion()) {
+        console.warn('⚠️ Zoom out tutorial: Not zoomed into a region');
+        return;
+    }
+    
+    setStatusTextAndTrack('Let\'s return to the full-day view by pressing ESC or clicking the orange return arrow.', 'status info');
+    
+    // Wait for user to zoom out
+    await waitForZoomOut();
+    
+    // Enable all region buttons now that user has zoomed out
+    // This allows them to interact with all regions when creating the second one
+    enableRegionButtons();
+    
+    // Pause for 2s after zoom out
+    await skippableWait(2000);
+    
+    // Say "Those are the basics!"
+    setStatusTextAndTrack('Those are the basics!', 'status success');
+    await skippableWait(2000);
+    
+    // Say "Using hotkeys will help you move around quickly!"
+    setStatusTextAndTrack('Using hotkeys will help you move around quickly!', 'status info');
+    await skippableWait(5000);
+    
+    // Clear tutorial phase
+    clearTutorialPhase();
+    
+    // Continue to second region creation tutorial
+    await runSecondRegionTutorial();
+}
+
+/**
+ * Second region creation tutorial section
+ * Guides user to create a second region and use hotkeys
+ */
+async function runSecondRegionTutorial() {
+    setStatusTextAndTrack('Click and drag and let\'s create a new region.', 'status info');
+    
+    // Wait for user to create a region
+    await waitForRegionCreation();
+    
+    // When region is created, say "Great!" and wait 2s
+    setStatusTextAndTrack('Great!', 'status success');
+    await skippableWait(2000);
+    
+    // Get the new region index (should be index 1, the second region)
+    const regions = getCurrentRegions();
+    const secondRegionIndex = regions.length - 1; // Last region is the new one
+    
+    if (secondRegionIndex >= 1) {
+        // Say "To zoom in on this second region, just press (2) on your keyboard."
+        setStatusTextAndTrack('To zoom in on this second region, just press (2) on your keyboard.', 'status info');
+        
+        // Wait for user to press 2
+        await waitForNumberKeyPress('2');
+        
+        // Wait 1s after zoom in
+        await skippableWait(1000);
+        
+        // Say "Now press 2 again to play this region from the beginning!"
+        setStatusTextAndTrack('Now press 2 again to play this region from the beginning!', 'status info');
+        
+        // Wait for user to press 2 again (to play)
+        await waitForNumberKeyPress('2');
+        
+        // Say "Excellent! Now press 1 to jump to our first region."
+        setStatusTextAndTrack('Excellent! Now press 1 to jump to our first region.', 'status info');
+        
+        // Wait for user to press 1
+        await waitForNumberKeyPress('1');
+        
+        // Wait 1s after successful arrival
+        await skippableWait(1000);
+        
+        // Say "and now press 1 to play back this region."
+        setStatusTextAndTrack('And now press 1 to play back this region.', 'status info');
+        
+        // Wait for user to press 1 again (to play)
+        await waitForNumberKeyPress('1');
+        
+        // Wait 2s after play
+        await skippableWait(2000);
+        
+        // Say "Great! Now hit escape to jump back to the main screen."
+        setStatusTextAndTrack('Great! Now hit escape to jump back to the main screen.', 'status info');
+        
+        // Wait for user to press ESC (zoom out)
+        await waitForZoomOut();
+        
+        // Wait 1s
+        await skippableWait(1000);
+        
+        // Say "This Tutorial is now complete! Continue your analysis and hit Submit when you are done."
+        setStatusTextAndTrack('This Tutorial is now complete! Continue your analysis and hit Submit when you are done.', 'status success');
+        
+        // Wait 5s
+        await skippableWait(5000);
+        
+        // Say "Have fun exploring! There's no minimum or maximum feature requirement."
+        setStatusTextAndTrack('Have fun exploring! There\'s no minimum or maximum feature requirement.', 'status info');
+    }
     
     // Clear tutorial phase
     clearTutorialPhase();

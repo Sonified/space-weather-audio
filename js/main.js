@@ -918,6 +918,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.41 - Tutorial Region Button Enable Fix');
+    console.log('🎓 [0ms] v2.41 Fix: Enable all region buttons after zoom out in tutorial - allows full interaction when creating second region');
     console.log('🌋 [0ms] volcano-audio v2.40 - Tutorial Message Improvements');
     console.log('🎓 [0ms] v2.40 UI: Added 10-second timeout for feature description submission');
     console.log('🎓 [0ms] v2.40 UI: Changed feature description detection from Enter key to change event for better reliability');

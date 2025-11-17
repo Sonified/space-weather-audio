@@ -445,3 +445,25 @@ Implemented comprehensive feature selection tutorial that guides users through t
 
 ---
 
+## 🎓 Tutorial Region Button Enable Fix (v2.41)
+
+### Problem
+After creating the first region and zooming out, all region buttons remained disabled except for region 1's buttons. This prevented users from interacting with other regions when creating a second region during the tutorial.
+
+### Solution
+Added `enableRegionButtons()` call in `runZoomOutTutorial()` immediately after the user zooms out. This ensures all region buttons are enabled before the user creates the second region, allowing full interaction with all regions.
+
+### Implementation Details
+- Added `enableRegionButtons()` call right after `waitForZoomOut()` completes
+- This re-enables both visual (opacity, pointer-events) and functional (State flags) aspects of all region buttons
+- Verified that disabling only happens during tutorial (in `runRegionIntroduction()`) and not on page load
+
+### Files Changed
+- `js/tutorial-coordinator.js` - Added enableRegionButtons() call in runZoomOutTutorial()
+
+### Version Tag
+- **Version**: v2.41
+- **Commit Message**: v2.41 Fix: Enable all region buttons after zoom out in tutorial - allows full interaction when creating second region
+
+---
+
