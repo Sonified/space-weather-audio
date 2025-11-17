@@ -240,31 +240,44 @@ export function drawWaveformXAxis() {
             console.warn(`⚠️ Zoom transition stuck: elapsed ${elapsed.toFixed(0)}ms exceeds max ${MAX_DURATION}ms, forcing stop`);
             zoomTransitionInProgress = false;
             oldTimeRange = null;
+            if (zoomTransitionRAF) {
+                cancelAnimationFrame(zoomTransitionRAF);
+            }
             zoomTransitionRAF = null;
             drawWaveformWithSelection();
             return;
         }
         
         if (elapsed < zoomTransitionDuration) {
-            zoomTransitionRAF = requestAnimationFrame(() => {
-                // 🔥 FIX: Check document connection before executing RAF callback
-                if (!document.body || !document.body.isConnected) {
+            // 🔥 FIX: Only schedule RAF if one isn't already scheduled
+            // This prevents multiple RAF loops when drawWaveformXAxis() is called from multiple places
+            if (!zoomTransitionRAF) {
+                zoomTransitionRAF = requestAnimationFrame(() => {
+                    // 🔥 FIX: Check document connection before executing RAF callback
+                    if (!document.body || !document.body.isConnected) {
+                        zoomTransitionRAF = null;
+                        zoomTransitionInProgress = false;
+                        return;
+                    }
+                    // Clear RAF ID before calling drawWaveformXAxis so it can schedule the next frame
+                    const rafId = zoomTransitionRAF;
                     zoomTransitionRAF = null;
-                    zoomTransitionInProgress = false;
-                    return;
-                }
-                drawWaveformXAxis();
+                    drawWaveformXAxis();
 
-                // 🏛️ Trigger interpolated waveform draw so everything zooms together
-                drawInterpolatedWaveform();
-                
-                // 🏄‍♂️ Stretch spectrogram to match interpolated time range - everything moves together!
-                drawInterpolatedSpectrogram();
-            });
+                    // 🏛️ Trigger interpolated waveform draw so everything zooms together
+                    drawInterpolatedWaveform();
+                    
+                    // 🏄‍♂️ Stretch spectrogram to match interpolated time range - everything moves together!
+                    drawInterpolatedSpectrogram();
+                });
+            }
         } else {
             // Animation complete
             zoomTransitionInProgress = false;
             oldTimeRange = null;
+            if (zoomTransitionRAF) {
+                cancelAnimationFrame(zoomTransitionRAF);
+            }
             zoomTransitionRAF = null;
 
             // 🏛️ Draw final frame to keep regions visible while waveform rebuilds

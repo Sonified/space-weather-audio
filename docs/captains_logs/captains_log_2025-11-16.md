@@ -2,6 +2,45 @@
 
 ---
 
+## 🔧 Feature Box Positioning & RAF Loop Fixes (v2.27)
+
+### Bugs Fixed
+
+1. **Feature Box Positioning During Zoom Transitions**
+   - **Bug**: Feature boxes were moving during zoom animations because `updateAllFeatureBoxPositions()` was using `getInterpolatedTimeRange()`, which returns interpolated values during transitions
+   - **Impact**: Boxes appeared to drift/move during zoom animations instead of staying put
+   - **Fix**: Changed to use direct zoom state access - `zoomState.getRegionRange()` when in region, or `State.dataStartTime/EndTime` for full view
+   - **Result**: Boxes now stay put during transitions and only reposition when transitions complete
+
+2. **Infinite RAF Loop in Zoom Transitions**
+   - **Bug**: `drawWaveformXAxis()` was being called from multiple places, and each call was scheduling a new RAF when `zoomTransitionInProgress` was true, creating multiple concurrent RAF loops
+   - **Impact**: Infinite RAF loops causing performance issues and console spam
+   - **Fix**: Added guard to only schedule RAF if one isn't already scheduled, clear RAF ID before calling `drawWaveformXAxis()`, and properly cancel RAF in all cleanup paths
+   - **Result**: Only one RAF loop active at a time, transitions complete properly
+
+3. **Feature Box Updates During Animation Loops**
+   - **Bug**: `updateAllFeatureBoxPositions()` was being called from `updateSpectrogramViewport()` which was called during animation loops (60fps)
+   - **Impact**: Boxes repositioning every frame during animations, causing jitter and potential positioning errors
+   - **Fix**: Removed call from `updateSpectrogramViewport()`, added calls only to zoom completion callbacks in `region-tracker.js`
+   - **Result**: Boxes update only when transitions complete, not during every animation frame
+
+### Key Changes
+- `js/spectrogram-feature-boxes.js` - Use direct zoom state access instead of `getInterpolatedTimeRange()`
+- `js/waveform-x-axis-renderer.js` - Added guard to prevent multiple RAF loops, proper cleanup
+- `js/spectrogram-complete-renderer.js` - Removed feature box updates from animation loops
+- `js/region-tracker.js` - Added feature box position updates to zoom completion callbacks
+
+### Benefits
+- ✅ Feature boxes stay put during zoom transitions
+- ✅ No more infinite RAF loops
+- ✅ Better performance - boxes update only when needed
+- ✅ Cleaner console output
+
+### Version
+v2.27 - Commit: "v2.27 Fix: Feature box positioning and infinite RAF loop - use direct zoom state, prevent multiple RAF loops"
+
+---
+
 ## 📦 Feature Persistence Proof of Concept (v2.26)
 
 ### Feature

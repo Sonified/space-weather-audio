@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_16_v2.26"
+__version__ = "2025_11_16_v2.27"
 import time
 import sys
 import os
@@ -5776,6 +5776,7 @@ def run_scheduler():
 def main():
     """Main entry point - starts Flask server and scheduler"""
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 🚀 Seismic Data Collector started - {__version__}")
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.27 Fix: Feature box positioning and infinite RAF loop - use direct zoom state, prevent multiple RAF loops")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.26 Proof of concept: Feature persistence - persistent DOM boxes on spectrogram using eternal coordinates")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.25 Fix: Restore canvas dimensions parameter in drawRegionHighlights, remove auto-play region preservation on zoom out")
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] 📝 Git commit: v2.22 Fix: Master pause button now toggles all region play buttons to red state")

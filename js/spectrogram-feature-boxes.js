@@ -7,7 +7,6 @@
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentRegions } from './region-tracker.js';
-import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 
 // Track all feature boxes: Map<"regionIndex-featureIndex", HTMLElement>
 const featureBoxes = new Map();
@@ -117,6 +116,14 @@ export function updateAllFeatureBoxPositions() {
                 return;
             }
             
+            console.log(`🔄 ========== Repositioning Feature ${key} ==========`);
+            console.log('📦 Stored eternal coordinates:', {
+                lowFreq: feature.lowFreq,
+                highFreq: feature.highFreq,
+                startTime: feature.startTime,
+                endTime: feature.endTime
+            });
+            
             // Convert eternal coordinates to current pixel positions
             const lowFreq = parseFloat(feature.lowFreq);
             const highFreq = parseFloat(feature.highFreq);
@@ -125,14 +132,37 @@ export function updateAllFeatureBoxPositions() {
             const lowFreqY = getYFromFrequency(lowFreq, MAX_FREQUENCY, canvas.offsetHeight, State.frequencyScale);
             const highFreqY = getYFromFrequency(highFreq, MAX_FREQUENCY, canvas.offsetHeight, State.frequencyScale);
             
+            console.log('📍 Y positions (frequency → pixels):', {
+                lowFreq,
+                highFreq,
+                lowFreqY: lowFreqY.toFixed(1),
+                highFreqY: highFreqY.toFixed(1),
+                frequencyScale: State.frequencyScale,
+                canvasHeight: canvas.offsetHeight
+            });
+            
             // CSS pixels for X (time) - zoom-aware!
             const startTimestamp = new Date(feature.startTime);
             const endTimestamp = new Date(feature.endTime);
             
+            console.log('📅 Timestamps:', {
+                startTimestamp: startTimestamp.toISOString(),
+                endTimestamp: endTimestamp.toISOString()
+            });
+            
             let startX, endX;
-            const interpolatedRange = getInterpolatedTimeRange();
-            const displayStartMs = interpolatedRange.startTime.getTime();
-            const displayEndMs = interpolatedRange.endTime.getTime();
+            // Use actual current view boundaries, not interpolated transitioning view
+            let displayStartMs, displayEndMs;
+            if (zoomState.isInRegion()) {
+                // Inside region - use region boundaries
+                const regionRange = zoomState.getRegionRange();
+                displayStartMs = zoomState.sampleToRealTimestamp(regionRange.startSample).getTime();
+                displayEndMs = zoomState.sampleToRealTimestamp(regionRange.endSample).getTime();
+            } else {
+                // Full view - use data boundaries
+                displayStartMs = State.dataStartTime.getTime();
+                displayEndMs = State.dataEndTime.getTime();
+            }
             const displaySpanMs = displayEndMs - displayStartMs;
             
             const startMs = startTimestamp.getTime();
@@ -143,6 +173,20 @@ export function updateAllFeatureBoxPositions() {
             
             startX = startProgress * canvas.offsetWidth;
             endX = endProgress * canvas.offsetWidth;
+            
+            console.log('📍 X positions (time → pixels):', {
+                displayStartMs: new Date(displayStartMs).toISOString(),
+                displayEndMs: new Date(displayEndMs).toISOString(),
+                startMs: new Date(startMs).toISOString(),
+                endMs: new Date(endMs).toISOString(),
+                startProgress: startProgress.toFixed(4),
+                endProgress: endProgress.toFixed(4),
+                startX: startX.toFixed(1),
+                endX: endX.toFixed(1),
+                canvasWidth: canvas.offsetWidth
+            });
+            
+            console.log('🎯 ========== END Repositioning ==========\n');
             
             // Check if visible
             if (endX < 0 || startX > canvas.offsetWidth) {

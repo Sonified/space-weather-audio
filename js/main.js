@@ -859,6 +859,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.27 - Feature Box Positioning & RAF Loop Fixes');
+    console.log('🔧 [0ms] v2.27 Fix: Feature box positioning - use direct zoom state instead of interpolated time range');
+    console.log('🔧 [0ms] v2.27 Fix: Infinite RAF loop - prevent multiple RAF loops when drawWaveformXAxis called from multiple places');
     console.log('🌋 [0ms] volcano-audio v2.26 - Feature Persistence Proof of Concept');
     console.log('📦 [0ms] v2.26 Proof of concept: Feature persistence - persistent DOM boxes on spectrogram using eternal coordinates');
     console.log('🌋 [0ms] volcano-audio v2.24 - X-Axis Tick Improvements & Cache Fix');

@@ -994,9 +994,25 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
     
     const { regionIndex, featureIndex } = currentFrequencySelection;
     
+    console.log('🎯 ========== MOUSE UP: Feature Selection Complete ==========');
+    console.log('📍 Canvas coordinates (pixels):', {
+        startX: startX?.toFixed(1),
+        endX: endX?.toFixed(1),
+        startY: startY?.toFixed(1),
+        endY: endY?.toFixed(1),
+        canvasWidth,
+        canvasHeight
+    });
+    
     // Convert Y positions to frequencies
     const lowFreq = getFrequencyFromY(Math.max(startY, endY), maxFrequency, canvasHeight, State.frequencyScale);
     const highFreq = getFrequencyFromY(Math.min(startY, endY), maxFrequency, canvasHeight, State.frequencyScale);
+    
+    console.log('🎵 Converted to frequencies (Hz):', {
+        lowFreq: lowFreq.toFixed(2),
+        highFreq: highFreq.toFixed(2),
+        frequencyScale: State.frequencyScale
+    });
     
     // Convert X positions to timestamps
     let startTime = null;
@@ -1010,6 +1026,12 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             const startTimestamp = zoomState.sampleToRealTimestamp(startSample);
             const endTimestamp = zoomState.sampleToRealTimestamp(endSample);
             
+            console.log('🏛️ Converted to samples (eternal coordinates):', {
+                startSample: startSample.toLocaleString(),
+                endSample: endSample.toLocaleString(),
+                sampleRate: zoomState.sampleRate
+            });
+            
             if (startTimestamp && endTimestamp) {
                 // Ensure start is before end
                 const actualStartMs = Math.min(startTimestamp.getTime(), endTimestamp.getTime());
@@ -1017,6 +1039,11 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
                 
                 startTime = new Date(actualStartMs).toISOString();
                 endTime = new Date(actualEndMs).toISOString();
+                
+                console.log('📅 Converted to timestamps:', {
+                    startTime,
+                    endTime
+                });
             }
         } else {
             // Fallback to old behavior if zoom state not initialized
@@ -1038,6 +1065,9 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             
             startTime = new Date(actualStartMs).toISOString();
             endTime = new Date(actualEndMs).toISOString();
+            
+            console.log('⚠️ FALLBACK: Using progress-based conversion (zoom not initialized)');
+            console.log('📅 Timestamps:', { startTime, endTime });
         }
     }
     
@@ -1051,6 +1081,16 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             regions[regionIndex].features[featureIndex].startTime = startTime;
             regions[regionIndex].features[featureIndex].endTime = endTime;
         }
+        
+        console.log('💾 SAVED to feature data:', {
+            regionIndex,
+            featureIndex,
+            lowFreq: lowFreq.toFixed(2),
+            highFreq: highFreq.toFixed(2),
+            startTime,
+            endTime
+        });
+        console.log('🎯 ========== END Feature Selection ==========\n');
         
         setCurrentRegions(regions);
         
@@ -2010,6 +2050,26 @@ export function zoomToRegion(regionIndex) {
     
     console.log(`🔍 Zooming into region ${regionIndex + 1} (samples ${region.startSample.toLocaleString()}-${region.endSample.toLocaleString()})`);
     
+    console.log('🔍 ========== ZOOM IN: Starting Region Zoom ==========');
+    console.log('🏛️ Region data:', {
+        regionIndex,
+        startSample: region.startSample?.toLocaleString(),
+        endSample: region.endSample?.toLocaleString(),
+        startTime: region.startTime,
+        stopTime: region.stopTime
+    });
+    
+    // Print all features before zoom
+    console.log('📦 Features before zoom:');
+    region.features.forEach((feature, idx) => {
+        console.log(`  Feature ${idx}:`, {
+            lowFreq: feature.lowFreq,
+            highFreq: feature.highFreq,
+            startTime: feature.startTime,
+            endTime: feature.endTime
+        });
+    });
+    
     // Store old time range for smooth interpolation
     let oldStartTime, oldEndTime;
     if (zoomState.isInRegion()) {
@@ -2091,6 +2151,33 @@ export function zoomToRegion(regionIndex) {
     animateZoomTransition(oldStartTime, oldEndTime, true).then(() => {
         console.log('🎬 Zoom animation complete');
         
+        console.log('🔍 ========== ZOOM IN: Animation Complete ==========');
+        console.log('🏛️ Now inside region:', {
+            regionIndex,
+            mode: zoomState.mode,
+            activeRegionId: zoomState.activeRegionId,
+            currentViewStartSample: zoomState.currentViewStartSample.toLocaleString(),
+            currentViewEndSample: zoomState.currentViewEndSample.toLocaleString()
+        });
+        
+        // Print all features after zoom
+        const regionsAfter = getCurrentRegions();
+        console.log('📦 Features after zoom:');
+        regionsAfter[regionIndex].features.forEach((feature, idx) => {
+            console.log(`  Feature ${idx}:`, {
+                lowFreq: feature.lowFreq,
+                highFreq: feature.highFreq,
+                startTime: feature.startTime,
+                endTime: feature.endTime
+            });
+        });
+        console.log('🔍 ========== END Zoom In ==========\n');
+        
+        // Update feature box positions after zoom transition completes
+        import('./spectrogram-feature-boxes.js').then(module => {
+            module.updateAllFeatureBoxPositions();
+        });
+        
         // Rebuild waveform (fast)
         drawWaveform();
         
@@ -2099,6 +2186,11 @@ export function zoomToRegion(regionIndex) {
             console.log('🔬 High-res ready - updating viewport');
             const playbackRate = State.currentPlaybackRate || 1.0;
             updateSpectrogramViewport(playbackRate);
+            
+            // Update feature box positions again after viewport update
+            import('./spectrogram-feature-boxes.js').then(module => {
+                module.updateAllFeatureBoxPositions();
+            });
             
             // 🔍 Diagnostic: Track region zoom complete
             console.log('✅ REGION ZOOM IN complete');
@@ -2146,6 +2238,29 @@ export function zoomToFull() {
     
     console.log('🌍 Zooming to full view');
     console.log('🔙 ZOOMING OUT TO FULL VIEW starting');
+    
+    console.log('🌍 ========== ZOOM OUT: Starting Full View Zoom ==========');
+    console.log('🏛️ Current state:', {
+        mode: zoomState.mode,
+        activeRegionId: zoomState.activeRegionId,
+        currentViewStartSample: zoomState.currentViewStartSample.toLocaleString(),
+        currentViewEndSample: zoomState.currentViewEndSample.toLocaleString()
+    });
+    
+    // Print all features before zoom
+    const regionsBefore = getCurrentRegions();
+    console.log('📦 All features before zoom out:');
+    regionsBefore.forEach((region, regionIndex) => {
+        console.log(`  Region ${regionIndex}:`);
+        region.features.forEach((feature, featureIndex) => {
+            console.log(`    Feature ${featureIndex}:`, {
+                lowFreq: feature.lowFreq,
+                highFreq: feature.highFreq,
+                startTime: feature.startTime,
+                endTime: feature.endTime
+            });
+        });
+    });
     
     // 🏛️ Store old time range for smooth tick interpolation
     let oldStartTime, oldEndTime;
@@ -2200,6 +2315,35 @@ export function zoomToFull() {
     animateZoomTransition(oldStartTime, oldEndTime, false).then(() => {
         console.log('🎬 Zoom-out animation complete - restoring full view');
         
+        console.log('🌍 ========== ZOOM OUT: Animation Complete ==========');
+        console.log('🏛️ Now in full view:', {
+            mode: zoomState.mode,
+            activeRegionId: zoomState.activeRegionId,
+            currentViewStartSample: zoomState.currentViewStartSample.toLocaleString(),
+            currentViewEndSample: zoomState.currentViewEndSample.toLocaleString()
+        });
+        
+        // Print all features after zoom
+        const regionsAfter = getCurrentRegions();
+        console.log('📦 All features after zoom out:');
+        regionsAfter.forEach((region, regionIndex) => {
+            console.log(`  Region ${regionIndex}:`);
+            region.features.forEach((feature, featureIndex) => {
+                console.log(`    Feature ${featureIndex}:`, {
+                    lowFreq: feature.lowFreq,
+                    highFreq: feature.highFreq,
+                    startTime: feature.startTime,
+                    endTime: feature.endTime
+                });
+            });
+        });
+        console.log('🌍 ========== END Zoom Out ==========\n');
+        
+        // Update feature box positions after zoom transition completes
+        import('./spectrogram-feature-boxes.js').then(module => {
+            module.updateAllFeatureBoxPositions();
+        });
+        
         // Rebuild waveform to ensure it's up to date (if we used cached version)
         if (State.cachedFullWaveformCanvas) {
             drawWaveform();
@@ -2213,6 +2357,11 @@ export function zoomToFull() {
         // Update viewport with current playback rate
         const playbackRate = State.currentPlaybackRate || 1.0;
         updateSpectrogramViewport(playbackRate);
+        
+        // Update feature box positions again after viewport update
+        import('./spectrogram-feature-boxes.js').then(module => {
+            module.updateAllFeatureBoxPositions();
+        });
         
         // Clear cached spectrograms after transition (no longer needed)
         clearCachedFullSpectrogram();

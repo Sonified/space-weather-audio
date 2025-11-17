@@ -694,9 +694,6 @@ export function clearCachedZoomedSpectrogram() {
  * Just like the waveform and x-axis - one source, one stretch, done!
  */
 export function drawInterpolatedSpectrogram() {
-    console.log(`🏄‍♂️ [spectrogram-complete-renderer.js] drawInterpolatedSpectrogram CALLED: inTransition=${isZoomTransitionInProgress()}`);
-    console.trace('📍 Call stack:'); // This shows us WHO called this function
-    
     // 🚨 ONLY call during transitions!
     if (!isZoomTransitionInProgress()) {
         console.log(`⚠️ drawInterpolatedSpectrogram: NOT in transition - returning early!`);
@@ -1041,10 +1038,8 @@ export function updateSpectrogramViewport(playbackRate) {
     //     drawSpectrogramSelection(ctx, width, height);
     // }
     
-    // Update feature boxes
-    import('./spectrogram-feature-boxes.js').then(module => {
-        module.updateAllFeatureBoxPositions();
-    });
+    // NOTE: Feature box positions are updated AFTER zoom transitions complete
+    // (in region-tracker.js zoom completion callbacks), not during animation loops
 }
 
 /**
@@ -1208,7 +1203,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
                     }
                 }
             }
-            console.log(`⏳ Region spectrogram: ${progress}% (worker ${workerIndex})`);
+            // console.log(`⏳ Region spectrogram: ${progress}% (worker ${workerIndex})`);
         };
         
         // Process with worker pool
