@@ -10,7 +10,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
-import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
+import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
 import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
@@ -24,7 +24,7 @@ import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAx
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
-import { initKeyboardShortcuts } from './keyboard-shortcuts.js';
+import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText, appendStatusText, initTutorial } from './tutorial.js';
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
@@ -918,6 +918,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.37 - Memory Leak Fixes');
+    console.log('🧹 [0ms] v2.37 Fix: Memory leak fixes - ResizeObserver cleanup, event listener accumulation prevention, setTimeout chain cleanup');
+    console.log('🧹 [0ms] v2.37 Fix: ResizeObserver in tutorial overlay now properly disconnected to prevent memory leaks');
+    console.log('🧹 [0ms] v2.37 Fix: Event listeners in spectrogram-renderer and keyboard-shortcuts now tracked and cleaned up');
+    console.log('🧹 [0ms] v2.37 Fix: setTimeout chains in waitForPlaybackResume now properly tracked and cleaned up');
+    console.log('🧹 [0ms] v2.37 Fix: Window properties cleaned up on tutorial completion');
     console.log('🌋 [0ms] volcano-audio v2.36 - Tutorial System Refactoring with Async/Await');
     console.log('🎓 [0ms] v2.36 Refactor: Complete tutorial system refactored to use elegant async/await pattern with skippable waits');
     console.log('🎓 [0ms] v2.36 Feat: Pause button tutorial now uses async/await - cleaner code, skippable waits, better flow');
@@ -1431,6 +1437,11 @@ window.addEventListener('DOMContentLoaded', async () => {
                     axisModule.cancelScaleTransitionRAF();
                     // Use statically imported function instead of dynamic import
                     cancelZoomTransitionRAF();
+                    
+                    // 🔥 FIX: Cleanup event listeners to prevent memory leaks
+                    // Use statically imported functions to avoid creating new Context instances
+                    cleanupSpectrogramSelection();
+                    cleanupKeyboardShortcuts();
                 };
                 window._volcanoAudioCleanupHandlers.cleanupOnUnload = cleanupOnUnload;
             

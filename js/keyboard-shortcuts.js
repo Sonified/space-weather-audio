@@ -8,12 +8,32 @@ import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { changeFrequencyScale } from './spectrogram-renderer.js';
 
+// 🔥 FIX: Track if shortcuts are initialized to prevent duplicate listeners
+let keyboardShortcutsInitialized = false;
+
 /**
  * Initialize keyboard shortcuts
  */
 export function initKeyboardShortcuts() {
+    // 🔥 FIX: Only add listener once to prevent memory leaks
+    if (keyboardShortcutsInitialized) {
+        return;
+    }
+    
     document.addEventListener('keydown', handleKeyboardShortcut);
+    keyboardShortcutsInitialized = true;
     console.log('⌨️ Keyboard shortcuts initialized');
+}
+
+/**
+ * Cleanup keyboard shortcuts event listeners
+ * 🔥 FIX: Prevents memory leaks
+ */
+export function cleanupKeyboardShortcuts() {
+    if (keyboardShortcutsInitialized) {
+        document.removeEventListener('keydown', handleKeyboardShortcut);
+        keyboardShortcutsInitialized = false;
+    }
 }
 
 /**

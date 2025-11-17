@@ -58,7 +58,11 @@ async function waitForPlaybackResume(cancelled) {
     
     // Wait for playback to resume
     return new Promise((resolve) => {
+        let timeoutId = null; // 🔥 FIX: Track timeout ID for cleanup
+        
         const checkPlayback = () => {
+            timeoutId = null; // Clear timeout ID when executing
+            
             if (cancelled && cancelled.value) {
                 resolve();
                 return;
@@ -71,9 +75,21 @@ async function waitForPlaybackResume(cancelled) {
                 }
                 resolve();
             } else {
-                setTimeout(checkPlayback, 100); // Check every 100ms
+                // 🔥 FIX: Store timeout ID for cleanup
+                timeoutId = setTimeout(checkPlayback, 100); // Check every 100ms
             }
         };
+        
+        // Store cleanup function on cancelled object so it can be called
+        if (cancelled) {
+            cancelled.cleanup = () => {
+                if (timeoutId !== null) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
+            };
+        }
+        
         checkPlayback();
     });
 }
@@ -94,6 +110,13 @@ function skippableWait(durationMs) {
         
         const cleanup = () => {
             cancelled.value = true; // Cancel any pending playback resume wait
+            
+            // 🔥 FIX: Call cleanup function if it exists to clear timeout chain
+            if (cancelled.cleanup) {
+                cancelled.cleanup();
+                cancelled.cleanup = null;
+            }
+            
             if (timeoutId !== null) {
                 clearTimeout(timeoutId);
                 timeoutId = null;
@@ -109,7 +132,8 @@ function skippableWait(durationMs) {
                 // Pause the timer - wait for playback to resume
                 waitForPlaybackResume(cancelled).then(() => {
                     if (!isResolved && !cancelled.value) {
-                        // Playback resumed - continue timer
+                        // Playback resumed - RESTART timer from 0 (reset elapsed)
+                        elapsed = 0;
                         timeoutId = setTimeout(tick, checkInterval);
                     }
                 });
@@ -452,16 +476,23 @@ async function runRegionIntroduction() {
  * Want to remove a section? Delete or comment the line!
  */
 export async function runMainTutorial() {
-    await showWellDoneMessage();           // 2s
-    await showVolcanoMessage();            // 5s  
-    await showStationMetadataMessage();    // 7s
-    await showVolumeSliderTutorial();      // 5s - volume slider glow and message
-    await runPauseButtonTutorial();        // wait for user to pause & resume
-    await showSpectrogramExplanation();    // 5s + 600ms fade
-    await runSpeedSliderTutorial();        // wait for user to complete slider actions
-    await runSelectionTutorial();          // enable waveform clicks, show message, wait for click, then wait for selection
-    await runRegionIntroduction();         // region introduction tutorial
-    
-    console.log('🎓 Tutorial complete!');
+    try {
+        await showWellDoneMessage();           // 2s
+        await showVolcanoMessage();            // 5s  
+        await showStationMetadataMessage();    // 7s
+        await showVolumeSliderTutorial();      // 5s - volume slider glow and message
+        await runPauseButtonTutorial();        // wait for user to pause & resume
+        await showSpectrogramExplanation();    // 5s + 600ms fade
+        await runSpeedSliderTutorial();        // wait for user to complete slider actions
+        await runSelectionTutorial();          // enable waveform clicks, show message, wait for click, then wait for selection
+        await runRegionIntroduction();         // region introduction tutorial
+        
+        console.log('🎓 Tutorial complete!');
+    } finally {
+        // 🔥 FIX: Clean up window properties to prevent memory leaks
+        if (window._onSpeedSliderTutorialComplete) {
+            window._onSpeedSliderTutorialComplete = null;
+        }
+    }
 }
 

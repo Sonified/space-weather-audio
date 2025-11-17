@@ -8,6 +8,7 @@ import * as State from './audio-state.js';
 
 // Overlay state
 let tutorialOverlay = null;
+let tutorialOverlayResizeObserver = null; // 🔥 FIX: Track ResizeObserver for cleanup
 let tutorialShownThisSession = false;
 let pulseShownThisSession = false;
 
@@ -67,11 +68,12 @@ function createTutorialOverlay(text = 'Click me!') {
         updatePosition();
         
         // Update overlay position when canvas resizes
-        const resizeObserver = new ResizeObserver(() => {
+        // 🔥 FIX: Store ResizeObserver for cleanup to prevent memory leaks
+        tutorialOverlayResizeObserver = new ResizeObserver(() => {
             updatePosition();
         });
-        resizeObserver.observe(waveformCanvas);
-        resizeObserver.observe(parent);
+        tutorialOverlayResizeObserver.observe(waveformCanvas);
+        tutorialOverlayResizeObserver.observe(parent);
     }
 }
 
@@ -107,6 +109,13 @@ export function hideTutorialOverlay() {
         tutorialOverlay.style.display = 'none';
         tutorialOverlay.classList.remove('visible');
     }
+    
+    // 🔥 FIX: Disconnect ResizeObserver to prevent memory leaks
+    if (tutorialOverlayResizeObserver) {
+        tutorialOverlayResizeObserver.disconnect();
+        tutorialOverlayResizeObserver = null;
+    }
+    
     // Note: Don't reset tutorialShownThisSession here - once shown, it stays shown for the session
 }
 
@@ -516,10 +525,10 @@ export function enableRegionButtons() {
 
 /**
  * Add glow effect to volume slider with fade-in
+ * Only glows the slider bar, not the label text
  */
 export function addVolumeSliderGlow() {
     const volumeSlider = document.getElementById('volumeSlider');
-    const volumeLabel = document.getElementById('volumeLabel');
     
     if (volumeSlider) {
         // Add fading-in class first to start from opacity 0
@@ -536,16 +545,6 @@ export function addVolumeSliderGlow() {
             volumeSlider.classList.remove('fading-in');
         }, 500); // Match CSS transition duration
     }
-    
-    if (volumeLabel) {
-        // Also add glow to the label
-        volumeLabel.classList.add('fading-in');
-        volumeLabel.offsetHeight;
-        volumeLabel.classList.add('volume-label-glow');
-        setTimeout(() => {
-            volumeLabel.classList.remove('fading-in');
-        }, 500);
-    }
 }
 
 /**
@@ -553,7 +552,6 @@ export function addVolumeSliderGlow() {
  */
 export function removeVolumeSliderGlow() {
     const volumeSlider = document.getElementById('volumeSlider');
-    const volumeLabel = document.getElementById('volumeLabel');
     
     if (volumeSlider) {
         // Add fading-out class to trigger fade transition
@@ -563,13 +561,6 @@ export function removeVolumeSliderGlow() {
         setTimeout(() => {
             volumeSlider.classList.remove('volume-slider-glow', 'fading-out');
         }, 500); // Match CSS transition duration
-    }
-    
-    if (volumeLabel) {
-        volumeLabel.classList.add('fading-out');
-        setTimeout(() => {
-            volumeLabel.classList.remove('volume-label-glow', 'fading-out');
-        }, 500);
     }
 }
 

@@ -2,6 +2,66 @@
 
 ---
 
+## 🧹 Memory Leak Fixes - Event Listeners & Observers (v2.37)
+
+### Problem Discovered
+Memory snapshot analysis revealed:
+- **54 Window objects** with **191MB retained size** (81% of total)
+- **Detached HTMLDocument** instances accumulating
+- Event listeners accumulating without cleanup
+- ResizeObserver not being disconnected
+
+### Root Causes & Fixes
+
+1. **ResizeObserver Leak** (`tutorial-effects.js`)
+   - **Problem**: ResizeObserver for tutorial overlay was never disconnected
+   - **Fix**: Track ResizeObserver instance and disconnect when overlay is hidden
+   - **Impact**: Prevents observer from holding references to DOM nodes
+
+2. **Event Listener Accumulation** (`spectrogram-renderer.js`)
+   - **Problem**: `setupSpectrogramSelection()` was adding duplicate `document` listeners each time it was called
+   - **Fix**: Added guard to only setup once, store handler references for cleanup
+   - **Fix**: Added `cleanupSpectrogramSelection()` function
+   - **Impact**: Prevents multiple closures holding references to entire module scopes
+
+3. **Event Listener Accumulation** (`keyboard-shortcuts.js`)
+   - **Problem**: `initKeyboardShortcuts()` could potentially be called multiple times
+   - **Fix**: Added guard to only initialize once
+   - **Fix**: Added `cleanupKeyboardShortcuts()` function
+   - **Impact**: Prevents duplicate listeners creating multiple Window object references
+
+4. **setTimeout Chain Leaks** (`tutorial-coordinator.js`)
+   - **Problem**: Recursive setTimeout chains in `waitForPlaybackResume` weren't always cleaned up
+   - **Fix**: Track timeout IDs and provide cleanup functions
+   - **Fix**: Improved cleanup in `skippableWait` to call cleanup functions
+   - **Impact**: Prevents timeout chains from accumulating
+
+5. **Window Properties** (`tutorial-coordinator.js`)
+   - **Problem**: `window._onSpeedSliderTutorialComplete` wasn't cleaned up after tutorial completion
+   - **Fix**: Clean up in finally block of `runMainTutorial()`
+   - **Impact**: Prevents window properties from accumulating
+
+6. **Cleanup on Page Unload** (`main.js`)
+   - **Fix**: Added cleanup calls to page unload handler
+   - **Fix**: Uses statically imported functions to avoid creating new Context instances
+   - **Impact**: Ensures listeners are removed when page unloads
+
+### Files Changed
+- `js/tutorial-effects.js` - Track and disconnect ResizeObserver
+- `js/spectrogram-renderer.js` - Prevent duplicate listeners, add cleanup function
+- `js/keyboard-shortcuts.js` - Prevent duplicate listeners, add cleanup function
+- `js/tutorial-coordinator.js` - Fix setTimeout chain leaks, cleanup window properties
+- `js/main.js` - Add cleanup calls to unload handler
+
+### Memory Impact
+**Before**: 54 Window objects, 191MB retained size, accumulating over time  
+**After**: Proper cleanup prevents accumulation, memory should stabilize
+
+### Version
+v2.37 - Commit: "v2.37 Fix: Memory leak fixes - ResizeObserver cleanup, event listener accumulation prevention, setTimeout chain cleanup"
+
+---
+
 ## 🎓 Tutorial System Complete Refactoring with Async/Await (v2.36)
 
 ### Major Refactoring

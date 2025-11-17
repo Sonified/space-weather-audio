@@ -17,6 +17,11 @@ let spectrogramStartY = null;
 let spectrogramEndY = null;
 export let spectrogramSelectionBox = null;
 
+// 🔥 FIX: Track event listeners for cleanup to prevent memory leaks
+let spectrogramMouseUpHandler = null;
+let spectrogramKeyDownHandler = null;
+let spectrogramSelectionSetup = false;
+
 export function drawSpectrogram() {
     console.log(`📺 [spectrogram-renderer.js] drawSpectrogram CALLED`);
     console.trace('📍 Call stack:');
@@ -452,6 +457,11 @@ export function startVisualization() {
  * Called from main.js after DOM is ready
  */
 export function setupSpectrogramSelection() {
+    // 🔥 FIX: Only setup once to prevent duplicate event listeners
+    if (spectrogramSelectionSetup) {
+        return;
+    }
+    
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
     
@@ -507,7 +517,8 @@ export function setupSpectrogramSelection() {
         spectrogramSelectionBox.style.height = height + 'px';
     });
     
-    const handleMouseUp = async (e) => {
+    // 🔥 FIX: Store handler reference so it can be removed
+    spectrogramMouseUpHandler = async (e) => {
         if (!spectrogramSelectionActive) return;
         
         const rect = canvas.getBoundingClientRect();
@@ -534,10 +545,10 @@ export function setupSpectrogramSelection() {
         spectrogramEndY = null;
     };
     
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', spectrogramMouseUpHandler);
     
-    // Handle escape key to cancel selection
-    document.addEventListener('keydown', (e) => {
+    // 🔥 FIX: Store handler reference so it can be removed
+    spectrogramKeyDownHandler = (e) => {
         if (e.key === 'Escape' && spectrogramSelectionActive) {
             // On escape, we DO want to remove the box (cancelled selection)
             if (spectrogramSelectionBox) {
@@ -549,8 +560,27 @@ export function setupSpectrogramSelection() {
             spectrogramStartY = null;
             spectrogramEndY = null;
         }
-    });
+    };
     
+    document.addEventListener('keydown', spectrogramKeyDownHandler);
+    
+    spectrogramSelectionSetup = true;
     console.log('🎯 Spectrogram frequency selection enabled');
+}
+
+/**
+ * Cleanup spectrogram selection event listeners
+ * 🔥 FIX: Prevents memory leaks from accumulating listeners
+ */
+export function cleanupSpectrogramSelection() {
+    if (spectrogramMouseUpHandler) {
+        document.removeEventListener('mouseup', spectrogramMouseUpHandler);
+        spectrogramMouseUpHandler = null;
+    }
+    if (spectrogramKeyDownHandler) {
+        document.removeEventListener('keydown', spectrogramKeyDownHandler);
+        spectrogramKeyDownHandler = null;
+    }
+    spectrogramSelectionSetup = false;
 }
 
