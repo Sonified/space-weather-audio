@@ -31,6 +31,10 @@ let activePlayingRegionIndex = null; // Track which region is currently playing 
 // Map<regionId, { x, y, width, height, regionIndex }>
 let canvasZoomButtonPositions = new Map();
 
+// Store play button positions on canvas for click detection
+// Map<regionId, { x, y, width, height, regionIndex }>
+let canvasPlayButtonPositions = new Map();
+
 /**
  * Get the current volcano from the UI
  */
@@ -95,6 +99,7 @@ export function switchVolcanoRegions(newVolcano) {
     
     // Clear canvas button positions when switching volcanoes
     canvasZoomButtonPositions.clear();
+    canvasPlayButtonPositions.clear();
     
     // Update current volcano
     currentVolcano = newVolcano;
@@ -610,11 +615,11 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
         }
         const labelY = paddingY;
         
-        // Check if number is on screen (with some padding for button)
+        // Check if number is on screen (with some padding for buttons)
         const buttonWidth = 21; // 25% smaller: 28 * 0.75 = 21px
         const buttonHeight = 15; // 25% smaller: 20 * 0.75 = 15px
-        const buttonPadding = 4; // Space between number and button
-        const isOnScreen = labelX + 50 > 0 && labelX < canvasWidth; // 50px accounts for number + button + padding (reduced)
+        const buttonPadding = 4; // Space between number and button, and between buttons
+        const isOnScreen = labelX + 70 > 0 && labelX < canvasWidth; // 70px accounts for number + 2 buttons + padding
         
         if (isOnScreen) {
             // Set text style - white with 80% opacity
@@ -626,115 +631,148 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
             ctx.fillText(regionNumber.toString(), labelX, labelY);
             
             // Draw zoom button next to the number, aligned to middle-left (vertically centered with number)
-            const buttonX = labelX + 18; // Position button closer to the number (number is ~20px wide)
+            const zoomButtonX = labelX + 18; // Position button closer to the number (number is ~20px wide)
             const numberTextHeight = 20; // Number font size
             const buttonY = labelY + (numberTextHeight - buttonHeight) / 2; // Center button vertically with number
             
-            // Determine button state (same as panel button)
+            // Determine zoom button state (same as panel button)
             const isZoomedIntoThisRegion = zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id;
-            const buttonIcon = isZoomedIntoThisRegion ? '↩️' : '🔍';
+            const zoomButtonIcon = isZoomedIntoThisRegion ? '↩️' : '🔍';
             
-            // Draw button with 3D effect to match panel buttons
-            // Ensure button is fully opaque and drawn on top by resetting globalAlpha
-            ctx.save(); // Save current context state
-            ctx.globalAlpha = 1.0; // Force 100% opacity for button
+            // Draw play button to the right of zoom button
+            const playButtonX = zoomButtonX + buttonWidth + buttonPadding;
             
-            const radius = 3; // Match panel button border-radius
+            // Determine play button state (red when not playing this region, green when playing this region)
+            const isThisRegionPlaying = activePlayingRegionIndex === index;
+            const playGradient = isThisRegionPlaying
+                ? ['#34ce57', '#1e7e34'] // Green when playing (matches panel .playing)
+                : ['#d32f3f', '#a01d2a']; // Red when not playing (matches panel default)
             
-            // Create gradient for button background (145deg = top-left to bottom-right)
-            let gradient;
-            if (isZoomedIntoThisRegion) {
-                // Orange gradient for return button (matches panel .return-mode)
-                gradient = ctx.createLinearGradient(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight);
-                gradient.addColorStop(0, '#ff8c00'); // Top-left (lighter)
-                gradient.addColorStop(1, '#ff6600'); // Bottom-right (darker)
-            } else {
-                // Blue gradient for zoom button (matches panel default)
-                gradient = ctx.createLinearGradient(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight);
-                gradient.addColorStop(0, '#2196F3'); // Top-left (lighter)
-                gradient.addColorStop(1, '#1565C0'); // Bottom-right (darker)
-            }
+            // Helper function to draw a button with 3D effect
+            const drawButton = (x, y, gradientColors, drawIcon) => {
+                ctx.save();
+                ctx.globalAlpha = 1.0;
+                
+                const radius = 3;
+                
+                // Create gradient for button background
+                const gradient = ctx.createLinearGradient(x, y, x + buttonWidth, y + buttonHeight);
+                gradient.addColorStop(0, gradientColors[0]); // Top-left (lighter)
+                gradient.addColorStop(1, gradientColors[1]); // Bottom-right (darker)
+                
+                // Draw button background with gradient
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + buttonWidth - radius, y);
+                ctx.quadraticCurveTo(x + buttonWidth, y, x + buttonWidth, y + radius);
+                ctx.lineTo(x + buttonWidth, y + buttonHeight - radius);
+                ctx.quadraticCurveTo(x + buttonWidth, y + buttonHeight, x + buttonWidth - radius, y + buttonHeight);
+                ctx.lineTo(x + radius, y + buttonHeight);
+                ctx.quadraticCurveTo(x, y + buttonHeight, x, y + buttonHeight - radius);
+                ctx.lineTo(x, y + radius);
+                ctx.quadraticCurveTo(x, y, x + radius, y);
+                ctx.closePath();
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // Draw border highlights (light on top/left, dark on bottom/right)
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + buttonWidth - radius, y);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x, y + radius);
+                ctx.lineTo(x, y + buttonHeight - radius);
+                ctx.stroke();
+                
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y + buttonHeight);
+                ctx.lineTo(x + buttonWidth - radius, y + buttonHeight);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x + buttonWidth, y + radius);
+                ctx.lineTo(x + buttonWidth, y + buttonHeight - radius);
+                ctx.stroke();
+                
+                // Draw inset highlights
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + buttonWidth - radius, y);
+                ctx.lineTo(x + buttonWidth - radius, y + 1);
+                ctx.lineTo(x + radius, y + 1);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Draw inset shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y + buttonHeight - 1);
+                ctx.lineTo(x + buttonWidth - radius, y + buttonHeight - 1);
+                ctx.lineTo(x + buttonWidth - radius, y + buttonHeight);
+                ctx.lineTo(x + radius, y + buttonHeight);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Draw icon (if provided)
+                if (drawIcon) {
+                    drawIcon(x, y);
+                }
+                
+                ctx.restore();
+            };
             
-            // Draw button background with gradient
-            ctx.beginPath();
-            ctx.moveTo(buttonX + radius, buttonY);
-            ctx.lineTo(buttonX + buttonWidth - radius, buttonY);
-            ctx.quadraticCurveTo(buttonX + buttonWidth, buttonY, buttonX + buttonWidth, buttonY + radius);
-            ctx.lineTo(buttonX + buttonWidth, buttonY + buttonHeight - radius);
-            ctx.quadraticCurveTo(buttonX + buttonWidth, buttonY + buttonHeight, buttonX + buttonWidth - radius, buttonY + buttonHeight);
-            ctx.lineTo(buttonX + radius, buttonY + buttonHeight);
-            ctx.quadraticCurveTo(buttonX, buttonY + buttonHeight, buttonX, buttonY + buttonHeight - radius);
-            ctx.lineTo(buttonX, buttonY + radius);
-            ctx.quadraticCurveTo(buttonX, buttonY, buttonX + radius, buttonY);
-            ctx.closePath();
-            ctx.fillStyle = gradient;
-            ctx.fill();
+            // Draw zoom button with emoji icon
+            const zoomGradient = isZoomedIntoThisRegion 
+                ? ['#ff8c00', '#ff6600'] // Orange for return
+                : ['#2196F3', '#1565C0']; // Blue for zoom
+            drawButton(zoomButtonX, buttonY, zoomGradient, (x, y) => {
+                ctx.fillStyle = 'rgba(255, 255, 255, 1.0)';
+                ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI"';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(zoomButtonIcon, x + buttonWidth / 2, y + buttonHeight / 2);
+            });
             
-            // Draw border highlights (light on top/left, dark on bottom/right)
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            // Top border (light)
-            ctx.moveTo(buttonX + radius, buttonY);
-            ctx.lineTo(buttonX + buttonWidth - radius, buttonY);
-            ctx.stroke();
-            // Left border (light)
-            ctx.beginPath();
-            ctx.moveTo(buttonX, buttonY + radius);
-            ctx.lineTo(buttonX, buttonY + buttonHeight - radius);
-            ctx.stroke();
+            // Draw play button with white triangle icon
+            drawButton(playButtonX, buttonY, playGradient, (x, y) => {
+                // Draw white triangle pointing right (centered in button)
+                const triangleSize = buttonWidth * 0.4;
+                const triangleX = x + buttonWidth / 2 - triangleSize / 2;
+                const triangleY = y + buttonHeight / 2;
+                
+                ctx.fillStyle = 'rgba(255, 255, 255, 1.0)'; // White triangle
+                ctx.beginPath();
+                ctx.moveTo(triangleX, triangleY - triangleSize / 2);
+                ctx.lineTo(triangleX + triangleSize, triangleY);
+                ctx.lineTo(triangleX, triangleY + triangleSize / 2);
+                ctx.closePath();
+                ctx.fill();
+            });
             
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-            ctx.beginPath();
-            // Bottom border (dark)
-            ctx.moveTo(buttonX + radius, buttonY + buttonHeight);
-            ctx.lineTo(buttonX + buttonWidth - radius, buttonY + buttonHeight);
-            ctx.stroke();
-            // Right border (dark)
-            ctx.beginPath();
-            ctx.moveTo(buttonX + buttonWidth, buttonY + radius);
-            ctx.lineTo(buttonX + buttonWidth, buttonY + buttonHeight - radius);
-            ctx.stroke();
-            
-            // Draw inset highlights (top highlight)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.beginPath();
-            ctx.moveTo(buttonX + radius, buttonY);
-            ctx.lineTo(buttonX + buttonWidth - radius, buttonY);
-            ctx.lineTo(buttonX + buttonWidth - radius, buttonY + 1);
-            ctx.lineTo(buttonX + radius, buttonY + 1);
-            ctx.closePath();
-            ctx.fill();
-            
-            // Draw inset shadow (bottom shadow)
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-            ctx.beginPath();
-            ctx.moveTo(buttonX + radius, buttonY + buttonHeight - 1);
-            ctx.lineTo(buttonX + buttonWidth - radius, buttonY + buttonHeight - 1);
-            ctx.lineTo(buttonX + buttonWidth - radius, buttonY + buttonHeight);
-            ctx.lineTo(buttonX + radius, buttonY + buttonHeight);
-            ctx.closePath();
-            ctx.fill();
-            
-            // Draw button icon (fully opaque white) - scaled down 25% to match smaller button
-            ctx.fillStyle = 'rgba(255, 255, 255, 1.0)';
-            ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI"'; // 25% smaller: 16 * 0.75 = 12px
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(buttonIcon, buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
-            ctx.restore(); // Restore context state
-            
-            // Store button position for click detection
+            // Store button positions for click detection
             canvasZoomButtonPositions.set(region.id, {
-                x: buttonX,
+                x: zoomButtonX,
+                y: buttonY,
+                width: buttonWidth,
+                height: buttonHeight,
+                regionIndex: index
+            });
+            
+            canvasPlayButtonPositions.set(region.id, {
+                x: playButtonX,
                 y: buttonY,
                 width: buttonWidth,
                 height: buttonHeight,
                 regionIndex: index
             });
         } else {
-            // Number is off screen, remove button position
+            // Number is off screen, remove button positions
             canvasZoomButtonPositions.delete(region.id);
+            canvasPlayButtonPositions.delete(region.id);
         }
     });
 }
@@ -895,6 +933,28 @@ export function checkCanvasZoomButtonClick(x, y, canvasWidth, canvasHeight) {
     
     // Check each button position
     for (const [regionId, button] of canvasZoomButtonPositions.entries()) {
+        if (scaledX >= button.x && scaledX <= button.x + button.width &&
+            scaledY >= button.y && scaledY <= button.y + button.height) {
+            return button.regionIndex;
+        }
+    }
+    return null;
+}
+
+/**
+ * Check if click is on a canvas play button
+ * x, y are in CSS pixels (from event coordinates)
+ * canvasWidth, canvasHeight are in device pixels (from canvas.width/height)
+ * Returns region index if clicked, null otherwise
+ */
+export function checkCanvasPlayButtonClick(x, y, canvasWidth, canvasHeight) {
+    // Convert CSS pixel coordinates to device pixel coordinates
+    const dpr = window.devicePixelRatio || 1;
+    const scaledX = x * dpr;
+    const scaledY = y * dpr;
+    
+    // Check each button position
+    for (const [regionId, button] of canvasPlayButtonPositions.entries()) {
         if (scaledX >= button.x && scaledX <= button.x + button.width &&
             scaledY >= button.y && scaledY <= button.y + button.height) {
             return button.regionIndex;
@@ -1553,6 +1613,9 @@ export function toggleRegionPlay(index) {
     // Seek to start and play
     seekToPosition(b.start, true);
     
+    // Redraw waveform to update canvas play button colors
+    drawWaveformWithSelection();
+    
     console.log(`▶️ Region ${index + 1} playing from ${b.start.toFixed(2)}s`);
 }
 
@@ -1581,6 +1644,9 @@ function resetRegionPlayButton(index) {
             playBtn.title = 'Play region';
         }
     }
+    
+    // Redraw waveform to update canvas play button colors
+    drawWaveformWithSelection();
 }
 
 /**
@@ -1670,6 +1736,7 @@ export function clearActiveRegion() {
     activeRegionIndex = null;
     // Clear canvas button positions when clearing active region
     canvasZoomButtonPositions.clear();
+    canvasPlayButtonPositions.clear();
     // Trigger waveform redraw to update region highlights
     drawWaveformWithSelection();
 }
@@ -1825,6 +1892,7 @@ export function deleteRegion(index) {
         // Remove button position for deleted region (before deleting from array)
         if (deletedRegion) {
             canvasZoomButtonPositions.delete(deletedRegion.id);
+            canvasPlayButtonPositions.delete(deletedRegion.id);
         }
         
         regions.splice(index, 1);

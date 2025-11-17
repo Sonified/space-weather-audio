@@ -8,7 +8,7 @@ import { PlaybackState } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
-import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, zoomToRegion, zoomToFull, getRegions } from './region-tracker.js';
+import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions } from './region-tracker.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
@@ -512,19 +512,23 @@ export function setupWaveformInteraction() {
         const startX = e.clientX - rect.left;
         const startY = e.clientY - rect.top;
         
-        // 🔧 FIX: Check if click is on a canvas zoom button BEFORE starting scrub preview
-        // This prevents the white playhead from appearing when clicking zoom buttons
-        const clickedRegionIndex = checkCanvasZoomButtonClick(startX, startY, canvas.width, canvas.height);
-        if (clickedRegionIndex !== null) {
-            // Clicked on a zoom button - don't start dragging/scrub preview
-            // The zoom will be handled in mouseup, but we prevent the scrub preview here
-            e.stopPropagation();
-            e.preventDefault();
-            return; // Don't process as normal waveform click
+        // 🔧 FIX: Check if click is on a canvas button BEFORE starting scrub preview
+        // This prevents the white playhead from appearing when clicking buttons
+        // BUT: Only check if we're not already dragging/selecting (to avoid false positives)
+        if (!State.isDragging && !State.isSelecting && State.selectionStartX === null) {
+            const clickedZoomRegionIndex = checkCanvasZoomButtonClick(startX, startY, canvas.width, canvas.height);
+            const clickedPlayRegionIndex = checkCanvasPlayButtonClick(startX, startY, canvas.width, canvas.height);
+            if (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null) {
+                // Clicked on a button - don't start dragging/scrub preview
+                // The button action will be handled in mouseup, but we prevent the scrub preview here
+                e.stopPropagation();
+                e.preventDefault();
+                return; // Don't process as normal waveform click
+            }
         }
         
+        // Normal waveform interaction - start selection/drag
         State.setSelectionStartX(startX);
-        
         State.setIsDragging(true);
         canvas.style.cursor = 'grabbing';
         updateScrubPreview(e);
@@ -576,14 +580,15 @@ export function setupWaveformInteraction() {
     });
     
     canvas.addEventListener('mouseup', (e) => {
-        // 🔧 FIX: Check for zoom button clicks even when not dragging
+        // 🔧 FIX: Check for button clicks even when not dragging
         // (in case we returned early from mousedown to prevent scrub preview)
         const rect = canvas.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
-        const clickedRegionIndex = checkCanvasZoomButtonClick(clickX, clickY, canvas.width, canvas.height);
+        const clickedZoomRegionIndex = checkCanvasZoomButtonClick(clickX, clickY, canvas.width, canvas.height);
+        const clickedPlayRegionIndex = checkCanvasPlayButtonClick(clickX, clickY, canvas.width, canvas.height);
         
-        if (clickedRegionIndex !== null) {
+        if (clickedZoomRegionIndex !== null) {
             // Clicked on a zoom button - handle zoom
             e.stopPropagation();
             e.preventDefault();
@@ -593,7 +598,7 @@ export function setupWaveformInteraction() {
             canvas.style.cursor = 'pointer';
             
             const regions = getRegions();
-            const region = regions[clickedRegionIndex];
+            const region = regions[clickedZoomRegionIndex];
             
             if (region) {
                 // Check if we're already inside THIS temple
@@ -602,7 +607,7 @@ export function setupWaveformInteraction() {
                     zoomToFull();
                 } else {
                     // Zoom into this region
-                    zoomToRegion(clickedRegionIndex);
+                    zoomToRegion(clickedZoomRegionIndex);
                 }
             }
             
@@ -622,6 +627,32 @@ export function setupWaveformInteraction() {
             return; // Don't process as normal waveform click
         }
         
+        if (clickedPlayRegionIndex !== null) {
+            // Clicked on a play button - play region from start (mirrors panel play button)
+            e.stopPropagation();
+            e.preventDefault();
+            
+            // Clear all selection/dragging state to allow new selections
+            // Do this synchronously BEFORE async import to ensure state is cleared immediately
+            State.setIsDragging(false);
+            State.setIsSelecting(false);
+            State.setSelectionStartX(null);
+            canvas.style.cursor = 'pointer';
+            
+            // Import and call toggleRegionPlay (plays region from start, stops other regions)
+            import('./region-tracker.js').then(module => {
+                module.toggleRegionPlay(clickedPlayRegionIndex);
+            });
+            
+            // Redraw to update button states (play button colors will update via redraw)
+            // Don't wait for async - redraw immediately so button states update
+            drawWaveformWithSelection();
+            
+            // Return early - don't process as normal waveform click
+            // State is already cleared above, so next mousedown will work normally
+            return;
+        }
+        
         if (State.isDragging) {
             State.setIsDragging(false);
             canvas.style.cursor = 'pointer';
@@ -635,15 +666,16 @@ export function setupWaveformInteraction() {
             // Only check for button click if it was a simple click (not a drag)
             if (!State.isSelecting && dragDistance < 5) {
                 // Already checked above, but keep this as fallback for edge cases
-                const checkAgain = checkCanvasZoomButtonClick(endX, clickY, canvas.width, canvas.height);
+                const checkZoomAgain = checkCanvasZoomButtonClick(endX, clickY, canvas.width, canvas.height);
+                const checkPlayAgain = checkCanvasPlayButtonClick(endX, clickY, canvas.width, canvas.height);
                 
-                if (checkAgain !== null) {
+                if (checkZoomAgain !== null) {
                     // Clicked on a zoom button - handle zoom
                     e.stopPropagation();
                     e.preventDefault();
                     
                     const regions = getRegions();
-                    const region = regions[checkAgain];
+                    const region = regions[checkZoomAgain];
                     
                     if (region) {
                         // Check if we're already inside THIS temple
@@ -652,7 +684,7 @@ export function setupWaveformInteraction() {
                             zoomToFull();
                         } else {
                             // Zoom into this region
-                            zoomToRegion(checkAgain);
+                            zoomToRegion(checkZoomAgain);
                         }
                     }
                     
@@ -668,6 +700,24 @@ export function setupWaveformInteraction() {
                     clearSpectrogramScrubPreview();
                     
                     // Redraw to update button states (canvas buttons will update via redraw)
+                    drawWaveformWithSelection();
+                    return; // Don't process as normal waveform click
+                }
+                
+                if (checkPlayAgain !== null) {
+                    // Clicked on a play button - play region from start
+                    e.stopPropagation();
+                    e.preventDefault();
+                    
+                    // Clear all selection/dragging state to allow new selections
+                    State.setIsDragging(false);
+                    State.setIsSelecting(false);
+                    State.setSelectionStartX(null);
+                    
+                    import('./region-tracker.js').then(module => {
+                        module.toggleRegionPlay(checkPlayAgain);
+                    });
+                    
                     drawWaveformWithSelection();
                     return; // Don't process as normal waveform click
                 }

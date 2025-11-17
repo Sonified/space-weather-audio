@@ -2,6 +2,50 @@
 
 ---
 
+## 🎮 Canvas Play Buttons for Regions (v2.21)
+
+### Feature
+Added play buttons next to zoom buttons on the waveform canvas for each region. These buttons provide secondary navigation that mirrors the panel play button functionality.
+
+### Implementation
+1. **Play Button Rendering** (`js/region-tracker.js`):
+   - Added `canvasPlayButtonPositions` Map to track play button positions for click detection
+   - Play buttons rendered to the right of zoom buttons with same 3D styling
+   - Red gradient when not playing (`#d32f3f` to `#a01d2a`) - matches panel `.play-btn`
+   - Green gradient when playing (`#34ce57` to `#1e7e34`) - matches panel `.play-btn.playing`
+   - White triangle icon pointing right (no emoji, simple geometric shape)
+   - Button state determined by `activePlayingRegionIndex === index`
+
+2. **Click Detection** (`js/region-tracker.js`):
+   - Added `checkCanvasPlayButtonClick()` function (mirrors `checkCanvasZoomButtonClick()`)
+   - Button positions stored in device pixel coordinates for accurate click detection
+
+3. **Play Button Logic** (`js/waveform-renderer.js`):
+   - Play button clicks call `toggleRegionPlay()` instead of `togglePlayPause()`
+   - Plays region from start, stops other regions (mirrors panel button behavior)
+   - Clears all selection/dragging state synchronously before async import
+   - Added guards to prevent button detection from interfering with selections
+
+4. **State Management** (`js/region-tracker.js`):
+   - `toggleRegionPlay()` and `resetRegionPlayButton()` trigger waveform redraw to update button colors
+   - Button positions cleared when regions change or are deleted
+
+### Key Changes
+- `js/region-tracker.js` - Added play button rendering, click detection, and state management
+- `js/waveform-renderer.js` - Added play button click handlers and state clearing, improved button detection guards
+
+### Benefits
+- ✅ Secondary navigation mode for quick region playback
+- ✅ Visual consistency with panel play buttons (red/green, white triangle)
+- ✅ Plays region from start, stops other regions (mirrors panel behavior)
+- ✅ Proper state clearing allows selections after clicking play buttons
+- ✅ Button detection doesn't interfere with normal waveform interactions
+
+### Version
+v2.21 - Commit: "v2.21 Feat: Canvas play buttons for regions - red/green buttons with white triangle, play region from start, mirrors panel button functionality"
+
+---
+
 ## 🎨 Frequency Scale Transition Fixes & Memory Leak Fixes (v2.20)
 
 ### Memory Leak Fixes
