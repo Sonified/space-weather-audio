@@ -494,6 +494,17 @@ export function getParticipantId() {
         return urlId;
     }
     
+    // In STUDY_CLEAN mode, don't use stored participant ID (always start fresh)
+    // Check mode dynamically to avoid circular dependencies
+    try {
+        const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+        if (storedMode === 'study_clean') {
+            return null; // Study clean mode - don't use remembered participant ID
+        }
+    } catch (e) {
+        // If check fails, continue normally
+    }
+    
     // Fall back to localStorage
     const storedId = localStorage.getItem('participantId');
     return storedId || null;

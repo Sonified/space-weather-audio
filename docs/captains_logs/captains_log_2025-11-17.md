@@ -467,3 +467,56 @@ Added `enableRegionButtons()` call in `runZoomOutTutorial()` immediately after t
 
 ---
 
+## 🎯 Begin Analysis Button with Sparkle Effect & Confirmation Modal (v2.42)
+
+### Features Implemented
+
+1. **Begin Analysis Button**
+   - Changed from green "✓ Complete" to blue "Begin Analysis" button
+   - Button starts disabled and enables automatically after complete data set downloads
+   - Button state updates based on `completeSamplesArray` availability (not feature identification)
+   - Added subtle sparkle/glow animation effect when enabled
+
+2. **Sparkle Effect**
+   - Subtle horizontal sweep animation (left to right)
+   - Tight 40% width sparkle band with reduced brightness (0.2 opacity, 0.6 peak)
+   - Slower 4s animation cycle for elegant effect
+   - Blue glow effect with tight radius (4-8px) that stays on button
+
+3. **Confirmation Modal**
+   - Modal pops up when user clicks "Begin Analysis" button
+   - Message: "Are you sure? Once you begin you will no longer be able to switch volcanoes."
+   - Cancel and Begin Analysis buttons
+   - Clicking outside or Cancel closes modal without action
+   - Confirming proceeds with workflow (Study Mode surveys or direct submission)
+
+4. **Volcano Switching Lock**
+   - After confirmation, volcano dropdown is disabled
+   - Visual feedback: reduced opacity (0.6) and not-allowed cursor
+   - Prevents users from switching volcanoes after beginning analysis
+
+### Implementation Details
+
+- Button state management: `updateCompleteButtonState()` checks for `completeSamplesArray` instead of features
+- Button enables in three places: after R2Worker fetch, after Railway fetch, and after download button stitching
+- Button disables when data is cleared (new data fetch starts)
+- Modal created in `modal-templates.js` and initialized with other modals
+- Event listeners handle modal interactions and dispatch custom event for confirmation
+- Volcano dropdown disabled via DOM manipulation after confirmation
+
+### Files Changed
+- `index.html` - Updated button styling and text
+- `styles.css` - Added sparkle animation keyframes and button styles
+- `js/modal-templates.js` - Created `createBeginAnalysisModal()` function
+- `js/ui-controls.js` - Added `openBeginAnalysisModal()` and `closeBeginAnalysisModal()` functions, modal event listeners
+- `js/main.js` - Updated button click handler to show modal, added confirmation listener, volcano disabling logic
+- `js/region-tracker.js` - Updated `updateCompleteButtonState()` to check for data instead of features
+- `js/data-fetcher.js` - Added `updateCompleteButtonState()` calls after data is set
+- `backend/collector_loop.py` - Updated version to v2.42
+
+### Version Tag
+- **Version**: v2.42
+- **Commit Message**: v2.42 Feat: Begin Analysis button with sparkle effect and confirmation modal - enables after data download, disables volcano switching after confirmation
+
+---
+

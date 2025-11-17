@@ -8,8 +8,12 @@ import socketserver
 import os
 import json
 from pathlib import Path
+from dotenv import load_dotenv
 
-PORT = 8000
+# Load environment variables from .env file
+load_dotenv()
+
+PORT = 8001
 
 class CORSRequestHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
@@ -30,6 +34,41 @@ class CORSRequestHandler(http.server.SimpleHTTPRequestHandler):
         """Handle preflight requests"""
         self.send_response(200)
         self.end_headers()
+    
+    def do_GET(self):
+        """Handle GET requests"""
+        # Inject .env variables into index.html
+        if self.path == '/' or self.path == '/index.html':
+            try:
+                index_path = Path(__file__).parent / 'index.html'
+                if index_path.exists():
+                    with open(index_path, 'r', encoding='utf-8') as f:
+                        html_content = f.read()
+                    
+                    # Inject mode selector secret from .env (same pattern as R2 keys)
+                    # Loads from .env file via load_dotenv() at top of file
+                    # Defaults to 'dvdv' if not set in .env
+                    mode_selector_secret = os.getenv('MODE_SELECTOR_SECRET', 'dvdv')
+                    injection_script = f'''
+    <script>
+        // Injected from .env file via dev_server.py
+        window.MODE_SELECTOR_SECRET = '{mode_selector_secret}';
+    </script>'''
+                    
+                    # Inject before closing </body> tag
+                    html_content = html_content.replace('</body>', injection_script + '\n</body>')
+                    
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/html')
+                    self.end_headers()
+                    self.wfile.write(html_content.encode('utf-8'))
+                    return
+            except Exception as e:
+                print(f"❌ Error injecting env vars into HTML: {e}")
+                # Fall through to default file serving
+        
+        # Default to file serving
+        super().do_GET()
     
     def do_POST(self):
         """Handle POST requests for saving Qualtrics response metadata"""

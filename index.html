@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IRIS Data Audification (Beta) 🚧</title>
+    <title>Volcano Audification Study</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌋</text></svg>">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
@@ -18,9 +18,17 @@
 </head>
 <body>
     <div class="container">
-        <div style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative;">
-            <div style="flex: 1;"></div>
-            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.95;">IRIS Data Audification (Beta) 🚧</h1>
+        <div style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001;">
+            <div id="modeSelectorContainer" style="flex: 1; display: flex; align-items: center; gap: 8px; visibility: hidden; opacity: 0; transition: opacity 0.3s;">
+                <label for="modeSelector" style="font-size: 13px; font-weight: 600; color: #aaa; white-space: nowrap; user-select: none;">Mode:</label>
+                <select id="modeSelector" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer; min-width: 120px;">
+                    <option value="personal">👤 Personal</option>
+                    <option value="dev" selected>🔧 Dev</option>
+                    <option value="study">🎓 Study</option>
+                    <option value="study_clean">🧹 Study Clean</option>
+                </select>
+            </div>
+            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.95;">Volcano Audification Study</h1>
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end;">
                 <div id="participantIdDisplay" style="display: none; margin-bottom: 0;">
                     <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
@@ -141,14 +149,15 @@
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
                 <button type="button" id="playPauseBtn" disabled style="width: 135px; min-width: 135px;">⏸️ Pause</button>
                 <button type="button" id="loopBtn" disabled style="width: 135px; min-width: 135px;">🔁 Loop</button>
-                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(600px, 100%); gap: 10px; padding: 0 20px 0 20px; box-sizing: border-box;">
+                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(450px, 100%); gap: 10px; padding: 0 15px 0 15px; box-sizing: border-box;">
                     <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none; opacity: 0.5;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
                     <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" disabled style="flex: 1; min-width: 0;">
                 </div>
-                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(400px, 100%); gap: 10px; padding: 0 20px 0 5px; box-sizing: border-box;">
+                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(350px, 100%); gap: 10px; padding: 0 15px 0 5px; box-sizing: border-box;">
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none; opacity: 0.5;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" disabled style="flex: 1; min-width: 0;">
                 </div>
+                <button type="button" id="completeBtn" disabled class="begin-analysis-btn" style="margin-left: auto; padding: 12px 24px; font-size: 16px; font-weight: 700; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: not-allowed; white-space: nowrap; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); opacity: 0.5;" onmouseover="if(!this.disabled) { this.style.background='#0056b3'; this.style.boxShadow='0 3px 6px rgba(0,0,0,0.3)'; }" onmouseout="if(!this.disabled) { this.style.background='#007bff'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)'; }">Begin Analysis</button>
                 <div style="display: none; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(500px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
                         <input type="checkbox" id="removeDCOffset" checked style="width: 20px; height: 20px; cursor: pointer;">
@@ -168,7 +177,7 @@
             <canvas id="spectrogram" width="1200" height="450"></canvas>
             <canvas id="spectrogram-axis" width="60" height="450"></canvas>
             <div style="display: flex; align-items: center; justify-content: flex-end; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-right: 40px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: none;">
                     <input type="checkbox" id="playOnClick" checked style="width: 20px; height: 20px; cursor: pointer;">
                     <label for="playOnClick" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">Play on Click</label>
                 </div>
@@ -222,17 +231,23 @@
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                 <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Simulate:</label>
                 <button type="button" id="participantModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👤 Participant Setup</button>
+                <button type="button" id="welcomeModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👋 Welcome</button>
                 <button type="button" id="preSurveyModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Pre-Survey</button>
                 <button type="button" id="activityLevelModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🌋 Activity Level</button>
                 <button type="button" id="awesfModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">✨ AWE-SF</button>
                 <button type="button" id="postSurveyModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Post-Survey</button>
-                <button type="button" id="submitBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto; background: #28a745; border-color: #28a745; color: white; font-weight: 600;">📤 Submit</button>
+                <button type="button" id="endModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🎉 End</button>
+                <button type="button" id="submitBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto; background: #28a745; border-color: #28a745; color: white; font-weight: 600;">📤 Submit to Qualtrics</button>
                 <button type="button" id="adminModeBtn" style="margin-left: auto; padding: 10px 20px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d; color: white;">👑 Admin Mode: OFF</button>
             </div>
         </div>
     </div>
     
-    <!-- Modals injected dynamically by js/modal-templates.js -->
+    <!-- Permanent Modal Overlay Background -->
+    <!-- Hidden by default, shown only in Study Mode when modals are active -->
+    <div id="permanentOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 1000; align-items: center; justify-content: center;">
+        <!-- Modals injected dynamically by js/modal-templates.js will appear here -->
+    </div>
     
     <!-- ES6 Module Imports - Refactored Architecture ✨ -->
     <script type="module" src="js/main.js"></script>

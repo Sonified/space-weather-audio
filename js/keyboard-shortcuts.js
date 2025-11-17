@@ -3,7 +3,7 @@
  * Keyboard shortcuts for region navigation and feature drawing
  */
 
-import { zoomToRegion, zoomToFull, getCurrentRegions, getActiveRegionIndex, isInFrequencySelectionMode, startFrequencySelection, addFeature, createRegionFromSelectionTimes, toggleRegionPlay } from './region-tracker.js';
+import { zoomToRegion, zoomToFull, getCurrentRegions, getActiveRegionIndex, isInFrequencySelectionMode, startFrequencySelection, addFeature, createRegionFromSelectionTimes, toggleRegionPlay, stopFrequencySelection } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { changeFrequencyScale } from './spectrogram-renderer.js';
@@ -20,7 +20,9 @@ export function initKeyboardShortcuts() {
         return;
     }
     
-    document.addEventListener('keydown', handleKeyboardShortcut);
+    // Use window.addEventListener with capture phase to ensure we catch events
+    // This ensures keyboard shortcuts work even if other handlers prevent default
+    window.addEventListener('keydown', handleKeyboardShortcut, true);
     keyboardShortcutsInitialized = true;
     console.log('⌨️ Keyboard shortcuts initialized');
 }
@@ -31,7 +33,7 @@ export function initKeyboardShortcuts() {
  */
 export function cleanupKeyboardShortcuts() {
     if (keyboardShortcutsInitialized) {
-        document.removeEventListener('keydown', handleKeyboardShortcut);
+        window.removeEventListener('keydown', handleKeyboardShortcut, true);
         keyboardShortcutsInitialized = false;
     }
 }
@@ -40,15 +42,32 @@ export function cleanupKeyboardShortcuts() {
  * Handle keyboard shortcut events
  */
 function handleKeyboardShortcut(event) {
+    // Debug: Log Escape key presses
+    if (event.key === 'Escape') {
+        console.log('🔍 [ESCAPE DEBUG] handleKeyboardShortcut() called with Escape key');
+        console.log('🔍 [ESCAPE DEBUG] event.target:', event.target);
+        console.log('🔍 [ESCAPE DEBUG] event.target.tagName:', event.target.tagName);
+    }
+    
     // Don't capture shortcuts when user is typing in inputs, textareas, or contenteditable elements
+    // EXCEPT for Escape key - Escape should always work to exit modes/zoom out
     const isTextInput = event.target.tagName === 'INPUT' && 
                        event.target.type !== 'range' && 
                        event.target.type !== 'checkbox';
     const isTextarea = event.target.tagName === 'TEXTAREA';
     const isContentEditable = event.target.isContentEditable;
     
-    if (isTextInput || isTextarea || isContentEditable) {
-        return; // Let browser handle normally
+    // Allow Escape key to work even when in text inputs/textareas
+    const isEscapeKey = event.key === 'Escape';
+    const isTypingInField = isTextInput || isTextarea || isContentEditable;
+    
+    if (isTypingInField && !isEscapeKey) {
+        return; // Let browser handle normally (but not Escape)
+    }
+    
+    // Debug: Log all key presses during tutorial (can be removed later)
+    if (event.key === 'Escape' || (event.key >= '1' && event.key <= '9')) {
+        console.log(`⌨️ Keyboard shortcut handler called: key=${event.key}, target=${event.target.tagName}`);
     }
     
     // Number keys (1-9): Zoom to region, or play region if already zoomed into it
@@ -60,6 +79,16 @@ function handleKeyboardShortcut(event) {
             event.preventDefault();
             const region = regions[regionIndex];
             
+            // 🎓 Tutorial: Resolve promise if waiting for this specific number key
+            if (State.waitingForNumberKeyPress && State.targetNumberKey === event.key && State._numberKeyPressResolve) {
+                State.setWaitingForNumberKeyPress(false);
+                const resolve = State._numberKeyPressResolve;
+                State.setNumberKeyPressResolve(null);
+                State.setTargetNumberKey(null);
+                resolve();
+            }
+            
+            // Always execute the action, even during tutorial (tutorial will track it separately)
             // Check if we're already zoomed into this specific region
             if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
                 // Already zoomed into this region - play it from the start
@@ -207,12 +236,40 @@ function handleKeyboardShortcut(event) {
         return;
     }
     
-    // Escape key: Zoom back out to full view
+    // Escape key: Exit feature selection mode first, then zoom back out to full view
     if (event.key === 'Escape') {
+        console.log('🔍 [ESCAPE DEBUG] Escape key pressed');
+        console.log('🔍 [ESCAPE DEBUG] isTypingInField:', isTypingInField);
+        console.log('🔍 [ESCAPE DEBUG] isInFrequencySelectionMode():', isInFrequencySelectionMode());
+        console.log('🔍 [ESCAPE DEBUG] zoomState.isInRegion():', zoomState.isInRegion());
+        console.log('🔍 [ESCAPE DEBUG] zoomState:', {
+            mode: zoomState.mode,
+            activeRegionId: zoomState.activeRegionId,
+            initialized: zoomState.isInitialized()
+        });
+        
+        // If typing in a field, blur it first so Escape works
+        if (isTypingInField) {
+            console.log('🔍 [ESCAPE DEBUG] Blurring active input/textarea');
+            event.target.blur();
+        }
+        
+        // First priority: Exit feature selection mode if active
+        if (isInFrequencySelectionMode()) {
+            console.log('🔍 [ESCAPE DEBUG] Exiting feature selection mode');
+            event.preventDefault();
+            stopFrequencySelection();
+            return;
+        }
+        
+        // Second priority: Zoom out if in a region
         if (zoomState.isInRegion()) {
+            console.log('🔍 [ESCAPE DEBUG] In region - preventing default and calling zoomToFull()');
             event.preventDefault();
             zoomToFull();
-            // console.log('🔙 Zoomed out to full view');
+            console.log('🔙 Escape key: Zoomed out to full view');
+        } else {
+            console.log('🔍 [ESCAPE DEBUG] NOT in region and NOT in feature selection - Escape key ignored');
         }
         return;
     }

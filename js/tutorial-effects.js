@@ -664,6 +664,42 @@ export function enableFrequencyScaleDropdown() {
 }
 
 /**
+ * Enable all features that are restricted during tutorial
+ * Called when tutorial shouldn't run or has been completed
+ */
+export function enableAllTutorialRestrictedFeatures() {
+    // Enable loop button
+    const loopBtn = document.getElementById('loopBtn');
+    if (loopBtn) {
+        loopBtn.disabled = false;
+        console.log('✅ Loop button enabled');
+    }
+    
+    // Enable speed slider
+    const speedSlider = document.getElementById('playbackSpeed');
+    if (speedSlider) {
+        speedSlider.disabled = false;
+        console.log('✅ Speed slider enabled');
+    }
+    const speedLabel = document.getElementById('speedLabel');
+    if (speedLabel) {
+        speedLabel.style.opacity = '1';
+    }
+    
+    // Enable waveform clicks
+    enableWaveformClicks();
+    console.log('✅ Waveform clicks enabled');
+    
+    // Enable region buttons
+    enableRegionButtons();
+    console.log('✅ Region buttons enabled');
+    
+    // Enable frequency scale dropdown
+    enableFrequencyScaleDropdown();
+    console.log('✅ Frequency scale dropdown enabled');
+}
+
+/**
  * Add glow effect to loop button with fade-in
  */
 export function addLoopButtonGlow() {
@@ -853,17 +889,30 @@ export function addAddFeatureButtonGlow(regionIndex) {
     }
     
     const button = regionCard.querySelector('.add-feature-btn');
+    const label = regionCard.querySelector('.add-feature-label');
+    
     if (!button) {
         console.warn(`⚠️ Cannot add glow: add-feature-btn not found in region card ${regionIndex}`);
         return;
     }
     
+    // Add glow to button
     button.classList.add('fading-in');
     button.offsetHeight; // Force reflow
     button.classList.add('add-feature-button-glow');
     setTimeout(() => {
         button.classList.remove('fading-in');
     }, 500);
+    
+    // Add glow to label if it exists
+    if (label) {
+        label.classList.add('fading-in');
+        label.offsetHeight; // Force reflow
+        label.classList.add('add-feature-button-glow');
+        setTimeout(() => {
+            label.classList.remove('fading-in');
+        }, 500);
+    }
 }
 
 /**
@@ -873,10 +922,19 @@ export function removeAddFeatureButtonGlow(regionIndex) {
     const regionCard = document.querySelector(`[data-region-id="${getCurrentRegions()[regionIndex]?.id}"]`);
     if (regionCard) {
         const button = regionCard.querySelector('.add-feature-btn');
+        const label = regionCard.querySelector('.add-feature-label');
+        
         if (button) {
             button.classList.add('fading-out');
             setTimeout(() => {
                 button.classList.remove('add-feature-button-glow', 'fading-out');
+            }, 500);
+        }
+        
+        if (label) {
+            label.classList.add('fading-out');
+            setTimeout(() => {
+                label.classList.remove('add-feature-button-glow', 'fading-out');
             }, 500);
         }
     }

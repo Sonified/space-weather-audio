@@ -312,6 +312,25 @@ export function setupModalEventListeners() {
         removeModalEventListeners();
     }
     
+    // Check if we're in Study Mode - if so, disable click-outside-to-close for ALL modals
+    // Note: This is a synchronous check, so we need to import synchronously
+    let inStudyMode = false;
+    try {
+        // Dynamic import check - we'll check mode at runtime
+        import('./master-modes.js').then(({ isStudyMode }) => {
+            inStudyMode = isStudyMode();
+        }).catch(() => {
+            // If import fails, default to false (not study mode)
+            inStudyMode = false;
+        });
+    } catch (e) {
+        inStudyMode = false;
+    }
+    
+    // For now, check localStorage directly as a synchronous fallback
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    inStudyMode = storedMode === 'study' || storedMode === 'study_clean';
+    
     // Participant modal event listeners
     const participantModal = document.getElementById('participantModal');
     if (!participantModal) {
@@ -360,6 +379,84 @@ export function setupModalEventListeners() {
         updateParticipantSubmitButton();
     }
     
+    // Welcome modal event listeners
+    const welcomeModal = document.getElementById('welcomeModal');
+    if (!welcomeModal) {
+        console.error('❌ Welcome modal not found in DOM');
+    } else {
+        // In Study Mode: NEVER allow closing by clicking outside
+        // In Dev/Personal Mode: Allow closing by clicking outside (if we add it)
+        if (inStudyMode) {
+            // Prevent closing by clicking outside in Study Mode
+            welcomeModal.addEventListener('click', (e) => {
+                if (e.target === welcomeModal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+        }
+        
+        const welcomeSubmitBtn = welcomeModal.querySelector('.modal-submit');
+        if (welcomeSubmitBtn) {
+            welcomeSubmitBtn.addEventListener('click', closeWelcomeModal);
+        }
+    }
+    
+    // End modal event listeners
+    const endModal = document.getElementById('endModal');
+    if (!endModal) {
+        console.error('❌ End modal not found in DOM');
+    } else {
+        // In Study Mode: NEVER allow closing by clicking outside
+        if (inStudyMode) {
+            // Prevent closing by clicking outside in Study Mode
+            endModal.addEventListener('click', (e) => {
+                if (e.target === endModal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+        }
+        
+        const endSubmitBtn = endModal.querySelector('.modal-submit');
+        if (endSubmitBtn) {
+            endSubmitBtn.addEventListener('click', closeEndModal);
+        }
+    }
+    
+    // Begin Analysis modal event listeners
+    const beginAnalysisModal = document.getElementById('beginAnalysisModal');
+    if (!beginAnalysisModal) {
+        console.error('❌ Begin Analysis modal not found in DOM');
+    } else {
+        // Allow closing by clicking outside (not in Study Mode restriction)
+        beginAnalysisModal.addEventListener('click', (e) => {
+            if (e.target === beginAnalysisModal) {
+                closeBeginAnalysisModal();
+            }
+        });
+        
+        const beginAnalysisCancelBtn = beginAnalysisModal.querySelector('.modal-cancel');
+        if (beginAnalysisCancelBtn) {
+            beginAnalysisCancelBtn.addEventListener('click', closeBeginAnalysisModal);
+        }
+        
+        // The submit button will be handled in main.js to proceed with the workflow
+        const beginAnalysisSubmitBtn = beginAnalysisModal.querySelector('.modal-submit');
+        if (beginAnalysisSubmitBtn) {
+            // Store a reference that main.js can use, or we can handle it here
+            // For now, we'll handle it in main.js to keep the workflow logic together
+            beginAnalysisSubmitBtn.addEventListener('click', () => {
+                closeBeginAnalysisModal();
+                // Trigger the actual workflow - this will be handled by main.js
+                // We'll dispatch a custom event that main.js listens for
+                window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
+            });
+        }
+    }
+    
     // Pre-Survey modal event listeners
     const preSurveyModal = document.getElementById('preSurveyModal');
     if (!preSurveyModal) {
@@ -388,12 +485,24 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updatePreSurveySubmitButton);
         });
         
-        // Allow closing by clicking outside
-        preSurveyModal.addEventListener('click', (e) => {
-            if (e.target === preSurveyModal) {
-                closePreSurveyModal();
-            }
-        });
+        // In Study Mode: NEVER allow closing by clicking outside
+        // In Dev/Personal Mode: Allow closing by clicking outside
+        if (!inStudyMode) {
+            preSurveyModal.addEventListener('click', (e) => {
+                if (e.target === preSurveyModal) {
+                    closePreSurveyModal();
+                }
+            });
+        } else {
+            // Prevent closing by clicking outside in Study Mode
+            preSurveyModal.addEventListener('click', (e) => {
+                if (e.target === preSurveyModal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+        }
         
         if (preSurveyCloseBtn) {
             preSurveyCloseBtn.addEventListener('click', (e) => {
@@ -459,12 +568,24 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updatePostSurveySubmitButton);
         });
         
-        // Allow closing by clicking outside
-        postSurveyModal.addEventListener('click', (e) => {
-            if (e.target === postSurveyModal) {
-                closePostSurveyModal();
-            }
-        });
+        // In Study Mode: NEVER allow closing by clicking outside
+        // In Dev/Personal Mode: Allow closing by clicking outside
+        if (!inStudyMode) {
+            postSurveyModal.addEventListener('click', (e) => {
+                if (e.target === postSurveyModal) {
+                    closePostSurveyModal();
+                }
+            });
+        } else {
+            // Prevent closing by clicking outside in Study Mode
+            postSurveyModal.addEventListener('click', (e) => {
+                if (e.target === postSurveyModal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+        }
         
         if (postSurveyCloseBtn) {
             postSurveyCloseBtn.addEventListener('click', (e) => {
@@ -524,12 +645,24 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updateActivityLevelSubmitButton);
         });
         
-        // Allow closing by clicking outside
-        activityLevelModal.addEventListener('click', (e) => {
-            if (e.target === activityLevelModal) {
-                closeActivityLevelModal();
-            }
-        });
+        // In Study Mode: NEVER allow closing by clicking outside
+        // In Dev/Personal Mode: Allow closing by clicking outside
+        if (!inStudyMode) {
+            activityLevelModal.addEventListener('click', (e) => {
+                if (e.target === activityLevelModal) {
+                    closeActivityLevelModal();
+                }
+            });
+        } else {
+            // Prevent closing by clicking outside in Study Mode
+            activityLevelModal.addEventListener('click', (e) => {
+                if (e.target === activityLevelModal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+        }
         
         if (activityLevelCloseBtn) {
             activityLevelCloseBtn.addEventListener('click', (e) => {
@@ -580,7 +713,20 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updateAwesfSubmitButton);
         });
         
-        awesfModal.addEventListener('click', closeAwesfModal);
+        // In Study Mode: NEVER allow closing by clicking outside
+        // In Dev/Personal Mode: Allow closing by clicking outside
+        if (!inStudyMode) {
+            awesfModal.addEventListener('click', closeAwesfModal);
+        } else {
+            // Prevent closing by clicking outside in Study Mode
+            awesfModal.addEventListener('click', (e) => {
+                if (e.target === awesfModal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+        }
         
         if (awesfCloseBtn) {
             awesfCloseBtn.addEventListener('click', (e) => {
@@ -680,14 +826,17 @@ export function openParticipantModal() {
         participantSubmitBtn.disabled = !hasValue;
     }
     
-    document.getElementById('participantModal').classList.add('active');
+    document.getElementById('participantModal').style.display = 'flex';
     console.log('👤 Participant Setup modal opened');
 }
 
 export function closeParticipantModal(event) {
     // Only allow programmatic closing (after submission), not by clicking outside
     // Reset field to saved value (or empty) when closing without saving
-    const savedParticipantId = localStorage.getItem('participantId');
+    // In STUDY_CLEAN mode, don't load saved participant ID
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    const isStudyClean = storedMode === 'study_clean';
+    const savedParticipantId = isStudyClean ? null : localStorage.getItem('participantId');
     const participantIdInput = document.getElementById('participantId');
     const participantSubmitBtn = document.querySelector('#participantModal .modal-submit');
     
@@ -701,8 +850,110 @@ export function closeParticipantModal(event) {
         participantSubmitBtn.disabled = !hasValue;
     }
     
-    document.getElementById('participantModal').classList.remove('active');
+    document.getElementById('participantModal').style.display = 'none';
     console.log('👤 Participant Setup modal closed');
+}
+
+// Welcome Modal Functions
+export async function openWelcomeModal() {
+    // In Study Mode, ONLY allow welcome modal through the workflow - NEVER allow manual opening
+    const { isStudyMode, isStudyCleanMode } = await import('./master-modes.js');
+    if (isStudyMode()) {
+        // In STUDY mode, welcome modal can ONLY be opened through the workflow
+        // Check if we're in the workflow by checking if pre-survey is already open
+        const preSurveyModal = document.getElementById('preSurveyModal');
+        const isPreSurveyOpen = preSurveyModal && preSurveyModal.style.display !== 'none';
+        
+        // If pre-survey is open, we're past the welcome step - don't allow welcome modal
+        if (isPreSurveyOpen) {
+            console.warn('⚠️ Welcome modal: Cannot open - pre-survey is already active');
+            return;
+        }
+        
+        const hasSeenParticipantSetup = localStorage.getItem('study_has_seen_participant_setup') === 'true';
+        if (!hasSeenParticipantSetup) {
+            console.warn('⚠️ Welcome modal: Participant setup must be completed first in Study Mode');
+            return;
+        }
+        
+        // In STUDY mode (not clean), only show welcome modal once (first time only)
+        if (!isStudyCleanMode()) {
+            const hasSeenWelcome = localStorage.getItem('study_has_seen_welcome') === 'true';
+            if (hasSeenWelcome) {
+                console.log('✅ Welcome modal already seen - skipping in STUDY mode');
+                return;
+            }
+        }
+    }
+    
+    const welcomeModal = document.getElementById('welcomeModal');
+    if (!welcomeModal) {
+        console.warn('⚠️ Welcome modal not found');
+        return;
+    }
+    
+    // CRITICAL: Close any other modals first to prevent multiple modals showing
+    const allModals = ['preSurveyModal', 'postSurveyModal', 'activityLevelModal', 'awesfModal', 'endModal', 'participantModal'];
+    allModals.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    });
+    
+    welcomeModal.style.display = 'flex';
+    console.log('👋 Welcome modal opened');
+}
+
+export function closeWelcomeModal() {
+    document.getElementById('welcomeModal').style.display = 'none';
+    console.log('👋 Welcome modal closed');
+}
+
+// End Modal Functions
+export function openEndModal(participantId, sessionCount) {
+    const modal = document.getElementById('endModal');
+    
+    // Update submission time with local time including seconds
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit',
+        hour12: true 
+    });
+    document.getElementById('submissionTime').textContent = timeString;
+    
+    // Update participant ID
+    document.getElementById('submissionParticipantId').textContent = participantId;
+    
+    // Update session count
+    document.getElementById('sessionCount').textContent = sessionCount;
+    
+    modal.style.display = 'flex';
+    console.log('🎉 End modal opened');
+}
+
+export function closeEndModal() {
+    document.getElementById('endModal').style.display = 'none';
+    console.log('🎉 End modal closed');
+}
+
+// Begin Analysis Modal Functions
+export function openBeginAnalysisModal() {
+    const modal = document.getElementById('beginAnalysisModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        console.log('🔵 Begin Analysis modal opened');
+    }
+}
+
+export function closeBeginAnalysisModal() {
+    const modal = document.getElementById('beginAnalysisModal');
+    if (modal) {
+        modal.style.display = 'none';
+        console.log('🔵 Begin Analysis modal closed');
+    }
 }
 
 export function submitParticipantSetup() {
@@ -727,21 +978,54 @@ export function submitParticipantSetup() {
     statusEl.textContent = `✅ Participant setup recorded: ${participantId || 'Anonymous'}`;
     
     // Update participant ID display in top panel
+    // In Personal and Dev modes, always show the display (even if no ID set)
+    // In Study modes, only show if participant ID exists
     const displayElement = document.getElementById('participantIdDisplay');
     const valueElement = document.getElementById('participantIdValue');
-    if (participantId) {
-        if (displayElement) displayElement.style.display = 'block';
-        if (valueElement) valueElement.textContent = participantId;
-    } else {
-        if (displayElement) displayElement.style.display = 'none';
-        if (valueElement) valueElement.textContent = '--';
-    }
     
-    closeParticipantModal();
+    // Import mode checkers - use dynamic import to avoid circular dependencies
+    import('./master-modes.js').then(({ isPersonalMode, isDevMode }) => {
+        const shouldShow = isPersonalMode() || isDevMode() || !!participantId;
+        
+        if (shouldShow) {
+            if (displayElement) displayElement.style.display = 'block';
+            if (valueElement) valueElement.textContent = participantId || '--';
+        } else {
+            if (displayElement) displayElement.style.display = 'none';
+            if (valueElement) valueElement.textContent = '--';
+        }
+    }).catch(() => {
+        // Fallback: show if participant ID exists
+        if (participantId) {
+            if (displayElement) displayElement.style.display = 'block';
+            if (valueElement) valueElement.textContent = participantId;
+        } else {
+            if (displayElement) displayElement.style.display = 'none';
+            if (valueElement) valueElement.textContent = '--';
+        }
+    });
+    
+    // Hide the participant modal after submission
+    document.getElementById('participantModal').style.display = 'none';
 }
 
 export function openPreSurveyModal() {
-    document.getElementById('preSurveyModal').classList.add('active');
+    const preSurveyModal = document.getElementById('preSurveyModal');
+    if (!preSurveyModal) {
+        console.warn('⚠️ Pre-survey modal not found');
+        return;
+    }
+    
+    // CRITICAL: Close any other modals first to prevent multiple modals showing
+    const allModals = ['welcomeModal', 'postSurveyModal', 'activityLevelModal', 'awesfModal', 'endModal', 'participantModal'];
+    allModals.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    });
+    
+    preSurveyModal.style.display = 'flex';
     console.log('📊 Pre-Survey modal opened');
     
     // Track survey start
@@ -752,7 +1036,7 @@ export function openPreSurveyModal() {
 }
 
 export function closePreSurveyModal(event) {
-    document.getElementById('preSurveyModal').classList.remove('active');
+    document.getElementById('preSurveyModal').style.display = 'none';
     console.log('📊 Pre-Survey modal closed');
 }
 
@@ -824,7 +1108,7 @@ export async function submitPreSurvey() {
 }
 
 export function openPostSurveyModal() {
-    document.getElementById('postSurveyModal').classList.add('active');
+    document.getElementById('postSurveyModal').style.display = 'flex';
     console.log('📊 Post-Survey modal opened');
     
     // Track survey start
@@ -835,7 +1119,7 @@ export function openPostSurveyModal() {
 }
 
 export function closePostSurveyModal(event) {
-    document.getElementById('postSurveyModal').classList.remove('active');
+    document.getElementById('postSurveyModal').style.display = 'none';
     console.log('📊 Post-Survey modal closed');
 }
 
@@ -907,7 +1191,7 @@ export async function submitPostSurvey() {
 }
 
 export function openActivityLevelModal() {
-    document.getElementById('activityLevelModal').classList.add('active');
+    document.getElementById('activityLevelModal').style.display = 'flex';
     console.log('🌋 Activity Level modal opened');
     
     // Track survey start
@@ -918,7 +1202,7 @@ export function openActivityLevelModal() {
 }
 
 export function closeActivityLevelModal(event) {
-    document.getElementById('activityLevelModal').classList.remove('active');
+    document.getElementById('activityLevelModal').style.display = 'none';
     console.log('🌋 Activity Level modal closed');
 }
 
@@ -976,7 +1260,7 @@ export async function submitActivityLevelSurvey() {
 }
 
 export function openAwesfModal() {
-    document.getElementById('awesfModal').classList.add('active');
+    document.getElementById('awesfModal').style.display = 'flex';
     console.log('✨ AWE-SF modal opened');
     
     // Track survey start
@@ -987,10 +1271,8 @@ export function openAwesfModal() {
 }
 
 export function closeAwesfModal(event) {
-    if (!event || event.target.classList.contains('modal-overlay')) {
-        document.getElementById('awesfModal').classList.remove('active');
-        console.log('✨ AWE-SF modal closed');
-    }
+    document.getElementById('awesfModal').style.display = 'none';
+    console.log('✨ AWE-SF modal closed');
 }
 
 export async function submitAwesfSurvey() {
@@ -1174,6 +1456,19 @@ function formatRegionsForSubmission(regions) {
 }
 
 export async function attemptSubmission() {
+    // ═══════════════════════════════════════════════════════════
+    // 🎓 STUDY MODE: Route to study workflow for post-session surveys
+    // ═══════════════════════════════════════════════════════════
+    const { isStudyMode } = await import('./master-modes.js');
+    if (isStudyMode()) {
+        console.log('🎓 Study Mode: Routing to study workflow submit handler');
+        const { handleStudyModeSubmit } = await import('./study-workflow.js');
+        return await handleStudyModeSubmit();
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // 💾 PERSONAL/DEV MODE: Direct submission (no post-session surveys)
+    // ═══════════════════════════════════════════════════════════
     console.log('═══════════════════════════════════════════════════════════');
     console.log('🚀 SUBMISSION ATTEMPT STARTED');
     console.log('═══════════════════════════════════════════════════════════');

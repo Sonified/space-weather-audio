@@ -381,6 +381,9 @@ export function createRegionFromSelectionTimes(selectionStartSeconds, selectionE
     setCurrentRegions(regions);
     const newRegionIndex = regions.length - 1;
     
+    // Update complete button state (new region starts with incomplete feature)
+    updateCompleteButtonState();
+    
     // Render the new region (it will appear as a floating card)
     renderRegions();
     
@@ -978,7 +981,7 @@ export function handleWaveformClick(event, canvas) {
 /**
  * Stop frequency selection mode
  */
-function stopFrequencySelection() {
+export function stopFrequencySelection() {
     if (!isSelectingFrequency) return;
     
     isSelectingFrequency = false;
@@ -1199,6 +1202,9 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         
         // Re-render the feature
         renderFeatures(regions[regionIndex].id, regionIndex);
+        
+        // Update complete button state (enable if first feature identified)
+        updateCompleteButtonState();
         
         // Pulse the button and focus notes field
         setTimeout(() => {
@@ -2072,6 +2078,14 @@ export function resetAllRegionPlayButtons() {
  * Add a feature to a region
  */
 export function addFeature(regionIndex) {
+    // 🎓 Tutorial: Resolve promise if waiting for add feature button click
+    if (State.waitingForAddFeatureButtonClick && State._addFeatureButtonClickResolve) {
+        State.setWaitingForAddFeatureButtonClick(false);
+        const resolve = State._addFeatureButtonClickResolve;
+        State.setAddFeatureButtonClickResolve(null);
+        resolve();
+    }
+    
     const regions = getCurrentRegions();
     const region = regions[regionIndex];
     const currentCount = region.featureCount;
@@ -2157,6 +2171,10 @@ function deleteSpecificFeature(regionIndex, featureIndex) {
     region.featureCount = region.features.length;
     
     setCurrentRegions(regions);
+    
+    // Update complete button state (in case we deleted the last identified feature)
+    updateCompleteButtonState();
+    
     renderFeatures(region.id, regionIndex);
 }
 
@@ -2171,6 +2189,9 @@ export function updateFeature(regionIndex, featureIndex, property, value) {
     }
     regions[regionIndex].features[featureIndex][property] = value;
     setCurrentRegions(regions);
+    
+    // Update complete button state (in case a feature was just completed)
+    updateCompleteButtonState();
     
     // If notes were updated and region is collapsed, update header preview
     if (property === 'notes' && featureIndex === 0 && !regions[regionIndex].expanded) {
@@ -2206,6 +2227,9 @@ export function deleteRegion(index) {
             activeRegionIndex--;
         }
         renderRegions();
+        
+        // Update complete button state (in case we deleted the last identified feature)
+        updateCompleteButtonState();
         
         // Redraw waveform to update button positions
         drawWaveformWithSelection();
@@ -2542,9 +2566,25 @@ export function zoomToRegion(regionIndex) {
  * Zoom back out to full view
  */
 export function zoomToFull() {
+    console.log('🔍 [ZOOM_TO_FULL DEBUG] zoomToFull() called');
+    console.log('🔍 [ZOOM_TO_FULL DEBUG] State.waitingForZoomOut:', State.waitingForZoomOut);
+    console.log('🔍 [ZOOM_TO_FULL DEBUG] State._zoomOutResolve exists:', !!State._zoomOutResolve);
+    
+    // 🎓 Tutorial: Resolve promise if waiting for zoom out
+    if (State.waitingForZoomOut && State._zoomOutResolve) {
+        console.log('🔍 [ZOOM_TO_FULL DEBUG] Resolving tutorial zoom out promise');
+        State.setWaitingForZoomOut(false);
+        const resolve = State._zoomOutResolve;
+        State.setZoomOutResolve(null);
+        resolve();
+    }
+    
     if (!zoomState.isInitialized()) {
+        console.log('🔍 [ZOOM_TO_FULL DEBUG] zoomState not initialized - returning early');
         return;
     }
+    
+    console.log('🔍 [ZOOM_TO_FULL DEBUG] Continuing with zoom out...');
     
     // console.log('🌍 Zooming to full view');
     // console.log('🔙 ZOOMING OUT TO FULL VIEW starting');
@@ -2610,6 +2650,9 @@ export function zoomToFull() {
     zoomState.currentViewStartSample = 0;
     zoomState.currentViewEndSample = zoomState.totalSamples;
     zoomState.activeRegionId = null;
+    
+    // 🔧 FIX: Clear active region to prevent UI confusion after zoom-out
+    activeRegionIndex = null;
     
     // Collapse all region panels and disable feature selection mode
     collapseAllRegions();
@@ -2736,5 +2779,50 @@ export function getRegions() {
 
 export function isInFrequencySelectionMode() {
     return isSelectingFrequency;
+}
+
+/**
+ * Check if at least one feature has been identified (has all required fields)
+ * A feature is considered identified when it has: lowFreq, highFreq, startTime, and endTime
+ */
+export function hasIdentifiedFeature() {
+    const regions = getCurrentRegions();
+    for (const region of regions) {
+        if (region.features && region.features.length > 0) {
+            for (const feature of region.features) {
+                if (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Update the complete button state based on whether data has been downloaded
+ * Button enables after a complete data set downloads for the first time
+ */
+export function updateCompleteButtonState() {
+    const completeBtn = document.getElementById('completeBtn');
+    if (completeBtn) {
+        // Check if complete data set has been downloaded
+        const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
+        const sampleCount = State.completeSamplesArray ? State.completeSamplesArray.length : 0;
+        console.log(`🔵 updateCompleteButtonState: hasData=${hasData}, sampleCount=${sampleCount.toLocaleString()}`);
+        
+        completeBtn.disabled = !hasData;
+        if (hasData) {
+            completeBtn.style.opacity = '1';
+            completeBtn.style.cursor = 'pointer';
+            console.log('✅ Begin Analysis button ENABLED');
+        } else {
+            completeBtn.style.opacity = '0.5';
+            completeBtn.style.cursor = 'not-allowed';
+            console.log('❌ Begin Analysis button DISABLED');
+        }
+    } else {
+        console.warn('⚠️ updateCompleteButtonState: completeBtn not found in DOM');
+    }
 }
 

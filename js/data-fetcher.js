@@ -12,6 +12,7 @@ import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCan
 import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks } from './tutorial.js';
+import { updateCompleteButtonState } from './region-tracker.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -888,6 +889,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 State.setCompleteSamplesArray(stitched);
                                 console.log(`📦 ${logTime()} Stitched ${chunkCount} chunks into completeSamplesArray for download`);
                                 
+                                // Enable Begin Analysis button after data download completes
+                                updateCompleteButtonState();
+                                
                                 // 🔥 FIX: Clear allReceivedData after stitching to free 3,685+ Float32Array chunks and their ArrayBuffers
                                 // This breaks the closure chain: RAF callback → State → allReceivedData → chunks → ArrayBuffers
                                 // Explicitly null out each chunk's ArrayBuffer reference before clearing
@@ -928,9 +932,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                     statusEl.classList.remove('loading');
                                 }
                                 
-                                // Disable waveform clicks immediately - will be enabled when tutorial appears
-                                disableWaveformClicks();
-                                
+                                // Note: Features are enabled by default - only tutorial disables them
                                 // Tutorial is now managed by runInitialTutorial() which waits for data to be fetched
                                 // No need to call runMainTutorial() here - it will be called automatically
                                 
@@ -975,8 +977,25 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                     }
                                     // Message will be shown after tutorial overlay appears if not playing
                                 }
-                                // Loop button will be enabled when tutorial completes
-                                // document.getElementById('loopBtn').disabled = false;
+                                // Enable loop button if tutorial is skipped (Personal mode or Study mode after first session)
+                                import('./master-modes.js').then(({ shouldSkipTutorial, isStudyMode }) => {
+                                    const loopBtn = document.getElementById('loopBtn');
+                                    if (loopBtn) {
+                                        if (shouldSkipTutorial()) {
+                                            // Personal mode - enable immediately
+                                            loopBtn.disabled = false;
+                                        } else if (isStudyMode()) {
+                                            // Study mode - check if tutorial already seen
+                                            const hasSeenTutorial = localStorage.getItem('study_has_seen_tutorial') === 'true';
+                                            if (hasSeenTutorial) {
+                                                loopBtn.disabled = false;
+                                            }
+                                            // If not seen, tutorial will enable it
+                                        } else {
+                                            // Dev mode - tutorial will enable it
+                                        }
+                                    }
+                                });
                                 document.getElementById('downloadBtn').disabled = false;
                             } else {
                                 // Not all samples written yet - wait a bit and check again
@@ -1029,6 +1048,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             // Store for waveform drawing
             State.setCompleteSamplesArray(stitchedFloat32);
             window.rawWaveformData = stitchedRaw;
+            
+            // Enable Begin Analysis button after data download completes
+            updateCompleteButtonState();
             
             // 🔥 FIX: Clear allReceivedData after stitching to free Float32Array chunks and their ArrayBuffers
             // This breaks the closure chain: RAF callback → State → allReceivedData → chunks → ArrayBuffers
@@ -1393,6 +1415,9 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     // Store complete samples array for waveform drawing
     State.setCompleteSamplesArray(samples);
     
+    // Enable Begin Analysis button after data download completes
+    updateCompleteButtonState();
+    
     // Send samples to waveform worker BEFORE building waveform
     State.waveformWorker.postMessage({
         type: 'add-samples',
@@ -1533,9 +1558,7 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
                 // if (speedLabel) speedLabel.style.opacity = '1';
                 if (volumeLabel) volumeLabel.style.opacity = '1';
                 
-                // Disable waveform clicks immediately - will be enabled when tutorial appears
-                disableWaveformClicks();
-                
+                // Note: Features are enabled by default - only tutorial disables them
                 // Tutorial is now managed by runInitialTutorial() which waits for data to be fetched
                 // No need to call runMainTutorial() here - it will be called automatically
                 setTimeout(() => {
@@ -1615,8 +1638,25 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     }
     document.getElementById('downloadBtn').disabled = false;
     
-    // Loop button will be enabled when tutorial completes (user will tell us when)
-    // document.getElementById('loopBtn').disabled = false;
+    // Enable loop button if tutorial is skipped (Personal mode or Study mode after first session)
+    import('./master-modes.js').then(({ shouldSkipTutorial, isStudyMode }) => {
+        const loopBtn = document.getElementById('loopBtn');
+        if (loopBtn) {
+            if (shouldSkipTutorial()) {
+                // Personal mode - enable immediately
+                loopBtn.disabled = false;
+            } else if (isStudyMode()) {
+                // Study mode - check if tutorial already seen
+                const hasSeenTutorial = localStorage.getItem('study_has_seen_tutorial') === 'true';
+                if (hasSeenTutorial) {
+                    loopBtn.disabled = false;
+                }
+                // If not seen, tutorial will enable it
+            } else {
+                // Dev mode - tutorial will enable it
+            }
+        }
+    });
     
     console.log('✅ Streaming complete from Railway backend');
 }

@@ -264,6 +264,13 @@ async function showInitialFetchTutorial() {
         volcanoSelect.classList.add('pulse-glow');
     }
     
+    // Wait 1 second before showing the message (first time ever, saved locally)
+    const hasSeenFetchMessage = localStorage.getItem('has_seen_fetch_data_message') === 'true';
+    if (!hasSeenFetchMessage) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        localStorage.setItem('has_seen_fetch_data_message', 'true');
+    }
+    
     // Show message guiding user to select volcano and fetch data
     setStatusTextAndTrack('<- Select a volcano and click Fetch Data.', 'status info');
     
@@ -1319,8 +1326,8 @@ async function runFeatureSelectionTutorial() {
     setStatusTextAndTrack('You\'ve identified a feature!', 'status success');
     await skippableWait(3000);
     
-    // "Add any notes here about what you're noticing." (8s)
-    setStatusTextAndTrack('Add any notes here about what you\'re noticing.', 'status info');
+    // "Add any notes in the description box below about what you're noticing." (8s)
+    setStatusTextAndTrack('Add any notes in the description box below about what you\'re noticing.', 'status info');
     await skippableWait(8000);
     
     // "There are no right or wrong answers, just observations" (8s)
@@ -1373,14 +1380,14 @@ async function runFeatureSelectionTutorial() {
     
     // Wait for dropdown click with timeout
     const dropdownClickPromise = waitForRepetitionDropdown(activeRegionIndex, featureIndex);
-    const dropdownTimeoutPromise = skippableWait(10000);
+    const dropdownTimeoutPromise = skippableWait(15000);
     
     const dropdownResult = await Promise.race([dropdownClickPromise, dropdownTimeoutPromise]);
     
-    // If they clicked, wait 4s, otherwise just continue
+    // If they clicked, wait 5s, otherwise just continue
     if (!State.waitingForRepetitionDropdown) {
         // They clicked
-        await skippableWait(4000);
+        await skippableWait(5000);
     }
     
     // Remove repetition dropdown glow
@@ -1389,7 +1396,18 @@ async function runFeatureSelectionTutorial() {
     // Highlight type dropdown (impulsive/continuous)
     addTypeDropdownGlow(activeRegionIndex, featureIndex);
     setStatusTextAndTrack('Impulsive events are short, and continuous events are long', 'status info');
-    await skippableWait(7000);
+    
+    // Wait for dropdown click with timeout
+    const typeDropdownClickPromise = waitForTypeDropdown(activeRegionIndex, featureIndex);
+    const typeDropdownTimeoutPromise = skippableWait(15000);
+    
+    const typeDropdownResult = await Promise.race([typeDropdownClickPromise, typeDropdownTimeoutPromise]);
+    
+    // If they clicked, wait 5s, otherwise just continue
+    if (!State.waitingForTypeDropdown) {
+        // They clicked
+        await skippableWait(5000);
+    }
     
     // Remove type dropdown glow
     removeTypeDropdownGlow(activeRegionIndex, featureIndex);
@@ -1532,11 +1550,18 @@ async function runSecondRegionTutorial() {
         // Say "This Tutorial is now complete! Continue your analysis and hit Submit when you are done."
         setStatusTextAndTrack('This Tutorial is now complete! Continue your analysis and hit Submit when you are done.', 'status success');
         
+        // Enable all features right after "This Tutorial is now complete!" message
+        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        enableAllTutorialRestrictedFeatures();
+        
         // Wait 5s
         await skippableWait(5000);
         
         // Say "Have fun exploring! There's no minimum or maximum feature requirement."
         setStatusTextAndTrack('Have fun exploring! There\'s no minimum or maximum feature requirement.', 'status info');
+        
+        // Wait for final message to display
+        await skippableWait(5000);
     }
     
     // Clear tutorial phase
@@ -1570,6 +1595,7 @@ export async function runMainTutorial() {
         await runFrequencyScaleTutorial();     // frequency scale tutorial (includes feature selection tutorial)
         
         console.log('🎓 Tutorial complete!');
+        // Note: Features are enabled inside runZoomOutTutorial() after the last message completes
     } finally {
         // 🔥 FIX: Clean up window properties to prevent memory leaks
         if (window._onSpeedSliderTutorialComplete) {

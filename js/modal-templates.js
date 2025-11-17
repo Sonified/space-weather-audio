@@ -3,24 +3,123 @@
 // 🔥 FIX: Track if modals have been initialized to prevent duplicate initialization
 let modalsInitialized = false;
 
+export function createWelcomeModal() {
+    const modal = document.createElement('div');
+    modal.id = 'welcomeModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Welcome!</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
+                    You will be listening to real volcanic data and identifying interesting features. Please use headphones or high-quality speakers in a quiet environment free from distractions.
+                </p>
+                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
+                    The data comes from active volcanoes in near-real-time and may contain gaps or sudden volume spikes. Please listen at a comfortable volume.
+                </p>
+                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
+                    This study includes short surveys that take about 2-3 minutes per session.
+                </p>
+                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
+                    Questions? Contact <a href="mailto:leif@uoregon.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">leif@uoregon.edu</a>
+                </p>
+                <button type="button" class="modal-submit">Begin</button>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+export function createEndModal() {
+    const modal = document.createElement('div');
+    modal.id = 'endModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Complete!</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px; color: #333; font-size: 16px; line-height: 1.6; font-weight: 600;">
+                    Your session was successfully submitted at <span id="submissionTime" style="color: #28a745;">--</span>
+                </p>
+                <p style="margin-bottom: 20px; color: #333; font-size: 16px; line-height: 1.6;">
+                    Your anonymized data has been associated with participant ID: <span id="submissionParticipantId" style="font-weight: 600; color: #007bff;">--</span>
+                </p>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #007bff;">
+                    <p style="margin-bottom: 10px; color: #333; font-size: 15px; line-height: 1.6;">
+                        <strong>Study Progress:</strong>
+                    </p>
+                    <p style="margin-bottom: 8px; color: #555; font-size: 14px; line-height: 1.6;">
+                        • This is <strong>week 1</strong> of the study
+                    </p>
+                    <p style="margin-bottom: 8px; color: #555; font-size: 14px; line-height: 1.6;">
+                        • There are <strong>2 weeks remaining</strong>
+                    </p>
+                    <p style="margin-bottom: 0; color: #555; font-size: 14px; line-height: 1.6;">
+                        • You have completed <strong><span id="sessionCount">1</span> session(s)</strong> this week
+                    </p>
+                </div>
+                <p style="margin-bottom: 20px; color: #666; font-size: 14px; line-height: 1.6; font-style: italic;">
+                    All participants are asked to complete two weekly sessions, though you may complete more if you wish.
+                </p>
+                <p style="margin-bottom: 20px; color: #333; font-size: 16px; line-height: 1.6; text-align: center; font-weight: 600;">
+                    Thank you for your submission!
+                </p>
+                <button type="button" class="modal-submit">Close</button>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+export function createBeginAnalysisModal() {
+    const modal = document.createElement('div');
+    modal.id = 'beginAnalysisModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Confirm Begin Analysis</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 30px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
+                    Are you sure? Once you begin you will no longer be able to switch volcanoes.
+                </p>
+                <div style="display: flex; gap: 15px; justify-content: center;">
+                    <button type="button" class="modal-cancel" style="padding: 12px 24px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s;">Cancel</button>
+                    <button type="button" class="modal-submit" style="padding: 12px 24px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s;">Begin Analysis</button>
+                </div>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
 export function createParticipantModal() {
     const modal = document.createElement('div');
     modal.id = 'participantModal';
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-window';
+    modal.style.display = 'flex';
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Welcome</h3>
-                <button class="modal-close">&times;</button>
+                <button class="modal-close" style="display: none;">&times;</button>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 20px; color: #333; font-size: 16px; font-weight: bold;">Enter your participant ID number to begin:</p>
                 <div class="modal-form-group">
                     <label for="participantId" style="display: none;">Participant ID/Number:</label>
-                    <input type="text" id="participantId" placeholder="Enter participant identifier">
+                    <input type="text" id="participantId" placeholder="Enter participant identifier" style="font-size: 18px;">
                 </div>
                 <button type="button" class="modal-submit" disabled>✓ Confirm</button>
-                <p style="margin-top: 18px; margin-bottom: 0; color: #555; font-size: 14px; text-align: center;">Not look right? Email: leif@uoregon.edu</p>
+                <p style="margin-top: 18px; margin-bottom: 0; color: #555; font-size: 18px; text-align: center;">Not look right? Email: leif@uoregon.edu</p>
             </div>
         </div>
     `;
@@ -31,7 +130,8 @@ function createMoodSurveyModal(surveyType, surveyId, title) {
     const prefix = surveyType === 'pre' ? 'pre' : 'post';
     const modal = document.createElement('div');
     modal.id = surveyId;
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
@@ -245,7 +345,8 @@ export function createPostSurveyModal() {
 export function createActivityLevelModal() {
     const modal = document.createElement('div');
     modal.id = 'activityLevelModal';
-    modal.className = 'modal-overlay activity-level-modal';
+    modal.className = 'modal-window activity-level-modal';
+    modal.style.display = 'none';
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
@@ -294,7 +395,8 @@ export function createActivityLevelModal() {
 export function createAwesfModal() {
     const modal = document.createElement('div');
     modal.id = 'awesfModal';
-    modal.className = 'modal-overlay awesf-modal';
+    modal.className = 'modal-window awesf-modal';
+    modal.style.display = 'none';
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
@@ -518,11 +620,14 @@ export function initializeModals() {
     // 🔥 FIX: Remove existing modals before creating new ones to prevent duplicates
     // This prevents detached DOM nodes from accumulating
     const existingModals = [
+        'welcomeModal',
         'participantModal',
         'preSurveyModal',
         'postSurveyModal',
         'activityLevelModal',
-        'awesfModal'
+        'awesfModal',
+        'endModal',
+        'beginAnalysisModal'
     ];
     
     existingModals.forEach(modalId => {
@@ -546,20 +651,31 @@ export function initializeModals() {
         }
     });
     
+    const welcomeModal = createWelcomeModal();
     const participantModal = createParticipantModal();
     const preSurveyModal = createPreSurveyModal();
     const postSurveyModal = createPostSurveyModal();
     const activityLevelModal = createActivityLevelModal();
     const awesfModal = createAwesfModal();
+    const endModal = createEndModal();
+    const beginAnalysisModal = createBeginAnalysisModal();
     
-    document.body.appendChild(participantModal);
-    document.body.appendChild(preSurveyModal);
-    document.body.appendChild(postSurveyModal);
-    document.body.appendChild(activityLevelModal);
-    document.body.appendChild(awesfModal);
+    // Append modals to the permanent overlay instead of body
+    const overlay = document.getElementById('permanentOverlay');
+    overlay.appendChild(welcomeModal);
+    overlay.appendChild(participantModal);
+    overlay.appendChild(preSurveyModal);
+    overlay.appendChild(postSurveyModal);
+    overlay.appendChild(activityLevelModal);
+    overlay.appendChild(awesfModal);
+    overlay.appendChild(endModal);
+    overlay.appendChild(beginAnalysisModal);
     
     // Pre-populate participant ID from localStorage if available
-    const savedParticipantId = localStorage.getItem('participantId');
+    // BUT NOT in STUDY_CLEAN mode (always start fresh)
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    const isStudyClean = storedMode === 'study_clean';
+    const savedParticipantId = isStudyClean ? null : localStorage.getItem('participantId');
     const participantIdInput = document.getElementById('participantId');
     const participantSubmitBtn = document.querySelector('#participantModal .modal-submit');
     
@@ -571,8 +687,10 @@ export function initializeModals() {
     if (participantSubmitBtn) {
         const hasValue = participantIdInput && participantIdInput.value.trim().length > 0;
         participantSubmitBtn.disabled = !hasValue;
-        if (savedParticipantId) {
+        if (savedParticipantId && !isStudyClean) {
             console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
+        } else if (isStudyClean) {
+            console.log('🧹 Study Clean Mode: Not pre-populating participant ID');
         }
     }
     

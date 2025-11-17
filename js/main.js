@@ -12,7 +12,7 @@ import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSp
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
-import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
+import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
@@ -22,7 +22,7 @@ import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxis
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
-import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
+import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions, updateCompleteButtonState } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown } from './tutorial.js';
@@ -427,22 +427,13 @@ export async function startStreaming(event) {
         }
         
         // Hide tutorial overlay when loading new data
-        const { hideTutorialOverlay, disableWaveformClicks, clearTutorialPhase } = await import('./tutorial.js');
+        const { hideTutorialOverlay, clearTutorialPhase } = await import('./tutorial.js');
         hideTutorialOverlay();
-        // Disable waveform clicks - will be enabled when tutorial sequence completes
-        disableWaveformClicks();
         // Clear any active tutorial phase to restart tutorial sequence
         clearTutorialPhase();
         
-        // Disable speed and volume controls when loading new data
-        const speedSlider = document.getElementById('playbackSpeed');
-        const volumeSlider = document.getElementById('volumeSlider');
-        const speedLabel = document.getElementById('speedLabel');
-        const volumeLabel = document.getElementById('volumeLabel');
-        if (speedSlider) speedSlider.disabled = true;
-        if (volumeSlider) volumeSlider.disabled = true;
-        if (speedLabel) speedLabel.style.opacity = '0.5';
-        if (volumeLabel) volumeLabel.style.opacity = '0.5';
+        // Note: Features are enabled by default - only tutorial disables them
+        // Don't disable speed/volume controls here - tutorial will disable if needed
         
         // 🔥 FIX: Remove add region button to prevent detached DOM leaks
         // Import dynamically to avoid circular dependencies
@@ -773,6 +764,9 @@ export async function startStreaming(event) {
             // Setting to null breaks the reference, allowing GC to reclaim the 34MB buffer
             // Note: Must use setter function - direct assignment fails because ES modules are read-only
             State.setCompleteSamplesArray(null);
+            
+            // Disable Begin Analysis button when data is cleared
+            updateCompleteButtonState();
             State.setCachedWaveformCanvas(null);
             State.setWaveformMinMaxData(null);
             State.setCurrentMetadata(null);
@@ -888,14 +882,19 @@ export async function startStreaming(event) {
 /**
  * Update the participant ID display in the top panel
  */
-function updateParticipantIdDisplay() {
+async function updateParticipantIdDisplay() {
     const participantId = getParticipantId();
     const displayElement = document.getElementById('participantIdDisplay');
     const valueElement = document.getElementById('participantIdValue');
     
-    if (participantId) {
+    // In Personal and Dev modes, always show the display (even if no ID set)
+    // In Study modes, only show if participant ID exists
+    const { isPersonalMode, isDevMode } = await import('./master-modes.js');
+    const shouldShow = isPersonalMode() || isDevMode() || !!participantId;
+    
+    if (shouldShow) {
         if (displayElement) displayElement.style.display = 'block';
-        if (valueElement) valueElement.textContent = participantId;
+        if (valueElement) valueElement.textContent = participantId || '--';
     } else {
         if (displayElement) displayElement.style.display = 'none';
         if (valueElement) valueElement.textContent = '--';
@@ -904,8 +903,173 @@ function updateParticipantIdDisplay() {
 
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', async () => {
+    // ═══════════════════════════════════════════════════════════
+    // 🎯 MASTER MODE - Initialize and check configuration
+    // ═══════════════════════════════════════════════════════════
+    const { initializeMasterMode, shouldSkipTutorial, isStudyMode, isPersonalMode, isDevMode, CURRENT_MODE } = await import('./master-modes.js');
+    initializeMasterMode();
+    
+    // Initialize mode selector dropdown
+    const modeSelectorContainer = document.getElementById('modeSelectorContainer');
+    const modeSelector = document.getElementById('modeSelector');
+    
+    // Show mode selector by default for personal and dev modes
+    // Hide by default for study modes (can be revealed with secret key "dvdv")
+    if (isPersonalMode() || isDevMode()) {
+        if (modeSelectorContainer) {
+            modeSelectorContainer.style.visibility = 'visible';
+            modeSelectorContainer.style.opacity = '1';
+        }
+    }
+    
+    // Track if first menu has been exited (any modal closed or user interaction)
+    let firstMenuExited = false;
+    
+    // Secret key sequence to reveal mode selector (hardcoded, no server needed)
+    // Only used for study modes
+    const modeSelectorSecret = 'dvdv';
+    
+    // Track key sequence
+    let keySequence = '';
+    let keySequenceTimeout = null;
+    
+    // Function to show mode selector
+    function showModeSelector() {
+        if (modeSelectorContainer) {
+            modeSelectorContainer.style.visibility = 'visible';
+            modeSelectorContainer.style.opacity = '1';
+            console.log('🔓 Mode selector revealed (secret sequence detected)');
+        }
+    }
+    
+    // Listen for secret key sequence before first menu exit
+    function handleSecretKeyListener(e) {
+        // Only listen if first menu hasn't been exited
+        if (firstMenuExited) {
+            return;
+        }
+        
+        // Reset sequence if too much time passes (2 seconds)
+        if (keySequenceTimeout) {
+            clearTimeout(keySequenceTimeout);
+        }
+        keySequenceTimeout = setTimeout(() => {
+            keySequence = '';
+        }, 2000);
+        
+        // Add current key to sequence
+        keySequence += e.key.toLowerCase();
+        
+        // Keep only last N characters (where N is secret length)
+        const secretLength = modeSelectorSecret.length;
+        if (keySequence.length > secretLength) {
+            keySequence = keySequence.slice(-secretLength);
+        }
+        
+        // Check if sequence matches secret
+        if (keySequence === modeSelectorSecret.toLowerCase()) {
+            showModeSelector();
+            keySequence = ''; // Reset sequence
+            if (keySequenceTimeout) {
+                clearTimeout(keySequenceTimeout);
+                keySequenceTimeout = null;
+            }
+        }
+    }
+    
+    // Add key listener on page load (only for study modes - personal/dev already show dropdown)
+    if (isStudyMode()) {
+    window.addEventListener('keydown', handleSecretKeyListener);
+    }
+    
+    // Track when first menu is exited (any modal closes or user clicks/interacts)
+    function markFirstMenuExited() {
+        if (!firstMenuExited) {
+            firstMenuExited = true;
+            // Remove key listener once first menu is exited
+            window.removeEventListener('keydown', handleSecretKeyListener);
+            console.log('🔒 Mode selector key listener disabled (first menu exited)');
+        }
+    }
+    
+    // Listen for modal closes (Study Mode)
+    const checkModalClose = setInterval(() => {
+        const permanentOverlay = document.getElementById('permanentOverlay');
+        if (permanentOverlay && permanentOverlay.style.display === 'none') {
+            markFirstMenuExited();
+            clearInterval(checkModalClose);
+        }
+    }, 100);
+    
+    // Also mark as exited on any click/interaction after a short delay
+    setTimeout(() => {
+        const interactionHandler = () => {
+            // Don't mark as exited if modals are still showing
+            const permanentOverlay = document.getElementById('permanentOverlay');
+            if (!permanentOverlay || permanentOverlay.style.display === 'none') {
+                markFirstMenuExited();
+                document.removeEventListener('click', interactionHandler);
+                document.removeEventListener('keydown', interactionHandler);
+            }
+        };
+        document.addEventListener('click', interactionHandler, { once: true });
+        document.addEventListener('keydown', interactionHandler, { once: true });
+    }, 1000);
+    
+    if (modeSelector) {
+        // Set current mode as selected
+        modeSelector.value = CURRENT_MODE;
+        
+        // Add change listener to switch modes
+        modeSelector.addEventListener('change', (e) => {
+            const newMode = e.target.value;
+            console.log(`🔄 Switching mode to: ${newMode}`);
+            
+            // Save to localStorage
+            localStorage.setItem('selectedMode', newMode);
+            
+            // Show confirmation
+            const confirmed = confirm(`Switch to ${newMode.toUpperCase()} mode? The page will reload.`);
+            if (confirmed) {
+                // Reload page to apply new mode
+                window.location.reload();
+            } else {
+                // Reset dropdown to current mode
+                e.target.value = CURRENT_MODE;
+                localStorage.removeItem('selectedMode');
+            }
+        });
+    }
+    
+    // Hide simulate panel in Study Mode (surveys are controlled by workflow)
+    if (isStudyMode()) {
+        const simulatePanel = document.querySelector('.panel-simulate');
+        if (simulatePanel) {
+            simulatePanel.style.display = 'none';
+            console.log('🎓 Study Mode: Simulate panel hidden (surveys controlled by workflow)');
+        }
+        
+        // Show permanent overlay in Study Mode (it will be shown/hidden by modals)
+        const permanentOverlay = document.getElementById('permanentOverlay');
+        if (permanentOverlay) {
+            permanentOverlay.style.display = 'flex';
+            console.log('🎓 Study Mode: Permanent overlay enabled');
+        }
+    } else {
+        // Hide permanent overlay in non-Study modes (Dev, Personal)
+        const permanentOverlay = document.getElementById('permanentOverlay');
+        if (permanentOverlay) {
+            permanentOverlay.style.display = 'none';
+            console.log(`✅ ${CURRENT_MODE.toUpperCase()} Mode: Permanent overlay hidden`);
+        }
+    }
+    
     // Initialize tutorial system (includes Enter key skip functionality)
-    initTutorial();
+    // Skip if in Personal Mode
+    if (!shouldSkipTutorial()) {
+        initTutorial();
+    }
+    
     // Parse participant ID from URL parameters on page load
     // Qualtrics redirects with: ?ResponseID=${e://Field/ResponseID}
     // This automatically captures the ResponseID and stores it for survey submissions
@@ -936,6 +1100,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log('🧹 [0ms] v2.37 Fix: setTimeout chains in waitForPlaybackResume now properly tracked and cleaned up');
     console.log('🧹 [0ms] v2.37 Fix: Window properties cleaned up on tutorial completion');
     console.log('🌋 [0ms] volcano-audio v2.36 - Tutorial System Refactoring with Async/Await');
+    console.log('🌋 [0ms] volcano-audio v2.42 - Begin Analysis Button with Sparkle Effect');
+    console.log('✨ [0ms] v2.42 Feat: Begin Analysis button with sparkle effect and confirmation modal - enables after data download, disables volcano switching after confirmation');
     console.log('🎓 [0ms] v2.36 Refactor: Complete tutorial system refactored to use elegant async/await pattern with skippable waits');
     console.log('🎓 [0ms] v2.36 Feat: Pause button tutorial now uses async/await - cleaner code, skippable waits, better flow');
     console.log('🎓 [0ms] v2.36 Feat: Speed slider tutorial refactored to async/await - linear flow, skippable waits, dynamic speed updates');
@@ -987,6 +1153,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Initialize region tracker
     initRegionTracker();
     
+    // Initialize complete button state (disabled until first feature is identified)
+    updateCompleteButtonState();
+    
     // Setup spectrogram frequency selection
     setupSpectrogramSelection();
     
@@ -1009,17 +1178,39 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Load saved volcano selection (or use default)
     loadSavedVolcano();
     
-    // Start the tutorial immediately on page load
-    // The tutorial will guide the user to select a volcano and fetch data
-    // If data is already loaded, it will skip to the main tutorial
-    setTimeout(async () => {
-        if (!window._initialMessageDismissed) {
-            const { runInitialTutorial } = await import('./tutorial.js');
-            runInitialTutorial().catch(err => {
-                console.error('Tutorial error:', err);
+    // Start the appropriate workflow based on mode
+    // (isStudyMode already imported at top)
+    
+    console.log(`🔍 Mode check: CURRENT_MODE=${CURRENT_MODE}, isStudyMode()=${isStudyMode()}`);
+    
+    if (isStudyMode()) {
+        // Study Mode: Full research workflow
+        console.log(`✅ Starting study workflow for mode: ${CURRENT_MODE}`);
+        setTimeout(async () => {
+            const { startStudyWorkflow } = await import('./study-workflow.js');
+            startStudyWorkflow().catch(err => {
+                console.error('Study workflow error:', err);
             });
-        }
-    }, 100); // Small delay to let page settle
+        }, 100);
+    } else if (!shouldSkipTutorial()) {
+        // Dev Mode: Tutorial only
+        setTimeout(async () => {
+            if (!window._initialMessageDismissed) {
+                const { runInitialTutorial } = await import('./tutorial.js');
+                runInitialTutorial().catch(err => {
+                    console.error('Tutorial error:', err);
+                });
+            }
+        }, 100); // Small delay to let page settle
+    } else {
+        // Personal Mode: Skip everything - enable all features
+        console.log('👤 Personal Mode: Tutorial skipped, app ready!');
+        // Enable all features that tutorial would normally disable
+        setTimeout(async () => {
+            const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+            enableAllTutorialRestrictedFeatures();
+        }, 100);
+    }
     
     // Add event listeners
     document.getElementById('volcano').addEventListener('change', (e) => {
@@ -1394,11 +1585,45 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Survey/Modal Buttons
     document.getElementById('participantModalBtn').addEventListener('click', openParticipantModal);
+    document.getElementById('welcomeModalBtn').addEventListener('click', openWelcomeModal);
     document.getElementById('preSurveyModalBtn').addEventListener('click', openPreSurveyModal);
     document.getElementById('activityLevelModalBtn').addEventListener('click', openActivityLevelModal);
     document.getElementById('awesfModalBtn').addEventListener('click', openAwesfModal);
     document.getElementById('postSurveyModalBtn').addEventListener('click', openPostSurveyModal);
+    document.getElementById('endModalBtn').addEventListener('click', () => {
+        // Show end modal with test data
+        const participantId = getParticipantId() || 'TEST123';
+        openEndModal(participantId, 1);
+    });
     document.getElementById('submitBtn').addEventListener('click', attemptSubmission);
+    
+    // Complete button (Begin Analysis) - shows confirmation modal first
+    document.getElementById('completeBtn').addEventListener('click', () => {
+        openBeginAnalysisModal();
+    });
+    
+    // Listen for confirmation to proceed with workflow
+    window.addEventListener('beginAnalysisConfirmed', async () => {
+        // Disable volcano switching after confirmation
+        const volcanoSelect = document.getElementById('volcano');
+        if (volcanoSelect) {
+            volcanoSelect.disabled = true;
+            volcanoSelect.style.opacity = '0.6';
+            volcanoSelect.style.cursor = 'not-allowed';
+            console.log('🔒 Volcano switching disabled after Begin Analysis confirmation');
+        }
+        
+        const { isStudyMode } = await import('./master-modes.js');
+        if (isStudyMode()) {
+            // Study Mode: Go through post-session surveys first
+            const { handleStudyModeSubmit } = await import('./study-workflow.js');
+            await handleStudyModeSubmit();
+        } else {
+            // Personal/Dev Mode: Submit directly
+            await attemptSubmission();
+        }
+    });
+    
     document.getElementById('adminModeBtn').addEventListener('click', toggleAdminMode);
     
     // Participant ID display click handler

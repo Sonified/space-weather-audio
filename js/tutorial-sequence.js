@@ -339,7 +339,7 @@ export async function startSpeedSliderTutorial() {
         }
         
         // Remove glow from slider, add to speed label
-        await skippableWait(2000, 'speed_reset_wait');
+        await skippableWait(6000, 'speed_reset_wait');
         if (!speedSliderTutorialActive) return;
         
         speedSlider.classList.remove('speed-slider-glow');
@@ -351,7 +351,7 @@ export async function startSpeedSliderTutorial() {
             
             // Show initial message with typing animation
             const initialSpeedText = speedValueEl.textContent || '1.0x';
-            setStatusText(`↙️ Click on the text that says "Speed: ${initialSpeedText}" to reset the playback speed.`, 'status info');
+            setStatusText(`↙️ Click on the GLOWING text that says "Speed: ${initialSpeedText}" to reset the playback speed.`, 'status info');
             
             // Function to update just the speed value without retyping
             const updateSpeedMessage = () => {
@@ -363,7 +363,7 @@ export async function startSpeedSliderTutorial() {
                         
                         const currentSpeedText = speedValueEl.textContent || '1.0x';
                         // Update text directly without typing animation
-                        statusEl.textContent = `↙️ Click on the text that says "Speed: ${currentSpeedText}" to reset the playback speed.`;
+                        statusEl.textContent = `↙️ Click on the GLOWING text that says "Speed: ${currentSpeedText}" to reset the playback speed.`;
                     }
                 }
             };

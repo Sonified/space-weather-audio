@@ -44,7 +44,8 @@ export {
     addAddFeatureButtonGlow,
     removeAddFeatureButtonGlow,
     disableAddFeatureButton,
-    enableAddFeatureButton
+    enableAddFeatureButton,
+    enableAllTutorialRestrictedFeatures
 } from './tutorial-effects.js';
 
 // Re-export all sequences
