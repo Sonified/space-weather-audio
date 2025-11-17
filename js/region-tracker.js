@@ -739,6 +739,147 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
 }
 
 /**
+ * Draw region highlights on spectrogram canvas (lightweight version)
+ * No numbers, no buttons - just subtle highlights
+ */
+export function drawSpectrogramRegionHighlights(ctx, canvasWidth, canvasHeight) {
+    if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
+        return;
+    }
+    
+    const regions = getCurrentRegions();
+    if (regions.length === 0) return;
+    
+    regions.forEach((region, index) => {
+        // Convert region to seconds
+        let regionStartSeconds, regionEndSeconds;
+        if (region.startSample !== undefined && region.endSample !== undefined) {
+            regionStartSeconds = zoomState.sampleToTime(region.startSample);
+            regionEndSeconds = zoomState.sampleToTime(region.endSample);
+        } else {
+            const dataStartMs = State.dataStartTime.getTime();
+            const regionStartMs = new Date(region.startTime).getTime();
+            const regionEndMs = new Date(region.stopTime).getTime();
+            regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+            regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+        }
+        
+        // Use interpolated time range (same as waveform)
+        let startX, endX;
+        if (zoomState.isInitialized()) {
+            const interpolatedRange = getInterpolatedTimeRange();
+            const regionStartTimestamp = zoomState.sampleToRealTimestamp(
+                region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds)
+            );
+            const regionEndTimestamp = zoomState.sampleToRealTimestamp(
+                region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds)
+            );
+            
+            const displayStartMs = interpolatedRange.startTime.getTime();
+            const displayEndMs = interpolatedRange.endTime.getTime();
+            const displaySpanMs = displayEndMs - displayStartMs;
+            
+            const regionStartMs = regionStartTimestamp.getTime();
+            const regionEndMs = regionEndTimestamp.getTime();
+            
+            const startProgress = (regionStartMs - displayStartMs) / displaySpanMs;
+            const endProgress = (regionEndMs - displayStartMs) / displaySpanMs;
+            
+            startX = startProgress * canvasWidth;
+            endX = endProgress * canvasWidth;
+        } else {
+            const startProgress = regionStartSeconds / State.totalAudioDuration;
+            const endProgress = regionEndSeconds / State.totalAudioDuration;
+            startX = startProgress * canvasWidth;
+            endX = endProgress * canvasWidth;
+        }
+        
+        const highlightWidth = endX - startX;
+        
+        // 🦋 Fade out completely when zooming into a region (like waveform fades)
+        // opacityProgress: 0.0 = full view, 1.0 = zoomed in
+        const opacityProgress = getRegionOpacityProgress();
+        
+        // When zoomed in (opacityProgress = 1.0), fade to 0% opacity
+        // When in full view (opacityProgress = 0.0), use normal opacity
+        if (index === activeRegionIndex) {
+            // Active region: fade from 15% → 0% when zooming in
+            const fillOpacity = 0.15 * (1 - opacityProgress);
+            ctx.fillStyle = `rgba(68, 136, 255, ${fillOpacity})`;
+            
+            // Stroke: fade from 30% → 0%
+            const strokeOpacity = 0.3 * (1 - opacityProgress);
+            ctx.strokeStyle = `rgba(68, 136, 255, ${strokeOpacity})`;
+        } else {
+            // Inactive region: fade from 8% → 0% when zooming in
+            const inactiveFillOpacity = 0.08 * (1 - opacityProgress);
+            ctx.fillStyle = `rgba(68, 136, 255, ${inactiveFillOpacity})`;
+            
+            // Stroke: fade from 20% → 0%
+            const strokeOpacity = 0.2 * (1 - opacityProgress);
+            ctx.strokeStyle = `rgba(68, 136, 255, ${strokeOpacity})`;
+        }
+        
+        // Skip drawing if opacity is effectively 0 (avoid unnecessary drawing)
+        const currentFillOpacity = index === activeRegionIndex ? 0.15 * (1 - opacityProgress) : 0.08 * (1 - opacityProgress);
+        if (currentFillOpacity < 0.01) {
+            return; // Too faint to see, skip drawing
+        }
+        
+        // Draw full-height rectangle
+        ctx.fillRect(startX, 0, highlightWidth, canvasHeight);
+        
+        // Thinner borders (1px instead of 2px)
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(startX, 0);
+        ctx.lineTo(startX, canvasHeight);
+        ctx.moveTo(endX, 0);
+        ctx.lineTo(endX, canvasHeight);
+        ctx.stroke();
+    });
+}
+
+/**
+ * Draw selection box on spectrogram canvas (lightweight version)
+ */
+export function drawSpectrogramSelection(ctx, canvasWidth, canvasHeight) {
+    // Only draw if NOT playing an active region (same logic as waveform)
+    if (State.selectionStart === null || State.selectionEnd === null || isPlayingActiveRegion()) {
+        return;
+    }
+    
+    // Use zoom-aware conversion
+    let startX, endX;
+    if (zoomState.isInitialized()) {
+        const startSample = zoomState.timeToSample(State.selectionStart);
+        const endSample = zoomState.timeToSample(State.selectionEnd);
+        startX = zoomState.sampleToPixel(startSample, canvasWidth);
+        endX = zoomState.sampleToPixel(endSample, canvasWidth);
+    } else {
+        const startProgress = State.selectionStart / State.totalAudioDuration;
+        const endProgress = State.selectionEnd / State.totalAudioDuration;
+        startX = startProgress * canvasWidth;
+        endX = endProgress * canvasWidth;
+    }
+    
+    const selectionWidth = endX - startX;
+    
+    // Lighter yellow (8% fill, 35% stroke)
+    ctx.fillStyle = 'rgba(255, 255, 0, 0.08)';
+    ctx.fillRect(startX, 0, selectionWidth, canvasHeight);
+    
+    ctx.strokeStyle = 'rgba(255, 200, 0, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(startX, 0);
+    ctx.lineTo(startX, canvasHeight);
+    ctx.moveTo(endX, 0);
+    ctx.lineTo(endX, canvasHeight);
+    ctx.stroke();
+}
+
+/**
  * Check if click is on a canvas zoom button
  * x, y are in CSS pixels (from event coordinates)
  * canvasWidth, canvasHeight are in device pixels (from canvas.width/height)

@@ -6,6 +6,7 @@
 import * as State from './audio-state.js';
 import { getSpectrogramViewport } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
+import { drawSpectrogramRegionHighlights, drawSpectrogramSelection } from './region-tracker.js';
 
 // Track last playhead position to avoid unnecessary redraws
 let lastPlayheadX = -1;
@@ -76,6 +77,15 @@ export function drawSpectrogramPlayhead() {
                 oldX, 0, oldW, height,  // Source
                 oldX, 0, oldW, height   // Dest
             );
+            
+            // 🎨 Redraw regions/selections in this strip
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(oldX, 0, oldW, height);
+            ctx.clip();
+            drawSpectrogramRegionHighlights(ctx, width, height);
+            drawSpectrogramSelection(ctx, width, height);
+            ctx.restore();
         }
         
         // Restore new playhead area from VIEWPORT
@@ -86,6 +96,15 @@ export function drawSpectrogramPlayhead() {
             newX, 0, newW, height,  // Source
             newX, 0, newW, height   // Dest
         );
+        
+        // 🎨 Redraw regions/selections in this strip
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(newX, 0, newW, height);
+        ctx.clip();
+        drawSpectrogramRegionHighlights(ctx, width, height);
+        drawSpectrogramSelection(ctx, width, height);
+        ctx.restore();
         
         // Draw faint grey playhead line (non-interactive)
         ctx.globalAlpha = 0.6;
@@ -139,6 +158,10 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(viewportCanvas, 0, 0);  // 🔧 FIX: Use viewport, not cache!
     
+    // 🎨 Redraw regions/selections on top
+    drawSpectrogramRegionHighlights(ctx, width, height);
+    drawSpectrogramSelection(ctx, width, height);
+    
     // Draw preview line (gray if dragging, white if just hovering)
     ctx.globalAlpha = 0.6;
     ctx.strokeStyle = isDragging ? '#bbbbbb' : '#ffffff';
@@ -183,6 +206,15 @@ export function clearSpectrogramScrubPreview() {
         oldX, 0, oldW, height
     );
     
+    // 🎨 Redraw regions/selections in this strip
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(oldX, 0, oldW, height);
+    ctx.clip();
+    drawSpectrogramRegionHighlights(ctx, width, height);
+    drawSpectrogramSelection(ctx, width, height);
+    ctx.restore();
+    
     // Redraw faint grey playhead if it was in that area
     if (lastPlayheadX >= 0 && Math.abs(lastPlayheadX - lastPreviewX) < stripWidth * 2) {
         ctx.globalAlpha = 0.6;
@@ -218,6 +250,10 @@ export function resetSpectrogramPlayhead() {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(viewportCanvas, 0, 0);  // 🔧 FIX: Use viewport, not cache!
+        
+        // 🎨 Redraw regions/selections on top
+        drawSpectrogramRegionHighlights(ctx, canvas.width, canvas.height);
+        drawSpectrogramSelection(ctx, canvas.width, canvas.height);
     }
 }
 

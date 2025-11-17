@@ -813,6 +813,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.16 - Spectrogram Regions & Selections');
+    console.log('🎨 [0ms] v2.16 Feat: Spectrogram now shows regions and selections - lightweight blue highlights (15%/8% opacity) and yellow selection boxes (8%/35% opacity), fade out when zooming into regions');
     console.log('🌋 [0ms] volcano-audio v2.15 - Waveform Zoom-Out & Zoom Button Click Fix');
     console.log('🔍 [0ms] v2.15 Fix: Waveform zoom-out now uses cached full waveform (like spectrogram) for instant visual feedback');
     console.log('🖱️ [0ms] v2.15 Fix: Zoom button clicks on canvas no longer trigger scrub preview/playhead');

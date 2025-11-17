@@ -15,6 +15,7 @@ import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
 import { zoomState } from './zoom-state.js';
 
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
+import { drawSpectrogramRegionHighlights, drawSpectrogramSelection } from './region-tracker.js';
 
 // Track if we've rendered the complete spectrogram
 let completeSpectrogramRendered = false;
@@ -784,6 +785,10 @@ export function drawInterpolatedSpectrogram() {
             width, stretchedHeight
         );
     }
+    
+    // Draw regions and selection on top
+    drawSpectrogramRegionHighlights(ctx, width, height);
+    drawSpectrogramSelection(ctx, width, height);
 }
 
 /**
@@ -1001,6 +1006,10 @@ export function updateSpectrogramViewport(playbackRate) {
             width, stretchedHeight
         );
     }
+    
+    // Draw regions and selection on top
+    drawSpectrogramRegionHighlights(ctx, width, height);
+    drawSpectrogramSelection(ctx, width, height);
 }
 
 /**

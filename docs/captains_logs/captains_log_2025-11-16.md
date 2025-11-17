@@ -2,6 +2,48 @@
 
 ---
 
+## 🎨 Spectrogram Regions & Selections (v2.16)
+
+### Feature
+Added lightweight region highlights and selection boxes to the spectrogram canvas, mirroring the waveform functionality but with subtler styling.
+
+### Implementation
+1. **New Functions in `region-tracker.js`**:
+   - `drawSpectrogramRegionHighlights()` - Draws blue region highlights (15% active, 8% inactive opacity)
+   - `drawSpectrogramSelection()` - Draws yellow selection boxes (8% fill, 35% stroke opacity)
+   - Both use zoom-aware positioning and interpolated time ranges for smooth transitions
+
+2. **Integration in `spectrogram-complete-renderer.js`**:
+   - Added drawing calls in `updateSpectrogramViewport()` and `drawInterpolatedSpectrogram()`
+   - Regions/selections drawn on top of spectrogram after rendering
+
+3. **Playhead Integration in `spectrogram-playhead.js`**:
+   - All playhead functions now redraw regions/selections after restoring from viewport
+   - Uses clipping for strip updates to maintain performance optimization
+   - Ensures regions/selections stay visible during playhead movement and scrub preview
+
+### Styling
+- **Regions**: Lighter than waveform (15%/8% vs 50%/25% opacity), 1px borders (vs 2px)
+- **Selections**: Subtle yellow (8% fill, 35% stroke vs 20%/80% on waveform), 1px borders
+- **Fade-out**: Regions fade to 0% opacity when zooming into a region (smooth transition)
+- **No UI clutter**: No numbers or buttons, just clean highlights
+
+### Benefits
+- ✅ Visual consistency between waveform and spectrogram
+- ✅ Regions/selections stay aligned during zoom transitions
+- ✅ Lightweight styling doesn't distract from spectrogram data
+- ✅ Smooth fade-out when zooming into regions
+
+### Files Modified
+- `js/region-tracker.js` - Added spectrogram drawing functions
+- `js/spectrogram-complete-renderer.js` - Integrated region/selection drawing
+- `js/spectrogram-playhead.js` - Redraw regions/selections after playhead updates
+
+### Version
+v2.16 - Commit: "v2.16 Feat: Spectrogram regions and selections - lightweight blue highlights and yellow selection boxes, fade out when zooming into regions"
+
+---
+
 ## 🔍 Waveform Zoom-Out & Zoom Button Click Fixes (v2.15)
 
 ### Problem 1: Waveform Zoom-Out Issue
