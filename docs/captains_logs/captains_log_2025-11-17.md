@@ -520,3 +520,40 @@ Added `enableRegionButtons()` call in `runZoomOutTutorial()` immediately after t
 
 ---
 
+## 🌐 Auto-detect Environment & Force Study Mode Online (v2.43)
+
+### Features Implemented
+
+1. **Environment Detection**
+   - Automatically detects if running locally (localhost, 127.0.0.1, file://) vs production
+   - Uses hostname and protocol to determine environment
+
+2. **Production Mode Enforcement**
+   - Production always uses STUDY mode (ignores localStorage)
+   - Mode selector dropdown hidden and disabled in production
+   - Secret key sequence disabled in production
+   - Console logs show environment detection
+
+3. **Local Development**
+   - Mode switching works normally via dropdown
+   - Uses localStorage or DEFAULT_MODE
+   - Secret key sequence works for study modes
+   - Full development flexibility maintained
+
+### Implementation Details
+
+- Added `isLocalEnvironment()` function to detect local vs production
+- Modified `CURRENT_MODE` to force STUDY mode in production
+- Updated mode selector visibility and functionality based on environment
+- Disabled mode switching mechanisms in production
+
+### Files Changed
+- `js/master-modes.js` - Added environment detection, force STUDY mode in production
+- `js/main.js` - Hide/disable mode selector in production, disable secret key sequence
+
+### Version Tag
+- **Version**: v2.43
+- **Commit Message**: v2.43 Feat: Auto-detect local vs production - force STUDY mode online, allow mode switching locally
+
+---
+

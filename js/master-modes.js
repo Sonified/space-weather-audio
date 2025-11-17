@@ -26,12 +26,34 @@ export const AppMode = {
  */
 export const DEFAULT_MODE = AppMode.DEV; // Default if no localStorage selection
 
+/**
+ * Detect if running locally vs production
+ * Returns true if running on localhost, 127.0.0.1, or file:// protocol
+ */
+function isLocalEnvironment() {
+    if (typeof window === 'undefined') return false;
+    
+    const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+    
+    // Check for localhost, 127.0.0.1, or file:// protocol
+    return hostname === 'localhost' || 
+           hostname === '127.0.0.1' || 
+           hostname === '' ||
+           protocol === 'file:';
+}
+
 // Check localStorage for user's mode selection (set by dropdown)
 // Falls back to DEFAULT_MODE if not set
 const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-export const CURRENT_MODE = storedMode && Object.values(AppMode).includes(storedMode) 
-    ? storedMode 
-    : DEFAULT_MODE;
+
+// Production: Always force STUDY mode (ignore localStorage)
+// Local: Allow mode switching via localStorage or DEFAULT_MODE
+export const CURRENT_MODE = isLocalEnvironment()
+    ? (storedMode && Object.values(AppMode).includes(storedMode) 
+        ? storedMode 
+        : DEFAULT_MODE)
+    : AppMode.STUDY; // Force STUDY mode for production
 
 /**
  * Mode Configuration
@@ -154,7 +176,13 @@ export function shouldShowSubmitButton() {
  */
 export function initializeMasterMode() {
     const config = MODE_CONFIG[CURRENT_MODE];
+    const isLocal = isLocalEnvironment();
+    
     console.log('═══════════════════════════════════════════════════════════');
+    console.log(`🌐 Environment: ${isLocal ? '🔧 LOCAL (Development)' : '🌍 PRODUCTION (Online)'}`);
+    if (!isLocal) {
+        console.log(`🔒 Production Mode: STUDY mode enforced (mode switching disabled)`);
+    }
     console.log(`🎯 App Mode: ${config.name.toUpperCase()}`);
     console.log(`📝 ${config.description}`);
     console.log('───────────────────────────────────────────────────────────');

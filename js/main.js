@@ -913,12 +913,24 @@ window.addEventListener('DOMContentLoaded', async () => {
     const modeSelectorContainer = document.getElementById('modeSelectorContainer');
     const modeSelector = document.getElementById('modeSelector');
     
-    // Show mode selector by default for personal and dev modes
-    // Hide by default for study modes (can be revealed with secret key "dvdv")
-    if (isPersonalMode() || isDevMode()) {
+    // Detect if running locally
+    const isLocal = window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || 
+                    window.location.hostname === '' ||
+                    window.location.protocol === 'file:';
+    
+    // Show mode selector only in local environment
+    // Hide mode selector in production (study mode is enforced)
+    if (isLocal && (isPersonalMode() || isDevMode())) {
         if (modeSelectorContainer) {
             modeSelectorContainer.style.visibility = 'visible';
             modeSelectorContainer.style.opacity = '1';
+        }
+    } else if (!isLocal) {
+        // Production: Hide mode selector (study mode is enforced)
+        if (modeSelectorContainer) {
+            modeSelectorContainer.style.visibility = 'hidden';
+            modeSelectorContainer.style.opacity = '0';
         }
     }
     
@@ -977,9 +989,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     }
     
-    // Add key listener on page load (only for study modes - personal/dev already show dropdown)
-    if (isStudyMode()) {
-    window.addEventListener('keydown', handleSecretKeyListener);
+    // Add key listener on page load (only for study modes in local environment)
+    // Production: Disable secret key sequence (study mode is enforced)
+    if (isStudyMode() && isLocal) {
+        window.addEventListener('keydown', handleSecretKeyListener);
     }
     
     // Track when first menu is exited (any modal closes or user clicks/interacts)
@@ -1020,25 +1033,34 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Set current mode as selected
         modeSelector.value = CURRENT_MODE;
         
-        // Add change listener to switch modes
-        modeSelector.addEventListener('change', (e) => {
-            const newMode = e.target.value;
-            console.log(`🔄 Switching mode to: ${newMode}`);
-            
-            // Save to localStorage
-            localStorage.setItem('selectedMode', newMode);
-            
-            // Show confirmation
-            const confirmed = confirm(`Switch to ${newMode.toUpperCase()} mode? The page will reload.`);
-            if (confirmed) {
-                // Reload page to apply new mode
-                window.location.reload();
-            } else {
-                // Reset dropdown to current mode
-                e.target.value = CURRENT_MODE;
-                localStorage.removeItem('selectedMode');
-            }
-        });
+        // Only allow mode changes in local environment
+        // Production: Disable dropdown and prevent mode switching
+        if (!isLocal) {
+            modeSelector.disabled = true;
+            modeSelector.style.opacity = '0.5';
+            modeSelector.style.cursor = 'not-allowed';
+            modeSelector.title = 'Mode switching disabled in production (Study Mode enforced)';
+        } else {
+            // Add change listener to switch modes (local only)
+            modeSelector.addEventListener('change', (e) => {
+                const newMode = e.target.value;
+                console.log(`🔄 Switching mode to: ${newMode}`);
+                
+                // Save to localStorage
+                localStorage.setItem('selectedMode', newMode);
+                
+                // Show confirmation
+                const confirmed = confirm(`Switch to ${newMode.toUpperCase()} mode? The page will reload.`);
+                if (confirmed) {
+                    // Reload page to apply new mode
+                    window.location.reload();
+                } else {
+                    // Reset dropdown to current mode
+                    e.target.value = CURRENT_MODE;
+                    localStorage.removeItem('selectedMode');
+                }
+            });
+        }
     }
     
     // Hide simulate panel in Study Mode (surveys are controlled by workflow)
@@ -1100,6 +1122,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log('🧹 [0ms] v2.37 Fix: setTimeout chains in waitForPlaybackResume now properly tracked and cleaned up');
     console.log('🧹 [0ms] v2.37 Fix: Window properties cleaned up on tutorial completion');
     console.log('🌋 [0ms] volcano-audio v2.36 - Tutorial System Refactoring with Async/Await');
+    console.log('🌋 [0ms] volcano-audio v2.43 - Auto-detect Environment & Force Study Mode Online');
+    console.log('🌐 [0ms] v2.43 Feat: Auto-detect local vs production - force STUDY mode online, allow mode switching locally');
     console.log('🌋 [0ms] volcano-audio v2.42 - Begin Analysis Button with Sparkle Effect');
     console.log('✨ [0ms] v2.42 Feat: Begin Analysis button with sparkle effect and confirmation modal - enables after data download, disables volcano switching after confirmation');
     console.log('🎓 [0ms] v2.36 Refactor: Complete tutorial system refactored to use elegant async/await pattern with skippable waits');
