@@ -23,6 +23,47 @@ import {
 } from '../Qualtrics/participant-response-manager.js';
 import { isAdminMode } from './admin-mode.js';
 import { getRegions } from './region-tracker.js';
+import { isStudyMode, CURRENT_MODE, AppMode } from './master-modes.js';
+
+/**
+ * Fade in the permanent overlay background (modal background)
+ * Standard design pattern: background fades up when modal appears
+ */
+function fadeInOverlay() {
+    const overlay = document.getElementById('permanentOverlay');
+    if (!overlay) return;
+    
+    // Set initial opacity to 0 for fade-in effect
+    overlay.style.opacity = '0';
+    overlay.style.display = 'flex';
+    
+    // Force reflow to ensure initial state is applied
+    void overlay.offsetHeight;
+    
+    // Fade in
+    overlay.style.transition = 'opacity 0.3s ease-in';
+    overlay.style.opacity = '1';
+}
+
+/**
+ * Fade out the permanent overlay background (modal background)
+ * Standard design pattern: background fades down when modal leaves
+ */
+function fadeOutOverlay() {
+    const overlay = document.getElementById('permanentOverlay');
+    if (!overlay) return;
+    
+    // Fade out
+    overlay.style.transition = 'opacity 0.3s ease-out';
+    overlay.style.opacity = '0';
+    
+    // Hide completely after fade completes
+    setTimeout(() => {
+        if (overlay && overlay.style.opacity === '0') {
+            overlay.style.display = 'none';
+        }
+    }, 300); // Match transition duration
+}
 
 export function loadStations() {
     const volcanoSelect = document.getElementById('volcano');
@@ -82,7 +123,9 @@ export function loadSavedVolcano() {
     const savedVolcano = localStorage.getItem('selectedVolcano');
     if (savedVolcano && EMBEDDED_STATIONS[savedVolcano]) {
         volcanoSelect.value = savedVolcano;
-        console.log('💾 Restored volcano selection:', savedVolcano);
+        if (!isStudyMode()) {
+            console.log('💾 Restored volcano selection:', savedVolcano);
+        }
         // Load stations for the saved volcano
         loadStations();
     } else {
@@ -97,11 +140,16 @@ export function updateStationList() {
     const stationSelect = document.getElementById('station');
     const stations = State.availableStations[dataType] || [];
     
-    console.log(`🔍 updateStationList: dataType="${dataType}", availableStations=`, State.availableStations);
-    console.log(`🔍 Stations for ${dataType}:`, stations);
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log(`🔍 updateStationList: dataType="${dataType}", availableStations=`, State.availableStations);
+        console.log(`🔍 Stations for ${dataType}:`, stations);
+    }
     
     if (stations.length === 0) {
-        console.warn(`⚠️ No ${dataType} stations available`);
+        if (!isStudyMode()) {
+            console.warn(`⚠️ No ${dataType} stations available`);
+        }
         stationSelect.innerHTML = '<option value="">No stations available</option>';
         return;
     }
@@ -112,7 +160,9 @@ export function updateStationList() {
         `<option value='${JSON.stringify(s)}' ${index === defaultIndex ? 'selected' : ''}>${s.label}</option>`
     ).join('');
     
-    console.log(`✅ Populated ${stations.length} ${dataType} stations`);
+    if (!isStudyMode()) {
+        console.log(`✅ Populated ${stations.length} ${dataType} stations`);
+    }
 }
 
 export function enableFetchButton() {
@@ -304,6 +354,65 @@ export async function purgeCloudflareCache() {
 // 🔥 FIX: Track if listeners have been set up to prevent duplicate attachment
 let modalListenersSetup = false;
 
+/**
+ * Close ALL modals - centralized function to prevent multiple modals showing
+ * Call this before opening any modal to ensure only one modal is visible at a time
+ */
+export function closeAllModals() {
+    const allModalIds = [
+        'welcomeModal',
+        'participantModal',
+        'preSurveyModal',
+        'postSurveyModal',
+        'activityLevelModal',
+        'awesfModal',
+        'endModal',
+        'beginAnalysisModal',
+        'missingStudyIdModal',
+        'completeConfirmationModal'
+    ];
+    
+    allModalIds.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    });
+}
+
+/**
+ * Enable or disable quick-fill buttons based on current mode
+ * Disables in STUDY mode, enables in STUDY_CLEAN, DEV, and PERSONAL modes
+ */
+export function toggleQuickFillButtons() {
+    // Disable quick-fill buttons in STUDY mode only (keep enabled in STUDY_CLEAN, DEV, PERSONAL)
+    const shouldDisable = CURRENT_MODE === AppMode.STUDY;
+    
+    // Find all quick-fill button containers and buttons
+    const quickFillContainers = document.querySelectorAll('.quick-fill-buttons');
+    const quickFillButtons = document.querySelectorAll('.quick-fill-btn');
+    
+    quickFillContainers.forEach(container => {
+        if (shouldDisable) {
+            container.style.display = 'none';
+        } else {
+            container.style.display = 'flex';
+        }
+    });
+    
+    quickFillButtons.forEach(btn => {
+        if (shouldDisable) {
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
+        } else {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+        }
+    });
+}
+
 export function setupModalEventListeners() {
     // 🔥 FIX: Prevent duplicate event listener attachment
     // If listeners are already set up, remove old ones first before re-adding
@@ -453,6 +562,80 @@ export function setupModalEventListeners() {
                 // Trigger the actual workflow - this will be handled by main.js
                 // We'll dispatch a custom event that main.js listens for
                 window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
+            });
+        }
+    }
+    
+    // Complete Confirmation modal event listeners
+    const completeConfirmationModal = document.getElementById('completeConfirmationModal');
+    if (!completeConfirmationModal) {
+        console.error('❌ Complete Confirmation modal not found in DOM');
+    } else {
+        // Allow closing by clicking outside
+        completeConfirmationModal.addEventListener('click', (e) => {
+            if (e.target === completeConfirmationModal) {
+                closeCompleteConfirmationModal();
+            }
+        });
+        
+        const completeCancelBtn = completeConfirmationModal.querySelector('.modal-cancel');
+        if (completeCancelBtn) {
+            completeCancelBtn.addEventListener('click', closeCompleteConfirmationModal);
+        }
+        
+        const completeSubmitBtn = completeConfirmationModal.querySelector('.modal-submit');
+        if (completeSubmitBtn) {
+            completeSubmitBtn.addEventListener('click', async () => {
+                // Check if a feature is selected
+                const { hasIdentifiedFeature } = await import('./region-tracker.js');
+                const hasFeature = hasIdentifiedFeature();
+                
+                if (!hasFeature) {
+                    console.warn('⚠️ Complete button clicked but no feature selected');
+                    // Keep modal open and show error
+                    const statusEl = document.getElementById('status');
+                    if (statusEl) {
+                        statusEl.className = 'status error';
+                        statusEl.textContent = '❌ Please identify at least one feature before completing.';
+                    }
+                    return;
+                }
+                
+                // Enable features
+                const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+                enableAllTutorialRestrictedFeatures();
+                console.log('✅ Features enabled after feature selection');
+                
+                // Close confirmation modal
+                closeCompleteConfirmationModal();
+                
+                // Open Activity Level modal (first question after the test)
+                openActivityLevelModal();
+            });
+        }
+    }
+    
+    // Missing Study ID modal event listeners
+    const missingStudyIdModal = document.getElementById('missingStudyIdModal');
+    if (!missingStudyIdModal) {
+        console.error('❌ Missing Study ID modal not found in DOM');
+    } else {
+        // Allow closing by clicking outside
+        missingStudyIdModal.addEventListener('click', (e) => {
+            if (e.target === missingStudyIdModal) {
+                closeMissingStudyIdModal();
+            }
+        });
+        
+        // "Enter Study ID" button - opens participant modal
+        const enterStudyIdBtn = missingStudyIdModal.querySelector('.modal-submit');
+        if (enterStudyIdBtn) {
+            enterStudyIdBtn.addEventListener('click', () => {
+                closeMissingStudyIdModal();
+                // Small delay to ensure modal closes first
+                setTimeout(() => {
+                    openParticipantModal();
+                }, 100);
             });
         }
     }
@@ -764,6 +947,9 @@ export function setupModalEventListeners() {
         });
     }
     
+    // Enable/disable quick-fill buttons based on mode
+    toggleQuickFillButtons();
+    
     modalListenersSetup = true;
     console.log('📋 Modal event listeners attached');
 }
@@ -804,10 +990,16 @@ function removeModalEventListeners() {
 }
 
 export function openParticipantModal() {
+    // Close all other modals first
+    closeAllModals();
+    
     // Get participant ID from URL (takes precedence) or localStorage
     const participantId = getParticipantId();
     const participantIdInput = document.getElementById('participantId');
     const participantSubmitBtn = document.querySelector('#participantModal .modal-submit');
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
     
     if (participantIdInput) {
         // Pre-populate with ID from URL or localStorage
@@ -826,8 +1018,13 @@ export function openParticipantModal() {
         participantSubmitBtn.disabled = !hasValue;
     }
     
-    document.getElementById('participantModal').style.display = 'flex';
-    console.log('👤 Participant Setup modal opened');
+    const modal = document.getElementById('participantModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        console.log('👤 Participant Setup modal opened');
+    } else {
+        console.error('❌ Participant modal not found in DOM');
+    }
 }
 
 export function closeParticipantModal(event) {
@@ -892,14 +1089,11 @@ export async function openWelcomeModal() {
         return;
     }
     
-    // CRITICAL: Close any other modals first to prevent multiple modals showing
-    const allModals = ['preSurveyModal', 'postSurveyModal', 'activityLevelModal', 'awesfModal', 'endModal', 'participantModal'];
-    allModals.forEach(modalId => {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.style.display = 'none';
-        }
-    });
+    // Close all other modals first
+    closeAllModals();
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
     
     welcomeModal.style.display = 'flex';
     console.log('👋 Welcome modal opened');
@@ -912,7 +1106,13 @@ export function closeWelcomeModal() {
 
 // End Modal Functions
 export function openEndModal(participantId, sessionCount) {
+    // Close all other modals first
+    closeAllModals();
+    
     const modal = document.getElementById('endModal');
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
     
     // Update submission time with local time including seconds
     const now = new Date();
@@ -941,10 +1141,19 @@ export function closeEndModal() {
 
 // Begin Analysis Modal Functions
 export function openBeginAnalysisModal() {
+    // Close all other modals first
+    closeAllModals();
+    
     const modal = document.getElementById('beginAnalysisModal');
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
+    
     if (modal) {
         modal.style.display = 'flex';
         console.log('🔵 Begin Analysis modal opened');
+    } else {
+        console.error('❌ Begin Analysis modal not found in DOM');
     }
 }
 
@@ -953,6 +1162,71 @@ export function closeBeginAnalysisModal() {
     if (modal) {
         modal.style.display = 'none';
         console.log('🔵 Begin Analysis modal closed');
+    }
+    
+    // Fade out overlay background (standard design pattern)
+    fadeOutOverlay();
+}
+
+// Complete Confirmation Modal Functions
+export function openCompleteConfirmationModal() {
+    // Close all other modals first
+    closeAllModals();
+    
+    const modal = document.getElementById('completeConfirmationModal');
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
+    
+    if (modal) {
+        modal.style.display = 'flex';
+        console.log('✅ Complete Confirmation modal opened');
+    } else {
+        console.error('❌ Complete Confirmation modal not found in DOM');
+    }
+}
+
+export function closeCompleteConfirmationModal() {
+    const modal = document.getElementById('completeConfirmationModal');
+    if (modal) {
+        modal.style.display = 'none';
+        console.log('✅ Complete Confirmation modal closed');
+    }
+    
+    // Fade out overlay background (standard design pattern)
+    fadeOutOverlay();
+}
+
+// Missing Study ID Modal Functions
+export function openMissingStudyIdModal() {
+    // Close all other modals first
+    closeAllModals();
+    
+    const modal = document.getElementById('missingStudyIdModal');
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
+    
+    if (modal) {
+        modal.style.display = 'flex';
+        console.log('⚠️ Missing Study ID modal opened');
+    }
+}
+
+export function closeMissingStudyIdModal() {
+    const modal = document.getElementById('missingStudyIdModal');
+    
+    if (modal) {
+        modal.style.display = 'none';
+        console.log('⚠️ Missing Study ID modal closed');
+        
+        // If participant ID is now set, fade out the overlay
+        // Otherwise, keep overlay visible for participant modal
+        const participantId = getParticipantId();
+        if (participantId) {
+            // Participant ID is set - fade out overlay (standard design pattern)
+            fadeOutOverlay();
+        }
     }
 }
 
@@ -978,55 +1252,46 @@ export function submitParticipantSetup() {
     statusEl.textContent = `✅ Participant setup recorded: ${participantId || 'Anonymous'}`;
     
     // Update participant ID display in top panel
-    // In Personal and Dev modes, always show the display (even if no ID set)
-    // In Study modes, only show if participant ID exists
+    // Always show the display (even if no ID set) so users can click to enter their ID
     const displayElement = document.getElementById('participantIdDisplay');
     const valueElement = document.getElementById('participantIdValue');
     
-    // Import mode checkers - use dynamic import to avoid circular dependencies
-    import('./master-modes.js').then(({ isPersonalMode, isDevMode }) => {
-        const shouldShow = isPersonalMode() || isDevMode() || !!participantId;
-        
-        if (shouldShow) {
-            if (displayElement) displayElement.style.display = 'block';
-            if (valueElement) valueElement.textContent = participantId || '--';
-        } else {
-            if (displayElement) displayElement.style.display = 'none';
-            if (valueElement) valueElement.textContent = '--';
-        }
-    }).catch(() => {
-        // Fallback: show if participant ID exists
-        if (participantId) {
-            if (displayElement) displayElement.style.display = 'block';
-            if (valueElement) valueElement.textContent = participantId;
-        } else {
-            if (displayElement) displayElement.style.display = 'none';
-            if (valueElement) valueElement.textContent = '--';
-        }
-    });
+    if (displayElement) displayElement.style.display = 'block';
+    if (valueElement) valueElement.textContent = participantId || '--';
     
     // Hide the participant modal after submission
-    document.getElementById('participantModal').style.display = 'none';
+    const modal = document.getElementById('participantModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Fade out overlay background if participant ID is set (standard design pattern)
+    if (participantId) {
+        // Small delay to ensure modal closes first, then fade out overlay
+        setTimeout(() => {
+            fadeOutOverlay();
+        }, 100);
+    }
 }
 
 export function openPreSurveyModal() {
+    // Close all other modals first
+    closeAllModals();
+    
     const preSurveyModal = document.getElementById('preSurveyModal');
     if (!preSurveyModal) {
         console.warn('⚠️ Pre-survey modal not found');
         return;
     }
     
-    // CRITICAL: Close any other modals first to prevent multiple modals showing
-    const allModals = ['welcomeModal', 'postSurveyModal', 'activityLevelModal', 'awesfModal', 'endModal', 'participantModal'];
-    allModals.forEach(modalId => {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.style.display = 'none';
-        }
-    });
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
     
     preSurveyModal.style.display = 'flex';
     console.log('📊 Pre-Survey modal opened');
+    
+    // Ensure quick-fill buttons are properly enabled/disabled based on mode
+    toggleQuickFillButtons();
     
     // Track survey start
     const participantId = getParticipantId();
@@ -1061,17 +1326,18 @@ export async function submitPreSurvey() {
         return;
     }
     
-    // Get participant ID (from URL or localStorage)
+    // Get participant ID (from URL or localStorage) - optional for pre-survey
     const participantId = getParticipantId();
     
+    // Allow pre-survey submission without participant ID (user can set it later)
+    // Only require participant ID for saving responses, but allow submission to proceed
     if (!participantId) {
-        alert('Please set your participant ID before submitting surveys.');
-        return;
+        console.log('⚠️ Pre-Survey submitted without participant ID - responses will not be saved');
     }
     
     console.log('📊 Pre-Survey Data:');
     console.log('  - Survey Type: Pre-Survey');
-    console.log('  - Participant ID:', participantId);
+    console.log('  - Participant ID:', participantId || 'Not set');
     console.log('  - Calm:', surveyData.calm || 'not rated');
     console.log('  - Energized:', surveyData.energized || 'not rated');
     console.log('  - Connected to nature:', surveyData.connected || 'not rated');
@@ -1083,16 +1349,25 @@ export async function submitPreSurvey() {
     const statusEl = document.getElementById('status');
     
     try {
-        // Save response locally instead of submitting immediately
-        statusEl.className = 'status info';
-        statusEl.textContent = '💾 Saving pre-survey response...';
-        
-        saveSurveyResponse(participantId, 'pre', surveyData);
-        
-        statusEl.className = 'status success';
-        statusEl.textContent = '✅ Pre-Survey saved! Complete all surveys to submit.';
-        
-        closePreSurveyModal();
+        // Save response locally if participant ID is available
+        if (participantId) {
+            statusEl.className = 'status info';
+            statusEl.textContent = '💾 Saving pre-survey response...';
+            
+            saveSurveyResponse(participantId, 'pre', surveyData);
+            
+            statusEl.className = 'status success';
+            statusEl.textContent = '✅ Pre-Survey saved! Complete all surveys to submit.';
+            
+            closePreSurveyModal();
+        } else {
+            // No participant ID - show warning modal
+            closePreSurveyModal();
+            // Small delay to ensure pre-survey modal closes first
+            setTimeout(() => {
+                openMissingStudyIdModal();
+            }, 100);
+        }
         
         setTimeout(() => {
             document.querySelectorAll('#preSurveyModal input[type="radio"]').forEach(radio => {
@@ -1108,8 +1383,17 @@ export async function submitPreSurvey() {
 }
 
 export function openPostSurveyModal() {
+    // Close all other modals first
+    closeAllModals();
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
+    
     document.getElementById('postSurveyModal').style.display = 'flex';
     console.log('📊 Post-Survey modal opened');
+    
+    // Ensure quick-fill buttons are properly enabled/disabled based on mode
+    toggleQuickFillButtons();
     
     // Track survey start
     const participantId = getParticipantId();
@@ -1191,6 +1475,12 @@ export async function submitPostSurvey() {
 }
 
 export function openActivityLevelModal() {
+    // Close all other modals first
+    closeAllModals();
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
+    
     document.getElementById('activityLevelModal').style.display = 'flex';
     console.log('🌋 Activity Level modal opened');
     
@@ -1260,8 +1550,17 @@ export async function submitActivityLevelSurvey() {
 }
 
 export function openAwesfModal() {
+    // Close all other modals first
+    closeAllModals();
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
+    
     document.getElementById('awesfModal').style.display = 'flex';
     console.log('✨ AWE-SF modal opened');
+    
+    // Ensure quick-fill buttons are properly enabled/disabled based on mode
+    toggleQuickFillButtons();
     
     // Track survey start
     const participantId = getParticipantId();

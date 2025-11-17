@@ -4,6 +4,8 @@
  * MAX PERFORMANCE MODE 🔥
  */
 
+import { isStudyMode } from './master-modes.js';
+
 export class SpectrogramWorkerPool {
     constructor(numWorkers = null) {
         // Use all available CPU cores (minus 1 to leave room for main thread)
@@ -13,7 +15,10 @@ export class SpectrogramWorkerPool {
         this.taskQueue = [];
         this.initialized = false;
         
-        console.log(`🏭 Creating worker pool with ${this.numWorkers} workers (${navigator.hardwareConcurrency} CPU cores detected)`);
+        // Only log in dev/personal modes, not study mode
+        if (!isStudyMode()) {
+            console.log(`🏭 Creating worker pool with ${this.numWorkers} workers (${navigator.hardwareConcurrency} CPU cores detected)`);
+        }
     }
     
     /**
@@ -51,7 +56,10 @@ export class SpectrogramWorkerPool {
         await Promise.all(initPromises);
         this.initialized = true;
         
-        console.log(`✅ Worker pool initialized with ${this.numWorkers} workers`);
+        // Only log in dev/personal modes, not study mode
+        if (!isStudyMode()) {
+            console.log(`✅ Worker pool initialized with ${this.numWorkers} workers`);
+        }
     }
     
     /**
@@ -165,7 +173,10 @@ export class SpectrogramWorkerPool {
      * Terminate all workers in the pool and free memory
      */
     terminate() {
-        console.log(`🏭 Terminating worker pool (${this.numWorkers} workers)...`);
+        // Only log in dev/personal modes, not study mode
+        if (!isStudyMode()) {
+            console.log(`🏭 Terminating worker pool (${this.numWorkers} workers)...`);
+        }
         
         // 🔥 FIX: Reject any pending promises in taskQueue to break closure chains
         // This prevents handlers from retaining references after termination
@@ -196,14 +207,20 @@ export class SpectrogramWorkerPool {
             window.gc();
         }
         
-        console.log(`✅ Worker pool terminated and memory freed`);
+        // Only log in dev/personal modes, not study mode
+        if (!isStudyMode()) {
+            console.log(`✅ Worker pool terminated and memory freed`);
+        }
     }
     
     /**
      * Cleanup after rendering (call this when done!)
      */
     async cleanup() {
-        console.log(`🧹 Cleaning up worker pool...`);
+        // Only log in dev/personal modes, not study mode
+        if (!isStudyMode()) {
+            console.log(`🧹 Cleaning up worker pool...`);
+        }
         this.terminate();
     }
     

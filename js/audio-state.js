@@ -115,6 +115,7 @@ export let _numberKeyPressResolve = null;
 export let regionButtonsDisabled = false;
 export let enabledRegionPlayButtons = new Map(); // Map<regionIndex, enabled>
 export let enabledRegionZoomButtons = new Map(); // Map<regionIndex, enabled>
+export let regionCreationEnabled = false; // Region creation disabled until "Begin Analysis" is pressed
 
 // Region tracking state
 export let regions = [];
@@ -234,6 +235,8 @@ export function isRegionPlayButtonEnabled(regionIndex) {
 export function isRegionZoomButtonEnabled(regionIndex) {
     return enabledRegionZoomButtons.has(regionIndex);
 }
+export function setRegionCreationEnabled(value) { regionCreationEnabled = value; }
+export function isRegionCreationEnabled() { return regionCreationEnabled; }
 export function setRegions(value) { regions = value; }
 export function setActiveRegionIndex(value) { activeRegionIndex = value; }
 export function setIsSelectingFrequency(value) { isSelectingFrequency = value; }

@@ -557,3 +557,40 @@ Added `enableRegionButtons()` call in `runZoomOutTutorial()` immediately after t
 
 ---
 
+## 🎯 Quick-fill Button Toggle Function (v2.44)
+
+### Features Implemented
+
+1. **Quick-fill Button Toggle Function**
+   - Created `toggleQuickFillButtons()` function to enable/disable quick-fill buttons based on mode
+   - Disables quick-fill buttons in STUDY mode (hides containers and disables buttons)
+   - Enables quick-fill buttons in STUDY_CLEAN, DEV, and PERSONAL modes
+   - Function is exported and can be called from anywhere
+
+2. **Integration Points**
+   - Called at end of `setupModalEventListeners()` when modals are initialized
+   - Called when pre-survey modal opens (`openPreSurveyModal()`)
+   - Called when post-survey modal opens (`openPostSurveyModal()`)
+   - Called when AWESF modal opens (`openAwesfModal()`)
+
+3. **Mode Detection**
+   - Uses `CURRENT_MODE` and `AppMode` from `master-modes.js` to check current mode
+   - Specifically checks for `AppMode.STUDY` (not STUDY_CLEAN) to disable buttons
+
+### Implementation Details
+
+- Function finds all `.quick-fill-buttons` containers and `.quick-fill-btn` buttons
+- When disabled: containers hidden (`display: none`), buttons disabled with reduced opacity and not-allowed cursor
+- When enabled: containers visible (`display: flex`), buttons enabled with full opacity and pointer cursor
+
+### Files Changed
+- `js/ui-controls.js` - Added `toggleQuickFillButtons()` function, integrated into modal setup and open functions
+- `js/main.js` - Added v2.44 console log entries
+- `backend/collector_loop.py` - Updated version to v2.44
+
+### Version Tag
+- **Version**: v2.44
+- **Commit Message**: v2.44 Feat: Quick-fill button toggle function - disable in STUDY mode, enable in STUDY_CLEAN/DEV/PERSONAL modes
+
+---
+

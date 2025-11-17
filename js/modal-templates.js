@@ -1,5 +1,7 @@
 // Modal HTML templates as ES6 template literals
 
+import { isStudyMode } from './master-modes.js';
+
 // 🔥 FIX: Track if modals have been initialized to prevent duplicate initialization
 let modalsInitialized = false;
 
@@ -91,9 +93,67 @@ export function createBeginAnalysisModal() {
                 <p style="margin-bottom: 30px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
                     Are you sure? Once you begin you will no longer be able to switch volcanoes.
                 </p>
+                <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Begin Analysis</button>
+                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+export function createCompleteConfirmationModal() {
+    const modal = document.createElement('div');
+    modal.id = 'completeConfirmationModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Ready to Complete?</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 30px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
+                    Are you ready to complete your analysis? You will proceed to answer a few final questions.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #28a745; border: 2px solid #28a745; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Complete</button>
+                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+export function createMissingStudyIdModal() {
+    const modal = document.createElement('div');
+    modal.id = 'missingStudyIdModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Study ID Required</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
+                    Your study ID has not been associated with this computer.
+                </p>
+                <p style="margin-bottom: 20px; color: #555; font-size: 16px; line-height: 1.6; text-align: center;">
+                    In order for your data to be accepted, you will need to enter your study ID or reach out for assistance.
+                </p>
+                <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+                    <p style="margin-bottom: 10px; color: #856404; font-size: 15px; line-height: 1.6; font-weight: 600;">
+                        Need Help?
+                    </p>
+                    <p style="margin-bottom: 0; color: #856404; font-size: 15px; line-height: 1.6;">
+                        Contact <a href="mailto:leif@uoregon.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">leif@uoregon.edu</a> for assistance.
+                    </p>
+                </div>
                 <div style="display: flex; gap: 15px; justify-content: center;">
-                    <button type="button" class="modal-cancel" style="padding: 12px 24px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s;">Cancel</button>
-                    <button type="button" class="modal-submit" style="padding: 12px 24px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s;">Begin Analysis</button>
+                    <button type="button" class="modal-submit" style="padding: 12px 24px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s;">Enter Study ID</button>
                 </div>
             </div>
         </div>
@@ -627,7 +687,9 @@ export function initializeModals() {
         'activityLevelModal',
         'awesfModal',
         'endModal',
-        'beginAnalysisModal'
+        'beginAnalysisModal',
+        'missingStudyIdModal',
+        'completeConfirmationModal'
     ];
     
     existingModals.forEach(modalId => {
@@ -659,6 +721,8 @@ export function initializeModals() {
     const awesfModal = createAwesfModal();
     const endModal = createEndModal();
     const beginAnalysisModal = createBeginAnalysisModal();
+    const missingStudyIdModal = createMissingStudyIdModal();
+    const completeConfirmationModal = createCompleteConfirmationModal();
     
     // Append modals to the permanent overlay instead of body
     const overlay = document.getElementById('permanentOverlay');
@@ -670,6 +734,8 @@ export function initializeModals() {
     overlay.appendChild(awesfModal);
     overlay.appendChild(endModal);
     overlay.appendChild(beginAnalysisModal);
+    overlay.appendChild(missingStudyIdModal);
+    overlay.appendChild(completeConfirmationModal);
     
     // Pre-populate participant ID from localStorage if available
     // BUT NOT in STUDY_CLEAN mode (always start fresh)
@@ -695,6 +761,9 @@ export function initializeModals() {
     }
     
     modalsInitialized = true;
-    console.log('📋 Modals initialized and injected into DOM');
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log('📋 Modals initialized and injected into DOM');
+    }
 }
 

@@ -178,20 +178,23 @@ export function initializeMasterMode() {
     const config = MODE_CONFIG[CURRENT_MODE];
     const isLocal = isLocalEnvironment();
     
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log(`🌐 Environment: ${isLocal ? '🔧 LOCAL (Development)' : '🌍 PRODUCTION (Online)'}`);
-    if (!isLocal) {
-        console.log(`🔒 Production Mode: STUDY mode enforced (mode switching disabled)`);
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log('═══════════════════════════════════════════════════════════');
+        console.log(`🌐 Environment: ${isLocal ? '🔧 LOCAL (Development)' : '🌍 PRODUCTION (Online)'}`);
+        if (!isLocal) {
+            console.log(`🔒 Production Mode: STUDY mode enforced (mode switching disabled)`);
+        }
+        console.log(`🎯 App Mode: ${config.name.toUpperCase()}`);
+        console.log(`📝 ${config.description}`);
+        console.log('───────────────────────────────────────────────────────────');
+        console.log(`Tutorial: ${config.skipTutorial ? '❌ Disabled' : '✅ Enabled'}`);
+        console.log(`Pre-Surveys: ${config.showPreSurveys ? '✅ Enabled' : '❌ Disabled'}`);
+        console.log(`Post-Surveys: ${config.showPostSurveys ? '✅ Enabled' : '❌ Disabled'}`);
+        console.log(`Qualtrics: ${config.requireQualtricsSubmission ? '✅ Required' : '❌ Not Required'}`);
+        console.log(`Admin Features: ${config.enableAdminFeatures ? '✅ Enabled' : '❌ Disabled'}`);
+        console.log('═══════════════════════════════════════════════════════════');
     }
-    console.log(`🎯 App Mode: ${config.name.toUpperCase()}`);
-    console.log(`📝 ${config.description}`);
-    console.log('───────────────────────────────────────────────────────────');
-    console.log(`Tutorial: ${config.skipTutorial ? '❌ Disabled' : '✅ Enabled'}`);
-    console.log(`Pre-Surveys: ${config.showPreSurveys ? '✅ Enabled' : '❌ Disabled'}`);
-    console.log(`Post-Surveys: ${config.showPostSurveys ? '✅ Enabled' : '❌ Disabled'}`);
-    console.log(`Qualtrics: ${config.requireQualtricsSubmission ? '✅ Required' : '❌ Not Required'}`);
-    console.log(`Admin Features: ${config.enableAdminFeatures ? '✅ Enabled' : '❌ Disabled'}`);
-    console.log('═══════════════════════════════════════════════════════════');
     
     // Study mode validations
     if (isStudyMode()) {

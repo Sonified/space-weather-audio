@@ -13,6 +13,7 @@ import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrog
 import { zoomState } from './zoom-state.js';
 import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks } from './tutorial.js';
 import { updateCompleteButtonState } from './region-tracker.js';
+import { isStudyMode } from './master-modes.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -288,17 +289,22 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
     const durationMinutes = duration * 60; // Convert hours to minutes
     
     const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
-    console.log(`📡 ${logTime()} Fetching from CDN (direct):`, {
-        network: stationData.network,
-        station: stationData.station,
-        location: stationData.location || '--',
-        channel: stationData.channel,
-        start_time: startTime.toISOString(),
-        duration_minutes: durationMinutes
-    });
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log(`📡 ${logTime()} Fetching from CDN (direct):`, {
+            network: stationData.network,
+            station: stationData.station,
+            location: stationData.location || '--',
+            channel: stationData.channel,
+            start_time: startTime.toISOString(),
+            duration_minutes: durationMinutes
+        });
+    }
         
         // STEP 1: Fetch metadata (realistic chunk already running!)
-        console.log(`📋 ${logTime()} Fetching metadata from CDN...`);
+        if (!isStudyMode()) {
+            console.log(`📋 ${logTime()} Fetching metadata from CDN...`);
+        }
         
         // Map station codes to volcano names for CDN URL
         const volcanoMap = {
@@ -336,7 +342,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             console.log(`🌙 ${logTime()} UTC midnight grace period! Only ${minutesSinceMidnight} min since midnight - skipping today's metadata (${todayUTC}) to avoid 404s. Collector needs time to wake up! 😊`);
         }
         
-        console.log(`📋 ${logTime()} Days needed: ${daysNeeded.join(', ')}`);
+        if (!isStudyMode()) {
+            console.log(`📋 ${logTime()} Days needed: ${daysNeeded.join(', ')}`);
+        }
         
         // Helper to build CDN chunk URL (NEW format: no sample rate)
         function buildChunkUrl(date, startTime, endTime, chunkType) {

@@ -7,6 +7,7 @@ import { zoomToRegion, zoomToFull, getCurrentRegions, getActiveRegionIndex, isIn
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { changeFrequencyScale } from './spectrogram-renderer.js';
+import { isStudyMode } from './master-modes.js';
 
 // 🔥 FIX: Track if shortcuts are initialized to prevent duplicate listeners
 let keyboardShortcutsInitialized = false;
@@ -24,7 +25,10 @@ export function initKeyboardShortcuts() {
     // This ensures keyboard shortcuts work even if other handlers prevent default
     window.addEventListener('keydown', handleKeyboardShortcut, true);
     keyboardShortcutsInitialized = true;
-    console.log('⌨️ Keyboard shortcuts initialized');
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log('⌨️ Keyboard shortcuts initialized');
+    }
 }
 
 /**
@@ -157,6 +161,12 @@ function handleKeyboardShortcut(event) {
     
     // 'r' key: Confirm/add region from current selection
     if (event.key === 'r' || event.key === 'R') {
+        // Check if region creation is enabled (requires "Begin Analysis" to be pressed)
+        if (!State.isRegionCreationEnabled()) {
+            console.log('🔒 Region creation disabled - please press "Begin Analysis" first');
+            return;
+        }
+        
         // Check if there's a valid selection
         if (State.selectionStart !== null && State.selectionEnd !== null) {
             event.preventDefault();

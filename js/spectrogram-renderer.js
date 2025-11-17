@@ -9,6 +9,7 @@ import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxis
 import { handleSpectrogramSelection, isInFrequencySelectionMode } from './region-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
+import { isStudyMode } from './master-modes.js';
 
 // Spectrogram selection state
 let spectrogramSelectionActive = false;
@@ -184,27 +185,35 @@ export async function changeFrequencyScale() {
     // Blur dropdown so spacebar can toggle play/pause
     select.blur();
     
-    console.log(`📊 Frequency scale changed to: ${value}`);
+    if (!isStudyMode()) {
+        console.log(`📊 Frequency scale changed to: ${value}`);
+    }
     
     // 🔍 Diagnostic: Check state before animation decision
-    console.log(`🎨 [changeFrequencyScale] Checking if we should animate:`, {
-        hasComplete: isCompleteSpectrogramRendered(),
-        oldScale: oldScale,
-        newScale: value,
-        inRegion: zoomState.isInRegion()
-    });
+    if (!isStudyMode()) {
+        console.log(`🎨 [changeFrequencyScale] Checking if we should animate:`, {
+            hasComplete: isCompleteSpectrogramRendered(),
+            oldScale: oldScale,
+            newScale: value,
+            inRegion: zoomState.isInRegion()
+        });
+    }
     
     // If complete spectrogram is rendered, animate transition
     if (isCompleteSpectrogramRendered()) {
         // console.log('✅ Animation path - have rendered spectrogram');
-        console.log('🎨 Starting scale transition (axis + spectrogram in parallel)...');
+        if (!isStudyMode()) {
+            console.log('🎨 Starting scale transition (axis + spectrogram in parallel)...');
+        }
         
         // Start axis animation immediately (don't wait for it)
         const { animateScaleTransition } = await import('./spectrogram-axis-renderer.js');
         const axisAnimationPromise = animateScaleTransition(oldScale);
         
         // Start spectrogram rendering immediately (in parallel with axis animation)
-        console.log('🎨 Starting spectrogram re-render...');
+        if (!isStudyMode()) {
+            console.log('🎨 Starting spectrogram re-render...');
+        }
         
         // 🔥 PAUSE playhead updates during fade!
         const playbackWasActive = State.playbackState === State.PlaybackState.PLAYING;
@@ -216,7 +225,9 @@ export async function changeFrequencyScale() {
         
         const canvas = document.getElementById('spectrogram');
         if (canvas) {
-            console.log(`🎨 [spectrogram-renderer.js] changeFrequencyScale: Starting fade animation`);
+            if (!isStudyMode()) {
+                console.log(`🎨 [spectrogram-renderer.js] changeFrequencyScale: Starting fade animation`);
+            }
             console.trace('📍 Call stack:');
             
             const ctx = canvas.getContext('2d');
@@ -558,22 +569,32 @@ export function setupSpectrogramSelection() {
     // 🔥 FIX: Store handler reference so it can be removed
     spectrogramKeyDownHandler = (e) => {
         if (e.key === 'Escape' && spectrogramSelectionActive) {
-            // On escape, we DO want to remove the box (cancelled selection)
-            if (spectrogramSelectionBox) {
-                spectrogramSelectionBox.remove();
-                spectrogramSelectionBox = null;
-            }
-            spectrogramSelectionActive = false;
-            spectrogramStartX = null;
-            spectrogramStartY = null;
-            spectrogramEndY = null;
+            // On escape, cancel the selection box
+            cancelSpectrogramSelection();
         }
     };
     
     document.addEventListener('keydown', spectrogramKeyDownHandler);
     
     spectrogramSelectionSetup = true;
-    console.log('🎯 Spectrogram frequency selection enabled');
+    if (!isStudyMode()) {
+        console.log('🎯 Spectrogram frequency selection enabled');
+    }
+}
+
+/**
+ * Cancel active spectrogram selection (remove box and reset state)
+ * Called when user presses Escape or exits feature selection mode
+ */
+export function cancelSpectrogramSelection() {
+    if (spectrogramSelectionBox) {
+        spectrogramSelectionBox.remove();
+        spectrogramSelectionBox = null;
+    }
+    spectrogramSelectionActive = false;
+    spectrogramStartX = null;
+    spectrogramStartY = null;
+    spectrogramEndY = null;
 }
 
 /**

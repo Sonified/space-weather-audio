@@ -16,6 +16,7 @@ import { zoomState } from './zoom-state.js';
 
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramRegionHighlights, drawSpectrogramSelection } from './region-tracker.js';
+import { isStudyMode } from './master-modes.js';
 
 // Track if we've rendered the complete spectrogram
 let completeSpectrogramRendered = false;
@@ -58,14 +59,17 @@ let memoryBaseline = null;
 
 // 🔍 Diagnostic helper: Track infinite canvas lifecycle
 function logInfiniteCanvasState(location) {
-    console.log(`🏛️ [${location}] Infinite canvas state:`, {
-        exists: !!infiniteSpectrogramCanvas,
-        context: infiniteCanvasContext,
-        cachedFull: !!cachedFullSpectrogramCanvas,
-        cachedZoomed: !!cachedZoomedSpectrogramCanvas,
-        completeRendered: completeSpectrogramRendered,
-        inRegion: zoomState.isInRegion()
-    });
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log(`🏛️ [${location}] Infinite canvas state:`, {
+            exists: !!infiniteSpectrogramCanvas,
+            context: infiniteCanvasContext,
+            cachedFull: !!cachedFullSpectrogramCanvas,
+            cachedZoomed: !!cachedZoomedSpectrogramCanvas,
+            completeRendered: completeSpectrogramRendered,
+            inRegion: zoomState.isInRegion()
+        });
+    }
 }
 let memoryHistory = [];
 const MEMORY_HISTORY_SIZE = 20;
@@ -79,7 +83,10 @@ function logMemory(label) {
         const total = (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(1);
         const limit = (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(1);
         const percent = ((performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) * 100).toFixed(1);
-        console.log(`💾 ${label}: ${used}MB / ${total}MB (limit: ${limit}MB, ${percent}% used)`);
+        // Only log in dev/personal modes, not study mode
+        if (!isStudyMode()) {
+            console.log(`💾 ${label}: ${used}MB / ${total}MB (limit: ${limit}MB, ${percent}% used)`);
+        }
         
         if (percent > 80) {
             console.warn('⚠️ Memory usage high!');
@@ -124,7 +131,10 @@ function memoryHealthCheck() {
     }
     
     const avgPercent = (memoryHistory.reduce((sum, h) => sum + h.percent, 0) / memoryHistory.length).toFixed(1);
-    console.log(`🏥 Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log(`🏥 Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
+    }
 }
 
 /**
@@ -133,7 +143,10 @@ function memoryHealthCheck() {
 export function startMemoryMonitoring() {
     if (memoryMonitorInterval) return;
     
-    console.log('🏥 Starting memory health monitoring (every 10 seconds)');
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log('🏥 Starting memory health monitoring (every 10 seconds)');
+    }
     memoryMonitorInterval = setInterval(memoryHealthCheck, 10000);
     memoryHealthCheck();
 }
@@ -171,7 +184,10 @@ function initializeColorLUT() {
         colorLUT[i * 3 + 1] = rgb[1];
         colorLUT[i * 3 + 2] = rgb[2];
     }
-    console.log(`🎨 Pre-computed color LUT (256 levels) - cached for reuse`);
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log(`🎨 Pre-computed color LUT (256 levels) - cached for reuse`);
+    }
 }
 
 // Initialize color LUT on module load
@@ -211,28 +227,39 @@ function hslToRgb(h, s, l) {
  * This becomes our ELASTIC FRIEND 🏠
  */
 export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
-    console.log(`🎨 [spectrogram-complete-renderer.js] renderCompleteSpectrogram CALLED: skipViewportUpdate=${skipViewportUpdate}`);
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log(`🎨 [spectrogram-complete-renderer.js] renderCompleteSpectrogram CALLED: skipViewportUpdate=${skipViewportUpdate}`);
+    }
     // console.trace('📍 Call stack:');
     
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
-        console.log('⚠️ Cannot render complete spectrogram - no audio data available');
+        if (!isStudyMode()) {
+            console.log('⚠️ Cannot render complete spectrogram - no audio data available');
+        }
         return;
     }
     
     if (renderingInProgress) {
-        console.log('⚠️ Spectrogram rendering already in progress');
+        if (!isStudyMode()) {
+            console.log('⚠️ Spectrogram rendering already in progress');
+        }
         return;
     }
     
     // If inside a region, render that instead
     if (zoomState.isInRegion()) {
         const regionRange = zoomState.getRegionRange();
-        console.log(`🔍 Inside temple - rendering region instead`);
+        if (!isStudyMode()) {
+            console.log(`🔍 Inside temple - rendering region instead`);
+        }
         return await renderCompleteSpectrogramForRegion(regionRange.startTime, regionRange.endTime);
     }
     
     if (completeSpectrogramRendered) {
-        console.log('✅ Complete spectrogram already rendered');
+        if (!isStudyMode()) {
+            console.log('✅ Complete spectrogram already rendered');
+        }
         return;
     }
     
@@ -245,12 +272,16 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
          infiniteCanvasContext.frequencyScale !== State.frequencyScale);
     
     if (needsRerender) {
-        console.log('🔄 Context changed - clearing old self and re-rendering');
+        if (!isStudyMode()) {
+            console.log('🔄 Context changed - clearing old self and re-rendering');
+        }
         clearInfiniteCanvas();
     }
     
     renderingInProgress = true;
-    console.log('🎨 Starting complete spectrogram rendering...');
+    if (!isStudyMode()) {
+        console.log('🎨 Starting complete spectrogram rendering...');
+    }
     logInfiniteCanvasState('renderCompleteSpectrogram START');
     logMemory('Before FFT computation');
     
@@ -275,7 +306,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         const totalSamples = audioData.length;
         const sampleRate = 44100;
         
-        console.log(`📊 Rendering spectrogram for ${totalSamples.toLocaleString()} samples (${(totalSamples / sampleRate).toFixed(2)}s)`);
+        if (!isStudyMode()) {
+            console.log(`📊 Rendering spectrogram for ${totalSamples.toLocaleString()} samples (${(totalSamples / sampleRate).toFixed(2)}s)`);
+        }
         
         // FFT parameters
         const fftSize = 2048;
@@ -570,9 +603,12 @@ export function restoreInfiniteCanvasFromCache() {
 }
 
 export function clearCompleteSpectrogram() {
-    console.log('🧹 [spectrogram-complete-renderer.js] clearCompleteSpectrogram CALLED');
-    console.trace('📍 Call stack:');
-    console.log('🧹 Starting aggressive spectrogram cleanup...');
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log('🧹 [spectrogram-complete-renderer.js] clearCompleteSpectrogram CALLED');
+        console.trace('📍 Call stack:');
+        console.log('🧹 Starting aggressive spectrogram cleanup...');
+    }
     
     logMemory('Before cleanup');
     
@@ -634,13 +670,18 @@ export function clearCompleteSpectrogram() {
     }
     
     if (typeof window !== 'undefined' && window.gc) {
-        console.log('🗑️ Requesting manual garbage collection...');
+        if (!isStudyMode()) {
+            console.log('🗑️ Requesting manual garbage collection...');
+        }
         window.gc();
     }
     
     logMemory('After aggressive cleanup');
     
-    console.log('✅ Spectrogram cleanup complete');
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log('✅ Spectrogram cleanup complete');
+    }
 }
 
 /**
@@ -976,13 +1017,17 @@ export function updateSpectrogramViewport(playbackRate) {
     // console.trace('📍 Call stack:'); // This shows us WHO called this function
     
     if (!infiniteSpectrogramCanvas) {
-        console.log(`⚠️ updateSpectrogramViewport: No infinite canvas! playbackRate=${playbackRate}`);
+        if (!isStudyMode()) {
+            console.log(`⚠️ updateSpectrogramViewport: No infinite canvas! playbackRate=${playbackRate}`);
+        }
         return;
     }
     
     const canvas = document.getElementById('spectrogram');
     if (!canvas) {
-        console.log(`⚠️ updateSpectrogramViewport: No spectrogram canvas!`);
+        if (!isStudyMode()) {
+            console.log(`⚠️ updateSpectrogramViewport: No spectrogram canvas!`);
+        }
         return;
     }
     
@@ -1350,9 +1395,13 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         // We'll crossfade to it when animation completes
         if (!renderInBackground) {
             const playbackRate = State.currentPlaybackRate || 1.0;
-            console.log(`🏛️ Calling updateSpectrogramViewport with playbackRate=${playbackRate}`);
+            if (!isStudyMode()) {
+                console.log(`🏛️ Calling updateSpectrogramViewport with playbackRate=${playbackRate}`);
+            }
             updateSpectrogramViewport(playbackRate);
-            console.log(`🏛️ Viewport update complete`);
+            if (!isStudyMode()) {
+                console.log(`🏛️ Viewport update complete`);
+            }
         } else {
             // console.log(`🔬 High-res render complete (background) - ready for crossfade`);
         }

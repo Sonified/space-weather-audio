@@ -12,7 +12,7 @@ import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSp
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
-import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal } from './ui-controls.js';
+import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
@@ -22,10 +22,21 @@ import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxis
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
-import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions, updateCompleteButtonState } from './region-tracker.js';
+import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions, updateCompleteButtonState, updateCmpltButtonState } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown } from './tutorial.js';
+import { isStudyMode } from './master-modes.js';
+
+// Helper function to safely check study mode (handles cases where module isn't loaded yet)
+function safeIsStudyMode() {
+    try {
+        return isStudyMode();
+    } catch (e) {
+        // If isStudyMode is not available, assume not in study mode (allows logging)
+        return false;
+    }
+}
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 // See data-fetcher.js for centralized flags documentation
@@ -189,12 +200,15 @@ export async function initAudioWorklet() {
     updatePlaybackSpeed();
     
     // Log audio output latency for debugging sync issues
-    console.log(`🔊 Audio latency: output=${State.audioContext.outputLatency ? (State.audioContext.outputLatency * 1000).toFixed(1) : 'undefined'}ms, base=${(State.audioContext.baseLatency * 1000).toFixed(1)}ms`);
-    
-    // The outputLatency might be 0 or undefined on some browsers
-    // The real latency is often the render quantum (128 samples) plus base latency
-    const estimatedLatency = State.audioContext.baseLatency || (128 / 44100);
-    console.log(`🔊 Estimated total latency: ${(estimatedLatency * 1000).toFixed(1)}ms`);
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log(`🔊 Audio latency: output=${State.audioContext.outputLatency ? (State.audioContext.outputLatency * 1000).toFixed(1) : 'undefined'}ms, base=${(State.audioContext.baseLatency * 1000).toFixed(1)}ms`);
+        
+        // The outputLatency might be 0 or undefined on some browsers
+        // The real latency is often the render quantum (128 samples) plus base latency
+        const estimatedLatency = State.audioContext.baseLatency || (128 / 44100);
+        console.log(`🔊 Estimated total latency: ${(estimatedLatency * 1000).toFixed(1)}ms`);
+    }
     
     worklet.port.onmessage = (event) => {
         const { type, bufferSize, samplesConsumed, totalSamples, positionSeconds, samplePosition } = event.data;
@@ -416,7 +430,9 @@ export async function startStreaming(event) {
             zoomState.mode = 'full';
             zoomState.currentViewStartSample = 0;
             zoomState.activeRegionId = null;
-            console.log('🔄 Reset zoom state to full view for new data');
+            if (!isStudyMode()) {
+                console.log('🔄 Reset zoom state to full view for new data');
+            }
         }
         
         // Reset waveform click tracking when loading new data
@@ -445,7 +461,9 @@ export async function startStreaming(event) {
         if (State.waveformWorker) {
             State.waveformWorker.onmessage = null;  // Break closure chain
             State.waveformWorker.terminate();
-            console.log('🧹 Terminated waveform worker');
+            if (!safeIsStudyMode()) {
+                console.log('🧹 Terminated waveform worker');
+            }
         }
         initWaveformWorker();
         
@@ -454,7 +472,10 @@ export async function startStreaming(event) {
         window.streamingStartTime = performance.now();
         const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
         
-        console.log('🎬 [0ms] startStreaming() called');
+        // Only log in dev/personal modes, not study mode
+        if (!isStudyMode()) {
+            console.log('🎬 [0ms] startStreaming() called');
+        }
         
         const stationValue = document.getElementById('station').value;
         if (!stationValue) {
@@ -474,7 +495,9 @@ export async function startStreaming(event) {
         
         // Log what we're fetching
         const stationLabel = `${stationData.network}.${stationData.station}.${stationData.location || '--'}.${stationData.channel}`;
-        console.log(`🌋 Fetching data for ${volcano} from station ${stationLabel}`);
+        if (!isStudyMode()) {
+            console.log(`🌋 Fetching data for ${volcano} from station ${stationLabel}`);
+        }
         
         // Track fetch data action
         const participantId = getParticipantId();
@@ -507,13 +530,17 @@ export async function startStreaming(event) {
         
         const startTime = new Date(estimatedEndTime.getTime() - duration * 3600 * 1000);
         
-        console.log(`🕐 ${logTime()} Estimated latest chunk ends at: ${estimatedEndTime.toISOString()}`);
-        
-        console.log(`🚀 ${logTime()} Starting parallel: worker + audioContext + station check`);
+        // Only log in dev/personal modes, not study mode
+        if (!isStudyMode()) {
+            console.log(`🕐 ${logTime()} Estimated latest chunk ends at: ${estimatedEndTime.toISOString()}`);
+            console.log(`🚀 ${logTime()} Starting parallel: worker + audioContext + station check`);
+        }
         
         // 1. Worker creation
         if (window.audioWorker) {
-            console.log('🧹 Terminating old audio worker...');
+            if (!isStudyMode()) {
+                console.log('🧹 Terminating old audio worker...');
+            }
             window.audioWorker.onmessage = null;  // Break closure chain
             // 🔥 FIX: Remove all event listeners before terminating
             // Note: Terminating the worker will clean up listeners, but we do this explicitly
@@ -530,7 +557,9 @@ export async function startStreaming(event) {
                     if (window.audioWorker && readyListener) {
                         window.audioWorker.removeEventListener('message', readyListener);
                     }
-                    console.log(`🏭 ${logTime()} Worker ready!`);
+                    if (!isStudyMode()) {
+                        console.log(`🏭 ${logTime()} Worker ready!`);
+                    }
                     resolve();
                 }
             };
@@ -546,7 +575,9 @@ export async function startStreaming(event) {
                 });
                 State.setAudioContext(ctx);
                 await ctx.audioWorklet.addModule('workers/audio-worklet.js');
-                console.log(`🎵 ${logTime()} AudioContext ready (latency: playback)`);
+                if (!isStudyMode()) {
+                    console.log(`🎵 ${logTime()} AudioContext ready (latency: playback)`);
+                }
             }
         })();
         
@@ -570,12 +601,16 @@ export async function startStreaming(event) {
                 }
             }
             
-            console.log(`📋 ${logTime()} Station ${stationData.network}.${stationData.station}: active=${isActiveStation}`);
+            if (!isStudyMode()) {
+                console.log(`📋 ${logTime()} Station ${stationData.network}.${stationData.station}: active=${isActiveStation}`);
+            }
             return isActiveStation;
         })();
         
         await Promise.all([workerReadyPromise, audioContextPromise]);
-        console.log(`✅ ${logTime()} Worker + AudioContext ready!`);
+        if (!isStudyMode()) {
+            console.log(`✅ ${logTime()} Worker + AudioContext ready!`);
+        }
         
         const isActiveStation = await stationCheckPromise;
         
@@ -834,7 +869,9 @@ export async function startStreaming(event) {
             console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Using Railway backend`);
             await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
         } else if (isActiveStation) {
-            console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
+            if (!isStudyMode()) {
+                console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
+            }
             await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart);
         } else {
             console.log(`🚂 ${logTime()} Using Railway backend (inactive station)`);
@@ -843,7 +880,9 @@ export async function startStreaming(event) {
             
             // Data fetch completed successfully - mark this volcano as having data
             State.setVolcanoWithData(volcano);
-            console.log(`✅ Data fetch complete - marked ${volcano} as having data`);
+            if (!isStudyMode()) {
+                console.log(`✅ Data fetch complete - marked ${volcano} as having data`);
+            }
         } catch (fetchError) {
             // Don't set volcanoWithData if fetch failed
             throw fetchError;
@@ -887,18 +926,10 @@ async function updateParticipantIdDisplay() {
     const displayElement = document.getElementById('participantIdDisplay');
     const valueElement = document.getElementById('participantIdValue');
     
-    // In Personal and Dev modes, always show the display (even if no ID set)
-    // In Study modes, only show if participant ID exists
-    const { isPersonalMode, isDevMode } = await import('./master-modes.js');
-    const shouldShow = isPersonalMode() || isDevMode() || !!participantId;
-    
-    if (shouldShow) {
-        if (displayElement) displayElement.style.display = 'block';
-        if (valueElement) valueElement.textContent = participantId || '--';
-    } else {
-        if (displayElement) displayElement.style.display = 'none';
-        if (valueElement) valueElement.textContent = '--';
-    }
+    // Always show the participant ID display (even if no ID set)
+    // This allows users to see and click to enter their ID
+    if (displayElement) displayElement.style.display = 'block';
+    if (valueElement) valueElement.textContent = participantId || '--';
 }
 
 // DOMContentLoaded initialization
@@ -1082,7 +1113,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         const permanentOverlay = document.getElementById('permanentOverlay');
         if (permanentOverlay) {
             permanentOverlay.style.display = 'none';
-            console.log(`✅ ${CURRENT_MODE.toUpperCase()} Mode: Permanent overlay hidden`);
+            if (!isStudyMode()) {
+                console.log(`✅ ${CURRENT_MODE.toUpperCase()} Mode: Permanent overlay hidden`);
+            }
         }
     }
     
@@ -1104,66 +1137,71 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
-    console.log('🌋 [0ms] volcano-audio v2.41 - Tutorial Region Button Enable Fix');
-    console.log('🎓 [0ms] v2.41 Fix: Enable all region buttons after zoom out in tutorial - allows full interaction when creating second region');
-    console.log('🌋 [0ms] volcano-audio v2.40 - Tutorial Message Improvements');
-    console.log('🎓 [0ms] v2.40 UI: Added 10-second timeout for feature description submission');
-    console.log('🎓 [0ms] v2.40 UI: Changed feature description detection from Enter key to change event for better reliability');
-    console.log('🎓 [0ms] v2.40 UI: Updated tutorial messages - "The spectrogram now shows more detail", "let\'s explore", "Click and drag"');
-    console.log('🎓 [0ms] v2.40 UI: Adjusted tutorial timing - spectrogram detail message 6s, change mind message 9s');
-    console.log('🌋 [0ms] volcano-audio v2.38 - Tutorial Starts Before Fetch Data Message');
-    console.log('🎓 [0ms] v2.38 Feat: Tutorial now starts immediately on page load, before "Select a volcano and click Fetch Data" message');
-    console.log('🎓 [0ms] v2.38 Feat: Frequency scale dropdown disabled right at the start of tutorial before anything else');
-    console.log('🎓 [0ms] v2.38 Feat: Fetching data is now part of the tutorial flow - tutorial guides user through entire process');
-    console.log('🌋 [0ms] volcano-audio v2.37 - Memory Leak Fixes');
-    console.log('🧹 [0ms] v2.37 Fix: Memory leak fixes - ResizeObserver cleanup, event listener accumulation prevention, setTimeout chain cleanup');
-    console.log('🧹 [0ms] v2.37 Fix: ResizeObserver in tutorial overlay now properly disconnected to prevent memory leaks');
-    console.log('🧹 [0ms] v2.37 Fix: Event listeners in spectrogram-renderer and keyboard-shortcuts now tracked and cleaned up');
-    console.log('🧹 [0ms] v2.37 Fix: setTimeout chains in waitForPlaybackResume now properly tracked and cleaned up');
-    console.log('🧹 [0ms] v2.37 Fix: Window properties cleaned up on tutorial completion');
-    console.log('🌋 [0ms] volcano-audio v2.36 - Tutorial System Refactoring with Async/Await');
-    console.log('🌋 [0ms] volcano-audio v2.43 - Auto-detect Environment & Force Study Mode Online');
-    console.log('🌐 [0ms] v2.43 Feat: Auto-detect local vs production - force STUDY mode online, allow mode switching locally');
-    console.log('🌋 [0ms] volcano-audio v2.42 - Begin Analysis Button with Sparkle Effect');
-    console.log('✨ [0ms] v2.42 Feat: Begin Analysis button with sparkle effect and confirmation modal - enables after data download, disables volcano switching after confirmation');
-    console.log('🎓 [0ms] v2.36 Refactor: Complete tutorial system refactored to use elegant async/await pattern with skippable waits');
-    console.log('🎓 [0ms] v2.36 Feat: Pause button tutorial now uses async/await - cleaner code, skippable waits, better flow');
-    console.log('🎓 [0ms] v2.36 Feat: Speed slider tutorial refactored to async/await - linear flow, skippable waits, dynamic speed updates');
-    console.log('🎓 [0ms] v2.36 Feat: Spectrogram explanation expanded - "This is a spectrogram of the data", time flow, frequency explanation');
-    console.log('🎓 [0ms] v2.36 Fix: Speed message updates dynamically without retyping - only speed value changes');
-    console.log('🎓 [0ms] v2.36 Fix: Emoji rendering fixed - proper Unicode handling prevents bullet rendering');
-    console.log('🎓 [0ms] v2.36 Fix: "Great!" message triggers immediately when crossing 1x speed threshold');
-    console.log('🌋 [0ms] volcano-audio v2.28 - Keyboard Shortcuts & Performance Optimizations');
-    console.log('⌨️ [0ms] v2.28 Feat: Added keyboard shortcuts - number keys (1-9) zoom/play regions, f key for features, r key to confirm region, c/v/b for frequency scales, Escape to zoom out');
-    console.log('⚡ [0ms] v2.28 Perf: Optimized color LUT - computed once and cached for reuse, faster spectrogram rendering');
-    console.log('⚡ [0ms] v2.28 Perf: Faster frequency scale transitions - axis ticks 400ms, spectrogram rendering starts immediately in parallel');
-    console.log('🧹 [0ms] v2.28 Cleanup: Commented out verbose console logs for cleaner console output');
-    console.log('🌋 [0ms] volcano-audio v2.27 - Feature Box Positioning & RAF Loop Fixes');
-    console.log('🔧 [0ms] v2.27 Fix: Feature box positioning - use direct zoom state instead of interpolated time range');
-    console.log('🔧 [0ms] v2.27 Fix: Infinite RAF loop - prevent multiple RAF loops when drawWaveformXAxis called from multiple places');
-    console.log('🌋 [0ms] volcano-audio v2.26 - Feature Persistence Proof of Concept');
-    console.log('📦 [0ms] v2.26 Proof of concept: Feature persistence - persistent DOM boxes on spectrogram using eternal coordinates');
-    console.log('🌋 [0ms] volcano-audio v2.24 - X-Axis Tick Improvements & Cache Fix');
-    console.log('🕐 [0ms] v2.24 Feat: Added 30-minute tick intervals for regions less than 6 hours');
-    console.log('🔧 [0ms] v2.24 Fix: Clear waveform cache immediately on resize to prevent stretching');
-    console.log('📏 [0ms] v2.24 Fix: Initialize maxCanvasWidth baseline (1200px) on page load for proper tick spacing');
-    console.log('🌋 [0ms] volcano-audio v2.22 - Master Pause Region Button Fix');
-    console.log('⏸️ [0ms] v2.22 Fix: Master pause button now toggles all region play buttons to red state');
-    console.log('🌋 [0ms] volcano-audio v2.18 - Zoom State Reset Fix');
-    console.log('🔄 [0ms] v2.18 Fix: Reset zoom state when loading new data - prevents playhead rendering issues when switching volcanoes while zoomed into a region');
-    console.log('🌋 [0ms] volcano-audio v2.17 - Spacebar Play/Pause Fix');
-    console.log('⌨️ [0ms] v2.17 Fix: Spacebar play/pause now mirrors button behavior exactly - removed auto-selection logic that was causing issues');
-    console.log('🌋 [0ms] volcano-audio v2.16 - Spectrogram Regions & Selections');
-    console.log('🎨 [0ms] v2.16 Feat: Spectrogram now shows regions and selections - lightweight blue highlights (15%/8% opacity) and yellow selection boxes (8%/35% opacity), fade out when zooming into regions');
-    console.log('🌋 [0ms] volcano-audio v2.15 - Waveform Zoom-Out & Zoom Button Click Fix');
-    console.log('🔍 [0ms] v2.15 Fix: Waveform zoom-out now uses cached full waveform (like spectrogram) for instant visual feedback');
-    console.log('🖱️ [0ms] v2.15 Fix: Zoom button clicks on canvas no longer trigger scrub preview/playhead');
-    console.log('🌋 [0ms] volcano-audio v2.10 - Hourglass Button Spacebar Fix');
-    console.log('⌨️ [0ms] v2.10 UI: Fixed hourglass button to allow spacebar play/pause after clicking - zoom buttons no longer capture spacebar');
-    console.log('🧹 [0ms] v2.09 Memory: Fixed ArrayBuffer retention by copying slices when storing in allReceivedData, clearing allReceivedData after stitching to break RAF closure chain');
-    console.log('🧹 [0ms] v2.08 Memory: Added page unload/visibility handlers to cancel RAF, improved modal cleanup, added cancelScaleTransitionRAF');
-    console.log('🎨 [0ms] v2.07 UI: Added 0.1Hz ticks at 10x speed, adjusted padding, semi-transparent dropdowns');
-    console.log('🔇 [0ms] Commented out worklet message logging to reduce console noise');
+    // Only log version info in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.44 - Quick-fill Button Toggle');
+        console.log('🎓 [0ms] v2.44 Feat: Quick-fill button toggle function - disable in STUDY mode, enable in STUDY_CLEAN/DEV/PERSONAL modes');
+        console.log('🌋 [0ms] volcano-audio v2.41 - Tutorial Region Button Enable Fix');
+        console.log('🎓 [0ms] v2.41 Fix: Enable all region buttons after zoom out in tutorial - allows full interaction when creating second region');
+        console.log('🌋 [0ms] volcano-audio v2.40 - Tutorial Message Improvements');
+        console.log('🎓 [0ms] v2.40 UI: Added 10-second timeout for feature description submission');
+        console.log('🎓 [0ms] v2.40 UI: Changed feature description detection from Enter key to change event for better reliability');
+        console.log('🎓 [0ms] v2.40 UI: Updated tutorial messages - "The spectrogram now shows more detail", "let\'s explore", "Click and drag"');
+        console.log('🎓 [0ms] v2.40 UI: Adjusted tutorial timing - spectrogram detail message 6s, change mind message 9s');
+        console.log('🌋 [0ms] volcano-audio v2.38 - Tutorial Starts Before Fetch Data Message');
+        console.log('🎓 [0ms] v2.38 Feat: Tutorial now starts immediately on page load, before "Select a volcano and click Fetch Data" message');
+        console.log('🎓 [0ms] v2.38 Feat: Frequency scale dropdown disabled right at the start of tutorial before anything else');
+        console.log('🎓 [0ms] v2.38 Feat: Fetching data is now part of the tutorial flow - tutorial guides user through entire process');
+        console.log('🌋 [0ms] volcano-audio v2.37 - Memory Leak Fixes');
+        console.log('🧹 [0ms] v2.37 Fix: Memory leak fixes - ResizeObserver cleanup, event listener accumulation prevention, setTimeout chain cleanup');
+        console.log('🧹 [0ms] v2.37 Fix: ResizeObserver in tutorial overlay now properly disconnected to prevent memory leaks');
+        console.log('🧹 [0ms] v2.37 Fix: Event listeners in spectrogram-renderer and keyboard-shortcuts now tracked and cleaned up');
+        console.log('🧹 [0ms] v2.37 Fix: setTimeout chains in waitForPlaybackResume now properly tracked and cleaned up');
+        console.log('🧹 [0ms] v2.37 Fix: Window properties cleaned up on tutorial completion');
+        console.log('🌋 [0ms] volcano-audio v2.36 - Tutorial System Refactoring with Async/Await');
+        console.log('🌋 [0ms] volcano-audio v2.43 - Auto-detect Environment & Force Study Mode Online');
+        console.log('🌐 [0ms] v2.43 Feat: Auto-detect local vs production - force STUDY mode online, allow mode switching locally');
+        console.log('🌋 [0ms] volcano-audio v2.42 - Begin Analysis Button with Sparkle Effect');
+        console.log('✨ [0ms] v2.42 Feat: Begin Analysis button with sparkle effect and confirmation modal - enables after data download, disables volcano switching after confirmation');
+        console.log('🎓 [0ms] v2.36 Refactor: Complete tutorial system refactored to use elegant async/await pattern with skippable waits');
+        console.log('🎓 [0ms] v2.36 Feat: Pause button tutorial now uses async/await - cleaner code, skippable waits, better flow');
+        console.log('🎓 [0ms] v2.36 Feat: Speed slider tutorial refactored to async/await - linear flow, skippable waits, dynamic speed updates');
+        console.log('🎓 [0ms] v2.36 Feat: Spectrogram explanation expanded - "This is a spectrogram of the data", time flow, frequency explanation');
+        console.log('🎓 [0ms] v2.36 Fix: Speed message updates dynamically without retyping - only speed value changes');
+        console.log('🎓 [0ms] v2.36 Fix: Emoji rendering fixed - proper Unicode handling prevents bullet rendering');
+        console.log('🎓 [0ms] v2.36 Fix: "Great!" message triggers immediately when crossing 1x speed threshold');
+        console.log('🌋 [0ms] volcano-audio v2.28 - Keyboard Shortcuts & Performance Optimizations');
+        console.log('⌨️ [0ms] v2.28 Feat: Added keyboard shortcuts - number keys (1-9) zoom/play regions, f key for features, r key to confirm region, c/v/b for frequency scales, Escape to zoom out');
+        console.log('⚡ [0ms] v2.28 Perf: Optimized color LUT - computed once and cached for reuse, faster spectrogram rendering');
+        console.log('⚡ [0ms] v2.28 Perf: Faster frequency scale transitions - axis ticks 400ms, spectrogram rendering starts immediately in parallel');
+        console.log('🧹 [0ms] v2.28 Cleanup: Commented out verbose console logs for cleaner console output');
+        console.log('🌋 [0ms] volcano-audio v2.27 - Feature Box Positioning & RAF Loop Fixes');
+        console.log('🔧 [0ms] v2.27 Fix: Feature box positioning - use direct zoom state instead of interpolated time range');
+        console.log('🔧 [0ms] v2.27 Fix: Infinite RAF loop - prevent multiple RAF loops when drawWaveformXAxis called from multiple places');
+        console.log('🌋 [0ms] volcano-audio v2.26 - Feature Persistence Proof of Concept');
+        console.log('📦 [0ms] v2.26 Proof of concept: Feature persistence - persistent DOM boxes on spectrogram using eternal coordinates');
+        console.log('🌋 [0ms] volcano-audio v2.24 - X-Axis Tick Improvements & Cache Fix');
+        console.log('🕐 [0ms] v2.24 Feat: Added 30-minute tick intervals for regions less than 6 hours');
+        console.log('🔧 [0ms] v2.24 Fix: Clear waveform cache immediately on resize to prevent stretching');
+        console.log('📏 [0ms] v2.24 Fix: Initialize maxCanvasWidth baseline (1200px) on page load for proper tick spacing');
+        console.log('🌋 [0ms] volcano-audio v2.22 - Master Pause Region Button Fix');
+        console.log('⏸️ [0ms] v2.22 Fix: Master pause button now toggles all region play buttons to red state');
+        console.log('🌋 [0ms] volcano-audio v2.18 - Zoom State Reset Fix');
+        console.log('🔄 [0ms] v2.18 Fix: Reset zoom state when loading new data - prevents playhead rendering issues when switching volcanoes while zoomed into a region');
+        console.log('🌋 [0ms] volcano-audio v2.17 - Spacebar Play/Pause Fix');
+        console.log('⌨️ [0ms] v2.17 Fix: Spacebar play/pause now mirrors button behavior exactly - removed auto-selection logic that was causing issues');
+        console.log('🌋 [0ms] volcano-audio v2.16 - Spectrogram Regions & Selections');
+        console.log('🎨 [0ms] v2.16 Feat: Spectrogram now shows regions and selections - lightweight blue highlights (15%/8% opacity) and yellow selection boxes (8%/35% opacity), fade out when zooming into regions');
+        console.log('🌋 [0ms] volcano-audio v2.15 - Waveform Zoom-Out & Zoom Button Click Fix');
+        console.log('🔍 [0ms] v2.15 Fix: Waveform zoom-out now uses cached full waveform (like spectrogram) for instant visual feedback');
+        console.log('🖱️ [0ms] v2.15 Fix: Zoom button clicks on canvas no longer trigger scrub preview/playhead');
+        console.log('🌋 [0ms] volcano-audio v2.10 - Hourglass Button Spacebar Fix');
+        console.log('⌨️ [0ms] v2.10 UI: Fixed hourglass button to allow spacebar play/pause after clicking - zoom buttons no longer capture spacebar');
+        console.log('🧹 [0ms] v2.09 Memory: Fixed ArrayBuffer retention by copying slices when storing in allReceivedData, clearing allReceivedData after stitching to break RAF closure chain');
+        console.log('🧹 [0ms] v2.08 Memory: Added page unload/visibility handlers to cancel RAF, improved modal cleanup, added cancelScaleTransitionRAF');
+        console.log('🎨 [0ms] v2.07 UI: Added 0.1Hz ticks at 10x speed, adjusted padding, semi-transparent dropdowns');
+        console.log('🔇 [0ms] Commented out worklet message logging to reduce console noise');
+    }
     
     // Start memory health monitoring
     startMemoryMonitoring();
@@ -1178,7 +1216,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     initRegionTracker();
     
     // Initialize complete button state (disabled until first feature is identified)
-    updateCompleteButtonState();
+    updateCompleteButtonState(); // Begin Analysis button
+    updateCmpltButtonState(); // Complete button
     
     // Setup spectrogram frequency selection
     setupSpectrogramSelection();
@@ -1197,7 +1236,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     const sliderValueFor1x = calculateSliderForSpeed(1.0);
     document.getElementById('playbackSpeed').value = sliderValueFor1x;
-    console.log(`Initialized playback speed slider at position ${sliderValueFor1x} for 1.0x speed`);
+    if (!isStudyMode()) {
+        console.log(`Initialized playback speed slider at position ${sliderValueFor1x} for 1.0x speed`);
+    }
     
     // Load saved volcano selection (or use default)
     loadSavedVolcano();
@@ -1205,7 +1246,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Start the appropriate workflow based on mode
     // (isStudyMode already imported at top)
     
-    console.log(`🔍 Mode check: CURRENT_MODE=${CURRENT_MODE}, isStudyMode()=${isStudyMode()}`);
+    if (!isStudyMode()) {
+        console.log(`🔍 Mode check: CURRENT_MODE=${CURRENT_MODE}, isStudyMode()=${isStudyMode()}`);
+    }
     
     if (isStudyMode()) {
         // Study Mode: Full research workflow
@@ -1228,7 +1271,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         }, 100); // Small delay to let page settle
     } else {
         // Personal Mode: Skip everything - enable all features
-        console.log('👤 Personal Mode: Tutorial skipped, app ready!');
+        if (!isStudyMode()) {
+            console.log('👤 Personal Mode: Tutorial skipped, app ready!');
+        }
         // Enable all features that tutorial would normally disable
         setTimeout(async () => {
             const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
@@ -1363,7 +1408,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     });
     
-    console.log('✅ Event listeners added for fetch button re-enabling');
+    if (!isStudyMode()) {
+        console.log('✅ Event listeners added for fetch button re-enabling');
+    }
     
     // Handle window resize to reposition axis canvases - optimized for performance
     let resizeRAF = null;
@@ -1619,15 +1666,46 @@ window.addEventListener('DOMContentLoaded', async () => {
         const participantId = getParticipantId() || 'TEST123';
         openEndModal(participantId, 1);
     });
-    document.getElementById('submitBtn').addEventListener('click', attemptSubmission);
+    // Test submit button (admin panel) - direct submission for testing
+    // Hide when zoomed out, show when zoomed in
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.addEventListener('click', attemptSubmission);
+        
+        // Function to update submit button visibility based on zoom state
+        // Export to window so zoom functions can call it
+        window.updateSubmitButtonVisibility = () => {
+            if (zoomState.isInRegion()) {
+                submitBtn.style.display = 'inline-block';
+            } else {
+                submitBtn.style.display = 'none';
+            }
+        };
+        
+        // Initial state
+        window.updateSubmitButtonVisibility();
+    }
     
     // Complete button (Begin Analysis) - shows confirmation modal first
-    document.getElementById('completeBtn').addEventListener('click', () => {
-        openBeginAnalysisModal();
-    });
+    const completeBtn = document.getElementById('completeBtn');
+    if (completeBtn) {
+        completeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🔵 Begin Analysis button clicked');
+            openBeginAnalysisModal();
+        });
+    } else {
+        console.warn('⚠️ Begin Analysis button (completeBtn) not found in DOM');
+    }
     
     // Listen for confirmation to proceed with workflow
     window.addEventListener('beginAnalysisConfirmed', async () => {
+        // Enable region creation after "Begin Analysis" is confirmed
+        const { setRegionCreationEnabled } = await import('./audio-state.js');
+        setRegionCreationEnabled(true);
+        console.log('✅ Region creation ENABLED after Begin Analysis confirmation');
+        
         // Disable volcano switching after confirmation
         const volcanoSelect = document.getElementById('volcano');
         if (volcanoSelect) {
@@ -1637,14 +1715,40 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.log('🔒 Volcano switching disabled after Begin Analysis confirmation');
         }
         
-        const { isStudyMode } = await import('./master-modes.js');
-        if (isStudyMode()) {
-            // Study Mode: Go through post-session surveys first
-            const { handleStudyModeSubmit } = await import('./study-workflow.js');
-            await handleStudyModeSubmit();
-        } else {
-            // Personal/Dev Mode: Submit directly
-            await attemptSubmission();
+        // Transform Begin Analysis button into Complete button
+        const completeBtn = document.getElementById('completeBtn');
+        if (completeBtn) {
+            // Update button text and styling
+            completeBtn.textContent = 'Complete';
+            completeBtn.style.background = '#28a745';
+            completeBtn.style.borderColor = '#28a745';
+            completeBtn.style.border = '2px solid #28a745';
+            completeBtn.style.color = 'white';
+            completeBtn.className = ''; // Remove begin-analysis-btn class to remove sparkle effect
+            completeBtn.removeAttribute('onmouseover');
+            completeBtn.removeAttribute('onmouseout');
+            
+            // Remove old click handler and add new one
+            const newBtn = completeBtn.cloneNode(true);
+            completeBtn.parentNode.replaceChild(newBtn, completeBtn);
+            
+            // Add Complete button click handler
+            newBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('✅ Complete button clicked');
+                openCompleteConfirmationModal();
+            });
+            
+            // Initially disable until features are identified
+            newBtn.disabled = true;
+            newBtn.style.opacity = '0.5';
+            newBtn.style.cursor = 'not-allowed';
+            
+            // Update state based on features
+            updateCmpltButtonState();
+            
+            console.log('🔄 Begin Analysis button transformed into Complete button');
         }
     });
     
@@ -1653,7 +1757,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Participant ID display click handler
     const participantIdText = document.getElementById('participantIdText');
     if (participantIdText) {
-        participantIdText.addEventListener('click', openParticipantModal);
+        participantIdText.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('👤 Participant ID display clicked - opening modal');
+            openParticipantModal();
+        });
         // Add hover effect
         participantIdText.addEventListener('mouseenter', function() {
             this.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
@@ -1661,9 +1770,14 @@ window.addEventListener('DOMContentLoaded', async () => {
         participantIdText.addEventListener('mouseleave', function() {
             this.style.backgroundColor = 'transparent';
         });
+        console.log('✅ Participant ID display click handler attached');
+    } else {
+        console.warn('⚠️ Participant ID display element not found when attaching click handler');
     }
     
-    console.log('✅ Event listeners setup complete - memory leak prevention active!');
+    if (!isStudyMode()) {
+        console.log('✅ Event listeners setup complete - memory leak prevention active!');
+    }
     
     // 🔥 FIX: Cancel all RAF callbacks on page unload to prevent detached document leaks
     // This ensures RAF callbacks scheduled before page unload are cancelled
@@ -1717,6 +1831,11 @@ window.addEventListener('DOMContentLoaded', async () => {
                 const visibilityChangeHandler = () => {
                     if (document.hidden) {
                         cleanupOnUnload();
+                    } else {
+                        // Restart playhead if playing when tab becomes visible again
+                        if (State.playbackState === PlaybackState.PLAYING) {
+                            startPlaybackIndicator();
+                        }
                     }
                 };
                 if (window._volcanoAudioCleanupHandlers.visibilitychange) {

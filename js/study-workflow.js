@@ -313,8 +313,19 @@ function showPreSurveyModalAndWait() {
                 if (modal.style.display === 'none') {
                     clearInterval(checkClosed);
                     console.log('✅ Pre-survey completed');
-                    // Fade out the permanent overlay after pre-survey completes
-                    fadeOutPermanentOverlay();
+                    
+                    // Check if participant ID exists - if not, missing study ID modal will show
+                    // Don't fade out overlay yet if there's no participant ID
+                    const participantId = getParticipantId();
+                    if (participantId) {
+                        // Participant ID exists - safe to fade out overlay
+                        fadeOutPermanentOverlay();
+                    } else {
+                        // No participant ID - missing study ID modal will show
+                        // Don't fade out overlay yet, let the modal handle it
+                        console.log('⚠️ No participant ID - waiting for missing study ID modal');
+                    }
+                    
                     resolve();
                 }
             }, 100); // Check more frequently for better responsiveness

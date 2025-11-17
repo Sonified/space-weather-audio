@@ -119,11 +119,11 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
         if (activityLevel.activityLevel) {
             const uiValue = parseInt(activityLevel.activityLevel, 10);
             const qualtricsChoiceMap = {
-                1: 2,   // UI 1 → Qualtrics 2 (Very low)
-                2: 7,   // UI 2 → Qualtrics 7 (Low)
-                3: 8,   // UI 3 → Qualtrics 8 (Somewhat low)
-                4: 9,   // UI 4 → Qualtrics 9 (Moderate)
-                5: 10   // UI 5 → Qualtrics 10 (Somewhat high)
+                1: 2,   // UI 1 → Qualtrics 2 (Very low / Not active)
+                2: 7,   // UI 2 → Qualtrics 7 (Low / Moderately active)
+                3: 8,   // UI 3 → Qualtrics 8 (Somewhat low / Active)
+                4: 9,   // UI 4 → Qualtrics 9 (Moderate / Very Active)
+                5: 10   // UI 5 → Qualtrics 10 (Somewhat high / Extremely Active)
             };
             const qualtricsValue = qualtricsChoiceMap[uiValue];
             if (qualtricsValue) {
@@ -133,7 +133,7 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
     }
     
     // Format volcano name for QID8 (Event tracking - Volcano column)
-    // Format: Remove location, remove special characters, remove spaces, capitalize appropriately
+    // Format: Kilauea, MaunaLoa, GreatSitkin, Shishaldin, Spurr
     function formatVolcanoName(volcanoValue) {
         const volcanoMap = {
             'kilauea': 'Kilauea',
@@ -142,20 +142,89 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
             'shishaldin': 'Shishaldin',
             'spurr': 'Spurr'
         };
-        return volcanoMap[volcanoValue] || volcanoValue;
+        // Handle case-insensitive lookup
+        const lowerVolcano = (volcanoValue || '').toLowerCase();
+        return volcanoMap[lowerVolcano] || volcanoValue;
     }
     
-    // Get current volcano selection from UI and add to QID8
-    // QID8 is a matrix question: subquestion 1, choice 4 (Volcano) = _1_4_TEXT
-    try {
-        const volcanoSelect = document.getElementById('volcano');
-        if (volcanoSelect && volcanoSelect.value) {
-            const formattedVolcano = formatVolcanoName(volcanoSelect.value);
-            values['_1_4_TEXT'] = formattedVolcano;
-            console.log(`🌋 Adding volcano to QID8: ${volcanoSelect.value} → ${formattedVolcano}`);
+    // Submit features/events to QID8 matrix question
+    // QID8 structure: Each feature becomes a row (subquestion), with columns:
+    // Choice 1: Event Start Time (_N_1_TEXT)
+    // Choice 2: Event End Time (_N_2_TEXT)
+    // Choice 4: Volcano (_N_4_TEXT)
+    // Choice 5: Frequency Min (_N_5_TEXT)
+    // Choice 6: Frequency Max (_N_6_TEXT)
+    // Choice 7: Notes (_N_7_TEXT)
+    // Choice 8: Region number (_N_8_TEXT)
+    if (combinedResponses.jsonDump && combinedResponses.jsonDump.regions) {
+        const regions = combinedResponses.jsonDump.regions;
+        let featureRowIndex = 1; // QID8 subquestions start at 1
+        
+        // Get volcano from first region or UI
+        let volcanoName = null;
+        try {
+            const volcanoSelect = document.getElementById('volcano');
+            if (volcanoSelect && volcanoSelect.value) {
+                volcanoName = formatVolcanoName(volcanoSelect.value);
+            }
+        } catch (error) {
+            console.warn('⚠️ Could not get volcano selection for QID8:', error);
         }
-    } catch (error) {
-        console.warn('⚠️ Could not get volcano selection for QID8:', error);
+        
+        regions.forEach((region) => {
+            const regionNumber = region.regionNumber || null;
+            const regionStartTime = region.regionStartTime || null;
+            const regionEndTime = region.regionEndTime || null;
+            
+            // Submit each feature in this region as a row in QID8
+            if (region.features && region.features.length > 0) {
+                region.features.forEach((feature) => {
+                    // QID8 matrix format: _{subquestion}_{choice}_TEXT
+                    const rowPrefix = `_${featureRowIndex}`;
+                    
+                    // Event Start Time (Choice 1) - Feature start time in UTC ISO format
+                    if (feature.featureStartTime) {
+                        values[`${rowPrefix}_1_TEXT`] = feature.featureStartTime;
+                    }
+                    
+                    // Event End Time (Choice 2) - Feature end time in UTC ISO format
+                    if (feature.featureEndTime) {
+                        values[`${rowPrefix}_2_TEXT`] = feature.featureEndTime;
+                    }
+                    
+                    // Volcano (Choice 4) - Use volcano from region or UI
+                    if (volcanoName) {
+                        values[`${rowPrefix}_4_TEXT`] = volcanoName;
+                    }
+                    
+                    // Frequency Min (Choice 5)
+                    if (feature.lowFreq !== null && feature.lowFreq !== undefined) {
+                        values[`${rowPrefix}_5_TEXT`] = String(feature.lowFreq);
+                    }
+                    
+                    // Frequency Max (Choice 6)
+                    if (feature.highFreq !== null && feature.highFreq !== undefined) {
+                        values[`${rowPrefix}_6_TEXT`] = String(feature.highFreq);
+                    }
+                    
+                    // Notes (Choice 7)
+                    if (feature.notes) {
+                        values[`${rowPrefix}_7_TEXT`] = feature.notes;
+                    }
+                    
+                    // Region number (Choice 8)
+                    if (regionNumber !== null) {
+                        values[`${rowPrefix}_8_TEXT`] = String(regionNumber);
+                    }
+                    
+                    featureRowIndex++;
+                });
+            }
+        });
+        
+        if (featureRowIndex > 1) {
+            console.log(`📊 Submitted ${featureRowIndex - 1} feature(s) to QID8 matrix`);
+        }
     }
     
     // Initialize embedded data object (will be added to values, not separate)

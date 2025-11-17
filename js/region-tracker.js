@@ -21,7 +21,9 @@ import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpe
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
+import { cancelSpectrogramSelection } from './spectrogram-renderer.js';
 import { isTutorialActive } from './tutorial-state.js';
+import { isStudyMode } from './master-modes.js';
 
 // Region data structure - stored per volcano
 // Map<volcanoName, regions[]>
@@ -118,7 +120,9 @@ export function switchVolcanoRegions(newVolcano) {
     // Redraw waveform to update region highlights
     drawWaveformWithSelection();
     
-    console.log(`🌋 Switched to volcano: ${newVolcano} (${regionsByVolcano.get(newVolcano).length} regions)`);
+    if (!isStudyMode()) {
+        console.log(`🌋 Switched to volcano: ${newVolcano} (${regionsByVolcano.get(newVolcano).length} regions)`);
+    }
 }
 
 // Waveform selection state
@@ -144,7 +148,10 @@ const maxFrequency = 50; // Hz - Nyquist frequency for 100 Hz sample rate
  * Sets up event listeners and prepares UI
  */
 export function initRegionTracker() {
-    console.log('🎯 Region tracker initialized');
+    // Only log in dev/personal modes, not study mode
+    if (!isStudyMode()) {
+        console.log('🎯 Region tracker initialized');
+    }
     
     // Initialize buttons renderer (must be after all variables are defined)
     initializeButtonsRenderer();
@@ -178,6 +185,11 @@ function setupWaveformSelection() {
  * Called by waveform-renderer.js after a selection is made
  */
 export function showAddRegionButton(selectionStart, selectionEnd) {
+    // Check if region creation is enabled (requires "Begin Analysis" to be pressed)
+    if (!State.isRegionCreationEnabled()) {
+        return; // Region creation disabled - don't show button
+    }
+    
     // 🔥 FIX: Check document connection before DOM access
     if (!document.body || !document.body.isConnected) {
         return;
@@ -315,6 +327,12 @@ export function removeAddRegionButton() {
  * Create region from waveform selection times
  */
 export function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSeconds) {
+    // Check if region creation is enabled (requires "Begin Analysis" to be pressed)
+    if (!State.isRegionCreationEnabled()) {
+        console.log('🔒 Region creation disabled - please press "Begin Analysis" first');
+        return;
+    }
+    
     if (!State.dataStartTime || !State.dataEndTime) return;
     
     // 🏛️ Check if zoom state is initialized (required for sample calculations)
@@ -383,6 +401,9 @@ export function createRegionFromSelectionTimes(selectionStartSeconds, selectionE
     
     // Update complete button state (new region starts with incomplete feature)
     updateCompleteButtonState();
+    
+    // Update Complete button state (enable if first feature identified)
+    updateCmpltButtonState();
     
     // Render the new region (it will appear as a floating card)
     renderRegions();
@@ -984,11 +1005,26 @@ export function handleWaveformClick(event, canvas) {
 export function stopFrequencySelection() {
     if (!isSelectingFrequency) return;
     
+    // Store selection info before clearing it (for button lookup)
+    const selectionInfo = currentFrequencySelection;
+    
     isSelectingFrequency = false;
     currentFrequencySelection = null;
     
+    // Cancel any active selection box (remove red box stuck to mouse)
+    cancelSpectrogramSelection();
+    
     // Remove active state from button
-    const activeButton = document.querySelector('.select-freq-btn.active');
+    // Try to find the button using the stored selection info first
+    let activeButton = null;
+    if (selectionInfo) {
+        const { regionIndex, featureIndex } = selectionInfo;
+        activeButton = document.getElementById(`select-btn-${regionIndex}-${featureIndex}`);
+    }
+    // Fallback: find any active button if we can't find the specific one
+    if (!activeButton) {
+        activeButton = document.querySelector('.select-freq-btn.active');
+    }
     if (activeButton) {
         activeButton.classList.remove('active');
     }
@@ -1204,7 +1240,8 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         renderFeatures(regions[regionIndex].id, regionIndex);
         
         // Update complete button state (enable if first feature identified)
-        updateCompleteButtonState();
+        updateCompleteButtonState(); // Begin Analysis button
+        updateCmpltButtonState(); // Complete button
         
         // Pulse the button and focus notes field
         setTimeout(() => {
@@ -2191,7 +2228,8 @@ export function updateFeature(regionIndex, featureIndex, property, value) {
     setCurrentRegions(regions);
     
     // Update complete button state (in case a feature was just completed)
-    updateCompleteButtonState();
+    updateCompleteButtonState(); // Begin Analysis button
+    updateCmpltButtonState(); // Complete button
     
     // If notes were updated and region is collapsed, update header preview
     if (property === 'notes' && featureIndex === 0 && !regions[regionIndex].expanded) {
@@ -2229,7 +2267,8 @@ export function deleteRegion(index) {
         renderRegions();
         
         // Update complete button state (in case we deleted the last identified feature)
-        updateCompleteButtonState();
+        updateCompleteButtonState(); // Begin Analysis button
+        updateCmpltButtonState(); // Complete button
         
         // Redraw waveform to update button positions
         drawWaveformWithSelection();
@@ -2402,6 +2441,11 @@ export function zoomToRegion(regionIndex) {
     zoomState.currentViewStartSample = region.startSample;
     zoomState.currentViewEndSample = region.endSample;
     zoomState.activeRegionId = region.id;
+    
+    // Update submit button visibility (show when zoomed in)
+    if (typeof window.updateSubmitButtonVisibility === 'function') {
+        window.updateSubmitButtonVisibility();
+    }
     
     // 🎓 Tutorial: Resolve promise if waiting for region zoom
     if (State.waitingForRegionZoom && State._regionZoomResolve) {
@@ -2651,6 +2695,11 @@ export function zoomToFull() {
     zoomState.currentViewEndSample = zoomState.totalSamples;
     zoomState.activeRegionId = null;
     
+    // Update submit button visibility (hide when zoomed out)
+    if (typeof window.updateSubmitButtonVisibility === 'function') {
+        window.updateSubmitButtonVisibility();
+    }
+    
     // 🔧 FIX: Clear active region to prevent UI confusion after zoom-out
     activeRegionIndex = null;
     
@@ -2809,20 +2858,58 @@ export function updateCompleteButtonState() {
         // Check if complete data set has been downloaded
         const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
         const sampleCount = State.completeSamplesArray ? State.completeSamplesArray.length : 0;
-        console.log(`🔵 updateCompleteButtonState: hasData=${hasData}, sampleCount=${sampleCount.toLocaleString()}`);
+        if (!isStudyMode()) {
+            console.log(`🔵 updateCompleteButtonState: hasData=${hasData}, sampleCount=${sampleCount.toLocaleString()}`);
+        }
         
         completeBtn.disabled = !hasData;
         if (hasData) {
             completeBtn.style.opacity = '1';
             completeBtn.style.cursor = 'pointer';
-            console.log('✅ Begin Analysis button ENABLED');
+            if (!isStudyMode()) {
+                console.log('✅ Begin Analysis button ENABLED');
+            }
         } else {
             completeBtn.style.opacity = '0.5';
             completeBtn.style.cursor = 'not-allowed';
-            console.log('❌ Begin Analysis button DISABLED');
+            if (!isStudyMode()) {
+                console.log('❌ Begin Analysis button DISABLED');
+            }
         }
     } else {
         console.warn('⚠️ updateCompleteButtonState: completeBtn not found in DOM');
+    }
+}
+
+/**
+ * Update the Complete button (completeBtn after transformation) state based on whether features have been identified
+ * Button enables after at least one feature has been identified (has all required fields)
+ * Uses the existing hasIdentifiedFeature() logic
+ */
+export function updateCmpltButtonState() {
+    const completeBtn = document.getElementById('completeBtn');
+    if (completeBtn && completeBtn.textContent === 'Complete') {
+        // Only update if button has been transformed to Complete
+        const hasFeature = hasIdentifiedFeature();
+        
+        if (!isStudyMode()) {
+            console.log(`✅ updateCmpltButtonState: hasFeature=${hasFeature}`);
+        }
+        
+        completeBtn.disabled = !hasFeature;
+        if (hasFeature) {
+            completeBtn.style.opacity = '1';
+            completeBtn.style.cursor = 'pointer';
+            if (!isStudyMode()) {
+                console.log('✅ Complete button ENABLED');
+            }
+        } else {
+            completeBtn.style.opacity = '0.5';
+            completeBtn.style.cursor = 'not-allowed';
+            if (!isStudyMode()) {
+                console.log('❌ Complete button DISABLED');
+            }
+        }
     }
 }
 

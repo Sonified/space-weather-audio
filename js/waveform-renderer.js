@@ -14,6 +14,7 @@ import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
 import { hideTutorialOverlay, setStatusText } from './tutorial.js';
+import { isStudyMode } from './master-modes.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -208,7 +209,9 @@ export function drawWaveformFromMinMax() {
                 positionWaveformDateCanvas();
                 drawWaveformDate();
                 
-                console.log(`✅ Waveform crossfade complete - pink detrended waveform`);
+                if (!isStudyMode()) {
+                    console.log(`✅ Waveform crossfade complete - pink detrended waveform`);
+                }
                 
                 if (State.totalAudioDuration > 0) {
                     drawWaveformWithSelection();
@@ -982,14 +985,12 @@ export function startPlaybackIndicator() {
     // 🔥 FIX: Check if document is connected before starting RAF
     // This prevents creating RAF callbacks that will be retained by detached documents
     if (!document.body || !document.body.isConnected) {
-        console.warn('⚠️ Cannot start playback indicator - document is detached');
         return;
     }
     
     // 🔥 FIX: Prevent multiple simultaneous RAF loops
     // If RAF is already scheduled, don't create another one
     if (State.playbackIndicatorRAF !== null) {
-        // Already running, don't create duplicate
         return;
     }
     
@@ -1024,7 +1025,7 @@ export function updatePlaybackIndicator() {
         // 🔥 FIX: Only schedule RAF if document is still connected and not already scheduled
         // This prevents creating RAF callbacks that will be retained by detached documents
         if (document.body && document.body.isConnected && State.playbackIndicatorRAF === null) {
-        State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
+            State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
         }
         return;
     }
@@ -1051,7 +1052,7 @@ export function updatePlaybackIndicator() {
     // Only schedule if document is still connected and not already scheduled
     // This prevents creating multiple RAF callbacks that accumulate
     if (document.body && document.body.isConnected && State.playbackIndicatorRAF === null) {
-    State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
+        State.setPlaybackIndicatorRAF(requestAnimationFrame(updatePlaybackIndicator));
     } else {
         // Document is detached or already scheduled - stop the loop
         State.setPlaybackIndicatorRAF(null);
@@ -1091,11 +1092,15 @@ export function initWaveformWorker() {
             // Note: We've already copied the data to State, so it's safe to clear here
             e.data.waveformData = null;
         } else if (type === 'reset-complete') {
-            console.log('🎨 Waveform worker reset complete');
+            if (!isStudyMode()) {
+                console.log('🎨 Waveform worker reset complete');
+            }
         }
     };
     
-    console.log('🎨 Waveform worker initialized');
+    if (!isStudyMode()) {
+        console.log('🎨 Waveform worker initialized');
+    }
 }
 
 export function changeWaveformFilter() {

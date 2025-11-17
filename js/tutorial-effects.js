@@ -6,6 +6,7 @@
 
 import * as State from './audio-state.js';
 import { getCurrentRegions } from './region-tracker.js';
+import { isStudyMode } from './master-modes.js';
 
 // Overlay state
 let tutorialOverlay = null;
@@ -643,7 +644,9 @@ export function disableFrequencyScaleDropdown() {
         frequencyScaleSelect.style.opacity = '0.5';
         frequencyScaleSelect.style.cursor = 'not-allowed';
         frequencyScaleSelect.style.pointerEvents = 'none';
-        console.log('🔒 Frequency scale dropdown disabled');
+        if (!isStudyMode()) {
+            console.log('🔒 Frequency scale dropdown disabled');
+        }
     } else {
         console.warn('⚠️ Could not find frequencyScale element to disable');
     }
@@ -672,31 +675,54 @@ export function enableAllTutorialRestrictedFeatures() {
     const loopBtn = document.getElementById('loopBtn');
     if (loopBtn) {
         loopBtn.disabled = false;
-        console.log('✅ Loop button enabled');
+        if (!isStudyMode()) {
+            console.log('✅ Loop button enabled');
+        }
     }
     
     // Enable speed slider
     const speedSlider = document.getElementById('playbackSpeed');
     if (speedSlider) {
         speedSlider.disabled = false;
-        console.log('✅ Speed slider enabled');
+        if (!isStudyMode()) {
+            console.log('✅ Speed slider enabled');
+        }
     }
     const speedLabel = document.getElementById('speedLabel');
     if (speedLabel) {
         speedLabel.style.opacity = '1';
     }
     
+    // Enable volume slider
+    const volumeSlider = document.getElementById('volumeSlider');
+    if (volumeSlider) {
+        volumeSlider.disabled = false;
+        if (!isStudyMode()) {
+            console.log('✅ Volume slider enabled');
+        }
+    }
+    const volumeLabel = document.getElementById('volumeLabel');
+    if (volumeLabel) {
+        volumeLabel.style.opacity = '1';
+    }
+    
     // Enable waveform clicks
     enableWaveformClicks();
-    console.log('✅ Waveform clicks enabled');
+    if (!isStudyMode()) {
+        console.log('✅ Waveform clicks enabled');
+    }
     
     // Enable region buttons
     enableRegionButtons();
-    console.log('✅ Region buttons enabled');
+    if (!isStudyMode()) {
+        console.log('✅ Region buttons enabled');
+    }
     
     // Enable frequency scale dropdown
     enableFrequencyScaleDropdown();
-    console.log('✅ Frequency scale dropdown enabled');
+    if (!isStudyMode()) {
+        console.log('✅ Frequency scale dropdown enabled');
+    }
 }
 
 /**
