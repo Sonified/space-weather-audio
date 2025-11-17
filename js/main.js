@@ -813,6 +813,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.17 - Spacebar Play/Pause Fix');
+    console.log('⌨️ [0ms] v2.17 Fix: Spacebar play/pause now mirrors button behavior exactly - removed auto-selection logic that was causing issues');
     console.log('🌋 [0ms] volcano-audio v2.16 - Spectrogram Regions & Selections');
     console.log('🎨 [0ms] v2.16 Feat: Spectrogram now shows regions and selections - lightweight blue highlights (15%/8% opacity) and yellow selection boxes (8%/35% opacity), fade out when zooming into regions');
     console.log('🌋 [0ms] volcano-audio v2.15 - Waveform Zoom-Out & Zoom Button Click Fix');
@@ -928,10 +930,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             const allReceivedData = State.allReceivedData;
             
             if (!playPauseBtn.disabled && (playbackState !== PlaybackState.STOPPED || (allReceivedData && allReceivedData.length > 0))) {
-                // If there's an active region, set selection to that region before playing
-                if (setSelectionFromActiveRegionIfExists()) {
-                    // Selection is now set to the active region, togglePlayPause will use it
-                }
+                // Mirror the play/pause button exactly - just toggle, no selection logic
                 togglePlayPause();
             }
         }

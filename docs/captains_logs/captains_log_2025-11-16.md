@@ -2,6 +2,43 @@
 
 ---
 
+## ⌨️ Spacebar Play/Pause Fix (v2.17)
+
+### Problem
+The spacebar handler had complex logic that was trying to auto-select regions when starting playback, which caused multiple issues:
+1. When paused in zoom mode, pressing spacebar would auto-select the region (unwanted behavior)
+2. When starting playback in zoom mode, pressing spacebar would auto-select the region (preventing users from creating their own selections)
+3. When zoomed out and pressing spacebar, it would jump into a region unexpectedly
+
+### Root Cause
+The spacebar handler was calling `setSelectionFromActiveRegionIfExists()` before `togglePlayPause()`, trying to be "helpful" by setting selections. However, the play/pause button works perfectly without any of this logic - it just calls `togglePlayPause()` directly.
+
+### Solution
+Simplified the spacebar handler to exactly mirror the play/pause button behavior - just call `togglePlayPause()` directly, no selection logic at all.
+
+### Key Changes
+- `js/main.js`: Removed all auto-selection logic from spacebar handler, now just calls `togglePlayPause()` like the button does
+- Removed unused `zoomState` import
+
+### How It Works
+1. Spacebar pressed → Check if button is enabled
+2. If enabled → Call `togglePlayPause()` directly
+3. That's it! No selection logic, no zoom checks, just toggle play/pause
+
+### Benefits
+- ✅ Spacebar behavior now matches button exactly
+- ✅ No unexpected auto-selection behavior
+- ✅ Users can create their own selections within regions
+- ✅ Much simpler, easier to maintain code
+
+### Files Modified
+- `js/main.js` - Simplified spacebar handler to mirror button behavior
+
+### Version
+v2.17 - Commit: "v2.17 Fix: Spacebar play/pause now mirrors button behavior exactly - removed auto-selection logic that was causing issues"
+
+---
+
 ## 🎨 Spectrogram Regions & Selections (v2.16)
 
 ### Feature
