@@ -235,8 +235,12 @@ export function isRegionPlayButtonEnabled(regionIndex) {
 export function isRegionZoomButtonEnabled(regionIndex) {
     return enabledRegionZoomButtons.has(regionIndex);
 }
-export function setRegionCreationEnabled(value) { regionCreationEnabled = value; }
-export function isRegionCreationEnabled() { return regionCreationEnabled; }
+export function setRegionCreationEnabled(value) {
+    regionCreationEnabled = value;
+}
+export function isRegionCreationEnabled() {
+    return regionCreationEnabled;
+}
 export function setRegions(value) { regions = value; }
 export function setActiveRegionIndex(value) { activeRegionIndex = value; }
 export function setIsSelectingFrequency(value) { isSelectingFrequency = value; }

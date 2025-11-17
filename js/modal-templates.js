@@ -165,7 +165,7 @@ export function createParticipantModal() {
     const modal = document.createElement('div');
     modal.id = 'participantModal';
     modal.className = 'modal-window';
-    modal.style.display = 'flex';
+    modal.style.display = 'none';
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">

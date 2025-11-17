@@ -190,7 +190,7 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
         return; // Region creation disabled - don't show button
     }
     
-    // 🔥 FIX: Check document connection before DOM access
+    // Check document connection before DOM access
     if (!document.body || !document.body.isConnected) {
         return;
     }
@@ -1003,13 +1003,27 @@ export function handleWaveformClick(event, canvas) {
  * Stop frequency selection mode
  */
 export function stopFrequencySelection() {
-    if (!isSelectingFrequency) return;
+    // 🔍 DEBUG: Log state before stopping selection
+    console.log('🔴 [DEBUG] STOP_FREQUENCY_SELECTION CALLED:', {
+        wasSelectingFrequency: isSelectingFrequency,
+        hadCurrentSelection: !!currentFrequencySelection,
+        currentSelection: currentFrequencySelection,
+        documentHasFocus: document.hasFocus(),
+        windowHasFocus: document.visibilityState === 'visible'
+    });
+    
+    if (!isSelectingFrequency) {
+        console.log('🔴 [DEBUG] Not in frequency selection mode - nothing to stop');
+        return;
+    }
     
     // Store selection info before clearing it (for button lookup)
     const selectionInfo = currentFrequencySelection;
     
     isSelectingFrequency = false;
     currentFrequencySelection = null;
+    
+    console.log('🔴 [DEBUG] Frequency selection stopped - canceling any active selection box');
     
     // Cancel any active selection box (remove red box stuck to mouse)
     cancelSpectrogramSelection();
@@ -1090,6 +1104,17 @@ function collapseAllRegions() {
  * Start frequency selection mode for a specific feature
  */
 export function startFrequencySelection(regionIndex, featureIndex) {
+    // 🔍 DEBUG: Log state before starting selection
+    console.log('🟠 [DEBUG] START_FREQUENCY_SELECTION CALLED:', {
+        regionIndex,
+        featureIndex,
+        wasSelectingFrequency: isSelectingFrequency,
+        hadCurrentSelection: !!currentFrequencySelection,
+        documentHasFocus: document.hasFocus(),
+        windowHasFocus: document.visibilityState === 'visible',
+        isInRegion: zoomState.isInRegion()
+    });
+    
     // Prevent feature selection when zoomed out
     if (!zoomState.isInRegion()) {
         console.warn('⚠️ Cannot start feature selection: must be zoomed into a region');
@@ -1099,10 +1124,19 @@ export function startFrequencySelection(regionIndex, featureIndex) {
     // 🎓 Allow feature selection during tutorial (tutorial will manage it)
     // Removed the check that prevented feature selection during tutorial
     
-    // console.log(`🎯 Starting frequency selection for region ${regionIndex}, feature ${featureIndex}`);
+    // 🔥 FIX: If already selecting, stop first to prevent state confusion
+    if (isSelectingFrequency) {
+        console.warn('⚠️ [DEBUG] Already in frequency selection mode - stopping before starting new one');
+        stopFrequencySelection();
+    }
     
     isSelectingFrequency = true;
     currentFrequencySelection = { regionIndex, featureIndex };
+    
+    console.log('🟠 [DEBUG] Frequency selection started:', {
+        isSelectingFrequency,
+        currentFrequencySelection
+    });
     
     // Update button state
     const button = document.getElementById(`select-btn-${regionIndex}-${featureIndex}`);
@@ -1124,7 +1158,21 @@ export function startFrequencySelection(regionIndex, featureIndex) {
  * Called when user completes a box selection on spectrogram
  */
 export async function handleSpectrogramSelection(startY, endY, canvasHeight, startX, endX, canvasWidth) {
+    // 🔍 DEBUG: Log state at start of handleSpectrogramSelection
+    console.log('🟢 [DEBUG] HANDLE_SPECTROGRAM_SELECTION CALLED:', {
+        isSelectingFrequency,
+        hasCurrentSelection: !!currentFrequencySelection,
+        currentSelection: currentFrequencySelection,
+        startY: startY?.toFixed(1),
+        endY: endY?.toFixed(1),
+        startX: startX?.toFixed(1),
+        endX: endX?.toFixed(1),
+        documentHasFocus: document.hasFocus(),
+        windowHasFocus: document.visibilityState === 'visible'
+    });
+    
     if (!isSelectingFrequency || !currentFrequencySelection) {
+        console.warn('⚠️ [DEBUG] Cannot handle selection - not in selection mode or no current selection');
         return;
     }
     
@@ -1254,13 +1302,14 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
                 setTimeout(() => selectBtn.classList.remove('pulse'), 250);
             }
             
-            if (notesField) {
-                setTimeout(() => {
-                    notesField.classList.add('pulse');
-                    notesField.focus();
-                    setTimeout(() => notesField.classList.remove('pulse'), 800);
-                }, 150);
-            }
+            // 🔧 TESTING: Disabled auto-focus to test ghost click bug
+            // if (notesField) {
+            //     setTimeout(() => {
+            //         notesField.classList.add('pulse');
+            //         notesField.focus();
+            //         setTimeout(() => notesField.classList.remove('pulse'), 800);
+            //     }, 150);
+            // }
         }, 50);
         
         // 🎓 Resolve tutorial promise if waiting for feature selection
@@ -2862,17 +2911,37 @@ export function updateCompleteButtonState() {
             console.log(`🔵 updateCompleteButtonState: hasData=${hasData}, sampleCount=${sampleCount.toLocaleString()}`);
         }
         
-        completeBtn.disabled = !hasData;
-        if (hasData) {
-            completeBtn.style.opacity = '1';
-            completeBtn.style.cursor = 'pointer';
-            if (!isStudyMode()) {
-                console.log('✅ Begin Analysis button ENABLED');
+        // Check if button is in "Begin Analysis" mode (before transformation) or "Complete" mode (after)
+        const isBeginAnalysisMode = completeBtn.textContent === 'Begin Analysis';
+        
+        // In study mode (STUDY and STUDY_CLEAN), "Begin Analysis" button should NEVER show
+        // Region creation is enabled automatically before the tutorial starts
+        if (isStudyMode()) {
+            if (isBeginAnalysisMode) {
+                // Always hide "Begin Analysis" button in study mode
+                completeBtn.style.display = 'none';
+            } else {
+                // This is the "Complete" button (post-transformation) - handle normally
+                if (hasData && !isTutorialActive()) {
+                    completeBtn.style.display = 'inline-block';
+                    completeBtn.disabled = false;
+                    completeBtn.style.opacity = '1';
+                    completeBtn.style.cursor = 'pointer';
+                } else {
+                    completeBtn.style.display = 'none';
+                }
             }
         } else {
-            completeBtn.style.opacity = '0.5';
-            completeBtn.style.cursor = 'not-allowed';
-            if (!isStudyMode()) {
+            // Non-study mode: show button but disable it when no data
+            completeBtn.style.display = 'inline-block';
+            completeBtn.disabled = !hasData;
+            if (hasData) {
+                completeBtn.style.opacity = '1';
+                completeBtn.style.cursor = 'pointer';
+                console.log('✅ Begin Analysis button ENABLED');
+            } else {
+                completeBtn.style.opacity = '0.5';
+                completeBtn.style.cursor = 'not-allowed';
                 console.log('❌ Begin Analysis button DISABLED');
             }
         }

@@ -283,5 +283,9 @@ function handleKeyboardShortcut(event) {
         }
         return;
     }
+    
+    // Enter key: Trigger first fetch (only works before first fetch, handled in main.js)
+    // We don't handle it here, but we need to make sure we don't prevent it
+    // The actual handler is in main.js DOMContentLoaded
 }
 

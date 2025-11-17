@@ -22,6 +22,10 @@ export let spectrogramSelectionBox = null;
 let spectrogramMouseUpHandler = null;
 let spectrogramKeyDownHandler = null;
 let spectrogramSelectionSetup = false;
+let spectrogramFocusBlurHandler = null;
+
+// 🔥 FIX: Safety timeout to auto-cancel if mouseup never fires
+let spectrogramSelectionTimeout = null;
 
 export function drawSpectrogram() {
     console.log(`📺 [spectrogram-renderer.js] drawSpectrogram CALLED`);
@@ -478,11 +482,17 @@ export function startVisualization() {
 export function setupSpectrogramSelection() {
     // 🔥 FIX: Only setup once to prevent duplicate event listeners
     if (spectrogramSelectionSetup) {
+        console.warn('⚠️ [SETUP] setupSpectrogramSelection() called again but already setup - ignoring');
         return;
     }
     
+    console.log('✅ [SETUP] Setting up spectrogram selection (first time)');
+    
     const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
+    if (!canvas) {
+        console.warn('⚠️ [SETUP] Canvas not found - cannot setup selection');
+        return;
+    }
     
     // Use the panel as container (same as waveform selection)
     const container = canvas.closest('.panel');
@@ -490,7 +500,16 @@ export function setupSpectrogramSelection() {
     
     canvas.addEventListener('mousedown', (e) => {
         // Only handle if in frequency selection mode
-        if (!isInFrequencySelectionMode()) return;
+        if (!isInFrequencySelectionMode()) {
+            return;
+        }
+        
+        // 🔥 FIX: If we already have an active selection, cancel it completely
+        // This prevents multiple boxes from being created when user clicks again while dragging
+        if (spectrogramSelectionActive || spectrogramSelectionBox) {
+            cancelSpectrogramSelection();
+            return; // ← STOP HERE! Don't start a new selection in the same click
+        }
         
         const canvasRect = canvas.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
@@ -498,31 +517,63 @@ export function setupSpectrogramSelection() {
         spectrogramStartY = e.clientY - canvasRect.top;
         spectrogramSelectionActive = true;
         
-        // Create selection box
-        if (spectrogramSelectionBox) {
-            spectrogramSelectionBox.remove();
+        // 🔥 FIX: Safety timeout - if mouseup never fires, auto-cancel after 5 seconds
+        // This prevents stuck state when browser loses focus mid-drag
+        if (spectrogramSelectionTimeout) {
+            clearTimeout(spectrogramSelectionTimeout);
         }
-        spectrogramSelectionBox = document.createElement('div');
-        spectrogramSelectionBox.className = 'selection-box';
-        spectrogramSelectionBox.style.position = 'absolute';
-        spectrogramSelectionBox.style.left = (spectrogramStartX + canvasRect.left - containerRect.left) + 'px';
-        spectrogramSelectionBox.style.top = (spectrogramStartY + canvasRect.top - containerRect.top) + 'px';
-        spectrogramSelectionBox.style.width = '0px';
-        spectrogramSelectionBox.style.height = '0px';
-        spectrogramSelectionBox.style.border = '2px solid #ff4444';
-        spectrogramSelectionBox.style.background = 'rgba(255, 68, 68, 0.2)';
-        spectrogramSelectionBox.style.pointerEvents = 'none';
-        spectrogramSelectionBox.style.zIndex = '100';
-        container.appendChild(spectrogramSelectionBox);
+        spectrogramSelectionTimeout = setTimeout(() => {
+            if (spectrogramSelectionActive) {
+                console.warn('⚠️ [SAFETY TIMEOUT] Mouseup never fired - auto-canceling selection');
+                cancelSpectrogramSelection();
+            }
+        }, 5000); // 5 second safety timeout
+        
+        // 🔥 FIX: Don't create the box immediately - wait for drag to start
+        // This prevents boxes from being created on every click when mouseup never fired
     });
     
     canvas.addEventListener('mousemove', (e) => {
-        if (!spectrogramSelectionActive || !spectrogramSelectionBox) return;
+        if (!spectrogramSelectionActive) return;
         
         const canvasRect = canvas.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
         const currentX = e.clientX - canvasRect.left;
         const currentY = e.clientY - canvasRect.top;
+        
+        // 🔥 FIX: Require minimum drag distance (5 pixels) before creating box
+        // This prevents boxes from being created on accidental tiny movements
+        if (!spectrogramSelectionBox && isInFrequencySelectionMode()) {
+            // Calculate drag distance from start position
+            if (spectrogramStartX !== null && spectrogramStartY !== null) {
+                const dragDistanceX = Math.abs(currentX - spectrogramStartX);
+                const dragDistanceY = Math.abs(currentY - spectrogramStartY);
+                const dragDistance = Math.max(dragDistanceX, dragDistanceY);
+                
+                // Only create box if user has dragged at least 5 pixels
+                if (dragDistance < 5) {
+                    return; // Not enough drag yet, wait for more movement
+                }
+            }
+            
+            const containerRect = container.getBoundingClientRect();
+            
+            spectrogramSelectionBox = document.createElement('div');
+            spectrogramSelectionBox.className = 'selection-box';
+            spectrogramSelectionBox.style.position = 'absolute';
+            spectrogramSelectionBox.style.left = (spectrogramStartX + canvasRect.left - containerRect.left) + 'px';
+            spectrogramSelectionBox.style.top = (spectrogramStartY + canvasRect.top - containerRect.top) + 'px';
+            spectrogramSelectionBox.style.width = '0px';
+            spectrogramSelectionBox.style.height = '0px';
+            spectrogramSelectionBox.style.border = '2px solid #ff4444';
+            spectrogramSelectionBox.style.background = 'rgba(255, 68, 68, 0.2)';
+            spectrogramSelectionBox.style.pointerEvents = 'none';
+            spectrogramSelectionBox.style.zIndex = '100';
+            container.appendChild(spectrogramSelectionBox);
+        }
+        
+        if (!spectrogramSelectionBox) return;
+        
+        const containerRect = container.getBoundingClientRect();
         spectrogramEndY = currentY;
         
         const left = Math.min(spectrogramStartX, currentX);
@@ -530,15 +581,32 @@ export function setupSpectrogramSelection() {
         const width = Math.abs(currentX - spectrogramStartX);
         const height = Math.abs(currentY - spectrogramStartY);
         
+        
         spectrogramSelectionBox.style.left = (left + canvasRect.left - containerRect.left) + 'px';
         spectrogramSelectionBox.style.top = (top + canvasRect.top - containerRect.top) + 'px';
         spectrogramSelectionBox.style.width = width + 'px';
         spectrogramSelectionBox.style.height = height + 'px';
     });
     
+    // 🔥 FIX: Add mouseleave handler to cancel selection if mouse leaves canvas
+    // This prevents stale selections when browser loses focus or mouse leaves
+    canvas.addEventListener('mouseleave', (e) => {
+        if (spectrogramSelectionActive) {
+            cancelSpectrogramSelection();
+        }
+    });
+    
     // 🔥 FIX: Store handler reference so it can be removed
     spectrogramMouseUpHandler = async (e) => {
-        if (!spectrogramSelectionActive) return;
+        if (!spectrogramSelectionActive) {
+            return;
+        }
+        
+        // 🔥 FIX: If no box was created (user just clicked, didn't drag), cancel and reset
+        if (!spectrogramSelectionBox) {
+            cancelSpectrogramSelection();
+            return;
+        }
         
         const rect = canvas.getBoundingClientRect();
         const endY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
@@ -552,6 +620,12 @@ export function setupSpectrogramSelection() {
             canvas.offsetWidth    // ← CSS PIXELS!
         );
         
+        // 🔥 FIX: Clear safety timeout since mouseup fired successfully
+        if (spectrogramSelectionTimeout) {
+            clearTimeout(spectrogramSelectionTimeout);
+            spectrogramSelectionTimeout = null;
+        }
+        
         // DON'T delete the box - keep it and convert to persistent feature box!
         // (Will be converted to orange in addFeatureBox)
         // Note: spectrogramSelectionBox is exported so region-tracker.js can access it
@@ -564,7 +638,9 @@ export function setupSpectrogramSelection() {
         spectrogramEndY = null;
     };
     
-    document.addEventListener('mouseup', spectrogramMouseUpHandler);
+    // 🔥 FIX: Use canvas instead of document for mouseup (like waveform does)
+    // Canvas events survive browser focus changes better than document events
+    canvas.addEventListener('mouseup', spectrogramMouseUpHandler);
     
     // 🔥 FIX: Store handler reference so it can be removed
     spectrogramKeyDownHandler = (e) => {
@@ -575,6 +651,32 @@ export function setupSpectrogramSelection() {
     };
     
     document.addEventListener('keydown', spectrogramKeyDownHandler);
+    
+    // 🔥 FIX: Add focus/blur handlers to reset state when browser loses focus
+    // This prevents state confusion when user switches away and comes back
+    spectrogramFocusBlurHandler = () => {
+        const hasFocus = document.hasFocus();
+        const isVisible = document.visibilityState === 'visible';
+        
+        // 🔥 FIX: Force cleanup when browser loses focus
+        // This prevents stuck state when mouseup events are lost
+        if (!hasFocus || !isVisible) {
+            if (spectrogramSelectionActive || spectrogramSelectionBox) {
+                cancelSpectrogramSelection();
+            }
+        } else {
+            // Browser regained focus - validate state
+            // If we have an active selection box without being in selection mode, that's a bug
+            if (spectrogramSelectionBox && !isInFrequencySelectionMode()) {
+                cancelSpectrogramSelection();
+            }
+        }
+    };
+    
+    // Listen to both focus/blur and visibility change events
+    window.addEventListener('focus', spectrogramFocusBlurHandler);
+    window.addEventListener('blur', spectrogramFocusBlurHandler);
+    document.addEventListener('visibilitychange', spectrogramFocusBlurHandler);
     
     spectrogramSelectionSetup = true;
     if (!isStudyMode()) {
@@ -587,6 +689,12 @@ export function setupSpectrogramSelection() {
  * Called when user presses Escape or exits feature selection mode
  */
 export function cancelSpectrogramSelection() {
+    // 🔥 FIX: Clear safety timeout when canceling
+    if (spectrogramSelectionTimeout) {
+        clearTimeout(spectrogramSelectionTimeout);
+        spectrogramSelectionTimeout = null;
+    }
+    
     if (spectrogramSelectionBox) {
         spectrogramSelectionBox.remove();
         spectrogramSelectionBox = null;
@@ -603,12 +711,22 @@ export function cancelSpectrogramSelection() {
  */
 export function cleanupSpectrogramSelection() {
     if (spectrogramMouseUpHandler) {
-        document.removeEventListener('mouseup', spectrogramMouseUpHandler);
+        const canvas = document.getElementById('spectrogram');
+        if (canvas) {
+            // 🔥 FIX: Remove from canvas, not document (matches the addEventListener)
+            canvas.removeEventListener('mouseup', spectrogramMouseUpHandler);
+        }
         spectrogramMouseUpHandler = null;
     }
     if (spectrogramKeyDownHandler) {
         document.removeEventListener('keydown', spectrogramKeyDownHandler);
         spectrogramKeyDownHandler = null;
+    }
+    if (spectrogramFocusBlurHandler) {
+        window.removeEventListener('focus', spectrogramFocusBlurHandler);
+        window.removeEventListener('blur', spectrogramFocusBlurHandler);
+        document.removeEventListener('visibilitychange', spectrogramFocusBlurHandler);
+        spectrogramFocusBlurHandler = null;
     }
     spectrogramSelectionSetup = false;
 }

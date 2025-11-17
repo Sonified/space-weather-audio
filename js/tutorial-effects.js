@@ -670,7 +670,7 @@ export function enableFrequencyScaleDropdown() {
  * Enable all features that are restricted during tutorial
  * Called when tutorial shouldn't run or has been completed
  */
-export function enableAllTutorialRestrictedFeatures() {
+export async function enableAllTutorialRestrictedFeatures() {
     // Enable loop button
     const loopBtn = document.getElementById('loopBtn');
     if (loopBtn) {
@@ -679,7 +679,7 @@ export function enableAllTutorialRestrictedFeatures() {
             console.log('✅ Loop button enabled');
         }
     }
-    
+
     // Enable speed slider
     const speedSlider = document.getElementById('playbackSpeed');
     if (speedSlider) {
@@ -692,7 +692,7 @@ export function enableAllTutorialRestrictedFeatures() {
     if (speedLabel) {
         speedLabel.style.opacity = '1';
     }
-    
+
     // Enable volume slider
     const volumeSlider = document.getElementById('volumeSlider');
     if (volumeSlider) {
@@ -705,24 +705,29 @@ export function enableAllTutorialRestrictedFeatures() {
     if (volumeLabel) {
         volumeLabel.style.opacity = '1';
     }
-    
+
     // Enable waveform clicks
     enableWaveformClicks();
     if (!isStudyMode()) {
         console.log('✅ Waveform clicks enabled');
     }
-    
+
     // Enable region buttons
     enableRegionButtons();
     if (!isStudyMode()) {
         console.log('✅ Region buttons enabled');
     }
-    
+
     // Enable frequency scale dropdown
     enableFrequencyScaleDropdown();
     if (!isStudyMode()) {
         console.log('✅ Frequency scale dropdown enabled');
     }
+
+    // Update Begin Analysis button visibility (show it now that tutorial is complete)
+    import('./region-tracker.js').then(({ updateCompleteButtonState }) => {
+        updateCompleteButtonState();
+    });
 }
 
 /**

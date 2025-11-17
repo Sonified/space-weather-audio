@@ -563,16 +563,10 @@ export function getParticipantId() {
         return urlId;
     }
     
-    // In STUDY_CLEAN mode, don't use stored participant ID (always start fresh)
-    // Check mode dynamically to avoid circular dependencies
-    try {
-        const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-        if (storedMode === 'study_clean') {
-            return null; // Study clean mode - don't use remembered participant ID
-        }
-    } catch (e) {
-        // If check fails, continue normally
-    }
+    // 🔥 REMOVED: STUDY_CLEAN mode check here
+    // We already clear participant ID at the START of startStudyWorkflow()
+    // This check was preventing IDs entered during the current session from being found!
+    // STUDY_CLEAN mode should clear at workflow start, but allow IDs entered during that session.
     
     // Fall back to localStorage
     const storedId = localStorage.getItem('participantId');

@@ -2288,14 +2288,14 @@ input[type="range"]:disabled {
 
 @keyframes sparkle-sweep {
     0% {
-        transform: translateX(-100%);
+        transform: translateX(-40%);
         opacity: 0;
     }
     50% {
         opacity: 0.6;
     }
     100% {
-        transform: translateX(500%);
+        transform: translateX(80%);
         opacity: 0;
     }
 }

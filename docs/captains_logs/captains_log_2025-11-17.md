@@ -594,3 +594,106 @@ Added `enableRegionButtons()` call in `runZoomOutTutorial()` immediately after t
 
 ---
 
+## 🐛 Study Mode Region Creation Fix (v2.45)
+
+### Problem Discovered
+During study mode, region creation was not working during the tutorial. Users clicked on the waveform but no "Add Region" button appeared. The region creation flag (`regionCreationEnabled`) was being enabled **AFTER** the tutorial completed, but the tutorial **requires** waveform clicks to proceed.
+
+**The timing issue:**
+- Tutorial starts → user clicks waveform (regionCreationEnabled = false ❌)
+- Tutorial ends → region creation enabled (too late!)
+
+### Root Cause
+Multiple attempted fixes were scattered across the codebase:
+- `tutorial-effects.js` tried enabling after tutorial completed
+- `tutorial-coordinator.js` tried dispatching event after first selection
+- `study-workflow.js` had no enablement
+
+All approaches enabled region creation AFTER it was needed, not BEFORE.
+
+### Solution
+Enable `regionCreationEnabled` BEFORE the tutorial starts in `study-workflow.js`:
+
+```javascript
+// Enable region creation before tutorial (tutorial requires waveform clicks)
+const { setRegionCreationEnabled } = await import('./audio-state.js');
+setRegionCreationEnabled(true);
+```
+
+This simple fix ensures the flag is set BEFORE users interact with the waveform during the tutorial.
+
+### Cleanup Work
+Removed duplicate/conflicting region enablement code from:
+- `tutorial-effects.js` - Removed duplicate region creation enablement
+- `tutorial-coordinator.js` - Removed `beginAnalysisConfirmed` event dispatch
+- All debug logs with 🔥🔥🔥 fire emojis
+
+Cleaned up comments to reflect the actual implementation.
+
+### "Begin Analysis" Button in Study Mode
+The "Begin Analysis" button is now:
+- **Hidden** in study mode (never shows to users)
+- Region creation enabled automatically before tutorial
+- Button only appears in PERSONAL/DEV modes where users need to manually confirm
+
+### Files Changed
+- `js/study-workflow.js` - Added region creation enablement before tutorial
+- `js/tutorial-effects.js` - Removed duplicate region enablement code
+- `js/tutorial-coordinator.js` - Removed duplicate event dispatch
+- `js/region-tracker.js` - Updated comments, cleaned up
+- `js/audio-state.js` - Cleaned up debug logs
+- `js/main.js` - Cleaned up debug logs, updated version to v2.45
+
+### Version Tag
+- **Version**: v2.45
+- **Commit Message**: v2.45 Fix: Enable region creation BEFORE tutorial starts - allows waveform clicks during tutorial in study mode
+
+---
+
+## 🐛 Spectrogram Feature Selection Bug Fix - Ghost Clicks (v2.46)
+
+### Problem Discovered
+When drawing feature selection boxes on the spectrogram, if the user switched away from the browser and came back, clicking would create multiple selection boxes in a loop. Each click would start a new box instead of completing the current one.
+
+**The bug pattern:**
+- User enters frequency selection mode
+- User switches away from browser (loses focus)
+- User returns and clicks to start drawing
+- Each click creates a new box instead of completing the previous one
+- Infinite loop of box creation
+
+### Root Cause
+The spectrogram was listening for `mouseup` events on `document` instead of `canvas`. When the browser loses focus mid-drag, `document`-level events can be lost/eaten, but `canvas`-level events are more resilient and survive focus changes.
+
+**The difference:**
+- **Waveform** (worked perfectly): `canvas.addEventListener('mouseup', ...)` ✅
+- **Spectrogram** (broken): `document.addEventListener('mouseup', ...)` ❌
+
+### Solution
+Changed spectrogram to match waveform pattern - listen for `mouseup` on `canvas` instead of `document`:
+
+```javascript
+// ❌ OLD (breaks on focus loss):
+document.addEventListener('mouseup', spectrogramMouseUpHandler);
+
+// ✅ NEW (resilient like waveform):
+canvas.addEventListener('mouseup', spectrogramMouseUpHandler);
+```
+
+### Additional Fixes
+1. **Safety timeout**: Added 5-second timeout to auto-cancel selection if mouseup never fires
+2. **Focus/blur handler**: Force-cancel selection when browser loses focus to prevent stuck state
+3. **Minimum drag threshold**: Require 5-pixel drag before creating box (prevents accidental clicks)
+4. **State validation**: Cancel existing selection before starting new one (prevents multiple boxes)
+5. **Mouseleave handler**: Cancel selection if mouse leaves canvas
+
+### Files Changed
+- `js/spectrogram-renderer.js` - Changed mouseup listener from document to canvas, added safety timeout, improved focus/blur handling, added minimum drag threshold, cleaned up debug logs
+- `js/region-tracker.js` - Cleaned up debug logs
+
+### Version Tag
+- **Version**: v2.46
+- **Commit Message**: v2.46 Fix: Spectrogram feature selection bug - changed mouseup listener from document to canvas to prevent ghost clicks when browser loses focus
+
+---
+

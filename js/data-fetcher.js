@@ -14,6 +14,7 @@ import { zoomState } from './zoom-state.js';
 import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks } from './tutorial.js';
 import { updateCompleteButtonState } from './region-tracker.js';
 import { isStudyMode } from './master-modes.js';
+import { isTutorialActive } from './tutorial-state.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -897,9 +898,6 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 State.setCompleteSamplesArray(stitched);
                                 console.log(`📦 ${logTime()} Stitched ${chunkCount} chunks into completeSamplesArray for download`);
                                 
-                                // Enable Begin Analysis button after data download completes
-                                updateCompleteButtonState();
-                                
                                 // 🔥 FIX: Clear allReceivedData after stitching to free 3,685+ Float32Array chunks and their ArrayBuffers
                                 // This breaks the closure chain: RAF callback → State → allReceivedData → chunks → ArrayBuffers
                                 // Explicitly null out each chunk's ArrayBuffer reference before clearing
@@ -910,6 +908,11 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 }
                                 State.setAllReceivedData([]);
                                 console.log(`🧹 ${logTime()} Cleared allReceivedData (${chunkCount} chunks) - ArrayBuffers freed`);
+                                
+                                // Enable Begin Analysis button after data download completes (skip during tutorial)
+                                if (!isTutorialActive()) {
+                                    updateCompleteButtonState();
+                                }
                                 
                                 // 🎨 Render complete spectrogram now that all data is ready
                                 console.log(`🎨 ${logTime()} Triggering complete spectrogram rendering...`);
@@ -954,7 +957,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 
                                 // Only update button if it's still disabled (wasn't enabled when playback started)
                                 const playPauseBtn = document.getElementById('playPauseBtn');
-                                if (playPauseBtn.disabled) {
+                                if (playPauseBtn && playPauseBtn.disabled) {
                                     playPauseBtn.disabled = false;
                                     const autoPlayEnabled = document.getElementById('autoPlay').checked;
                                     if (autoPlayEnabled && State.playbackState === PlaybackState.PLAYING) {
@@ -1057,8 +1060,10 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             State.setCompleteSamplesArray(stitchedFloat32);
             window.rawWaveformData = stitchedRaw;
             
-            // Enable Begin Analysis button after data download completes
-            updateCompleteButtonState();
+            // Enable Begin Analysis button after data download completes (skip during tutorial)
+            if (!isTutorialActive()) {
+                updateCompleteButtonState();
+            }
             
             // 🔥 FIX: Clear allReceivedData after stitching to free Float32Array chunks and their ArrayBuffers
             // This breaks the closure chain: RAF callback → State → allReceivedData → chunks → ArrayBuffers
@@ -1423,8 +1428,10 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     // Store complete samples array for waveform drawing
     State.setCompleteSamplesArray(samples);
     
-    // Enable Begin Analysis button after data download completes
-    updateCompleteButtonState();
+    // Enable Begin Analysis button after data download completes (skip during tutorial)
+    if (!isTutorialActive()) {
+        updateCompleteButtonState();
+    }
     
     // Send samples to waveform worker BEFORE building waveform
     State.waveformWorker.postMessage({

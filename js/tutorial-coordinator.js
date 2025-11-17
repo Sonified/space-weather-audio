@@ -274,8 +274,40 @@ async function showInitialFetchTutorial() {
     // Show message guiding user to select volcano and fetch data
     setStatusTextAndTrack('<- Select a volcano and click Fetch Data.', 'status info');
     
+    // 🔥 Add Enter key handler RIGHT HERE - triggers fetch data when message is shown
+    let enterKeyHandler = null;
+    const setupEnterKeyHandler = () => {
+        enterKeyHandler = async (event) => {
+            // Only trigger if Enter key and fetch button is enabled
+            if (event.key === 'Enter') {
+                const fetchBtn = document.getElementById('startBtn');
+                if (fetchBtn && !fetchBtn.disabled) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    console.log('⌨️ Enter key pressed - triggering fetch data (from tutorial message)');
+                    
+                    // Remove handler immediately so it only triggers once
+                    document.removeEventListener('keydown', enterKeyHandler);
+                    
+                    // Import and trigger fetch data
+                    const { startStreaming } = await import('./main.js');
+                    startStreaming();
+                }
+            }
+        };
+        // Add with capture phase to catch it before other handlers
+        document.addEventListener('keydown', enterKeyHandler, true);
+    };
+    
+    setupEnterKeyHandler();
+    
     // Wait for user to fetch data
     await waitForDataFetch();
+    
+    // Clean up Enter key handler when done
+    if (enterKeyHandler) {
+        document.removeEventListener('keydown', enterKeyHandler, true);
+    }
     
     // Remove glow from volcano selector
     if (volcanoSelect) {
@@ -1028,12 +1060,14 @@ async function runSelectionTutorial() {
         // Selection completed first - no need to append or wait further
         // The promise already resolved
     }
-    
+
+    // Note: Region creation is already enabled by study-workflow.js before tutorial starts
+
     // Wait 0.5 seconds, then show "Nice!" for 1 second
     await skippableWait(500);
     setStatusTextAndTrack('Nice!', 'status success');
     await skippableWait(1000);
-    
+
     // Selection tutorial complete - transition to region introduction
     // Clear tutorial phase
     clearTutorialPhase();

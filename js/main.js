@@ -6,6 +6,9 @@
 // ===== DEBUG FLAGS =====
 const DEBUG_LOOP_FADES = true; // Enable loop fade logging
 
+// ===== FIRST FETCH TRACKING =====
+let hasPerformedFirstFetch = false; // Track if first fetch has been performed
+
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef } from './audio-player.js';
@@ -22,11 +25,18 @@ import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxis
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
-import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions, updateCompleteButtonState, updateCmpltButtonState } from './region-tracker.js';
+import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions, updateCompleteButtonState, updateCmpltButtonState, showAddRegionButton } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown } from './tutorial.js';
-import { isStudyMode } from './master-modes.js';
+import { 
+    CURRENT_MODE, 
+    AppMode, 
+    isPersonalMode, 
+    isDevMode, 
+    isStudyMode,
+    initializeMasterMode 
+} from './master-modes.js';
 
 // Helper function to safely check study mode (handles cases where module isn't loaded yet)
 function safeIsStudyMode() {
@@ -414,6 +424,9 @@ export async function startStreaming(event) {
             event.preventDefault();
             event.stopPropagation();
         }
+        
+        // Mark that first fetch has been performed (disables Enter key shortcut)
+        hasPerformedFirstFetch = true;
         
         // Remove pulsing glow from volcano selector when user starts fetching
         const volcanoSelect = document.getElementById('volcano');
@@ -932,13 +945,104 @@ async function updateParticipantIdDisplay() {
     if (valueElement) valueElement.textContent = participantId || '--';
 }
 
+// ═══════════════════════════════════════════════════════════
+// 🎯 MODE INITIALIZATION FUNCTIONS
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * PERSONAL MODE: Direct access, no tutorial, no surveys
+ */
+async function initializePersonalMode() {
+    console.log('👤 PERSONAL MODE: Direct access');
+    
+    // Enable all features immediately
+    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+    enableAllTutorialRestrictedFeatures();
+    
+    console.log('✅ Personal mode ready - all features enabled');
+}
+
+/**
+ * DEV MODE: Tutorial EVERY TIME (for testing/development)
+ * Perfect for iterating on the tutorial experience
+ */
+async function initializeDevMode() {
+    console.log('🔧 DEV MODE: Tutorial runs every time (for testing)');
+    
+    // 🔥 ALWAYS run tutorial in DEV mode (no caching)
+    console.log('🎓 Running tutorial (DEV mode always shows it)');
+    
+    const { runInitialTutorial } = await import('./tutorial.js');
+    await runInitialTutorial();
+    
+    console.log('✅ Tutorial completed');
+    console.log('✅ Dev mode ready');
+}
+
+/**
+ * STUDY MODE: Full workflow with surveys
+ */
+async function initializeStudyMode() {
+    console.log('🎓 STUDY MODE: Full research workflow');
+    
+    const { startStudyWorkflow } = await import('./study-workflow.js');
+    await startStudyWorkflow();
+    
+    console.log('✅ Study mode initialized');
+}
+
+/**
+ * Route to appropriate workflow based on mode
+ */
+async function initializeApp() {
+    const { CURRENT_MODE, AppMode } = await import('./master-modes.js');
+    
+    console.log(`🚀 Initializing app in ${CURRENT_MODE} mode`);
+    
+    switch (CURRENT_MODE) {
+        case AppMode.PERSONAL:
+            await initializePersonalMode();
+            break;
+            
+        case AppMode.DEV:
+            await initializeDevMode();
+            break;
+            
+        case AppMode.STUDY:
+        case AppMode.STUDY_CLEAN:
+            await initializeStudyMode();
+            break;
+            
+        case AppMode.STUDY_END:
+            // Study End mode: Personal mode with post-surveys enabled
+            await initializePersonalMode();
+            break;
+            
+        default:
+            console.error(`❌ Unknown mode: ${CURRENT_MODE}`);
+            await initializeDevMode(); // Fallback to dev
+    }
+}
+
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', async () => {
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('🌋 VOLCANO AUDIFICATION STUDY');
+    console.log('═══════════════════════════════════════════════════════════');
+    
     // ═══════════════════════════════════════════════════════════
     // 🎯 MASTER MODE - Initialize and check configuration
     // ═══════════════════════════════════════════════════════════
     const { initializeMasterMode, shouldSkipTutorial, isStudyMode, isPersonalMode, isDevMode, CURRENT_MODE } = await import('./master-modes.js');
     initializeMasterMode();
+    
+    // Hide Begin Analysis button in study mode (STUDY and STUDY_CLEAN) until data is ready
+    if (isStudyMode()) {
+        const completeBtn = document.getElementById('completeBtn');
+        if (completeBtn) {
+            completeBtn.style.display = 'none';
+        }
+    }
     
     // Initialize mode selector dropdown
     const modeSelectorContainer = document.getElementById('modeSelectorContainer');
@@ -1139,6 +1243,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.46 - Spectrogram Feature Selection Bug Fix');
+        console.log('🐛 [0ms] v2.46 Fix: Spectrogram feature selection bug - changed mouseup listener from document to canvas to prevent ghost clicks when browser loses focus');
+        console.log('🌋 [0ms] volcano-audio v2.45 - Study Mode Region Creation Fix');
+        console.log('🎓 [0ms] v2.45 Fix: Enable region creation BEFORE tutorial starts - allows waveform clicks during tutorial in study mode');
         console.log('🌋 [0ms] volcano-audio v2.44 - Quick-fill Button Toggle');
         console.log('🎓 [0ms] v2.44 Feat: Quick-fill button toggle function - disable in STUDY mode, enable in STUDY_CLEAN/DEV/PERSONAL modes');
         console.log('🌋 [0ms] volcano-audio v2.41 - Tutorial Region Button Enable Fix');
@@ -1206,10 +1314,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Start memory health monitoring
     startMemoryMonitoring();
     
-    // Initialize modals (inject into DOM)
+    // Initialize modals first (all modes need them)
     initializeModals();
     
-    // Attach event listeners to modals
+    // Setup UI controls (all modes need them)
     setupModalEventListeners();
     
     // Initialize region tracker
@@ -1243,43 +1351,18 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Load saved volcano selection (or use default)
     loadSavedVolcano();
     
-    // Start the appropriate workflow based on mode
-    // (isStudyMode already imported at top)
+    // ═══════════════════════════════════════════════════════════
+    // 🎯 MODE-AWARE ROUTING
+    // ═══════════════════════════════════════════════════════════
     
-    if (!isStudyMode()) {
-        console.log(`🔍 Mode check: CURRENT_MODE=${CURRENT_MODE}, isStudyMode()=${isStudyMode()}`);
-    }
-    
-    if (isStudyMode()) {
-        // Study Mode: Full research workflow
-        console.log(`✅ Starting study workflow for mode: ${CURRENT_MODE}`);
-        setTimeout(async () => {
-            const { startStudyWorkflow } = await import('./study-workflow.js');
-            startStudyWorkflow().catch(err => {
-                console.error('Study workflow error:', err);
-            });
-        }, 100);
-    } else if (!shouldSkipTutorial()) {
-        // Dev Mode: Tutorial only
-        setTimeout(async () => {
-            if (!window._initialMessageDismissed) {
-                const { runInitialTutorial } = await import('./tutorial.js');
-                runInitialTutorial().catch(err => {
-                    console.error('Tutorial error:', err);
-                });
-            }
-        }, 100); // Small delay to let page settle
-    } else {
-        // Personal Mode: Skip everything - enable all features
-        if (!isStudyMode()) {
-            console.log('👤 Personal Mode: Tutorial skipped, app ready!');
-        }
-        // Enable all features that tutorial would normally disable
-        setTimeout(async () => {
-            const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-            enableAllTutorialRestrictedFeatures();
-        }, 100);
-    }
+    // Small delay to let page settle before starting workflows
+    setTimeout(async () => {
+        await initializeApp();
+        
+        console.log('═══════════════════════════════════════════════════════════');
+        console.log('✅ App ready');
+        console.log('═══════════════════════════════════════════════════════════');
+    }, 100);
     
     // Add event listeners
     document.getElementById('volcano').addEventListener('change', (e) => {
@@ -1378,6 +1461,60 @@ window.addEventListener('DOMContentLoaded', async () => {
                 // Mirror the play/pause button exactly - just toggle, no selection logic
                 togglePlayPause();
             }
+        }
+        
+        // Enter key handler - handles multiple actions based on context
+        if (event.key === 'Enter' || event.keyCode === 13) {
+            // Don't capture Enter in text inputs, textareas, or contenteditable elements
+            const isTextInput = event.target.tagName === 'INPUT' && event.target.type !== 'range' && event.target.type !== 'checkbox';
+            const isTextarea = event.target.tagName === 'TEXTAREA';
+            const isContentEditable = event.target.isContentEditable;
+            
+            // Don't handle Enter if user is typing in a field
+            if (isTextInput || isTextarea || isContentEditable) {
+                return; // Let browser handle Enter normally
+            }
+            
+            // Check if any modal is open - if so, let the modal handle Enter
+            const modalIds = ['welcomeModal', 'participantModal', 'preSurveyModal', 'postSurveyModal', 
+                             'activityLevelModal', 'awesfModal', 'endModal', 'beginAnalysisModal', 
+                             'missingStudyIdModal', 'completeConfirmationModal'];
+            const isModalOpen = modalIds.some(modalId => {
+                const modal = document.getElementById(modalId);
+                return modal && modal.style.display !== 'none';
+            });
+            
+            if (isModalOpen) {
+                return; // Let modal handle Enter
+            }
+            
+            // Priority 1: Check if "Begin Analysis" button is visible and enabled
+            const completeBtn = document.getElementById('completeBtn');
+            if (completeBtn && 
+                completeBtn.textContent === 'Begin Analysis' && 
+                !completeBtn.disabled &&
+                completeBtn.style.display !== 'none' &&
+                window.getComputedStyle(completeBtn).display !== 'none') {
+                event.preventDefault();
+                console.log('⌨️ Enter key pressed - triggering Begin Analysis button');
+                completeBtn.click();
+                return;
+            }
+            
+            // Priority 2: In Personal Mode, trigger fetch data if fetch button is enabled (only on first load)
+            if (isPersonalMode() && !hasPerformedFirstFetch) {
+                const fetchBtn = document.getElementById('startBtn');
+                if (fetchBtn && 
+                    !fetchBtn.disabled &&
+                    fetchBtn.style.display !== 'none' &&
+                    window.getComputedStyle(fetchBtn).display !== 'none') {
+                    event.preventDefault();
+                    console.log('⌨️ Enter key pressed - triggering fetch data (Personal Mode, first load)');
+                    fetchBtn.click();
+                    return;
+                }
+            }
+            
         }
     });
     
@@ -1705,6 +1842,13 @@ window.addEventListener('DOMContentLoaded', async () => {
         const { setRegionCreationEnabled } = await import('./audio-state.js');
         setRegionCreationEnabled(true);
         console.log('✅ Region creation ENABLED after Begin Analysis confirmation');
+        
+        // If a region has already been selected, show the "Add Region" button
+        // This puts the user in the mode where they can click 'r' to select that region
+        if (State.selectionStart !== null && State.selectionEnd !== null && !zoomState.isInRegion()) {
+            showAddRegionButton(State.selectionStart, State.selectionEnd);
+            console.log('🎯 Showing Add Region button for existing selection');
+        }
         
         // Disable volcano switching after confirmation
         const volcanoSelect = document.getElementById('volcano');
