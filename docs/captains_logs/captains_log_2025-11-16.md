@@ -2,6 +2,62 @@
 
 ---
 
+## 🎯 Region Zoom UX Improvements & Feature Selection Controls (v2.31)
+
+### Features & Fixes
+
+1. **Auto-Expand Region Panel on Zoom**
+   - When zooming to a region, that region's panel automatically expands
+   - All other region panels automatically collapse
+   - Works for both button clicks and keyboard shortcuts (1-9 keys)
+   - Provides immediate access to region features when zoomed in
+
+2. **Feature Selection Disabled When Zoomed Out**
+   - Feature selection mode is automatically disabled when zooming out
+   - Feature selection buttons are greyed out and disabled when zoomed out
+   - Cannot start feature selection when zoomed out (button clicks and keyboard shortcuts blocked)
+   - Tooltip shows "Zoom into region to select features" when disabled
+   - All region panels collapse when zooming out
+
+3. **Playhead Auto-Jump to Region Start**
+   - When zoomed into a region and playhead is outside region boundaries, pressing play/spacebar jumps to region start
+   - Works for both STOPPED and PAUSED states
+   - Ensures playback always starts from within the region when zoomed in
+
+4. **Feature Button Hover Text Improvements**
+   - "Click to re-select feature." hover text only shows when zoomed into a region
+   - Disabled when zoomed out (no hover text change)
+   - Disabled button text is darker (`#555` instead of `#999`) and fully opaque for better visibility
+
+### Key Changes
+- `js/region-tracker.js`:
+  - Added `expandRegionAndCollapseOthers()` function to manage panel expansion
+  - Added `collapseAllRegions()` function to close all panels
+  - Added `stopFrequencySelection()` function to disable feature selection mode
+  - Updated `zoomToRegion()` to auto-expand target region panel
+  - Updated `zoomToFull()` to collapse all panels and disable feature selection
+  - Updated `startFrequencySelection()` to prevent when zoomed out
+  - Updated feature button rendering to disable when zoomed out
+  - Updated hover effect to only work when zoomed in
+- `js/audio-player.js`:
+  - Added `getRegionStartIfOutside()` helper function
+  - Updated `togglePlayPause()` to jump to region start if playhead is outside region boundaries
+- `styles.css`:
+  - Added `.select-freq-btn.disabled` styles with darker text (`#555`) and full opacity
+
+### Benefits
+- ✅ Better UX - region panel opens automatically when zooming in
+- ✅ Prevents confusion - feature selection only available when zoomed in
+- ✅ Cleaner interface - all panels close when zooming out
+- ✅ Better playback behavior - playhead jumps to region start when needed
+- ✅ More visible disabled buttons - darker text for better readability
+- ✅ Consistent behavior - hover effects respect zoom state
+
+### Version
+v2.31 - Commit: "v2.31 Feat: Auto-expand region panels on zoom, disable feature selection when zoomed out, playhead jumps to region start"
+
+---
+
 ## 🎨 UI Polish: Brighter Delete Region Button (v2.30)
 
 ### UI Improvement

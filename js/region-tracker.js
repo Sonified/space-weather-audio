@@ -960,9 +960,87 @@ export function handleWaveformClick(event, canvas) {
 }
 
 /**
+ * Stop frequency selection mode
+ */
+function stopFrequencySelection() {
+    if (!isSelectingFrequency) return;
+    
+    isSelectingFrequency = false;
+    currentFrequencySelection = null;
+    
+    // Remove active state from button
+    const activeButton = document.querySelector('.select-freq-btn.active');
+    if (activeButton) {
+        activeButton.classList.remove('active');
+    }
+    
+    // Remove selection cursor from spectrogram
+    const canvas = document.getElementById('spectrogram');
+    if (canvas) {
+        canvas.classList.remove('selecting');
+        canvas.style.cursor = '';
+    }
+}
+
+/**
+ * Collapse all region panels
+ */
+function collapseAllRegions() {
+    const regions = getCurrentRegions();
+    
+    regions.forEach((region, index) => {
+        if (!region.expanded) return;
+        
+        const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+        if (!regionCard) return;
+        
+        const header = regionCard.querySelector('.region-header');
+        const details = regionCard.querySelector('.region-details');
+        if (!header || !details) return;
+        
+        region.expanded = false;
+        
+        header.classList.remove('expanded');
+        const currentHeight = details.scrollHeight;
+        details.style.maxHeight = currentHeight + 'px';
+        details.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+        void details.offsetHeight;
+        
+        requestAnimationFrame(() => {
+            if (!document.body || !document.body.isConnected) {
+                return;
+            }
+            details.style.maxHeight = '0px';
+            setTimeout(() => {
+                if (!document.body || !document.body.isConnected) {
+                    return;
+                }
+                details.classList.remove('expanded');
+                
+                // Update header to show description preview
+                const timeDisplay = header.querySelector('.region-time-display');
+                if (timeDisplay) {
+                    const firstDescription = region.features && region.features.length > 0 && region.features[0].notes && region.features[0].notes.trim()
+                        ? `<span class="region-description-preview">${region.features[0].notes}</span>` 
+                        : '';
+                    const timeText = `${formatTime(region.startTime)} – ${formatTime(region.stopTime)}`;
+                    timeDisplay.innerHTML = timeText + firstDescription;
+                }
+            }, 400);
+        });
+    });
+}
+
+/**
  * Start frequency selection mode for a specific feature
  */
 export function startFrequencySelection(regionIndex, featureIndex) {
+    // Prevent feature selection when zoomed out
+    if (!zoomState.isInRegion()) {
+        console.warn('⚠️ Cannot start feature selection: must be zoomed into a region');
+        return;
+    }
+    
     // console.log(`🎯 Starting frequency selection for region ${regionIndex}, feature ${featureIndex}`);
     
     isSelectingFrequency = true;
@@ -1426,10 +1504,11 @@ function renderFeatures(regionId, regionIndex) {
                 <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
             </select>
             
-            <button class="select-freq-btn ${!feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime ? 'pulse' : 'completed'}" 
+            <button class="select-freq-btn ${!zoomState.isInRegion() ? 'disabled' : (!feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime ? 'pulse' : 'completed')}" 
                     id="select-btn-${regionIndex}-${featureIndex}"
                     data-region-index="${regionIndex}" data-feature-index="${featureIndex}"
-                    title="${feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 'click to select' : ''}">
+                    ${!zoomState.isInRegion() ? 'disabled' : ''}
+                    title="${!zoomState.isInRegion() ? 'Zoom into region to select features' : (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 'click to select' : '')}">
                 ${feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 
                     formatFeatureButtonText(feature) :
                     'Select feature'
@@ -1461,8 +1540,26 @@ function renderFeatures(regionId, regionIndex) {
         });
         
         freqBtn.addEventListener('click', () => {
+            // Prevent click when zoomed out
+            if (!zoomState.isInRegion()) {
+                return;
+            }
             startFrequencySelection(regionIndex, featureIndex);
         });
+        
+        // Store original text and add hover effect (only when zoomed into a region)
+        const originalText = freqBtn.textContent;
+        if (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime && zoomState.isInRegion()) {
+            freqBtn.addEventListener('mouseenter', () => {
+                // Only show hover text when zoomed into a region
+                if (zoomState.isInRegion()) {
+                    freqBtn.textContent = 'Click to re-select feature.';
+                }
+            });
+            freqBtn.addEventListener('mouseleave', () => {
+                freqBtn.textContent = originalText;
+            });
+        }
         
         notesField.addEventListener('change', function() {
             updateFeature(regionIndex, featureIndex, 'notes', this.value);
@@ -1476,6 +1573,88 @@ function renderFeatures(regionId, regionIndex) {
         });
         
         container.appendChild(featureRow);
+    });
+}
+
+/**
+ * Expand a region and collapse all others
+ */
+function expandRegionAndCollapseOthers(targetIndex) {
+    const regions = getCurrentRegions();
+    
+    regions.forEach((region, index) => {
+        const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+        if (!regionCard) return;
+        
+        const header = regionCard.querySelector('.region-header');
+        const details = regionCard.querySelector('.region-details');
+        if (!header || !details) return;
+        
+        if (index === targetIndex) {
+            // Expand target region
+            if (!region.expanded) {
+                region.expanded = true;
+                
+                // Remove description preview immediately when expanding
+                const timeDisplay = header.querySelector('.region-time-display');
+                if (timeDisplay) {
+                    const timeText = `${formatTime(region.startTime)} – ${formatTime(region.stopTime)}`;
+                    timeDisplay.innerHTML = timeText;
+                }
+                
+                header.classList.add('expanded');
+                details.classList.add('expanded');
+                details.style.maxHeight = '0px';
+                details.style.transition = 'none';
+                void details.offsetHeight;
+                
+                requestAnimationFrame(() => {
+                    if (!document.body || !document.body.isConnected) {
+                        return;
+                    }
+                    const targetHeight = details.scrollHeight;
+                    details.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+                    details.style.maxHeight = targetHeight + 'px';
+                });
+            }
+            
+            // Re-render features to update button states (enabled/disabled based on zoom state)
+            renderFeatures(region.id, index);
+        } else {
+            // Collapse other regions
+            if (region.expanded) {
+                region.expanded = false;
+                
+                header.classList.remove('expanded');
+                const currentHeight = details.scrollHeight;
+                details.style.maxHeight = currentHeight + 'px';
+                details.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+                void details.offsetHeight;
+                
+                requestAnimationFrame(() => {
+                    if (!document.body || !document.body.isConnected) {
+                        return;
+                    }
+                    details.style.maxHeight = '0px';
+                    setTimeout(() => {
+                        if (!document.body || !document.body.isConnected) {
+                            return;
+                        }
+                        details.classList.remove('expanded');
+                        
+                        // Update header to show description preview
+                        const timeDisplay = header.querySelector('.region-time-display');
+                        if (timeDisplay) {
+                            const firstDescription = region.features && region.features.length > 0 && region.features[0].notes && region.features[0].notes.trim()
+                                ? `<span class="region-description-preview">${region.features[0].notes}</span>` 
+                                : '';
+                            const timeText = `${formatTime(region.startTime)} – ${formatTime(region.stopTime)}`;
+                            timeDisplay.innerHTML = timeText + firstDescription;
+                        }
+                    }, 400);
+                });
+            }
+        }
     });
 }
 
@@ -1549,6 +1728,9 @@ export function toggleRegion(index) {
             details.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
             details.style.maxHeight = targetHeight + 'px';
         });
+        
+        // Re-render features to update button states (enabled/disabled based on zoom state)
+        renderFeatures(region.id, index);
     }
 }
 
@@ -2147,6 +2329,9 @@ export function zoomToRegion(regionIndex) {
     
     setActiveRegion(regionIndex);
     
+    // Expand this region's panel and collapse all others
+    expandRegionAndCollapseOthers(regionIndex);
+    
     const newStartTime = zoomState.sampleToRealTimestamp(region.startSample);
     const newEndTime = zoomState.sampleToRealTimestamp(region.endSample);
     
@@ -2275,31 +2460,31 @@ export function zoomToFull() {
         return;
     }
     
-    console.log('🌍 Zooming to full view');
-    console.log('🔙 ZOOMING OUT TO FULL VIEW starting');
+    // console.log('🌍 Zooming to full view');
+    // console.log('🔙 ZOOMING OUT TO FULL VIEW starting');
     
-    console.log('🌍 ========== ZOOM OUT: Starting Full View Zoom ==========');
-    console.log('🏛️ Current state:', {
-        mode: zoomState.mode,
-        activeRegionId: zoomState.activeRegionId,
-        currentViewStartSample: zoomState.currentViewStartSample.toLocaleString(),
-        currentViewEndSample: zoomState.currentViewEndSample.toLocaleString()
-    });
+    // console.log('🌍 ========== ZOOM OUT: Starting Full View Zoom ==========');
+    // console.log('🏛️ Current state:', {
+    //     mode: zoomState.mode,
+    //     activeRegionId: zoomState.activeRegionId,
+    //     currentViewStartSample: zoomState.currentViewStartSample.toLocaleString(),
+    //     currentViewEndSample: zoomState.currentViewEndSample.toLocaleString()
+    // });
     
     // Print all features before zoom
     const regionsBefore = getCurrentRegions();
-    console.log('📦 All features before zoom out:');
-    regionsBefore.forEach((region, regionIndex) => {
-        console.log(`  Region ${regionIndex}:`);
-        region.features.forEach((feature, featureIndex) => {
-            console.log(`    Feature ${featureIndex}:`, {
-                lowFreq: feature.lowFreq,
-                highFreq: feature.highFreq,
-                startTime: feature.startTime,
-                endTime: feature.endTime
-            });
-        });
-    });
+    // console.log('📦 All features before zoom out:');
+    // regionsBefore.forEach((region, regionIndex) => {
+    //     console.log(`  Region ${regionIndex}:`);
+    //     region.features.forEach((feature, featureIndex) => {
+    //         console.log(`    Feature ${featureIndex}:`, {
+    //             lowFreq: feature.lowFreq,
+    //             highFreq: feature.highFreq,
+    //             startTime: feature.startTime,
+    //             endTime: feature.endTime
+    //         });
+    //     });
+    // });
     
     // 🔥 CRITICAL: Read current interpolated position BEFORE cancelling or updating zoomState
     // If transition is in progress, use CURRENT interpolated position (not the target)
@@ -2312,10 +2497,10 @@ export function zoomToFull() {
         const currentRange = getInterpolatedTimeRange();
         oldStartTime = currentRange.startTime;
         oldEndTime = currentRange.endTime;
-        console.log('🔄 Using current interpolated position as transition start (zoom out):', {
-            startTime: oldStartTime,
-            endTime: oldEndTime
-        });
+        // console.log('🔄 Using current interpolated position as transition start (zoom out):', {
+        //     startTime: oldStartTime,
+        //     endTime: oldEndTime
+        // });
     } else if (zoomState.isInRegion()) {
         const oldRange = zoomState.getRegionRange();
         oldStartTime = zoomState.sampleToRealTimestamp(oldRange.startSample);
@@ -2340,6 +2525,10 @@ export function zoomToFull() {
     zoomState.currentViewEndSample = zoomState.totalSamples;
     zoomState.activeRegionId = null;
     
+    // Collapse all region panels and disable feature selection mode
+    collapseAllRegions();
+    stopFrequencySelection();
+    
     // 🦋 Update worklet boundaries AFTER exiting temple
     // If activePlayingRegionIndex is set, boundaries will still be the region
     // Otherwise, boundaries will be full audio
@@ -2355,7 +2544,7 @@ export function zoomToFull() {
         // Restore cached full waveform to State.cachedWaveformCanvas
         // drawInterpolatedWaveform() will use this and stretch it during animation
         State.setCachedWaveformCanvas(State.cachedFullWaveformCanvas);
-        console.log('💾 Restored cached full waveform - ready for interpolation');
+        // console.log('💾 Restored cached full waveform - ready for interpolation');
     } else {
         // No cached full waveform - rebuild it (fallback)
         console.log('⚠️ No cached full waveform - rebuilding');
@@ -2374,31 +2563,31 @@ export function zoomToFull() {
     // 🏛️ Animate x-axis tick interpolation (smooth transition back to full view)
     // 🎬 Wait for animation to complete, THEN rebuild infinite canvas for full view
     animateZoomTransition(oldStartTime, oldEndTime, false).then(() => {
-        console.log('🎬 Zoom-out animation complete - restoring full view');
+        // console.log('🎬 Zoom-out animation complete - restoring full view');
         
-        console.log('🌍 ========== ZOOM OUT: Animation Complete ==========');
-        console.log('🏛️ Now in full view:', {
-            mode: zoomState.mode,
-            activeRegionId: zoomState.activeRegionId,
-            currentViewStartSample: zoomState.currentViewStartSample.toLocaleString(),
-            currentViewEndSample: zoomState.currentViewEndSample.toLocaleString()
-        });
+        // console.log('🌍 ========== ZOOM OUT: Animation Complete ==========');
+        // console.log('🏛️ Now in full view:', {
+        //     mode: zoomState.mode,
+        //     activeRegionId: zoomState.activeRegionId,
+        //     currentViewStartSample: zoomState.currentViewStartSample.toLocaleString(),
+        //     currentViewEndSample: zoomState.currentViewEndSample.toLocaleString()
+        // });
         
         // Print all features after zoom
         const regionsAfter = getCurrentRegions();
-        console.log('📦 All features after zoom out:');
-        regionsAfter.forEach((region, regionIndex) => {
-            console.log(`  Region ${regionIndex}:`);
-            region.features.forEach((feature, featureIndex) => {
-                console.log(`    Feature ${featureIndex}:`, {
-                    lowFreq: feature.lowFreq,
-                    highFreq: feature.highFreq,
-                    startTime: feature.startTime,
-                    endTime: feature.endTime
-                });
-            });
-        });
-        console.log('🌍 ========== END Zoom Out ==========\n');
+        // console.log('📦 All features after zoom out:');
+        // regionsAfter.forEach((region, regionIndex) => {
+        //     console.log(`  Region ${regionIndex}:`);
+        //     region.features.forEach((feature, featureIndex) => {
+        //         console.log(`    Feature ${featureIndex}:`, {
+        //             lowFreq: feature.lowFreq,
+        //             highFreq: feature.highFreq,
+        //             startTime: feature.startTime,
+        //             endTime: feature.endTime
+        //         });
+        //     });
+        // });
+        // console.log('🌍 ========== END Zoom Out ==========\n');
         
         // Update feature box positions after zoom transition completes
         import('./spectrogram-feature-boxes.js').then(module => {
@@ -2449,9 +2638,9 @@ export function zoomToFull() {
         }
     });
     
-    console.log('🌍 Returned to full view - flag lowered, free roaming restored! 🏛️');
-    console.log(`🔄 ZOOM MODE TOGGLE: temple mode → full view`);
-    console.log(`🏛️ Exiting the temple - returning to full view`);
+    // console.log('🌍 Returned to full view - flag lowered, free roaming restored! 🏛️');
+    // console.log(`🔄 ZOOM MODE TOGGLE: temple mode → full view`);
+    // console.log(`🏛️ Exiting the temple - returning to full view`);
 }
 
 // Export state getters for external access

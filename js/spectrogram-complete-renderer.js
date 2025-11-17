@@ -519,7 +519,7 @@ export function resetSpectrogramState() {
  * Used when zooming back to full view - no FFT needed!
  */
 export function restoreInfiniteCanvasFromCache() {
-    logInfiniteCanvasState('restoreInfiniteCanvasFromCache START');
+    // logInfiniteCanvasState('restoreInfiniteCanvasFromCache START');
     
     if (!cachedFullSpectrogramCanvas) {
         console.warn('⚠️ Cannot restore - no elastic friend cached!');
@@ -529,7 +529,7 @@ export function restoreInfiniteCanvasFromCache() {
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
     
-    console.log('🏠 Restoring infinite canvas from elastic friend (no FFT!)');
+    // console.log('🏠 Restoring infinite canvas from elastic friend (no FFT!)');
     
     const width = canvas.width;
     const height = canvas.height;
@@ -556,9 +556,9 @@ export function restoreInfiniteCanvasFromCache() {
     completeSpectrogramRendered = true;  // Mark spectrogram as rendered for animation system
     State.setSpectrogramInitialized(true);  // Ensure initialization flag is set
     
-    console.log('✅ Infinite canvas restored from cache - ready for stretching!');
+    // console.log('✅ Infinite canvas restored from cache - ready for stretching!');
     
-    logInfiniteCanvasState('restoreInfiniteCanvasFromCache COMPLETE - full view restored');
+    // logInfiniteCanvasState('restoreInfiniteCanvasFromCache COMPLETE - full view restored');
 }
 
 export function clearCompleteSpectrogram() {
@@ -669,7 +669,7 @@ export function cacheFullSpectrogram() {
 export function clearCachedFullSpectrogram() {
     // Don't clear during transitions - we need it!
     // Only clear on full cleanup
-    console.log('🏠 Keeping elastic friend around');
+    // console.log('🏠 Keeping elastic friend around');
 }
 
 /**
@@ -688,7 +688,7 @@ export function cacheZoomedSpectrogram() {
     cachedCtx.drawImage(infiniteSpectrogramCanvas, 0, 0);
     cachedZoomedSpectrogramCanvas = cachedCopy;
     
-    console.log('💾 Cached zoomed spectrogram');
+    // console.log('💾 Cached zoomed spectrogram');
 }
 
 /**

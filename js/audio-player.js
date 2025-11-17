@@ -129,6 +129,27 @@ export function pausePlayback() {
 
 // ===== SIMPLIFIED TOGGLEPLAYPAUSE =====
 
+/**
+ * Check if playhead is outside region boundaries when zoomed into a region
+ * Returns the region start position if outside, null if inside or not zoomed in
+ */
+function getRegionStartIfOutside() {
+    // Only check if zoomed into a region
+    if (!zoomState.isInRegion()) {
+        return null;
+    }
+    
+    const b = getCurrentPlaybackBoundaries();
+    const currentPos = State.currentAudioPosition;
+    
+    // Check if playhead is outside region boundaries
+    if (currentPos < b.start || currentPos > b.end) {
+        return b.start;
+    }
+    
+    return null;
+}
+
 export function togglePlayPause() {
     const currentState = `playbackState=${State.playbackState}, position=${State.currentAudioPosition?.toFixed(2) || 0}s`;
     if (DEBUG_LOOP_FADES) console.log(`🎵 Master play/pause button clicked - ${currentState}`);
@@ -137,6 +158,14 @@ export function togglePlayPause() {
     
     switch (State.playbackState) {
         case PlaybackState.STOPPED:
+            // Check if zoomed into region and playhead is outside
+            const regionStart = getRegionStartIfOutside();
+            if (regionStart !== null) {
+                console.log(`▶️ Playhead outside region, jumping to region start at ${regionStart.toFixed(2)}s`);
+                seekToPosition(regionStart, true);
+                break;
+            }
+            
             const startPosition = isAtBoundaryEnd() ? getRestartPosition() : State.currentAudioPosition;
             console.log(`▶️ Starting playback from ${startPosition.toFixed(2)}s`);
             seekToPosition(startPosition, true);
@@ -148,6 +177,14 @@ export function togglePlayPause() {
             break;
             
         case PlaybackState.PAUSED:
+            // Check if zoomed into region and playhead is outside
+            const regionStartPaused = getRegionStartIfOutside();
+            if (regionStartPaused !== null) {
+                console.log(`▶️ Playhead outside region, jumping to region start at ${regionStartPaused.toFixed(2)}s`);
+                seekToPosition(regionStartPaused, true);
+                break;
+            }
+            
             // Check if at end of current boundaries
             if (isAtBoundaryEnd()) {
                 const restartPos = getRestartPosition();

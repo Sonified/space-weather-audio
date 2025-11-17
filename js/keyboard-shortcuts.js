@@ -156,7 +156,7 @@ function handleKeyboardShortcut(event) {
         if (zoomState.isInRegion()) {
             event.preventDefault();
             zoomToFull();
-            console.log('🔙 Zoomed out to full view');
+            // console.log('🔙 Zoomed out to full view');
         }
         return;
     }
