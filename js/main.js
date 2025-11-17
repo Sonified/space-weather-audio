@@ -852,14 +852,38 @@ window.addEventListener('DOMContentLoaded', async () => {
     loadSavedVolcano();
     
     // Add event listeners
-    document.getElementById('volcano').addEventListener('change', enableFetchButton);
-    document.getElementById('dataType').addEventListener('change', enableFetchButton);
-    document.getElementById('station').addEventListener('change', enableFetchButton);
-    document.getElementById('duration').addEventListener('change', enableFetchButton);
-    document.getElementById('highpassFreq').addEventListener('change', enableFetchButton);
-    document.getElementById('enableNormalize').addEventListener('change', enableFetchButton);
-    document.getElementById('bypassCache').addEventListener('change', enableFetchButton);
-    document.getElementById('baseSampleRate').addEventListener('change', changeBaseSampleRate);
+    document.getElementById('volcano').addEventListener('change', (e) => {
+        enableFetchButton();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
+    document.getElementById('dataType').addEventListener('change', (e) => {
+        enableFetchButton();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
+    document.getElementById('station').addEventListener('change', (e) => {
+        enableFetchButton();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
+    document.getElementById('duration').addEventListener('change', (e) => {
+        enableFetchButton();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
+    document.getElementById('highpassFreq').addEventListener('change', (e) => {
+        enableFetchButton();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
+    document.getElementById('enableNormalize').addEventListener('change', (e) => {
+        enableFetchButton();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
+    document.getElementById('bypassCache').addEventListener('change', (e) => {
+        enableFetchButton();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
+    document.getElementById('baseSampleRate').addEventListener('change', (e) => {
+        changeBaseSampleRate();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
     
     updatePlaybackSpeed();
     
@@ -1075,15 +1099,24 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('downloadBtn').addEventListener('click', downloadAudio);
     
     // Station Selection
-    document.getElementById('volcano').addEventListener('change', loadStations);
-    document.getElementById('dataType').addEventListener('change', updateStationList);
+    document.getElementById('volcano').addEventListener('change', (e) => {
+        loadStations();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
+    document.getElementById('dataType').addEventListener('change', (e) => {
+        updateStationList();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
     
     // Data Fetching
     document.getElementById('startBtn').addEventListener('click', startStreaming);
     document.getElementById('forceIrisBtn').addEventListener('click', toggleForceIris);
     
     // Playback Controls
-    document.getElementById('playPauseBtn').addEventListener('click', togglePlayPause);
+    document.getElementById('playPauseBtn').addEventListener('click', (e) => {
+        togglePlayPause();
+        e.target.blur(); // Blur so spacebar can toggle play/pause
+    });
     document.getElementById('loopBtn').addEventListener('click', toggleLoop);
     document.getElementById('playbackSpeed').addEventListener('input', changePlaybackSpeed);
     document.getElementById('volumeSlider').addEventListener('input', changeVolume);

@@ -162,6 +162,9 @@ export async function changeFrequencyScale() {
     
     State.setFrequencyScale(value);
     
+    // Blur dropdown so spacebar can toggle play/pause
+    select.blur();
+    
     console.log(`📊 Frequency scale changed to: ${value}`);
     
     // If complete spectrogram is rendered, animate transition

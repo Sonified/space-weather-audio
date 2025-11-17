@@ -1091,12 +1091,14 @@ function createRegionCard(region, index) {
         addFeatureBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             addFeature(index);
+            e.target.blur(); // Blur so spacebar can toggle play/pause
         });
     }
     if (addFeatureLabel && !isMaxFeatures) {
         addFeatureLabel.addEventListener('click', (e) => {
             e.stopPropagation();
             addFeature(index);
+            e.target.blur(); // Blur so spacebar can toggle play/pause
         });
     }
     
@@ -1210,10 +1212,12 @@ function renderFeatures(regionId, regionIndex) {
         
         repetitionSelect.addEventListener('change', function() {
             updateFeature(regionIndex, featureIndex, 'repetition', this.value);
+            this.blur(); // Blur so spacebar can toggle play/pause
         });
         
         typeSelect.addEventListener('change', function() {
             updateFeature(regionIndex, featureIndex, 'type', this.value);
+            this.blur(); // Blur so spacebar can toggle play/pause
         });
         
         freqBtn.addEventListener('click', () => {

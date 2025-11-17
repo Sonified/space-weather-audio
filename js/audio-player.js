@@ -198,6 +198,9 @@ export function toggleLoop() {
     
     // Update worklet with new loop state
     updateWorkletSelection();
+    
+    // Blur button so spacebar can still toggle play/pause
+    btn.blur();
 }
 
 export function updateWorkletSelection() {
