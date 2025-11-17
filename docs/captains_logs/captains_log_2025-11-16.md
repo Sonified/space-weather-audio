@@ -2,6 +2,58 @@
 
 ---
 
+## 🐛 Canvas Play Button Fixes & Debug Cleanup (v2.23)
+
+### Problems Fixed
+1. **Canvas play button click detection misalignment** - Buttons were drawn using buttons canvas dimensions but click detection used waveform canvas dimensions, causing misalignment
+2. **Infinite RAF loop in zoom transition** - Zoom transition animation could get stuck in an infinite loop if transition didn't complete properly
+3. **Canvas play buttons not turning green** - Canvas play buttons weren't using the same logic as panel buttons, so they didn't turn green when clicked
+4. **Excessive debug logging** - Too many console logs cluttering the console
+
+### Solutions
+
+1. **Fixed Canvas Button Click Detection**:
+   - Updated `calculateButtonPositions()` to use buttons canvas dimensions instead of waveform canvas
+   - Updated `checkCanvasZoomButtonClick()` and `checkCanvasPlayButtonClick()` to scale CSS coordinates using buttons canvas dimensions
+   - Buttons canvas is always fresh and matches current display size, while waveform canvas can be stale during resize/zoom transitions
+
+2. **Fixed Infinite RAF Loop**:
+   - Added safety guards in `drawWaveformXAxis()` to prevent infinite loops:
+     - Validates `zoomTransitionStartTime` before use
+     - Max duration guard: stops if elapsed time exceeds 2x expected duration
+     - Proper cleanup when stuck
+   - Added timeout safety net in `animateZoomTransition()` to force cleanup if RAF loop doesn't complete
+   - Exposed `stopZoomTransition()` function to window for emergency console access
+
+3. **Canvas Play Buttons Match Panel Logic**:
+   - Imported `toggleRegionPlay` at top of `waveform-renderer.js` for synchronous access
+   - Changed canvas play button handlers from async `import().then()` to synchronous `toggleRegionPlay()` calls
+   - Canvas play buttons now turn green when clicked, matching panel button behavior
+
+4. **Debug Log Cleanup**:
+   - Commented out debug prints in `audio-player.js`, `audio-worklet.js`, `region-tracker.js`
+   - Commented out button render logs in `waveform-buttons-renderer.js`
+   - Commented out zoom transition logs in `waveform-x-axis-renderer.js`
+
+### Key Changes
+- `js/region-tracker.js` - Fixed button position calculation and click detection to use buttons canvas
+- `js/waveform-renderer.js` - Made canvas play buttons use synchronous `toggleRegionPlay()` calls
+- `js/waveform-x-axis-renderer.js` - Added safety guards for infinite RAF loop prevention
+- `js/waveform-buttons-renderer.js` - Commented out debug logs
+- `js/audio-player.js`, `workers/audio-worklet.js` - Commented out debug prints
+
+### Benefits
+- ✅ Canvas play buttons now clickable and aligned correctly
+- ✅ Canvas play buttons turn green when playing (matches panel buttons)
+- ✅ No more infinite RAF loops in zoom transitions
+- ✅ Cleaner console output
+- ✅ Emergency stop function available via `window.stopZoomTransition()`
+
+### Version
+v2.23 - Commit: "v2.23 Fix: Canvas play button click detection, infinite RAF loop fix, debug log cleanup"
+
+---
+
 ## ⏸️ Master Pause Region Button Fix (v2.22)
 
 ### Problem

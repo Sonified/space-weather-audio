@@ -8,7 +8,8 @@ import { PlaybackState } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
-import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions } from './region-tracker.js';
+import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay } from './region-tracker.js';
+import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
@@ -186,7 +187,8 @@ export function drawWaveformFromMinMax() {
             }
             
             // 🔥 Draw regions during crossfade so they stay visible throughout the transition
-            drawRegionHighlights(ctx, width, height);
+            drawRegionHighlights(ctx);
+            drawRegionButtons(); // Draw buttons on overlay canvas
             
             if (progress < 1.0) {
                 State.setCrossfadeAnimation(requestAnimationFrame(animate));
@@ -300,7 +302,8 @@ export function drawInterpolatedWaveform() {
     );
 
     // Draw region highlights on top (they use the same interpolated range)
-    drawRegionHighlights(ctx, width, height);
+    drawRegionHighlights(ctx);
+    drawRegionButtons(); // Draw buttons on overlay canvas
 
     // Draw playhead (also using interpolated time range for smooth positioning)
     if (State.currentAudioPosition !== null && State.totalAudioDuration > 0 && State.currentAudioPosition >= 0) {
@@ -329,11 +332,28 @@ export function drawWaveformWithSelection() {
     const canvas = document.getElementById('waveform');
     if (!canvas) return;
 
-    if (!State.cachedWaveformCanvas) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // 🔥 FIX: If cached canvas size doesn't match current canvas, regenerate NOW!
+    // This prevents stretching/squishing when canvas resizes but cache hasn't updated yet
+    if (State.cachedWaveformCanvas && 
+        (State.cachedWaveformCanvas.width !== width || 
+         State.cachedWaveformCanvas.height !== height)) {
+        console.log(`🔧 Cache size mismatch! Cached: ${State.cachedWaveformCanvas.width}×${State.cachedWaveformCanvas.height}, Current: ${width}×${height} - regenerating...`);
         
+        // Regenerate cached canvas at correct size immediately
+        if (State.waveformMinMaxData) {
+            drawWaveformFromMinMax();  // This updates State.cachedWaveformCanvas to match canvas size
+        } else {
+            // If no min/max data yet, clear cache to avoid drawing stretched canvas
+            State.cachedWaveformCanvas = null;
+        }
+    }
+
+    if (!State.cachedWaveformCanvas) {
+        // No cached canvas - draw playhead only if needed
         if (State.totalAudioDuration > 0 && State.currentAudioPosition >= 0) {
             // 🏛️ Use zoom-aware conversion
             let x;
@@ -356,15 +376,13 @@ export function drawWaveformWithSelection() {
         return;
     }
     
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-    
+    // Now proceed with drawing - cache is guaranteed to match canvas size
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(State.cachedWaveformCanvas, 0, 0);
+    ctx.drawImage(State.cachedWaveformCanvas, 0, 0);  // ✅ Sizes match now!
     
     // Draw region highlights (before selection box)
-    drawRegionHighlights(ctx, width, height);
+    drawRegionHighlights(ctx);
+    drawRegionButtons(); // Draw buttons on overlay canvas
     
     // Only draw yellow selection box if NOT playing an active region
     // When playing a region, we only want the blue region highlight, not the yellow selection box
@@ -464,7 +482,8 @@ export function setupWaveformInteraction() {
             ctx.drawImage(State.cachedWaveformCanvas, 0, 0);
             
             // Draw region highlights during scrub preview
-            drawRegionHighlights(ctx, canvas.width, canvasHeight);
+            drawRegionHighlights(ctx);
+            drawRegionButtons(); // Draw buttons on overlay canvas
         }
         
         ctx.globalAlpha = 0.6;
@@ -512,12 +531,30 @@ export function setupWaveformInteraction() {
         const startX = e.clientX - rect.left;
         const startY = e.clientY - rect.top;
         
+        // 🔍 DIAGNOSTIC: Log click context
+        const waveformCanvas = document.getElementById('waveform');
+        const buttonsCanvas = document.getElementById('waveform-buttons');
+        
+        console.log('🖱️ CLICK DIAGNOSTICS:');
+        console.log(`  Click position: (${startX.toFixed(1)}, ${startY.toFixed(1)}) CSS pixels`);
+        console.log(`  Click % across: ${((startX / rect.width) * 100).toFixed(1)}%`);
+        console.log(`  Waveform canvas: ${waveformCanvas.offsetWidth}px × ${waveformCanvas.offsetHeight}px (CSS)`);
+        console.log(`  Waveform canvas: ${waveformCanvas.width}px × ${waveformCanvas.height}px (device)`);
+        if (buttonsCanvas) {
+            console.log(`  Buttons canvas: ${buttonsCanvas.width}px × ${buttonsCanvas.height}px (device)`);
+        }
+        console.log(`  DPR: ${window.devicePixelRatio}`);
+        
         // 🔧 FIX: Check if click is on a canvas button BEFORE starting scrub preview
         // This prevents the white playhead from appearing when clicking buttons
         // BUT: Only check if we're not already dragging/selecting (to avoid false positives)
         if (!State.isDragging && !State.isSelecting && State.selectionStartX === null) {
-            const clickedZoomRegionIndex = checkCanvasZoomButtonClick(startX, startY, canvas.width, canvas.height);
-            const clickedPlayRegionIndex = checkCanvasPlayButtonClick(startX, startY, canvas.width, canvas.height);
+            const clickedZoomRegionIndex = checkCanvasZoomButtonClick(startX, startY);
+            const clickedPlayRegionIndex = checkCanvasPlayButtonClick(startX, startY);
+            
+            console.log(`  Zoom button hit: ${clickedZoomRegionIndex !== null ? `Region ${clickedZoomRegionIndex + 1}` : 'none'}`);
+            console.log(`  Play button hit: ${clickedPlayRegionIndex !== null ? `Region ${clickedPlayRegionIndex + 1}` : 'none'}`);
+            
             if (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null) {
                 // Clicked on a button - don't start dragging/scrub preview
                 // The button action will be handled in mouseup, but we prevent the scrub preview here
@@ -585,8 +622,8 @@ export function setupWaveformInteraction() {
         const rect = canvas.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
-        const clickedZoomRegionIndex = checkCanvasZoomButtonClick(clickX, clickY, canvas.width, canvas.height);
-        const clickedPlayRegionIndex = checkCanvasPlayButtonClick(clickX, clickY, canvas.width, canvas.height);
+        const clickedZoomRegionIndex = checkCanvasZoomButtonClick(clickX, clickY);
+        const clickedPlayRegionIndex = checkCanvasPlayButtonClick(clickX, clickY);
         
         if (clickedZoomRegionIndex !== null) {
             // Clicked on a zoom button - handle zoom
@@ -633,23 +670,17 @@ export function setupWaveformInteraction() {
             e.preventDefault();
             
             // Clear all selection/dragging state to allow new selections
-            // Do this synchronously BEFORE async import to ensure state is cleared immediately
             State.setIsDragging(false);
             State.setIsSelecting(false);
             State.setSelectionStartX(null);
             canvas.style.cursor = 'pointer';
             
-            // Import and call toggleRegionPlay (plays region from start, stops other regions)
-            import('./region-tracker.js').then(module => {
-                module.toggleRegionPlay(clickedPlayRegionIndex);
-            });
-            
-            // Redraw to update button states (play button colors will update via redraw)
-            // Don't wait for async - redraw immediately so button states update
-            drawWaveformWithSelection();
+            // ✅ Call toggleRegionPlay synchronously (same logic as panel buttons)
+            // This sets activePlayingRegionIndex and updates region.playing state
+            // toggleRegionPlay already calls drawWaveformWithSelection() which redraws buttons
+            toggleRegionPlay(clickedPlayRegionIndex);
             
             // Return early - don't process as normal waveform click
-            // State is already cleared above, so next mousedown will work normally
             return;
         }
         
@@ -666,8 +697,8 @@ export function setupWaveformInteraction() {
             // Only check for button click if it was a simple click (not a drag)
             if (!State.isSelecting && dragDistance < 5) {
                 // Already checked above, but keep this as fallback for edge cases
-                const checkZoomAgain = checkCanvasZoomButtonClick(endX, clickY, canvas.width, canvas.height);
-                const checkPlayAgain = checkCanvasPlayButtonClick(endX, clickY, canvas.width, canvas.height);
+                const checkZoomAgain = checkCanvasZoomButtonClick(endX, clickY);
+                const checkPlayAgain = checkCanvasPlayButtonClick(endX, clickY);
                 
                 if (checkZoomAgain !== null) {
                     // Clicked on a zoom button - handle zoom
@@ -705,7 +736,7 @@ export function setupWaveformInteraction() {
                 }
                 
                 if (checkPlayAgain !== null) {
-                    // Clicked on a play button - play region from start
+                    // Clicked on a play button - play region from start (mirrors panel play button)
                     e.stopPropagation();
                     e.preventDefault();
                     
@@ -714,11 +745,11 @@ export function setupWaveformInteraction() {
                     State.setIsSelecting(false);
                     State.setSelectionStartX(null);
                     
-                    import('./region-tracker.js').then(module => {
-                        module.toggleRegionPlay(checkPlayAgain);
-                    });
+                    // ✅ Call toggleRegionPlay synchronously (same logic as panel buttons)
+                    // This sets activePlayingRegionIndex and updates region.playing state
+                    // toggleRegionPlay already calls drawWaveformWithSelection() which redraws buttons
+                    toggleRegionPlay(checkPlayAgain);
                     
-                    drawWaveformWithSelection();
                     return; // Don't process as normal waveform click
                 }
             }
@@ -809,7 +840,8 @@ export function setupWaveformInteraction() {
                     ctx.drawImage(State.cachedWaveformCanvas, 0, 0);
                     
                     // Draw region highlights after clearing selection
-                    drawRegionHighlights(ctx, canvas.width, canvas.height);
+                    drawRegionHighlights(ctx);
+                    drawRegionButtons(); // Draw buttons on overlay canvas
                 }
                 
                 // 🏛️ Only reset region buttons if NOT inside a region (outside the temple)

@@ -171,7 +171,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     // Crossfade seek: fade out → jump → fade in
                     this.pendingSeekSample = targetSample;
                     this.startFade(-1, this.fadeTimeMs); // Fade out first
-                    if (DEBUG_MESSAGES) console.log(`🎯 WORKLET: Crossfade seek - fade out ${this.fadeTimeMs}ms, jump to ${targetSample}, fade in ${this.fadeTimeMs}ms`);
+                    // if (DEBUG_MESSAGES) console.log(`🎯 WORKLET: Crossfade seek - fade out ${this.fadeTimeMs}ms, jump to ${targetSample}, fade in ${this.fadeTimeMs}ms`);
                 } else {
                     // Instant seek: just jump (no fade needed when paused)
                     this.seekToPositionInstant(targetSample);
@@ -264,7 +264,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         // Cancel any pending seek (selection change takes priority)
         this.pendingSeekSample = null;
         
-        if (DEBUG_WORKLET) console.log('🎯 WORKLET SELECTION: Start=' + start + 's, End=' + end + 's, Loop=' + loop);
+        // if (DEBUG_WORKLET) console.log('🎯 WORKLET SELECTION: Start=' + start + 's, End=' + end + 's, Loop=' + loop);
     }
     
     // 🏎️ Instant seek (no fade) - used when paused or during crossfade completion
@@ -282,7 +282,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 this.readIndex = targetSample % this.maxBufferSize;
                 this.totalSamplesConsumed = targetSample;
                 
-                if (DEBUG_WORKLET) console.log(`⚡ INSTANT SEEK: Set readIndex to ${this.readIndex.toLocaleString()} for sample ${targetSample.toLocaleString()}`);
+                // if (DEBUG_WORKLET) console.log(`⚡ INSTANT SEEK: Set readIndex to ${this.readIndex.toLocaleString()} for sample ${targetSample.toLocaleString()}`);
                 
                 // Send position update
                 this.port.postMessage({
@@ -329,9 +329,9 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.fadeState.fadeStartGain = direction === -1 ? 1.0 : 0.0001;
         this.fadeState.fadeEndGain = direction === -1 ? 0.0001 : 1.0;
         
-        if (DEBUG_WORKLET) {
-            console.log(`🎚️ WORKLET FADE: ${direction === -1 ? 'OUT' : 'IN'} over ${durationMs}ms (${durationSamples} samples)`);
-        }
+        // if (DEBUG_WORKLET) {
+        //     console.log(`🎚️ WORKLET FADE: ${direction === -1 ? 'OUT' : 'IN'} over ${durationMs}ms (${durationSamples} samples)`);
+        // }
     }
     
     // ===== FILTER MODULES =====
@@ -789,7 +789,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                 const targetSample = this.pendingSeekSample;
                                 this.pendingSeekSample = null;
                                 this.justTeleported = true; // 🦋 "I just arrived via teleport!"
-                                if (DEBUG_WORKLET) console.log(`🎯 WORKLET: Fade-out complete, jumping to ${targetSample.toLocaleString()} and fading in`);
+                                // if (DEBUG_WORKLET) console.log(`🎯 WORKLET: Fade-out complete, jumping to ${targetSample.toLocaleString()} and fading in`);
                                 if (this.seekToPositionInstant(targetSample)) {
                                     // Jump successful - fade in if we're playing
                                     if (this.isPlaying) {
@@ -835,7 +835,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         } else {
                             // 🦋 FADE-IN COMPLETION: Clear the teleport flag!
                             this.justTeleported = false;
-                            if (DEBUG_WORKLET) console.log('✅ WORKLET: Fade-in complete, cleared justTeleported flag');
+                            // if (DEBUG_WORKLET) console.log('✅ WORKLET: Fade-in complete, cleared justTeleported flag');
                         }
                         // Fade-in completion: nothing special needed, just continue playing
                     }
@@ -947,7 +947,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                 const targetSample = this.pendingSeekSample;
                                 this.pendingSeekSample = null;
                                 this.justTeleported = true; // 🦋 "I just arrived via teleport!"
-                                if (DEBUG_WORKLET) console.log(`🎯 WORKLET: Fade-out complete, jumping to ${targetSample.toLocaleString()} and fading in`);
+                                // if (DEBUG_WORKLET) console.log(`🎯 WORKLET: Fade-out complete, jumping to ${targetSample.toLocaleString()} and fading in`);
                                 if (this.seekToPositionInstant(targetSample)) {
                                     // Jump successful - fade in if we're playing
                                     if (this.isPlaying) {
@@ -993,7 +993,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         } else {
                             // 🦋 FADE-IN COMPLETION: Clear the teleport flag!
                             this.justTeleported = false;
-                            if (DEBUG_WORKLET) console.log('✅ WORKLET: Fade-in complete, cleared justTeleported flag');
+                            // if (DEBUG_WORKLET) console.log('✅ WORKLET: Fade-in complete, cleared justTeleported flag');
                         }
                         // Fade-in completion: nothing special needed, just continue playing
                     }

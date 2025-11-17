@@ -19,6 +19,7 @@ import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
 import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache } from './spectrogram-complete-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
+import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 
 // Region data structure - stored per volcano
 // Map<volcanoName, regions[]>
@@ -27,15 +28,8 @@ let currentVolcano = null;
 let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
 
-// Store zoom button positions on canvas for click detection
-// Map<regionId, { x, y, width, height, regionIndex }>
-// These are populated during drawRegionHighlights() - we just use them here!
-let canvasZoomButtonPositions = new Map();
-
-// Store play button positions on canvas for click detection
-// Map<regionId, { x, y, width, height, regionIndex }>
-// These are populated during drawRegionHighlights() - we just use them here!
-let canvasPlayButtonPositions = new Map();
+// Button positions are recalculated on every click - no caching needed
+// This ensures positions are always fresh and immune to resize timing, DPR changes, etc.
 
 /**
  * Get the current volcano from the UI
@@ -99,9 +93,14 @@ export function switchVolcanoRegions(newVolcano) {
     activeRegionIndex = null;
     activePlayingRegionIndex = null;
     
-    // Clear canvas button positions when switching volcanoes
-    canvasZoomButtonPositions.clear();
-    canvasPlayButtonPositions.clear();
+    // Clear selection state when switching volcanoes (selections should NOT persist)
+    // Only regions are saved per volcano, not selections
+    State.setSelectionStart(null);
+    State.setSelectionEnd(null);
+    State.setSelectionStartX(null);
+    State.setIsSelecting(false);
+    hideAddRegionButton();
+    updateWorkletSelection(); // Clear selection in worklet
     
     // Update current volcano
     currentVolcano = newVolcano;
@@ -144,6 +143,9 @@ const maxFrequency = 50; // Hz - Nyquist frequency for 100 Hz sample rate
  */
 export function initRegionTracker() {
     console.log('🎯 Region tracker initialized');
+    
+    // Initialize buttons renderer (must be after all variables are defined)
+    initializeButtonsRenderer();
     
     // Initialize current volcano
     currentVolcano = getCurrentVolcano();
@@ -423,15 +425,40 @@ function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSecon
     drawWaveformWithSelection();
 }
 
+// Initialize buttons renderer - called after module loads to avoid circular dependencies
+// The init function will be called from initRegionTracker() to ensure all variables are initialized
+let buttonsRendererInitialized = false;
+function initializeButtonsRenderer() {
+    if (buttonsRendererInitialized) return;
+    initButtonsRenderer({
+        getCurrentRegions: () => getCurrentRegions(),
+        get activeRegionIndex() { return activeRegionIndex; },
+        get activePlayingRegionIndex() { return activePlayingRegionIndex; }
+    });
+    buttonsRendererInitialized = true;
+}
+
+// Buttons are now rendered in waveform-buttons-renderer.js
+// Re-export for backward compatibility
+export { drawRegionButtons, positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas } from './waveform-buttons-renderer.js';
+
 /**
- * Draw region highlights on waveform canvas
+ * Draw region highlights on waveform canvas (NO buttons - buttons are on separate overlay)
  * Called from waveform-renderer after drawing waveform
  * Uses EXACT same approach as yellow selection box
  */
-export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
+export function drawRegionHighlights(ctx) {
     if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
         return; // No data loaded yet
     }
+    
+    // Read FRESH dimensions from DOM (just like x-axis does!)
+    // Don't use stale parameters - they can be from minutes ago
+    const canvas = document.getElementById('waveform');
+    if (!canvas) return;
+    
+    const canvasWidth = canvas.width;   // Current device pixels
+    const canvasHeight = canvas.height; // Current device pixels
     
     const regions = getCurrentRegions();
     
@@ -541,254 +568,8 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
         ctx.lineTo(endX, canvasHeight);
         ctx.stroke();
         
-        // Draw region number - smoothly interpolate position during zoom transitions
-        // The number should "surf" the transition just like ticks and regions do! 🏄‍♂️
-        const regionNumber = index + 1; // 1-indexed for display
-        const paddingY = 6; // Padding from top edge
-        
-        // Calculate target positions (where number will be at start/end of transition)
-        const insidePosition = startX + 10; // Position inside, top-left corner
-        const outsidePosition = startX - 20; // Position outside, to the left
-        
-        let labelX;
-        if (isZoomTransitionInProgress()) {
-            // During transition, interpolate between old and new positions
-            const transitionProgress = getZoomTransitionProgress();
-            const oldRange = getOldTimeRange();
-            
-            if (oldRange) {
-                // Calculate old positions (where number WAS before zoom)
-                const regionStartTimestamp = zoomState.sampleToRealTimestamp(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds));
-                const regionEndTimestamp = zoomState.sampleToRealTimestamp(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds));
-                const oldStartMs = regionStartTimestamp.getTime();
-                const oldEndMs = regionEndTimestamp.getTime();
-                
-                const oldDisplayStartMs = oldRange.startTime.getTime();
-                const oldDisplayEndMs = oldRange.endTime.getTime();
-                const oldDisplaySpanMs = oldDisplayEndMs - oldDisplayStartMs;
-                
-                const oldStartProgress = (oldStartMs - oldDisplayStartMs) / oldDisplaySpanMs;
-                const oldEndProgress = (oldEndMs - oldDisplayStartMs) / oldDisplaySpanMs;
-                const oldStartX = oldStartProgress * canvasWidth;
-                const oldEndX = oldEndProgress * canvasWidth;
-                const oldWidth = oldEndX - oldStartX;
-                
-                // Calculate old position (inside vs outside based on old width)
-                const oldPosition = oldWidth < 30 ? (oldStartX - 20) : (oldStartX + 10);
-                
-                // Calculate NEW position (where number will be after transition completes)
-                // Need to calculate target width based on FINAL time range, not interpolated
-                let targetStartTime, targetEndTime;
-                if (zoomState.isInRegion()) {
-                    const regionRange = zoomState.getRegionRange();
-                    targetStartTime = zoomState.sampleToRealTimestamp(regionRange.startSample);
-                    targetEndTime = zoomState.sampleToRealTimestamp(regionRange.endSample);
-                } else {
-                    targetStartTime = State.dataStartTime;
-                    targetEndTime = State.dataEndTime;
-                }
-                
-                const targetStartMs = targetStartTime.getTime();
-                const targetEndMs = targetEndTime.getTime();
-                const targetSpanMs = targetEndMs - targetStartMs;
-                
-                const targetStartProgress = (oldStartMs - targetStartMs) / targetSpanMs;
-                const targetEndProgress = (oldEndMs - targetStartMs) / targetSpanMs;
-                const targetStartX = targetStartProgress * canvasWidth;
-                const targetEndX = targetEndProgress * canvasWidth;
-                const targetWidth = targetEndX - targetStartX;
-                
-                // Calculate new position (inside vs outside based on FINAL target width)
-                const newInsidePos = targetStartX + 10;
-                const newOutsidePos = targetStartX - 20;
-                const newPosition = targetWidth < 30 ? newOutsidePos : newInsidePos;
-                
-                // Smoothly interpolate between old and new positions
-                // Use ease-out cubic (same as other transitions)
-                const easedProgress = 1 - Math.pow(1 - transitionProgress, 3);
-                labelX = oldPosition + (newPosition - oldPosition) * easedProgress;
-            } else {
-                // Fallback if oldRange is null
-                labelX = highlightWidth < 30 ? outsidePosition : insidePosition;
-            }
-        } else {
-            // Not in transition - use simple threshold logic
-            labelX = highlightWidth < 30 ? outsidePosition : insidePosition;
-        }
-        const labelY = paddingY;
-        
-        // Calculate button sizes proportionally based on canvas size
-        // Reference sizes: 21x15 at 1200px canvas width (typical size)
-        // Scale proportionally to maintain aspect ratio
-        const referenceCanvasWidth = 1200;
-        const scaleFactor = Math.max(0.5, Math.min(1.5, canvasWidth / referenceCanvasWidth));
-        const baseButtonWidth = 21;
-        const baseButtonHeight = 15;
-        const buttonWidth = Math.round(baseButtonWidth * scaleFactor);
-        const buttonHeight = Math.round(baseButtonHeight * scaleFactor);
-        const buttonPadding = Math.round(4 * scaleFactor);
-        const numberTextSize = Math.round(20 * scaleFactor);
-        const numberTextHeight = numberTextSize;
-        const numberTextWidth = Math.round(18 * scaleFactor); // Approximate width of number text
-        
-        // Calculate total width needed (number + buttons + padding)
-        const totalButtonAreaWidth = numberTextWidth + buttonWidth + buttonPadding + buttonWidth + buttonPadding;
-        const isOnScreen = labelX + totalButtonAreaWidth > 0 && labelX < canvasWidth;
-        
-        if (isOnScreen) {
-            // Set text style - white with 80% opacity, scaled font size
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.font = `bold ${numberTextSize}px -apple-system, BlinkMacSystemFont, "Segoe UI"`;
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            
-            ctx.fillText(regionNumber.toString(), labelX, labelY);
-            
-            // Draw zoom button next to the number, aligned to middle-left (vertically centered with number)
-            const zoomButtonX = labelX + numberTextWidth; // Position button right after the number
-            const buttonY = labelY + (numberTextHeight - buttonHeight) / 2; // Center button vertically with number
-            
-            // Determine zoom button state (same as panel button)
-            const isZoomedIntoThisRegion = zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id;
-            const zoomButtonIcon = isZoomedIntoThisRegion ? '↩️' : '🔍';
-            
-            // Draw play button to the right of zoom button
-            const playButtonX = zoomButtonX + buttonWidth + buttonPadding;
-            
-            // Determine play button state (red when not playing this region, green when playing this region)
-            const isThisRegionPlaying = activePlayingRegionIndex === index;
-            const playGradient = isThisRegionPlaying
-                ? ['#34ce57', '#1e7e34'] // Green when playing (matches panel .playing)
-                : ['#d32f3f', '#a01d2a']; // Red when not playing (matches panel default)
-            
-            // Helper function to draw a button with 3D effect
-            const drawButton = (x, y, gradientColors, drawIcon) => {
-                ctx.save();
-                ctx.globalAlpha = 1.0;
-                
-                const radius = Math.max(2, Math.round(3 * scaleFactor));
-                
-                // Create gradient for button background
-                const gradient = ctx.createLinearGradient(x, y, x + buttonWidth, y + buttonHeight);
-                gradient.addColorStop(0, gradientColors[0]); // Top-left (lighter)
-                gradient.addColorStop(1, gradientColors[1]); // Bottom-right (darker)
-                
-                // Draw button background with gradient
-                ctx.beginPath();
-                ctx.moveTo(x + radius, y);
-                ctx.lineTo(x + buttonWidth - radius, y);
-                ctx.quadraticCurveTo(x + buttonWidth, y, x + buttonWidth, y + radius);
-                ctx.lineTo(x + buttonWidth, y + buttonHeight - radius);
-                ctx.quadraticCurveTo(x + buttonWidth, y + buttonHeight, x + buttonWidth - radius, y + buttonHeight);
-                ctx.lineTo(x + radius, y + buttonHeight);
-                ctx.quadraticCurveTo(x, y + buttonHeight, x, y + buttonHeight - radius);
-                ctx.lineTo(x, y + radius);
-                ctx.quadraticCurveTo(x, y, x + radius, y);
-                ctx.closePath();
-                ctx.fillStyle = gradient;
-                ctx.fill();
-                
-                // Draw border highlights (light on top/left, dark on bottom/right)
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(x + radius, y);
-                ctx.lineTo(x + buttonWidth - radius, y);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(x, y + radius);
-                ctx.lineTo(x, y + buttonHeight - radius);
-                ctx.stroke();
-                
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.beginPath();
-                ctx.moveTo(x + radius, y + buttonHeight);
-                ctx.lineTo(x + buttonWidth - radius, y + buttonHeight);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(x + buttonWidth, y + radius);
-                ctx.lineTo(x + buttonWidth, y + buttonHeight - radius);
-                ctx.stroke();
-                
-                // Draw inset highlights
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-                ctx.beginPath();
-                ctx.moveTo(x + radius, y);
-                ctx.lineTo(x + buttonWidth - radius, y);
-                ctx.lineTo(x + buttonWidth - radius, y + 1);
-                ctx.lineTo(x + radius, y + 1);
-                ctx.closePath();
-                ctx.fill();
-                
-                // Draw inset shadow
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-                ctx.beginPath();
-                ctx.moveTo(x + radius, y + buttonHeight - 1);
-                ctx.lineTo(x + buttonWidth - radius, y + buttonHeight - 1);
-                ctx.lineTo(x + buttonWidth - radius, y + buttonHeight);
-                ctx.lineTo(x + radius, y + buttonHeight);
-                ctx.closePath();
-                ctx.fill();
-                
-                // Draw icon (if provided)
-                if (drawIcon) {
-                    drawIcon(x, y);
-                }
-                
-                ctx.restore();
-            };
-            
-            // Draw zoom button with emoji icon
-            const zoomGradient = isZoomedIntoThisRegion 
-                ? ['#ff8c00', '#ff6600'] // Orange for return
-                : ['#2196F3', '#1565C0']; // Blue for zoom
-            drawButton(zoomButtonX, buttonY, zoomGradient, (x, y) => {
-                ctx.fillStyle = 'rgba(255, 255, 255, 1.0)';
-                const iconFontSize = Math.max(8, Math.round(12 * scaleFactor));
-                ctx.font = `${iconFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI"`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(zoomButtonIcon, x + buttonWidth / 2, y + buttonHeight / 2);
-            });
-            
-            // Draw play button with white triangle icon
-            drawButton(playButtonX, buttonY, playGradient, (x, y) => {
-                // Draw white triangle pointing right (centered in button)
-                const triangleSize = buttonWidth * 0.4;
-                const triangleX = x + buttonWidth / 2 - triangleSize / 2;
-                const triangleY = y + buttonHeight / 2;
-                
-                ctx.fillStyle = 'rgba(255, 255, 255, 1.0)'; // White triangle
-                ctx.beginPath();
-                ctx.moveTo(triangleX, triangleY - triangleSize / 2);
-                ctx.lineTo(triangleX + triangleSize, triangleY);
-                ctx.lineTo(triangleX, triangleY + triangleSize / 2);
-                ctx.closePath();
-                ctx.fill();
-            });
-            
-            // Store button positions for click detection (in device pixel coordinates)
-            // These will be recalculated on every render, so they're always current
-            canvasZoomButtonPositions.set(region.id, {
-                x: zoomButtonX,
-                y: buttonY,
-                width: buttonWidth,
-                height: buttonHeight,
-                regionIndex: index
-            });
-            
-            canvasPlayButtonPositions.set(region.id, {
-                x: playButtonX,
-                y: buttonY,
-                width: buttonWidth,
-                height: buttonHeight,
-                regionIndex: index
-            });
-        } else {
-            // Number is off screen, remove button positions
-            canvasZoomButtonPositions.delete(region.id);
-            canvasPlayButtonPositions.delete(region.id);
-        }
+        // Buttons and numbers are now drawn on separate overlay canvas (drawRegionButtons)
+        // This keeps them independent of cached waveform canvas state
     });
 }
 
@@ -936,11 +717,22 @@ export function drawSpectrogramSelection(ctx, canvasWidth, canvasHeight) {
 /**
  * Calculate button positions for a region (helper function used by both rendering and click detection)
  * Returns { zoomButton: {x, y, width, height}, playButton: {x, y, width, height}, labelX, labelY } or null if off-screen
+ * 
+ * Reads FRESH dimensions from DOM - never uses stale parameters
  */
-function calculateButtonPositions(region, index, canvasWidth, canvasHeight) {
+function calculateButtonPositions(region, index) {
     if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
         return null;
     }
+    
+    // ✅ Read FRESH dimensions from BUTTONS canvas (not waveform canvas!)
+    // Buttons canvas is always fresh and matches current display size
+    // Waveform canvas can be stale during resize/zoom transitions
+    const buttonsCanvas = document.getElementById('waveform-buttons');
+    if (!buttonsCanvas) return null;
+    
+    const canvasWidth = buttonsCanvas.width;   // Current device pixels from buttons canvas
+    const canvasHeight = buttonsCanvas.height; // Current device pixels from buttons canvas
     
     // Calculate region position (same logic as drawRegionHighlights)
     const dataStartMs = State.dataStartTime.getTime();
@@ -1031,17 +823,17 @@ function calculateButtonPositions(region, index, canvasWidth, canvasHeight) {
     }
     const labelY = paddingY;
     
-    // Calculate button sizes (same logic as drawRegionHighlights)
-    const referenceCanvasWidth = 1200;
-    const scaleFactor = Math.max(0.5, Math.min(1.5, canvasWidth / referenceCanvasWidth));
+    // Calculate button sizes (fixed CSS pixels, scaled for DPR only)
+    // Buttons are always 21×15 CSS pixels - no squishing on narrow canvases
+    const dpr = window.devicePixelRatio || 1;
     const baseButtonWidth = 21;
     const baseButtonHeight = 15;
-    const buttonWidth = Math.round(baseButtonWidth * scaleFactor);
-    const buttonHeight = Math.round(baseButtonHeight * scaleFactor);
-    const buttonPadding = Math.round(4 * scaleFactor);
-    const numberTextSize = Math.round(20 * scaleFactor);
+    const buttonWidth = baseButtonWidth * dpr;
+    const buttonHeight = baseButtonHeight * dpr;
+    const buttonPadding = 4 * dpr;
+    const numberTextSize = 20 * dpr;
     const numberTextHeight = numberTextSize;
-    const numberTextWidth = Math.round(18 * scaleFactor);
+    const numberTextWidth = 18 * dpr;
     
     // Check if on screen
     const totalButtonAreaWidth = numberTextWidth + buttonWidth + buttonPadding + buttonWidth + buttonPadding;
@@ -1076,25 +868,42 @@ function calculateButtonPositions(region, index, canvasWidth, canvasHeight) {
 
 /**
  * Check if click is on a canvas zoom button
- * x, y are in CSS pixels (from event coordinates)
- * canvasWidth, canvasHeight are in device pixels (from canvas.width/height)
+ * cssX, cssY are in CSS pixels (from event coordinates via getBoundingClientRect)
  * Returns region index if clicked, null otherwise
  * 
- * Uses button positions stored during drawRegionHighlights() rendering
+ * CRITICAL: Reads CURRENT dimensions from DOM on every click to avoid stale dimensions
+ * after resize. This ensures positions are always fresh and immune to resize timing,
+ * DPR changes, and async weirdness.
  */
-export function checkCanvasZoomButtonClick(x, y, canvasWidth, canvasHeight) {
-    // Convert CSS pixel coordinates to device pixel coordinates
-    // Button positions are stored in device pixel coordinates (same as canvas.width/height)
-    const dpr = window.devicePixelRatio || 1;
-    const scaledX = x * dpr;
-    const scaledY = y * dpr;
+export function checkCanvasZoomButtonClick(cssX, cssY) {
+    // ✅ Use BUTTONS canvas for click detection (matches where buttons are drawn!)
+    const buttonsCanvas = document.getElementById('waveform-buttons');
+    if (!buttonsCanvas) return null;
     
-    // Use positions stored during rendering - no recalculation needed!
-    // drawRegionHighlights() already updates these on every render
-    for (const [regionId, button] of canvasZoomButtonPositions.entries()) {
-        if (scaledX >= button.x && scaledX <= button.x + button.width &&
-            scaledY >= button.y && scaledY <= button.y + button.height) {
-            return button.regionIndex;
+    // Convert CSS pixels to device pixels using buttons canvas dimensions
+    // Buttons canvas width/height are in device pixels, so we need to scale CSS coords
+    const waveformCanvas = document.getElementById('waveform');
+    if (!waveformCanvas) return null;
+    
+    // Get CSS dimensions from waveform (for coordinate scaling)
+    const cssWidth = waveformCanvas.offsetWidth;
+    const cssHeight = waveformCanvas.offsetHeight;
+    
+    // Scale CSS coordinates to device coordinates using buttons canvas dimensions
+    const deviceX = (cssX / cssWidth) * buttonsCanvas.width;
+    const deviceY = (cssY / cssHeight) * buttonsCanvas.height;
+    
+    const regions = getCurrentRegions();
+    
+    // Recalculate positions for each region (reads dimensions fresh from DOM)
+    for (const [index, region] of regions.entries()) {
+        const buttonPos = calculateButtonPositions(region, index);
+        if (!buttonPos) continue; // Off-screen
+        
+        const btn = buttonPos.zoomButton;
+        if (deviceX >= btn.x && deviceX <= btn.x + btn.width &&
+            deviceY >= btn.y && deviceY <= btn.y + btn.height) {
+            return index;
         }
     }
     return null;
@@ -1102,25 +911,42 @@ export function checkCanvasZoomButtonClick(x, y, canvasWidth, canvasHeight) {
 
 /**
  * Check if click is on a canvas play button
- * x, y are in CSS pixels (from event coordinates)
- * canvasWidth, canvasHeight are in device pixels (from canvas.width/height)
+ * cssX, cssY are in CSS pixels (from event coordinates via getBoundingClientRect)
  * Returns region index if clicked, null otherwise
  * 
- * Uses button positions stored during drawRegionHighlights() rendering
+ * CRITICAL: Reads CURRENT dimensions from DOM on every click to avoid stale dimensions
+ * after resize. This ensures positions are always fresh and immune to resize timing,
+ * DPR changes, and async weirdness.
  */
-export function checkCanvasPlayButtonClick(x, y, canvasWidth, canvasHeight) {
-    // Convert CSS pixel coordinates to device pixel coordinates
-    // Button positions are stored in device pixel coordinates (same as canvas.width/height)
-    const dpr = window.devicePixelRatio || 1;
-    const scaledX = x * dpr;
-    const scaledY = y * dpr;
+export function checkCanvasPlayButtonClick(cssX, cssY) {
+    // ✅ Use BUTTONS canvas for click detection (matches where buttons are drawn!)
+    const buttonsCanvas = document.getElementById('waveform-buttons');
+    if (!buttonsCanvas) return null;
     
-    // Use positions stored during rendering - no recalculation needed!
-    // drawRegionHighlights() already updates these on every render
-    for (const [regionId, button] of canvasPlayButtonPositions.entries()) {
-        if (scaledX >= button.x && scaledX <= button.x + button.width &&
-            scaledY >= button.y && scaledY <= button.y + button.height) {
-            return button.regionIndex;
+    // Convert CSS pixels to device pixels using buttons canvas dimensions
+    // Buttons canvas width/height are in device pixels, so we need to scale CSS coords
+    const waveformCanvas = document.getElementById('waveform');
+    if (!waveformCanvas) return null;
+    
+    // Get CSS dimensions from waveform (for coordinate scaling)
+    const cssWidth = waveformCanvas.offsetWidth;
+    const cssHeight = waveformCanvas.offsetHeight;
+    
+    // Scale CSS coordinates to device coordinates using buttons canvas dimensions
+    const deviceX = (cssX / cssWidth) * buttonsCanvas.width;
+    const deviceY = (cssY / cssHeight) * buttonsCanvas.height;
+    
+    const regions = getCurrentRegions();
+    
+    // Recalculate positions for each region (reads dimensions fresh from DOM)
+    for (const [index, region] of regions.entries()) {
+        const buttonPos = calculateButtonPositions(region, index);
+        if (!buttonPos) continue; // Off-screen
+        
+        const btn = buttonPos.playButton;
+        if (deviceX >= btn.x && deviceX <= btn.x + btn.width &&
+            deviceY >= btn.y && deviceY <= btn.y + btn.height) {
+            return index;
         }
     }
     return null;
@@ -1741,7 +1567,7 @@ export function toggleRegionPlay(index) {
     const regions = getCurrentRegions();
     const region = regions[index];
     
-    console.log(`🎵 Region ${index + 1} play button clicked`);
+    // console.log(`🎵 Region ${index + 1} play button clicked`);
     
     // Reset old playing region button (if different)
     if (activePlayingRegionIndex !== null && activePlayingRegionIndex !== index) {
@@ -1779,7 +1605,7 @@ export function toggleRegionPlay(index) {
     // Redraw waveform to update canvas play button colors
     drawWaveformWithSelection();
     
-    console.log(`▶️ Region ${index + 1} playing from ${b.start.toFixed(2)}s`);
+    // console.log(`▶️ Region ${index + 1} playing from ${b.start.toFixed(2)}s`);
 }
 
 /**
@@ -1924,9 +1750,6 @@ export function clearActivePlayingRegion() {
  */
 export function clearActiveRegion() {
     activeRegionIndex = null;
-    // Clear canvas button positions when clearing active region
-    canvasZoomButtonPositions.clear();
-    canvasPlayButtonPositions.clear();
     // Trigger waveform redraw to update region highlights
     drawWaveformWithSelection();
 }
@@ -2078,12 +1901,6 @@ export function deleteRegion(index) {
     if (confirm('Delete this region?')) {
         const regions = getCurrentRegions();
         const deletedRegion = regions[index];
-        
-        // Remove button position for deleted region (before deleting from array)
-        if (deletedRegion) {
-            canvasZoomButtonPositions.delete(deletedRegion.id);
-            canvasPlayButtonPositions.delete(deletedRegion.id);
-        }
         
         regions.splice(index, 1);
         setCurrentRegions(regions);

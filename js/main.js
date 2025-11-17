@@ -9,7 +9,7 @@ const DEBUG_LOOP_FADES = true; // Enable loop fade logging
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef } from './audio-player.js';
-import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
+import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
 import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission } from './ui-controls.js';
@@ -21,6 +21,7 @@ import { initializeModals } from './modal-templates.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 
@@ -1008,6 +1009,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Handle window resize to reposition axis canvases - optimized for performance
     let resizeRAF = null;
     let waveformXAxisResizeTimer = null; // Timer for debouncing x-axis redraw on horizontal resize
+    let waveformResizeTimer = null; // Timer for debouncing waveform redraw on resize
     let lastWaveformXAxisWidth = null; // Track waveform canvas width for x-axis horizontal resize detection
     let lastSpectrogramWidth = 0;
     let lastSpectrogramHeight = 0;
@@ -1129,6 +1131,63 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
             }
             
+            // Handle buttons canvas resize
+            resizeWaveformButtonsCanvas();
+            
+            // Handle waveform canvas resize - trigger redraw to update button positions
+            if (waveformCanvas) {
+                const currentWidth = waveformCanvas.offsetWidth;
+                const currentHeight = waveformCanvas.offsetHeight;
+                
+                // Check if canvas dimensions changed
+                if (currentWidth !== lastWaveformWidth || currentHeight !== lastWaveformHeight) {
+                    // Update canvas internal dimensions (device pixels)
+                    const dpr = window.devicePixelRatio || 1;
+                    waveformCanvas.width = currentWidth * dpr;
+                    waveformCanvas.height = currentHeight * dpr;
+                    
+                    // CRITICAL: Redraw IMMEDIATELY to prevent squished buttons
+                    // during the debounce period. drawWaveformFromMinMax() is synchronous
+                    // and uses cached min/max data, so it's fast enough to do immediately.
+                    if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+                        if (State.waveformMinMaxData) {
+                            // Synchronous redraw from cached min/max data
+                            drawWaveformFromMinMax();
+                            drawWaveformWithSelection();
+                        } else {
+                            // If no min/max data yet, trigger async generation
+                            drawWaveform();
+                        }
+                    }
+                    
+                    // OPTIONAL: Still debounce a final high-quality redraw
+                    // (but the immediate redraw above prevents visual glitches)
+                    if (waveformResizeTimer !== null) {
+                        clearTimeout(waveformResizeTimer);
+                    }
+                    waveformResizeTimer = setTimeout(() => {
+                        // 🔥 FIX: Check document connection before DOM manipulation
+                        if (!document.body || !document.body.isConnected) {
+                            waveformResizeTimer = null;
+                            return;
+                        }
+                        
+                        // Final redraw (probably redundant, but ensures quality)
+                        if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+                            if (State.waveformMinMaxData) {
+                                drawWaveformFromMinMax();
+                                drawWaveformWithSelection();
+                            }
+                        }
+                        
+                        waveformResizeTimer = null;
+                    }, 100);
+                    
+                    lastWaveformWidth = currentWidth;
+                    lastWaveformHeight = currentHeight;
+                }
+            }
+            
             resizeRAF = null;
         });
     });
@@ -1144,6 +1203,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         drawWaveformXAxis();
         positionWaveformDateCanvas();
         drawWaveformDate();
+        positionWaveformButtonsCanvas();
+        drawRegionButtons();
         // Update dimensions after initial draw
         const spectrogramCanvas = document.getElementById('spectrogram');
         const waveformCanvas = document.getElementById('waveform');
@@ -1231,6 +1292,9 @@ window.addEventListener('DOMContentLoaded', async () => {
                     axisModule.cancelScaleTransitionRAF();
                     xAxisModule.cancelZoomTransitionRAF();
                 };
+            
+                // 🆘 EMERGENCY: Expose stop function to window for console access
+                window.stopZoomTransition = () => xAxisModule.stopZoomTransition();
             
                 window.addEventListener('beforeunload', cleanupOnUnload);
                 

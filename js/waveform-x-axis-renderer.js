@@ -100,11 +100,11 @@ export function drawWaveformXAxis() {
     
     // Validate time span
     if (!isFinite(actualTimeSpanSeconds) || actualTimeSpanSeconds <= 0) {
-        console.warn(`🕐 X-axis: Invalid time span ${actualTimeSpanSeconds}, skipping draw`);
+        // console.warn(`🕐 X-axis: Invalid time span ${actualTimeSpanSeconds}, skipping draw`);
         return;
     }
     
-    if (DEBUG_AXIS) console.log(`🕐 X-axis: Drawing with time span=${actualTimeSpanSeconds.toFixed(1)}s (${(actualTimeSpanSeconds/3600).toFixed(1)}h), canvas width=${canvasWidth}px`);
+    // if (DEBUG_AXIS) console.log(`🕐 X-axis: Drawing with time span=${actualTimeSpanSeconds.toFixed(1)}s (${(actualTimeSpanSeconds/3600).toFixed(1)}h), canvas width=${canvasWidth}px`);
     
     // Get CSS variables for styling
     const rootStyles = getComputedStyle(document.documentElement);
@@ -205,7 +205,28 @@ export function drawWaveformXAxis() {
     
     // 🏛️ Continue animation if in progress
     if (zoomTransitionInProgress) {
+        // 🔥 SAFETY: Ensure zoomTransitionStartTime is valid
+        if (!zoomTransitionStartTime) {
+            console.warn('⚠️ Zoom transition stuck: zoomTransitionStartTime is null, resetting');
+            zoomTransitionInProgress = false;
+            oldTimeRange = null;
+            zoomTransitionRAF = null;
+            return;
+        }
+        
         const elapsed = performance.now() - zoomTransitionStartTime;
+        
+        // 🔥 SAFETY: Prevent infinite loops - max duration is 2x expected duration
+        const MAX_DURATION = zoomTransitionDuration * 2;
+        if (elapsed > MAX_DURATION) {
+            console.warn(`⚠️ Zoom transition stuck: elapsed ${elapsed.toFixed(0)}ms exceeds max ${MAX_DURATION}ms, forcing stop`);
+            zoomTransitionInProgress = false;
+            oldTimeRange = null;
+            zoomTransitionRAF = null;
+            drawWaveformWithSelection();
+            return;
+        }
+        
         if (elapsed < zoomTransitionDuration) {
             zoomTransitionRAF = requestAnimationFrame(() => {
                 // 🔥 FIX: Check document connection before executing RAF callback
@@ -403,7 +424,7 @@ function calculateHourlyTicks(startUTC, endUTC) {
                 isDayCrossing: isDayCrossing
             });
         } else {
-            console.log(`🕐 Tick filtered out: ${currentTickLocal.toLocaleString()} (UTC: ${tickUTCForPosition.toISOString()}) not in range`);
+            // console.log(`🕐 Tick filtered out: ${currentTickLocal.toLocaleString()} (UTC: ${tickUTCForPosition.toISOString()}) not in range`);
         }
         
         previousTickDate = currentTickDate;
@@ -729,8 +750,18 @@ export function cancelZoomTransitionRAF() {
     if (zoomTransitionRAF !== null) {
         cancelAnimationFrame(zoomTransitionRAF);
         zoomTransitionRAF = null;
-        zoomTransitionInProgress = false;
     }
+    zoomTransitionInProgress = false;
+    oldTimeRange = null;
+}
+
+/**
+ * 🆘 EMERGENCY: Force stop any stuck zoom transition
+ * Can be called from browser console: window.stopZoomTransition()
+ */
+export function stopZoomTransition() {
+    console.warn('🆘 Emergency stop: Cancelling zoom transition');
+    cancelZoomTransitionRAF();
 }
 
 /**
@@ -853,6 +884,7 @@ export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion 
         // Cancel any existing transition
         if (zoomTransitionRAF) {
             cancelAnimationFrame(zoomTransitionRAF);
+            zoomTransitionRAF = null;
         }
 
         // Store old time range - we'll interpolate between old and new positions
@@ -867,13 +899,25 @@ export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion 
         // Start animation loop
         drawWaveformXAxis();
 
-        // Resolve after animation duration
-        setTimeout(() => {
-            zoomTransitionInProgress = false;
-            oldTimeRange = null;
-            zoomTransitionRAF = null;
+        // 🔥 SAFETY: Set a timeout to force cleanup if RAF loop doesn't complete
+        // This prevents infinite loops if something goes wrong
+        const cleanupTimeout = setTimeout(() => {
+            // Only force cleanup if transition is still in progress
+            if (zoomTransitionInProgress) {
+                console.warn(`⚠️ Zoom transition timeout: forcing cleanup after ${zoomTransitionDuration}ms`);
+                if (zoomTransitionRAF) {
+                    cancelAnimationFrame(zoomTransitionRAF);
+                }
+                zoomTransitionInProgress = false;
+                oldTimeRange = null;
+                zoomTransitionRAF = null;
+            }
             resolve();
-        }, zoomTransitionDuration);
+        }, zoomTransitionDuration + 100); // Add small buffer beyond expected duration
+        
+        // 🔥 Store timeout ID so we can cancel it if transition completes early
+        // (The RAF loop will complete the transition, so this is just a safety net)
+        // Note: We don't need to track this timeout ID since it's just a safety net
     });
 }
 

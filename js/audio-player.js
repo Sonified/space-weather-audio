@@ -196,9 +196,9 @@ export function updateWorkletSelection() {
         loop: b.loop
     });
     
-    if (DEBUG_LOOP_FADES) {
-        console.log(`📤 Sent to worklet: ${formatBoundaries(b)}`);
-    }
+    // if (DEBUG_LOOP_FADES) {
+    //     console.log(`📤 Sent to worklet: ${formatBoundaries(b)}`);
+    // }
 }
 
 export function updatePlaybackSpeed() {
@@ -288,7 +288,7 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
     const b = getCurrentPlaybackBoundaries();
     targetPosition = Math.max(b.start, Math.min(targetPosition, b.end));
     
-    if (DEBUG_LOOP_FADES) console.log(`🎯 Seeking to ${targetPosition.toFixed(2)}s (shouldStartPlayback=${shouldStartPlayback})`);
+    // if (DEBUG_LOOP_FADES) console.log(`🎯 Seeking to ${targetPosition.toFixed(2)}s (shouldStartPlayback=${shouldStartPlayback})`);
     
     // Set flag to prevent race condition in region finish detection
     State.setJustSeeked(true);
@@ -309,9 +309,9 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
             position: targetPosition  // Send position in seconds, worklet converts to samples
         });
         
-        if (DEBUG_LOOP_FADES) {
-            console.log(`🎯 SEEK: Position ${targetPosition.toFixed(2)}s (${targetSample.toLocaleString()} samples), wasPlaying=${wasPlaying}`);
-        }
+        // if (DEBUG_LOOP_FADES) {
+        //     console.log(`🎯 SEEK: Position ${targetPosition.toFixed(2)}s (${targetSample.toLocaleString()} samples), wasPlaying=${wasPlaying}`);
+        // }
         
         // Check audio flow after a delay for debugging
         if (DEBUG_LOOP_FADES) {
@@ -324,7 +324,7 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
                     for (let i = 0; i < dataArray.length; i++) {
                         if (Math.abs(dataArray[i]) > 0.001) nonZero++;
                     }
-                    console.log(`🔊 ANALYSER CHECK: ${nonZero}/${dataArray.length} non-zero samples in analyser`);
+                    // console.log(`🔊 ANALYSER CHECK: ${nonZero}/${dataArray.length} non-zero samples in analyser`);
                 }
             }, 15); // Check 15ms later
         }
