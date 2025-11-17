@@ -20,6 +20,7 @@ import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
 import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache } from './spectrogram-complete-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
+import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 
 // Region data structure - stored per volcano
 // Map<volcanoName, regions[]>
@@ -986,7 +987,7 @@ export function startFrequencySelection(regionIndex, featureIndex) {
  * Handle spectrogram frequency selection
  * Called when user completes a box selection on spectrogram
  */
-export function handleSpectrogramSelection(startY, endY, canvasHeight, startX, endX, canvasWidth) {
+export async function handleSpectrogramSelection(startY, endY, canvasHeight, startX, endX, canvasWidth) {
     if (!isSelectingFrequency || !currentFrequencySelection) {
         return;
     }
@@ -1052,6 +1053,12 @@ export function handleSpectrogramSelection(startY, endY, canvasHeight, startX, e
         }
         
         setCurrentRegions(regions);
+        
+        // 🎯 NEW: Add the selection box to the persistent tracker
+        const spectrogramRenderer = await import('./spectrogram-renderer.js');
+        if (spectrogramRenderer.spectrogramSelectionBox) {
+            addFeatureBox(regionIndex, featureIndex, spectrogramRenderer.spectrogramSelectionBox);
+        }
         
         // Re-render the feature
         renderFeatures(regions[regionIndex].id, regionIndex);
@@ -1852,6 +1859,9 @@ function deleteSpecificFeature(regionIndex, featureIndex) {
         console.log('Cannot delete - minimum 1 feature required or attempting to delete first feature');
         return;
     }
+    
+    // 🗑️ NEW: Remove the feature box from DOM
+    removeFeatureBox(regionIndex, featureIndex);
     
     region.features.splice(featureIndex, 1);
     region.featureCount = region.features.length;

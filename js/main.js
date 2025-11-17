@@ -859,6 +859,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.26 - Feature Persistence Proof of Concept');
+    console.log('📦 [0ms] v2.26 Proof of concept: Feature persistence - persistent DOM boxes on spectrogram using eternal coordinates');
     console.log('🌋 [0ms] volcano-audio v2.24 - X-Axis Tick Improvements & Cache Fix');
     console.log('🕐 [0ms] v2.24 Feat: Added 30-minute tick intervals for regions less than 6 hours');
     console.log('🔧 [0ms] v2.24 Fix: Clear waveform cache immediately on resize to prevent stretching');

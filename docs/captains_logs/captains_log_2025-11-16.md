@@ -2,6 +2,49 @@
 
 ---
 
+## 📦 Feature Persistence Proof of Concept (v2.26)
+
+### Feature
+Implemented persistent DOM feature boxes on the spectrogram that survive zoom/pan operations. Boxes are positioned using eternal coordinates (samples + frequencies) and dynamically reposition themselves based on the current view.
+
+### Architecture
+1. **New Module: `spectrogram-feature-boxes.js`**
+   - Manages persistent DOM boxes for all features
+   - Converts eternal coordinates (samples + Hz) to current pixel positions
+   - Updates box positions whenever zoom/pan/frequency scale changes
+   - Handles box creation, deletion, and cleanup
+
+2. **Box Lifecycle**
+   - Red selection box created during drag (existing behavior)
+   - Box converted to orange persistent feature box when selection completes
+   - Box repositioned dynamically during zoom/pan using eternal coordinates
+   - Box deleted when feature is deleted
+
+3. **Eternal Coordinates**
+   - Features store `lowFreq`, `highFreq`, `startTime`, `endTime` (already implemented)
+   - Box positions calculated from these coordinates on every view change
+   - Works with all frequency scales (linear, sqrt, logarithmic)
+   - Zoom-aware time positioning using `getInterpolatedTimeRange()`
+
+### Key Changes
+- `js/spectrogram-feature-boxes.js` - New module for managing persistent boxes
+- `js/spectrogram-renderer.js` - Export `spectrogramSelectionBox`, keep box instead of deleting
+- `js/region-tracker.js` - Add box to tracker after selection, remove when feature deleted
+- `js/spectrogram-complete-renderer.js` - Call `updateAllFeatureBoxPositions()` on view changes
+
+### Benefits
+- ✅ Red box persists after dragging (converts to orange)
+- ✅ Boxes reposition smoothly during zoom/pan
+- ✅ Boxes deleted when features are deleted
+- ✅ Uses eternal coordinates (samples + Hz) - no pixel position storage
+- ✅ Fully integrated with existing system
+- ✅ Reuses existing DOM box creation logic
+
+### Version
+v2.26 - Commit: "v2.26 Proof of concept: Feature persistence - persistent DOM boxes on spectrogram using eternal coordinates"
+
+---
+
 ## 🐛 Critical Bug Fixes: Region Rendering & Zoom Behavior (v2.25)
 
 ### Bugs Fixed

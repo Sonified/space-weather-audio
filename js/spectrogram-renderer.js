@@ -15,7 +15,7 @@ let spectrogramSelectionActive = false;
 let spectrogramStartX = null;
 let spectrogramStartY = null;
 let spectrogramEndY = null;
-let spectrogramSelectionBox = null;
+export let spectrogramSelectionBox = null;
 
 export function drawSpectrogram() {
     console.log(`📺 [spectrogram-renderer.js] drawSpectrogram CALLED`);
@@ -493,7 +493,7 @@ export function setupSpectrogramSelection() {
         spectrogramSelectionBox.style.height = height + 'px';
     });
     
-    const handleMouseUp = (e) => {
+    const handleMouseUp = async (e) => {
         if (!spectrogramSelectionActive) return;
         
         const rect = canvas.getBoundingClientRect();
@@ -501,13 +501,14 @@ export function setupSpectrogramSelection() {
         const endX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
         
         // Call region tracker handler with X positions for time tracking
-        handleSpectrogramSelection(spectrogramStartY, endY, canvas.height, spectrogramStartX, endX, canvas.width);
+        await handleSpectrogramSelection(spectrogramStartY, endY, canvas.height, spectrogramStartX, endX, canvas.width);
         
-        // Cleanup
-        if (spectrogramSelectionBox) {
-            spectrogramSelectionBox.remove();
-            spectrogramSelectionBox = null;
-        }
+        // DON'T delete the box - keep it and convert to persistent feature box!
+        // (Will be converted to orange in addFeatureBox)
+        // Note: spectrogramSelectionBox is exported so region-tracker.js can access it
+        // Reset the selection box variable so a new one can be created for the next selection
+        // (The box itself is now managed by spectrogram-feature-boxes.js)
+        spectrogramSelectionBox = null;
         spectrogramSelectionActive = false;
         spectrogramStartX = null;
         spectrogramStartY = null;
@@ -519,6 +520,7 @@ export function setupSpectrogramSelection() {
     // Handle escape key to cancel selection
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && spectrogramSelectionActive) {
+            // On escape, we DO want to remove the box (cancelled selection)
             if (spectrogramSelectionBox) {
                 spectrogramSelectionBox.remove();
                 spectrogramSelectionBox = null;

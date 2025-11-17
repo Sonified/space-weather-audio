@@ -1040,6 +1040,11 @@ export function updateSpectrogramViewport(playbackRate) {
     //     drawSpectrogramRegionHighlights(ctx, width, height);
     //     drawSpectrogramSelection(ctx, width, height);
     // }
+    
+    // Update feature boxes
+    import('./spectrogram-feature-boxes.js').then(module => {
+        module.updateAllFeatureBoxPositions();
+    });
 }
 
 /**
