@@ -2,6 +2,54 @@
 
 ---
 
+## ⌨️ Keyboard Shortcuts & Performance Optimizations (v2.28)
+
+### Features Added
+
+1. **Keyboard Shortcuts System**
+   - **New Module**: `js/keyboard-shortcuts.js` - Centralized keyboard shortcut handling
+   - **Number Keys (1-9)**: Zoom to region, or play region if already zoomed into it
+   - **'f' Key**: Create new feature or enable feature drawing (only when zoomed into a region)
+   - **'r' Key**: Confirm/add region from current waveform selection
+   - **'c' Key**: Switch to Linear frequency scale
+   - **'v' Key**: Switch to Square Root frequency scale
+   - **'b' Key**: Switch to Logarithmic frequency scale
+   - **Escape Key**: Zoom back out to full view (when zoomed into a region)
+   - **Smart Behavior**: Pressing same region number key again plays it from start
+   - **UI Updates**: Frequency scale dropdown shows keyboard shortcuts in parentheses (C, V, B)
+
+2. **Performance Optimizations**
+   - **Color LUT Caching**: Pre-computed color lookup table (256 levels) now computed once at module load and reused for all renders
+   - **Parallel Rendering**: Spectrogram rendering now starts immediately when frequency scale changes, running in parallel with axis tick animation
+   - **Faster Transitions**: Axis tick interpolation reduced from 1000ms to 400ms for snappier feel
+   - **Skip Duplicate Changes**: Frequency scale changes skip processing if already on that scale
+
+3. **Console Cleanup**
+   - Commented out verbose console logs for cleaner console output
+   - Removed progress percentage logs, batch completion logs, and rendering status logs
+
+### Key Changes
+- `js/keyboard-shortcuts.js` - New module for keyboard shortcuts
+- `js/main.js` - Initialize keyboard shortcuts on page load
+- `js/region-tracker.js` - Exported `createRegionFromSelectionTimes` for keyboard shortcut access
+- `js/spectrogram-renderer.js` - Skip duplicate frequency scale changes, start rendering in parallel with axis animation
+- `js/spectrogram-complete-renderer.js` - Cached color LUT, commented out verbose logs
+- `js/spectrogram-axis-renderer.js` - Reduced tick animation duration to 400ms
+- `js/spectrogram-worker-pool.js` - Commented out batch completion log
+- `index.html` - Updated frequency scale dropdown labels with keyboard shortcuts
+
+### Benefits
+- ✅ Faster workflow with keyboard shortcuts
+- ✅ Faster spectrogram rendering (color LUT cached)
+- ✅ Snappier frequency scale transitions
+- ✅ Cleaner console output
+- ✅ Better UX - shortcuts shown in dropdown labels
+
+### Version
+v2.28 - Commit: "v2.28 Feat: Keyboard shortcuts & performance optimizations - number keys for regions, f/r/c/v/b keys, cached color LUT, faster transitions"
+
+---
+
 ## 🔧 Feature Box Positioning & RAF Loop Fixes (v2.27)
 
 ### Bugs Fixed

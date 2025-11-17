@@ -154,6 +154,12 @@ export async function changeFrequencyScale() {
     const select = document.getElementById('frequencyScale');
     const value = select.value; // 'linear', 'sqrt', or 'logarithmic'
     
+    // If already on this scale, don't process again
+    if (State.frequencyScale === value) {
+        console.log(`📊 Already on ${value} scale - skipping change`);
+        return;
+    }
+    
     // Save to localStorage for persistence
     localStorage.setItem('frequencyScale', value);
     
@@ -177,15 +183,15 @@ export async function changeFrequencyScale() {
     
     // If complete spectrogram is rendered, animate transition
     if (isCompleteSpectrogramRendered()) {
-        console.log('✅ Animation path - have rendered spectrogram');
-        console.log('🎨 Animating scale transition...');
+        // console.log('✅ Animation path - have rendered spectrogram');
+        console.log('🎨 Starting scale transition (axis + spectrogram in parallel)...');
         
-        // Step 1: Animate axis ticks to new positions (1 second)
+        // Start axis animation immediately (don't wait for it)
         const { animateScaleTransition } = await import('./spectrogram-axis-renderer.js');
-        await animateScaleTransition(oldScale);
+        const axisAnimationPromise = animateScaleTransition(oldScale);
         
-        // Step 2: Fade transition to new spectrogram
-        console.log('🎨 Fading to new spectrogram...');
+        // Start spectrogram rendering immediately (in parallel with axis animation)
+        console.log('🎨 Starting spectrogram re-render...');
         
         // 🔥 PAUSE playhead updates during fade!
         const playbackWasActive = State.playbackState === State.PlaybackState.PLAYING;
@@ -215,16 +221,20 @@ export async function changeFrequencyScale() {
                 oldSpectrogram.height = height;
                 oldSpectrogram.getContext('2d').drawImage(canvas, 0, 0);
                 
-                // Re-render region with new frequency scale (in "background")
+                // Re-render region with new frequency scale (in "background") - start immediately!
                 const spectrogramModule = await import('./spectrogram-complete-renderer.js');
                 const { resetSpectrogramState } = spectrogramModule;
                 resetSpectrogramState(); // Clear state so it will re-render
                 
-                await spectrogramModule.renderCompleteSpectrogramForRegion(
+                // Start rendering immediately (don't await - let it run in parallel with axis animation)
+                const spectrogramRenderPromise = spectrogramModule.renderCompleteSpectrogramForRegion(
                     regionRange.startTime, 
                     regionRange.endTime, 
                     true  // Skip viewport update - we'll fade manually
                 );
+                
+                // Wait for spectrogram to finish rendering (may complete before or after axis animation)
+                await spectrogramRenderPromise;
                 
                 // Get the new spectrogram (without displaying it yet)
                 const { getSpectrogramViewport } = spectrogramModule;
@@ -311,8 +321,12 @@ export async function changeFrequencyScale() {
             const { resetSpectrogramState } = await import('./spectrogram-complete-renderer.js');
             resetSpectrogramState();
             
-            // Just render new spectrogram in background (skip viewport update)
-            await renderCompleteSpectrogram(true); // Skip viewport update - old stays visible!
+            // Just render new spectrogram in background (skip viewport update) - start immediately!
+            // This runs in parallel with the axis animation
+            const spectrogramRenderPromise = renderCompleteSpectrogram(true); // Skip viewport update - old stays visible!
+            
+            // Wait for spectrogram to finish rendering (may complete before or after axis animation)
+            await spectrogramRenderPromise;
             
             // Get the new spectrogram viewport without updating display canvas
             const { getSpectrogramViewport } = await import('./spectrogram-complete-renderer.js');
@@ -343,7 +357,7 @@ export async function changeFrequencyScale() {
             const fadeStart = performance.now();
             
             const fadeStep = () => {
-                console.log(`🎬 [spectrogram-renderer.js] changeFrequencyScale fadeStep: Drawing frame`);
+                // console.log(`🎬 [spectrogram-renderer.js] changeFrequencyScale fadeStep: Drawing frame`);
                 // 🔥 FIX: Check document connection before executing RAF callback
                 // This prevents RAF callbacks from retaining references to detached documents
                 if (!document.body || !document.body.isConnected) {

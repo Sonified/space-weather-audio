@@ -145,6 +145,31 @@ export function stopMemoryMonitoring() {
 /**
  * Convert HSL to RGB
  */
+// Pre-computed color LUT (computed once, reused for all renders)
+// Maps 256 intensity levels to RGB values using HSL color space
+let colorLUT = null;
+
+function initializeColorLUT() {
+    if (colorLUT !== null) return; // Already initialized
+    
+    colorLUT = new Uint8ClampedArray(256 * 3);
+    for (let i = 0; i < 256; i++) {
+        const normalized = i / 255;
+        const hue = normalized * 60;
+        const saturation = 100;
+        const lightness = 10 + (normalized * 60);
+        
+        const rgb = hslToRgb(hue, saturation, lightness);
+        colorLUT[i * 3] = rgb[0];
+        colorLUT[i * 3 + 1] = rgb[1];
+        colorLUT[i * 3 + 2] = rgb[2];
+    }
+    console.log(`🎨 Pre-computed color LUT (256 levels) - cached for reuse`);
+}
+
+// Initialize color LUT on module load
+initializeColorLUT();
+
 function hslToRgb(h, s, l) {
     h = h / 360;
     s = s / 100;
@@ -180,7 +205,7 @@ function hslToRgb(h, s, l) {
  */
 export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
     console.log(`🎨 [spectrogram-complete-renderer.js] renderCompleteSpectrogram CALLED: skipViewportUpdate=${skipViewportUpdate}`);
-    console.trace('📍 Call stack:');
+    // console.trace('📍 Call stack:');
     
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         console.log('⚠️ Cannot render complete spectrogram - no audio data available');
@@ -253,7 +278,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
         const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
         
-        console.log(`🔧 FFT size: ${fftSize}, Hop size: ${hopSize.toLocaleString()}, Time slices: ${numTimeSlices.toLocaleString()} (optimized for ${width}px width)`);
+        // console.log(`🔧 FFT size: ${fftSize}, Hop size: ${hopSize.toLocaleString()}, Time slices: ${numTimeSlices.toLocaleString()} (optimized for ${width}px width)`);
         
         // Pre-compute Hann window
         const window = new Float32Array(fftSize);
@@ -297,21 +322,8 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         const imageData = ctx.createImageData(width, height);
         const pixels = imageData.data;
         
-        // Pre-compute color lookup table
-        const colorLUT = new Uint8ClampedArray(256 * 3);
-        for (let i = 0; i < 256; i++) {
-            const normalized = i / 255;
-            const hue = normalized * 60;
-            const saturation = 100;
-            const lightness = 10 + (normalized * 60);
-            
-            const rgb = hslToRgb(hue, saturation, lightness);
-            colorLUT[i * 3] = rgb[0];
-            colorLUT[i * 3 + 1] = rgb[1];
-            colorLUT[i * 3 + 2] = rgb[2];
-        }
-        
-        console.log(`🎨 Pre-computed color LUT (256 levels)`);
+        // Use pre-computed color LUT (computed once at module load)
+        // No need to recompute - it's constant!
         
         const pixelsPerSlice = width / numTimeSlices;
         
@@ -324,7 +336,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
             batches.push({ start: batchStart, end: batchEnd });
         }
         
-        console.log(`📦 Processing ${numTimeSlices} slices in ${batches.length} batches across worker pool`);
+        // console.log(`📦 Processing ${numTimeSlices} slices in ${batches.length} batches across worker pool`);
         
         // Function to draw results from worker
         const drawResults = (results, progress, workerIndex) => {
@@ -362,7 +374,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
                 result.magnitudes = null;
             }
             
-            console.log(`⏳ Spectrogram rendering: ${progress}% (worker ${workerIndex})`);
+            // console.log(`⏳ Spectrogram rendering: ${progress}% (worker ${workerIndex})`);
         };
         
         // Process all batches in parallel
@@ -376,7 +388,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         );
         
         // Write ImageData to temp canvas (neutral 450px render)
-        console.log(`🎨 Writing ImageData to neutral render canvas...`);
+        // console.log(`🎨 Writing ImageData to neutral render canvas...`);
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = width;
         tempCanvas.height = height;
@@ -395,8 +407,8 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         
         infiniteCtx.drawImage(tempCanvas, 0, infiniteHeight - height);
         
-        console.log(`🌊 Created infinite canvas: ${width} × ${infiniteHeight}px`);
-        console.log(`   Placed neutral ${width} × ${height}px render at bottom`);
+        // console.log(`🌊 Created infinite canvas: ${width} × ${infiniteHeight}px`);
+        // console.log(`   Placed neutral ${width} × ${height}px render at bottom`);
         
         // Record the context
         infiniteCanvasContext = {
@@ -404,18 +416,18 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
             endSample: totalSamples,
             frequencyScale: State.frequencyScale
         };
-        console.log(`🏛️ New self created: Full view (0-${totalSamples.toLocaleString()}), scale=${State.frequencyScale}`);
+        // console.log(`🏛️ New self created: Full view (0-${totalSamples.toLocaleString()}), scale=${State.frequencyScale}`);
         
         // 🏠 STORE AS ELASTIC FRIEND (our source of truth for transitions!)
         cachedFullSpectrogramCanvas = tempCanvas;
         
-        logInfiniteCanvasState('renderCompleteSpectrogram COMPLETE - infinite canvas created');
+        // logInfiniteCanvasState('renderCompleteSpectrogram COMPLETE - infinite canvas created');
         
         const elapsed = performance.now() - startTime;
-        console.log(`✅ Complete spectrogram rendered in ${elapsed.toFixed(0)}ms`);
-        console.log(`🏠 Elastic friend ready for duty!`);
+        // console.log(`✅ Complete spectrogram rendered in ${elapsed.toFixed(0)}ms`);
+        // console.log(`🏠 Elastic friend ready for duty!`);
         
-        logMemory('After FFT completion');
+        // logMemory('After FFT completion');
         
         completeSpectrogramRendered = true;
         State.setSpectrogramInitialized(true);
@@ -455,8 +467,8 @@ function clearInfiniteCanvas() {
         frequencyScale: null
     };
     
-    console.log('🧹 Infinite canvas cleared - ready for new self');
-    logInfiniteCanvasState('clearInfiniteCanvas COMPLETE');
+    // console.log('🧹 Infinite canvas cleared - ready for new self');
+    // logInfiniteCanvasState('clearInfiniteCanvas COMPLETE');
 }
 
 /**
@@ -959,7 +971,7 @@ export function updateSpectrogramViewport(playbackRate) {
         return;
     }
     
-    console.log(`🎨 updateSpectrogramViewport: stretching with playbackRate=${playbackRate}, frequencyScale=${State.frequencyScale}`);
+    // console.log(`🎨 updateSpectrogramViewport: stretching with playbackRate=${playbackRate}, frequencyScale=${State.frequencyScale}`);
     
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
@@ -1105,7 +1117,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
         const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
         
-        console.log(`🔧 FFT size: ${fftSize}, Hop size: ${hopSize.toLocaleString()}, Time slices: ${numTimeSlices.toLocaleString()}`);
+        // console.log(`🔧 FFT size: ${fftSize}, Hop size: ${hopSize.toLocaleString()}, Time slices: ${numTimeSlices.toLocaleString()}`);
         
         // Pre-compute Hann window
         const window = new Float32Array(fftSize);
@@ -1149,18 +1161,8 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         const imageData = ctx.createImageData(width, height);
         const pixels = imageData.data;
         
-        // Pre-compute color LUT
-        const colorLUT = new Uint8ClampedArray(256 * 3);
-        for (let i = 0; i < 256; i++) {
-            const normalized = i / 255;
-            const hue = normalized * 60;
-            const saturation = 100;
-            const lightness = 10 + (normalized * 60);
-            const rgb = hslToRgb(hue, saturation, lightness);
-            colorLUT[i * 3] = rgb[0];
-            colorLUT[i * 3 + 1] = rgb[1];
-            colorLUT[i * 3 + 2] = rgb[2];
-        }
+        // Use pre-computed color LUT (computed once at module load)
+        // No need to recompute - it's constant!
         
         // Create batches
         const batchSize = 50;
@@ -1217,7 +1219,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         );
         
         // Write ImageData to temp canvas
-        console.log(`🎨 Writing ImageData to neutral render canvas...`);
+        // console.log(`🎨 Writing ImageData to neutral render canvas...`);
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = width;
         tempCanvas.height = height;
@@ -1236,8 +1238,8 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         
         infiniteCtx.drawImage(tempCanvas, 0, infiniteHeight - height);
         
-        console.log(`🌊 Temple infinite canvas: ${width} × ${infiniteHeight}px`);
-        console.log(`   Placed neutral ${width} × ${height}px render at bottom`);
+        // console.log(`🌊 Temple infinite canvas: ${width} × ${infiniteHeight}px`);
+        // console.log(`   Placed neutral ${width} × ${height}px render at bottom`);
         
         // Record context
         infiniteCanvasContext = {

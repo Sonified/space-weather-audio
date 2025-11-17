@@ -313,7 +313,7 @@ export function removeAddRegionButton() {
 /**
  * Create region from waveform selection times
  */
-function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSeconds) {
+export function createRegionFromSelectionTimes(selectionStartSeconds, selectionEndSeconds) {
     if (!State.dataStartTime || !State.dataEndTime) return;
     
     // 🏛️ Check if zoom state is initialized (required for sample calculations)

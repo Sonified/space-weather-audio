@@ -24,6 +24,7 @@ import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAx
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
+import { initKeyboardShortcuts } from './keyboard-shortcuts.js';
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 // See data-fetcher.js for centralized flags documentation
@@ -859,6 +860,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.28 - Keyboard Shortcuts & Performance Optimizations');
+    console.log('⌨️ [0ms] v2.28 Feat: Added keyboard shortcuts - number keys (1-9) zoom/play regions, f key for features, r key to confirm region, c/v/b for frequency scales, Escape to zoom out');
+    console.log('⚡ [0ms] v2.28 Perf: Optimized color LUT - computed once and cached for reuse, faster spectrogram rendering');
+    console.log('⚡ [0ms] v2.28 Perf: Faster frequency scale transitions - axis ticks 400ms, spectrogram rendering starts immediately in parallel');
+    console.log('🧹 [0ms] v2.28 Cleanup: Commented out verbose console logs for cleaner console output');
     console.log('🌋 [0ms] volcano-audio v2.27 - Feature Box Positioning & RAF Loop Fixes');
     console.log('🔧 [0ms] v2.27 Fix: Feature box positioning - use direct zoom state instead of interpolated time range');
     console.log('🔧 [0ms] v2.27 Fix: Infinite RAF loop - prevent multiple RAF loops when drawWaveformXAxis called from multiple places');
@@ -900,6 +906,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Setup spectrogram frequency selection
     setupSpectrogramSelection();
+    
+    // Initialize keyboard shortcuts
+    initKeyboardShortcuts();
     
     // Initialize admin mode (applies user mode by default)
     initAdminMode();

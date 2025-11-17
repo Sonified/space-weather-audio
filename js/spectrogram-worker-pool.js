@@ -66,7 +66,7 @@ export class SpectrogramWorkerPool {
         const totalBatches = batches.length;
         const completionTracker = { completed: 0 }; // Shared object for tracking
         
-        console.log(`📦 Distributing ${totalBatches} batches across ${this.numWorkers} workers`);
+        // console.log(`📦 Distributing ${totalBatches} batches across ${this.numWorkers} workers`);
         
         // Create promises for all batches
         const batchPromises = batches.map((batch, batchIndex) => {
@@ -96,7 +96,7 @@ export class SpectrogramWorkerPool {
         // Wait for all batches to complete
         const allResults = await Promise.all(batchPromises);
         
-        console.log(`✅ All ${totalBatches} batches completed across ${this.numWorkers} workers`);
+        // console.log(`✅ All ${totalBatches} batches completed across ${this.numWorkers} workers`);
         
         return allResults;
     }

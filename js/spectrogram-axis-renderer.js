@@ -12,7 +12,7 @@ const SMOOTHING_FACTOR = 0.15; // Light smoothing (0 = no smoothing, 1 = full sm
 // Scale transition animation state
 let scaleTransitionInProgress = false;
 let scaleTransitionStartTime = null;
-let scaleTransitionDuration = 1000; // 1 second
+let scaleTransitionDuration = 400; // 400ms - balanced transition speed
 let oldScaleType = null;
 let scaleTransitionRAF = null;
 
@@ -568,7 +568,7 @@ export function initializeAxisPlaybackRate() {
 
 /**
  * Start scale transition animation
- * Animates axis ticks from old scale to new scale over 1 second
+ * Animates axis ticks from old scale to new scale over 400ms
  * @param {string} oldScale - Previous scale type ('linear', 'sqrt', 'logarithmic')
  * @returns {Promise} Resolves when animation completes
  */
