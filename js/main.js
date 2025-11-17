@@ -25,6 +25,7 @@ import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionB
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts } from './keyboard-shortcuts.js';
+import { setStatusText, appendStatusText } from './tutorial.js';
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 // See data-fetcher.js for centralized flags documentation
@@ -227,8 +228,7 @@ export async function initAudioWorklet() {
             playBtn.textContent = '▶️ Resume';
             playBtn.classList.remove('pause-active');
             playBtn.classList.add('play-active', 'pulse-resume');
-            document.getElementById('status').className = 'status';
-            document.getElementById('status').textContent = '⏸️ Paused at selection end';
+            // Status message removed - no need to show "Paused at selection end"
             
             drawWaveformWithSelection();
         } else if (type === 'buffer-status') {
@@ -384,8 +384,7 @@ export async function initAudioWorklet() {
                 playBtn.disabled = false;
                 playBtn.textContent = '▶️ Play';
                 playBtn.classList.add('pulse-play');
-                document.getElementById('status').className = 'status success';
-                document.getElementById('status').textContent = '✅ Playback finished! Click Play to replay or enable Loop.';
+                setStatusText('✅ Playback finished! Click Play to replay or enable Loop.', 'status success');
             }
         }
     };
@@ -695,6 +694,23 @@ export async function startStreaming(event) {
         State.setIsFetchingNewData(true);
         State.setSpectrogramInitialized(false);
         
+        // Clear encouragement timeout if it exists (user is fetching data)
+        if (window._encouragementTimeout) {
+            clearTimeout(window._encouragementTimeout);
+            window._encouragementTimeout = null;
+        }
+        
+        // 🔥 Cancel any active typing animation FIRST
+        const { cancelTyping } = await import('./tutorial.js');
+        cancelTyping();
+        
+        // Mark initial message as dismissed and ALWAYS clear status text
+        window._initialMessageDismissed = true;
+        const statusEl = document.getElementById('status');
+        if (statusEl) {
+            statusEl.textContent = '';  // Just clear it, period. No checking!
+        }
+        
         const baseMessage = forceIrisFetch 
             ? `📡 Fetching data for station ${stationLabel} (${stationData.distance_km}km) from IRIS Server`
             : (isActiveStation ? `📡 Fetching data for station ${stationLabel} (${stationData.distance_km}km) from R2 Server` : `📡 Fetching data for station ${stationLabel} (${stationData.distance_km}km) from Railway Server`);
@@ -967,6 +983,25 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (volcanoSelect) {
         volcanoSelect.classList.add('pulse-glow');
     }
+    
+    // Animate initial status message with typing effect (only if not already dismissed)
+    setTimeout(() => {
+        if (!window._initialMessageDismissed) {
+            setStatusText('<- Select a volcano and click Fetch Data.', 'status info');
+        }
+    }, 300); // Small delay to let page settle
+    
+    // If user hasn't fetched data in 10 seconds, add encouragement
+    let encouragementTimeout = setTimeout(() => {
+        // Check if data has been fetched (State will have data if fetched)
+        // Also check if initial message has been dismissed
+        if (!State.completeSamplesArray && !State.isFetchingNewData && !window._initialMessageDismissed) {
+            appendStatusText('You got this!', 20, 10);
+        }
+    }, 10000); // 10 seconds
+    
+    // Store timeout so we can clear it if data is fetched
+    window._encouragementTimeout = encouragementTimeout;
     
     // Add event listeners
     document.getElementById('volcano').addEventListener('change', (e) => {

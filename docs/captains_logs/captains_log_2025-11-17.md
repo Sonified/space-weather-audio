@@ -110,3 +110,61 @@ v2.33 - Commit: "v2.33 Fix: Critical memory leak fixes - ArrayBuffer, Function, 
 
 ---
 
+## 🎯 Tutorial System Improvements & Status Text Enhancements (v2.34)
+
+### Features & Fixes
+
+1. **Status Text Typing Animation**
+   - All status messages now type out character-by-character with human-like jitter
+   - Variable delay (20ms base ± 10ms jitter) for natural typing feel
+   - Period at end of sentences pulses 5 times (appears/disappears)
+   - Animation can be cancelled to prevent conflicts
+
+2. **Click-to-Copy Status Text**
+   - Status text is now clickable to copy to clipboard
+   - Visual feedback: shows "✓ Copied!" for 1 second
+   - Pointer cursor and tooltip indicate clickability
+   - Works for all status messages
+
+3. **Loading Message Fixes**
+   - Loading animation stops immediately when all samples are received
+   - Completion message replaces loading message without gap/flash
+   - Fixed issue where loading text would flash or disappear prematurely
+   - Message "👇 Click on the waveform below to move the playhead." appears after download completes
+
+4. **User Guidance Flow**
+   - Initial message: "<- Select a volcano and click Fetch Data." (with typing animation)
+   - After 10 seconds without fetch: appends "You got this!" (if not dismissed)
+   - After download: "👇 Click on the waveform below to move the playhead."
+   - After first click: "Well done!" (holds 2 seconds) → "Click and drag to select a region (sideways)"
+   - Removed "Playing..." messages per user request
+
+5. **Animation Cancellation**
+   - Fixed memory leak where typing animations would continue after being cleared
+   - Added `cancelTyping()` function to stop both typing and pulse animations
+   - Properly tracks and clears both `activeTypingTimeout` and `activePulseTimeout`
+
+6. **Session-Level Tracking**
+   - Tutorial overlay and pulse animation show only once per browser session
+   - Initial message dismissed flag prevents it from reappearing
+   - Encouragement timeout cleared when user fetches data
+
+### Files Changed
+- `js/tutorial.js` - Added typing animation, pulse animation, click-to-copy, animation cancellation
+- `js/main.js` - Initial message with typing, encouragement timeout, cancel typing on fetch
+- `js/data-fetcher.js` - Fixed loading message timing, show completion message after download
+- `js/waveform-renderer.js` - "Well done!" → "Click and drag" sequence after first click
+- `index.html` - Removed pre-written status text
+
+### Benefits
+- ✅ Engaging typing animation makes status messages more noticeable
+- ✅ Click-to-copy improves usability
+- ✅ Smooth loading → completion message transition
+- ✅ Better user guidance flow from start to finish
+- ✅ Fixed animation memory leaks
+
+### Version
+v2.34 - Commit: "v2.34 UI: Tutorial system improvements - status text typing animation, click-to-copy, loading message fixes, and user guidance flow"
+
+---
+

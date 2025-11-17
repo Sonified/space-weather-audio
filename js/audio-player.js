@@ -75,8 +75,9 @@ export function startPlayback() {
     btn.classList.add('pause-active');
     
     // Update status
-    document.getElementById('status').className = 'status info';
-    document.getElementById('status').textContent = 'Click on the waveform and drag with your mouse to make a selection.';
+    import('./tutorial.js').then(({ setStatusText }) => {
+        setStatusText('Click on the waveform and drag with your mouse to make a selection.', 'status info');
+    });
     
     // Resume AudioContext if needed
     if (State.audioContext?.state === 'suspended') {
@@ -120,8 +121,9 @@ export function pausePlayback() {
     btn.classList.add('play-active', 'pulse-resume');
     
     // Update status
-    document.getElementById('status').className = 'status';
-    document.getElementById('status').textContent = 'Paused';
+    import('./tutorial.js').then(({ setStatusText }) => {
+        setStatusText('Paused', 'status');
+    });
     
     // Update active region button
     updateActiveRegionPlayButton(false);

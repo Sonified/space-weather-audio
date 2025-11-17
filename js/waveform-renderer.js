@@ -13,7 +13,7 @@ import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
-import { hideTutorialOverlay } from './tutorial.js';
+import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -517,6 +517,13 @@ export function setupWaveformInteraction() {
             State.setWaveformHasBeenClicked(true);
             canvas.classList.remove('pulse');
             hideTutorialOverlay();
+            
+            // Show "Well done!" first, hold for 2 seconds, then show next instruction
+            setStatusText('Well done!', 'status success');
+            
+            setTimeout(() => {
+                setStatusText('Click and drag to select a region (sideways)', 'status info');
+            }, 2000); // 2 seconds
         }
         
         const rect = canvas.getBoundingClientRect();
