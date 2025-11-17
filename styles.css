@@ -1291,7 +1291,7 @@ input[type="checkbox"] {
 }
 
 .delete-region-btn {
-    background: #ffb3ba;
+    background: #ff9ca3;
     color: #721c24;
     border: none;
     padding: 4px 8px;
@@ -1308,7 +1308,7 @@ input[type="checkbox"] {
 }
 
 .delete-region-btn:hover {
-    background: #ff8a8f;
+    background: #ff7a82;
     transform: scale(1.05);
 }
 

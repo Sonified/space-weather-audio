@@ -2,6 +2,26 @@
 
 ---
 
+## 🎨 UI Polish: Brighter Delete Region Button (v2.30)
+
+### UI Improvement
+- Made delete region button (X) on right side slightly brighter red for better visibility
+- Changed background color from `#ffb3ba` to `#ff9ca3` (more saturated red)
+- Updated hover state from `#ff8a8f` to `#ff7a82` (correspondingly brighter)
+
+### Key Changes
+- `styles.css` - Updated `.delete-region-btn` background colors for better visibility
+
+### Benefits
+- ✅ More visible delete button
+- ✅ Better visual contrast
+- ✅ Subtle but noticeable improvement
+
+### Version
+v2.30 - Commit: "v2.30 UI: Brighter delete region button for better visibility"
+
+---
+
 ## 🚀 Zoom Transition Optimizations & Drift Removal Caching (v2.29)
 
 ### Optimizations
