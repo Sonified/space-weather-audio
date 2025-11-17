@@ -7,7 +7,8 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode } from './region-tracker.js';
-import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered } from './spectrogram-complete-renderer.js';
+import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport } from './spectrogram-complete-renderer.js';
+import { zoomState } from './zoom-state.js';
 
 // Spectrogram selection state
 let spectrogramSelectionActive = false;
@@ -191,6 +192,32 @@ export async function changeFrequencyScale() {
             const width = canvas.width;
             const height = canvas.height;
             
+            // 🔧 FIX: Check if we're zoomed into a region - handle differently!
+            if (zoomState.isInitialized() && zoomState.isInRegion()) {
+                const regionRange = zoomState.getRegionRange();
+                console.log(`🔍 Inside region - re-rendering region with new scale`);
+                
+                // Re-render region with new frequency scale
+                // renderCompleteSpectrogramForRegion() will detect the frequency scale change
+                // and automatically clear/re-render as needed - no need to reset state!
+                const spectrogramModule = await import('./spectrogram-complete-renderer.js');
+                await spectrogramModule.renderCompleteSpectrogramForRegion(regionRange.startTime, regionRange.endTime, false);
+                
+                // Update viewport with current playback rate
+                const playbackRate = State.currentPlaybackRate || 1.0;
+                spectrogramModule.updateSpectrogramViewport(playbackRate);
+                
+                // Resume playhead if it was active
+                if (playbackWasActive) {
+                    import('./waveform-renderer.js').then(module => {
+                        module.startPlaybackIndicator();
+                    });
+                }
+                
+                console.log('✅ Region scale transition complete');
+                return;
+            }
+            
             // OLD SPECTROGRAM IS ALREADY ON SCREEN - DON'T TOUCH IT!
             // Reset state flag so we can re-render (but don't clear the canvas!)
             const { resetSpectrogramState } = await import('./spectrogram-complete-renderer.js');
@@ -200,7 +227,7 @@ export async function changeFrequencyScale() {
             await renderCompleteSpectrogram(true); // Skip viewport update - old stays visible!
             
             // Get the new spectrogram viewport without updating display canvas
-            const { getSpectrogramViewport, updateSpectrogramViewport } = await import('./spectrogram-complete-renderer.js');
+            const { getSpectrogramViewport } = await import('./spectrogram-complete-renderer.js');
             const playbackRate = State.currentPlaybackRate || 1.0;
             const newSpectrogram = getSpectrogramViewport(playbackRate);
             
