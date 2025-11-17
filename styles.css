@@ -555,6 +555,22 @@ canvas {
     outline: none !important;
 }
 
+#waveform-buttons {
+    background: transparent !important;
+    position: absolute;
+    pointer-events: none;
+    z-index: 1;
+    /* Remove all shadow/glow effects */
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    border: none !important;
+    outline: none !important;
+    /* Hide initially to prevent flash - will be shown after positioning */
+    opacity: 0;
+    visibility: hidden;
+}
+
 .checkbox-group {
     display: flex;
     flex-direction: column;

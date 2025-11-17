@@ -779,15 +779,15 @@ export async function startStreaming(event) {
         State.setLoadingInterval(interval);
         
         try {
-            if (forceIrisFetch) {
-                console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Using Railway backend`);
-                await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
-            } else if (isActiveStation) {
-                console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
-                await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart);
-            } else {
-                console.log(`🚂 ${logTime()} Using Railway backend (inactive station)`);
-                await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
+        if (forceIrisFetch) {
+            console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Using Railway backend`);
+            await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
+        } else if (isActiveStation) {
+            console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
+            await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart);
+        } else {
+            console.log(`🚂 ${logTime()} Using Railway backend (inactive station)`);
+            await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
             }
             
             // Data fetch completed successfully - mark this volcano as having data
@@ -925,7 +925,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.log(`🚫 Fetch button disabled - ${selectedVolcano} already has data`);
         } else {
             // Switching to a different volcano - enable fetch button
-            enableFetchButton();
+        enableFetchButton();
             const fetchBtn = document.getElementById('startBtn');
             if (fetchBtn) {
                 fetchBtn.title = '';

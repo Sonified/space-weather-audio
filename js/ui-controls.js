@@ -127,10 +127,10 @@ export function enableFetchButton() {
         fetchBtn.title = 'This volcano already has data loaded. Select a different volcano to fetch new data.';
         console.log(`🚫 Fetch button remains disabled - ${currentVolcano} already has data`);
     } else {
-        fetchBtn.disabled = false;
-        fetchBtn.classList.remove('streaming');
+    fetchBtn.disabled = false;
+    fetchBtn.classList.remove('streaming');
         fetchBtn.title = '';
-        console.log('✅ Fetch button re-enabled due to parameter change');
+    console.log('✅ Fetch button re-enabled due to parameter change');
     }
 }
 
