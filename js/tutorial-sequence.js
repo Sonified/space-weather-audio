@@ -287,12 +287,43 @@ export async function startSpeedSliderTutorial() {
         const directionEmoji = speedSliderDirection === 'faster' ? '👈' : '👉';
         setStatusText(`Now try going the other way. ${directionEmoji}`, 'status info');
         
-        // Reset threshold flag so we wait for them to cross 1x speed going the other way
-        speedSliderCrossedThreshold = false;
+        // Check if they've already crossed the threshold going the other way
+        const currentValue = parseFloat(speedSlider.value);
+        const oppositeDirection = speedSliderDirection === 'faster' ? 'slower' : 'faster';
         
-        // Wait for threshold cross (must cross 1x speed going the other direction)
-        await waitForThresholdCross();
-        if (!speedSliderTutorialActive) return;
+        // Determine if they've already crossed based on direction
+        let alreadyCrossed = false;
+        if (oppositeDirection === 'slower') {
+            // They went faster first, now check if they're already slower (below threshold)
+            alreadyCrossed = currentValue < (THRESHOLD - TOLERANCE);
+        } else {
+            // They went slower first, now check if they're already faster (above threshold)
+            alreadyCrossed = currentValue > (THRESHOLD + TOLERANCE);
+        }
+        
+        if (!alreadyCrossed) {
+            // Reset threshold flag so we wait for them to cross 1x speed going the other way
+            speedSliderCrossedThreshold = false;
+            
+            // Wait for threshold cross (must cross 1x speed going the other direction) with 10s timeout
+            const thresholdPromise = waitForThresholdCross();
+            const timeoutPromise = new Promise((resolve) => {
+                setTimeout(() => {
+                    if (speedSliderTutorialActive && !speedSliderCrossedThreshold) {
+                        // Timeout reached, resolve anyway
+                        speedSliderCrossedThreshold = true;
+                        if (speedSliderThresholdResolve) {
+                            speedSliderThresholdResolve();
+                            speedSliderThresholdResolve = null;
+                        }
+                        resolve();
+                    }
+                }, 10000);
+            });
+            
+            await Promise.race([thresholdPromise, timeoutPromise]);
+            if (!speedSliderTutorialActive) return;
+        }
         
         // Show "Great!" immediately when they hit 1x speed
         setStatusText('Great!', 'status success');

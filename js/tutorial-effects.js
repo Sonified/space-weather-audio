@@ -839,18 +839,31 @@ export function removeTypeDropdownGlow(regionIndex, featureIndex) {
  * Add glow effect to add feature button
  */
 export function addAddFeatureButtonGlow(regionIndex) {
-    const regionCard = document.querySelector(`[data-region-id="${getCurrentRegions()[regionIndex]?.id}"]`);
-    if (regionCard) {
-        const button = regionCard.querySelector('.add-feature-btn');
-        if (button) {
-            button.classList.add('fading-in');
-            button.offsetHeight; // Force reflow
-            button.classList.add('add-feature-button-glow');
-            setTimeout(() => {
-                button.classList.remove('fading-in');
-            }, 500);
-        }
+    const regions = getCurrentRegions();
+    if (!regions || !regions[regionIndex]) {
+        console.warn(`⚠️ Cannot add glow: region ${regionIndex} not found`);
+        return;
     }
+    
+    const regionId = regions[regionIndex].id;
+    const regionCard = document.querySelector(`[data-region-id="${regionId}"]`);
+    if (!regionCard) {
+        console.warn(`⚠️ Cannot add glow: region card not found for region ${regionIndex} (id: ${regionId})`);
+        return;
+    }
+    
+    const button = regionCard.querySelector('.add-feature-btn');
+    if (!button) {
+        console.warn(`⚠️ Cannot add glow: add-feature-btn not found in region card ${regionIndex}`);
+        return;
+    }
+    
+    button.classList.add('fading-in');
+    button.offsetHeight; // Force reflow
+    button.classList.add('add-feature-button-glow');
+    setTimeout(() => {
+        button.classList.remove('fading-in');
+    }, 500);
 }
 
 /**

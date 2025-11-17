@@ -918,6 +918,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.40 - Tutorial Message Improvements');
+    console.log('🎓 [0ms] v2.40 UI: Added 10-second timeout for feature description submission');
+    console.log('🎓 [0ms] v2.40 UI: Changed feature description detection from Enter key to change event for better reliability');
+    console.log('🎓 [0ms] v2.40 UI: Updated tutorial messages - "The spectrogram now shows more detail", "let\'s explore", "Click and drag"');
+    console.log('🎓 [0ms] v2.40 UI: Adjusted tutorial timing - spectrogram detail message 6s, change mind message 9s');
     console.log('🌋 [0ms] volcano-audio v2.38 - Tutorial Starts Before Fetch Data Message');
     console.log('🎓 [0ms] v2.38 Feat: Tutorial now starts immediately on page load, before "Select a volcano and click Fetch Data" message');
     console.log('🎓 [0ms] v2.38 Feat: Frequency scale dropdown disabled right at the start of tutorial before anything else');

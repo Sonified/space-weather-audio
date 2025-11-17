@@ -4,7 +4,7 @@
  * Manages tutorial phases, keyboard shortcuts, and sequence coordination
  */
 
-import { skipAnimations } from './tutorial-effects.js';
+import { skipAnimations, hideTutorialOverlay } from './tutorial-effects.js';
 
 // Tutorial sequence state machine
 let tutorialPhase = null; // 'well_done', 'volcano_message', 'spectrogram_explanation', 'speed_slider', 'waveform_tutorial', null
@@ -49,6 +49,13 @@ export function advanceTutorialPhase() {
     // Skip current animation
     skipAnimations();
     
+    // Clear waveform tutorial overlay and pulse if visible
+    hideTutorialOverlay();
+    const waveformCanvas = document.getElementById('waveform');
+    if (waveformCanvas) {
+        waveformCanvas.classList.remove('pulse');
+    }
+    
     // Call advance callback if it exists - this should immediately execute the next step
     if (tutorialAdvanceCallback) {
         const callback = tutorialAdvanceCallback;
@@ -87,6 +94,7 @@ export function initTutorial() {
                         skipAnimations();
                         
                         // Advance to next tutorial phase if we're in a tutorial sequence
+                        // (advanceTutorialPhase will clear overlay and pulse)
                         if (tutorialPhase) {
                             advanceTutorialPhase();
                         }

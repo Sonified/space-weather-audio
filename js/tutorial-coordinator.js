@@ -707,7 +707,9 @@ function waitForFeatureSelection() {
 }
 
 /**
- * Wait for user to type description and press Enter
+ * Wait for user to type description and submit it
+ * Detects when text has been submitted via 'change' event (fires on blur after typing)
+ * Also resolves after 10 seconds if they don't complete the action
  */
 function waitForFeatureDescription(regionIndex, featureIndex) {
     return new Promise((resolve) => {
@@ -717,68 +719,91 @@ function waitForFeatureDescription(regionIndex, featureIndex) {
             return;
         }
         
+        let isResolved = false;
+        let timeoutId = null;
+        let handleChange = null;
+        let handleBlur = null;
+        
+        const cleanup = () => {
+            if (isResolved) return;
+            isResolved = true;
+            
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            
+            if (handleChange) {
+                notesField.removeEventListener('change', handleChange);
+            }
+            if (handleBlur) {
+                notesField.removeEventListener('blur', handleBlur);
+            }
+            State.setWaitingForFeatureDescription(false);
+            State.setFeatureDescriptionResolve(null);
+        };
+        
+        const doResolve = () => {
+            if (isResolved) return;
+            cleanup();
+            clearTutorialPhase();
+            resolve();
+        };
+        
         // Check if already has content
         if (notesField.value.trim()) {
-            // Wait for Enter key
-            const handleKeyDown = (e) => {
-                if (e.key === 'Enter') {
-                    notesField.removeEventListener('keydown', handleKeyDown);
-                    notesField.removeEventListener('blur', handleBlur);
-                    State.setWaitingForFeatureDescription(false);
-                    State.setFeatureDescriptionResolve(null);
-                    resolve();
+            // Wait for change event (text submitted) or blur
+            handleChange = () => {
+                // Text has been submitted/saved
+                doResolve();
+            };
+            
+            handleBlur = () => {
+                // User exited the field - if it has content, count as completion
+                if (notesField.value.trim()) {
+                    doResolve();
                 }
             };
             
-            const handleBlur = () => {
-                notesField.removeEventListener('keydown', handleKeyDown);
-                notesField.removeEventListener('blur', handleBlur);
-                State.setWaitingForFeatureDescription(false);
-                State.setFeatureDescriptionResolve(null);
-                resolve();
-            };
-            
-            notesField.addEventListener('keydown', handleKeyDown);
+            notesField.addEventListener('change', handleChange);
             notesField.addEventListener('blur', handleBlur);
+            
+            // Set 10-second timeout
+            timeoutId = setTimeout(() => {
+                doResolve();
+            }, 10000);
+            
             return;
         }
         
-        // Set flag so we can resolve when user types and presses Enter
+        // Set flag so we can resolve when user types and submits
         State.setWaitingForFeatureDescription(true);
         State.setFeatureDescriptionResolve(resolve);
         
-        const handleKeyDown = (e) => {
-            if (e.key === 'Enter' && notesField.value.trim()) {
-                notesField.removeEventListener('keydown', handleKeyDown);
-                notesField.removeEventListener('blur', handleBlur);
-                State.setWaitingForFeatureDescription(false);
-                State.setFeatureDescriptionResolve(null);
-                clearTutorialPhase();
-                resolve();
+        // Listen for 'change' event - fires when text is submitted/saved (on blur after typing)
+        handleChange = () => {
+            // Text has been submitted/saved
+            doResolve();
+        };
+        
+        handleBlur = () => {
+            // If field has content when user exits, count as completion
+            if (notesField.value.trim() || State.waitingForFeatureDescription) {
+                doResolve();
             }
         };
         
-        const handleBlur = () => {
-            if (notesField.value.trim()) {
-                notesField.removeEventListener('keydown', handleKeyDown);
-                notesField.removeEventListener('blur', handleBlur);
-                State.setWaitingForFeatureDescription(false);
-                State.setFeatureDescriptionResolve(null);
-                clearTutorialPhase();
-                resolve();
-            }
-        };
-        
-        notesField.addEventListener('keydown', handleKeyDown);
+        notesField.addEventListener('change', handleChange);
         notesField.addEventListener('blur', handleBlur);
+        
+        // Set 10-second timeout
+        timeoutId = setTimeout(() => {
+            doResolve();
+        }, 10000);
         
         // Store phase for Enter key skipping
         setTutorialPhase('waiting_for_feature_description', [], () => {
-            notesField.removeEventListener('keydown', handleKeyDown);
-            notesField.removeEventListener('blur', handleBlur);
-            State.setWaitingForFeatureDescription(false);
-            State.setFeatureDescriptionResolve(null);
-            resolve();
+            doResolve();
         });
     });
 }
@@ -896,10 +921,20 @@ async function runSelectionTutorial() {
     // Wait 5 seconds after waveform click, then show drag message
     await skippableWait(5000);
     
-    // 🎓 Check one more time before showing drag message
-    if (State.selectionStart !== null && State.selectionEnd !== null && State.waitingForRegionCreation) {
-        console.log('🎓 Tutorial: Selection made during wait, skipping drag message');
-        return; // Skip drag message and go to region creation
+    // 🎓 Check if selection already exists (user might have skipped ahead with Enter or made selection)
+    if (State.selectionStart !== null && State.selectionEnd !== null) {
+        if (State.waitingForRegionCreation) {
+            console.log('🎓 Tutorial: Selection made during wait, skipping drag message');
+            return; // Skip drag message and go to region creation
+        } else {
+            console.log('🎓 Tutorial: Selection already exists, skipping drag message');
+            // Skip the message and wait, go straight to "Nice!"
+            await skippableWait(500);
+            setStatusTextAndTrack('Nice!', 'status success');
+            await skippableWait(1000);
+            clearTutorialPhase();
+            return;
+        }
     }
     
     setStatusTextAndTrack('Now click on the waveform and DRAG and RELEASE to make a selection.', 'status info');
@@ -918,21 +953,30 @@ async function runSelectionTutorial() {
 }
 
 async function runRegionIntroduction() {
-    // 🎓 Check if user already made a selection - if so, message was already shown
-    if (State.selectionStart !== null && State.selectionEnd !== null && State.waitingForRegionCreation) {
-        // User got ahead - message already shown, just wait for region creation
-        console.log('🎓 Tutorial: User already made selection, waiting for region creation');
-    } else {
-        // Show the "Click Add Region" message
-        setStatusTextAndTrack('Click Add Region or type (R) to create a new region.', 'status info');
-    }
+    // 🎓 Check if user already created a region FIRST (before any async operations)
+    const regions = getCurrentRegions();
+    const hasRegion = regions.length > 0;
     
-    // Wait for user to create a region
-    await waitForRegionCreation();
+    if (hasRegion) {
+        // User already created a region - skip the message and wait entirely
+        console.log('🎓 Tutorial: User already created a region, skipping "Click Add Region" message and wait');
+    } else {
+        // 🎓 Check if user already made a selection - if so, message was already shown
+        if (State.selectionStart !== null && State.selectionEnd !== null && State.waitingForRegionCreation) {
+            // User got ahead - message already shown, just wait for region creation
+            console.log('🎓 Tutorial: User already made selection, waiting for region creation');
+        } else {
+            // Show the "Click Add Region" message
+            setStatusTextAndTrack('Click Add Region or type (R) to create a new region.', 'status info');
+        }
+        
+        // Wait for user to create a region (only if we don't already have one)
+        await waitForRegionCreation();
+    }
     
     // Show "You just created your first region!" message
     setStatusTextAndTrack('You just created your first region!', 'status success');
-    await skippableWait(3000);
+    await skippableWait(2000);
     
     // Disable all region buttons during tutorial explanation
     disableRegionButtons();
@@ -945,7 +989,7 @@ async function runRegionIntroduction() {
     // Remove glow and enable play button for region 1 (index 0)
     removeRegionsPanelGlow();
     enableRegionPlayButton(0);
-    setStatusTextAndTrack('Press the play button for region 1 to have a listen.', 'status info');
+    setStatusTextAndTrack('Press the red play button for region 1 to have a listen.', 'status info');
     
     // Wait for user to click the play button
     await waitForRegionPlayClick();
@@ -968,7 +1012,7 @@ async function runRegionZoomingTutorial() {
         statusEl.classList.add('loading');
     }
     
-    setStatusTextAndTrack('Click the magnifier 🔍 to the left of the play button to zoom in.', 'status info');
+    setStatusTextAndTrack('Click the magnifier 🔍 to the left of the play button to ZOOM IN.', 'status info');
     
     // Enable zoom button for region 1 (index 0)
     enableRegionZoomButton(0);
@@ -982,9 +1026,9 @@ async function runRegionZoomingTutorial() {
     }
     
     // Pause for a moment, then show message about features
-    await skippableWait(2000);
-    setStatusTextAndTrack('Notice that within regions it\'s easier to see features on the spectrogram.', 'status info');
-    await skippableWait(5000);
+    await skippableWait(1000);
+    setStatusTextAndTrack('The spectrogram now shows more detail.', 'status info');
+    await skippableWait(6000);
     
     // Enable loop button first (before showing message)
     const loopBtn = document.getElementById('loopBtn');
@@ -1100,15 +1144,15 @@ async function runFrequencyScaleTutorial() {
     await waitForFrequencyScaleKeys();
     
     // Pause for 2s and say "Well done!"
-    await skippableWait(2000);
-    setStatusTextAndTrack('Well done!', 'status success');
+    // await skippableWait(2000);
+    // setStatusTextAndTrack('Well done!', 'status success');
     
     // Remove glow from frequency scale dropdown
     removeFrequencyScaleGlow();
     
     // Final message
     await skippableWait(2000);
-    setStatusTextAndTrack('Pick a scaling that works well and let\'s select a feature.', 'status info');
+    setStatusTextAndTrack('Pick a scaling that works well and let\'s explore.', 'status info');
     await skippableWait(6000);
     
     // Clear tutorial phase
@@ -1168,14 +1212,14 @@ async function runFeatureSelectionTutorial() {
     // Highlight spectrogram window
     addSpectrogramGlow();
     
-    // "Now click and drag to create a box around a feature of interest." (15s)
-    setStatusTextAndTrack('Now click and drag to create a box around a feature of interest.', 'status info');
+    // "Click and drag on the spectrogram to create a box around a feature of interest." (15s)
+    setStatusTextAndTrack('Click and drag on the spectrogram to create a box around a feature of interest.', 'status info');
     
     // Set up conditional message after 15s if they haven't drawn yet
     let hasDrawnBox = false;
     const conditionalMessageTimeout = setTimeout(() => {
         if (!hasDrawnBox && State.waitingForFeatureSelection) {
-            setStatusTextAndTrack('Click on the spectrogram and drag your mouse to draw a box.', 'status info');
+            setStatusTextAndTrack('Drag on the spectrogram to draw a box.', 'status info');
         }
     }, 15000);
     
@@ -1191,12 +1235,35 @@ async function runFeatureSelectionTutorial() {
     setStatusTextAndTrack('You\'ve identified a feature!', 'status success');
     await skippableWait(3000);
     
-    // "You can start typing now to provide a description." - wait 10s
+    // "You can start typing now to provide a description."
     setStatusTextAndTrack('You can start typing now to provide a description.', 'status info');
+    
+    // Set up listener to switch message as soon as user starts typing
+    const notesField = document.getElementById(`notes-${activeRegionIndex}-${featureIndex}`);
+    let messageSwitched = false;
+    let typingListener = null;
+    
+    if (notesField) {
+        typingListener = () => {
+            if (!messageSwitched && notesField.value.trim().length > 0) {
+                messageSwitched = true;
+                setStatusTextAndTrack('When you are done, hit enter/return.', 'status info');
+                notesField.removeEventListener('input', typingListener);
+            }
+        };
+        notesField.addEventListener('input', typingListener);
+    }
+    
+    // Wait 10s, but if they start typing, the message will switch immediately
     await skippableWait(10000);
     
-    // "When you are done, hit enter/return."
-    setStatusTextAndTrack('When you are done, hit enter/return.', 'status info');
+    // If they haven't started typing yet, show the "When you are done" message now
+    if (!messageSwitched) {
+        setStatusTextAndTrack('When you are done, hit enter/return.', 'status info');
+        if (notesField && typingListener) {
+            notesField.removeEventListener('input', typingListener);
+        }
+    }
     
     // Wait for description completion
     await waitForFeatureDescription(activeRegionIndex, featureIndex);
@@ -1231,17 +1298,20 @@ async function runFeatureSelectionTutorial() {
     // Remove type dropdown glow
     removeTypeDropdownGlow(activeRegionIndex, featureIndex);
     
-    // Glow select feature button (but don't make it red, just enabled)
-    enableSelectFeatureButton(activeRegionIndex, featureIndex);
+    // Glow select feature button (but don't make it red/active, just glow it)
+    // Don't call enableSelectFeatureButton - keep it in normal mode
     addSelectFeatureButtonGlow(activeRegionIndex, featureIndex);
     setStatusTextAndTrack('You can click here if you ever change your mind and would like to change your selection.', 'status info');
-    await skippableWait(5000);
+    await skippableWait(9000);
     
     // Remove select feature button glow
     removeSelectFeatureButtonGlow(activeRegionIndex, featureIndex);
     
     // Enable add feature button
     enableAddFeatureButton(activeRegionIndex);
+    
+    // Small delay to ensure button is rendered
+    await skippableWait(100);
     
     // Highlight add feature button
     addAddFeatureButtonGlow(activeRegionIndex);

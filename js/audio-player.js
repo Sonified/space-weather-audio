@@ -129,7 +129,7 @@ export function pausePlayback() {
     
     // Update status
     import('./tutorial.js').then(({ setStatusText }) => {
-        setStatusText('Paused', 'status');
+        setStatusText('Audio playback paused', 'status');
     });
     
     // Update active region button

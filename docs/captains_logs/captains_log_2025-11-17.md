@@ -415,3 +415,33 @@ Implemented comprehensive feature selection tutorial that guides users through t
 
 ---
 
+## 🎓 Tutorial Message Improvements & Reliability Fixes (v2.40)
+
+### Changes Made
+
+1. **Feature Description Submission**
+   - Added 10-second timeout to prevent tutorial from getting stuck
+   - Changed detection from Enter key press to 'change' event for better reliability
+   - The 'change' event fires when text is actually submitted/saved (on blur after typing)
+   - More reliable than listening for Enter key which may not always work
+
+2. **Tutorial Message Updates**
+   - Changed "Notice that within regions it's easier to see features on the spectrogram." to "The spectrogram now shows more detail."
+   - Changed "Pick a scaling that works well and let's select a feature." to "Pick a scaling that works well and let's explore."
+   - Changed "Now click and drag..." to "Click and drag..." (removed "Now")
+
+3. **Timing Adjustments**
+   - Reduced "The spectrogram now shows more detail" message wait time from 7s to 6s
+   - Increased "You can click here if you ever change your mind" message wait time from 5s to 9s (more time to process)
+
+### Files Changed
+- `js/tutorial-coordinator.js` - Updated waitForFeatureDescription to use change event, updated messages and timing
+- `js/main.js` - Added v2.40 console log entries
+- `backend/collector_loop.py` - Updated version to v2.40
+
+### Version Tag
+- **Version**: v2.40
+- **Commit Message**: v2.40 UI: Tutorial message improvements - timeout for feature description, message text updates, timing adjustments
+
+---
+
