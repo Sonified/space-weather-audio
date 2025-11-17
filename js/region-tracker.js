@@ -412,6 +412,14 @@ export function createRegionFromSelectionTimes(selectionStartSeconds, selectionE
     // Hide the add region button
     hideAddRegionButton();
     
+    // Update status message with region number (1-indexed)
+    const regionNumber = newRegionIndex + 1;
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.className = 'status info';
+        statusEl.textContent = `Type (${regionNumber}) to zoom into this region, or click the magnifier button.`;
+    }
+    
     // Clear the yellow selection box by clearing selection state
     // The selection will be set to the region when space is pressed or play button is clicked
     State.setSelectionStart(null);
@@ -2331,6 +2339,14 @@ export function zoomToRegion(regionIndex) {
     
     // Expand this region's panel and collapse all others
     expandRegionAndCollapseOthers(regionIndex);
+    
+    // Update status message with region number (1-indexed)
+    const regionNumber = regionIndex + 1;
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.className = 'status info';
+        statusEl.textContent = `Type (${regionNumber}) again to play this region, (f) to select a feature, (esc) to zoom out.`;
+    }
     
     const newStartTime = zoomState.sampleToRealTimestamp(region.startSample);
     const newEndTime = zoomState.sampleToRealTimestamp(region.endSample);

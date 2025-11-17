@@ -14,7 +14,7 @@ import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
 
 import { zoomState } from './zoom-state.js';
 
-import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
+import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramRegionHighlights, drawSpectrogramSelection } from './region-tracker.js';
 
 // Track if we've rendered the complete spectrogram
@@ -43,6 +43,9 @@ let infiniteCanvasContext = {
     endSample: null,
     frequencyScale: null
 };
+
+// Grey overlay for zoomed-out mode
+let spectrogramOverlay = null;
 const MAX_PLAYBACK_RATE = 15.0;
 
 // Reusable temporary canvases
@@ -444,6 +447,11 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
         // Update display canvas with initial viewport
         if (!skipViewportUpdate) {
             updateSpectrogramViewport(State.currentPlaybackRate || 1.0);
+            
+            // Initialize overlay - create it and set initial opacity (visible when zoomed out)
+            createSpectrogramOverlay();
+            const progress = getZoomTransitionProgress();
+            updateSpectrogramOverlay(progress);
         }
         
     } catch (error) {
@@ -759,6 +767,9 @@ export function drawInterpolatedSpectrogram() {
     
     // console.log(`🏄‍♂️ Interpolated spectrogram: playbackRate=${playbackRate.toFixed(2)}, stretchFactor=${stretchFactor.toFixed(3)}, stretchedHeight=${stretchedHeight}px`);
     
+    // Update overlay opacity (fade out when zooming in, fade in when zooming out)
+    updateSpectrogramOverlay();
+    
     ctx.clearRect(0, 0, width, height);
     
     if (stretchedHeight >= height) {
@@ -976,6 +987,9 @@ export function updateSpectrogramViewport(playbackRate) {
     }
     
     // console.log(`🎨 updateSpectrogramViewport: stretching with playbackRate=${playbackRate}, frequencyScale=${State.frequencyScale}`);
+    
+    // Update overlay opacity (fade out when zooming in, fade in when zooming out)
+    updateSpectrogramOverlay();
     
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
@@ -1370,6 +1384,82 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             // Don't clear controller here - it might have been cancelled and cleared already
         }
     }
+}
+
+/**
+ * Create and manage spectrogram overlay for zoomed-out mode
+ */
+function createSpectrogramOverlay() {
+    if (spectrogramOverlay) return; // Already exists
+    
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    
+    // Create overlay div
+    spectrogramOverlay = document.createElement('div');
+    spectrogramOverlay.id = 'spectrogram-overlay';
+    spectrogramOverlay.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.3);
+        pointer-events: none;
+        z-index: 10;
+        transition: none;
+    `;
+    
+    // Position overlay to match canvas exactly
+    // The parent (.panel-visualization) has position: relative
+    const parent = canvas.parentElement;
+    if (parent) {
+        // Get canvas position relative to parent
+        const canvasRect = canvas.getBoundingClientRect();
+        const parentRect = parent.getBoundingClientRect();
+        
+        spectrogramOverlay.style.position = 'absolute';
+        spectrogramOverlay.style.top = (canvasRect.top - parentRect.top) + 'px';
+        spectrogramOverlay.style.left = (canvasRect.left - parentRect.left) + 'px';
+        spectrogramOverlay.style.width = canvasRect.width + 'px';
+        spectrogramOverlay.style.height = canvasRect.height + 'px';
+        
+        parent.appendChild(spectrogramOverlay);
+        
+        // Update overlay size when canvas resizes
+        const resizeObserver = new ResizeObserver(() => {
+            if (spectrogramOverlay && canvas) {
+                const canvasRect = canvas.getBoundingClientRect();
+                const parentRect = parent.getBoundingClientRect();
+                spectrogramOverlay.style.top = (canvasRect.top - parentRect.top) + 'px';
+                spectrogramOverlay.style.left = (canvasRect.left - parentRect.left) + 'px';
+                spectrogramOverlay.style.width = canvasRect.width + 'px';
+                spectrogramOverlay.style.height = canvasRect.height + 'px';
+            }
+        });
+        resizeObserver.observe(canvas);
+    }
+}
+
+/**
+ * Update spectrogram overlay opacity based on zoom state
+ * Overlay fades out when zooming IN, fades in when zooming OUT
+ */
+function updateSpectrogramOverlay() {
+    if (!spectrogramOverlay) {
+        createSpectrogramOverlay();
+    }
+    
+    if (!spectrogramOverlay) return;
+    
+    // Use getRegionOpacityProgress which handles direction correctly:
+    // - Returns 0.0 when zoomed out (full view)
+    // - Returns 1.0 when zoomed in (region view)
+    // - Interpolates smoothly during transitions
+    // For overlay: we want inverse (visible when zoomed out, hidden when zoomed in)
+    const opacityProgress = getRegionOpacityProgress();
+    const overlayOpacity = 1.0 - opacityProgress;
+    spectrogramOverlay.style.opacity = overlayOpacity.toFixed(3);
 }
 
 /**

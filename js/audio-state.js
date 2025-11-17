@@ -74,6 +74,7 @@ export let selectionStart = null;
 export let selectionEnd = null;
 export let isSelecting = false;
 export let selectionStartX = null;
+export let waveformHasBeenClicked = false;
 
 // Region tracking state
 export let regions = [];
@@ -129,6 +130,7 @@ export function setSelectionStart(value) { selectionStart = value; }
 export function setSelectionEnd(value) { selectionEnd = value; }
 export function setIsSelecting(value) { isSelecting = value; }
 export function setSelectionStartX(value) { selectionStartX = value; }
+export function setWaveformHasBeenClicked(value) { waveformHasBeenClicked = value; }
 export function setRegions(value) { regions = value; }
 export function setActiveRegionIndex(value) { activeRegionIndex = value; }
 export function setIsSelectingFrequency(value) { isSelectingFrequency = value; }

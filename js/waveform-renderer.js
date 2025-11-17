@@ -13,6 +13,7 @@ import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
+import { hideTutorialOverlay } from './tutorial.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -511,6 +512,13 @@ export function setupWaveformInteraction() {
     canvas.addEventListener('mousedown', (e) => {
         if (!State.completeSamplesArray || State.totalAudioDuration === 0) return;
         
+        // Stop pulsing animation and hide tutorial on first click
+        if (!State.waveformHasBeenClicked) {
+            State.setWaveformHasBeenClicked(true);
+            canvas.classList.remove('pulse');
+            hideTutorialOverlay();
+        }
+        
         const rect = canvas.getBoundingClientRect();
         const startX = e.clientX - rect.left;
         const startY = e.clientY - rect.top;
@@ -781,6 +789,12 @@ export function setupWaveformInteraction() {
                 // When inside the temple, we don't want to add new regions
                 if (!zoomState.isInRegion()) {
                     showAddRegionButton(newSelectionStart, newSelectionEnd);
+                    // Update status message
+                    const statusEl = document.getElementById('status');
+                    if (statusEl) {
+                        statusEl.className = 'status info';
+                        statusEl.textContent = 'Type (R) or click Add Region to create a new region.';
+                    }
                 }
                 
                 // 🏠 AUTONOMOUS: Set selection state and send to worklet immediately

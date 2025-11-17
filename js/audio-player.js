@@ -76,7 +76,7 @@ export function startPlayback() {
     
     // Update status
     document.getElementById('status').className = 'status info';
-    document.getElementById('status').textContent = 'Playing...';
+    document.getElementById('status').textContent = 'Click on the waveform and drag with your mouse to make a selection.';
     
     // Resume AudioContext if needed
     if (State.audioContext?.state === 'suspended') {
@@ -393,12 +393,12 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
     // 🏎️ FERRARI: Perform seek immediately - worklet handles fades internally!
     performSeek();
     
-    // Update status text
-    const targetMinutes = Math.floor(targetPosition / 60);
-    const targetSeconds = (targetPosition % 60).toFixed(1);
-    const status = document.getElementById('status');
-    status.className = 'status info';
-    status.textContent = `✅ Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')}`;
+    // Update status text (disabled per user request)
+    // const targetMinutes = Math.floor(targetPosition / 60);
+    // const targetSeconds = (targetPosition % 60).toFixed(1);
+    // const status = document.getElementById('status');
+    // status.className = 'status info';
+    // status.textContent = `✅ Seeking to ${targetMinutes}:${targetSeconds.padStart(4, '0')}`;
 }
 
 // Helper functions

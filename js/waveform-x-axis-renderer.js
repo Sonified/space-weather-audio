@@ -927,7 +927,7 @@ export function stopZoomTransition() {
         }
     } else {
         // Transition wasn't in progress, just clean up
-        cancelZoomTransitionRAF();
+    cancelZoomTransitionRAF();
     }
 }
 

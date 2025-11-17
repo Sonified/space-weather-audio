@@ -11,6 +11,7 @@ import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-re
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
 import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
+import { showTutorialOverlay } from './tutorial.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -888,10 +889,36 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 updatePlaybackDuration();
                                 State.setIsFetchingNewData(false);
                                 
+                                // Enable speed and volume controls
+                                const speedSlider = document.getElementById('playbackSpeed');
+                                const volumeSlider = document.getElementById('volumeSlider');
+                                const speedLabel = document.getElementById('speedLabel');
+                                const volumeLabel = document.getElementById('volumeLabel');
+                                if (speedSlider) speedSlider.disabled = false;
+                                if (volumeSlider) volumeSlider.disabled = false;
+                                if (speedLabel) speedLabel.style.opacity = '1';
+                                if (volumeLabel) volumeLabel.style.opacity = '1';
+                                
                                 if (State.loadingInterval) {
                                     clearInterval(State.loadingInterval);
                                     State.setLoadingInterval(null);
                                 }
+                                
+                                // Clear loading message automatically
+                                const statusEl = document.getElementById('status');
+                                if (statusEl) {
+                                    statusEl.classList.remove('loading');
+                                    statusEl.textContent = '';
+                                }
+                                
+                                // Start waveform pulse animation and show tutorial (only if user hasn't clicked waveform yet)
+                                setTimeout(() => {
+                                    const waveformCanvas = document.getElementById('waveform');
+                                    if (waveformCanvas && !State.waveformHasBeenClicked) {
+                                        waveformCanvas.classList.add('pulse');
+                                        showTutorialOverlay();
+                                    }
+                                }, 200);
                                 
                                 // Only update button if it's still disabled (wasn't enabled when playback started)
                                 const playPauseBtn = document.getElementById('playPauseBtn');
@@ -903,21 +930,22 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                         playPauseBtn.textContent = '⏸️ Pause';
                                         playPauseBtn.classList.remove('play-active');
                                         playPauseBtn.classList.add('pause-active');
-                                        document.getElementById('status').className = 'status success';
-                                        document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
+                                        // Status message removed per user request
                                     } else {
                                         // Auto play is off or playback not started - show Play button
                                         playPauseBtn.textContent = '▶️ Play';
                                         playPauseBtn.classList.remove('pause-active');
                                         playPauseBtn.classList.add('play-active');
                                         document.getElementById('status').className = 'status success';
-                                        document.getElementById('status').textContent = '✅ Ready! Click Play to start.';
+                                        document.getElementById('status').textContent = 'Press (space bar) to play/pause, or click on the waveform below to jump to a location.';
                                     }
                                 } else {
                                     // Button already enabled - just update status if needed
                                     if (State.playbackState === PlaybackState.PLAYING) {
+                                        // Status message removed per user request
+                                    } else {
                                         document.getElementById('status').className = 'status success';
-                                        document.getElementById('status').textContent = '✅ Playing! (Worker-accelerated)';
+                                        document.getElementById('status').textContent = 'Press (space bar) to play/pause, or click on the waveform below to jump to a location.';
                                     }
                                 }
                                 document.getElementById('loopBtn').disabled = false;
@@ -1446,6 +1474,25 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
                 
                 // Update playback duration
                 updatePlaybackDuration();
+                
+                // Enable speed and volume controls
+                const speedSlider = document.getElementById('playbackSpeed');
+                const volumeSlider = document.getElementById('volumeSlider');
+                const speedLabel = document.getElementById('speedLabel');
+                const volumeLabel = document.getElementById('volumeLabel');
+                if (speedSlider) speedSlider.disabled = false;
+                if (volumeSlider) volumeSlider.disabled = false;
+                if (speedLabel) speedLabel.style.opacity = '1';
+                if (volumeLabel) volumeLabel.style.opacity = '1';
+                
+                // Start waveform pulse animation and show tutorial (only if user hasn't clicked waveform yet)
+                setTimeout(() => {
+                    const waveformCanvas = document.getElementById('waveform');
+                    if (waveformCanvas && !State.waveformHasBeenClicked) {
+                        waveformCanvas.classList.add('pulse');
+                        showTutorialOverlay();
+                    }
+                }, 200);
             } else {
                 // Not all samples written yet - wait a bit and check again
                 console.log(`⏳ [Railway] Waiting for more samples (${totalSamplesWritten}/${totalRailwaySamples})...`);
@@ -1471,6 +1518,13 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
         State.setLoadingInterval(null);
     }
     
+    // Clear loading message automatically
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.classList.remove('loading');
+        statusEl.textContent = '';
+    }
+    
     // Only update button if it's still disabled (wasn't enabled when playback started)
     const playPauseBtn = document.getElementById('playPauseBtn');
     if (playPauseBtn.disabled) {
@@ -1489,13 +1543,17 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
             playPauseBtn.classList.remove('pause-active', 'secondary');
             playPauseBtn.classList.add('play-active');
             document.getElementById('status').className = 'status success';
-            document.getElementById('status').textContent = '✅ Ready! Click Play to start.';
+            document.getElementById('status').textContent = 'Press (space bar) to play/pause, or click on the waveform below to jump to a location.';
         }
     } else {
         // Button already enabled - just update status if needed
         if (State.playbackState === PlaybackState.PLAYING) {
             document.getElementById('status').className = 'status success';
             document.getElementById('status').textContent = '✅ Playing! (Railway backend)';
+        } else {
+            // Button already enabled - just update status if needed
+            document.getElementById('status').className = 'status success';
+            document.getElementById('status').textContent = 'Press (space bar) to play/pause, or click on the waveform below to jump to a location.';
         }
     }
     document.getElementById('downloadBtn').disabled = false;

@@ -404,6 +404,12 @@ export async function startStreaming(event) {
             event.stopPropagation();
         }
         
+        // Remove pulsing glow from volcano selector when user starts fetching
+        const volcanoSelect = document.getElementById('volcano');
+        if (volcanoSelect) {
+            volcanoSelect.classList.remove('pulse-glow');
+        }
+        
         // Clear complete spectrogram when loading new data
         clearCompleteSpectrogram();
         
@@ -415,6 +421,27 @@ export async function startStreaming(event) {
             zoomState.activeRegionId = null;
             console.log('🔄 Reset zoom state to full view for new data');
         }
+        
+        // Reset waveform click tracking when loading new data
+        State.setWaveformHasBeenClicked(false);
+        const waveformCanvas = document.getElementById('waveform');
+        if (waveformCanvas) {
+            waveformCanvas.classList.remove('pulse');
+        }
+        
+        // Hide tutorial overlay when loading new data
+        const { hideTutorialOverlay } = await import('./tutorial.js');
+        hideTutorialOverlay();
+        
+        // Disable speed and volume controls when loading new data
+        const speedSlider = document.getElementById('playbackSpeed');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const speedLabel = document.getElementById('speedLabel');
+        const volumeLabel = document.getElementById('volumeLabel');
+        if (speedSlider) speedSlider.disabled = true;
+        if (volumeSlider) volumeSlider.disabled = true;
+        if (speedLabel) speedLabel.style.opacity = '0.5';
+        if (volumeLabel) volumeLabel.style.opacity = '0.5';
         
         // 🔥 FIX: Remove add region button to prevent detached DOM leaks
         // Import dynamically to avoid circular dependencies
@@ -926,8 +953,19 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Load saved volcano selection (or use default)
     loadSavedVolcano();
     
+    // Add pulsing glow to volcano selector initially
+    const volcanoSelect = document.getElementById('volcano');
+    if (volcanoSelect) {
+        volcanoSelect.classList.add('pulse-glow');
+    }
+    
     // Add event listeners
     document.getElementById('volcano').addEventListener('change', (e) => {
+        // Remove pulsing glow when user selects a volcano
+        const volcanoSelect = document.getElementById('volcano');
+        if (volcanoSelect) {
+            volcanoSelect.classList.remove('pulse-glow');
+        }
         const selectedVolcano = e.target.value;
         const volcanoWithData = State.volcanoWithData;
         
