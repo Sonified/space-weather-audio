@@ -50,7 +50,7 @@ function normalize(data) {
 }
 
 export function drawWaveform() {
-    console.log(`🎨 drawWaveform() called, completeSamplesArray length: ${State.completeSamplesArray ? State.completeSamplesArray.length : 'null'}`);
+    // console.log(`🎨 drawWaveform() called, completeSamplesArray length: ${State.completeSamplesArray ? State.completeSamplesArray.length : 'null'}`);
     
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         console.log(`⚠️ drawWaveform() aborted: no data`);
@@ -85,7 +85,7 @@ export function drawWaveform() {
         zoomInfo = `zoomed ${zoomLevel.toFixed(1)}x (samples ${startSample.toLocaleString()}-${endSample.toLocaleString()})`;
     }
     
-    console.log(`🎨 Sending to waveform worker: ${width}px wide, ${zoomInfo}`);
+    // console.log(`🎨 Sending to waveform worker: ${width}px wide, ${zoomInfo}`);
     
     State.waveformWorker.postMessage({
         type: 'build-waveform',

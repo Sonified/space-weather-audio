@@ -2,6 +2,49 @@
 
 ---
 
+## 🚀 Zoom Transition Optimizations & Drift Removal Caching (v2.29)
+
+### Optimizations
+
+1. **Zoom Transition Duration Reduced**
+   - Reduced transition duration from 1000ms to 500ms for snappier feel
+   - Timer resets when switching mid-transition (smooth continuation from current position)
+
+2. **Zoom Transition Cancellation Protection**
+   - Added protection to cancel previous zoom operations when new zoom starts mid-transition
+   - Ensures smooth transitions when user switches regions or zooms out during animation
+   - Uses current interpolated position as starting point for new transition (not original position)
+   - Only cancels if transition is actually in progress (doesn't interfere with normal flow)
+
+3. **Drift Removal Processing Caching**
+   - **CRITICAL FIX**: Drift removal now processes ONCE and caches the result
+   - Previously was reprocessing drift removal on every waveform redraw (zoom, resize, etc.)
+   - Now processes full dataset once, caches result, and slices cached version for zoomed views
+   - Only reprocesses if filter settings (alpha/removeDC) change or new data arrives
+   - Massive performance improvement - no redundant processing
+
+4. **Console Log Cleanup**
+   - Commented out verbose console logs for cleaner console output
+   - Removed region zoom logs, spectrogram rendering logs, feature box update logs, waveform rendering logs
+
+### Key Changes
+- `js/waveform-x-axis-renderer.js` - Reduced transition duration to 500ms, improved stopZoomTransition() to ensure final canvas renders
+- `js/region-tracker.js` - Added cancellation protection, uses current interpolated position when switching mid-transition
+- `workers/waveform-worker.js` - Added caching for drift-removed samples, only reprocesses when settings change
+- Multiple files - Commented out verbose console logs
+
+### Benefits
+- ✅ Faster zoom transitions (500ms vs 1000ms)
+- ✅ Smooth transitions when switching mid-animation
+- ✅ No redundant drift removal processing (huge performance win)
+- ✅ Cleaner console output
+- ✅ Correct behavior - processes full dataset before slicing
+
+### Version
+v2.29 - Commit: "v2.29 Optimize: Cache drift removal processing, fix zoom transition cancellation, reduce console logging"
+
+---
+
 ## ⌨️ Keyboard Shortcuts & Performance Optimizations (v2.28)
 
 ### Features Added

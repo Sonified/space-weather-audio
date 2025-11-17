@@ -81,7 +81,7 @@ export function removeFeatureBox(regionIndex, featureIndex) {
  * Called whenever zoom/pan/frequency scale changes
  */
 export function updateAllFeatureBoxPositions() {
-    console.log(`🔄 Updating ${featureBoxes.size} feature box positions`);
+    // console.log(`🔄 Updating ${featureBoxes.size} feature box positions`);
     
     if (!State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) {
         return;

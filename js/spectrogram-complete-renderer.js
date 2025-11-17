@@ -21,6 +21,10 @@ import { drawSpectrogramRegionHighlights, drawSpectrogramSelection } from './reg
 let completeSpectrogramRendered = false;
 let renderingInProgress = false;
 
+// 🔥 PROTECTION: Track active render operation to allow cancellation
+let activeRenderRegionId = null; // Track which region is currently being rendered
+let activeRenderAbortController = null; // AbortController for cancelling renders
+
 // Worker pool for parallel FFT computation
 let workerPool = null;
 
@@ -708,7 +712,7 @@ export function clearCachedZoomedSpectrogram() {
 export function drawInterpolatedSpectrogram() {
     // 🚨 ONLY call during transitions!
     if (!isZoomTransitionInProgress()) {
-        console.log(`⚠️ drawInterpolatedSpectrogram: NOT in transition - returning early!`);
+        // console.log(`⚠️ drawInterpolatedSpectrogram: NOT in transition - returning early!`);
         return; // Not in transition - don't touch the display!
     }
     
@@ -753,7 +757,7 @@ export function drawInterpolatedSpectrogram() {
     const stretchFactor = calculateStretchFactor(playbackRate, State.frequencyScale);
     const stretchedHeight = Math.floor(height * stretchFactor);
     
-    console.log(`🏄‍♂️ Interpolated spectrogram: playbackRate=${playbackRate.toFixed(2)}, stretchFactor=${stretchFactor.toFixed(3)}, stretchedHeight=${stretchedHeight}px`);
+    // console.log(`🏄‍♂️ Interpolated spectrogram: playbackRate=${playbackRate.toFixed(2)}, stretchFactor=${stretchFactor.toFixed(3)}, stretchedHeight=${stretchedHeight}px`);
     
     ctx.clearRect(0, 0, width, height);
     
@@ -979,7 +983,7 @@ export function updateSpectrogramViewport(playbackRate) {
     
     const stretchFactor = calculateStretchFactor(playbackRate, State.frequencyScale);
     const stretchedHeight = Math.floor(height * stretchFactor);
-    console.log(`   Stretch factor: ${stretchFactor.toFixed(3)}, stretchedHeight: ${stretchedHeight}px (from ${height}px)`);
+    // console.log(`   Stretch factor: ${stretchFactor.toFixed(3)}, stretchedHeight: ${stretchedHeight}px (from ${height}px)`);
     
     ctx.clearRect(0, 0, width, height);
     
@@ -1055,24 +1059,65 @@ export function updateSpectrogramViewport(playbackRate) {
 }
 
 /**
+ * 🔥 PROTECTION: Cancel any active render operation
+ * Called when a new zoom starts to prevent race conditions
+ */
+export function cancelActiveRender() {
+    if (activeRenderAbortController) {
+        console.log(`🛑 Cancelling active render for region: ${activeRenderRegionId}`);
+        activeRenderAbortController.abort();
+        activeRenderAbortController = null;
+        activeRenderRegionId = null;
+        renderingInProgress = false;
+    }
+}
+
+/**
+ * 🔥 PROTECTION: Check if there's an active render for a different region
+ * Returns true if we should cancel the active render (different region or transition in progress)
+ */
+export function shouldCancelActiveRender(newRegionId) {
+    // Cancel if there's an active render for a different region
+    if (activeRenderAbortController && activeRenderRegionId !== null && activeRenderRegionId !== newRegionId) {
+        return true;
+    }
+    return false;
+}
+
+/**
  * Render spectrogram for a specific time range (region zoom)
  * 🔬 Renders high-res zoomed version in BACKGROUND
+ * 
+ * 🔥 PROTECTION: Supports cancellation via AbortController
  */
-export async function renderCompleteSpectrogramForRegion(startSeconds, endSeconds, renderInBackground = false) {
-    console.log(`🔍 [spectrogram-complete-renderer.js] renderCompleteSpectrogramForRegion CALLED: ${startSeconds.toFixed(2)}s to ${endSeconds.toFixed(2)}s${renderInBackground ? ' (background)' : ''}`);
-    console.trace('📍 Call stack:');
+export async function renderCompleteSpectrogramForRegion(startSeconds, endSeconds, renderInBackground = false, regionId = null) {
+    // console.log(`🔍 [spectrogram-complete-renderer.js] renderCompleteSpectrogramForRegion CALLED: ${startSeconds.toFixed(2)}s to ${endSeconds.toFixed(2)}s${renderInBackground ? ' (background)' : ''}`);
+    // console.trace('📍 Call stack:');
     
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         console.log('⚠️ Cannot render region spectrogram - no audio data');
         return;
     }
     
-    console.log(`🔍 Rendering spectrogram for region: ${startSeconds.toFixed(2)}s to ${endSeconds.toFixed(2)}s${renderInBackground ? ' (background)' : ''}`);
+    // console.log(`🔍 Rendering spectrogram for region: ${startSeconds.toFixed(2)}s to ${endSeconds.toFixed(2)}s${renderInBackground ? ' (background)' : ''}`);
     
-    logMemory('Before region FFT');
+    // 🔥 PROTECTION: Cancel any previous render and set up new abort controller
+    cancelActiveRender();
+    activeRenderAbortController = new AbortController();
+    activeRenderRegionId = regionId;
+    renderingInProgress = true;
+    
+    const signal = activeRenderAbortController.signal;
+    
+    // logMemory('Before region FFT');
     
     const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
+    if (!canvas) {
+        renderingInProgress = false;
+        activeRenderAbortController = null;
+        activeRenderRegionId = null;
+        return;
+    }
     
     const ctx = canvas.getContext('2d', { willReadFrequently: false });
     const width = canvas.width;
@@ -1087,7 +1132,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
     const startSample = Math.floor(startSeconds * sampleRate);
     const endSample = Math.floor(endSeconds * sampleRate);
     
-    logInfiniteCanvasState('renderCompleteSpectrogramForRegion START');
+    // logInfiniteCanvasState('renderCompleteSpectrogramForRegion START');
     
     // Check if we need to re-render
     const needsRerender = infiniteSpectrogramCanvas &&
@@ -1096,18 +1141,26 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
          infiniteCanvasContext.frequencyScale !== State.frequencyScale);
     
     if (needsRerender) {
-        console.log('🔄 Context changed - clearing old self and re-rendering');
+        // console.log('🔄 Context changed - clearing old self and re-rendering');
         clearInfiniteCanvas();
     }
     
     try {
+        // 🔥 PROTECTION: Check for cancellation before starting work
+        if (signal.aborted) {
+            console.log('🛑 Render cancelled before starting');
+            renderingInProgress = false;
+            activeRenderAbortController = null;
+            activeRenderRegionId = null;
+            return;
+        }
         const startTime = performance.now();
         const regionSamples = State.completeSamplesArray.slice(startSample, endSample);
         const totalSamples = regionSamples.length;
         const duration = endSeconds - startSeconds;
         
-        console.log(`📊 Region: ${totalSamples.toLocaleString()} samples (${duration.toFixed(2)}s)`);
-        console.log(`🎯 ZOOM RESOLUTION: ${(width / duration).toFixed(1)} pixels/second (vs ${(width / State.totalAudioDuration).toFixed(1)} for full view)`);
+        // console.log(`📊 Region: ${totalSamples.toLocaleString()} samples (${duration.toFixed(2)}s)`);
+        // console.log(`🎯 ZOOM RESOLUTION: ${(width / duration).toFixed(1)} pixels/second (vs ${(width / State.totalAudioDuration).toFixed(1)} for full view)`);
         
         // FFT parameters
         const fftSize = 2048;
@@ -1218,6 +1271,15 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             drawResults
         );
         
+        // 🔥 PROTECTION: Check for cancellation after worker processing
+        if (signal.aborted) {
+            console.log('🛑 Render cancelled during worker processing');
+            renderingInProgress = false;
+            activeRenderAbortController = null;
+            activeRenderRegionId = null;
+            return;
+        }
+        
         // Write ImageData to temp canvas
         // console.log(`🎨 Writing ImageData to neutral render canvas...`);
         const tempCanvas = document.createElement('canvas');
@@ -1225,6 +1287,15 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         tempCanvas.height = height;
         const tempCtx = tempCanvas.getContext('2d');
         tempCtx.putImageData(imageData, 0, 0);
+        
+        // 🔥 PROTECTION: Check for cancellation before creating infinite canvas
+        if (signal.aborted) {
+            console.log('🛑 Render cancelled before creating infinite canvas');
+            renderingInProgress = false;
+            activeRenderAbortController = null;
+            activeRenderRegionId = null;
+            return;
+        }
         
         // Create infinite canvas
         const infiniteHeight = Math.floor(height * MAX_PLAYBACK_RATE);
@@ -1247,14 +1318,14 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             endSample: endSample,
             frequencyScale: State.frequencyScale
         };
-        console.log(`🏛️ New temple self created: Region (${startSample.toLocaleString()}-${endSample.toLocaleString()}), scale=${State.frequencyScale}`);
+        // console.log(`🏛️ New temple self created: Region (${startSample.toLocaleString()}-${endSample.toLocaleString()}), scale=${State.frequencyScale}`);
         
-        logInfiniteCanvasState('renderCompleteSpectrogramForRegion COMPLETE - region canvas created');
+        // logInfiniteCanvasState('renderCompleteSpectrogramForRegion COMPLETE - region canvas created');
         
         const elapsed = performance.now() - startTime;
-        console.log(`✅ Region spectrogram rendered in ${elapsed.toFixed(0)}ms`);
+        // console.log(`✅ Region spectrogram rendered in ${elapsed.toFixed(0)}ms`);
         
-        logMemory('After region FFT');
+        // logMemory('After region FFT');
         
         // Update frequency axis
         positionAxisCanvas();
@@ -1269,15 +1340,35 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             updateSpectrogramViewport(playbackRate);
             console.log(`🏛️ Viewport update complete`);
         } else {
-            console.log(`🔬 High-res render complete (background) - ready for crossfade`);
+            // console.log(`🔬 High-res render complete (background) - ready for crossfade`);
         }
         
-        // 🔥 THE FIX: Set the flag so next scale change knows we have a rendered spectrogram!
-        completeSpectrogramRendered = true;
-        State.setSpectrogramInitialized(true);
+        // 🔥 PROTECTION: Only mark as complete if not cancelled
+        if (!signal.aborted) {
+            // 🔥 THE FIX: Set the flag so next scale change knows we have a rendered spectrogram!
+            completeSpectrogramRendered = true;
+            State.setSpectrogramInitialized(true);
+            
+            // Clear tracking if this render completed successfully
+            if (activeRenderRegionId === regionId) {
+                activeRenderAbortController = null;
+                activeRenderRegionId = null;
+            }
+        }
         
     } catch (error) {
-        console.error('❌ Error rendering region spectrogram:', error);
+        // Only log error if not cancelled
+        if (!signal.aborted) {
+            console.error('❌ Error rendering region spectrogram:', error);
+        } else {
+            console.log('🛑 Render cancelled (error suppressed)');
+        }
+    } finally {
+        // Always clear rendering flag and controller if this was the active render
+        if (activeRenderRegionId === regionId) {
+            renderingInProgress = false;
+            // Don't clear controller here - it might have been cancelled and cleared already
+        }
     }
 }
 

@@ -17,7 +17,7 @@ import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
-import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache } from './spectrogram-complete-renderer.js';
+import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender } from './spectrogram-complete-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
@@ -963,7 +963,7 @@ export function handleWaveformClick(event, canvas) {
  * Start frequency selection mode for a specific feature
  */
 export function startFrequencySelection(regionIndex, featureIndex) {
-    console.log(`🎯 Starting frequency selection for region ${regionIndex}, feature ${featureIndex}`);
+    // console.log(`🎯 Starting frequency selection for region ${regionIndex}, feature ${featureIndex}`);
     
     isSelectingFrequency = true;
     currentFrequencySelection = { regionIndex, featureIndex };
@@ -2054,31 +2054,44 @@ export function zoomToRegion(regionIndex) {
         return;
     }
     
-    console.log(`🔍 Zooming into region ${regionIndex + 1} (samples ${region.startSample.toLocaleString()}-${region.endSample.toLocaleString()})`);
+    // console.log(`🔍 Zooming into region ${regionIndex + 1} (samples ${region.startSample.toLocaleString()}-${region.endSample.toLocaleString()})`);
     
-    console.log('🔍 ========== ZOOM IN: Starting Region Zoom ==========');
-    console.log('🏛️ Region data:', {
-        regionIndex,
-        startSample: region.startSample?.toLocaleString(),
-        endSample: region.endSample?.toLocaleString(),
-        startTime: region.startTime,
-        stopTime: region.stopTime
-    });
+    // console.log('🔍 ========== ZOOM IN: Starting Region Zoom ==========');
+    // console.log('🏛️ Region data:', {
+    //     regionIndex,
+    //     startSample: region.startSample?.toLocaleString(),
+    //     endSample: region.endSample?.toLocaleString(),
+    //     startTime: region.startTime,
+    //     stopTime: region.stopTime
+    // });
     
     // Print all features before zoom
-    console.log('📦 Features before zoom:');
-    region.features.forEach((feature, idx) => {
-        console.log(`  Feature ${idx}:`, {
-            lowFreq: feature.lowFreq,
-            highFreq: feature.highFreq,
-            startTime: feature.startTime,
-            endTime: feature.endTime
-        });
-    });
+    // console.log('📦 Features before zoom:');
+    // region.features.forEach((feature, idx) => {
+    //     console.log(`  Feature ${idx}:`, {
+    //         lowFreq: feature.lowFreq,
+    //         highFreq: feature.highFreq,
+    //         startTime: feature.startTime,
+    //         endTime: feature.endTime
+    //     });
+    // });
     
-    // Store old time range for smooth interpolation
+    // 🔥 CRITICAL: Read current interpolated position BEFORE cancelling or updating zoomState
+    // If transition is in progress, use CURRENT interpolated position (not the target)
+    // This ensures smooth transitions when switching mid-animation
     let oldStartTime, oldEndTime;
-    if (zoomState.isInRegion()) {
+    const wasTransitionInProgress = isZoomTransitionInProgress();
+    if (wasTransitionInProgress) {
+        // Transition in progress - MUST read current position BEFORE cancelling
+        // because stopZoomTransition() clears oldTimeRange
+        const currentRange = getInterpolatedTimeRange();
+        oldStartTime = currentRange.startTime;
+        oldEndTime = currentRange.endTime;
+        console.log('🔄 Using current interpolated position as transition start:', {
+            startTime: oldStartTime,
+            endTime: oldEndTime
+        });
+    } else if (zoomState.isInRegion()) {
         const oldRange = zoomState.getRegionRange();
         oldStartTime = zoomState.sampleToRealTimestamp(oldRange.startSample);
         oldEndTime = zoomState.sampleToRealTimestamp(oldRange.endSample);
@@ -2113,10 +2126,10 @@ export function zoomToRegion(regionIndex) {
         cachedCopy.height = State.cachedWaveformCanvas.height;
         cachedCopy.getContext('2d').drawImage(State.cachedWaveformCanvas, 0, 0);
         State.setCachedFullWaveformCanvas(cachedCopy);
-        console.log('💾 Cached full waveform canvas before zooming in');
+        // console.log('💾 Cached full waveform canvas before zooming in');
     }
     
-    // Enter the temple
+    // Enter the temple (update zoomState AFTER reading current position)
     zoomState.mode = 'region';
     zoomState.currentViewStartSample = region.startSample;
     zoomState.currentViewEndSample = region.endSample;
@@ -2138,46 +2151,56 @@ export function zoomToRegion(regionIndex) {
     const newEndTime = zoomState.sampleToRealTimestamp(region.endSample);
     
     // 🔍 Diagnostic: Track region zoom start
-    console.log('🔍 REGION ZOOM IN starting:', {
-        startTime: regionStartSeconds,
-        endTime: regionEndSeconds,
-        startSample: region.startSample,
-        endSample: region.endSample
-    });
+    // console.log('🔍 REGION ZOOM IN starting:', {
+    //     startTime: regionStartSeconds,
+    //     endTime: regionEndSeconds,
+    //     startSample: region.startSample,
+    //     endSample: region.endSample
+    // });
+    
+    // 🔥 PROTECTION: Cancel render for different region if needed
+    // NOTE: Don't call stopZoomTransition() here - animateZoomTransition() will handle cancelling the RAF
+    // We already read the current position above, so we're good to start the new transition
+    if (shouldCancelActiveRender(region.id)) {
+        // Cancel render for different region even if no transition in progress
+        console.log('🛑 Cancelling render for different region...');
+        cancelActiveRender();
+    }
     
     // 🔬 START HIGH-RES RENDER IN BACKGROUND (don't wait!)
-    console.log('🔬 Starting high-res render in background...');
+    // console.log('🔬 Starting high-res render in background...');
     const renderPromise = renderCompleteSpectrogramForRegion(
         regionStartSeconds, 
         regionEndSeconds,
-        true  // renderInBackground = true
+        true,  // renderInBackground = true
+        region.id  // Pass region ID for tracking
     );
     
     // 🎬 Animate with elastic friend - no waiting!
     animateZoomTransition(oldStartTime, oldEndTime, true).then(() => {
-        console.log('🎬 Zoom animation complete');
+        // console.log('🎬 Zoom animation complete');
         
-        console.log('🔍 ========== ZOOM IN: Animation Complete ==========');
-        console.log('🏛️ Now inside region:', {
-            regionIndex,
-            mode: zoomState.mode,
-            activeRegionId: zoomState.activeRegionId,
-            currentViewStartSample: zoomState.currentViewStartSample.toLocaleString(),
-            currentViewEndSample: zoomState.currentViewEndSample.toLocaleString()
-        });
+        // console.log('🔍 ========== ZOOM IN: Animation Complete ==========');
+        // console.log('🏛️ Now inside region:', {
+        //     regionIndex,
+        //     mode: zoomState.mode,
+        //     activeRegionId: zoomState.activeRegionId,
+        //     currentViewStartSample: zoomState.currentViewStartSample.toLocaleString(),
+        //     currentViewEndSample: zoomState.currentViewEndSample.toLocaleString()
+        // });
         
         // Print all features after zoom
         const regionsAfter = getCurrentRegions();
-        console.log('📦 Features after zoom:');
-        regionsAfter[regionIndex].features.forEach((feature, idx) => {
-            console.log(`  Feature ${idx}:`, {
-                lowFreq: feature.lowFreq,
-                highFreq: feature.highFreq,
-                startTime: feature.startTime,
-                endTime: feature.endTime
-            });
-        });
-        console.log('🔍 ========== END Zoom In ==========\n');
+        // console.log('📦 Features after zoom:');
+        // regionsAfter[regionIndex].features.forEach((feature, idx) => {
+        //     console.log(`  Feature ${idx}:`, {
+        //         lowFreq: feature.lowFreq,
+        //         highFreq: feature.highFreq,
+        //         startTime: feature.startTime,
+        //         endTime: feature.endTime
+        //     });
+        // });
+        // console.log('🔍 ========== END Zoom In ==========\n');
         
         // Update feature box positions after zoom transition completes
         import('./spectrogram-feature-boxes.js').then(module => {
@@ -2188,19 +2211,29 @@ export function zoomToRegion(regionIndex) {
         drawWaveform();
         
         // Wait for high-res spectrogram if needed, then crossfade
+        // 🔥 PROTECTION: Only update viewport if we're still in the same region (not cancelled)
         renderPromise.then(() => {
-            console.log('🔬 High-res ready - updating viewport');
-            const playbackRate = State.currentPlaybackRate || 1.0;
-            updateSpectrogramViewport(playbackRate);
-            
-            // Update feature box positions again after viewport update
-            import('./spectrogram-feature-boxes.js').then(module => {
-                module.updateAllFeatureBoxPositions();
-            });
-            
-            // 🔍 Diagnostic: Track region zoom complete
-            console.log('✅ REGION ZOOM IN complete');
-            // Note: logInfiniteCanvasState would need to be imported/accessible here
+            // Check if we're still zoomed into the same region (render wasn't cancelled)
+            if (zoomState.isInRegion() && zoomState.activeRegionId === region.id) {
+                // console.log('🔬 High-res ready - updating viewport');
+                const playbackRate = State.currentPlaybackRate || 1.0;
+                updateSpectrogramViewport(playbackRate);
+                
+                // Update feature box positions again after viewport update
+                import('./spectrogram-feature-boxes.js').then(module => {
+                    module.updateAllFeatureBoxPositions();
+                });
+                
+                // 🔍 Diagnostic: Track region zoom complete
+                console.log('✅ REGION ZOOM IN complete');
+            } else {
+                console.log('🛑 Render completed but region changed - skipping viewport update');
+            }
+        }).catch(err => {
+            // Suppress errors from cancelled renders
+            if (err.name !== 'AbortError') {
+                console.error('❌ Error in render promise:', err);
+            }
         });
     });
     
@@ -2215,11 +2248,11 @@ export function zoomToRegion(regionIndex) {
         }
     }
     
-    console.log(`🔍 Temple boundaries set: ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
-    console.log(`🚩 Flag raised - respecting temple walls`);
-    console.log(`🔍 Zoomed to ${zoomState.getZoomLevel().toFixed(1)}x - the introspective lens is open! 🦋`);
-    console.log(`🔄 ZOOM MODE TOGGLE: full view → temple mode (region ${regionIndex + 1})`);
-    console.log(`🏛️ Entering the temple - sacred walls at ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
+    // console.log(`🔍 Temple boundaries set: ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
+    // console.log(`🚩 Flag raised - respecting temple walls`);
+    // console.log(`🔍 Zoomed to ${zoomState.getZoomLevel().toFixed(1)}x - the introspective lens is open! 🦋`);
+    // console.log(`🔄 ZOOM MODE TOGGLE: full view → temple mode (region ${regionIndex + 1})`);
+    // console.log(`🏛️ Entering the temple - sacred walls at ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
     
     // Auto-enter selection mode for the first incomplete feature when zooming in
     // Find the first feature that needs selection (missing frequency or time data)
@@ -2268,9 +2301,22 @@ export function zoomToFull() {
         });
     });
     
-    // 🏛️ Store old time range for smooth tick interpolation
+    // 🔥 CRITICAL: Read current interpolated position BEFORE cancelling or updating zoomState
+    // If transition is in progress, use CURRENT interpolated position (not the target)
+    // This ensures smooth transitions when switching mid-animation
     let oldStartTime, oldEndTime;
-    if (zoomState.isInRegion()) {
+    const wasTransitionInProgress = isZoomTransitionInProgress();
+    if (wasTransitionInProgress) {
+        // Transition in progress - MUST read current position BEFORE cancelling
+        // because stopZoomTransition() clears oldTimeRange
+        const currentRange = getInterpolatedTimeRange();
+        oldStartTime = currentRange.startTime;
+        oldEndTime = currentRange.endTime;
+        console.log('🔄 Using current interpolated position as transition start (zoom out):', {
+            startTime: oldStartTime,
+            endTime: oldEndTime
+        });
+    } else if (zoomState.isInRegion()) {
         const oldRange = zoomState.getRegionRange();
         oldStartTime = zoomState.sampleToRealTimestamp(oldRange.startSample);
         oldEndTime = zoomState.sampleToRealTimestamp(oldRange.endSample);
@@ -2288,7 +2334,7 @@ export function zoomToFull() {
     // 💾 Cache the zoomed spectrogram BEFORE resetting (so we can crossfade it)
     cacheZoomedSpectrogram();
     
-    // 🏛️ Exit the temple - return to full view
+    // 🏛️ Exit the temple - return to full view (update zoomState AFTER reading current position)
     zoomState.mode = 'full';
     zoomState.currentViewStartSample = 0;
     zoomState.currentViewEndSample = zoomState.totalSamples;
@@ -2298,7 +2344,7 @@ export function zoomToFull() {
     // If activePlayingRegionIndex is set, boundaries will still be the region
     // Otherwise, boundaries will be full audio
     updateWorkletSelection();
-    
+
     // 🔧 FIX: Only reset spectrogram state (clears infinite canvas)
     // DON'T clear the elastic friend - we need it for the transition!
     resetSpectrogramState();
@@ -2316,6 +2362,15 @@ export function zoomToFull() {
         drawWaveform();
     }
 
+    // 🔥 PROTECTION: Cancel render if needed
+    // NOTE: Don't call stopZoomTransition() here - animateZoomTransition() will handle cancelling the RAF
+    // We already read the current position above, so we're good to start the new transition
+    if (shouldCancelActiveRender(null)) {
+        // Cancel any active render when zooming to full (regionId is null for full view)
+        console.log('🛑 Cancelling active render when zooming to full view...');
+        cancelActiveRender();
+    }
+    
     // 🏛️ Animate x-axis tick interpolation (smooth transition back to full view)
     // 🎬 Wait for animation to complete, THEN rebuild infinite canvas for full view
     animateZoomTransition(oldStartTime, oldEndTime, false).then(() => {

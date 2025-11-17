@@ -17,12 +17,22 @@ console.log('🎨 Waveform Worker initialized');
 let allSamples = new Float32Array(0);
 let rawSamples = new Float32Array(0);
 
+// 🔥 CACHE: Store drift-removed version to avoid reprocessing
+let processedSamples = null;  // Drift-removed and normalized
+let processedAlpha = null;    // Track which alpha was used
+let processedRemoveDC = null; // Track if DC removal was applied
+
 self.addEventListener('message', (e) => {
     const { type } = e.data;
     
     if (type === 'add-samples') {
         // Add new samples to our buffer
         const { samples, rawSamples: raw } = e.data;
+        
+        // 🔥 Clear processed cache when new samples arrive (data changed)
+        processedSamples = null;
+        processedAlpha = null;
+        processedRemoveDC = null;
         
         // Append to existing arrays
         const newAllSamples = new Float32Array(allSamples.length + samples.length);
@@ -55,17 +65,39 @@ self.addEventListener('message', (e) => {
             if (DEBUG_WAVEFORM) console.log(`🔍 Zoom mode: using ${displaySamples.length.toLocaleString()} samples ${sampleRangeInfo}`);
         }
         
-        // Apply drift removal if requested (for final complete waveform)
+        // 🔥 OPTIMIZATION: Process drift removal ONCE and cache the result
+        // Only reprocess if settings changed or cache doesn't exist
         if (removeDC && rawSamples.length > 0) {
-            console.log(`  🎛️ Applying drift removal (alpha=${alpha.toFixed(4)})...`);
-            // 🏛️ Use same zoom range for raw samples if zoomed
-            let rawSamplesToProcess = rawSamples;
-            if (startSample !== undefined && endSample !== undefined && startSample >= 0 && endSample <= rawSamples.length) {
-                rawSamplesToProcess = rawSamples.slice(startSample, endSample);
+            // Check if we need to reprocess (settings changed or no cache)
+            const needsReprocess = processedSamples === null || 
+                                   processedAlpha !== alpha || 
+                                   processedRemoveDC !== removeDC ||
+                                   processedSamples.length !== rawSamples.length;
+            
+            if (needsReprocess) {
+                console.log(`  🎛️ Processing drift removal (alpha=${alpha.toFixed(4)})...`);
+                // Process FULL dataset (drift removal needs full context)
+                const filtered = removeDCOffset(rawSamples, alpha);
+                processedSamples = normalize(filtered);
+                processedAlpha = alpha;
+                processedRemoveDC = removeDC;
+                console.log(`  ✅ Drift removal complete (cached)`);
             }
-            const filtered = removeDCOffset(rawSamplesToProcess, alpha);
-            displaySamples = normalize(filtered);
-            console.log(`  ✅ Drift removal complete`);
+            
+            // Use cached processed samples, slice if zoomed
+            if (startSample !== undefined && endSample !== undefined && startSample >= 0 && endSample <= processedSamples.length) {
+                displaySamples = processedSamples.slice(startSample, endSample);
+            } else {
+                displaySamples = processedSamples;
+            }
+        } else {
+            // No drift removal - use normalized samples directly
+            // Clear cache if DC removal was disabled
+            if (processedRemoveDC === true) {
+                processedSamples = null;
+                processedAlpha = null;
+                processedRemoveDC = null;
+            }
         }
         
         // Build min/max arrays for efficient rendering

@@ -14,7 +14,7 @@ const DEBUG_AXIS = false;
 // 🏛️ Zoom transition animation state (for smooth tick interpolation)
 let zoomTransitionInProgress = false;
 let zoomTransitionStartTime = null;
-let zoomTransitionDuration = 1000; // 1 second
+let zoomTransitionDuration = 500; // 500ms (faster, snappier transitions)
 let oldTimeRange = null; // { startTime, endTime }
 let zoomTransitionRAF = null;
 let isZoomingToRegion = false; // Track if we're zooming TO a region (true) or FROM a region (false)
@@ -872,10 +872,63 @@ export function cancelZoomTransitionRAF() {
 /**
  * 🆘 EMERGENCY: Force stop any stuck zoom transition
  * Can be called from browser console: window.stopZoomTransition()
+ * 
+ * CRITICAL: Ensures final high-res canvas is displayed even when transition is stopped early.
+ * This function completes the transition properly (like the normal completion path) to ensure
+ * the final canvas renders, preventing the issue where stopping interrupts the display.
  */
 export function stopZoomTransition() {
     console.warn('🆘 Emergency stop: Cancelling zoom transition');
-    cancelZoomTransitionRAF();
+    
+    // Cancel RAF to prevent memory leaks
+    if (zoomTransitionRAF !== null) {
+        cancelAnimationFrame(zoomTransitionRAF);
+        zoomTransitionRAF = null;
+    }
+    
+    // If transition was in progress, complete it properly to ensure final canvas renders
+    // This mimics the normal completion path (lines 274-286) to ensure consistency
+    if (zoomTransitionInProgress) {
+        // Mark transition as complete (same as normal completion)
+        zoomTransitionInProgress = false;
+        const wasZoomingToRegion = isZoomingToRegion;
+        oldTimeRange = null;
+        
+        // 🏛️ Draw final frame to keep regions visible while waveform rebuilds
+        // This prevents the flash where regions disappear during worker rebuild
+        // CRITICAL: This is the same call as the normal completion path
+        drawWaveformWithSelection();
+        
+        // 🔥 CRITICAL: Ensure final spectrogram canvas is displayed
+        // The normal completion path relies on the promise chain in region-tracker.js
+        // to call updateSpectrogramViewport(), but if we're stopping early, we need
+        // to ensure the viewport is updated. However, we must be careful not to
+        // interfere with the normal promise chain completion.
+        // 
+        // Strategy: Use requestAnimationFrame to ensure this happens after any
+        // pending promise chains, but still within the same frame cycle
+        if (wasZoomingToRegion && zoomState.isInRegion()) {
+            // Schedule viewport update for next frame to ensure it happens after
+            // any pending promise resolutions, but still displays the final canvas
+            requestAnimationFrame(() => {
+                import('./spectrogram-complete-renderer.js').then(module => {
+                    // Check if infinite canvas exists (high-res render is ready)
+                    // If it exists, update the viewport to display it
+                    const playbackRate = State.currentPlaybackRate || 1.0;
+                    if (module.updateSpectrogramViewport) {
+                        // This will only update if infiniteSpectrogramCanvas exists
+                        // (i.e., if the high-res render has completed)
+                        module.updateSpectrogramViewport(playbackRate);
+                    }
+                }).catch(err => {
+                    console.warn('⚠️ Could not update spectrogram viewport after emergency stop:', err);
+                });
+            });
+        }
+    } else {
+        // Transition wasn't in progress, just clean up
+        cancelZoomTransitionRAF();
+    }
 }
 
 /**
@@ -1008,6 +1061,7 @@ export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion 
         };
         zoomTransitionInProgress = true;
         isZoomingToRegion = zoomingToRegion; // Track direction for opacity interpolation
+        // 🔥 Reset timer - if user switches mid-transition, this restarts from 0ms
         zoomTransitionStartTime = performance.now();
 
         // Start animation loop
