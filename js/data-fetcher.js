@@ -11,7 +11,8 @@ import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-re
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
 import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
-import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks, startSpeedSliderTutorial, endSpeedSliderTutorial, setTutorialPhase, clearTutorialPhase } from './tutorial.js';
+import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks } from './tutorial.js';
+import { runMainTutorial } from './tutorial-coordinator.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -901,9 +902,11 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 const volumeSlider = document.getElementById('volumeSlider');
                                 const speedLabel = document.getElementById('speedLabel');
                                 const volumeLabel = document.getElementById('volumeLabel');
-                                if (speedSlider) speedSlider.disabled = false;
+                                // Don't enable speed slider here - it will be enabled when speed tutorial starts
+                                // if (speedSlider) speedSlider.disabled = false;
                                 if (volumeSlider) volumeSlider.disabled = false;
-                                if (speedLabel) speedLabel.style.opacity = '1';
+                                // Keep speed label dimmed until speed tutorial starts
+                                // if (speedLabel) speedLabel.style.opacity = '1';
                                 if (volumeLabel) volumeLabel.style.opacity = '1';
                                 
                                 // Set completion message immediately (loading animation already stopped above)
@@ -916,81 +919,18 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 disableWaveformClicks();
                                 
                                 // Tutorial flow: Well done → Spectrogram explanation → Click me tutorial
-                                // Clear any previous tutorial phase
-                                clearTutorialPhase();
-                                
-                                // Helper function to execute each tutorial step
-                                const executeVolcanoMessage = () => {
-                                    const volcanoSelect = document.getElementById('volcano');
-                                    const volcanoValue = volcanoSelect ? volcanoSelect.value : '';
-                                    const volcanoNameMap = {
-                                        'kilauea': 'Kīlauea',
-                                        'maunaloa': 'Mauna Loa',
-                                        'greatsitkin': 'Great Sitkin',
-                                        'shishaldin': 'Shishaldin',
-                                        'spurr': 'Mount Spurr'
-                                    };
-                                    const volcanoName = volcanoNameMap[volcanoValue] || 'the volcano';
-                                    setStatusText(`This is the sound of ${volcanoName}, recorded over the past 24 hours.`, 'status info');
-                                    
-                                    const timeout2 = setTimeout(executeSpectrogramExplanation, 5000);
-                                    setTutorialPhase('volcano_message', [timeout2], executeSpectrogramExplanation);
-                                };
-                                
-                                const executeSpectrogramExplanation = () => {
-                                    setStatusText('The spectrogram shows frequency from low to high.', 'status info');
-                                    addSpectrogramGlow();
-                                    
-                                    const timeout3 = setTimeout(() => {
-                                        removeSpectrogramGlow();
-                                        const timeout4 = setTimeout(executeSpeedSliderTutorial, 600);
-                                        setTutorialPhase('spectrogram_explanation', [timeout4], () => {
-                                            removeSpectrogramGlow();
-                                            clearTimeout(timeout4);
-                                            executeSpeedSliderTutorial();
-                                        });
-                                    }, 5000);
-                                    
-                                    setTutorialPhase('spectrogram_explanation', [timeout3], () => {
-                                        clearTimeout(timeout3);
-                                        removeSpectrogramGlow();
-                                        executeSpeedSliderTutorial();
-                                    });
-                                };
-                                
-                                const executeSpeedSliderTutorial = () => {
-                                    window._onSpeedSliderTutorialComplete = () => {
-                                        enableWaveformClicks();
-                                        const waveformCanvas = document.getElementById('waveform');
-                                        if (waveformCanvas && shouldShowPulse()) {
-                                            waveformCanvas.classList.add('pulse');
-                                            markPulseShown();
-                                            showTutorialOverlay();
-                                        }
-                                        if (statusEl) {
-                                            setStatusText('👇 Click on the waveform below to move the playhead.', 'status success');
-                                        }
-                                        clearTutorialPhase();
-                                    };
-                                    
-                                    setTutorialPhase('speed_slider', [], () => {
-                                        endSpeedSliderTutorial();
-                                        if (window._onSpeedSliderTutorialComplete) {
-                                            window._onSpeedSliderTutorialComplete();
-                                        }
-                                    });
-                                    
-                                    startSpeedSliderTutorial();
-                                };
+                                // Clear any previous tutorial phase (handled by coordinator)
                                 
                                 setTimeout(() => {
+                                    const statusEl = document.getElementById('status');
                                     if (statusEl) {
                                         statusEl.classList.remove('loading');
                                         statusEl.className = 'status success';
-                                        setStatusText('Well done!', 'status success');
                                         
-                                        const timeout1 = setTimeout(executeVolcanoMessage, 2000);
-                                        setTutorialPhase('well_done', [timeout1], executeVolcanoMessage);
+                                        // Run the beautiful linear tutorial sequence
+                                        runMainTutorial().catch(err => {
+                                            console.error('Tutorial error:', err);
+                                        });
                                     }
                                 }, 200);
                                 
@@ -1027,7 +967,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                     }
                                     // Message will be shown after tutorial overlay appears if not playing
                                 }
-                                document.getElementById('loopBtn').disabled = false;
+                                // Loop button will be enabled when tutorial completes
+                                // document.getElementById('loopBtn').disabled = false;
                                 document.getElementById('downloadBtn').disabled = false;
                             } else {
                                 // Not all samples written yet - wait a bit and check again
@@ -1572,9 +1513,11 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
                 const volumeSlider = document.getElementById('volumeSlider');
                 const speedLabel = document.getElementById('speedLabel');
                 const volumeLabel = document.getElementById('volumeLabel');
-                if (speedSlider) speedSlider.disabled = false;
+                // Don't enable speed slider here - it will be enabled when speed tutorial starts
+                // if (speedSlider) speedSlider.disabled = false;
                 if (volumeSlider) volumeSlider.disabled = false;
-                if (speedLabel) speedLabel.style.opacity = '1';
+                // Keep speed label dimmed until speed tutorial starts
+                // if (speedLabel) speedLabel.style.opacity = '1';
                 if (volumeLabel) volumeLabel.style.opacity = '1';
                 
                 // Disable waveform clicks immediately - will be enabled when tutorial appears
@@ -1582,60 +1525,15 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
                 
                 // Tutorial flow: Well done → Spectrogram explanation → Click me tutorial
                 setTimeout(() => {
-                    // Step 1: Show "Well done! This is the sound of [volcano]..."
-                    const volcanoSelect = document.getElementById('volcano');
-                    const volcanoValue = volcanoSelect ? volcanoSelect.value : '';
-                    const volcanoNameMap = {
-                        'kilauea': 'Kīlauea',
-                        'maunaloa': 'Mauna Loa',
-                        'greatsitkin': 'Great Sitkin',
-                        'shishaldin': 'Shishaldin',
-                        'spurr': 'Mount Spurr'
-                    };
-                    const volcanoName = volcanoNameMap[volcanoValue] || 'the volcano';
-                    
                     const statusEl = document.getElementById('status');
                     if (statusEl) {
                         statusEl.classList.remove('loading');
                         statusEl.className = 'status success';
-                        setStatusText('Well done!', 'status success');
                         
-                        // After "Well done!" types out, show volcano message
-                        setTimeout(() => {
-                            setStatusText(`This is the sound of ${volcanoName}, recorded over the past 24 hours.`, 'status info');
-                            
-                            // Step 2: After volcano message, show spectrogram explanation with glow
-                            setTimeout(() => {
-                                setStatusText('The spectrogram shows frequency from low to high.', 'status info');
-                                addSpectrogramGlow();
-                                
-                                // Step 3: After 5 seconds, fade out glow, then show speed slider tutorial
-                                setTimeout(() => {
-                                    removeSpectrogramGlow();
-                                    
-                                    // Wait for fade-out to complete, then start speed slider tutorial
-                                    setTimeout(() => {
-                                        // Set up callback for when speed slider tutorial completes
-                                        window._onSpeedSliderTutorialComplete = () => {
-                                            enableWaveformClicks();
-                                            
-                                            const waveformCanvas = document.getElementById('waveform');
-                                            if (waveformCanvas && shouldShowPulse()) {
-                                                waveformCanvas.classList.add('pulse');
-                                                markPulseShown();
-                                                showTutorialOverlay();
-                                            }
-                                            
-                                            if (statusEl) {
-                                                setStatusText('👇 Click on the waveform below to move the playhead.', 'status success');
-                                            }
-                                        };
-                                        
-                                        startSpeedSliderTutorial();
-                                    }, 600); // Short gap after fade-out completes
-                                }, 5000); // 5 seconds
-                            }, 6000); // Wait longer for volcano message to be read (~6 seconds)
-                        }, 2000); // Wait for "Well done!" to finish typing (~2 seconds)
+                        // Run the beautiful linear tutorial sequence
+                        runMainTutorial().catch(err => {
+                            console.error('Tutorial error:', err);
+                        });
                     }
                 }, 200);
             } else {
@@ -1708,7 +1606,8 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     }
     document.getElementById('downloadBtn').disabled = false;
     
-    document.getElementById('loopBtn').disabled = false;
+    // Loop button will be enabled when tutorial completes (user will tell us when)
+    // document.getElementById('loopBtn').disabled = false;
     
     console.log('✅ Streaming complete from Railway backend');
 }

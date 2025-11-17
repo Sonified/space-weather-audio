@@ -75,9 +75,10 @@ export function startPlayback() {
     btn.classList.add('pause-active');
     
     // Update status
-    import('./tutorial.js').then(({ setStatusText }) => {
-        setStatusText('Click on the waveform and drag with your mouse to make a selection.', 'status info');
-    });
+    // TODO: Re-enable this later when we want to show selection tutorial
+    // import('./tutorial.js').then(({ setStatusText }) => {
+    //     setStatusText('Click on the waveform and drag with your mouse to make a selection.', 'status info');
+    // });
     
     // Resume AudioContext if needed
     if (State.audioContext?.state === 'suspended') {

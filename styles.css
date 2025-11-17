@@ -207,22 +207,66 @@ input[type="range"]::-webkit-slider-thumb:hover {
     background: #ff3333;
 }
 
-/* Speed slider glow effect for tutorial */
+/* Speed slider glow effect for tutorial - animate FILTER on parent */
+#playbackSpeed.speed-slider-glow {
+    animation: speedSliderKnobPulse 1s ease-in-out infinite !important;
+}
+
+/* Make the knob brighter so the glow is more visible */
 #playbackSpeed.speed-slider-glow::-webkit-slider-thumb {
-    background: #ffaa66;
-    box-shadow: 0 0 15px rgba(255, 170, 102, 0.8), 0 0 30px rgba(255, 170, 102, 0.6), 0 2px 4px rgba(0, 0, 0, 0.2);
-    animation: speedSliderKnobPulse 1.2s ease-in-out infinite;
-    transform-origin: center;
+    background: #ff6666 !important;
+}
+
+#playbackSpeed.speed-slider-glow::-moz-range-thumb {
+    background: #ff6666 !important;
 }
 
 @keyframes speedSliderKnobPulse {
     0%, 100% {
-        transform: scale(1);
-        box-shadow: 0 0 15px rgba(255, 170, 102, 0.8), 0 0 30px rgba(255, 170, 102, 0.6), 0 2px 4px rgba(0, 0, 0, 0.2);
+        filter: drop-shadow(0 0 8px rgba(255, 100, 100, 0.8))
+                drop-shadow(0 0 16px rgba(255, 80, 80, 0.6));
     }
     50% {
-        transform: scale(1.3);
-        box-shadow: 0 0 25px rgba(255, 170, 102, 1), 0 0 50px rgba(255, 170, 102, 0.9), 0 2px 4px rgba(0, 0, 0, 0.2);
+        filter: drop-shadow(0 0 16px rgba(255, 120, 120, 1))
+                drop-shadow(0 0 32px rgba(255, 100, 100, 0.9))
+                drop-shadow(0 0 48px rgba(255, 80, 80, 0.7));
+    }
+}
+
+/* Speed value glow effect for tutorial */
+#speedValue.speed-value-glow,
+#speedLabel.speed-value-glow {
+    animation: speedValuePulse 1s ease-in-out infinite !important;
+    color: #ff6666 !important;
+}
+
+@keyframes speedValuePulse {
+    0%, 100% {
+        text-shadow: 0 0 8px rgba(255, 100, 100, 0.8),
+                      0 0 16px rgba(255, 80, 80, 0.6);
+    }
+    50% {
+        text-shadow: 0 0 16px rgba(255, 120, 120, 1),
+                      0 0 32px rgba(255, 100, 100, 0.9),
+                      0 0 48px rgba(255, 80, 80, 0.7);
+    }
+}
+
+/* Pause button glow effect for tutorial - more intense but tighter */
+#playPauseBtn.pause-button-glow {
+    animation: pauseButtonPulse 1.5s ease-in-out infinite !important;
+    filter: drop-shadow(0 0 5px rgba(255, 120, 120, 0.8))
+            drop-shadow(0 0 10px rgba(255, 100, 100, 0.6));
+}
+
+@keyframes pauseButtonPulse {
+    0%, 100% {
+        filter: drop-shadow(0 0 5px rgba(255, 120, 120, 0.8))
+                drop-shadow(0 0 10px rgba(255, 100, 100, 0.6));
+    }
+    50% {
+        filter: drop-shadow(0 0 12px rgba(255, 150, 150, 1))
+                drop-shadow(0 0 24px rgba(255, 130, 130, 0.9));
     }
 }
 
@@ -248,13 +292,6 @@ input[type="range"]::-moz-range-thumb:hover {
     background: #ff3333;
 }
 
-/* Speed slider glow effect for tutorial (Firefox) */
-#playbackSpeed.speed-slider-glow::-moz-range-thumb {
-    background: #ffaa66;
-    box-shadow: 0 0 15px rgba(255, 170, 102, 0.8), 0 0 30px rgba(255, 170, 102, 0.6), 0 2px 4px rgba(0, 0, 0, 0.2);
-    animation: speedSliderKnobPulse 1.2s ease-in-out infinite;
-    transform-origin: center;
-}
 
 
 button {
@@ -380,9 +417,9 @@ button.loop-active:hover:not(:disabled) {
     min-width: 0; /* Allow flex item to shrink below content size */
 }
 
-.status.info { background: rgba(255, 200, 150, 0.3); color: #663300; font-weight: 600; }
-.status.success { background: rgba(240, 180, 160, 0.5); color: #884400; font-weight: 600; }
-.status.error { background: rgba(255, 150, 150, 0.4); color: #880000; font-weight: 600; }
+.status.info { background: rgba(255, 200, 150, 0.3); color: #663300; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
+.status.success { background: rgba(240, 180, 160, 0.5); color: #884400; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
+.status.error { background: rgba(255, 150, 150, 0.4); color: #880000; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
 
 .status.loading {
     background: linear-gradient(
@@ -541,6 +578,12 @@ canvas {
     box-shadow: 0 0 15px rgba(255, 100, 100, 0.4), 0 0 30px rgba(255, 100, 100, 0.3);
     animation: spectrogramPulse 1.2s ease-in-out infinite;
     transition: box-shadow 0.5s ease-out, opacity 0.5s ease-out;
+}
+
+#spectrogram.spectrogram-glow.fading-in {
+    opacity: 0;
+    box-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    animation: none;
 }
 
 #spectrogram.spectrogram-glow.fading-out {
@@ -1076,9 +1119,7 @@ input[type="checkbox"] {
 }
 
 /* Region list container */
-#regionsList {
-    /* No margin needed anymore since it's inside the scrollable container */
-}
+/* No margin needed anymore since it's inside the scrollable container */
 
 /* Empty State */
 .empty-state {

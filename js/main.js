@@ -427,8 +427,12 @@ export async function startStreaming(event) {
         }
         
         // Hide tutorial overlay when loading new data
-        const { hideTutorialOverlay } = await import('./tutorial.js');
+        const { hideTutorialOverlay, disableWaveformClicks, clearTutorialPhase } = await import('./tutorial.js');
         hideTutorialOverlay();
+        // Disable waveform clicks - will be enabled when tutorial sequence completes
+        disableWaveformClicks();
+        // Clear any active tutorial phase to restart tutorial sequence
+        clearTutorialPhase();
         
         // Disable speed and volume controls when loading new data
         const speedSlider = document.getElementById('playbackSpeed');
@@ -914,6 +918,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.36 - Tutorial System Refactoring with Async/Await');
+    console.log('🎓 [0ms] v2.36 Refactor: Complete tutorial system refactored to use elegant async/await pattern with skippable waits');
+    console.log('🎓 [0ms] v2.36 Feat: Pause button tutorial now uses async/await - cleaner code, skippable waits, better flow');
+    console.log('🎓 [0ms] v2.36 Feat: Speed slider tutorial refactored to async/await - linear flow, skippable waits, dynamic speed updates');
+    console.log('🎓 [0ms] v2.36 Feat: Spectrogram explanation expanded - "This is a spectrogram of the data", time flow, frequency explanation');
+    console.log('🎓 [0ms] v2.36 Fix: Speed message updates dynamically without retyping - only speed value changes');
+    console.log('🎓 [0ms] v2.36 Fix: Emoji rendering fixed - proper Unicode handling prevents bullet rendering');
+    console.log('🎓 [0ms] v2.36 Fix: "Great!" message triggers immediately when crossing 1x speed threshold');
     console.log('🌋 [0ms] volcano-audio v2.28 - Keyboard Shortcuts & Performance Optimizations');
     console.log('⌨️ [0ms] v2.28 Feat: Added keyboard shortcuts - number keys (1-9) zoom/play regions, f key for features, r key to confirm region, c/v/b for frequency scales, Escape to zoom out');
     console.log('⚡ [0ms] v2.28 Perf: Optimized color LUT - computed once and cached for reuse, faster spectrogram rendering');

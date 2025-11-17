@@ -2,6 +2,84 @@
 
 ---
 
+## 🎓 Tutorial System Complete Refactoring with Async/Await (v2.36)
+
+### Major Refactoring
+
+1. **Complete Tutorial System Overhaul**
+   - Refactored entire tutorial system to use elegant async/await pattern
+   - Replaced nested setTimeout callbacks with clean linear async functions
+   - Created `tutorial-coordinator.js` - beautiful LEGO-block style tutorial sequence
+   - Each tutorial section is now a clean async function that can be easily reordered
+
+2. **Pause Button Tutorial Refactored**
+   - Converted from nested callbacks to async/await
+   - Uses `skippableWait()` for timed sections (skippable with Enter key)
+   - Uses `waitForPlaybackState()` to wait for user actions
+   - Clean linear flow: show message → wait for pause → wait 1s → show "press again" → wait for resume → wait 1s → show "Great!" → wait 2s → complete
+
+3. **Speed Slider Tutorial Refactored**
+   - Converted from complex event-driven callbacks to async/await
+   - Uses helper functions: `waitForSliderInteraction()`, `waitForDirectionDetection()`, `waitForThresholdCross()`, `waitForClick()`
+   - All timed sections use `skippableWait()` - can be skipped with Enter
+   - Dynamic speed message updates without retyping - only speed value changes
+
+4. **Spectrogram Explanation Enhanced**
+   - Added "This is a spectrogram of the data." as first message
+   - Expanded to three messages: introduction, time flow, frequency explanation
+   - Each message has appropriate wait times (3s, 5s, 5s)
+   - Glow stays active through all spectrogram messages
+
+### Features & Fixes
+
+1. **Skippable Waits**
+   - All timed sections can be skipped with Enter key
+   - Makes testing and iteration much faster
+   - Uses `setTutorialPhase()` to track and allow skipping
+
+2. **Emoji Rendering Fix**
+   - Fixed emoji rendering issue where they appeared as bullets
+   - Changed typing animation to use `Array.from(text)` for proper Unicode handling
+   - Added emoji font fallbacks to CSS
+
+3. **Speed Message Dynamic Updates**
+   - Initial message types out with animation
+   - Updates to speed value happen instantly without retyping
+   - Only the speed number changes (e.g., "1.11x" → "1.15x")
+
+4. **Timing Improvements**
+   - "Great!" message triggers immediately when crossing 1x speed threshold
+   - Threshold flag resets when showing "try other way" message
+   - Increased wait times for spectrogram messages (5s for time/frequency, 5s/6s for feature messages)
+
+5. **Message Updates**
+   - Updated speed reset message: "Click on the text that says 'Speed: X.XXx' to reset the playback speed."
+   - Updated spectrogram messages with proper flow and timing
+
+### Technical Changes
+
+- `js/tutorial-coordinator.js` - NEW: Clean orchestration layer with async/await
+- `js/tutorial-sequence.js` - Refactored pause button and speed slider tutorials to async/await
+- `js/tutorial-effects.js` - Fixed emoji rendering in typing animation
+- `js/tutorial-state.js` - Added `setTutorialPhase` import for skippable waits
+- `js/data-fetcher.js` - Updated to use new `runMainTutorial()` function
+- `js/tutorial.js` - Updated exports to include coordinator
+- `styles.css` - Added emoji font fallbacks, improved pause button glow
+
+### Benefits
+
+- ✅ **Much cleaner code** - Linear async/await instead of nested callbacks
+- ✅ **Easier to modify** - Reorder tutorial sections by moving lines
+- ✅ **Skippable waits** - All timed sections can be skipped with Enter
+- ✅ **Better maintainability** - Each section is a LEGO block
+- ✅ **Fixed emoji rendering** - Proper Unicode handling
+- ✅ **Dynamic updates** - Speed message updates without retyping
+
+### Version
+v2.36 - Commit: "v2.36 Refactor: Complete tutorial system refactoring with async/await - elegant linear flow, skippable waits, emoji fixes, dynamic speed updates"
+
+---
+
 ## 🎯 Speed Slider Tutorial & Skip Functionality (v2.35)
 
 ### Features
