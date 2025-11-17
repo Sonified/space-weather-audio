@@ -2,6 +2,39 @@
 
 ---
 
+## ⏸️ Master Pause Region Button Fix (v2.22)
+
+### Problem
+When the master pause button was pressed, region play buttons would stay in their green (playing) state, even though playback was paused. This created visual confusion where buttons appeared active but playback was stopped.
+
+### Solution
+Updated `updateActiveRegionPlayButton()` in `region-tracker.js` to reset all region play buttons to their red (inactive) state when the master pause button is pressed.
+
+### Implementation
+1. **When pause is triggered** (`isPlaying === false`):
+   - Iterate through all regions for the current volcano
+   - Set each region's `playing` state to `false`
+   - Remove the `playing` class from each region's play button (making it red)
+   - Clear the `activePlayingRegionIndex` to null
+   - Redraw the waveform to update canvas play button colors
+
+2. **DOM Safety Checks**:
+   - Added checks to ensure `document.body` exists and is connected before querying DOM
+   - Prevents issues with detached documents
+
+### Key Changes
+- `js/region-tracker.js` - Updated `updateActiveRegionPlayButton()` to reset all region buttons to red when paused
+
+### Benefits
+- ✅ Visual consistency - all region buttons show red when playback is paused
+- ✅ Clear feedback - users can see that playback is stopped
+- ✅ Matches expected behavior - pause button affects all region buttons
+
+### Version
+v2.22 - Commit: "v2.22 Fix: Master pause button now toggles all region play buttons to red state"
+
+---
+
 ## 🎮 Canvas Play Buttons for Regions (v2.21)
 
 ### Feature

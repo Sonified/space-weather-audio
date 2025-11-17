@@ -29,10 +29,12 @@ let activePlayingRegionIndex = null; // Track which region is currently playing 
 
 // Store zoom button positions on canvas for click detection
 // Map<regionId, { x, y, width, height, regionIndex }>
+// These are populated during drawRegionHighlights() - we just use them here!
 let canvasZoomButtonPositions = new Map();
 
 // Store play button positions on canvas for click detection
 // Map<regionId, { x, y, width, height, regionIndex }>
+// These are populated during drawRegionHighlights() - we just use them here!
 let canvasPlayButtonPositions = new Map();
 
 /**
@@ -615,24 +617,35 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
         }
         const labelY = paddingY;
         
-        // Check if number is on screen (with some padding for buttons)
-        const buttonWidth = 21; // 25% smaller: 28 * 0.75 = 21px
-        const buttonHeight = 15; // 25% smaller: 20 * 0.75 = 15px
-        const buttonPadding = 4; // Space between number and button, and between buttons
-        const isOnScreen = labelX + 70 > 0 && labelX < canvasWidth; // 70px accounts for number + 2 buttons + padding
+        // Calculate button sizes proportionally based on canvas size
+        // Reference sizes: 21x15 at 1200px canvas width (typical size)
+        // Scale proportionally to maintain aspect ratio
+        const referenceCanvasWidth = 1200;
+        const scaleFactor = Math.max(0.5, Math.min(1.5, canvasWidth / referenceCanvasWidth));
+        const baseButtonWidth = 21;
+        const baseButtonHeight = 15;
+        const buttonWidth = Math.round(baseButtonWidth * scaleFactor);
+        const buttonHeight = Math.round(baseButtonHeight * scaleFactor);
+        const buttonPadding = Math.round(4 * scaleFactor);
+        const numberTextSize = Math.round(20 * scaleFactor);
+        const numberTextHeight = numberTextSize;
+        const numberTextWidth = Math.round(18 * scaleFactor); // Approximate width of number text
+        
+        // Calculate total width needed (number + buttons + padding)
+        const totalButtonAreaWidth = numberTextWidth + buttonWidth + buttonPadding + buttonWidth + buttonPadding;
+        const isOnScreen = labelX + totalButtonAreaWidth > 0 && labelX < canvasWidth;
         
         if (isOnScreen) {
-            // Set text style - white with 80% opacity
+            // Set text style - white with 80% opacity, scaled font size
             ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI"';
+            ctx.font = `bold ${numberTextSize}px -apple-system, BlinkMacSystemFont, "Segoe UI"`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
             
             ctx.fillText(regionNumber.toString(), labelX, labelY);
             
             // Draw zoom button next to the number, aligned to middle-left (vertically centered with number)
-            const zoomButtonX = labelX + 18; // Position button closer to the number (number is ~20px wide)
-            const numberTextHeight = 20; // Number font size
+            const zoomButtonX = labelX + numberTextWidth; // Position button right after the number
             const buttonY = labelY + (numberTextHeight - buttonHeight) / 2; // Center button vertically with number
             
             // Determine zoom button state (same as panel button)
@@ -653,7 +666,7 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
                 ctx.save();
                 ctx.globalAlpha = 1.0;
                 
-                const radius = 3;
+                const radius = Math.max(2, Math.round(3 * scaleFactor));
                 
                 // Create gradient for button background
                 const gradient = ctx.createLinearGradient(x, y, x + buttonWidth, y + buttonHeight);
@@ -731,7 +744,8 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
                 : ['#2196F3', '#1565C0']; // Blue for zoom
             drawButton(zoomButtonX, buttonY, zoomGradient, (x, y) => {
                 ctx.fillStyle = 'rgba(255, 255, 255, 1.0)';
-                ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI"';
+                const iconFontSize = Math.max(8, Math.round(12 * scaleFactor));
+                ctx.font = `${iconFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI"`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(zoomButtonIcon, x + buttonWidth / 2, y + buttonHeight / 2);
@@ -753,7 +767,8 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
                 ctx.fill();
             });
             
-            // Store button positions for click detection
+            // Store button positions for click detection (in device pixel coordinates)
+            // These will be recalculated on every render, so they're always current
             canvasZoomButtonPositions.set(region.id, {
                 x: zoomButtonX,
                 y: buttonY,
@@ -919,10 +934,153 @@ export function drawSpectrogramSelection(ctx, canvasWidth, canvasHeight) {
 }
 
 /**
+ * Calculate button positions for a region (helper function used by both rendering and click detection)
+ * Returns { zoomButton: {x, y, width, height}, playButton: {x, y, width, height}, labelX, labelY } or null if off-screen
+ */
+function calculateButtonPositions(region, index, canvasWidth, canvasHeight) {
+    if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
+        return null;
+    }
+    
+    // Calculate region position (same logic as drawRegionHighlights)
+    const dataStartMs = State.dataStartTime.getTime();
+    let regionStartSeconds, regionEndSeconds;
+    
+    if (region.startSample !== undefined && region.endSample !== undefined) {
+        regionStartSeconds = zoomState.sampleToTime(region.startSample);
+        regionEndSeconds = zoomState.sampleToTime(region.endSample);
+    } else {
+        const regionStartMs = new Date(region.startTime).getTime();
+        const regionEndMs = new Date(region.stopTime).getTime();
+        regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+        regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    }
+    
+    // Calculate pixel positions (same logic as drawRegionHighlights)
+    let startX, endX;
+    if (zoomState.isInitialized()) {
+        const interpolatedRange = getInterpolatedTimeRange();
+        const regionStartTimestamp = zoomState.sampleToRealTimestamp(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds));
+        const regionEndTimestamp = zoomState.sampleToRealTimestamp(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds));
+        const displayStartMs = interpolatedRange.startTime.getTime();
+        const displayEndMs = interpolatedRange.endTime.getTime();
+        const displaySpanMs = displayEndMs - displayStartMs;
+        const regionStartMs = regionStartTimestamp.getTime();
+        const regionEndMs = regionEndTimestamp.getTime();
+        const startProgress = (regionStartMs - displayStartMs) / displaySpanMs;
+        const endProgress = (regionEndMs - displayStartMs) / displaySpanMs;
+        startX = startProgress * canvasWidth;
+        endX = endProgress * canvasWidth;
+    } else {
+        const startProgress = regionStartSeconds / State.totalAudioDuration;
+        const endProgress = regionEndSeconds / State.totalAudioDuration;
+        startX = startProgress * canvasWidth;
+        endX = endProgress * canvasWidth;
+    }
+    const highlightWidth = endX - startX;
+    
+    // Calculate label position (same logic as drawRegionHighlights)
+    const paddingY = 6;
+    const insidePosition = startX + 10;
+    const outsidePosition = startX - 20;
+    let labelX;
+    if (isZoomTransitionInProgress()) {
+        const transitionProgress = getZoomTransitionProgress();
+        const oldRange = getOldTimeRange();
+        if (oldRange) {
+            const regionStartTimestamp = zoomState.sampleToRealTimestamp(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds));
+            const regionEndTimestamp = zoomState.sampleToRealTimestamp(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds));
+            const oldStartMs = regionStartTimestamp.getTime();
+            const oldEndMs = regionEndTimestamp.getTime();
+            const oldDisplayStartMs = oldRange.startTime.getTime();
+            const oldDisplayEndMs = oldRange.endTime.getTime();
+            const oldDisplaySpanMs = oldDisplayEndMs - oldDisplayStartMs;
+            const oldStartProgress = (oldStartMs - oldDisplayStartMs) / oldDisplaySpanMs;
+            const oldEndProgress = (oldEndMs - oldDisplayStartMs) / oldDisplaySpanMs;
+            const oldStartX = oldStartProgress * canvasWidth;
+            const oldEndX = oldEndProgress * canvasWidth;
+            const oldWidth = oldEndX - oldStartX;
+            const oldPosition = oldWidth < 30 ? (oldStartX - 20) : (oldStartX + 10);
+            let targetStartTime, targetEndTime;
+            if (zoomState.isInRegion()) {
+                const regionRange = zoomState.getRegionRange();
+                targetStartTime = zoomState.sampleToRealTimestamp(regionRange.startSample);
+                targetEndTime = zoomState.sampleToRealTimestamp(regionRange.endSample);
+            } else {
+                targetStartTime = State.dataStartTime;
+                targetEndTime = State.dataEndTime;
+            }
+            const targetStartMs = targetStartTime.getTime();
+            const targetEndMs = targetEndTime.getTime();
+            const targetSpanMs = targetEndMs - targetStartMs;
+            const targetStartProgress = (oldStartMs - targetStartMs) / targetSpanMs;
+            const targetEndProgress = (oldEndMs - targetStartMs) / targetSpanMs;
+            const targetStartX = targetStartProgress * canvasWidth;
+            const targetEndX = targetEndProgress * canvasWidth;
+            const targetWidth = targetEndX - targetStartX;
+            const newInsidePos = targetStartX + 10;
+            const newOutsidePos = targetStartX - 20;
+            const newPosition = targetWidth < 30 ? newOutsidePos : newInsidePos;
+            const easedProgress = 1 - Math.pow(1 - transitionProgress, 3);
+            labelX = oldPosition + (newPosition - oldPosition) * easedProgress;
+        } else {
+            labelX = highlightWidth < 30 ? outsidePosition : insidePosition;
+        }
+    } else {
+        labelX = highlightWidth < 30 ? outsidePosition : insidePosition;
+    }
+    const labelY = paddingY;
+    
+    // Calculate button sizes (same logic as drawRegionHighlights)
+    const referenceCanvasWidth = 1200;
+    const scaleFactor = Math.max(0.5, Math.min(1.5, canvasWidth / referenceCanvasWidth));
+    const baseButtonWidth = 21;
+    const baseButtonHeight = 15;
+    const buttonWidth = Math.round(baseButtonWidth * scaleFactor);
+    const buttonHeight = Math.round(baseButtonHeight * scaleFactor);
+    const buttonPadding = Math.round(4 * scaleFactor);
+    const numberTextSize = Math.round(20 * scaleFactor);
+    const numberTextHeight = numberTextSize;
+    const numberTextWidth = Math.round(18 * scaleFactor);
+    
+    // Check if on screen
+    const totalButtonAreaWidth = numberTextWidth + buttonWidth + buttonPadding + buttonWidth + buttonPadding;
+    const isOnScreen = labelX + totalButtonAreaWidth > 0 && labelX < canvasWidth;
+    
+    if (!isOnScreen) {
+        return null;
+    }
+    
+    // Calculate button positions
+    const zoomButtonX = labelX + numberTextWidth;
+    const buttonY = labelY + (numberTextHeight - buttonHeight) / 2;
+    const playButtonX = zoomButtonX + buttonWidth + buttonPadding;
+    
+    return {
+        zoomButton: {
+            x: zoomButtonX,
+            y: buttonY,
+            width: buttonWidth,
+            height: buttonHeight
+        },
+        playButton: {
+            x: playButtonX,
+            y: buttonY,
+            width: buttonWidth,
+            height: buttonHeight
+        },
+        labelX,
+        labelY
+    };
+}
+
+/**
  * Check if click is on a canvas zoom button
  * x, y are in CSS pixels (from event coordinates)
  * canvasWidth, canvasHeight are in device pixels (from canvas.width/height)
  * Returns region index if clicked, null otherwise
+ * 
+ * Uses button positions stored during drawRegionHighlights() rendering
  */
 export function checkCanvasZoomButtonClick(x, y, canvasWidth, canvasHeight) {
     // Convert CSS pixel coordinates to device pixel coordinates
@@ -931,7 +1089,8 @@ export function checkCanvasZoomButtonClick(x, y, canvasWidth, canvasHeight) {
     const scaledX = x * dpr;
     const scaledY = y * dpr;
     
-    // Check each button position
+    // Use positions stored during rendering - no recalculation needed!
+    // drawRegionHighlights() already updates these on every render
     for (const [regionId, button] of canvasZoomButtonPositions.entries()) {
         if (scaledX >= button.x && scaledX <= button.x + button.width &&
             scaledY >= button.y && scaledY <= button.y + button.height) {
@@ -946,14 +1105,18 @@ export function checkCanvasZoomButtonClick(x, y, canvasWidth, canvasHeight) {
  * x, y are in CSS pixels (from event coordinates)
  * canvasWidth, canvasHeight are in device pixels (from canvas.width/height)
  * Returns region index if clicked, null otherwise
+ * 
+ * Uses button positions stored during drawRegionHighlights() rendering
  */
 export function checkCanvasPlayButtonClick(x, y, canvasWidth, canvasHeight) {
     // Convert CSS pixel coordinates to device pixel coordinates
+    // Button positions are stored in device pixel coordinates (same as canvas.width/height)
     const dpr = window.devicePixelRatio || 1;
     const scaledX = x * dpr;
     const scaledY = y * dpr;
     
-    // Check each button position
+    // Use positions stored during rendering - no recalculation needed!
+    // drawRegionHighlights() already updates these on every render
     for (const [regionId, button] of canvasPlayButtonPositions.entries()) {
         if (scaledX >= button.x && scaledX <= button.x + button.width &&
             scaledY >= button.y && scaledY <= button.y + button.height) {
@@ -1675,13 +1838,40 @@ export function getActivePlayingRegionIndex() {
 /**
  * Update active region play button to match master playback state
  * Called from audio-player when master play/pause is clicked
- * Region button always shows ▶ and stays GREEN while it's the active region
+ * When paused, all region play buttons toggle to their red state
  */
 export function updateActiveRegionPlayButton(isPlaying) {
-    // Region button stays GREEN and shows ▶ regardless of pause state
-    // Master play/pause handles the actual pause/resume functionality
-    // The button only changes back to RED when the region finishes or another region is selected
-    // So this function doesn't need to do anything to the button appearance
+    if (!isPlaying) {
+        // When master pause is pressed, reset all region play buttons to red state
+        const regions = getCurrentRegions();
+        
+        // Check if document.body exists (not detached) before querying DOM
+        if (!document.body || !document.body.isConnected) {
+            return;
+        }
+        
+        // Reset all region play buttons to red state
+        regions.forEach((region, index) => {
+            region.playing = false;
+            const regionCard = document.querySelector(`[data-region-id="${region.id}"]`);
+            if (regionCard && regionCard.isConnected) {
+                const playBtn = regionCard.querySelector('.play-btn');
+                if (playBtn) {
+                    playBtn.classList.remove('playing');
+                    playBtn.textContent = '▶';
+                    playBtn.title = 'Play region';
+                }
+            }
+        });
+        
+        // Clear the active playing region index
+        activePlayingRegionIndex = null;
+        
+        // Redraw waveform to update canvas play button colors
+        drawWaveformWithSelection();
+    }
+    // When playing, the active region button will be set to green by toggleRegionPlay
+    // when a region is selected, so we don't need to do anything here
 }
 
 /**

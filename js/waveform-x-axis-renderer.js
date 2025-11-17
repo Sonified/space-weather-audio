@@ -19,6 +19,9 @@ let oldTimeRange = null; // { startTime, endTime }
 let zoomTransitionRAF = null;
 let isZoomingToRegion = false; // Track if we're zooming TO a region (true) or FROM a region (false)
 
+// Track maximum canvas width for responsive tick spacing
+let maxCanvasWidth = null;
+
 /**
  * Draw time axis for waveform
  * Shows 2-hour ticks with date at left, handles day crossings
@@ -32,6 +35,11 @@ export function drawWaveformXAxis() {
     
     // Use display width (offsetWidth) not internal canvas width
     const displayWidth = waveformCanvas.offsetWidth;
+    
+    // Track maximum width seen so far
+    if (maxCanvasWidth === null || displayWidth > maxCanvasWidth) {
+        maxCanvasWidth = displayWidth;
+    }
     
     // Set internal canvas resolution to match display size
     canvas.width = displayWidth;
@@ -116,11 +124,24 @@ export function drawWaveformXAxis() {
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
     
-    // Calculate ticks based on region size
-    // If region is less than 2 hours, use 5-minute intervals; otherwise use hourly intervals
+    // Calculate ticks based on region size and canvas width
+    // If canvas is <= 1/2 of maximum width, use 4-hour ticks starting at midnight
+    // Else if canvas is <= 3/4 of maximum width, use 2-hour ticks starting at midnight
+    // Otherwise, if region is less than 2 hours, use 5-minute intervals; otherwise use hourly intervals
     const timeSpanHours = actualTimeSpanSeconds / 3600;
     let ticks;
-    if (timeSpanHours < 2) {
+    
+    // Check canvas width thresholds
+    const isVeryNarrowCanvas = maxCanvasWidth !== null && canvasWidth <= (maxCanvasWidth * 1 / 2);
+    const isNarrowCanvas = maxCanvasWidth !== null && canvasWidth <= (maxCanvasWidth * 3 / 4);
+    
+    if (isVeryNarrowCanvas) {
+        // Canvas is very narrow - use 4-hour ticks starting at midnight
+        ticks = calculateFourHourTicks(startTimeUTC, endTimeUTC);
+    } else if (isNarrowCanvas) {
+        // Canvas is narrow - use 2-hour ticks starting at midnight
+        ticks = calculateTwoHourTicks(startTimeUTC, endTimeUTC);
+    } else if (timeSpanHours < 2) {
         // Region is less than 2 hours - use 5-minute ticks
         ticks = calculateFiveMinuteTicks(startTimeUTC, endTimeUTC);
     } else {
@@ -395,6 +416,164 @@ function calculateHourlyTicks(startUTC, endUTC) {
 }
 
 /**
+ * Calculate 4-hour tick positions starting at midnight
+ * Quantizes at 4-hour boundaries (00:00, 04:00, 08:00, 12:00, 16:00, 20:00)
+ * Used when canvas width is <= 1/2 of maximum width
+ */
+function calculateFourHourTicks(startUTC, endUTC) {
+    const ticks = [];
+    
+    // Convert start time to local time to find boundaries
+    const startLocal = new Date(startUTC);
+    
+    // Get local time components
+    const startYear = startLocal.getFullYear();
+    const startMonth = startLocal.getMonth();
+    const startDay = startLocal.getDate();
+    const startHours = startLocal.getHours();
+    
+    // Find first 4-hour block starting at midnight (00:00, 04:00, 08:00, 12:00, 16:00, 20:00)
+    // Start from midnight of the start day
+    let firstTickLocal = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
+    
+    // Round down to nearest 4-hour boundary (00:00, 04:00, 08:00, etc.)
+    const hoursRoundedDown = Math.floor(startHours / 4) * 4;
+    firstTickLocal.setHours(hoursRoundedDown, 0, 0, 0);
+    
+    // If we're not starting at a 4-hour boundary, find the first one within the region
+    if (firstTickLocal < startLocal) {
+        // Move forward to next 4-hour block
+        firstTickLocal.setHours(firstTickLocal.getHours() + 4);
+    }
+    
+    // Generate ticks every 4 hours until we exceed end time
+    let currentTickLocal = new Date(firstTickLocal);
+    let previousTickDate = null;
+    
+    // Convert end time to local for comparison
+    const endLocal = new Date(endUTC);
+    const endLocalTime = endLocal.getTime();
+    
+    while (currentTickLocal.getTime() <= endLocalTime) {
+        // Get local date string for day crossing detection
+        const currentTickDate = currentTickLocal.toDateString();
+        const currentHour = currentTickLocal.getHours();
+        // Mark as day crossing if:
+        // 1. Previous tick was on a different date, OR
+        // 2. This tick is at midnight (00:00) - always show date at midnight
+        const isDayCrossing = (previousTickDate !== null && previousTickDate !== currentTickDate) || 
+                              (currentHour === 0 && currentTickLocal.getMinutes() === 0);
+        
+        // Convert local time to UTC for positioning
+        const localYear = currentTickLocal.getFullYear();
+        const localMonth = currentTickLocal.getMonth();
+        const localDay = currentTickLocal.getDate();
+        const localHour = currentTickLocal.getHours();
+        
+        // Create date from local components (browser interprets as local time)
+        const tickDateLocal = new Date(localYear, localMonth, localDay, localHour, 0, 0, 0);
+        
+        // getTime() gives UTC milliseconds - use for positioning
+        const tickUTCForPosition = new Date(tickDateLocal.getTime());
+        
+        // Check if this UTC time falls within our data range
+        if (tickUTCForPosition.getTime() >= startUTC.getTime() && tickUTCForPosition.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: tickUTCForPosition, // UTC time for positioning
+                localTime: new Date(currentTickLocal), // Local time for display
+                isDayCrossing: isDayCrossing
+            });
+        }
+        
+        previousTickDate = currentTickDate;
+        
+        // Move to next 4-hour block (in local time)
+        currentTickLocal.setHours(currentTickLocal.getHours() + 4);
+    }
+    
+    return ticks;
+}
+
+/**
+ * Calculate 2-hour tick positions starting at midnight
+ * Quantizes at 2-hour boundaries (00:00, 02:00, 04:00, ..., 22:00)
+ * Used when canvas width is <= 3/4 of maximum width
+ */
+function calculateTwoHourTicks(startUTC, endUTC) {
+    const ticks = [];
+    
+    // Convert start time to local time to find boundaries
+    const startLocal = new Date(startUTC);
+    
+    // Get local time components
+    const startYear = startLocal.getFullYear();
+    const startMonth = startLocal.getMonth();
+    const startDay = startLocal.getDate();
+    const startHours = startLocal.getHours();
+    
+    // Find first 2-hour block starting at midnight (00:00, 02:00, 04:00, ..., 22:00)
+    // Start from midnight of the start day
+    let firstTickLocal = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
+    
+    // Round down to nearest 2-hour boundary (00:00, 02:00, 04:00, etc.)
+    const hoursRoundedDown = Math.floor(startHours / 2) * 2;
+    firstTickLocal.setHours(hoursRoundedDown, 0, 0, 0);
+    
+    // If we're not starting at a 2-hour boundary, find the first one within the region
+    if (firstTickLocal < startLocal) {
+        // Move forward to next 2-hour block
+        firstTickLocal.setHours(firstTickLocal.getHours() + 2);
+    }
+    
+    // Generate ticks every 2 hours until we exceed end time
+    let currentTickLocal = new Date(firstTickLocal);
+    let previousTickDate = null;
+    
+    // Convert end time to local for comparison
+    const endLocal = new Date(endUTC);
+    const endLocalTime = endLocal.getTime();
+    
+    while (currentTickLocal.getTime() <= endLocalTime) {
+        // Get local date string for day crossing detection
+        const currentTickDate = currentTickLocal.toDateString();
+        const currentHour = currentTickLocal.getHours();
+        // Mark as day crossing if:
+        // 1. Previous tick was on a different date, OR
+        // 2. This tick is at midnight (00:00) - always show date at midnight
+        const isDayCrossing = (previousTickDate !== null && previousTickDate !== currentTickDate) || 
+                              (currentHour === 0 && currentTickLocal.getMinutes() === 0);
+        
+        // Convert local time to UTC for positioning
+        const localYear = currentTickLocal.getFullYear();
+        const localMonth = currentTickLocal.getMonth();
+        const localDay = currentTickLocal.getDate();
+        const localHour = currentTickLocal.getHours();
+        
+        // Create date from local components (browser interprets as local time)
+        const tickDateLocal = new Date(localYear, localMonth, localDay, localHour, 0, 0, 0);
+        
+        // getTime() gives UTC milliseconds - use for positioning
+        const tickUTCForPosition = new Date(tickDateLocal.getTime());
+        
+        // Check if this UTC time falls within our data range
+        if (tickUTCForPosition.getTime() >= startUTC.getTime() && tickUTCForPosition.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: tickUTCForPosition, // UTC time for positioning
+                localTime: new Date(currentTickLocal), // Local time for display
+                isDayCrossing: isDayCrossing
+            });
+        }
+        
+        previousTickDate = currentTickDate;
+        
+        // Move to next 2-hour block (in local time)
+        currentTickLocal.setHours(currentTickLocal.getHours() + 2);
+    }
+    
+    return ticks;
+}
+
+/**
  * Calculate 5-minute tick positions
  * Quantizes at 5-minute boundaries (00:00, 00:05, 00:10, ..., 00:55)
  * Used when region is less than 2 hours for finer granularity
@@ -514,8 +693,14 @@ export function resizeWaveformXAxisCanvas() {
     
     if (!waveformCanvas || !xAxisCanvas) return;
     
+    // Track maximum width seen so far
+    const currentWidth = waveformCanvas.offsetWidth;
+    if (maxCanvasWidth === null || currentWidth > maxCanvasWidth) {
+        maxCanvasWidth = currentWidth;
+    }
+    
     // Match width to waveform display width
-    xAxisCanvas.width = waveformCanvas.offsetWidth;
+    xAxisCanvas.width = currentWidth;
     xAxisCanvas.height = 40;
     
     // Reposition and redraw after resize

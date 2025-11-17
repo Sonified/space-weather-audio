@@ -849,6 +849,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Update participant ID display
     updateParticipantIdDisplay();
+    console.log('🌋 [0ms] volcano-audio v2.22 - Master Pause Region Button Fix');
+    console.log('⏸️ [0ms] v2.22 Fix: Master pause button now toggles all region play buttons to red state');
     console.log('🌋 [0ms] volcano-audio v2.18 - Zoom State Reset Fix');
     console.log('🔄 [0ms] v2.18 Fix: Reset zoom state when loading new data - prevents playhead rendering issues when switching volcanoes while zoomed into a region');
     console.log('🌋 [0ms] volcano-audio v2.17 - Spacebar Play/Pause Fix');
@@ -1005,6 +1007,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Handle window resize to reposition axis canvases - optimized for performance
     let resizeRAF = null;
+    let waveformXAxisResizeTimer = null; // Timer for debouncing x-axis redraw on horizontal resize
+    let lastWaveformXAxisWidth = null; // Track waveform canvas width for x-axis horizontal resize detection
     let lastSpectrogramWidth = 0;
     let lastSpectrogramHeight = 0;
     let lastWaveformWidth = 0;
@@ -1020,6 +1024,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
         if (waveformCanvas) {
             lastWaveformWidth = waveformCanvas.offsetWidth;
+            lastWaveformXAxisWidth = waveformCanvas.offsetWidth; // Update x-axis width tracker
             lastWaveformHeight = waveformCanvas.offsetHeight;
         }
     }, 0);
@@ -1082,13 +1087,32 @@ window.addEventListener('DOMContentLoaded', async () => {
             // Handle waveform x-axis
             const waveformXAxisCanvas = document.getElementById('waveform-x-axis');
             if (waveformCanvas && waveformXAxisCanvas) {
-                // Always reposition during resize
+                // Always reposition during resize (fast - no redraw)
                 positionWaveformXAxisCanvas();
                 
-                // Only redraw if canvas dimensions changed
+                // Check if canvas width changed (horizontal resize)
                 const currentWidth = waveformCanvas.offsetWidth;
-                if (currentWidth !== lastWaveformWidth) {
-                    resizeWaveformXAxisCanvas();
+                if (currentWidth !== lastWaveformXAxisWidth) {
+                    // Clear any existing timer
+                    if (waveformXAxisResizeTimer !== null) {
+                        clearTimeout(waveformXAxisResizeTimer);
+                        waveformXAxisResizeTimer = null;
+                    }
+                    
+                    // Set new timer to wait 100ms after last resize event
+                    waveformXAxisResizeTimer = setTimeout(() => {
+                        // 🔥 FIX: Check document connection before DOM manipulation
+                        if (!document.body || !document.body.isConnected) {
+                            waveformXAxisResizeTimer = null;
+                            return;
+                        }
+                        
+                        // Resize and redraw x-axis ticks after resize is complete
+                        resizeWaveformXAxisCanvas();
+                        waveformXAxisResizeTimer = null;
+                    }, 100);
+                    
+                    lastWaveformXAxisWidth = currentWidth;
                 }
             }
             
@@ -1129,6 +1153,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
         if (waveformCanvas) {
             lastWaveformWidth = waveformCanvas.offsetWidth;
+            lastWaveformXAxisWidth = waveformCanvas.offsetWidth; // Update x-axis width tracker
             lastWaveformHeight = waveformCanvas.offsetHeight;
         }
     }, 100);
