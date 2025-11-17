@@ -186,6 +186,16 @@ export function updateAllFeatureBoxPositions() {
                 canvasWidth: canvas.offsetWidth
             });
             
+            console.log('🎯 Box DOM positioning:', {
+                startX: startX.toFixed(1),
+                endX: endX.toFixed(1),
+                canvasOffsetWidth: canvas.offsetWidth,
+                canvasOffsetHeight: canvas.offsetHeight,
+                canvasDeviceWidth: canvas.width,
+                canvasDeviceHeight: canvas.height,
+                containerWidth: container.offsetWidth
+            });
+            
             console.log('🎯 ========== END Repositioning ==========\n');
             
             // Check if visible
@@ -200,6 +210,14 @@ export function updateAllFeatureBoxPositions() {
             box.style.top = (canvasRect.top - containerRect.top + highFreqY) + 'px';
             box.style.width = (endX - startX) + 'px';
             box.style.height = Math.abs(highFreqY - lowFreqY) + 'px';
+            
+            console.log('📦 Box FINAL position:', {
+                display: box.style.display,
+                left: box.style.left,
+                top: box.style.top,
+                width: box.style.width,
+                height: box.style.height
+            });
         });
     });
 }

@@ -500,8 +500,13 @@ export function setupSpectrogramSelection() {
         const endY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
         const endX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
         
-        // Call region tracker handler with X positions for time tracking
-        await handleSpectrogramSelection(spectrogramStartY, endY, canvas.height, spectrogramStartX, endX, canvas.width);
+        // Use CSS dimensions, not device dimensions!
+        await handleSpectrogramSelection(
+            spectrogramStartY, endY, 
+            canvas.offsetHeight,  // ← CSS PIXELS!
+            spectrogramStartX, endX, 
+            canvas.offsetWidth    // ← CSS PIXELS!
+        );
         
         // DON'T delete the box - keep it and convert to persistent feature box!
         // (Will be converted to orange in addFeatureBox)
