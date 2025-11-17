@@ -512,18 +512,17 @@ export function setupWaveformInteraction() {
     canvas.addEventListener('mousedown', (e) => {
         if (!State.completeSamplesArray || State.totalAudioDuration === 0) return;
         
+        // Check if waveform clicks are disabled (during tutorial flow)
+        if (canvas.style.pointerEvents === 'none') {
+            return; // Clicks disabled during spectrogram explanation
+        }
+        
         // Stop pulsing animation and hide tutorial on first click
         if (!State.waveformHasBeenClicked) {
             State.setWaveformHasBeenClicked(true);
             canvas.classList.remove('pulse');
             hideTutorialOverlay();
-            
-            // Show "Well done!" first, hold for 2 seconds, then show next instruction
-            setStatusText('Well done!', 'status success');
-            
-            setTimeout(() => {
-                setStatusText('Click and drag to select a region (sideways)', 'status info');
-            }, 2000); // 2 seconds
+            // Message sequence now happens after download completes, not here
         }
         
         const rect = canvas.getBoundingClientRect();

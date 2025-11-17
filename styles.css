@@ -207,6 +207,25 @@ input[type="range"]::-webkit-slider-thumb:hover {
     background: #ff3333;
 }
 
+/* Speed slider glow effect for tutorial */
+#playbackSpeed.speed-slider-glow::-webkit-slider-thumb {
+    background: #ffaa66;
+    box-shadow: 0 0 15px rgba(255, 170, 102, 0.8), 0 0 30px rgba(255, 170, 102, 0.6), 0 2px 4px rgba(0, 0, 0, 0.2);
+    animation: speedSliderKnobPulse 1.2s ease-in-out infinite;
+    transform-origin: center;
+}
+
+@keyframes speedSliderKnobPulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 15px rgba(255, 170, 102, 0.8), 0 0 30px rgba(255, 170, 102, 0.6), 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    50% {
+        transform: scale(1.3);
+        box-shadow: 0 0 25px rgba(255, 170, 102, 1), 0 0 50px rgba(255, 170, 102, 0.9), 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+}
+
 /* Firefox - Track */
 input[type="range"]::-moz-range-track {
     background: #5a1a1a;
@@ -227,6 +246,14 @@ input[type="range"]::-moz-range-thumb {
 
 input[type="range"]::-moz-range-thumb:hover {
     background: #ff3333;
+}
+
+/* Speed slider glow effect for tutorial (Firefox) */
+#playbackSpeed.speed-slider-glow::-moz-range-thumb {
+    background: #ffaa66;
+    box-shadow: 0 0 15px rgba(255, 170, 102, 0.8), 0 0 30px rgba(255, 170, 102, 0.6), 0 2px 4px rgba(0, 0, 0, 0.2);
+    animation: speedSliderKnobPulse 1.2s ease-in-out infinite;
+    transform-origin: center;
 }
 
 
@@ -507,6 +534,28 @@ canvas {
     margin-top: 40px;
     border: 2px solid rgba(80, 40, 40, 0.6);
     box-shadow: none;
+    transition: box-shadow 0.3s ease;
+}
+
+#spectrogram.spectrogram-glow {
+    box-shadow: 0 0 15px rgba(255, 100, 100, 0.4), 0 0 30px rgba(255, 100, 100, 0.3);
+    animation: spectrogramPulse 1.2s ease-in-out infinite;
+    transition: box-shadow 0.5s ease-out, opacity 0.5s ease-out;
+}
+
+#spectrogram.spectrogram-glow.fading-out {
+    animation: none;
+    box-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    opacity: 0.8;
+}
+
+@keyframes spectrogramPulse {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(255, 100, 100, 0.4), 0 0 30px rgba(255, 100, 100, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(255, 100, 100, 0.5), 0 0 40px rgba(255, 100, 100, 0.4);
+    }
 }
 
 #waveform-axis,

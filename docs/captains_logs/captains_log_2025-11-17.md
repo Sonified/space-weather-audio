@@ -2,6 +2,40 @@
 
 ---
 
+## 🎯 Speed Slider Tutorial & Skip Functionality (v2.35)
+
+### Features
+
+1. **Speed Slider Tutorial**
+   - Added interactive tutorial for playback speed slider before waveform tutorial
+   - Slider knob pulses with orange glow animation (scales 1x to 1.3x)
+   - Shows message: "👇 Click the playback speed slider and drag left/right to change playback speed."
+   - Detects user interaction direction (faster/slower) and shows contextual feedback
+   - "Notice how the frequencies stretch up as playback gets faster!" or compress down when slower
+   - Prompts user to "try going the other way" after first movement
+   - Detects when user crosses 1.0x threshold and shows "Great!" message
+   - Adds encouragement message if user doesn't explore after 5 seconds
+
+2. **Enter Key Skip Functionality**
+   - Press Enter/Return to skip current typing animation and advance to next tutorial step
+   - Works as a "next button" for rapid testing
+   - Skips animations but doesn't interfere with input fields
+   - Immediately executes next step in tutorial sequence
+
+3. **Tutorial State Machine**
+   - Refactored tutorial flow to use helper functions for each step
+   - Each step can be immediately executed when Enter is pressed
+   - Tracks current phase and manages timeout cancellation
+   - Cleaner code structure with `executeVolcanoMessage`, `executeSpectrogramExplanation`, `executeSpeedSliderTutorial`
+
+### Technical Changes
+- `js/tutorial.js` - Added speed slider tutorial functions, state machine, Enter key listener
+- `js/data-fetcher.js` - Refactored tutorial flow to use helper functions, integrated speed slider tutorial
+- `styles.css` - Added pulsing knob animation for speed slider (`speedSliderKnobPulse` keyframes)
+- Tutorial sequence: Well done → Volcano message → Spectrogram explanation → Speed slider → Waveform tutorial
+
+---
+
 ## 🎨 Tutorial System & UI Polish (v2.32)
 
 ### Features & Fixes

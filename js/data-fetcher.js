@@ -11,7 +11,7 @@ import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-re
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
 import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
-import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText } from './tutorial.js';
+import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks, startSpeedSliderTutorial, endSpeedSliderTutorial, setTutorialPhase, clearTutorialPhase } from './tutorial.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -912,20 +912,85 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                     statusEl.classList.remove('loading');
                                 }
                                 
-                                // Start waveform pulse animation and show tutorial (only once per session)
-                                setTimeout(() => {
-                                    const waveformCanvas = document.getElementById('waveform');
-                                    if (waveformCanvas && shouldShowPulse()) {
-                                        waveformCanvas.classList.add('pulse');
-                                        markPulseShown();
-                                        showTutorialOverlay();
-                                    }
+                                // Disable waveform clicks immediately - will be enabled when tutorial appears
+                                disableWaveformClicks();
+                                
+                                // Tutorial flow: Well done → Spectrogram explanation → Click me tutorial
+                                // Clear any previous tutorial phase
+                                clearTutorialPhase();
+                                
+                                // Helper function to execute each tutorial step
+                                const executeVolcanoMessage = () => {
+                                    const volcanoSelect = document.getElementById('volcano');
+                                    const volcanoValue = volcanoSelect ? volcanoSelect.value : '';
+                                    const volcanoNameMap = {
+                                        'kilauea': 'Kīlauea',
+                                        'maunaloa': 'Mauna Loa',
+                                        'greatsitkin': 'Great Sitkin',
+                                        'shishaldin': 'Shishaldin',
+                                        'spurr': 'Mount Spurr'
+                                    };
+                                    const volcanoName = volcanoNameMap[volcanoValue] || 'the volcano';
+                                    setStatusText(`This is the sound of ${volcanoName}, recorded over the past 24 hours.`, 'status info');
                                     
-                                    // Show the message after download finishes
+                                    const timeout2 = setTimeout(executeSpectrogramExplanation, 5000);
+                                    setTutorialPhase('volcano_message', [timeout2], executeSpectrogramExplanation);
+                                };
+                                
+                                const executeSpectrogramExplanation = () => {
+                                    setStatusText('The spectrogram shows frequency from low to high.', 'status info');
+                                    addSpectrogramGlow();
+                                    
+                                    const timeout3 = setTimeout(() => {
+                                        removeSpectrogramGlow();
+                                        const timeout4 = setTimeout(executeSpeedSliderTutorial, 600);
+                                        setTutorialPhase('spectrogram_explanation', [timeout4], () => {
+                                            removeSpectrogramGlow();
+                                            clearTimeout(timeout4);
+                                            executeSpeedSliderTutorial();
+                                        });
+                                    }, 5000);
+                                    
+                                    setTutorialPhase('spectrogram_explanation', [timeout3], () => {
+                                        clearTimeout(timeout3);
+                                        removeSpectrogramGlow();
+                                        executeSpeedSliderTutorial();
+                                    });
+                                };
+                                
+                                const executeSpeedSliderTutorial = () => {
+                                    window._onSpeedSliderTutorialComplete = () => {
+                                        enableWaveformClicks();
+                                        const waveformCanvas = document.getElementById('waveform');
+                                        if (waveformCanvas && shouldShowPulse()) {
+                                            waveformCanvas.classList.add('pulse');
+                                            markPulseShown();
+                                            showTutorialOverlay();
+                                        }
+                                        if (statusEl) {
+                                            setStatusText('👇 Click on the waveform below to move the playhead.', 'status success');
+                                        }
+                                        clearTutorialPhase();
+                                    };
+                                    
+                                    setTutorialPhase('speed_slider', [], () => {
+                                        endSpeedSliderTutorial();
+                                        if (window._onSpeedSliderTutorialComplete) {
+                                            window._onSpeedSliderTutorialComplete();
+                                        }
+                                    });
+                                    
+                                    startSpeedSliderTutorial();
+                                };
+                                
+                                setTimeout(() => {
                                     if (statusEl) {
                                         statusEl.classList.remove('loading');
                                         statusEl.className = 'status success';
-                                        setStatusText('👇 Click on the waveform below to move the playhead.', 'status success');
+                                        setStatusText('Well done!', 'status success');
+                                        
+                                        const timeout1 = setTimeout(executeVolcanoMessage, 2000);
+                                        setTutorialPhase('well_done', [timeout1], executeVolcanoMessage);
                                     }
                                 }, 200);
                                 
@@ -1512,21 +1577,65 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
                 if (speedLabel) speedLabel.style.opacity = '1';
                 if (volumeLabel) volumeLabel.style.opacity = '1';
                 
-                // Start waveform pulse animation and show tutorial (only once per session)
+                // Disable waveform clicks immediately - will be enabled when tutorial appears
+                disableWaveformClicks();
+                
+                // Tutorial flow: Well done → Spectrogram explanation → Click me tutorial
                 setTimeout(() => {
-                    const waveformCanvas = document.getElementById('waveform');
-                    if (waveformCanvas && shouldShowPulse()) {
-                        waveformCanvas.classList.add('pulse');
-                        markPulseShown();
-                        showTutorialOverlay();
-                    }
+                    // Step 1: Show "Well done! This is the sound of [volcano]..."
+                    const volcanoSelect = document.getElementById('volcano');
+                    const volcanoValue = volcanoSelect ? volcanoSelect.value : '';
+                    const volcanoNameMap = {
+                        'kilauea': 'Kīlauea',
+                        'maunaloa': 'Mauna Loa',
+                        'greatsitkin': 'Great Sitkin',
+                        'shishaldin': 'Shishaldin',
+                        'spurr': 'Mount Spurr'
+                    };
+                    const volcanoName = volcanoNameMap[volcanoValue] || 'the volcano';
                     
-                    // Show the message after download finishes
                     const statusEl = document.getElementById('status');
                     if (statusEl) {
                         statusEl.classList.remove('loading');
                         statusEl.className = 'status success';
-                        setStatusText('👇 Click on the waveform below to move the playhead.', 'status success');
+                        setStatusText('Well done!', 'status success');
+                        
+                        // After "Well done!" types out, show volcano message
+                        setTimeout(() => {
+                            setStatusText(`This is the sound of ${volcanoName}, recorded over the past 24 hours.`, 'status info');
+                            
+                            // Step 2: After volcano message, show spectrogram explanation with glow
+                            setTimeout(() => {
+                                setStatusText('The spectrogram shows frequency from low to high.', 'status info');
+                                addSpectrogramGlow();
+                                
+                                // Step 3: After 5 seconds, fade out glow, then show speed slider tutorial
+                                setTimeout(() => {
+                                    removeSpectrogramGlow();
+                                    
+                                    // Wait for fade-out to complete, then start speed slider tutorial
+                                    setTimeout(() => {
+                                        // Set up callback for when speed slider tutorial completes
+                                        window._onSpeedSliderTutorialComplete = () => {
+                                            enableWaveformClicks();
+                                            
+                                            const waveformCanvas = document.getElementById('waveform');
+                                            if (waveformCanvas && shouldShowPulse()) {
+                                                waveformCanvas.classList.add('pulse');
+                                                markPulseShown();
+                                                showTutorialOverlay();
+                                            }
+                                            
+                                            if (statusEl) {
+                                                setStatusText('👇 Click on the waveform below to move the playhead.', 'status success');
+                                            }
+                                        };
+                                        
+                                        startSpeedSliderTutorial();
+                                    }, 600); // Short gap after fade-out completes
+                                }, 5000); // 5 seconds
+                            }, 6000); // Wait longer for volcano message to be read (~6 seconds)
+                        }, 2000); // Wait for "Well done!" to finish typing (~2 seconds)
                     }
                 }, 200);
             } else {

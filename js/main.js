@@ -25,7 +25,7 @@ import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionB
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts } from './keyboard-shortcuts.js';
-import { setStatusText, appendStatusText } from './tutorial.js';
+import { setStatusText, appendStatusText, initTutorial } from './tutorial.js';
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 // See data-fetcher.js for centralized flags documentation
@@ -900,6 +900,8 @@ function updateParticipantIdDisplay() {
 
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', async () => {
+    // Initialize tutorial system (includes Enter key skip functionality)
+    initTutorial();
     // Parse participant ID from URL parameters on page load
     // Qualtrics redirects with: ?ResponseID=${e://Field/ResponseID}
     // This automatically captures the ResponseID and stores it for survey submissions
@@ -1407,8 +1409,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         window._volcanoAudioCleanupHandlers = {};
         
         // Import only modules that aren't already statically imported
-        import('./audio-player.js').then(audioPlayerModule => {
-            import('./spectrogram-axis-renderer.js').then(axisModule => {
+    import('./audio-player.js').then(audioPlayerModule => {
+        import('./spectrogram-axis-renderer.js').then(axisModule => {
                 // 🔥 FIX: Use statically imported functions instead of dynamic import
                 // This prevents creating new Context instances (147k+ Context leak!)
                 const cleanupOnUnload = () => {
@@ -1452,8 +1454,8 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
                 document.addEventListener('visibilitychange', visibilityChangeHandler);
                 window._volcanoAudioCleanupHandlers.visibilitychange = visibilityChangeHandler;
+                });
             });
-        });
     }
 });
 
