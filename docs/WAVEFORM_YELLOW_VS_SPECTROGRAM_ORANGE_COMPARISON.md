@@ -1032,3 +1032,5 @@ The spectrogram uses a **complex, stateful, hybrid approach** with multiple laye
 - Waveform's mouseleave is sufficient fallback
 - Spectrogram's document-level mouseup can be missed during focus changes
 
+
+

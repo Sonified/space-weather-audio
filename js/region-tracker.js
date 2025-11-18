@@ -22,7 +22,7 @@ import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgre
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { cancelSpectrogramSelection } from './spectrogram-renderer.js';
-import { isTutorialActive } from './tutorial-state.js';
+import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
 import { isStudyMode, isTestStudyEndMode } from './master-modes.js';
 import { hasSeenTutorial } from './study-workflow.js';
 
@@ -33,6 +33,9 @@ let currentVolcano = null;
 let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
 
+// localStorage key prefix for feature persistence
+const STORAGE_KEY_PREFIX = 'volcano_audio_regions_';
+
 // Button positions are recalculated on every click - no caching needed
 // This ensures positions are always fresh and immune to resize timing, DPR changes, etc.
 
@@ -42,6 +45,32 @@ let activePlayingRegionIndex = null; // Track which region is currently playing 
 function getCurrentVolcano() {
     const volcanoSelect = document.getElementById('volcano');
     return volcanoSelect ? volcanoSelect.value : null;
+}
+
+/**
+ * Get the current playback speed factor (base speed, not multiplied)
+ * This is the speed the user sees on the slider (e.g., 1.0x, 2.5x, etc.)
+ * Returns null if speed cannot be determined
+ */
+function getCurrentSpeedFactor() {
+    try {
+        const speedSlider = document.getElementById('playbackSpeed');
+        if (speedSlider) {
+            const value = parseFloat(speedSlider.value);
+            // Same calculation as updatePlaybackSpeed() in audio-player.js
+            // Logarithmic mapping: 0-1000 -> 0.1-15, with 667 = 1.0
+            if (value <= 667) {
+                const normalized = value / 667;
+                return 0.1 * Math.pow(10, normalized);
+            } else {
+                const normalized = (value - 667) / 333;
+                return Math.pow(15, normalized);
+            }
+        }
+    } catch (error) {
+        console.warn('Could not get speed factor:', error);
+    }
+    return null;
 }
 
 /**
@@ -62,8 +91,57 @@ export function getCurrentRegions() {
 }
 
 /**
+ * Save regions to localStorage (persists across page reloads)
+ */
+function saveRegionsToStorage(volcano, regions) {
+    if (!volcano) return;
+    
+    try {
+        const storageKey = STORAGE_KEY_PREFIX + volcano;
+        // Save regions with all data including notes
+        const dataToSave = {
+            volcano: volcano,
+            regions: regions,
+            savedAt: new Date().toISOString()
+        };
+        localStorage.setItem(storageKey, JSON.stringify(dataToSave));
+        console.log(`💾 Saved ${regions.length} regions for ${volcano} to localStorage`);
+    } catch (error) {
+        console.error('❌ Failed to save regions to localStorage:', error);
+        // localStorage might be full or disabled - continue without persistence
+    }
+}
+
+/**
+ * Load regions from localStorage (restores after page reload)
+ */
+function loadRegionsFromStorage(volcano) {
+    if (!volcano) return null;
+    
+    try {
+        const storageKey = STORAGE_KEY_PREFIX + volcano;
+        const stored = localStorage.getItem(storageKey);
+        
+        if (!stored) {
+            return null;
+        }
+        
+        const data = JSON.parse(stored);
+        if (data && data.regions && Array.isArray(data.regions)) {
+            console.log(`📂 Loaded ${data.regions.length} regions for ${volcano} from localStorage`);
+            return data.regions;
+        }
+    } catch (error) {
+        console.error('❌ Failed to load regions from localStorage:', error);
+    }
+    
+    return null;
+}
+
+/**
  * Set regions for the current volcano
  * Uses currentVolcano if set, otherwise reads from UI
+ * Also saves to localStorage for persistence
  */
 function setCurrentRegions(newRegions) {
     // Use currentVolcano if available (more reliable during volcano switches)
@@ -73,6 +151,9 @@ function setCurrentRegions(newRegions) {
         return;
     }
     regionsByVolcano.set(volcano, newRegions);
+    
+    // ✅ Save to localStorage for persistence (includes notes!)
+    saveRegionsToStorage(volcano, newRegions);
 }
 
 /**
@@ -110,13 +191,28 @@ export function switchVolcanoRegions(newVolcano) {
     // Update current volcano
     currentVolcano = newVolcano;
     
-    // Initialize regions array for new volcano if needed
+    // ✅ Load regions from localStorage if available, otherwise initialize empty array
     if (!regionsByVolcano.has(newVolcano)) {
-        regionsByVolcano.set(newVolcano, []);
+        const loadedRegions = loadRegionsFromStorage(newVolcano);
+        if (loadedRegions && loadedRegions.length > 0) {
+            regionsByVolcano.set(newVolcano, loadedRegions);
+            console.log(`📂 Restored ${loadedRegions.length} regions for ${newVolcano} from localStorage`);
+        } else {
+            regionsByVolcano.set(newVolcano, []);
+        }
     }
     
     // Re-render regions for the new volcano
     renderRegions();
+    
+    // ✅ Rebuild canvas feature boxes from loaded regions
+    import('./spectrogram-renderer.js').then(module => {
+        if (module.redrawAllCanvasFeatureBoxes) {
+            module.redrawAllCanvasFeatureBoxes();
+        }
+    }).catch(() => {
+        // Module not loaded yet, that's okay
+    });
     
     // Redraw waveform to update region highlights
     drawWaveformWithSelection();
@@ -170,9 +266,27 @@ export function initRegionTracker() {
     // Initialize current volcano
     currentVolcano = getCurrentVolcano();
     if (currentVolcano) {
-        // Initialize regions array for current volcano
+        // ✅ Load regions from localStorage if available, otherwise initialize empty array
         if (!regionsByVolcano.has(currentVolcano)) {
-            regionsByVolcano.set(currentVolcano, []);
+            const loadedRegions = loadRegionsFromStorage(currentVolcano);
+            if (loadedRegions && loadedRegions.length > 0) {
+                regionsByVolcano.set(currentVolcano, loadedRegions);
+                console.log(`📂 Restored ${loadedRegions.length} regions for ${currentVolcano} from localStorage`);
+                
+                // Render the loaded regions
+                renderRegions();
+                
+                // Rebuild canvas feature boxes from loaded regions
+                import('./spectrogram-renderer.js').then(module => {
+                    if (module.redrawAllCanvasFeatureBoxes) {
+                        module.redrawAllCanvasFeatureBoxes();
+                    }
+                }).catch(() => {
+                    // Module not loaded yet, that's okay
+                });
+            } else {
+                regionsByVolcano.set(currentVolcano, []);
+            }
         }
     }
     
@@ -400,7 +514,8 @@ export function createRegionFromSelectionTimes(selectionStartSeconds, selectionE
             highFreq: '',
             startTime: '',
             endTime: '',
-            notes: ''
+            notes: '',
+            speedFactor: getCurrentSpeedFactor() // Capture speed at feature creation time
         }],
         expanded: true,
         playing: false
@@ -1696,7 +1811,8 @@ function renderFeatures(regionId, regionIndex) {
             highFreq: '',
             startTime: '',
             endTime: '',
-            notes: ''
+            notes: '',
+            speedFactor: getCurrentSpeedFactor() // Capture speed at feature creation time
         });
     }
     
@@ -2434,6 +2550,15 @@ export function deleteRegion(index) {
         }
         renderRegions();
         
+        // ✅ Rebuild canvas boxes (removes boxes for deleted region!)
+        import('./spectrogram-renderer.js').then(module => {
+            if (module.redrawAllCanvasFeatureBoxes) {
+                module.redrawAllCanvasFeatureBoxes();
+            }
+        }).catch(() => {
+            // Module not loaded yet, that's okay
+        });
+        
         // Update complete button state (in case we deleted the last identified feature)
         updateCompleteButtonState(); // Begin Analysis button
         updateCmpltButtonState(); // Complete button
@@ -3052,10 +3177,20 @@ export function updateCompleteButtonState() {
                 // For ALL OTHER VISITS: Standard behavior - show button if data available
                 const isFirstVisit = !hasSeenTutorial();
                 
+                // ✅ CRITICAL: If tutorial is currently showing the button, don't override it!
+                // Check if we're in the Begin Analysis tutorial step
+                const currentPhase = getTutorialPhase();
+                const isBeginAnalysisTutorialActive = currentPhase === 'waiting_for_begin_analysis_click';
+                
                 if (isFirstVisit) {
-                    // First visit = ALWAYS hide/disable button until tutorial enables it
-                    // Don't check isTutorialActive() because tutorialPhase might not be set yet
-                    // NOTE: Button will reappear when runBeginAnalysisTutorial() calls it (sets display='flex' and enabled=true)
+                    // First visit = hide/disable button UNLESS tutorial is showing it
+                    if (isBeginAnalysisTutorialActive) {
+                        // Tutorial is controlling the button - don't override!
+                        // Button is already visible and enabled by runBeginAnalysisTutorial()
+                        return; // Exit early, let tutorial control it
+                    }
+                    
+                    // Tutorial not active - hide button until tutorial shows it
                     completeBtn.style.display = 'none';
                     completeBtn.disabled = true;
                     completeBtn.style.opacity = '0.5';

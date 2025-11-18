@@ -68,6 +68,7 @@ export let workletRailwayBufferStatusHandler = null;
 export let cachedWaveformCanvas = null;
 export let cachedFullWaveformCanvas = null; // Full view cached before zooming in (like spectrogram's elastic friend)
 export let waveformMinMaxData = null;
+export let waveformMaxAmplitude = null; // Cached max amplitude for color LUT normalization
 export let waveformWorker = null;
 export let crossfadeAnimation = null;
 
@@ -173,7 +174,20 @@ export function setWorkletBufferStatusHandler(value) { workletBufferStatusHandle
 export function setWorkletRailwayBufferStatusHandler(value) { workletRailwayBufferStatusHandler = value; }
 export function setCachedWaveformCanvas(value) { cachedWaveformCanvas = value; }
 export function setCachedFullWaveformCanvas(value) { cachedFullWaveformCanvas = value; }
-export function setWaveformMinMaxData(value) { waveformMinMaxData = value; }
+export function setWaveformMinMaxData(value) { 
+    waveformMinMaxData = value;
+    // Pre-compute and cache max amplitude for color LUT
+    if (value && value.mins && value.maxs) {
+        let maxAmp = 0;
+        for (let i = 0; i < value.mins.length; i++) {
+            const amplitude = Math.max(Math.abs(value.mins[i]), Math.abs(value.maxs[i]));
+            if (amplitude > maxAmp) maxAmp = amplitude;
+        }
+        waveformMaxAmplitude = maxAmp;
+    } else {
+        waveformMaxAmplitude = null;
+    }
+}
 export function setWaveformWorker(value) { waveformWorker = value; }
 export function setCrossfadeAnimation(value) { crossfadeAnimation = value; }
 export function setIsDragging(value) { isDragging = value; }

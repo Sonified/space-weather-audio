@@ -479,8 +479,9 @@ function attachStatusClickHandler() {
 export function setStatusText(text, className = 'status info') {
     const statusEl = document.getElementById('status');
     if (statusEl) {
-        // Preserve textAlign if it's already set to 'center'
-        const preserveTextAlign = statusEl.style.textAlign === 'center';
+        // Preserve textAlign if it's already set to 'center' or 'right'
+        const currentTextAlign = statusEl.style.textAlign;
+        const preserveTextAlign = currentTextAlign === 'center' || currentTextAlign === 'right';
         
         statusEl.className = className;
 
@@ -504,7 +505,7 @@ export function setStatusText(text, className = 'status info') {
         // Restore textAlign after typing starts
         if (preserveTextAlign) {
             setTimeout(() => {
-                statusEl.style.textAlign = 'center';
+                statusEl.style.textAlign = currentTextAlign;
             }, 50);
         }
     }

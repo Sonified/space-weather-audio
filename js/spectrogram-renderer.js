@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions } from './region-tracker.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, startFrequencySelection } from './region-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, getSpectrogramViewport } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
@@ -57,6 +57,80 @@ export function clearAllCanvasFeatureBoxes() {
     }
     
     console.log('🧹 Cleared all canvas feature boxes');
+}
+
+/**
+ * Check if a click point is within any canvas feature box
+ * Returns {regionIndex, featureIndex} if clicked, null otherwise
+ */
+function getClickedBox(x, y) {
+    if (!State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) {
+        return null;
+    }
+    
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return null;
+    
+    // Convert click coordinates to device pixels
+    const scaleX = canvas.width / canvas.offsetWidth;
+    const scaleY = canvas.height / canvas.offsetHeight;
+    const x_device = x * scaleX;
+    const y_device = y * scaleY;
+    
+    // Check each box
+    for (const box of completedSelectionBoxes) {
+        // Convert box coordinates to device pixels (same logic as drawSavedBox)
+        const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+        const originalNyquist = originalSampleRate / 2;
+        const playbackRate = State.currentPlaybackRate || 1.0;
+        
+        // Get Y positions
+        const scaleTransition = getScaleTransitionState();
+        let lowFreqY_device, highFreqY_device;
+        
+        if (scaleTransition.inProgress && scaleTransition.oldScaleType) {
+            const oldLowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
+            const newLowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+            const oldHighY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
+            const newHighY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+            
+            lowFreqY_device = oldLowY + (newLowY - oldLowY) * scaleTransition.interpolationFactor;
+            highFreqY_device = oldHighY + (newHighY - oldHighY) * scaleTransition.interpolationFactor;
+        } else {
+            lowFreqY_device = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+            highFreqY_device = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        }
+        
+        // Get X positions
+        const interpolatedRange = getInterpolatedTimeRange();
+        const displayStartMs = interpolatedRange.startTime.getTime();
+        const displayEndMs = interpolatedRange.endTime.getTime();
+        const displaySpanMs = displayEndMs - displayStartMs;
+        
+        const startTimestamp = new Date(box.startTime);
+        const endTimestamp = new Date(box.endTime);
+        const startMs = startTimestamp.getTime();
+        const endMs = endTimestamp.getTime();
+        
+        const startProgress = (startMs - displayStartMs) / displaySpanMs;
+        const endProgress = (endMs - displayStartMs) / displaySpanMs;
+        
+        const startX_device = startProgress * canvas.width;
+        const endX_device = endProgress * canvas.width;
+        
+        // Check if click is within box bounds
+        const boxX = Math.min(startX_device, endX_device);
+        const boxY = Math.min(highFreqY_device, lowFreqY_device);
+        const boxWidth = Math.abs(endX_device - startX_device);
+        const boxHeight = Math.abs(lowFreqY_device - highFreqY_device);
+        
+        if (x_device >= boxX && x_device <= boxX + boxWidth &&
+            y_device >= boxY && y_device <= boxY + boxHeight) {
+            return { regionIndex: box.regionIndex, featureIndex: box.featureIndex };
+        }
+    }
+    
+    return null;
 }
 
 /**
@@ -120,6 +194,7 @@ let spectrogramSelectionSetup = false;
 let spectrogramFocusBlurHandler = null;
 let spectrogramVisibilityHandler = null;
 let spectrogramFocusHandler = null;
+let spectrogramBlurHandler = null;
 
 // 🔥 FIX: Safety timeout to auto-cancel if mouseup never fires
 let spectrogramSelectionTimeout = null;
@@ -676,6 +751,17 @@ export function setupSpectrogramSelection() {
     };
     window.addEventListener('focus', spectrogramFocusHandler);
 
+    // 🔥 BLUR FIX: Cancel active selections when window loses focus
+    // This prevents stuck state when browser loses focus mid-drag (e.g., CMD+Tab)
+    // Safe because it only cancels active drags, doesn't interfere with mousedown cleanup
+    spectrogramBlurHandler = () => {
+        if (spectrogramSelectionActive) {
+            console.log('👋 Window blurred - canceling active selection to prevent stuck state');
+            cancelSpectrogramSelection();
+        }
+    };
+    window.addEventListener('blur', spectrogramBlurHandler);
+
     spectrogramSelectionSetup = true;
 
     canvas.addEventListener('mousedown', (e) => {
@@ -683,6 +769,19 @@ export function setupSpectrogramSelection() {
         // If not zoomed in, don't handle - user is looking at full view
         if (!zoomState.isInRegion()) {
             return;
+        }
+        
+        // ✅ Check if clicking on an existing canvas box (click to re-draw feature)
+        const canvasRect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - canvasRect.left;
+        const clickY = e.clientY - canvasRect.top;
+        
+        const clickedBox = getClickedBox(clickX, clickY);
+        if (clickedBox && !spectrogramSelectionActive) {
+            // Clicked on a box - start frequency selection for that feature!
+            startFrequencySelection(clickedBox.regionIndex, clickedBox.featureIndex);
+            console.log(`🎯 Clicked canvas box - starting reselection for region ${clickedBox.regionIndex + 1}, feature ${clickedBox.featureIndex + 1}`);
+            return; // Don't start new selection
         }
 
         // 🔥 FIX: ALWAYS force-reset state before starting new selection
@@ -718,7 +817,7 @@ export function setupSpectrogramSelection() {
         //     console.log('🧹 Cleared overlay canvas for new selection');
         // }
 
-        const canvasRect = canvas.getBoundingClientRect();
+        // Reuse canvasRect from above (already calculated for box click detection)
         spectrogramStartX = e.clientX - canvasRect.left;
         spectrogramStartY = e.clientY - canvasRect.top;
         spectrogramCurrentX = null;  // Reset - will be set on first mousemove
@@ -768,8 +867,14 @@ export function setupSpectrogramSelection() {
         drawSpectrogramSelectionBox(spectrogramOverlayCtx, width, height);
     });
     
-    // 🔥 REMOVED: mouseleave handler - waveform doesn't have one and works fine!
-    // Just let the mousedown handler clean up stale state when user clicks again
+    // 🔥 FIX: Add mouseleave handler to cancel selection when mouse leaves canvas
+    // This prevents stuck state when mouseup never fires (e.g., mouse leaves window)
+    canvas.addEventListener('mouseleave', () => {
+        if (spectrogramSelectionActive) {
+            console.log('🖱️ Mouse left spectrogram canvas during selection - canceling');
+            cancelSpectrogramSelection();
+        }
+    });
     
     // 🔥 FIX: Store handler reference so it can be removed
     spectrogramMouseUpHandler = async (e) => {
@@ -1080,6 +1185,10 @@ export function cleanupSpectrogramSelection() {
     if (spectrogramFocusHandler) {
         window.removeEventListener('focus', spectrogramFocusHandler);
         spectrogramFocusHandler = null;
+    }
+    if (spectrogramBlurHandler) {
+        window.removeEventListener('blur', spectrogramBlurHandler);
+        spectrogramBlurHandler = null;
     }
 
     // Clear any active timeouts

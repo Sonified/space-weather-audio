@@ -2469,9 +2469,13 @@ function formatRegionsForSubmission(regions) {
                     lowFreq: feature.lowFreq || null,
                     highFreq: feature.highFreq || null,
                     // Feature metadata
-                    type: feature.type || null,
-                    repetition: feature.repetition || null,
-                    notes: feature.notes || null
+                    type: feature.type || null, // Impulsive or Continuous (Choice 9)
+                    repetition: feature.repetition || null, // Unique in 24h? (Choice 11)
+                    notes: feature.notes || null,
+                    // Speed factor (Choice 3) - captured at feature creation time
+                    speedFactor: feature.speedFactor !== undefined ? feature.speedFactor : null,
+                    // Number of events in region (Choice 10) - feature count for this region
+                    numberOfEvents: region.featureCount || 0
                 };
             });
         }
@@ -2693,52 +2697,8 @@ export async function attemptSubmission(fromWorkflow = false) {
         });
         
         // ═══════════════════════════════════════════════════════════
-        // 🚫 QUALTRICS SUBMISSION DISABLED (TEMPORARY)
+        // 📤 QUALTRICS SUBMISSION
         // ═══════════════════════════════════════════════════════════
-        console.log('\n   ═══════════════════════════════════════════════════════════');
-        console.log('   🚫 QUALTRICS SUBMISSION IS DISABLED');
-        console.log('   ═══════════════════════════════════════════════════════════');
-        console.log('   📤 Qualtrics submission WOULD happen now but is disabled.');
-        console.log('   📋 All data is prepared and ready for submission:');
-        console.log('      - Participant ID:', participantId);
-        console.log('      - Session ID:', combinedResponses.sessionId);
-        console.log('      - Pre-Survey:', hasPre ? '✅ Included' : '❌ Missing');
-        console.log('      - Post-Survey:', hasPost ? '✅ Included' : '❌ Missing');
-        console.log('      - AWE-SF:', hasAwesf ? '✅ Included' : '❌ Missing');
-        console.log('      - Regions:', formattedRegions.length, 'regions');
-        console.log('      - JSON Dump:', jsonDump ? '✅ Included' : '❌ Missing');
-        console.log('   💡 To enable submission, remove the disabled check in attemptSubmission()');
-        console.log('   ═══════════════════════════════════════════════════════════\n');
-        
-        statusEl.className = 'status info';
-        statusEl.textContent = '🚫 Qualtrics submission disabled (check console for details)';
-        
-        console.log('\n═══════════════════════════════════════════════════════════');
-        console.log('✅ SUBMISSION PREPARATION COMPLETED (SUBMISSION DISABLED)');
-        console.log('═══════════════════════════════════════════════════════════');
-        
-        // Simulate successful submission flow (without actually submitting)
-        const mockSubmissionResult = {
-            result: {
-                responseId: 'MOCK_RESPONSE_ID_DISABLED'
-            },
-            meta: {
-                httpStatus: '200 - OK (SIMULATED)'
-            }
-        };
-        
-        // Step 8: Mark session as submitted (with mock response ID)
-        console.log('\n📋 STEP 8: Marking session as submitted (MOCK MODE)...');
-        console.log('   ⚠️ Session will NOT be marked as submitted in disabled mode');
-        console.log('   💡 This allows testing the full workflow without affecting data');
-        
-        // Step 9: Export response metadata to JSON file (still works even when disabled)
-        console.log('\n📋 STEP 9: Exporting response metadata...');
-        exportResponseMetadata(participantId, 'MOCK_RESPONSE_ID_DISABLED', mockSubmissionResult);
-        console.log('   ✅ Response metadata exported to JSON file (for testing)');
-        
-        // Original submission code (commented out for now):
-        /*
         const startTime = Date.now();
         let submissionResult;
         
@@ -2817,7 +2777,6 @@ export async function attemptSubmission(fromWorkflow = false) {
             
             throw apiError;
         }
-        */
         
     } catch (error) {
         console.error('\n❌ FATAL ERROR in submission attempt:');

@@ -140,6 +140,61 @@ function stopPositionTracking() {
     }
 }
 
+// Oscilloscope data collection state
+let oscilloscopeRAF = null;
+let oscilloscopeAnalyserBuffer = null;
+
+/**
+ * Start collecting post-volume audio data from analyser node for oscilloscope visualization
+ * This reads from the analyser node which is connected AFTER the gain node, so it shows volume-adjusted audio
+ */
+function startOscilloscopeDataCollection(analyserNode) {
+    if (!analyserNode) return;
+    
+    // Stop any existing collection
+    stopOscilloscopeDataCollection();
+    
+    // Create a buffer to read analyser data
+    // getFloatTimeDomainData requires a buffer of size fftSize (2048), not frequencyBinCount
+    const bufferSize = analyserNode.fftSize || 2048;
+    oscilloscopeAnalyserBuffer = new Float32Array(bufferSize);
+    
+    function collectOscilloscopeData() {
+        if (!State.analyserNode || !document.body || !document.body.isConnected) {
+            oscilloscopeRAF = null;
+            return;
+        }
+        
+        // Read time-domain data from analyser (post-volume audio)
+        State.analyserNode.getFloatTimeDomainData(oscilloscopeAnalyserBuffer);
+        
+        // Send to oscilloscope renderer
+        import('./oscilloscope-renderer.js').then(({ addOscilloscopeData }) => {
+            // Send a chunk of samples (similar to what worklet was sending)
+            const samplesToSend = oscilloscopeAnalyserBuffer.slice(0, 128); // Send 128 samples per update
+            addOscilloscopeData(samplesToSend);
+        });
+        
+        // Continue collecting
+        oscilloscopeRAF = requestAnimationFrame(collectOscilloscopeData);
+    }
+    
+    // Start collection loop
+    oscilloscopeRAF = requestAnimationFrame(collectOscilloscopeData);
+    console.log('🎨 Started oscilloscope data collection from analyser node (post-volume)');
+}
+
+/**
+ * Stop oscilloscope data collection
+ */
+function stopOscilloscopeDataCollection() {
+    if (oscilloscopeRAF !== null) {
+        cancelAnimationFrame(oscilloscopeRAF);
+        oscilloscopeRAF = null;
+    }
+    oscilloscopeAnalyserBuffer = null;
+}
+
 function toggleAntiAliasing() {
     // Hidden for now - always enabled
     let antiAliasingEnabled = true;
@@ -210,6 +265,15 @@ export async function initAudioWorklet() {
     
     updatePlaybackSpeed();
     
+    // Initialize oscilloscope visualization
+    import('./oscilloscope-renderer.js').then(({ initOscilloscope }) => {
+        initOscilloscope();
+        console.log('🎨 Oscilloscope visualization initialized');
+        
+        // Start reading post-volume audio from analyser node
+        startOscilloscopeDataCollection(analyser);
+    });
+    
     // Log audio output latency for debugging sync issues
     // Only log in dev/personal modes, not study mode
     if (!isStudyMode()) {
@@ -266,6 +330,9 @@ export async function initAudioWorklet() {
             if (samplesConsumed !== undefined && totalSamples && totalSamples > 0) {
                 updateCurrentPositionFromSamples(samplesConsumed, totalSamples);
             }
+        } else if (type === 'oscilloscope') {
+            // Ignore oscilloscope data from worklet - we now read post-volume audio from analyser node
+            // This ensures the oscilloscope shows volume-adjusted audio, not raw worklet output
         } else if (type === 'started') {
             const ttfa = performance.now() - window.streamingStartTime;
             document.getElementById('ttfa').textContent = `${ttfa.toFixed(0)}ms`;
@@ -794,6 +861,9 @@ export async function startStreaming(event) {
                 State.setAnalyserNode(null);
             }
             
+            // Stop oscilloscope data collection
+            stopOscilloscopeDataCollection();
+            
             // 🧹 AGGRESSIVE CLEANUP: Explicitly null out large arrays
             // NOTE: Worklet handler is already cleared above, so these won't be retained
             const oldDataLength = State.allReceivedData?.length || 0;
@@ -860,9 +930,7 @@ export async function startStreaming(event) {
         playPauseBtn.classList.remove('pause-active', 'play-active', 'loop-active', 'pulse-play', 'pulse-resume');
         document.getElementById('downloadBtn').disabled = true;
         
-        const loopBtn = document.getElementById('loopBtn');
-        loopBtn.disabled = true;
-        loopBtn.classList.remove('loop-active');
+        // Don't disable loop button - it should remain enabled during data loading
         
         State.setPlaybackState(PlaybackState.PLAYING);
         State.setStreamStartTime(performance.now());
@@ -927,7 +995,7 @@ export async function startStreaming(event) {
         startBtn.classList.remove('streaming');
         
         document.getElementById('playPauseBtn').disabled = true;
-        document.getElementById('loopBtn').disabled = true;
+        // Don't disable loop button on error - keep it enabled if it was enabled before
         document.getElementById('downloadBtn').disabled = true;
     }
 }
@@ -1334,6 +1402,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.51 - UI Polish & Tutorial Improvements');
+        console.log('🎨 [0ms] v2.51 UI: Fixed waveform-x-axis max-width to match other canvases, unified participant ID text box styling with dark background and reddish hover');
+        console.log('🎓 [0ms] v2.51 UI: Added ↘️ emoji to volume adjustment tutorial message for better visual guidance');
+        console.log('🌋 [0ms] volcano-audio v2.50 - Spectrogram Playhead Overlay & UI Polish');
+        console.log('🎨 [0ms] v2.50 Refactor: Spectrogram playhead now uses dedicated transparent overlay canvas - eliminates complex background restoration, much simpler rendering, better performance');
+        console.log('🎨 [0ms] v2.50 UI: Updated top panel colors - selection panel #9a9a9a, playback panel #a8a8a8 with healthy gradients');
+        console.log('🎨 [0ms] v2.50 UI: Reduced waveform playhead white line opacity for subtler appearance');
+        console.log('✨ [0ms] v2.50 UI: Fetch Data button now pulses brighter on load for better visibility');
         console.log('🌋 [0ms] volcano-audio v2.49 - Pure Canvas Feature Boxes');
         console.log('🎨 [0ms] v2.49 Refactor: Replaced DOM-based orange feature boxes with pure canvas rendering - eliminates appendChild() circular event issues, adds smooth interpolation during scale/zoom transitions, auto-syncs with feature array for deletion/renumbering');
         console.log('🌋 [0ms] volcano-audio v2.47 - Feature Box Positioning and Synchronization');
@@ -1470,7 +1546,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }, 100);
     
     // Add event listeners
-    document.getElementById('volcano').addEventListener('change', (e) => {
+    document.getElementById('volcano').addEventListener('change', async (e) => {
         // Remove pulsing glow when user selects a volcano
         const volcanoSelect = document.getElementById('volcano');
         if (volcanoSelect) {
@@ -1478,6 +1554,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
         const selectedVolcano = e.target.value;
         const volcanoWithData = State.volcanoWithData;
+        
+        // ✅ Switch to this volcano's regions (loads from localStorage if available)
+        switchVolcanoRegions(selectedVolcano);
         
         // If switching back to the volcano that already has data, disable fetch button
         if (volcanoWithData && selectedVolcano === volcanoWithData) {
@@ -2042,7 +2121,11 @@ window.addEventListener('DOMContentLoaded', async () => {
             newBtn.style.opacity = '0.5';
             newBtn.style.cursor = 'not-allowed';
             
-            // Update state based on features
+            // Update state based on features AND visibility
+            // updateCompleteButtonState() handles visibility (checks hasData && !isTutorialActive())
+            // updateCmpltButtonState() handles enable/disable based on features
+            const { updateCompleteButtonState } = await import('./region-tracker.js');
+            updateCompleteButtonState();
             updateCmpltButtonState();
             
             console.log('🔄 Begin Analysis button transformed into Complete button');
@@ -2060,12 +2143,12 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.log('👤 Participant ID display clicked - opening modal');
             openParticipantModal();
         });
-        // Add hover effect
+        // Add hover effect - keep dark background theme with reddish tint
         participantIdText.addEventListener('mouseenter', function() {
-            this.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+            this.style.backgroundColor = 'rgba(80, 50, 50, 0.6)';
         });
         participantIdText.addEventListener('mouseleave', function() {
-            this.style.backgroundColor = 'transparent';
+            this.style.backgroundColor = 'rgba(40, 40, 40, 0.4)';
         });
         console.log('✅ Participant ID display click handler attached');
     } else {

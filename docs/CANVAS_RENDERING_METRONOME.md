@@ -469,3 +469,5 @@ Waveform   Draw       Waveform   Draw       Waveform   Draw
 6. **Playhead sync**: Waveform RAF updates spectrogram playhead
 7. **Performance**: Both optimized for 60fps with minimal CPU usage
 
+
+

@@ -195,3 +195,41 @@ This architecture completely eliminates the appendChild() trap because:
 - `js/waveform-x-axis-renderer.js` - Hooked into zoom transitions
 - `js/main.js` - Version number updated to v2.49
 
+---
+
+## Version v2.50 - Spectrogram Playhead Overlay & UI Polish
+
+**Commit:** `v2.50 Refactor: Spectrogram playhead overlay canvas, UI color updates, and visual polish`
+
+**Major Changes:**
+- ✅ Spectrogram playhead now uses dedicated transparent overlay canvas (much simpler, no background restoration needed)
+- ✅ Updated top panel colors - selection panel #9a9a9a, playback panel #a8a8a8 with healthy gradients
+- ✅ Reduced waveform playhead white line opacity for subtler appearance
+- ✅ Fetch Data button now pulses brighter on load for better visibility
+
+**Key Insight:**
+The spectrogram playhead was drawing directly on the main canvas and having to restore background strips every time it moved. By using a dedicated transparent overlay canvas (similar to the selection overlay), we eliminated all the complex `drawImage` operations and made the code much simpler - just clear and draw the line!
+
+**Files Modified:**
+- `js/spectrogram-playhead.js` - Refactored to use dedicated overlay canvas
+- `styles.css` - Updated panel colors and Fetch Data button animation
+- `js/waveform-renderer.js` - Reduced playhead white line opacity
+- `js/main.js` - Version number updated to v2.50
+
+---
+
+## Version v2.51 - UI Polish & Tutorial Improvements
+
+**Commit:** `v2.51 UI: Fixed waveform-x-axis max-width, unified participant ID styling, added visual guidance emoji to tutorial`
+
+**Major Changes:**
+- ✅ Fixed waveform-x-axis max-width constraint to match other canvases (was shorter than others)
+- ✅ Unified participant ID text box styling - dark background (`rgba(40, 40, 40, 0.4)`) with reddish hover (`rgba(80, 50, 50, 0.6)`) for consistent appearance during tutorial
+- ✅ Added ↘️ emoji to volume adjustment tutorial message for better visual guidance
+
+**Files Modified:**
+- `styles.css` - Added max-width: 100% to #waveform-x-axis, added CSS rules for participant ID text box with !important flags
+- `js/main.js` - Updated hover handlers for participant ID to use dark reddish theme
+- `js/tutorial-coordinator.js` - Added ↘️ emoji to volume tutorial message
+- `js/main.js` - Version number updated to v2.51
+

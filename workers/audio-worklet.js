@@ -104,6 +104,11 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.samplesSinceLastPositionUpdate = 0;
         this.positionUpdateIntervalSamples = 1323; // ~30ms at 44.1kHz
         this.totalSamplesConsumed = 0; // Track absolute position in file (for accurate seeking)
+        
+        // Oscilloscope visualization
+        this.oscilloscopeBuffer = new Float32Array(128); // Send 128 samples (~3ms) per update
+        this.oscilloscopeCounter = 0;
+        this.oscilloscopeInterval = 2; // Send every 2 process() calls (~6ms updates)
     }
     
     initializeFilters() {
@@ -1004,6 +1009,24 @@ class SeismicProcessor extends AudioWorkletProcessor {
         // Update position and metrics (delegated to clean methods)
         this.updatePosition(128);
         this.updateMetrics();
+        
+        // ===== OSCILLOSCOPE DATA =====
+        // Send samples to main thread for real-time waveform visualization
+        this.oscilloscopeCounter++;
+        if (this.oscilloscopeCounter >= this.oscilloscopeInterval) {
+            this.oscilloscopeCounter = 0;
+            
+            // Copy current output to oscilloscope buffer
+            for (let i = 0; i < Math.min(channel.length, this.oscilloscopeBuffer.length); i++) {
+                this.oscilloscopeBuffer[i] = channel[i];
+            }
+            
+            // Send to main thread (use structured clone to avoid transferring)
+            this.port.postMessage({
+                type: 'oscilloscope',
+                samples: this.oscilloscopeBuffer.slice(0, channel.length)
+            });
+        }
         
         return true;
     }

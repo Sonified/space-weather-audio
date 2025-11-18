@@ -140,14 +140,14 @@ export function createTutorialIntroModal() {
                 <h3 class="modal-title">Tutorial Introduction</h3>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
+                <p style="margin-bottom: 20px; color: #333; font-size: 22px; font-weight: bold; line-height: 1.6; text-align: center;">
                     We will begin with a brief tutorial to provide an introduction to the interface.
                 </p>
-                <p style="margin-bottom: 30px; color: #555; font-size: 16px; line-height: 1.6; text-align: center;">
+                <p style="margin-bottom: 30px; color: #555; font-size: 20px; font-weight: bold; line-height: 1.6; text-align: center;">
                     It will take approximately 5 minutes to complete.
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Begin Tutorial</button>
+                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #c62828; border: 2px solid #c62828; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Begin Tutorial</button>
                 </div>
             </div>
         </div>
@@ -166,12 +166,12 @@ export function createTutorialRevisitModal() {
                 <h3 class="modal-title">Revisit Tutorial</h3>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 30px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
+                <p style="margin-bottom: 30px; color: #333; font-size: 22px; font-weight: bold; line-height: 1.6; text-align: center;">
                     Would you like to revisit the tutorial?
                 </p>
-                <div style="display: flex; flex-direction: row; gap: 15px; align-items: center; justify-content: center;">
-                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 120px;">Yes</button>
-                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 120px;">Cancel</button>
+                <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; justify-content: center;">
+                    <button type="button" class="modal-submit" style="padding: 8px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Yes</button>
+                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Cancel</button>
                 </div>
             </div>
         </div>

@@ -22,9 +22,11 @@ import {
     enableRegionPlayButton,
     enableRegionZoomButton,
     enableWaveformClicks, 
+    disableWaveformClicks,
     shouldShowPulse, 
     markPulseShown, 
-    showTutorialOverlay, 
+    showTutorialOverlay,
+    hideTutorialOverlay, 
     setTutorialPhase, 
     clearTutorialPhase,
     disableFrequencyScaleDropdown,
@@ -55,9 +57,72 @@ import { zoomState } from './zoom-state.js';
 import { isTutorialActive } from './tutorial-state.js';
 import { getCurrentRegions, getActiveRegionIndex, startFrequencySelection } from './region-tracker.js';
 
+// 🔒 SAFETY TIMEOUT: Maximum wait time for user interactions (prevents tutorial from getting stuck)
+const USER_ACTION_TIMEOUT_MS = 15000; // 15 seconds
+const CRITICAL_ACTION_TIMEOUT_MS = 20000; // 20 seconds for critical actions (region creation, etc.)
+
 // Track last status message for replay on resume
 let lastStatusMessage = null;
 let lastStatusClassName = 'status info';
+
+/**
+ * 🔒 SAFETY: Clear ALL tutorial visual states (pulse, overlay, glows)
+ * Call this when advancing phases or when promises resolve to prevent stuck highlighting
+ */
+export function clearAllTutorialVisualStates() {
+    // Clear waveform pulse
+    const waveformCanvas = document.getElementById('waveform');
+    if (waveformCanvas) {
+        waveformCanvas.classList.remove('pulse');
+    }
+    
+    // Clear tutorial overlay
+    hideTutorialOverlay();
+    
+    // Clear all glow effects
+    removeSpectrogramGlow();
+    removeRegionsPanelGlow();
+    removeVolumeSliderGlow();
+    removeLoopButtonGlow();
+    removeFrequencyScaleGlow();
+    
+    // Clear feature-related glows (these need region/feature indices, so we'll clear by class)
+    document.querySelectorAll('.select-feature-button-glow').forEach(el => {
+        el.classList.remove('select-feature-button-glow', 'fading-out', 'fading-in');
+    });
+    document.querySelectorAll('.repetition-dropdown-glow').forEach(el => {
+        el.classList.remove('repetition-dropdown-glow', 'fading-out', 'fading-in');
+    });
+    document.querySelectorAll('.type-dropdown-glow').forEach(el => {
+        el.classList.remove('type-dropdown-glow', 'fading-out', 'fading-in');
+    });
+    document.querySelectorAll('.add-feature-button-glow').forEach(el => {
+        el.classList.remove('add-feature-button-glow', 'fading-out', 'fading-in');
+    });
+    
+    // Clear volcano selector glow
+    const volcanoSelect = document.getElementById('volcano');
+    if (volcanoSelect) {
+        volcanoSelect.classList.remove('pulse-glow');
+    }
+}
+
+/**
+ * 🔒 SAFETY CHECK: Clear waveform pulse/overlay if user has already clicked waveform
+ * This prevents stuck highlighting when user moves ahead of tutorial
+ */
+function safetyCheckWaveformState() {
+    // If user has clicked waveform but pulse/overlay is still active, clear it
+    if (State.waveformHasBeenClicked) {
+        const waveformCanvas = document.getElementById('waveform');
+        if (waveformCanvas && waveformCanvas.classList.contains('pulse')) {
+            console.log('🔒 SAFETY: Clearing stuck waveform pulse - user already clicked');
+            waveformCanvas.classList.remove('pulse');
+        }
+        // Clear overlay if still visible
+        hideTutorialOverlay();
+    }
+}
 
 /**
  * Wrapper for setStatusText that tracks the last message
@@ -181,9 +246,15 @@ function skippableWait(durationMs) {
         console.log('🔧 skippableWait: Setting tutorial phase "timed_wait" for', durationMs, 'ms');
         setTutorialPhase('timed_wait', [timeoutId], () => {
             console.log('⚡ skippableWait: Enter key pressed - skipping wait!');
+            if (!isResolved) {
             isResolved = true;
             cleanup();
-            resolve();
+                resolve(); // 🔥 FIX: Must call resolve() to advance to next step
+            }
+        }, async () => {
+            // Promise recreator: call skippableWait again with same duration
+            console.log('🔄 Recreating skippableWait promise for', durationMs, 'ms');
+            await skippableWait(durationMs);
         });
     });
 }
@@ -225,28 +296,39 @@ function waitForDataFetch() {
         // Set up a check interval to watch for data
         const checkInterval = 100; // Check every 100ms
         let timeoutId = null;
+        let isResolved = false;
         
-        const checkForData = () => {
-            if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
-                // Data is loaded!
+        const cleanup = () => {
                 if (timeoutId !== null) {
                     clearTimeout(timeoutId);
                     timeoutId = null;
                 }
+        };
+        
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            cleanup();
                 resolve();
+        };
+        
+        const checkForData = () => {
+            if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+                // Data is loaded!
+                doResolve();
             } else {
                 // Keep checking
                 timeoutId = setTimeout(checkForData, checkInterval);
             }
         };
         
-        // Store phase for Enter key skipping
+        // ⚠️ NO TIMEOUT: User MUST fetch data to proceed - tutorial cannot continue without data
+        // User needs as much time as needed to select volcano and fetch data
+        // Enter key can still skip if needed, but no automatic timeout
+        
+        // Store phase for Enter key skipping (but no timeout - user must fetch data)
         setTutorialPhase('waiting_for_data_fetch', [timeoutId], () => {
-            if (timeoutId !== null) {
-                clearTimeout(timeoutId);
-                timeoutId = null;
-            }
-            resolve();
+            doResolve();
         });
         
         // Start checking
@@ -276,6 +358,26 @@ async function showInitialFetchTutorial() {
     // Show message guiding user to select volcano and fetch data
     setStatusTextAndTrack('<- Select a volcano and click Fetch Data.', 'status info');
     
+    // 🔒 Disable volcano dropdown when fetch data is triggered
+    const disableVolcanoDropdown = () => {
+        const volcanoSelect = document.getElementById('volcano');
+        if (volcanoSelect) {
+            volcanoSelect.disabled = true;
+            volcanoSelect.style.opacity = '0.5';
+            volcanoSelect.style.cursor = 'not-allowed';
+            volcanoSelect.style.pointerEvents = 'none';
+            console.log('🔒 Volcano dropdown disabled - data fetch in progress');
+        }
+    };
+    
+    // Set up fetch button click listener to disable volcano dropdown
+    const fetchBtn = document.getElementById('startBtn');
+    if (fetchBtn) {
+        fetchBtn.addEventListener('click', () => {
+            disableVolcanoDropdown();
+        }, { once: true });
+    }
+    
     // 🔥 Add Enter key handler RIGHT HERE - triggers fetch data when message is shown
     let enterKeyHandler = null;
     const setupEnterKeyHandler = () => {
@@ -290,6 +392,9 @@ async function showInitialFetchTutorial() {
                     
                     // Remove handler immediately so it only triggers once
                     document.removeEventListener('keydown', enterKeyHandler);
+                    
+                    // Disable volcano dropdown before fetching
+                    disableVolcanoDropdown();
                     
                     // Import and trigger fetch data
                     const { startStreaming } = await import('./main.js');
@@ -372,10 +477,10 @@ async function showVolumeSliderTutorial() {
     addVolumeSliderGlow();
     
     // Show message about volume adjustment
-    setStatusTextAndTrack('The volume can be adjusted here.', 'status info');
+    setStatusTextAndTrack('The volume can be adjusted here. ↘️', 'status info');
     
-    // Wait 5 seconds
-    await skippableWait(5000);
+    // Wait 6 seconds
+    await skippableWait(6000);
     
     // Remove glow
     removeVolumeSliderGlow();
@@ -404,7 +509,7 @@ async function showSpectrogramExplanation() {
     
     // First message introducing the spectrogram
     setStatusTextAndTrack('This is a spectrogram of the data.', 'status info');
-    await skippableWait(3000);
+    await skippableWait(5000);
     
     // Second message about interesting features
     setStatusTextAndTrack('You may notice a variety of interesting features.', 'status info');
@@ -412,11 +517,11 @@ async function showSpectrogramExplanation() {
     
     // Third message about time flow
     setStatusTextAndTrack('Time flows from left to right 👉', 'status info');
-    await skippableWait(5000);
+    await skippableWait(4000);
     
     // Fourth message about frequency
     setStatusTextAndTrack('And frequency spans from low to high 👆', 'status info');
-    await skippableWait(5000);
+    await skippableWait(4000);
     
     // Additional message about selecting features (keep glow)
     setStatusTextAndTrack('A bit later we will use this space for selecting features.', 'status info');
@@ -453,12 +558,15 @@ async function runSpeedSliderTutorial() {
 }
 
 async function enableWaveformTutorial() {
+    // 🔒 SAFETY: Check if user already clicked before showing pulse
+    safetyCheckWaveformState();
+    
     // Enable waveform clicks
     enableWaveformClicks();
     
-    // Show pulse and overlay if first time
+    // Show pulse and overlay if first time AND user hasn't clicked yet
     const waveformCanvas = document.getElementById('waveform');
-    if (waveformCanvas && shouldShowPulse()) {
+    if (waveformCanvas && shouldShowPulse() && !State.waveformHasBeenClicked) {
         waveformCanvas.classList.add('pulse');
         markPulseShown();
         showTutorialOverlay('Click here', true);
@@ -466,6 +574,11 @@ async function enableWaveformTutorial() {
     
     // Show final message
     setStatusTextAndTrack('Now click on the waveform to move the playhead somewhere interesting.', 'status success');
+    
+    // 🔒 SAFETY: Check again after a short delay in case user clicks immediately
+    setTimeout(() => {
+        safetyCheckWaveformState();
+    }, 500);
 }
 
 /**
@@ -483,17 +596,27 @@ function waitForWaveformClick() {
             return;
         }
         
-        // Store resolve function FIRST to avoid race condition
-        // This ensures that if a click happens immediately after, it will resolve the promise
-        State.setWaveformClickResolve(resolve);
-        console.log('🎯 waitForWaveformClick: Promise set up, waiting for click...');
+        let safetyTimeoutId = null;
+        let safetyCheckInterval = null;
+        let isResolved = false;
         
-        // Ensure clicks are enabled (in case they weren't already)
-        enableWaveformClicks();
+        const cleanup = () => {
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
+            if (safetyCheckInterval !== null) {
+                clearInterval(safetyCheckInterval);
+                safetyCheckInterval = null;
+            }
+        };
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_waveform_click', [], () => {
-            console.log('🎯 waitForWaveformClick: Skipped via Enter key');
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            cleanup();
+            // 🔒 SAFETY: Clear waveform visual states when resolving
+            safetyCheckWaveformState();
             // Mark waveform click as satisfied when skipping
             State.setWaveformHasBeenClicked(true);
             if (State._waveformClickResolve) {
@@ -501,6 +624,41 @@ function waitForWaveformClick() {
                 State.setWaveformClickResolve(null);
             }
             resolve();
+        };
+        
+        // Store resolve function FIRST to avoid race condition
+        // This ensures that if a click happens immediately after, it will resolve the promise
+        State.setWaveformClickResolve(doResolve);
+        console.log('🎯 waitForWaveformClick: Promise set up, waiting for click...');
+        
+        // Ensure clicks are enabled (in case they weren't already)
+        enableWaveformClicks();
+        
+        // 🔒 SAFETY: Periodic check to clear stuck states (check every 2 seconds)
+        safetyCheckInterval = setInterval(() => {
+            if (State.waveformHasBeenClicked) {
+                safetyCheckWaveformState();
+                // Don't clear interval here - let doResolve handle it
+            }
+        }, 2000);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForWaveformClick: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            // Clear visual states before resolving
+            safetyCheckWaveformState();
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping (include interval in cleanup)
+        // Also store promise recreator for going back
+        setTutorialPhase('waiting_for_waveform_click', [safetyTimeoutId, safetyCheckInterval], () => {
+            console.log('🎯 waitForWaveformClick: Skipped via Enter key');
+            doResolve();
+        }, async () => {
+            // Promise recreator: call waitForWaveformClick again to recreate the waiting state
+            console.log('🔄 Recreating waitForWaveformClick promise');
+            await waitForWaveformClick();
         });
     });
 }
@@ -510,15 +668,38 @@ function waitForWaveformClick() {
  */
 function waitForSelection() {
     return new Promise((resolve) => {
-        // Set flag so waveform-renderer.js knows to resolve this promise
-        State.setWaitingForSelection(true);
-        State.setSelectionTutorialResolve(resolve);
-
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_selection', [], () => {
+        let safetyTimeoutId = null;
+        let isResolved = false;
+        
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForSelection(false);
             State.setSelectionTutorialResolve(null);
             resolve();
+        };
+        
+        // Set flag so waveform-renderer.js knows to resolve this promise
+        State.setWaitingForSelection(true);
+        State.setSelectionTutorialResolve(doResolve);
+
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForSelection: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_selection', [safetyTimeoutId], () => {
+            doResolve();
+        }, async () => {
+            // Promise recreator: call waitForSelection again
+            console.log('🔄 Recreating waitForSelection promise');
+            await waitForSelection();
         });
     });
 }
@@ -528,13 +709,16 @@ function waitForSelection() {
  */
 function waitForBeginAnalysisClick() {
     return new Promise((resolve) => {
-        // Set flag so main.js click handler knows to resolve this promise
-        State.setWaitingForBeginAnalysisClick(true);
-        State.setBeginAnalysisClickResolve(resolve);
-
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_begin_analysis_click', [], () => {
-            console.log('🎯 Begin Analysis click: Skipped via Enter key');
+        let safetyTimeoutId = null;
+        let isResolved = false;
+        
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForBeginAnalysisClick(false);
             State.setBeginAnalysisClickResolve(null);
 
@@ -542,6 +726,22 @@ function waitForBeginAnalysisClick() {
             window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
 
             resolve();
+        };
+        
+        // Set flag so main.js click handler knows to resolve this promise
+        State.setWaitingForBeginAnalysisClick(true);
+        State.setBeginAnalysisClickResolve(doResolve);
+
+        // 🔒 CRITICAL ACTION: 20-second timeout - Begin Analysis is critical transition, give adequate time
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForBeginAnalysisClick: ${CRITICAL_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, CRITICAL_ACTION_TIMEOUT_MS);
+
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_begin_analysis_click', [safetyTimeoutId], () => {
+            console.log('🎯 Begin Analysis click: Skipped via Enter key');
+            doResolve();
         });
     });
 }
@@ -551,15 +751,38 @@ function waitForBeginAnalysisClick() {
  */
 function waitForRegionCreation() {
     return new Promise((resolve) => {
-        // Set flag so region-tracker.js knows to resolve this promise
-        State.setWaitingForRegionCreation(true);
-        State.setRegionCreationResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_region_creation', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForRegionCreation(false);
             State.setRegionCreationResolve(null);
             resolve();
+        };
+        
+        // Set flag so region-tracker.js knows to resolve this promise
+        State.setWaitingForRegionCreation(true);
+        State.setRegionCreationResolve(doResolve);
+        
+        // 🔒 CRITICAL ACTION: 20-second timeout - user MUST create a region to proceed, but give them adequate time
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForRegionCreation: ${CRITICAL_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, CRITICAL_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_region_creation', [safetyTimeoutId], () => {
+            doResolve();
+        }, async () => {
+            // Promise recreator: call waitForRegionCreation again
+            console.log('🔄 Recreating waitForRegionCreation promise');
+            await waitForRegionCreation();
         });
     });
 }
@@ -569,15 +792,34 @@ function waitForRegionCreation() {
  */
 function waitForRegionPlayClick() {
     return new Promise((resolve) => {
-        // Set flag so region-tracker.js knows to resolve this promise
-        State.setWaitingForRegionPlayClick(true);
-        State.setRegionPlayClickResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_region_play_click', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForRegionPlayClick(false);
             State.setRegionPlayClickResolve(null);
             resolve();
+        };
+        
+        // Set flag so region-tracker.js knows to resolve this promise
+        State.setWaitingForRegionPlayClick(true);
+        State.setRegionPlayClickResolve(doResolve);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForRegionPlayClick: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_region_play_click', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -587,32 +829,54 @@ function waitForRegionPlayClick() {
  */
 function waitForRegionPlayOrResume() {
     return new Promise((resolve) => {
+        let safetyTimeoutId = null;
+        let checkPlaybackTimeoutId = null;
+        let isResolved = false;
+        
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
+            if (checkPlaybackTimeoutId !== null) {
+                clearTimeout(checkPlaybackTimeoutId);
+                checkPlaybackTimeoutId = null;
+            }
+            State.setWaitingForRegionPlayOrResume(false);
+            State.setWaitingForRegionPlayClick(false);
+            State.setRegionPlayOrResumeResolve(null);
+            State.setRegionPlayClickResolve(null);
+            clearTutorialPhase();
+            resolve();
+        };
+        
         // Set flag so we can resolve from multiple sources
         State.setWaitingForRegionPlayOrResume(true);
-        State.setRegionPlayOrResumeResolve(resolve);
-        
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_region_play_or_resume', [], () => {
-            State.setWaitingForRegionPlayOrResume(false);
-            State.setRegionPlayOrResumeResolve(null);
-            resolve();
-        });
+        State.setRegionPlayOrResumeResolve(doResolve);
         
         // Also set up region play click handler (will resolve this promise too)
         State.setWaitingForRegionPlayClick(true);
-        State.setRegionPlayClickResolve(resolve);
+        State.setRegionPlayClickResolve(doResolve);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForRegionPlayOrResume: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_region_play_or_resume', [safetyTimeoutId], () => {
+            doResolve();
+        });
         
         // Monitor playback state - if it starts playing, resolve
         const checkPlayback = () => {
             if (State.playbackState === State.PlaybackState.PLAYING && State.waitingForRegionPlayOrResume) {
-                State.setWaitingForRegionPlayOrResume(false);
-                State.setWaitingForRegionPlayClick(false);
-                State.setRegionPlayOrResumeResolve(null);
-                State.setRegionPlayClickResolve(null);
-                clearTutorialPhase();
-                resolve();
-            } else if (State.waitingForRegionPlayOrResume) {
-                setTimeout(checkPlayback, 100);
+                doResolve();
+            } else if (State.waitingForRegionPlayOrResume && !isResolved) {
+                checkPlaybackTimeoutId = setTimeout(checkPlayback, 100);
             }
         };
         checkPlayback();
@@ -630,15 +894,34 @@ function waitForRegionZoom() {
             return;
         }
         
-        // Set flag so zoomToRegion can resolve this promise when zoom happens
-        State.setWaitingForRegionZoom(true);
-        State.setRegionZoomResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_region_zoom', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForRegionZoom(false);
             State.setRegionZoomResolve(null);
             resolve();
+        };
+        
+        // Set flag so zoomToRegion can resolve this promise when zoom happens
+        State.setWaitingForRegionZoom(true);
+        State.setRegionZoomResolve(doResolve);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForRegionZoom: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_region_zoom', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -648,15 +931,34 @@ function waitForRegionZoom() {
  */
 function waitForLoopButtonClick() {
     return new Promise((resolve) => {
-        // Set flag so toggleLoop can resolve this promise when clicked
-        State.setWaitingForLoopButtonClick(true);
-        State.setLoopButtonClickResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_loop_button_click', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForLoopButtonClick(false);
             State.setLoopButtonClickResolve(null);
             resolve();
+        };
+        
+        // Set flag so toggleLoop can resolve this promise when clicked
+        State.setWaitingForLoopButtonClick(true);
+        State.setLoopButtonClickResolve(doResolve);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForLoopButtonClick: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_loop_button_click', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -672,17 +974,35 @@ function waitForFrequencyScaleClick() {
             return;
         }
         
-        const handleClick = () => {
+        let safetyTimeoutId = null;
+        let isResolved = false;
+        
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             frequencyScaleSelect.removeEventListener('click', handleClick);
             resolve();
         };
         
+        const handleClick = () => {
+            doResolve();
+        };
+        
         frequencyScaleSelect.addEventListener('click', handleClick, { once: true });
         
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForFrequencyScaleClick: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
         // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_frequency_scale_click', [], () => {
-            frequencyScaleSelect.removeEventListener('click', handleClick);
-            resolve();
+        setTutorialPhase('waiting_for_frequency_scale_click', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -692,15 +1012,34 @@ function waitForFrequencyScaleClick() {
  */
 function waitForFrequencyScaleChange() {
     return new Promise((resolve) => {
-        // Set flag so changeFrequencyScale can resolve this promise when changed
-        State.setWaitingForFrequencyScaleChange(true);
-        State.setFrequencyScaleChangeResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_frequency_scale_change', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForFrequencyScaleChange(false);
             State.setFrequencyScaleChangeResolve(null);
             resolve();
+        };
+        
+        // Set flag so changeFrequencyScale can resolve this promise when changed
+        State.setWaitingForFrequencyScaleChange(true);
+        State.setFrequencyScaleChangeResolve(doResolve);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForFrequencyScaleChange: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_frequency_scale_change', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -711,31 +1050,42 @@ function waitForFrequencyScaleChange() {
  */
 function waitForFrequencyScaleKeys() {
     return new Promise((resolve) => {
-        // Reset counter
-        State.setFrequencyScaleKeyPressCount(0);
+        let timeoutId = null;
+        let isResolved = false;
         
-        // Set flag so keyboard shortcuts can resolve this promise
-        State.setWaitingForFrequencyScaleKeys(true);
-        State.setFrequencyScaleKeysResolve(resolve);
-        
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_frequency_scale_keys', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
             State.setWaitingForFrequencyScaleKeys(false);
             State.setFrequencyScaleKeysResolve(null);
             State.setFrequencyScaleKeyPressCount(0);
             resolve();
-        });
+        };
         
-        // Timeout after 8 seconds if they don't press 2 keys
-        setTimeout(() => {
-            if (State.waitingForFrequencyScaleKeys) {
-                State.setWaitingForFrequencyScaleKeys(false);
-                State.setFrequencyScaleKeysResolve(null);
+        // Reset counter
                 State.setFrequencyScaleKeyPressCount(0);
+        
+        // Set flag so keyboard shortcuts can resolve this promise
+        State.setWaitingForFrequencyScaleKeys(true);
+        State.setFrequencyScaleKeysResolve(doResolve);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait (using constant instead of hardcoded 8s)
+        timeoutId = setTimeout(() => {
+            if (State.waitingForFrequencyScaleKeys) {
+                console.log(`⏰ waitForFrequencyScaleKeys: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
                 clearTutorialPhase();
-                resolve();
+                doResolve();
             }
-        }, 8000);
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_frequency_scale_keys', [timeoutId], () => {
+            doResolve();
+        });
     });
 }
 
@@ -758,15 +1108,34 @@ function waitForFeatureSelection() {
             }
         }
         
-        // Set flag so handleSpectrogramSelection can resolve this promise
-        State.setWaitingForFeatureSelection(true);
-        State.setFeatureSelectionResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_feature_selection', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForFeatureSelection(false);
             State.setFeatureSelectionResolve(null);
             resolve();
+        };
+        
+        // Set flag so handleSpectrogramSelection can resolve this promise
+        State.setWaitingForFeatureSelection(true);
+        State.setFeatureSelectionResolve(doResolve);
+        
+        // 🔒 CRITICAL ACTION: 20-second timeout - feature selection is critical for study, give adequate time
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForFeatureSelection: ${CRITICAL_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, CRITICAL_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_feature_selection', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -833,17 +1202,17 @@ function waitForFeatureDescription(regionIndex, featureIndex) {
             notesField.addEventListener('change', handleChange);
             notesField.addEventListener('blur', handleBlur);
             
-            // Set 10-second timeout
+            // 🔒 CRITICAL ACTION: 20-second timeout - feature description is part of study data
             timeoutId = setTimeout(() => {
                 doResolve();
-            }, 10000);
+            }, CRITICAL_ACTION_TIMEOUT_MS);
             
             return;
         }
         
         // Set flag so we can resolve when user types and submits
         State.setWaitingForFeatureDescription(true);
-        State.setFeatureDescriptionResolve(resolve);
+        State.setFeatureDescriptionResolve(doResolve);
         
         // Listen for 'change' event - fires when text is submitted/saved (on blur after typing)
         handleChange = () => {
@@ -861,13 +1230,14 @@ function waitForFeatureDescription(regionIndex, featureIndex) {
         notesField.addEventListener('change', handleChange);
         notesField.addEventListener('blur', handleBlur);
         
-        // Set 10-second timeout
+        // 🔒 CRITICAL ACTION: 20-second timeout - feature description is part of study data, give adequate time
         timeoutId = setTimeout(() => {
+            console.log(`⏰ waitForFeatureDescription: ${CRITICAL_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
             doResolve();
-        }, 10000);
+        }, CRITICAL_ACTION_TIMEOUT_MS);
         
         // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_feature_description', [], () => {
+        setTutorialPhase('waiting_for_feature_description', [timeoutId], () => {
             doResolve();
         });
     });
@@ -884,11 +1254,16 @@ function waitForRepetitionDropdown(regionIndex, featureIndex) {
             return;
         }
         
-        // Set flag
-        State.setWaitingForRepetitionDropdown(true);
-        State.setRepetitionDropdownResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        const handleClick = () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             select.removeEventListener('click', handleClick);
             State.setWaitingForRepetitionDropdown(false);
             State.setRepetitionDropdownResolve(null);
@@ -896,14 +1271,25 @@ function waitForRepetitionDropdown(regionIndex, featureIndex) {
             resolve();
         };
         
+        const handleClick = () => {
+            doResolve();
+        };
+        
+        // Set flag
+        State.setWaitingForRepetitionDropdown(true);
+        State.setRepetitionDropdownResolve(doResolve);
+        
         select.addEventListener('click', handleClick, { once: true });
         
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForRepetitionDropdown: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
         // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_repetition_dropdown', [], () => {
-            select.removeEventListener('click', handleClick);
-            State.setWaitingForRepetitionDropdown(false);
-            State.setRepetitionDropdownResolve(null);
-            resolve();
+        setTutorialPhase('waiting_for_repetition_dropdown', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -919,11 +1305,16 @@ function waitForTypeDropdown(regionIndex, featureIndex) {
             return;
         }
         
-        // Set flag
-        State.setWaitingForTypeDropdown(true);
-        State.setTypeDropdownResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        const handleClick = () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             select.removeEventListener('click', handleClick);
             State.setWaitingForTypeDropdown(false);
             State.setTypeDropdownResolve(null);
@@ -931,14 +1322,25 @@ function waitForTypeDropdown(regionIndex, featureIndex) {
             resolve();
         };
         
+        const handleClick = () => {
+            doResolve();
+        };
+        
+        // Set flag
+        State.setWaitingForTypeDropdown(true);
+        State.setTypeDropdownResolve(doResolve);
+        
         select.addEventListener('click', handleClick, { once: true });
         
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForTypeDropdown: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
         // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_type_dropdown', [], () => {
-            select.removeEventListener('click', handleClick);
-            State.setWaitingForTypeDropdown(false);
-            State.setTypeDropdownResolve(null);
-            resolve();
+        setTutorialPhase('waiting_for_type_dropdown', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -948,15 +1350,34 @@ function waitForTypeDropdown(regionIndex, featureIndex) {
  */
 function waitForAddFeatureButtonClick(regionIndex) {
     return new Promise((resolve) => {
-        // Set flag so region-tracker.js knows to resolve this promise
-        State.setWaitingForAddFeatureButtonClick(true);
-        State.setAddFeatureButtonClickResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_add_feature_button_click', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForAddFeatureButtonClick(false);
             State.setAddFeatureButtonClickResolve(null);
             resolve();
+        };
+        
+        // Set flag so region-tracker.js knows to resolve this promise
+        State.setWaitingForAddFeatureButtonClick(true);
+        State.setAddFeatureButtonClickResolve(doResolve);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForAddFeatureButtonClick: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_add_feature_button_click', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -972,15 +1393,34 @@ function waitForZoomOut() {
             return;
         }
         
-        // Set flag so zoomToFull can resolve this promise when zoom happens
-        State.setWaitingForZoomOut(true);
-        State.setZoomOutResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_zoom_out', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForZoomOut(false);
             State.setZoomOutResolve(null);
             resolve();
+        };
+        
+        // Set flag so zoomToFull can resolve this promise when zoom happens
+        State.setWaitingForZoomOut(true);
+        State.setZoomOutResolve(doResolve);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait (CRITICAL - prevents tutorial from stopping)
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForZoomOut: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_zoom_out', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -990,17 +1430,36 @@ function waitForZoomOut() {
  */
 function waitForNumberKeyPress(targetKey) {
     return new Promise((resolve) => {
-        // Set flag so keyboard-shortcuts.js knows to resolve this promise
-        State.setWaitingForNumberKeyPress(true);
-        State.setTargetNumberKey(targetKey);
-        State.setNumberKeyPressResolve(resolve);
+        let safetyTimeoutId = null;
+        let isResolved = false;
         
-        // Store phase for Enter key skipping
-        setTutorialPhase('waiting_for_number_key_press', [], () => {
+        const doResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (safetyTimeoutId !== null) {
+                clearTimeout(safetyTimeoutId);
+                safetyTimeoutId = null;
+            }
             State.setWaitingForNumberKeyPress(false);
             State.setTargetNumberKey(null);
             State.setNumberKeyPressResolve(null);
             resolve();
+        };
+        
+        // Set flag so keyboard-shortcuts.js knows to resolve this promise
+        State.setWaitingForNumberKeyPress(true);
+        State.setTargetNumberKey(targetKey);
+        State.setNumberKeyPressResolve(doResolve);
+        
+        // 🔒 SAFETY: Timeout to prevent infinite wait
+        safetyTimeoutId = setTimeout(() => {
+            console.log(`⏰ waitForNumberKeyPress: ${USER_ACTION_TIMEOUT_MS/1000}s timeout reached - continuing tutorial`);
+            doResolve();
+        }, USER_ACTION_TIMEOUT_MS);
+        
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_number_key_press', [safetyTimeoutId], () => {
+            doResolve();
         });
     });
 }
@@ -1088,6 +1547,11 @@ async function runSelectionTutorial() {
         await new Promise(resolve => setTimeout(resolve, 0));
     }
 
+    // 🔥 FIX: Show "Nice!" message after selection completes (was missing!)
+    await skippableWait(500);
+    setStatusTextAndTrack('Nice!', 'status success');
+    await skippableWait(1000);
+
     // Note: Region creation is already enabled by study-workflow.js before tutorial starts
 
     // Selection tutorial complete - transition to region introduction
@@ -1096,30 +1560,43 @@ async function runSelectionTutorial() {
 }
 
 async function runRegionIntroduction() {
-    // 🎓 Check if user already created a region FIRST (before any async operations)
-    const regions = getCurrentRegions();
-    const hasRegion = regions.length > 0;
+    // 🎓 ALWAYS show the instruction, even if a region already exists
+    // Track region count BEFORE showing instruction to detect if one was just created
+    const regionsBefore = getCurrentRegions();
+    const regionCountBefore = regionsBefore.length;
     
-    if (hasRegion) {
-        // User already created a region - skip the message and wait entirely
-        console.log('🎓 Tutorial: User already created a region, skipping "Click Add Region" message and wait');
-    } else {
-        // 🎓 Check if user already made a selection - if so, message was already shown
-        if (State.selectionStart !== null && State.selectionEnd !== null && State.waitingForRegionCreation) {
-            // User got ahead - message already shown, just wait for region creation
-            console.log('🎓 Tutorial: User already made selection, waiting for region creation');
-        } else {
-            // Show the "Click Add Region" message
-            setStatusTextAndTrack('Click Add Region or type (R) to create a new region.', 'status info');
-        }
-        
-        // Wait for user to create a region (only if we don't already have one)
+    // Show the "Click Add Region" message (always show instruction)
+    setStatusTextAndTrack('Click Add Region or type (R) to create a new region.', 'status info');
+    
+    // Wait for user to create a region
+    await waitForRegionCreation();
+    
+    // 🔥 FIX: Check AFTER waiting - waitForRegionCreation can resolve via timeout/Enter key
+    // but that doesn't mean a region was actually created!
+    let regions = getCurrentRegions();
+    let hasRegion = regions.length > 0;
+    
+    // Keep waiting until a region actually exists
+    while (!hasRegion) {
+        console.log('🎓 Tutorial: waitForRegionCreation resolved but no region exists yet - waiting again');
+        // Keep showing the instruction message
+        setStatusTextAndTrack('Click Add Region or type (R) to create a new region.', 'status info');
+        // Wait again for region creation
         await waitForRegionCreation();
+        // Check again
+        regions = getCurrentRegions();
+        hasRegion = regions.length > 0;
     }
     
-    // Show "You just created your first region!" message
-    setStatusTextAndTrack('You just created your first region!', 'status success');
-    await skippableWait(2000);
+    // Only show "You just created your first region!" if a NEW region was created during the wait
+    const regionCountAfter = regions.length;
+    if (regionCountAfter > regionCountBefore) {
+        setStatusTextAndTrack('You just created your first region!', 'status success');
+        await skippableWait(2000);
+    } else {
+        // Region already existed - skip the "just created" message but continue tutorial
+        console.log('🎓 Tutorial: Region already existed, skipping "just created" message');
+    }
     
     // Disable all region buttons during tutorial explanation
     disableRegionButtons();
@@ -1215,7 +1692,7 @@ async function runRegionZoomingTutorial() {
     } else {
         // User didn't click early, continue with normal flow
         // Ask user to click it
-        setStatusTextAndTrack('Try clicking it now to enable looping over this region.', 'status info');
+        setStatusTextAndTrack('Try clicking the loop button now to enable looping over this region.', 'status info');
         
         // Wait for user to click loop button
         await waitForLoopButtonClick();
@@ -1390,8 +1867,8 @@ async function runFeatureSelectionTutorial() {
     setStatusTextAndTrack('There are no right or wrong answers, just observations', 'status info');
     await skippableWait(8000);
     
-    // "You can start typing now to provide a description." (4s)
-    setStatusTextAndTrack('You can start typing now to provide a description.', 'status info');
+    // "Take a moment to provide a description." (4s)
+    setStatusTextAndTrack('Take a moment to provide a description.', 'status info');
     await skippableWait(4000);
     
     // "When you are done, you can hit enter/return."
@@ -1440,10 +1917,10 @@ async function runFeatureSelectionTutorial() {
     
     const dropdownResult = await Promise.race([dropdownClickPromise, dropdownTimeoutPromise]);
     
-    // If they clicked, wait 5s, otherwise just continue
+    // If they clicked, wait 1s, otherwise just continue
     if (!State.waitingForRepetitionDropdown) {
         // They clicked
-        await skippableWait(5000);
+        await skippableWait(1000);
     }
     
     // Remove repetition dropdown glow
@@ -1459,10 +1936,10 @@ async function runFeatureSelectionTutorial() {
     
     const typeDropdownResult = await Promise.race([typeDropdownClickPromise, typeDropdownTimeoutPromise]);
     
-    // If they clicked, wait 5s, otherwise just continue
+    // If they clicked, wait 1s, otherwise just continue
     if (!State.waitingForTypeDropdown) {
         // They clicked
-        await skippableWait(5000);
+        await skippableWait(1000);
     }
     
     // Remove type dropdown glow
@@ -1547,10 +2024,26 @@ async function runZoomOutTutorial() {
  * Guides user to create a second region and use hotkeys
  */
 async function runSecondRegionTutorial() {
-    setStatusTextAndTrack('Click and drag and let\'s create a new region.', 'status info');
+    // Enable all region buttons so user can interact with all panels when creating second region
+    enableRegionButtons();
+    
+    // Show waveform border highlight and overlay
+    const waveformCanvas = document.getElementById('waveform');
+    if (waveformCanvas) {
+        waveformCanvas.classList.add('pulse');
+        showTutorialOverlay('Click and drag here', true);
+    }
+    
+    setStatusTextAndTrack('Click and drag on the waveform to create a new region.', 'status info');
     
     // Wait for user to create a region
     await waitForRegionCreation();
+    
+    // Remove waveform border highlight and overlay when region is created
+    if (waveformCanvas) {
+        waveformCanvas.classList.remove('pulse');
+        hideTutorialOverlay();
+    }
     
     // When region is created, say "Great!" and wait 2s
     setStatusTextAndTrack('Great!', 'status success');
@@ -1634,17 +2127,17 @@ async function runBeginAnalysisTutorial() {
 
     // Message 1: Explain Begin Analysis button
     console.log('📝 Setting message 1...');
-    setStatusTextAndTrack('For your weekly sessions you will begin by selecting one volcano and clicking Begin Analysis. 👇', 'status info');
+    setStatusTextAndTrack('For your weekly sessions you will begin by selecting one volcano to work with.', 'status info');
     console.log('⏳ Starting 6s skippable wait...');
     await skippableWait(6000);
     console.log('✅ Message 1 wait complete');
 
-    // Message 2: Instruct to click Begin Analysis (center-aligned with arrow)
+    // Message 2: Instruct to click Begin Analysis (right-aligned with arrow)
     console.log('📝 Setting message 2...');
     const statusEl = document.getElementById('status');
     if (statusEl) {
         // Set textAlign BEFORE calling setStatusTextAndTrack so it gets preserved
-        statusEl.style.textAlign = 'center';
+        statusEl.style.textAlign = 'right';
     }
     setStatusTextAndTrack('Click Begin Analysis now to end the tutorial ↘️', 'status info');
 
@@ -1671,10 +2164,28 @@ async function runBeginAnalysisTutorial() {
     await waitForBeginAnalysisClick();
     console.log('✅ Begin Analysis button clicked');
 
-    // Reset text alignment
-    if (statusEl) {
-        statusEl.style.textAlign = '';
+    // Wait 2 seconds after Begin Analysis is clicked
+    await skippableWait(2000);
+
+    // Show message about Complete button (this message stays - no waiting for user action)
+    setStatusTextAndTrack('Press the Complete button when you are ready to share your findings.', 'status info');
+
+    // Reset text alignment back to default (left)
+    const statusElReset = document.getElementById('status');
+    if (statusElReset) {
+        statusElReset.style.textAlign = '';
     }
+
+    // Clear tutorial phase (this is the last tutorial step)
+    clearTutorialPhase();
+    
+    // ✅ Ensure Complete button shows up after tutorial ends
+    // Button was transformed to "Complete" when beginAnalysisConfirmed fired
+    // Now that tutorial phase is cleared, ensure it's visible (if data exists)
+    import('./region-tracker.js').then(({ updateCompleteButtonState, updateCmpltButtonState }) => {
+        updateCompleteButtonState(); // Handles visibility (checks !isTutorialActive() which is now true)
+        updateCmpltButtonState(); // Handles enable/disable based on features
+    });
 
     console.log('🎓 Begin Analysis tutorial complete - user transitioned to analysis mode');
 }
@@ -1765,12 +2276,12 @@ export async function runStudyEndWalkthrough(startAtMessageIndex = 0) {
             await skippableWait(6000);
         }
 
-        // NEW Message -1: Instruct to click Begin Analysis (center-aligned with arrow)
+        // NEW Message -1: Instruct to click Begin Analysis (right-aligned with arrow)
         if (-1 >= startAtMessageIndex) {
             const statusEl = document.getElementById('status');
             if (statusEl) {
                 statusEl.className = 'status info';
-                statusEl.style.textAlign = 'center';
+                statusEl.style.textAlign = 'right';
                 statusEl.style.display = 'block';
                 statusEl.textContent = 'Click Begin Analysis now to end the tutorial ↘️';
             }
@@ -1937,6 +2448,10 @@ export async function runInitialTutorial() {
     try {
         // Disable frequency scale dropdown IMMEDIATELY at the very start
         disableFrequencyScaleDropdown();
+        
+        // 🔒 Disable waveform clicks at tutorial start - will be enabled when we reach waveform click step
+        disableWaveformClicks();
+        console.log('🔒 Waveform clicks DISABLED at tutorial start');
         
         // 🔒 HARD DISABLE Begin Analysis button at tutorial start (first visit only)
         const { hasSeenTutorial } = await import('./study-workflow.js');

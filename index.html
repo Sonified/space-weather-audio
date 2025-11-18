@@ -30,10 +30,10 @@
                     <option value="test_study_end">🐛 Test Study End</option>
                 </select>
             </div>
-            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.95;">Volcano Audification Study</h1>
+            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.95; color: #fff;">Volcano Audification Study</h1>
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
                 <div id="participantIdDisplay" style="display: none; margin-bottom: 0;">
-                    <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
+                    <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(100, 100, 100, 0.6); background: rgba(40, 40, 40, 0.4); transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
                         Participant ID: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
                     </span>
                 </div>
@@ -101,7 +101,7 @@
                 
                 <div class="control-group" style="display: flex; flex-direction: row; align-items: center; gap: 8px;">
                     <input type="checkbox" id="autoPlay" checked style="width: 20px; height: 20px; cursor: pointer;">
-                    <label for="autoPlay" style="margin-bottom: 0; cursor: pointer; font-weight: 600; font-size: 14px; color: #333;">Auto Play</label>
+                    <label for="autoPlay" style="margin-bottom: 0; cursor: pointer; font-weight: 600; font-size: 18px; color: #333;">Auto Play</label>
                 </div>
                 
                 <div class="control-group" style="margin-left: 15px; flex: 1; min-width: 200px;">
@@ -179,18 +179,38 @@
             <canvas id="waveform-buttons" width="1200" height="135"></canvas>
             <canvas id="spectrogram" width="1200" height="450"></canvas>
             <canvas id="spectrogram-axis" width="60" height="450"></canvas>
-            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-right: 40px;">
-                <div style="display: none;">
-                    <input type="checkbox" id="playOnClick" checked style="width: 20px; height: 20px; cursor: pointer;">
-                    <label for="playOnClick" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">Play on Click</label>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px;">
+                <!-- Realtime Oscilloscope - Small glass enclosure on the left -->
+                <div id="oscilloscope-panel" style="display: none; pointer-events: none;">
+                    <div style="position: relative; border-radius: 5px; padding: 4px; background: linear-gradient(135deg, rgba(60, 60, 80, 0.5) 0%, rgba(40, 40, 60, 0.4) 100%); box-shadow: 0 0 5px rgba(255, 150, 120, 0.2), inset 0 0 20px rgba(100, 100, 120, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.15), 0 1px 4px rgba(0, 0, 0, 0.5); backdrop-filter: blur(6px); border: 0.5px solid rgba(100, 100, 110, 0.4);">
+                        <!-- Glass frame effect -->
+                        <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 4px; border: 0.3px solid rgba(200, 200, 200, 0.1); pointer-events: none; box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), inset 0 -1px 1px rgba(0, 0, 0, 0.3);"></div>
+                        <div style="position: relative;">
+                            <canvas id="oscilloscope" width="80" height="28" style="display: block; width: 80px; height: 28px; border-radius: 2px; background: rgba(5, 3, 3, 0.98); border: 0.3px solid rgba(70, 70, 80, 0.4); box-shadow: inset 0 0 25px rgba(255, 100, 80, 0.6), inset 0 0 15px rgba(255, 150, 120, 0.4), inset 0 1px 2px rgba(0, 0, 0, 0.6);"></canvas>
+                            <!-- Frosted glass texture overlay -->
+                            <div id="oscilloscope-frost" style="position: absolute; top: 0; left: 0; width: 80px; height: 28px; border-radius: 2px; pointer-events: none; opacity: 0.5; background-image: 
+                                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, 0.03) 2px, rgba(255, 255, 255, 0.03) 4px),
+                                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255, 255, 255, 0.03) 2px, rgba(255, 255, 255, 0.03) 4px),
+                                repeating-linear-gradient(45deg, transparent, transparent 1px, rgba(255, 255, 255, 0.02) 1px, rgba(255, 255, 255, 0.02) 2px),
+                                repeating-linear-gradient(-45deg, transparent, transparent 1px, rgba(0, 0, 0, 0.05) 1px, rgba(0, 0, 0, 0.05) 2px);
+                                backdrop-filter: blur(0.5px);
+                                mix-blend-mode: overlay;"></div>
+                        </div>
+                    </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                <label for="frequencyScale" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Frequency Scale:</label>
-                <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
-                    <option value="linear">Linear (C)</option>
-                    <option value="sqrt" selected>Square Root (V)</option>
-                    <option value="logarithmic">Logarithmic (B)</option>
-                </select>
+                <div style="display: flex; align-items: center; gap: 30px; margin-left: auto;">
+                    <div style="display: none;">
+                        <input type="checkbox" id="playOnClick" checked style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="playOnClick" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">Play on Click</label>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <label for="frequencyScale" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Frequency Scale:</label>
+                    <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                        <option value="linear">Linear (C)</option>
+                        <option value="sqrt" selected>Square Root (V)</option>
+                        <option value="logarithmic">Logarithmic (B)</option>
+                    </select>
+                    </div>
                 </div>
             </div>
         </div>

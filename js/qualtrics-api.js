@@ -200,13 +200,19 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
     
     // Submit features/events to QID8 matrix question
     // QID8 structure: Each feature becomes a row (subquestion), with columns:
-    // Choice 1: Event Start Time (_N_1_TEXT)
-    // Choice 2: Event End Time (_N_2_TEXT)
+    // Choice 1: Feature Start Time (_N_1_TEXT)
+    // Choice 2: Feature End Time (_N_2_TEXT)
+    // Choice 3: Speed factor (_N_3_TEXT)
     // Choice 4: Volcano (_N_4_TEXT)
     // Choice 5: Frequency Min (_N_5_TEXT)
     // Choice 6: Frequency Max (_N_6_TEXT)
     // Choice 7: Notes (_N_7_TEXT)
     // Choice 8: Region number (_N_8_TEXT)
+    // Choice 9: Impulsive or continuous (_N_9_TEXT)
+    // Choice 10: Number of events in selected region (_N_10_TEXT)
+    // Choice 11: Unique in 24 hour period? (_N_11_TEXT)
+    // Choice 12: Region Start Time (_N_12_TEXT)
+    // Choice 13: Region End Time (_N_13_TEXT)
     if (combinedResponses.jsonDump && combinedResponses.jsonDump.regions) {
         const regions = combinedResponses.jsonDump.regions;
         let featureRowIndex = 1; // QID8 subquestions start at 1
@@ -233,39 +239,69 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
                     // QID8 matrix format: _{subquestion}_{choice}_TEXT
                     const rowPrefix = `_${featureRowIndex}`;
                     
-                    // Event Start Time (Choice 1) - Feature start time in UTC ISO format
+                    // Choice 1: Feature Start Time - Feature start time in UTC ISO format
                     if (feature.featureStartTime) {
                         values[`${rowPrefix}_1_TEXT`] = feature.featureStartTime;
                     }
                     
-                    // Event End Time (Choice 2) - Feature end time in UTC ISO format
+                    // Choice 2: Feature End Time - Feature end time in UTC ISO format
                     if (feature.featureEndTime) {
                         values[`${rowPrefix}_2_TEXT`] = feature.featureEndTime;
                     }
                     
-                    // Volcano (Choice 4) - Use volcano from region or UI
+                    // Choice 3: Speed factor - Playback speed when feature was created
+                    if (feature.speedFactor !== null && feature.speedFactor !== undefined) {
+                        values[`${rowPrefix}_3_TEXT`] = String(feature.speedFactor);
+                    }
+                    
+                    // Choice 4: Volcano - Use volcano from region or UI
                     if (volcanoName) {
                         values[`${rowPrefix}_4_TEXT`] = volcanoName;
                     }
                     
-                    // Frequency Min (Choice 5)
+                    // Choice 5: Frequency Min
                     if (feature.lowFreq !== null && feature.lowFreq !== undefined) {
                         values[`${rowPrefix}_5_TEXT`] = String(feature.lowFreq);
                     }
                     
-                    // Frequency Max (Choice 6)
+                    // Choice 6: Frequency Max
                     if (feature.highFreq !== null && feature.highFreq !== undefined) {
                         values[`${rowPrefix}_6_TEXT`] = String(feature.highFreq);
                     }
                     
-                    // Notes (Choice 7)
+                    // Choice 7: Notes
                     if (feature.notes) {
                         values[`${rowPrefix}_7_TEXT`] = feature.notes;
                     }
                     
-                    // Region number (Choice 8)
+                    // Choice 8: Region number
                     if (regionNumber !== null) {
                         values[`${rowPrefix}_8_TEXT`] = String(regionNumber);
+                    }
+                    
+                    // Choice 9: Impulsive or continuous (type)
+                    if (feature.type) {
+                        values[`${rowPrefix}_9_TEXT`] = feature.type;
+                    }
+                    
+                    // Choice 10: Number of events in selected region
+                    if (feature.numberOfEvents !== null && feature.numberOfEvents !== undefined) {
+                        values[`${rowPrefix}_10_TEXT`] = String(feature.numberOfEvents);
+                    }
+                    
+                    // Choice 11: Unique in 24 hour period? (repetition)
+                    if (feature.repetition) {
+                        values[`${rowPrefix}_11_TEXT`] = feature.repetition;
+                    }
+                    
+                    // Choice 12: Region Start Time
+                    if (regionStartTime) {
+                        values[`${rowPrefix}_12_TEXT`] = regionStartTime;
+                    }
+                    
+                    // Choice 13: Region End Time
+                    if (regionEndTime) {
+                        values[`${rowPrefix}_13_TEXT`] = regionEndTime;
                     }
                     
                     featureRowIndex++;
@@ -274,7 +310,7 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
         });
         
         if (featureRowIndex > 1) {
-            console.log(`📊 Submitted ${featureRowIndex - 1} feature(s) to QID8 matrix`);
+            console.log(`📊 Submitted ${featureRowIndex - 1} feature(s) to QID8 matrix with all 13 fields`);
         }
     }
     

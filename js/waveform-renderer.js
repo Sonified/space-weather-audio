@@ -20,6 +20,58 @@ import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
 
+// Color LUT (same as spectrogram) - maps intensity to RGB
+let waveformColorLUT = null;
+
+function hslToRgb(h, s, l) {
+    h = h / 360;
+    s = s / 100;
+    l = l / 100;
+    
+    let r, g, b;
+    
+    if (s === 0) {
+        r = g = b = l;
+    } else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        };
+        
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+    }
+    
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+function initializeWaveformColorLUT() {
+    if (waveformColorLUT !== null) return; // Already initialized
+    
+    waveformColorLUT = new Uint8ClampedArray(256 * 3);
+    for (let i = 0; i < 256; i++) {
+        const normalized = i / 255;
+        const hue = normalized * 30; // Reduced range: red to orange (0-30 degrees) - less variation
+        const saturation = 40 + (normalized * 20); // Muted: 40-60% saturation (was 100%)
+        const lightness = 60 + (normalized * 35); // Brighter: 60-95% lightness (more white/yellow)
+        
+        const rgb = hslToRgb(hue, saturation, lightness);
+        waveformColorLUT[i * 3] = rgb[0];
+        waveformColorLUT[i * 3 + 1] = rgb[1];
+        waveformColorLUT[i * 3 + 2] = rgb[2];
+    }
+}
+
+// Initialize color LUT on module load
+initializeWaveformColorLUT();
+
 // Helper functions
 function removeDCOffset(data, alpha = 0.995) {
     let mean = data[0];
@@ -128,19 +180,57 @@ export function drawWaveformFromMinMax() {
         newCanvas.height = height;
         const newCtx = newCanvas.getContext('2d');
         
-        newCtx.fillStyle = '#000';
+        // Dark red background (like spectrogram but red instead of black)
+        newCtx.fillStyle = '#1a0000'; // Deeper dark red
         newCtx.fillRect(0, 0, width, height);
         
-        newCtx.fillStyle = '#e8c0c0';
         const mid = height / 2;
         const { mins, maxs } = State.waveformMinMaxData;
         
+        // Use pre-computed max amplitude (cached when waveformMinMaxData was set)
+        const maxAmplitude = State.waveformMaxAmplitude || 0;
+        
+        // Pre-compute color indices with horizontal smoothing (low-pass filter)
+        const colorIndices = new Float32Array(mins.length);
+        for (let x = 0; x < mins.length; x++) {
+            const amplitude = Math.max(Math.abs(mins[x]), Math.abs(maxs[x]));
+            const normalizedAmplitude = maxAmplitude > 0 ? amplitude / maxAmplitude : 0;
+            colorIndices[x] = normalizedAmplitude * 255;
+        }
+        
+        // Apply horizontal smoothing (simple moving average)
+        const smoothedIndices = new Float32Array(mins.length);
+        const smoothingRadius = 3; // Smooth over 7 pixels (3 on each side)
+        for (let x = 0; x < mins.length; x++) {
+            let sum = 0;
+            let count = 0;
+            for (let dx = -smoothingRadius; dx <= smoothingRadius; dx++) {
+                const idx = x + dx;
+                if (idx >= 0 && idx < mins.length) {
+                    sum += colorIndices[idx];
+                    count++;
+                }
+            }
+            smoothedIndices[x] = sum / count;
+        }
+        
+        // Draw waveform with smoothed, muted colors
         for (let x = 0; x < mins.length && x < width; x++) {
             const min = mins[x];
             const max = maxs[x];
             const yMin = mid + (min * mid * 0.9);
             const yMax = mid + (max * mid * 0.9);
             const lineHeight = Math.max(1, yMax - yMin);
+            
+            // Use smoothed color index
+            const colorIndex = Math.floor(smoothedIndices[x]);
+            
+            // Get color from pre-computed LUT
+            const r = waveformColorLUT[colorIndex * 3];
+            const g = waveformColorLUT[colorIndex * 3 + 1];
+            const b = waveformColorLUT[colorIndex * 3 + 2];
+            
+            newCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
             newCtx.fillRect(x, yMin, 1, lineHeight);
         }
         
@@ -166,7 +256,8 @@ export function drawWaveformFromMinMax() {
             const elapsed = performance.now() - startTime;
             const progress = Math.min(elapsed / duration, 1.0);
             
-            ctx.fillStyle = '#000';
+            // Dark red background (like spectrogram but red instead of black)
+            ctx.fillStyle = '#1a0000'; // Deeper dark red
             ctx.fillRect(0, 0, width, height);
             
             ctx.globalAlpha = 1.0 - progress;
@@ -181,12 +272,36 @@ export function drawWaveformFromMinMax() {
                 const playheadProgress = Math.min(State.currentAudioPosition / State.totalAudioDuration, 1.0);
                 const playheadX = playheadProgress * width;
                 
-                ctx.strokeStyle = '#ff0000';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(playheadX, 0);
-                ctx.lineTo(playheadX, height);
-                ctx.stroke();
+            // Cool playhead with glow and gradient
+            const time = performance.now() * 0.001;
+            const pulseIntensity = 0.3 + Math.sin(time * 3) * 0.1;
+            
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(255, 0, 0, 0.54)'; // 0.6 * 0.9
+            ctx.shadowOffsetX = 0;
+            
+            const gradient = ctx.createLinearGradient(playheadX, 0, playheadX, height);
+            gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.95 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(playheadX, 0);
+            ctx.lineTo(playheadX, height);
+            ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(220, 220, 220, ${(0.25 + pulseIntensity * 0.15) * 0.648})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(playheadX, 0);
+            ctx.lineTo(playheadX, height);
+            ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
             }
             
             // 🔥 Draw regions during crossfade so they stay visible throughout the transition
@@ -222,14 +337,41 @@ export function drawWaveformFromMinMax() {
         animate();
         
     } else {
-        ctx.fillStyle = '#000';
+        // Dark red background (like spectrogram but red instead of black)
+        ctx.fillStyle = '#1a0000'; // Deeper dark red
         ctx.fillRect(0, 0, width, height);
         
-        ctx.fillStyle = '#888888';
         const mid = height / 2;
-        
         const { mins, maxs } = State.waveformMinMaxData;
         
+        // Use pre-computed max amplitude (cached when waveformMinMaxData was set)
+        const maxAmplitude = State.waveformMaxAmplitude || 0;
+        
+        // Pre-compute color indices with horizontal smoothing (low-pass filter)
+        const colorIndices = new Float32Array(mins.length);
+        for (let x = 0; x < mins.length; x++) {
+            const amplitude = Math.max(Math.abs(mins[x]), Math.abs(maxs[x]));
+            const normalizedAmplitude = maxAmplitude > 0 ? amplitude / maxAmplitude : 0;
+            colorIndices[x] = normalizedAmplitude * 255;
+        }
+        
+        // Apply horizontal smoothing (simple moving average)
+        const smoothedIndices = new Float32Array(mins.length);
+        const smoothingRadius = 3; // Smooth over 7 pixels (3 on each side)
+        for (let x = 0; x < mins.length; x++) {
+            let sum = 0;
+            let count = 0;
+            for (let dx = -smoothingRadius; dx <= smoothingRadius; dx++) {
+                const idx = x + dx;
+                if (idx >= 0 && idx < mins.length) {
+                    sum += colorIndices[idx];
+                    count++;
+                }
+            }
+            smoothedIndices[x] = sum / count;
+        }
+        
+        // Draw waveform with smoothed, muted colors
         for (let x = 0; x < mins.length && x < width; x++) {
             const min = mins[x];
             const max = maxs[x];
@@ -238,6 +380,16 @@ export function drawWaveformFromMinMax() {
             const yMax = mid + (max * mid * 0.9);
             
             const lineHeight = Math.max(1, yMax - yMin);
+            
+            // Use smoothed color index
+            const colorIndex = Math.floor(smoothedIndices[x]);
+            
+            // Get color from pre-computed LUT
+            const r = waveformColorLUT[colorIndex * 3];
+            const g = waveformColorLUT[colorIndex * 3 + 1];
+            const b = waveformColorLUT[colorIndex * 3 + 2];
+            
+            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
             ctx.fillRect(x, yMin, 1, lineHeight);
         }
         
@@ -323,12 +475,34 @@ export function drawInterpolatedWaveform() {
             const progress = (playheadMs - interpStartMs) / (interpEndMs - interpStartMs);
             const x = progress * width;
 
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 2;
+            // Cool playhead with glow and gradient
+            const time = performance.now() * 0.001;
+            const pulseIntensity = 0.3 + Math.sin(time * 3) * 0.1;
+            
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(255, 0, 0, 0.54)'; // 0.6 * 0.9
+            
+            const gradient = ctx.createLinearGradient(x, 0, x, height);
+            gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.95 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
             ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(220, 220, 220, ${(0.25 + pulseIntensity * 0.15) * 0.648})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+            
+            ctx.shadowColor = 'transparent';
         }
     }
 }
@@ -355,12 +529,34 @@ export function drawWaveformWithSelection() {
                 x = progress * width;
             }
             
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 2;
+            // Cool playhead with glow and gradient
+            const time = performance.now() * 0.001;
+            const pulseIntensity = 0.3 + Math.sin(time * 3) * 0.1;
+            
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(255, 0, 0, 0.54)'; // 0.6 * 0.9
+            
+            const gradient = ctx.createLinearGradient(x, 0, x, height);
+            gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.95 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
             ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(220, 220, 220, ${(0.25 + pulseIntensity * 0.15) * 0.648})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+            
+            ctx.shadowColor = 'transparent';
         }
         return;
     }
@@ -392,10 +588,10 @@ export function drawWaveformWithSelection() {
         }
         const selectionWidth = endX - startX;
         
-        ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+        ctx.fillStyle = 'rgba(255, 180, 0, 0.4)'; // More orange, 10% more transparent
         ctx.fillRect(startX, 0, selectionWidth, height);
         
-        ctx.strokeStyle = 'rgba(255, 200, 0, 0.8)';
+        ctx.strokeStyle = 'rgba(255, 140, 0, 0.9)'; // More orange, 10% more transparent
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(startX, 0);
@@ -425,12 +621,41 @@ export function drawWaveformWithSelection() {
             x = progress * width;
         }
         
-        ctx.strokeStyle = '#ff0000';
-        ctx.lineWidth = 2;
+        // Cool playhead with glow and gradient
+        const time = performance.now() * 0.001; // For pulse animation
+        const pulseIntensity = 0.3 + Math.sin(time * 3) * 0.1; // Subtle pulse
+        
+        // Draw glow/shadow effect
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'rgba(255, 0, 0, 0.6)';
+        ctx.shadowOffsetX = 0;
+        
+        // Create gradient for playhead
+        const gradient = ctx.createLinearGradient(x, 0, x, height);
+        gradient.addColorStop(0, `rgba(255, 100, 100, ${0.9 + pulseIntensity})`);
+        gradient.addColorStop(0.5, `rgba(255, 0, 0, ${0.95 + pulseIntensity})`);
+        gradient.addColorStop(1, `rgba(255, 100, 100, ${0.9 + pulseIntensity})`);
+        
+        // Draw main line with gradient
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
         ctx.stroke();
+        
+        // Draw inner bright line
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = `rgba(220, 220, 220, ${(0.25 + pulseIntensity * 0.15) * 0.72})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+        
+        // Reset shadow
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
     }
 }
 
@@ -475,14 +700,42 @@ export function setupWaveformInteraction() {
             drawRegionButtons(); // Draw buttons on overlay canvas
         }
         
-        ctx.globalAlpha = 0.6;
-        ctx.strokeStyle = State.isDragging ? '#bbbbbb' : '#ff0000';
-        ctx.lineWidth = 2;
+        // Cool scrub preview playhead
+        const time = performance.now() * 0.001;
+        const pulseIntensity = State.isDragging ? 0.1 : 0.2 + Math.sin(time * 3) * 0.1;
+        
+        ctx.shadowBlur = State.isDragging ? 4 : 6;
+        ctx.shadowColor = State.isDragging ? 'rgba(187, 187, 187, 0.36)' : 'rgba(255, 0, 0, 0.45)'; // * 0.9
+        
+        const gradient = ctx.createLinearGradient(canvasX, 0, canvasX, canvasHeight);
+        if (State.isDragging) {
+            gradient.addColorStop(0, `rgba(200, 200, 200, ${(0.5 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(0.5, `rgba(187, 187, 187, ${(0.6 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(1, `rgba(200, 200, 200, ${(0.5 + pulseIntensity) * 0.9})`);
+        } else {
+            gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.7 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.8 + pulseIntensity) * 0.9})`);
+            gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.7 + pulseIntensity) * 0.9})`);
+        }
+        
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 2.5;
+        ctx.globalAlpha = 0.9;
         ctx.beginPath();
         ctx.moveTo(canvasX, 0);
         ctx.lineTo(canvasX, canvasHeight);
         ctx.stroke();
-        ctx.globalAlpha = 1.0;  // Reset alpha
+        
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.3 + pulseIntensity * 0.2) * 0.9})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(canvasX, 0);
+        ctx.lineTo(canvasX, canvasHeight);
+        ctx.stroke();
+        
+        ctx.globalAlpha = 1.0;
+        ctx.shadowColor = 'transparent';
         
         // Mirror on spectrogram
         drawSpectrogramScrubPreview(targetPosition, State.isDragging);
@@ -524,11 +777,14 @@ export function setupWaveformInteraction() {
             State.setWaveformClickResolve(null);
         }
         
-        // Stop pulsing animation and hide tutorial on first click
+        // 🔒 SAFETY: Always clear pulse and overlay when canvas is clicked (regardless of flag state)
+        // This prevents stuck highlighting if user skipped with Enter key first
+        canvas.classList.remove('pulse');
+        hideTutorialOverlay();
+        
+        // Mark waveform as clicked (if not already marked)
         if (!State.waveformHasBeenClicked) {
             State.setWaveformHasBeenClicked(true);
-            canvas.classList.remove('pulse');
-            hideTutorialOverlay();
         }
         
         // Check if waveform clicks are disabled (during tutorial flow)

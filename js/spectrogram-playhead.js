@@ -1,50 +1,98 @@
 /**
  * spectrogram-playhead.js
  * Draws playhead indicator on spectrogram (synchronized with waveform)
+ * Uses a dedicated transparent overlay canvas for efficient rendering
  */
 
 import * as State from './audio-state.js';
-import { getSpectrogramViewport } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
-import { drawSpectrogramRegionHighlights, drawSpectrogramSelection } from './region-tracker.js';
+
+// Overlay canvas for playhead (separate layer - no conflicts!)
+let playheadOverlayCanvas = null;
+let playheadOverlayCtx = null;
 
 // Track last playhead position to avoid unnecessary redraws
 let lastPlayheadX = -1;
 let lastPreviewX = -1;
 
 /**
- * Draw playhead on spectrogram
+ * Initialize playhead overlay canvas
+ * Called once when spectrogram is ready
+ */
+function initPlayheadOverlay() {
+    if (playheadOverlayCanvas) return; // Already initialized
+    
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    
+    const container = canvas.closest('.panel');
+    if (!container) return;
+    
+    // Create dedicated overlay canvas for playhead
+    playheadOverlayCanvas = document.createElement('canvas');
+    playheadOverlayCanvas.id = 'spectrogram-playhead-overlay';
+    playheadOverlayCanvas.style.position = 'absolute';
+    playheadOverlayCanvas.style.pointerEvents = 'none';  // Pass events through to main canvas
+    playheadOverlayCanvas.style.zIndex = '11';  // Above selection overlay (z-index 10), below other UI
+    playheadOverlayCanvas.style.background = 'transparent';  // See through to spectrogram
+    
+    // Match main canvas size and position EXACTLY
+    const canvasRect = canvas.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    playheadOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
+    playheadOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
+    
+    // Use SAME dimensions as main canvas
+    playheadOverlayCanvas.width = canvas.width;
+    playheadOverlayCanvas.height = canvas.height;
+    playheadOverlayCanvas.style.width = canvas.offsetWidth + 'px';
+    playheadOverlayCanvas.style.height = canvas.offsetHeight + 'px';
+    
+    playheadOverlayCtx = playheadOverlayCanvas.getContext('2d');
+    container.appendChild(playheadOverlayCanvas);
+    
+    // Update overlay size when canvas resizes
+    const resizeObserver = new ResizeObserver(() => {
+        if (playheadOverlayCanvas && canvas) {
+            const canvasRect = canvas.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            playheadOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
+            playheadOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
+            playheadOverlayCanvas.width = canvas.width;
+            playheadOverlayCanvas.height = canvas.height;
+            playheadOverlayCanvas.style.width = canvas.offsetWidth + 'px';
+            playheadOverlayCanvas.style.height = canvas.offsetHeight + 'px';
+        }
+    });
+    resizeObserver.observe(canvas);
+    
+    console.log('✅ Created spectrogram playhead overlay canvas');
+}
+
+/**
+ * Draw playhead on spectrogram overlay canvas
  * Called during playback to show current position
  */
 export function drawSpectrogramPlayhead() {
-    // console.log(`▶️ [spectrogram-playhead.js] drawSpectrogramPlayhead CALLED`);
-    
     // ✅ Wait for spectrogram to be ready before trying to draw playhead
     if (!State.spectrogramInitialized) {
         return;  // Spectrogram not rendered yet - wait for it
     }
     
-    const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
-    
-    // 🔧 FIX: Get the CURRENT viewport (stretched for playback rate), not the unstretched cache!
-    const playbackRate = State.currentPlaybackRate || 1.0;
-    const viewportCanvas = getSpectrogramViewport(playbackRate);
-    
-    if (!viewportCanvas) {
-        // No viewport available yet - fallback check (shouldn't happen if spectrogramInitialized is true)
-        return;
+    // Initialize overlay canvas if needed
+    if (!playheadOverlayCanvas) {
+        initPlayheadOverlay();
     }
+    
+    if (!playheadOverlayCtx) return;
     
     // Don't draw playhead while user is scrubbing
     if (State.isDragging) {
-        console.log(`⚠️ [spectrogram-playhead.js] drawSpectrogramPlayhead: Skipping (dragging)`);
         return;
     }
     
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = playheadOverlayCanvas.width;
+    const height = playheadOverlayCanvas.height;
     
     // Calculate playhead position
     if (State.totalAudioDuration > 0 && State.currentAudioPosition >= 0) {
@@ -55,7 +103,7 @@ export function drawSpectrogramPlayhead() {
             playheadX = Math.floor(zoomState.sampleToPixel(sample, width));
         } else {
             // Fallback to old behavior if zoom state not initialized
-        const progress = Math.min(State.currentAudioPosition / State.totalAudioDuration, 1.0);
+            const progress = Math.min(State.currentAudioPosition / State.totalAudioDuration, 1.0);
             playheadX = Math.floor(progress * width);
         }
         
@@ -64,70 +112,43 @@ export function drawSpectrogramPlayhead() {
             return;  // Skip redraw - same position
         }
         
-        const oldPlayheadX = lastPlayheadX;
         lastPlayheadX = playheadX;
         
-        // OPTIMIZATION: Only redraw the narrow strips that changed
-        // Instead of redrawing entire 1200x450 canvas (540k pixels),
-        // only redraw the old playhead strip and new playhead strip
+        // 🎉 MUCH SIMPLER: Just clear and redraw on overlay canvas!
+        // No need to restore background - overlay is transparent!
+        playheadOverlayCtx.clearRect(0, 0, width, height);
         
-        const stripWidth = 4;  // Redraw 4px wide strips (2px line + 1px margin each side)
+        // Cool playhead with glow and gradient
+        const time = performance.now() * 0.001;
+        const pulseIntensity = 0.2 + Math.sin(time * 3) * 0.08;
         
-        // Restore old playhead area from VIEWPORT (not cache!)
-        if (oldPlayheadX >= 0) {
-            const oldX = Math.max(0, oldPlayheadX - stripWidth);
-            const oldW = Math.min(stripWidth * 2, width - oldX);
-            ctx.drawImage(
-                viewportCanvas,  // 🔧 FIX: Use viewport, not cache!
-                oldX, 0, oldW, height,  // Source
-                oldX, 0, oldW, height   // Dest
-            );
-            
-            // 🎨 Redraw regions/selections in this strip
-            // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
-            // ctx.save();
-            // ctx.beginPath();
-            // ctx.rect(oldX, 0, oldW, height);
-            // ctx.clip();
-            // if (!zoomState.isInRegion()) {
-            //     drawSpectrogramRegionHighlights(ctx, width, height);
-            //     drawSpectrogramSelection(ctx, width, height);
-            // }
-            // ctx.restore();
-        }
+        playheadOverlayCtx.shadowBlur = 6;
+        playheadOverlayCtx.shadowColor = 'rgba(255, 100, 100, 0.45)';
+        playheadOverlayCtx.shadowOffsetX = 0;
         
-        // Restore new playhead area from VIEWPORT
-        const newX = Math.max(0, playheadX - stripWidth);
-        const newW = Math.min(stripWidth * 2, width - newX);
-        ctx.drawImage(
-            viewportCanvas,  // 🔧 FIX: Use viewport, not cache!
-            newX, 0, newW, height,  // Source
-            newX, 0, newW, height   // Dest
-        );
+        const gradient = playheadOverlayCtx.createLinearGradient(playheadX, 0, playheadX, height);
+        gradient.addColorStop(0, `rgba(255, 150, 150, ${(0.5 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(0.5, `rgba(255, 100, 100, ${(0.6 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(1, `rgba(255, 150, 150, ${(0.5 + pulseIntensity) * 0.9})`);
         
-        // 🎨 Redraw regions/selections in this strip
-        // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
-        // ctx.save();
-        // ctx.beginPath();
-        // ctx.rect(newX, 0, newW, height);
-        // ctx.clip();
-        // if (!zoomState.isInRegion()) {
-        //     drawSpectrogramRegionHighlights(ctx, width, height);
-        //     drawSpectrogramSelection(ctx, width, height);
-        // }
-        // ctx.restore();
+        playheadOverlayCtx.strokeStyle = gradient;
+        playheadOverlayCtx.lineWidth = 2.5;
+        playheadOverlayCtx.globalAlpha = 0.9;
+        playheadOverlayCtx.beginPath();
+        playheadOverlayCtx.moveTo(playheadX, 0);
+        playheadOverlayCtx.lineTo(playheadX, height);
+        playheadOverlayCtx.stroke();
         
-        // Draw faint grey playhead line (non-interactive)
-        ctx.globalAlpha = 0.6;
-        ctx.strokeStyle = '#808080';  // Grey color
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(playheadX, 0);
-        ctx.lineTo(playheadX, height);
-        ctx.stroke();
-        ctx.globalAlpha = 1.0;  // Reset alpha
+        playheadOverlayCtx.shadowBlur = 0;
+        playheadOverlayCtx.strokeStyle = `rgba(255, 255, 255, ${(0.3 + pulseIntensity * 0.2) * 0.9})`;
+        playheadOverlayCtx.lineWidth = 1;
+        playheadOverlayCtx.beginPath();
+        playheadOverlayCtx.moveTo(playheadX, 0);
+        playheadOverlayCtx.lineTo(playheadX, height);
+        playheadOverlayCtx.stroke();
         
-        // NOTE: Selection box now drawn on separate overlay canvas (spectrogram-renderer.js)
+        playheadOverlayCtx.globalAlpha = 1.0;
+        playheadOverlayCtx.shadowColor = 'transparent';
     }
 }
 
@@ -136,34 +157,26 @@ export function drawSpectrogramPlayhead() {
 // This eliminates conflicts with playhead updates, viewport refreshes, and other rendering systems
 
 /**
- * Draw scrub preview on spectrogram (white/gray line while hovering/dragging)
+ * Draw scrub preview on spectrogram overlay (white/gray line while hovering/dragging)
  * Mirrors the waveform scrub preview behavior
  */
 export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) {
-    // console.log(`👆 [spectrogram-playhead.js] drawSpectrogramScrubPreview CALLED: targetPosition=${targetPosition.toFixed(2)}, isDragging=${isDragging}`);
-    
     // ✅ Wait for spectrogram to be ready before trying to draw scrub preview
     if (!State.spectrogramInitialized) {
         return;  // Spectrogram not rendered yet - wait for it
     }
     
-    const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
-    
-    // 🔧 FIX: Get the CURRENT viewport (stretched for playback rate), not the unstretched cache!
-    const playbackRate = State.currentPlaybackRate || 1.0;
-    const viewportCanvas = getSpectrogramViewport(playbackRate);
-    
-    if (!viewportCanvas) {
-        // No viewport available yet - fallback check (shouldn't happen if spectrogramInitialized is true)
-        return;
+    // Initialize overlay canvas if needed
+    if (!playheadOverlayCanvas) {
+        initPlayheadOverlay();
     }
     
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
+    if (!playheadOverlayCtx) return;
     
     if (!State.totalAudioDuration || State.totalAudioDuration === 0) return;
+    
+    const width = playheadOverlayCanvas.width;
+    const height = playheadOverlayCanvas.height;
     
     // 🏛️ Use zoom-aware conversion
     let previewX;
@@ -172,87 +185,69 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
         previewX = Math.floor(zoomState.sampleToPixel(sample, width));
     } else {
         // Fallback to old behavior if zoom state not initialized
-    const progress = Math.min(targetPosition / State.totalAudioDuration, 1.0);
+        const progress = Math.min(targetPosition / State.totalAudioDuration, 1.0);
         previewX = Math.floor(progress * width);
     }
     
-    // KEEP IT SIMPLE: Clear and redraw from VIEWPORT (not cache!)
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(viewportCanvas, 0, 0);  // 🔧 FIX: Use viewport, not cache!
-    
-    // 🎨 Redraw regions/selections on top
-    // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
-    // if (!zoomState.isInRegion()) {
-    //     drawSpectrogramRegionHighlights(ctx, width, height);
-    //     drawSpectrogramSelection(ctx, width, height);
-    // }
+    // 🎉 MUCH SIMPLER: Just clear and draw preview line on overlay!
+    playheadOverlayCtx.clearRect(0, 0, width, height);
     
     // Draw preview line (gray if dragging, white if just hovering)
-    ctx.globalAlpha = 0.6;
-    ctx.strokeStyle = isDragging ? '#bbbbbb' : '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(previewX, 0);
-    ctx.lineTo(previewX, height);
-    ctx.stroke();
-    ctx.globalAlpha = 1.0;  // Reset alpha
+    playheadOverlayCtx.globalAlpha = 0.9;
+    playheadOverlayCtx.strokeStyle = isDragging ? '#bbbbbb' : '#ffffff';
+    playheadOverlayCtx.lineWidth = 2;
+    playheadOverlayCtx.beginPath();
+    playheadOverlayCtx.moveTo(previewX, 0);
+    playheadOverlayCtx.lineTo(previewX, height);
+    playheadOverlayCtx.stroke();
+    playheadOverlayCtx.globalAlpha = 1.0;  // Reset alpha
     
     lastPreviewX = previewX;
 }
 
 /**
- * Clear scrub preview from spectrogram
+ * Clear scrub preview from spectrogram overlay
  */
 export function clearSpectrogramScrubPreview() {
-    if (lastPreviewX < 0) return;
+    if (lastPreviewX < 0 || !playheadOverlayCtx) return;
     
-    // console.log(`🧹 [spectrogram-playhead.js] clearSpectrogramScrubPreview CALLED`);
+    // 🎉 MUCH SIMPLER: Just clear overlay and redraw playhead if needed!
+    const width = playheadOverlayCanvas.width;
+    const height = playheadOverlayCanvas.height;
     
-    const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
+    playheadOverlayCtx.clearRect(0, 0, width, height);
     
-    // 🔧 FIX: Get the CURRENT viewport (stretched for playback rate), not the unstretched cache!
-    const playbackRate = State.currentPlaybackRate || 1.0;
-    const viewportCanvas = getSpectrogramViewport(playbackRate);
-    if (!viewportCanvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-    
-    const stripWidth = 4;
-    const oldX = Math.max(0, lastPreviewX - stripWidth);
-    const oldW = Math.min(stripWidth * 2, width - oldX);
-    
-    // Restore the area from VIEWPORT (not cache!)
-    ctx.drawImage(
-        viewportCanvas,  // 🔧 FIX: Use viewport, not cache!
-        oldX, 0, oldW, height,
-        oldX, 0, oldW, height
-    );
-    
-    // 🎨 Redraw regions/selections in this strip
-    // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
-    // ctx.save();
-    // ctx.beginPath();
-    // ctx.rect(oldX, 0, oldW, height);
-    // ctx.clip();
-    // if (!zoomState.isInRegion()) {
-    //     drawSpectrogramRegionHighlights(ctx, width, height);
-    //     drawSpectrogramSelection(ctx, width, height);
-    // }
-    // ctx.restore();
-    
-    // Redraw faint grey playhead if it was in that area
-    if (lastPlayheadX >= 0 && Math.abs(lastPlayheadX - lastPreviewX) < stripWidth * 2) {
-        ctx.globalAlpha = 0.6;
-        ctx.strokeStyle = '#808080';  // Grey color
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(lastPlayheadX, 0);
-        ctx.lineTo(lastPlayheadX, height);
-        ctx.stroke();
-        ctx.globalAlpha = 1.0;  // Reset alpha
+    // Redraw playhead if it exists
+    if (lastPlayheadX >= 0) {
+        const time = performance.now() * 0.001;
+        const pulseIntensity = 0.2 + Math.sin(time * 3) * 0.08;
+        
+        playheadOverlayCtx.shadowBlur = 6;
+        playheadOverlayCtx.shadowColor = 'rgba(255, 100, 100, 0.45)';
+        
+        const gradient = playheadOverlayCtx.createLinearGradient(lastPlayheadX, 0, lastPlayheadX, height);
+        gradient.addColorStop(0, `rgba(255, 150, 150, ${(0.5 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(0.5, `rgba(255, 100, 100, ${(0.6 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(1, `rgba(255, 150, 150, ${(0.5 + pulseIntensity) * 0.9})`);
+        
+        playheadOverlayCtx.strokeStyle = gradient;
+        playheadOverlayCtx.lineWidth = 2.5;
+        playheadOverlayCtx.globalAlpha = 0.9;
+        playheadOverlayCtx.beginPath();
+        playheadOverlayCtx.moveTo(lastPlayheadX, 0);
+        playheadOverlayCtx.lineTo(lastPlayheadX, height);
+        playheadOverlayCtx.stroke();
+        
+        playheadOverlayCtx.shadowBlur = 0;
+        playheadOverlayCtx.strokeStyle = `rgba(255, 255, 255, ${(0.3 + pulseIntensity * 0.2) * 0.9})`;
+        playheadOverlayCtx.lineWidth = 1;
+        playheadOverlayCtx.beginPath();
+        playheadOverlayCtx.moveTo(lastPlayheadX, 0);
+        playheadOverlayCtx.lineTo(lastPlayheadX, height);
+        playheadOverlayCtx.stroke();
+        
+        playheadOverlayCtx.globalAlpha = 1.0;
+        playheadOverlayCtx.shadowColor = 'transparent';
     }
     
     lastPreviewX = -1;
@@ -267,24 +262,9 @@ export function resetSpectrogramPlayhead() {
     lastPlayheadX = -1;
     lastPreviewX = -1;
     
-    // Fully redraw from VIEWPORT to clear any old playhead
-    const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
-    
-    // 🔧 FIX: Get the CURRENT viewport (stretched for playback rate), not the unstretched cache!
-    const playbackRate = State.currentPlaybackRate || 1.0;
-    const viewportCanvas = getSpectrogramViewport(playbackRate);
-    if (viewportCanvas) {
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(viewportCanvas, 0, 0);  // 🔧 FIX: Use viewport, not cache!
-        
-        // 🎨 Redraw regions/selections on top
-        // COMMENTED OUT: Don't draw bars or yellow background when in zoomed region mode
-        // if (!zoomState.isInRegion()) {
-        //     drawSpectrogramRegionHighlights(ctx, canvas.width, canvas.height);
-        //     drawSpectrogramSelection(ctx, canvas.width, canvas.height);
-        // }
+    // 🎉 MUCH SIMPLER: Just clear the overlay canvas!
+    if (playheadOverlayCtx && playheadOverlayCanvas) {
+        playheadOverlayCtx.clearRect(0, 0, playheadOverlayCanvas.width, playheadOverlayCanvas.height);
     }
 }
 
