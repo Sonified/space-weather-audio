@@ -1212,6 +1212,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Listen for secret key sequence (anytime, anywhere)
     function handleSecretKeyListener(e) {
+        // Skip if key is undefined (can happen with some special keys)
+        if (!e.key) {
+            return;
+        }
+
         // Reset sequence if too much time passes (2 seconds)
         if (keySequenceTimeout) {
             clearTimeout(keySequenceTimeout);
@@ -1253,6 +1258,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     let debugKeySequenceTimeout = null;
 
     function handleDebugJumpListener(e) {
+        // Skip if key is undefined (can happen with some special keys)
+        if (!e.key) {
+            return;
+        }
+
         // Reset sequence if too much time passes (2 seconds)
         if (debugKeySequenceTimeout) {
             clearTimeout(debugKeySequenceTimeout);
@@ -1402,6 +1412,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.52 - Bug Fix: Keyboard Event Handlers');
+        console.log('🔧 [0ms] v2.52 Fix: Added guard clauses to handleSecretKeyListener and handleDebugJumpListener to prevent TypeError when e.key is undefined');
         console.log('🌋 [0ms] volcano-audio v2.51 - UI Polish & Tutorial Improvements');
         console.log('🎨 [0ms] v2.51 UI: Fixed waveform-x-axis max-width to match other canvases, unified participant ID text box styling with dark background and reddish hover');
         console.log('🎓 [0ms] v2.51 UI: Added ↘️ emoji to volume adjustment tutorial message for better visual guidance');

@@ -233,3 +233,23 @@ The spectrogram playhead was drawing directly on the main canvas and having to r
 - `js/tutorial-coordinator.js` - Added ↘️ emoji to volume tutorial message
 - `js/main.js` - Version number updated to v2.51
 
+---
+
+## Version v2.52 - Bug Fix: Keyboard Event Handlers
+
+**Commit:** `v2.52 Fix: Added guard clauses to handleSecretKeyListener and handleDebugJumpListener to prevent TypeError when e.key is undefined`
+
+**Major Changes:**
+- ✅ Fixed TypeError in `handleSecretKeyListener` - added guard clause to check if `e.key` exists before calling `.toLowerCase()`
+- ✅ Fixed TypeError in `handleDebugJumpListener` - added guard clause to check if `e.key` exists before calling `.toLowerCase()`
+- ✅ Prevents crashes when certain keyboard events (like modifier keys or special keys) trigger events where `e.key` is undefined
+
+**Problem:**
+Some keyboard events (particularly modifier keys or special keys) can have `e.key` as `undefined`, causing a TypeError when trying to call `.toLowerCase()` on it.
+
+**Solution:**
+Added early return guard clauses (`if (!e.key) { return; }`) at the beginning of both keyboard event handlers to safely ignore events without a valid key property.
+
+**Files Modified:**
+- `js/main.js` - Added guard clauses to `handleSecretKeyListener` and `handleDebugJumpListener` functions
+
