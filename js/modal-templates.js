@@ -164,15 +164,16 @@ export function createTutorialRevisitModal() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Revisit Tutorial</h3>
+                <h3 class="modal-title" id="tutorialRevisitTitle">Revisit Tutorial</h3>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 30px; color: #333; font-size: 22px; font-weight: bold; line-height: 1.6; text-align: center;">
+                <p id="tutorialRevisitSubtext" style="margin-bottom: 30px; color: #333; font-size: 22px; font-weight: bold; line-height: 1.6; text-align: center;">
                     Would you like to revisit the tutorial?
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; justify-content: center;">
-                    <button type="button" class="modal-submit" style="padding: 8px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Yes</button>
-                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Cancel</button>
+                    <button type="button" class="modal-submit" id="tutorialRevisitBtn1" style="padding: 8px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Yes</button>
+                    <button type="button" class="modal-cancel" id="tutorialRevisitBtn2" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Cancel</button>
+                    <button type="button" class="modal-exit" id="tutorialRevisitBtn3" style="display: none; padding: 10px 16px; font-size: 16px; font-weight: 600; background: #dc3545; border: 2px solid #dc3545; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Exit</button>
                 </div>
             </div>
         </div>

@@ -1488,40 +1488,96 @@ export function setupModalEventListeners() {
             }
         });
         
-        const tutorialRevisitYesBtn = tutorialRevisitModal.querySelector('.modal-submit');
-        const tutorialRevisitCancelBtn = tutorialRevisitModal.querySelector('.modal-cancel');
+        const tutorialRevisitBtn1 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn1');
+        const tutorialRevisitBtn2 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn2');
+        const tutorialRevisitBtn3 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn3');
         
-        if (tutorialRevisitYesBtn) {
-            tutorialRevisitYesBtn.addEventListener('click', async () => {
-                closeTutorialRevisitModal(false);
+        // Button 1 handler (Continue when active, Yes when not active)
+        if (tutorialRevisitBtn1) {
+            tutorialRevisitBtn1.addEventListener('click', async () => {
+                const { isTutorialActive } = await import('./tutorial-state.js');
+                const tutorialActive = isTutorialActive();
                 
-                // Clear tutorial seen flag to restart tutorial
-                localStorage.removeItem('study_has_seen_tutorial');
-                console.log('🔄 Tutorial flag cleared - will restart tutorial');
-                
-                // Restart the tutorial
-                setTimeout(async () => {
-                    const { runInitialTutorial } = await import('./tutorial-coordinator.js');
-                    await runInitialTutorial();
-                }, 300);
+                if (tutorialActive) {
+                    // Continue tutorial - just close modal
+                    closeTutorialRevisitModal(false);
+                    console.log('▶️ Continuing tutorial');
+                } else {
+                    // Not active - restart tutorial (Yes button)
+                    closeTutorialRevisitModal(false);
+                    
+                    // Clear tutorial seen flag to restart tutorial
+                    localStorage.removeItem('study_has_seen_tutorial');
+                    console.log('🔄 Tutorial flag cleared - will restart tutorial');
+                    
+                    // Restart the tutorial
+                    setTimeout(async () => {
+                        const { runInitialTutorial } = await import('./tutorial-coordinator.js');
+                        await runInitialTutorial();
+                    }, 300);
+                }
             });
         }
         
-        if (tutorialRevisitCancelBtn) {
-            tutorialRevisitCancelBtn.addEventListener('click', () => {
-                closeTutorialRevisitModal(false);
+        // Button 2 handler (Restart when active, Cancel when not active)
+        if (tutorialRevisitBtn2) {
+            tutorialRevisitBtn2.addEventListener('click', async () => {
+                const { isTutorialActive } = await import('./tutorial-state.js');
+                const tutorialActive = isTutorialActive();
+                
+                if (tutorialActive) {
+                    // Restart tutorial
+                    closeTutorialRevisitModal(false);
+                    
+                    // Clear tutorial phase and flag
+                    const { clearTutorialPhase } = await import('./tutorial-state.js');
+                    clearTutorialPhase();
+                    localStorage.removeItem('study_has_seen_tutorial');
+                    console.log('🔄 Restarting tutorial');
+                    
+                    // Restart the tutorial
+                    setTimeout(async () => {
+                        const { runInitialTutorial } = await import('./tutorial-coordinator.js');
+                        await runInitialTutorial();
+                    }, 300);
+                } else {
+                    // Cancel - just close modal
+                    closeTutorialRevisitModal(false);
+                }
             });
         }
         
-        // Keyboard support: Enter for Yes, Escape for Cancel
+        // Button 3 handler (Exit - only shown when tutorial is active)
+        if (tutorialRevisitBtn3) {
+            tutorialRevisitBtn3.addEventListener('click', async () => {
+                // Exit tutorial
+                closeTutorialRevisitModal(false);
+                
+                // Clear tutorial phase
+                const { clearTutorialPhase } = await import('./tutorial-state.js');
+                clearTutorialPhase();
+                
+                // Enable all features
+                const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+                await enableAllTutorialRestrictedFeatures();
+                
+                // Mark tutorial as seen (they've started it, so mark as seen)
+                const { markTutorialAsSeen } = await import('./study-workflow.js');
+                markTutorialAsSeen();
+                
+                console.log('🚪 Exited tutorial - features enabled');
+            });
+        }
+        
+        // Keyboard support: Enter for first button, Escape to close
         tutorialRevisitModal.addEventListener('keydown', (e) => {
             if (tutorialRevisitModal.style.display === 'none') return;
             
             if (e.key === 'Enter') {
                 e.preventDefault();
                 e.stopPropagation();
-                if (tutorialRevisitYesBtn) {
-                    tutorialRevisitYesBtn.click();
+                if (tutorialRevisitBtn1) {
+                    tutorialRevisitBtn1.click();
                 }
             } else if (e.key === 'Escape') {
                 e.preventDefault();
@@ -1968,7 +2024,7 @@ export function closeTutorialIntroModal(keepOverlay = null) {
 }
 
 // Tutorial Revisit Modal Functions
-export function openTutorialRevisitModal() {
+export async function openTutorialRevisitModal() {
     // Close all other modals first
     closeAllModals();
     
@@ -1978,11 +2034,66 @@ export function openTutorialRevisitModal() {
         return;
     }
     
+    // Check if tutorial is currently active
+    const { isTutorialActive } = await import('./tutorial-state.js');
+    const tutorialActive = isTutorialActive();
+    
+    const titleEl = modal.querySelector('#tutorialRevisitTitle');
+    const subtextEl = modal.querySelector('#tutorialRevisitSubtext');
+    const btn1 = modal.querySelector('#tutorialRevisitBtn1');
+    const btn2 = modal.querySelector('#tutorialRevisitBtn2');
+    const btn3 = modal.querySelector('#tutorialRevisitBtn3');
+    
+    if (tutorialActive) {
+        // Tutorial is active - show "Tutorial Underway" mode
+        if (titleEl) titleEl.textContent = 'Tutorial Underway';
+        if (subtextEl) subtextEl.textContent = 'What would you like to do?';
+        if (btn1) {
+            btn1.textContent = 'Continue';
+            btn1.className = 'modal-submit';
+            btn1.style.background = '#007bff';
+            btn1.style.borderColor = '#007bff';
+            btn1.style.color = 'white';
+        }
+        if (btn2) {
+            btn2.textContent = 'Restart';
+            btn2.className = 'modal-submit';
+            btn2.style.background = '#ffc107';
+            btn2.style.borderColor = '#ffc107';
+            btn2.style.color = '#000';
+        }
+        if (btn3) {
+            btn3.style.display = 'block';
+            btn3.textContent = 'Exit';
+        }
+    } else {
+        // Tutorial not active - show "Revisit Tutorial" mode
+        if (titleEl) titleEl.textContent = 'Revisit Tutorial';
+        if (subtextEl) subtextEl.textContent = 'Would you like to revisit the tutorial?';
+        if (btn1) {
+            btn1.textContent = 'Yes';
+            btn1.className = 'modal-submit';
+            btn1.style.background = '#007bff';
+            btn1.style.borderColor = '#007bff';
+            btn1.style.color = 'white';
+        }
+        if (btn2) {
+            btn2.textContent = 'Cancel';
+            btn2.className = 'modal-cancel';
+            btn2.style.background = '#6c757d';
+            btn2.style.borderColor = '#6c757d';
+            btn2.style.color = 'white';
+        }
+        if (btn3) {
+            btn3.style.display = 'none';
+        }
+    }
+    
     // Fade in overlay background
     fadeInOverlay();
     
     modal.style.display = 'flex';
-    console.log('❓ Tutorial Revisit modal opened');
+    console.log(`❓ Tutorial Revisit modal opened (tutorial active: ${tutorialActive})`);
 }
 
 export function closeTutorialRevisitModal(keepOverlay = null) {
