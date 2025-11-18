@@ -148,6 +148,7 @@ export function createTutorialIntroModal() {
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                     <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #c62828; border: 2px solid #c62828; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Begin Tutorial</button>
+                    <a href="#" id="tutorialSkipLink" style="display: none; color: #666; font-size: 16px; text-decoration: underline; cursor: pointer; margin-top: 5px;">Skip</a>
                 </div>
             </div>
         </div>
@@ -171,7 +172,7 @@ export function createTutorialRevisitModal() {
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; justify-content: center;">
                     <button type="button" class="modal-submit" style="padding: 8px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Yes</button>
-                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Cancel</button>
+                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Cancel</button>
                 </div>
             </div>
         </div>

@@ -476,7 +476,7 @@ async function getNextModalInWorkflow(currentModalId) {
     
     // Tutorial should show if they haven't seen it yet (regardless of participant setup status)
     // The check for first visit ever is just for determining the flow, but tutorial is independent
-    const needsTutorial = !hasSeenTutorial();
+    const hasCompletedTutorial = hasSeenTutorial();
     const needsAwesf = !hasCompletedAwesfThisWeek();
     
     // Check if this is first visit ever for flow routing
@@ -496,7 +496,7 @@ async function getNextModalInWorkflow(currentModalId) {
         case 'preSurveyModal':
             // Step 3 → Step 4 (if first visit) OR Step 3 → Experience (if returning)
             // Pre-Survey → Tutorial Intro (FIRST VISIT EVER only) OR Experience (returning visits - no modal)
-            if (needsTutorial) {
+            if (!hasCompletedTutorial) {
                 // FIRST VISIT EVER: Pre-Survey → Tutorial Intro
                 return 'tutorialIntroModal';
             }
@@ -1426,6 +1426,31 @@ export function setupModalEventListeners() {
             });
         }
         
+        // Skip link handler (for returning visitors who need tutorial but flag wasn't set)
+        const tutorialSkipLink = tutorialIntroModal.querySelector('#tutorialSkipLink');
+        if (tutorialSkipLink) {
+            tutorialSkipLink.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('⏭️ Tutorial skipped by returning visitor');
+                
+                // Mark tutorial as seen so they don't see it again
+                const { markTutorialAsSeen } = await import('./study-workflow.js');
+                markTutorialAsSeen();
+                
+                // Enable all features since tutorial is being skipped
+                const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+                await enableAllTutorialRestrictedFeatures();
+                
+                // Close modal and let user explore
+                closeTutorialIntroModal();
+                fadeOutOverlay();
+                
+                console.log('✅ Tutorial skipped - features enabled, ready for experience');
+            });
+        }
+        
         // Keyboard support: Enter to begin tutorial
         const tutorialIntroKeyHandler = (e) => {
             // Only handle if modal is visible
@@ -1889,11 +1914,27 @@ export function closeCompleteConfirmationModal(keepOverlay = null) {
 }
 
 // Tutorial Intro Modal Functions
-export function openTutorialIntroModal() {
+export async function openTutorialIntroModal() {
     // Close all other modals first
     closeAllModals();
     
     const modal = document.getElementById('tutorialIntroModal');
+    
+    // Check if this is a returning visit but tutorial flag wasn't set
+    // If so, show skip option
+    const { hasSeenParticipantSetup } = await import('./study-workflow.js');
+    const isFirstVisitEver = !hasSeenParticipantSetup();
+    const skipLink = document.getElementById('tutorialSkipLink');
+    
+    if (skipLink) {
+        if (!isFirstVisitEver) {
+            // Returning visit but tutorial flag says they need it - show skip option
+            skipLink.style.display = 'block';
+        } else {
+            // First visit - hide skip option
+            skipLink.style.display = 'none';
+        }
+    }
     
     // Fade in overlay background (standard design pattern)
     fadeInOverlay();
