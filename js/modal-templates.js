@@ -135,12 +135,12 @@ export function createTutorialIntroModal() {
     modal.className = 'modal-window';
     modal.style.display = 'none';
     modal.innerHTML = `
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
                 <h3 class="modal-title">Tutorial Introduction</h3>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 20px; color: #333; font-size: 22px; font-weight: bold; line-height: 1.6; text-align: center;">
+                <p style="margin-bottom: 20px; color: #333; font-size: 22px; line-height: 1.6; text-align: center;">
                     We will begin with a brief tutorial to provide an introduction to the interface.
                 </p>
                 <p style="margin-bottom: 30px; color: #555; font-size: 20px; font-weight: bold; line-height: 1.6; text-align: center;">

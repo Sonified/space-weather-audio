@@ -806,6 +806,15 @@ export function setupSpectrogramSelection() {
     // This immediately cancels any stuck selection when page becomes visible again
     spectrogramVisibilityHandler = () => {
         if (document.visibilityState === 'visible') {
+            // 🔍 DEBUG: Log zoom state after sleep/wake
+            console.log('👁️ [SLEEP WAKE] Page visible again - checking zoom state:', {
+                zoomStateInitialized: zoomState.isInitialized(),
+                isInRegion: zoomState.isInitialized() ? zoomState.isInRegion() : 'N/A (not initialized)',
+                zoomMode: zoomState.isInitialized() ? zoomState.mode : 'N/A',
+                activeRegionId: zoomState.isInitialized() ? zoomState.activeRegionId : 'N/A',
+                currentViewStartSample: zoomState.isInitialized() ? zoomState.currentViewStartSample : 'N/A'
+            });
+            
             // Just became visible (e.g., woke from sleep) - clean up immediately!
             if (spectrogramSelectionActive || spectrogramSelectionBox) {
                 console.log('👁️ Page visible again - cleaning up any stuck selection state');
@@ -856,9 +865,18 @@ export function setupSpectrogramSelection() {
     spectrogramSelectionSetup = true;
 
     canvas.addEventListener('mousedown', (e) => {
+        // 🔍 DEBUG: Log zoom state when clicking on canvas
+        console.log('🖱️ [MOUSEDOWN] Canvas clicked - checking zoom state:', {
+            zoomStateInitialized: zoomState.isInitialized(),
+            isInRegion: zoomState.isInitialized() ? zoomState.isInRegion() : 'N/A (not initialized)',
+            zoomMode: zoomState.isInitialized() ? zoomState.mode : 'N/A',
+            activeRegionId: zoomState.isInitialized() ? zoomState.activeRegionId : 'N/A'
+        });
+        
         // 🎯 NEW ARCHITECTURE: Allow drawing when zoomed into a region (no 'f' key needed!)
         // If not zoomed in, don't handle - user is looking at full view
         if (!zoomState.isInRegion()) {
+            console.log('🖱️ [MOUSEDOWN] Not in region - returning early (zoom state says not zoomed in)');
             return;
         }
         
