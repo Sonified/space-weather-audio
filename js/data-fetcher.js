@@ -654,8 +654,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                         } else {
                             console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
                             // Don't start playback, but keep state ready
-                            State.setIsPlaying(false);
-                            State.setIsPaused(true);
+                            State.setPlaybackState(PlaybackState.STOPPED);
                             // Enable play button so user can start playback
                             const playPauseBtn = document.getElementById('playPauseBtn');
                             playPauseBtn.disabled = false;
@@ -1505,8 +1504,7 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     } else {
         console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
         // Don't start playback, but keep state ready
-        State.setIsPlaying(false);
-        State.setIsPaused(true);
+        State.setPlaybackState(PlaybackState.STOPPED);
         // Enable play button so user can start playback
         const playPauseBtn = document.getElementById('playPauseBtn');
         playPauseBtn.disabled = false;

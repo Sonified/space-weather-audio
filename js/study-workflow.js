@@ -61,7 +61,8 @@ const STORAGE_KEYS = {
     HAS_SEEN_TUTORIAL: 'study_has_seen_tutorial',
     LAST_AWESF_DATE: 'study_last_awesf_date',
     WEEKLY_SESSION_COUNT: 'study_weekly_session_count',
-    WEEK_START_DATE: 'study_week_start_date'
+    WEEK_START_DATE: 'study_week_start_date',
+    PRE_SURVEY_COMPLETION_DATE: 'study_pre_survey_completion_date'
 };
 
 /**
@@ -197,6 +198,48 @@ if (typeof window !== 'undefined') {
 // ═══════════════════════════════════════════════════════════
 
 /**
+ * Get today's date as YYYY-MM-DD string
+ */
+function getTodayDateString() {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+/**
+ * Check if pre-survey was completed today
+ */
+function hasCompletedPreSurveyToday() {
+    const completionDate = localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
+    if (!completionDate) return false;
+    return completionDate === getTodayDateString();
+}
+
+/**
+ * Mark pre-survey as completed today
+ */
+export function markPreSurveyCompletedToday() {
+    localStorage.setItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE, getTodayDateString());
+    console.log(`✅ Pre-survey marked as completed today (${getTodayDateString()})`);
+}
+
+/**
+ * Clear session data when starting a new day
+ */
+async function clearSessionForNewDay(participantId) {
+    if (!participantId) return;
+    
+    const { clearSession } = await import('../Qualtrics/participant-response-manager.js');
+    clearSession(participantId);
+    console.log('🗑️ Cleared session data for new day');
+    
+    // Also clear the pre-survey completion date (will be set again when they complete it)
+    localStorage.removeItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
+}
+
+/**
  * Start the Study Mode workflow
  * ONLY runs in STUDY or STUDY_CLEAN modes
  * Called on page load - shows appropriate modals based on visit history
@@ -312,13 +355,32 @@ export async function startStudyWorkflow() {
             // PRE-SURVEY (EVERY TIME - INCLUDING RETURNING VISITS)
             // ═══════════════════════════════════════════════════════════
             
-            console.log('📊 Step 3: Pre-Survey (required every session)');
-            // For returning visits, open pre-survey directly (no welcome modal)
-            const { openPreSurveyModal } = await import('./ui-controls.js');
-            openPreSurveyModal();
-            console.log('📊 Pre-Survey modal opened (returning visit)');
-            // Pre-survey will be closed by user clicking submit, which triggers the workflow to continue
-            return; // Exit early - pre-survey event handler will continue workflow
+            // Check if pre-survey was completed today
+            const completedToday = hasCompletedPreSurveyToday();
+            const participantId = getParticipantId();
+            
+            if (completedToday) {
+                console.log('📊 Pre-Survey already completed today - skipping');
+                console.log('✅ User can proceed directly to experience');
+                // Don't show pre-survey modal - user can explore
+                return; // Exit early - user can explore
+            } else {
+                // Check if pre-survey was completed on a different day
+                const lastCompletionDate = localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
+                if (lastCompletionDate && lastCompletionDate !== getTodayDateString()) {
+                    console.log(`📅 Pre-Survey was completed on ${lastCompletionDate}, but today is ${getTodayDateString()} - clearing session`);
+                    // Clear the session for the new day
+                    await clearSessionForNewDay(participantId);
+                }
+                
+                console.log('📊 Step 3: Pre-Survey (required every session)');
+                // For returning visits, open pre-survey directly (no welcome modal)
+                const { openPreSurveyModal } = await import('./ui-controls.js');
+                openPreSurveyModal();
+                console.log('📊 Pre-Survey modal opened (returning visit)');
+                // Pre-survey will be closed by user clicking submit, which triggers the workflow to continue
+                return; // Exit early - pre-survey event handler will continue workflow
+            }
         }
         
         // ═══════════════════════════════════════════════════════════

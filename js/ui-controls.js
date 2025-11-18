@@ -2306,6 +2306,10 @@ export async function submitPreSurvey() {
             }, 350); // Wait for modal close animation
         }
         
+        // Mark pre-survey as completed today (regardless of participant ID)
+        const { markPreSurveyCompletedToday } = await import('./study-workflow.js');
+        markPreSurveyCompletedToday();
+        
         // Form doesn't need to clear itself - when modal reopens, it will be fresh
     } catch (error) {
         console.error('Failed to save pre-survey:', error);
