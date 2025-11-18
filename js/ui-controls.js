@@ -31,9 +31,81 @@ import { modalManager } from './modal-manager.js';
  * Standard design pattern: background fades up when modal appears
  * If overlay is already visible, skips the fade to prevent flicker
  */
+/**
+ * Hide tutorial help button and disable participant ID clicking when modals are open
+ */
+function hideUIElementsForModal() {
+    const tutorialHelpBtn = document.getElementById('tutorialHelpBtn');
+    if (tutorialHelpBtn) {
+        tutorialHelpBtn.style.display = 'none';
+    }
+    
+    const participantIdText = document.getElementById('participantIdText');
+    if (participantIdText) {
+        participantIdText.style.pointerEvents = 'none';
+        participantIdText.style.cursor = 'default';
+        participantIdText.style.opacity = '0.5';
+    }
+}
+
+/**
+ * Show tutorial help button and enable participant ID clicking when modals are closed
+ */
+function showUIElementsAfterModal() {
+    // Only show if in study mode and no modals are visible
+    const anyModalVisible = checkIfAnyModalVisible();
+    if (anyModalVisible) {
+        return; // Still have modals open, don't show yet
+    }
+    
+    // Check if in study mode (synchronous check)
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    const inStudyMode = storedMode === 'study' || storedMode === 'study_clean';
+    
+    const tutorialHelpBtn = document.getElementById('tutorialHelpBtn');
+    if (tutorialHelpBtn && inStudyMode) {
+        tutorialHelpBtn.style.display = 'flex';
+    }
+    
+    const participantIdText = document.getElementById('participantIdText');
+    if (participantIdText) {
+        participantIdText.style.pointerEvents = 'auto';
+        participantIdText.style.cursor = 'pointer';
+        participantIdText.style.opacity = '1';
+    }
+}
+
+/**
+ * Check if any modal is currently visible
+ */
+function checkIfAnyModalVisible() {
+    const allModalIds = [
+        'welcomeModal',
+        'participantModal',
+        'preSurveyModal',
+        'postSurveyModal',
+        'activityLevelModal',
+        'awesfModal',
+        'endModal',
+        'beginAnalysisModal',
+        'missingStudyIdModal',
+        'completeConfirmationModal',
+        'tutorialIntroModal',
+        'tutorialRevisitModal'
+    ];
+    
+    return allModalIds.some(modalId => {
+        const modal = document.getElementById(modalId);
+        return modal && modal.style.display !== 'none' && modal.style.display !== '';
+    });
+}
+
 function fadeInOverlay() {
     const overlay = document.getElementById('permanentOverlay');
     if (!overlay) return;
+    
+    // Hide UI elements when modal opens
+    hideUIElementsForModal();
     
     // Check if overlay is already visible (opacity > 0 and display is not 'none')
     const isAlreadyVisible = overlay.style.display !== 'none' && 
@@ -74,6 +146,8 @@ function fadeOutOverlay() {
         if (overlay.style.opacity === '0') {
             overlay.style.display = 'none';
         }
+        // Show UI elements after overlay fades out (check if no modals are visible)
+        showUIElementsAfterModal();
     }, 300);
 }
 
@@ -491,6 +565,12 @@ export function closeAllModals() {
             modal.style.display = 'none';
         }
     });
+    
+    // Check if we should show UI elements after closing modals
+    // Use setTimeout to ensure modal display states are updated first
+    setTimeout(() => {
+        showUIElementsAfterModal();
+    }, 50);
 }
 
 /**
