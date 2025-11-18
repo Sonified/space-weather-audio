@@ -15,6 +15,7 @@ import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramS
 import { zoomState } from './zoom-state.js';
 import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 import { isStudyMode } from './master-modes.js';
+import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -1043,9 +1044,12 @@ export function updatePlaybackIndicator() {
     if (totalAudioDuration > 0) {
         // Region button reset is handled by 'selection-end-reached' message from worklet
         // The worklet is the single source of truth for when boundaries are reached
-        
+
         drawWaveformWithSelection();
         drawSpectrogramPlayhead();  // Draw playhead on spectrogram too
+
+        // Update feature box positions every frame (glued to pixels like axis ticks!)
+        updateAllFeatureBoxPositions();
     }
     
     // 🔥 FIX: Store RAF ID for proper cleanup

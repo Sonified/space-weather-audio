@@ -7,34 +7,14 @@
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentRegions } from './region-tracker.js';
+import { getYPositionForFrequencyScaled } from './spectrogram-axis-renderer.js';
+import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 
 // Track all feature boxes: Map<"regionIndex-featureIndex", HTMLElement>
 const featureBoxes = new Map();
 
 // Constants
 const MAX_FREQUENCY = 50; // Hz - Nyquist frequency for 100 Hz sample rate
-
-/**
- * Convert frequency to Y position on canvas
- */
-function getYFromFrequency(frequency, maxFreq, canvasHeight, scaleType) {
-    if (scaleType === 'logarithmic') {
-        const minFreq = 0.1;
-        const freqSafe = Math.max(frequency, minFreq);
-        const logMin = Math.log10(minFreq);
-        const logMax = Math.log10(maxFreq);
-        const logFreq = Math.log10(freqSafe);
-        const normalizedLog = (logFreq - logMin) / (logMax - logMin);
-        return canvasHeight - (normalizedLog * canvasHeight);
-    } else if (scaleType === 'sqrt') {
-        const normalized = frequency / maxFreq;
-        const sqrtNormalized = Math.sqrt(normalized);
-        return canvasHeight - (sqrtNormalized * canvasHeight);
-    } else {
-        const normalized = frequency / maxFreq;
-        return canvasHeight - (normalized * canvasHeight);
-    }
-}
 
 /**
  * Add a feature box (called when selection completes)
@@ -82,21 +62,36 @@ export function removeFeatureBox(regionIndex, featureIndex) {
  */
 export function updateAllFeatureBoxPositions() {
     // console.log(`🔄 Updating ${featureBoxes.size} feature box positions`);
-    
+
     if (!State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) {
         return;
     }
-    
+
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
-    
+
     const container = canvas.closest('.panel');
     if (!container) return;
-    
+
     const canvasRect = canvas.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
+
+    // DEBUG: Log canvas dimensions once
+    if (Math.random() < 0.01) {
+        console.log('📐 Canvas dimensions:', {
+            device_width: canvas.width,
+            device_height: canvas.height,
+            css_width: canvas.offsetWidth,
+            css_height: canvas.offsetHeight,
+            scaleX: (canvas.width / canvas.offsetWidth).toFixed(3),
+            scaleY: (canvas.height / canvas.offsetHeight).toFixed(3),
+            canvasTop: canvasRect.top,
+            containerTop: containerRect.top,
+            offset: (canvasRect.top - containerRect.top).toFixed(1)
+        });
+    }
     
     const regions = getCurrentRegions();
     
@@ -115,54 +110,53 @@ export function updateAllFeatureBoxPositions() {
                 box.style.display = 'none';
                 return;
             }
-            
-            console.log(`🔄 ========== Repositioning Feature ${key} ==========`);
-            console.log('📦 Stored eternal coordinates:', {
-                lowFreq: feature.lowFreq,
-                highFreq: feature.highFreq,
-                startTime: feature.startTime,
-                endTime: feature.endTime
-            });
-            
+
+            // Removed console.log spam for performance
+
             // Convert eternal coordinates to current pixel positions
             const lowFreq = parseFloat(feature.lowFreq);
             const highFreq = parseFloat(feature.highFreq);
-            
-            // CSS pixels for Y (frequency)
-            const lowFreqY = getYFromFrequency(lowFreq, MAX_FREQUENCY, canvas.offsetHeight, State.frequencyScale);
-            const highFreqY = getYFromFrequency(highFreq, MAX_FREQUENCY, canvas.offsetHeight, State.frequencyScale);
-            
-            console.log('📍 Y positions (frequency → pixels):', {
-                lowFreq,
-                highFreq,
-                lowFreqY: lowFreqY.toFixed(1),
-                highFreqY: highFreqY.toFixed(1),
-                frequencyScale: State.frequencyScale,
-                canvasHeight: canvas.offsetHeight
+
+            // Get original sample rate (same as axis renderer)
+            const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+            const originalNyquist = originalSampleRate / 2; // 50 Hz for 100 Hz sample rate
+
+            // Get current playback rate (CRITICAL for scientific glue!)
+            const playbackRate = State.currentPlaybackRate || 1.0;
+
+            // DEVICE pixels for Y (frequency) - USE THE EXACT SAME FUNCTION AS AXIS TICKS!
+            // This is THE TRUTH - same function, same parameters, same result as Y-axis ticks!
+            const lowFreqY_device = getYPositionForFrequencyScaled(lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+            const highFreqY_device = getYPositionForFrequencyScaled(highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+
+            // Convert device pixels to CSS pixels for DOM positioning
+            const scaleY = canvas.offsetHeight / canvas.height;
+            const lowFreqY = lowFreqY_device * scaleY;
+            const highFreqY = highFreqY_device * scaleY;
+
+            // DEBUG: Always log to trace playback speed changes
+            console.log(`📦 Box ${key} Y-calc:`, {
+                lowFreq: lowFreq.toFixed(2),
+                highFreq: highFreq.toFixed(2),
+                originalNyquist,
+                playbackRate: playbackRate.toFixed(3),
+                scale: State.frequencyScale,
+                canvas_height: canvas.height,
+                lowFreqY_device: lowFreqY_device.toFixed(1),
+                highFreqY_device: highFreqY_device.toFixed(1),
+                box_will_be_at: `top=${(canvasRect.top - containerRect.top + (Math.min(highFreqY, lowFreqY))).toFixed(1)}px`
             });
             
-            // CSS pixels for X (time) - zoom-aware!
+            // CSS pixels for X (time) - USE ELASTIC INTERPOLATION! 🏄‍♂️
             const startTimestamp = new Date(feature.startTime);
             const endTimestamp = new Date(feature.endTime);
-            
-            console.log('📅 Timestamps:', {
-                startTimestamp: startTimestamp.toISOString(),
-                endTimestamp: endTimestamp.toISOString()
-            });
-            
+
             let startX, endX;
-            // Use actual current view boundaries, not interpolated transitioning view
-            let displayStartMs, displayEndMs;
-            if (zoomState.isInRegion()) {
-                // Inside region - use region boundaries
-                const regionRange = zoomState.getRegionRange();
-                displayStartMs = zoomState.sampleToRealTimestamp(regionRange.startSample).getTime();
-                displayEndMs = zoomState.sampleToRealTimestamp(regionRange.endSample).getTime();
-            } else {
-                // Full view - use data boundaries
-                displayStartMs = State.dataStartTime.getTime();
-                displayEndMs = State.dataEndTime.getTime();
-            }
+            // 🎯 Use EXACT same interpolated time range as spectrogram elastic stretching!
+            // This is THE TRUTH for X positioning during zoom transitions!
+            const interpolatedRange = getInterpolatedTimeRange();
+            const displayStartMs = interpolatedRange.startTime.getTime();
+            const displayEndMs = interpolatedRange.endTime.getTime();
             const displaySpanMs = displayEndMs - displayStartMs;
             
             const startMs = startTimestamp.getTime();
@@ -173,51 +167,60 @@ export function updateAllFeatureBoxPositions() {
             
             startX = startProgress * canvas.offsetWidth;
             endX = endProgress * canvas.offsetWidth;
-            
-            console.log('📍 X positions (time → pixels):', {
-                displayStartMs: new Date(displayStartMs).toISOString(),
-                displayEndMs: new Date(displayEndMs).toISOString(),
-                startMs: new Date(startMs).toISOString(),
-                endMs: new Date(endMs).toISOString(),
-                startProgress: startProgress.toFixed(4),
-                endProgress: endProgress.toFixed(4),
-                startX: startX.toFixed(1),
-                endX: endX.toFixed(1),
-                canvasWidth: canvas.offsetWidth
-            });
-            
-            console.log('🎯 Box DOM positioning:', {
-                startX: startX.toFixed(1),
-                endX: endX.toFixed(1),
-                canvasOffsetWidth: canvas.offsetWidth,
-                canvasOffsetHeight: canvas.offsetHeight,
-                canvasDeviceWidth: canvas.width,
-                canvasDeviceHeight: canvas.height,
-                containerWidth: container.offsetWidth
-            });
-            
-            console.log('🎯 ========== END Repositioning ==========\n');
-            
-            // Check if visible
+
+            // Check if completely off-screen horizontally (hide)
             if (endX < 0 || startX > canvas.offsetWidth) {
                 box.style.display = 'none';
                 return;
             }
-            
+
+            // Check if completely off-screen vertically (hide)
+            // Note: Y coordinates are inverted (0 = top, height = bottom)
+            const topY = Math.min(highFreqY, lowFreqY);
+            const bottomY = Math.max(highFreqY, lowFreqY);
+            if (bottomY < 0 || topY > canvas.offsetHeight) {
+                box.style.display = 'none';
+                return;
+            }
+
+            // Clip to visible viewport (don't draw off-screen)
+            const clippedStartX = Math.max(0, startX);
+            const clippedEndX = Math.min(canvas.offsetWidth, endX);
+            const clippedTopY = Math.max(0, topY);
+            const clippedBottomY = Math.min(canvas.offsetHeight, bottomY);
+
+            // Check if box still has dimensions after clipping
+            if (clippedEndX <= clippedStartX || clippedBottomY <= clippedTopY) {
+                box.style.display = 'none';
+                return;
+            }
+
             // Update DOM position (relative to container)
             box.style.display = 'block';
-            box.style.left = (canvasRect.left - containerRect.left + startX) + 'px';
-            box.style.top = (canvasRect.top - containerRect.top + highFreqY) + 'px';
-            box.style.width = (endX - startX) + 'px';
-            box.style.height = Math.abs(highFreqY - lowFreqY) + 'px';
-            
-            console.log('📦 Box FINAL position:', {
-                display: box.style.display,
-                left: box.style.left,
-                top: box.style.top,
-                width: box.style.width,
-                height: box.style.height
-            });
+
+            // NO TRANSITION - instant updates every frame, like the axis ticks!
+            box.style.transition = 'none';
+
+            box.style.left = (canvasRect.left - containerRect.left + clippedStartX) + 'px';
+            box.style.top = (canvasRect.top - containerRect.top + clippedTopY) + 'px';
+            box.style.width = (clippedEndX - clippedStartX) + 'px';
+            box.style.height = (clippedBottomY - clippedTopY) + 'px';
+
+            // Smart border: hide edges that extend beyond viewport (makes box appear to extend off-screen)
+            const borderParts = [];
+            if (clippedTopY > topY) borderParts.push('0'); // Top was clipped - hide border (appears to extend)
+            else borderParts.push('2px solid rgba(255, 140, 0, 0.8)'); // Top fully visible - show border
+
+            if (clippedEndX < endX) borderParts.push('0'); // Right was clipped - hide border
+            else borderParts.push('2px solid rgba(255, 140, 0, 0.8)'); // Right fully visible - show border
+
+            if (clippedBottomY < bottomY) borderParts.push('0'); // Bottom was clipped - hide border
+            else borderParts.push('2px solid rgba(255, 140, 0, 0.8)'); // Bottom fully visible - show border
+
+            if (clippedStartX > startX) borderParts.push('0'); // Left was clipped - hide border
+            else borderParts.push('2px solid rgba(255, 140, 0, 0.8)'); // Left fully visible - show border
+
+            box.style.borderWidth = borderParts.join(' '); // top right bottom left
         });
     });
 }

@@ -1188,13 +1188,23 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         canvasHeight
     });
     
-    // Convert Y positions to frequencies
-    const lowFreq = getFrequencyFromY(Math.max(startY, endY), maxFrequency, canvasHeight, State.frequencyScale);
-    const highFreq = getFrequencyFromY(Math.min(startY, endY), maxFrequency, canvasHeight, State.frequencyScale);
-    
+    // Convert Y positions to frequencies (with playbackRate for accurate conversion!)
+    const playbackRate = State.currentPlaybackRate || 1.0;
+
+    // Get ACTUAL Nyquist from metadata (NOT hardcoded 50!)
+    const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+    const originalNyquist = originalSampleRate / 2;
+
+    const lowFreq = getFrequencyFromY(Math.max(startY, endY), originalNyquist, canvasHeight, State.frequencyScale, playbackRate);
+    const highFreq = getFrequencyFromY(Math.min(startY, endY), originalNyquist, canvasHeight, State.frequencyScale, playbackRate);
+
     console.log('🎵 Converted to frequencies (Hz):', {
+        startY_device: Math.min(startY, endY).toFixed(1),
+        endY_device: Math.max(startY, endY).toFixed(1),
+        canvasHeight_device: canvasHeight,
         lowFreq: lowFreq.toFixed(2),
         highFreq: highFreq.toFixed(2),
+        playbackRate: playbackRate.toFixed(2),
         frequencyScale: State.frequencyScale
     });
     
@@ -1335,21 +1345,57 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
 
 /**
  * Convert Y position to frequency based on scale type
+ * 🔗 INVERSE of getYPositionForFrequencyScaled() from axis renderer
+ * This MUST produce frequencies in the ORIGINAL scale (not stretched by playback)
  */
-function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType) {
-    const normalizedY = (canvasHeight - y) / canvasHeight;
-    
+function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1.0) {
     if (scaleType === 'logarithmic') {
+        // 🦋 LOGARITHMIC: The axis does NOT scale input freq by playbackRate!
+        // It calculates position at 1x, then stretches the POSITION
+        // So inverse: unstretched position → original frequency (no playback division!)
         const minFreq = 0.1;
         const logMin = Math.log10(minFreq);
-        const logMax = Math.log10(maxFreq);
-        const logFreq = logMin + (normalizedY * (logMax - logMin));
-        return Math.pow(10, logFreq);
-    } else if (scaleType === 'sqrt') {
-        const normalized = normalizedY * normalizedY;
-        return normalized * maxFreq;
+        const logMax = Math.log10(maxFreq); // FIXED: use original Nyquist
+
+        // Calculate stretch factor
+        const effectiveNyquist = maxFreq * playbackRate;
+        const logMax_1x = Math.log10(maxFreq);
+        const logMax_scaled = Math.log10(effectiveNyquist);
+        const stretchFactor = logMax_scaled / logMax_1x;
+
+        // Reverse: heightFromBottom_scaled → heightFromBottom_1x
+        const heightFromBottom_scaled = canvasHeight - y;
+        const heightFromBottom_1x = heightFromBottom_scaled / stretchFactor;
+
+        // Convert heightFromBottom_1x back to frequency (in ORIGINAL scale, no playback!)
+        const normalizedLog = heightFromBottom_1x / canvasHeight;
+        const logFreq = logMin + (normalizedLog * (logMax - logMin));
+        const freq = Math.pow(10, logFreq);
+
+        // CLAMP to valid range [minFreq, maxFreq]
+        return Math.max(minFreq, Math.min(maxFreq, freq));
     } else {
-        return normalizedY * maxFreq;
+        // Linear and sqrt: These ARE homogeneous - freq gets scaled by playbackRate
+        // Forward: effectiveFreq = freq * playbackRate, then normalize
+        // Inverse: normalize → effectiveFreq, then divide by playbackRate
+        const normalizedY = (canvasHeight - y) / canvasHeight;
+
+        if (scaleType === 'sqrt') {
+            // Reverse sqrt
+            const normalized = normalizedY * normalizedY;
+            const effectiveFreq = normalized * maxFreq;
+            const freq = effectiveFreq / playbackRate;
+
+            // CLAMP to valid range
+            return Math.max(0.1, Math.min(maxFreq, freq));
+        } else {
+            // Linear
+            const effectiveFreq = normalizedY * maxFreq;
+            const freq = effectiveFreq / playbackRate;
+
+            // CLAMP to valid range
+            return Math.max(0, Math.min(maxFreq, freq));
+        }
     }
 }
 

@@ -297,7 +297,7 @@ function calculateStretchFactorForLog(playbackRate, originalNyquist) {
  * 
  * This is because log scale is NOT homogeneous - stretching the position ≠ scaling the input
  */
-function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeight, scaleType, playbackRate) {
+export function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeight, scaleType, playbackRate) {
     if (scaleType === 'logarithmic') {
         // 🦋 LOGARITHMIC: Calculate position at 1x (no playback scaling in log space!)
         // Use FIXED denominator (logMax = log10(originalNyquist)) to match spectrogram rendering

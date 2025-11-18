@@ -288,7 +288,7 @@ export function updatePlaybackSpeed() {
     
     // Update spectrogram axis to reflect new playback speed
     updateAxisForPlaybackSpeed();
-    
+
     // Update spectrogram viewport (works for both full and temple - GPU stretching!)
     // Import dynamically to avoid circular dependency
     import('./spectrogram-complete-renderer.js').then(module => {
@@ -297,6 +297,15 @@ export function updatePlaybackSpeed() {
         }
     }).catch(() => {
         // Module not loaded yet, that's okay - will be called after rendering completes
+    });
+
+    // Update feature box positions for new playback speed (horizontal stretching)
+    import('./spectrogram-feature-boxes.js').then(module => {
+        if (module.updateAllFeatureBoxPositions) {
+            module.updateAllFeatureBoxPositions();
+        }
+    }).catch(() => {
+        // Module not loaded yet, that's okay
     });
 }
 

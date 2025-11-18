@@ -7,6 +7,7 @@ import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
 import { drawInterpolatedWaveform, drawWaveformWithSelection } from './waveform-renderer.js';
 import { drawInterpolatedSpectrogram } from './spectrogram-complete-renderer.js';
+import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 
 // Debug flag for axis drawing logs (set to true to enable detailed logging)
 const DEBUG_AXIS = false;
@@ -266,9 +267,12 @@ export function drawWaveformXAxis() {
 
                     // 🏛️ Trigger interpolated waveform draw so everything zooms together
                     drawInterpolatedWaveform();
-                    
+
                     // 🏄‍♂️ Stretch spectrogram to match interpolated time range - everything moves together!
                     drawInterpolatedSpectrogram();
+
+                    // 📦 Update feature boxes to move smoothly with the zoom transition!
+                    updateAllFeatureBoxPositions();
                 });
             }
         } else {

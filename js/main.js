@@ -1243,6 +1243,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.47 - Feature Box Positioning and Synchronization');
+        console.log('🎯 [0ms] v2.47 Refactor: Feature box positioning and synchronization - achieved perfect harmony between DOM and canvas');
         console.log('🌋 [0ms] volcano-audio v2.46 - Spectrogram Feature Selection Bug Fix');
         console.log('🐛 [0ms] v2.46 Fix: Spectrogram feature selection bug - changed mouseup listener from document to canvas to prevent ghost clicks when browser loses focus');
         console.log('🌋 [0ms] volcano-audio v2.45 - Study Mode Region Creation Fix');
@@ -1720,7 +1722,16 @@ window.addEventListener('DOMContentLoaded', async () => {
                     lastWaveformHeight = currentHeight;
                 }
             }
-            
+
+            // Update feature box positions after resize (boxes need to reposition for new canvas dimensions)
+            import('./spectrogram-feature-boxes.js').then(module => {
+                if (module.updateAllFeatureBoxPositions) {
+                    module.updateAllFeatureBoxPositions();
+                }
+            }).catch(() => {
+                // Module not loaded yet, that's okay
+            });
+
             resizeRAF = null;
         });
     });

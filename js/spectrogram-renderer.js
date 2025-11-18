@@ -163,20 +163,23 @@ export function loadFrequencyScale() {
 export async function changeFrequencyScale() {
     const select = document.getElementById('frequencyScale');
     const value = select.value; // 'linear', 'sqrt', or 'logarithmic'
-    
+
     // If already on this scale, don't process again
     if (State.frequencyScale === value) {
         console.log(`📊 Already on ${value} scale - skipping change`);
         return;
     }
-    
+
     // Save to localStorage for persistence
     localStorage.setItem('frequencyScale', value);
-    
+
     // Store old scale for animation
     const oldScale = State.frequencyScale;
-    
+
     State.setFrequencyScale(value);
+
+    // Import feature box updater once at the top
+    const { updateAllFeatureBoxPositions } = await import('./spectrogram-feature-boxes.js');
     
     // 🎓 Tutorial: Resolve promise if waiting for frequency scale change
     if (State.waitingForFrequencyScaleChange && State._frequencyScaleChangeResolve) {
@@ -328,14 +331,17 @@ export async function changeFrequencyScale() {
                     } else {
                         // Fade complete - lock in new spectrogram
                         spectrogramModule.updateSpectrogramViewport(playbackRate);
-                        
+
+                        // Update feature box positions for new frequency scale
+                        updateAllFeatureBoxPositions();
+
                         // Resume playhead
                         if (playbackWasActive) {
                             import('./waveform-renderer.js').then(module => {
                                 module.startPlaybackIndicator();
                             });
                         }
-                        
+
                         console.log('✅ Region scale transition complete (with fade)');
                     }
                 };
@@ -433,14 +439,17 @@ export async function changeFrequencyScale() {
                     // 🔥 FADE COMPLETE - LOCK IN THE NEW SPECTROGRAM!
                     // This updates cachedSpectrogramCanvas with the new frequency scale
                     updateSpectrogramViewport(playbackRate);
-                    
+
+                    // Update feature box positions for new frequency scale
+                    updateAllFeatureBoxPositions();
+
                     // 🔥 RESUME playhead updates!
                     if (playbackWasActive) {
                         import('./waveform-renderer.js').then(module => {
                             module.startPlaybackIndicator();
                         });
                     }
-                    
+
                     console.log('✅ Scale transition complete, cache updated, playhead resumed');
                 }
             };
@@ -450,6 +459,9 @@ export async function changeFrequencyScale() {
             // Fallback: just re-render without fade
             clearCompleteSpectrogram();
             await renderCompleteSpectrogram();
+
+            // Update feature box positions for new frequency scale
+            updateAllFeatureBoxPositions();
         }
     } else {
         console.log('⚠️ No animation - no rendered spectrogram');
@@ -457,6 +469,9 @@ export async function changeFrequencyScale() {
         positionAxisCanvas();
         initializeAxisPlaybackRate();
         drawFrequencyAxis();
+
+        // Update feature box positions for new frequency scale (even if no spectrogram yet)
+        updateAllFeatureBoxPositions();
     }
 }
 
@@ -503,20 +518,39 @@ export function setupSpectrogramSelection() {
         if (!isInFrequencySelectionMode()) {
             return;
         }
-        
-        // 🔥 FIX: If we already have an active selection, cancel it completely
-        // This prevents multiple boxes from being created when user clicks again while dragging
+
+        // 🔥 FIX: ALWAYS force-reset state before starting new selection
+        // Don't cancel and return - just clean up silently and start fresh
         if (spectrogramSelectionActive || spectrogramSelectionBox) {
-            cancelSpectrogramSelection();
-            return; // ← STOP HERE! Don't start a new selection in the same click
+            console.log('🧹 Cleaning up stale selection state before starting new one');
+
+            // Clear any existing timeout
+            if (spectrogramSelectionTimeout) {
+                clearTimeout(spectrogramSelectionTimeout);
+                spectrogramSelectionTimeout = null;
+            }
+
+            // Delete any orphaned box
+            if (spectrogramSelectionBox) {
+                spectrogramSelectionBox.remove();
+                spectrogramSelectionBox = null;
+            }
+
+            // Reset all state
+            spectrogramSelectionActive = false;
+            spectrogramStartX = null;
+            spectrogramStartY = null;
+            spectrogramEndY = null;
+
+            // DON'T return - continue to start new selection below!
         }
-        
+
         const canvasRect = canvas.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
         spectrogramStartX = e.clientX - canvasRect.left;
         spectrogramStartY = e.clientY - canvasRect.top;
         spectrogramSelectionActive = true;
-        
+
         // 🔥 FIX: Safety timeout - if mouseup never fires, auto-cancel after 5 seconds
         // This prevents stuck state when browser loses focus mid-drag
         if (spectrogramSelectionTimeout) {
@@ -528,7 +562,7 @@ export function setupSpectrogramSelection() {
                 cancelSpectrogramSelection();
             }
         }, 5000); // 5 second safety timeout
-        
+
         // 🔥 FIX: Don't create the box immediately - wait for drag to start
         // This prevents boxes from being created on every click when mouseup never fired
     });
@@ -588,13 +622,8 @@ export function setupSpectrogramSelection() {
         spectrogramSelectionBox.style.height = height + 'px';
     });
     
-    // 🔥 FIX: Add mouseleave handler to cancel selection if mouse leaves canvas
-    // This prevents stale selections when browser loses focus or mouse leaves
-    canvas.addEventListener('mouseleave', (e) => {
-        if (spectrogramSelectionActive) {
-            cancelSpectrogramSelection();
-        }
-    });
+    // 🔥 REMOVED: mouseleave handler - waveform doesn't have one and works fine!
+    // Just let the mousedown handler clean up stale state when user clicks again
     
     // 🔥 FIX: Store handler reference so it can be removed
     spectrogramMouseUpHandler = async (e) => {
@@ -609,15 +638,22 @@ export function setupSpectrogramSelection() {
         }
         
         const rect = canvas.getBoundingClientRect();
-        const endY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-        const endX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        
-        // Use CSS dimensions, not device dimensions!
+        const endY_css = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+        const endX_css = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+
+        // Convert CSS pixels to DEVICE pixels (same coordinate system as axis!)
+        const scaleX = canvas.width / canvas.offsetWidth;
+        const scaleY = canvas.height / canvas.offsetHeight;
+        const startY_device = spectrogramStartY * scaleY;
+        const endY_device = endY_css * scaleY;
+        const startX_device = spectrogramStartX * scaleX;
+        const endX_device = endX_css * scaleX;
+
         await handleSpectrogramSelection(
-            spectrogramStartY, endY, 
-            canvas.offsetHeight,  // ← CSS PIXELS!
-            spectrogramStartX, endX, 
-            canvas.offsetWidth    // ← CSS PIXELS!
+            startY_device, endY_device,
+            canvas.height,  // ← DEVICE PIXELS (like axis)!
+            startX_device, endX_device,
+            canvas.width    // ← DEVICE PIXELS!
         );
         
         // 🔥 FIX: Clear safety timeout since mouseup fired successfully
@@ -651,32 +687,11 @@ export function setupSpectrogramSelection() {
     };
     
     document.addEventListener('keydown', spectrogramKeyDownHandler);
-    
-    // 🔥 FIX: Add focus/blur handlers to reset state when browser loses focus
-    // This prevents state confusion when user switches away and comes back
-    spectrogramFocusBlurHandler = () => {
-        const hasFocus = document.hasFocus();
-        const isVisible = document.visibilityState === 'visible';
-        
-        // 🔥 FIX: Force cleanup when browser loses focus
-        // This prevents stuck state when mouseup events are lost
-        if (!hasFocus || !isVisible) {
-            if (spectrogramSelectionActive || spectrogramSelectionBox) {
-                cancelSpectrogramSelection();
-            }
-        } else {
-            // Browser regained focus - validate state
-            // If we have an active selection box without being in selection mode, that's a bug
-            if (spectrogramSelectionBox && !isInFrequencySelectionMode()) {
-                cancelSpectrogramSelection();
-            }
-        }
-    };
-    
-    // Listen to both focus/blur and visibility change events
-    window.addEventListener('focus', spectrogramFocusBlurHandler);
-    window.addEventListener('blur', spectrogramFocusBlurHandler);
-    document.addEventListener('visibilitychange', spectrogramFocusBlurHandler);
+
+    // 🔥 REMOVED: All blur/focus handlers - waveform doesn't have them and works perfectly!
+    // The mousedown handler now cleans up stale state automatically when user clicks
+    // The 5-second safety timeout still prevents infinite stuck states
+    // User can press Escape to manually cancel if needed
     
     spectrogramSelectionSetup = true;
     if (!isStudyMode()) {
@@ -722,12 +737,7 @@ export function cleanupSpectrogramSelection() {
         document.removeEventListener('keydown', spectrogramKeyDownHandler);
         spectrogramKeyDownHandler = null;
     }
-    if (spectrogramFocusBlurHandler) {
-        window.removeEventListener('focus', spectrogramFocusBlurHandler);
-        window.removeEventListener('blur', spectrogramFocusBlurHandler);
-        document.removeEventListener('visibilitychange', spectrogramFocusBlurHandler);
-        spectrogramFocusBlurHandler = null;
-    }
+    // 🔥 REMOVED: No blur/focus handlers to clean up anymore!
     spectrogramSelectionSetup = false;
 }
 

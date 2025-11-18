@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Drawing Persistence Test - 3x3 Battle Royale</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #0f0;
+            padding: 20px;
+            margin: 0;
+        }
+
+        h1 {
+            text-align: center;
+            color: #ff6600;
+            text-shadow: 0 0 10px #ff6600;
+        }
+
+        .instructions {
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .instructions h3 {
+            margin-top: 0;
+            color: #ff6600;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .canvas-wrapper {
+            border: 3px solid #333;
+            border-radius: 5px;
+            padding: 10px;
+            background: #0a0a0a;
+            transition: border-color 0.3s;
+        }
+
+        .canvas-wrapper:hover {
+            border-color: #ff6600;
+        }
+
+        .canvas-wrapper.active {
+            border-color: #0f0;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+
+        .method-label {
+            text-align: center;
+            font-weight: bold;
+            color: #ff6600;
+            margin-bottom: 10px;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+
+        canvas {
+            display: block;
+            width: 300px;
+            height: 200px;
+            border: 1px solid #444;
+            background: #fff;
+            cursor: crosshair;
+            border-radius: 3px;
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 5px;
+            font-size: 12px;
+            color: #0f0;
+            min-height: 20px;
+        }
+
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        button {
+            background: #ff6600;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 0 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            background: #ff9933;
+            box-shadow: 0 0 10px #ff6600;
+        }
+
+        .results {
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .winner {
+            color: #ff6600;
+            font-weight: bold;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔥 CANVAS PERSISTENCE BATTLE ROYALE 🔥</h1>
+
+    <div class="instructions">
+        <h3>💀 TEST PROTOCOL 💀</h3>
+        <ol>
+            <li><strong>DRAW SHAPES:</strong> Click and drag orange squares on each canvas</li>
+            <li><strong>LOSE FOCUS:</strong> Switch to another window/tab</li>
+            <li><strong>RETURN:</strong> Come back and see which canvases survived</li>
+            <li><strong>VERDICT:</strong> The survivors get the crown 👑</li>
+        </ol>
+        <p><strong>⚠️ CRITICAL:</strong> Draw on ALL 9 canvases, then switch windows to test focus loss!</p>
+    </div>
+
+    <div class="controls">
+        <button onclick="clearAll()">CLEAR ALL</button>
+        <button onclick="testFocusLoss()">SIMULATE FOCUS LOSS</button>
+        <button onclick="showResults()">SHOW SURVIVORS</button>
+    </div>
+
+    <div class="grid-container" id="grid">
+        <!-- Canvases will be generated here -->
+    </div>
+
+    <div class="results" id="results" style="display: none;">
+        <h3>🏆 BATTLE RESULTS 🏆</h3>
+        <div id="resultsContent"></div>
+    </div>
+
+    <script>
+        // Helper function to get canvas coordinates
+        function getCanvasCoords(e, canvas) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        const methods = [
+            {
+                name: "Method 1: Direct Draw",
+                description: "Direct ctx draw, no backing store",
+                init: function(ctx, canvas) {
+                    this.ctx = ctx;
+                    this.drawing = false;
+                },
+                mousedown: function(e, canvas) {
+                    this.drawing = true;
+                },
+                mousemove: function(e, canvas) {
+                    if (!this.drawing) return;
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.ctx.fillStyle = '#FFA500';
+                    this.ctx.fillRect(x - 5, y - 5, 10, 10);
+                },
+                mouseup: function(e) {
+                    this.drawing = false;
+                }
+            },
+            {
+                name: "Method 2: Array Store",
+                description: "Store shapes in array, redraw on blur/focus",
+                init: function(ctx, canvas) {
+                    this.ctx = ctx;
+                    this.shapes = [];
+                    this.drawing = false;
+
+                    window.addEventListener('blur', () => this.redraw());
+                    window.addEventListener('focus', () => this.redraw());
+                },
+                mousedown: function(e, canvas) {
+                    this.drawing = true;
+                },
+                mousemove: function(e, canvas) {
+                    if (!this.drawing) return;
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.shapes.push({x, y});
+                    this.redraw();
+                },
+                mouseup: function(e) {
+                    this.drawing = false;
+                },
+                redraw: function() {
+                    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+                    this.ctx.fillStyle = '#FFA500';
+                    this.shapes.forEach(shape => {
+                        this.ctx.fillRect(shape.x - 5, shape.y - 5, 10, 10);
+                    });
+                }
+            },
+            {
+                name: "Method 3: ImageData Store",
+                description: "Store ImageData, restore on events",
+                init: function(ctx, canvas) {
+                    this.ctx = ctx;
+                    this.canvas = canvas;
+                    this.imageData = null;
+                    this.drawing = false;
+
+                    window.addEventListener('blur', () => this.saveAndRestore());
+                    window.addEventListener('focus', () => this.saveAndRestore());
+                },
+                mousedown: function(e, canvas) {
+                    this.drawing = true;
+                },
+                mousemove: function(e, canvas) {
+                    if (!this.drawing) return;
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.ctx.fillStyle = '#FFA500';
+                    this.ctx.fillRect(x - 5, y - 5, 10, 10);
+                    this.saveImageData();
+                },
+                mouseup: function(e) {
+                    this.drawing = false;
+                    this.saveImageData();
+                },
+                saveImageData: function() {
+                    this.imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                },
+                saveAndRestore: function() {
+                    if (this.imageData) {
+                        this.ctx.putImageData(this.imageData, 0, 0);
+                    }
+                }
+            },
+            {
+                name: "Method 4: Offscreen Canvas",
+                description: "Draw to offscreen, copy to main",
+                init: function(ctx, canvas) {
+                    this.ctx = ctx;
+                    this.canvas = canvas;
+                    this.offscreen = document.createElement('canvas');
+                    this.offscreen.width = canvas.width;
+                    this.offscreen.height = canvas.height;
+                    this.offscreenCtx = this.offscreen.getContext('2d');
+                    this.drawing = false;
+
+                    window.addEventListener('blur', () => this.sync());
+                    window.addEventListener('focus', () => this.sync());
+                },
+                mousedown: function(e, canvas) {
+                    this.drawing = true;
+                },
+                mousemove: function(e, canvas) {
+                    if (!this.drawing) return;
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.offscreenCtx.fillStyle = '#FFA500';
+                    this.offscreenCtx.fillRect(x - 5, y - 5, 10, 10);
+                    this.sync();
+                },
+                mouseup: function(e) {
+                    this.drawing = false;
+                },
+                sync: function() {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.drawImage(this.offscreen, 0, 0);
+                }
+            },
+            {
+                name: "Method 5: Path Store",
+                description: "Store Path2D objects, replay",
+                init: function(ctx, canvas) {
+                    this.ctx = ctx;
+                    this.paths = [];
+                    this.currentPath = null;
+                    this.drawing = false;
+
+                    window.addEventListener('blur', () => this.redraw());
+                    window.addEventListener('focus', () => this.redraw());
+                },
+                mousedown: function(e, canvas) {
+                    this.drawing = true;
+                    this.currentPath = new Path2D();
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.currentPath.rect(x - 5, y - 5, 10, 10);
+                },
+                mousemove: function(e, canvas) {
+                    if (!this.drawing) return;
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.currentPath.rect(x - 5, y - 5, 10, 10);
+                    this.redraw();
+                },
+                mouseup: function(e) {
+                    this.drawing = false;
+                    if (this.currentPath) {
+                        this.paths.push(this.currentPath);
+                        this.currentPath = null;
+                    }
+                },
+                redraw: function() {
+                    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+                    this.ctx.fillStyle = '#FFA500';
+                    this.paths.forEach(path => this.ctx.fill(path));
+                    if (this.currentPath) {
+                        this.ctx.fill(this.currentPath);
+                    }
+                }
+            },
+            {
+                name: "Method 6: RAF Loop",
+                description: "RequestAnimationFrame continuous redraw",
+                init: function(ctx, canvas) {
+                    this.ctx = ctx;
+                    this.shapes = [];
+                    this.drawing = false;
+                    this.startLoop();
+                },
+                mousedown: function(e, canvas) {
+                    this.drawing = true;
+                },
+                mousemove: function(e, canvas) {
+                    if (!this.drawing) return;
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.shapes.push({x, y});
+                },
+                mouseup: function(e) {
+                    this.drawing = false;
+                },
+                startLoop: function() {
+                    const loop = () => {
+                        this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+                        this.ctx.fillStyle = '#FFA500';
+                        this.shapes.forEach(shape => {
+                            this.ctx.fillRect(shape.x - 5, shape.y - 5, 10, 10);
+                        });
+                        requestAnimationFrame(loop);
+                    };
+                    loop();
+                }
+            },
+            {
+                name: "Method 7: Visibility API",
+                description: "Use visibilitychange event",
+                init: function(ctx, canvas) {
+                    this.ctx = ctx;
+                    this.shapes = [];
+                    this.drawing = false;
+
+                    document.addEventListener('visibilitychange', () => {
+                        if (!document.hidden) {
+                            this.redraw();
+                        }
+                    });
+                },
+                mousedown: function(e, canvas) {
+                    this.drawing = true;
+                },
+                mousemove: function(e, canvas) {
+                    if (!this.drawing) return;
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.shapes.push({x, y});
+                    this.redraw();
+                },
+                mouseup: function(e) {
+                    this.drawing = false;
+                },
+                redraw: function() {
+                    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+                    this.ctx.fillStyle = '#FFA500';
+                    this.shapes.forEach(shape => {
+                        this.ctx.fillRect(shape.x - 5, shape.y - 5, 10, 10);
+                    });
+                }
+            },
+            {
+                name: "Method 8: Canvas 2D State Save",
+                description: "Use save/restore with backing store",
+                init: function(ctx, canvas) {
+                    this.ctx = ctx;
+                    this.canvas = canvas;
+                    this.shapes = [];
+                    this.drawing = false;
+
+                    window.addEventListener('blur', () => this.preserve());
+                    window.addEventListener('focus', () => this.restore());
+                },
+                mousedown: function(e, canvas) {
+                    this.drawing = true;
+                },
+                mousemove: function(e, canvas) {
+                    if (!this.drawing) return;
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.shapes.push({x, y});
+                    this.ctx.fillStyle = '#FFA500';
+                    this.ctx.fillRect(x - 5, y - 5, 10, 10);
+                },
+                mouseup: function(e) {
+                    this.drawing = false;
+                },
+                preserve: function() {
+                    this.imageSnapshot = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                },
+                restore: function() {
+                    if (this.imageSnapshot) {
+                        this.ctx.putImageData(this.imageSnapshot, 0, 0);
+                    }
+                }
+            },
+            {
+                name: "Method 9: Composite Beast",
+                description: "Array + ImageData + RAF combo",
+                init: function(ctx, canvas) {
+                    this.ctx = ctx;
+                    this.canvas = canvas;
+                    this.shapes = [];
+                    this.drawing = false;
+
+                    // Triple protection
+                    window.addEventListener('blur', () => this.fullRestore());
+                    window.addEventListener('focus', () => this.fullRestore());
+                    document.addEventListener('visibilitychange', () => {
+                        if (!document.hidden) this.fullRestore();
+                    });
+
+                    this.startLoop();
+                },
+                mousedown: function(e, canvas) {
+                    this.drawing = true;
+                },
+                mousemove: function(e, canvas) {
+                    if (!this.drawing) return;
+                    const {x, y} = getCanvasCoords(e, canvas);
+                    this.shapes.push({x, y});
+                },
+                mouseup: function(e) {
+                    this.drawing = false;
+                    this.saveSnapshot();
+                },
+                startLoop: function() {
+                    const loop = () => {
+                        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                        this.ctx.fillStyle = '#FFA500';
+                        this.shapes.forEach(shape => {
+                            this.ctx.fillRect(shape.x - 5, shape.y - 5, 10, 10);
+                        });
+                        requestAnimationFrame(loop);
+                    };
+                    loop();
+                },
+                saveSnapshot: function() {
+                    this.snapshot = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                },
+                fullRestore: function() {
+                    if (this.snapshot) {
+                        this.ctx.putImageData(this.snapshot, 0, 0);
+                    }
+                }
+            }
+        ];
+
+        const instances = [];
+
+        // Initialize grid
+        function initGrid() {
+            const grid = document.getElementById('grid');
+
+            methods.forEach((method, index) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'canvas-wrapper';
+                wrapper.id = `wrapper-${index}`;
+
+                const label = document.createElement('div');
+                label.className = 'method-label';
+                label.textContent = method.name;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 300;
+                canvas.height = 200;
+                canvas.id = `canvas-${index}`;
+
+                const status = document.createElement('div');
+                status.className = 'status';
+                status.id = `status-${index}`;
+
+                wrapper.appendChild(label);
+                wrapper.appendChild(canvas);
+                wrapper.appendChild(status);
+                grid.appendChild(wrapper);
+
+                // Initialize method
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                const instance = Object.create(method);
+                instance.init(ctx, canvas);
+                instances.push(instance);
+
+                // Add event listeners
+                canvas.addEventListener('mousedown', (e) => {
+                    wrapper.classList.add('active');
+                    updateStatus(index, 'Drawing...');
+                    instance.mousedown(e, canvas);
+                });
+
+                canvas.addEventListener('mousemove', (e) => {
+                    instance.mousemove(e, canvas);
+                });
+
+                canvas.addEventListener('mouseup', (e) => {
+                    wrapper.classList.remove('active');
+                    updateStatus(index, 'Ready');
+                    instance.mouseup(e, canvas);
+                });
+
+                canvas.addEventListener('mouseleave', (e) => {
+                    wrapper.classList.remove('active');
+                    if (instance.drawing) {
+                        instance.mouseup(e, canvas);
+                        updateStatus(index, 'Ready');
+                    }
+                });
+            });
+        }
+
+        function updateStatus(index, text) {
+            document.getElementById(`status-${index}`).textContent = text;
+        }
+
+        function clearAll() {
+            instances.forEach((instance, index) => {
+                const canvas = document.getElementById(`canvas-${index}`);
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Reset instance data
+                if (instance.shapes) instance.shapes = [];
+                if (instance.paths) instance.paths = [];
+                if (instance.imageData) instance.imageData = null;
+                if (instance.snapshot) instance.snapshot = null;
+
+                updateStatus(index, 'Cleared');
+            });
+        }
+
+        function testFocusLoss() {
+            // Simulate focus loss by triggering blur event
+            window.dispatchEvent(new Event('blur'));
+            setTimeout(() => {
+                window.dispatchEvent(new Event('focus'));
+                updateAllStatuses('Focus restored');
+            }, 100);
+        }
+
+        function updateAllStatuses(text) {
+            instances.forEach((_, index) => updateStatus(index, text));
+        }
+
+        function showResults() {
+            const results = document.getElementById('results');
+            const content = document.getElementById('resultsContent');
+
+            let html = '<p>Checking canvas integrity...</p><ul>';
+
+            instances.forEach((instance, index) => {
+                const canvas = document.getElementById(`canvas-${index}`);
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                // Check if canvas has any orange pixels
+                let hasOrange = false;
+                for (let i = 0; i < imageData.data.length; i += 4) {
+                    const r = imageData.data[i];
+                    const g = imageData.data[i + 1];
+                    const b = imageData.data[i + 2];
+                    // Check for orange-ish pixels
+                    if (r > 200 && g > 100 && g < 200 && b < 50) {
+                        hasOrange = true;
+                        break;
+                    }
+                }
+
+                const verdict = hasOrange ? '✅ SURVIVED' : '❌ FAILED';
+                const style = hasOrange ? 'color: #0f0;' : 'color: #f00;';
+                html += `<li style="${style}"><strong>${methods[index].name}:</strong> ${verdict}</li>`;
+            });
+
+            html += '</ul>';
+            content.innerHTML = html;
+            results.style.display = 'block';
+        }
+
+        // Initialize on load
+        window.addEventListener('load', initGrid);
+    </script>
+</body>
+</html>
