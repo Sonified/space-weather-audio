@@ -281,3 +281,32 @@ Users could accidentally click outside modal areas, which would hide the overlay
 
 **Git Commit:** `cde60b7` - v2.53 Fix: Disabled click-outside-to-close for all modals, added dynamic participant modal text based on context
 
+---
+
+## Version v2.54 - Stuck State Fix & UI Improvements
+
+**Commit:** `v2.54 Fix: Fixed stuck state after sleep mode, changed feature selection instructions, added welcome back message`
+
+**Major Changes:**
+- ✅ Fixed stuck state bug after sleep mode - spectrogram canvas would become unresponsive after cleanup message appeared
+- ✅ Added aggressive state reset and overlay context recovery when stuck state is detected
+- ✅ Added safeguard message "Difficulty Creating Regions? Please refresh your page to continue. Thanks!" (displayed in orange)
+- ✅ Changed feature selection instructions from "(f) to select a feature" to "click and drag to select a feature"
+- ✅ Pre-survey modal now shows "Welcome back!" for returning visitors (after first visit)
+
+**Problem:**
+After sleep mode, users could get stuck in a state where the cleanup message appeared but clicking on the spectrogram canvas did nothing. The overlay context could become null/undefined, preventing new selections from starting.
+
+**Solution:**
+1. Added detection for missing overlay context after cleanup
+2. Implemented automatic overlay canvas reinitialization if missing
+3. Added safeguard message display when stuck state is detected
+4. Enhanced state reset to be more aggressive and comprehensive
+5. Added checks in multiple places (mousedown, mousemove, visibilitychange) to detect and recover from stuck state
+
+**Files Modified:**
+- `js/spectrogram-renderer.js` - Added stuck state detection, recovery, and safeguard message functions
+- `js/region-tracker.js` - Updated status message to say "click and drag" instead of "(f) key"
+- `js/ui-controls.js` - Added logic to show "Welcome back!" in pre-survey modal for returning visitors
+- `js/main.js` - Version number updated to v2.54
+
