@@ -340,10 +340,9 @@ export async function startStudyWorkflow() {
             await enableAllTutorialRestrictedFeatures();
             console.log('✅ All features enabled for returning visit');
             
-            // Enable region creation for returning visits
-            const { setRegionCreationEnabled } = await import('./audio-state.js');
-            setRegionCreationEnabled(true);
-            console.log('✅ Region creation enabled for returning visit');
+            // 🔒 Region creation remains DISABLED until user clicks "Begin Analysis"
+            // (Same as first visit - must click Begin Analysis to enable region creation)
+            console.log('🔒 Region creation DISABLED for returning visit (will be enabled after Begin Analysis)');
             
             // For returning visits, ensure Begin Analysis button is visible
             // (It starts visible, tutorial hides it - but returning visits skip tutorial)

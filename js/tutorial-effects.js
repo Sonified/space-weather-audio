@@ -907,12 +907,15 @@ export async function enableAllTutorialRestrictedFeatures() {
     }
 
     // Enable region creation (for personal/dev modes, or after tutorial in study mode)
-    import('./audio-state.js').then(({ setRegionCreationEnabled }) => {
-        setRegionCreationEnabled(true);
-        if (!isStudyMode()) {
+    // NOTE: In study mode, region creation should be enabled by Begin Analysis, not here
+    // This function is called for returning visits, but we want region creation to remain disabled
+    // until Begin Analysis is clicked, so we skip enabling it here in study mode
+    if (!isStudyMode()) {
+        import('./audio-state.js').then(({ setRegionCreationEnabled }) => {
+            setRegionCreationEnabled(true);
             console.log('✅ Region creation enabled');
-        }
-    });
+        });
+    }
 
     // Update Begin Analysis button visibility (show it now that tutorial is complete)
     import('./region-tracker.js').then(({ updateCompleteButtonState }) => {

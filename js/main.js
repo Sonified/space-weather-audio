@@ -21,6 +21,7 @@ import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
+import { initErrorReporter } from './error-reporter.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
@@ -1162,6 +1163,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     // ═══════════════════════════════════════════════════════════
     const { initializeMasterMode, shouldSkipTutorial, isStudyMode, isPersonalMode, isDevMode, isStudyEndMode, isTestStudyEndMode, CURRENT_MODE, AppMode } = await import('./master-modes.js');
     initializeMasterMode();
+    
+    // Initialize error reporter early (catches errors during initialization)
+    initErrorReporter();
     
     // Don't hide Begin Analysis button initially - let updateCompleteButtonState() handle visibility
     // Tutorial will hide it when needed, returning visits will keep it visible

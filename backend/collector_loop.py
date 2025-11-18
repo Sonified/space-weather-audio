@@ -3762,6 +3762,123 @@ def get_stations():
         'stations': active_stations
     })
 
+@app.route('/api/report-error', methods=['POST'])
+def report_error():
+    """
+    Receive error reports from frontend and save to R2.
+    
+    Expected JSON body:
+    {
+        "participantId": "R_1234567890123456",
+        "timestamp": "2025-11-18T12:34:56.789Z",
+        "errorMessage": "TypeError: ...",
+        "errorDetails": {...},
+        "consoleLogs": [...],
+        "userAgent": "...",
+        "url": "...",
+        "viewport": {...}
+    }
+    
+    Saves to: hearts-data-cache/interface_overheating_reports/YYYY_MM_DD_PartID_R_2342342342343-1.json
+    Where -1 increments for each report from that user on that day.
+    """
+    from flask import request
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        participant_id = data.get('participantId', 'unknown')
+        timestamp_str = data.get('timestamp', datetime.now(timezone.utc).isoformat())
+        
+        # Parse timestamp to get date
+        try:
+            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        except:
+            timestamp = datetime.now(timezone.utc)
+        
+        # Format: YYYY_MM_DD_PartID_R_2342342342343-1
+        date_str = timestamp.strftime('%Y_%m_%d')
+        
+        # Get base filename (without counter)
+        base_filename = f"{date_str}_{participant_id}"
+        
+        # Find next available counter for this user on this day
+        s3 = get_s3_client()
+        prefix = f"hearts-data-cache/interface_overheating_reports/{base_filename}-"
+        
+        counter = 1
+        # List existing files for this user/date to find highest counter
+        try:
+            response = s3.list_objects_v2(
+                Bucket=R2_BUCKET_NAME,
+                Prefix=prefix
+            )
+            
+            if 'Contents' in response:
+                # Extract counters from existing files
+                counters = []
+                for obj in response['Contents']:
+                    key = obj['Key']
+                    # Extract counter from filename like "base-1.json"
+                    if key.endswith('.json'):
+                        try:
+                            counter_part = key.split('-')[-1].replace('.json', '')
+                            counters.append(int(counter_part))
+                        except:
+                            pass
+                
+                if counters:
+                    counter = max(counters) + 1
+        except Exception as e:
+            print(f"⚠️ Error checking existing reports: {e}")
+            # Continue with counter = 1
+        
+        # Generate final filename
+        filename = f"{base_filename}-{counter}.json"
+        key = f"hearts-data-cache/interface_overheating_reports/{filename}"
+        
+        # Prepare report data
+        report_data = {
+            'participantId': participant_id,
+            'timestamp': timestamp_str,
+            'errorMessage': data.get('errorMessage', ''),
+            'errorDetails': data.get('errorDetails', {}),
+            'consoleLogs': data.get('consoleLogs', []),
+            'userAgent': data.get('userAgent', ''),
+            'url': data.get('url', ''),
+            'viewport': data.get('viewport', {}),
+            'reportNumber': counter,
+            'savedAt': datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Upload to R2
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=key,
+            Body=json.dumps(report_data, indent=2),
+            ContentType='application/json'
+        )
+        
+        print(f"✅ Error report saved: {key}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Error report saved successfully',
+            'filename': filename,
+            'reportNumber': counter
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error saving error report: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/all-stations')
 def get_all_stations():
     """Return ALL stations (active and inactive) from stations_config.json"""

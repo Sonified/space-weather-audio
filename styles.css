@@ -665,8 +665,8 @@ button.loop-active:hover:not(:disabled) {
 }
 
 .status.info { background: rgba(40, 40, 40, 0.85); color: #e0e0e0; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; border: 1px solid rgba(80, 80, 80, 0.9); }
-.status.success { background: rgba(180, 140, 120, 0.5); color: #4a2410; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
-.status.error { background: rgba(220, 120, 120, 0.5); color: #5a1010; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
+.status.success { color: #2e7d32; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
+.status.error { color: #ff6f00; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
 
 .status.loading {
     background: linear-gradient(
