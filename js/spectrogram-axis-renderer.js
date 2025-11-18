@@ -17,6 +17,22 @@ let oldScaleType = null;
 let scaleTransitionRAF = null;
 
 /**
+ * Get scale transition state for external use (e.g., feature boxes)
+ * @returns {Object} { inProgress, interpolationFactor, oldScaleType }
+ */
+export function getScaleTransitionState() {
+    if (!scaleTransitionInProgress || oldScaleType === null) {
+        return { inProgress: false, interpolationFactor: 1.0, oldScaleType: null };
+    }
+
+    const elapsed = performance.now() - scaleTransitionStartTime;
+    const progress = Math.min(elapsed / scaleTransitionDuration, 1.0);
+    const interpolationFactor = 1 - Math.pow(1 - progress, 3); // Ease-out cubic
+
+    return { inProgress: true, interpolationFactor, oldScaleType };
+}
+
+/**
  * Cancel scale transition RAF to prevent detached document leaks
  * Called during cleanup to ensure RAF callbacks are cancelled
  */

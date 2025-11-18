@@ -150,8 +150,11 @@ They are **eternal coordinates** rendered into the temporal DOM, dancing in perf
 
 ## Version & Deployment
 
-**Version Tag**: v2.47
-**Commit Message**: v2.47 Refactor: Feature box positioning and synchronization - achieved perfect harmony between DOM and canvas
+**Version Tag**: v2.48
+**Commit Message**: v2.48 Feat: Added numbered labels to feature boxes - displays 1-indexed numbers in upper left corner with renumbering on deletion
 **Date**: 2025-11-17
+
+**Previous Version**: v2.47
+**Previous Commit**: v2.47 Refactor: Feature box positioning and synchronization - achieved perfect harmony between DOM and canvas
 
 **End Log** 🎬

@@ -142,6 +142,16 @@ let spectrogramEndX = null;
 
 // Constants
 const maxFrequency = 50; // Hz - Nyquist frequency for 100 Hz sample rate
+const MAX_FEATURES_PER_REGION = 20; // Maximum features allowed per region
+const MAX_TOTAL_FEATURES = 100; // Global maximum features across all regions
+
+/**
+ * Count total features across all regions
+ */
+function getTotalFeatureCount() {
+    const regions = getCurrentRegions();
+    return regions.reduce((total, region) => total + region.featureCount, 0);
+}
 
 /**
  * Initialize region tracker
@@ -1158,25 +1168,43 @@ export function startFrequencySelection(regionIndex, featureIndex) {
  * Called when user completes a box selection on spectrogram
  */
 export async function handleSpectrogramSelection(startY, endY, canvasHeight, startX, endX, canvasWidth) {
-    // 🔍 DEBUG: Log state at start of handleSpectrogramSelection
-    console.log('🟢 [DEBUG] HANDLE_SPECTROGRAM_SELECTION CALLED:', {
-        isSelectingFrequency,
-        hasCurrentSelection: !!currentFrequencySelection,
-        currentSelection: currentFrequencySelection,
-        startY: startY?.toFixed(1),
-        endY: endY?.toFixed(1),
-        startX: startX?.toFixed(1),
-        endX: endX?.toFixed(1),
-        documentHasFocus: document.hasFocus(),
-        windowHasFocus: document.visibilityState === 'visible'
-    });
-    
-    if (!isSelectingFrequency || !currentFrequencySelection) {
-        console.warn('⚠️ [DEBUG] Cannot handle selection - not in selection mode or no current selection');
+    console.log('🟢 [DEBUG] HANDLE_SPECTROGRAM_SELECTION CALLED');
+
+    // 🎯 NEW ARCHITECTURE: Auto-determine which feature to fill in
+    // Find the active region and either use incomplete feature or create new one
+    const activeRegionIndex = getActiveRegionIndex();
+    if (activeRegionIndex === null) {
+        console.warn('⚠️ No active region - cannot create feature');
         return;
     }
-    
-    const { regionIndex, featureIndex } = currentFrequencySelection;
+
+    const regions = getCurrentRegions();
+    const region = regions[activeRegionIndex];
+    if (!region) {
+        console.warn('⚠️ Active region not found');
+        return;
+    }
+
+    // Find first incomplete feature, or we'll create a new one
+    let featureIndex = region.features.findIndex(feature =>
+        !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
+    );
+
+    // No incomplete features - create a new one
+    if (featureIndex === -1) {
+        const totalFeatures = getTotalFeatureCount();
+        if (region.featureCount >= MAX_FEATURES_PER_REGION || totalFeatures >= MAX_TOTAL_FEATURES) {
+            console.warn('⚠️ Cannot create feature - limit reached');
+            return;
+        }
+
+        addFeature(activeRegionIndex);
+        featureIndex = region.features.length - 1; // New feature will be at the end (0-indexed)
+    }
+
+    const regionIndex = activeRegionIndex;
+
+    console.log(`🎯 Auto-selected feature: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
     
     console.log('🎯 ========== MOUSE UP: Feature Selection Complete ==========');
     console.log('📍 Canvas coordinates (pixels):', {
@@ -1265,8 +1293,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         }
     }
     
-    // Update feature data
-    const regions = getCurrentRegions();
+    // Update feature data (regions already declared at top of function)
     if (regions[regionIndex] && regions[regionIndex].features[featureIndex]) {
         regions[regionIndex].features[featureIndex].lowFreq = lowFreq.toFixed(2);
         regions[regionIndex].features[featureIndex].highFreq = highFreq.toFixed(2);
@@ -1563,21 +1590,32 @@ function createRegionCard(region, index) {
     const detailsContent = document.createElement('div');
     detailsContent.className = 'details-content';
     
-    const isMaxFeatures = region.featureCount >= 10;
+    const totalFeatures = getTotalFeatureCount();
+    const isMaxFeaturesPerRegion = region.featureCount >= MAX_FEATURES_PER_REGION;
+    const isMaxFeaturesGlobal = totalFeatures >= MAX_TOTAL_FEATURES;
+    const isMaxFeatures = isMaxFeaturesPerRegion || isMaxFeaturesGlobal;
+
+    let maxFeatureMessage = 'Add feature';
+    if (isMaxFeaturesGlobal) {
+        maxFeatureMessage = `Global max features (${MAX_TOTAL_FEATURES}) reached`;
+    } else if (isMaxFeaturesPerRegion) {
+        maxFeatureMessage = `Max features per region (${MAX_FEATURES_PER_REGION}) reached`;
+    }
+
     detailsContent.innerHTML = `
         <div class="features-list">
             <div id="features-${region.id}" class="features-container"></div>
             <div class="add-feature-row">
-                <button class="add-feature-btn" 
+                <button class="add-feature-btn"
                         data-region-index="${index}"
                         ${isMaxFeatures ? 'disabled' : ''}
-                        title="${isMaxFeatures ? 'Maximum features (10) reached' : 'Add feature'}">
+                        title="${isMaxFeatures ? maxFeatureMessage : 'Add feature'}">
                     +
                 </button>
                 <span class="add-feature-label ${isMaxFeatures ? 'disabled' : ''}"
                       data-region-index="${index}"
-                      title="${isMaxFeatures ? 'Maximum features (10) reached' : 'Add feature'}">
-                    ${isMaxFeatures ? 'Max features reached' : 'Add feature'}
+                      title="${isMaxFeatures ? maxFeatureMessage : 'Add feature'}">
+                    ${isMaxFeatures ? maxFeatureMessage : 'Add feature'}
                 </span>
             </div>
         </div>
@@ -2221,9 +2259,15 @@ export function addFeature(regionIndex) {
     const regions = getCurrentRegions();
     const region = regions[regionIndex];
     const currentCount = region.featureCount;
-    
-    if (currentCount >= 10) {
-        console.log('Maximum features (10) reached');
+    const totalFeatures = getTotalFeatureCount();
+
+    if (currentCount >= MAX_FEATURES_PER_REGION) {
+        console.log(`Maximum features per region (${MAX_FEATURES_PER_REGION}) reached`);
+        return;
+    }
+
+    if (totalFeatures >= MAX_TOTAL_FEATURES) {
+        console.log(`Global maximum features (${MAX_TOTAL_FEATURES}) reached`);
         return;
     }
     
@@ -2290,23 +2334,31 @@ export function addFeature(regionIndex) {
 function deleteSpecificFeature(regionIndex, featureIndex) {
     const regions = getCurrentRegions();
     const region = regions[regionIndex];
-    
+
     if (region.featureCount <= 1 || featureIndex === 0) {
         console.log('Cannot delete - minimum 1 feature required or attempting to delete first feature');
         return;
     }
-    
-    // 🗑️ NEW: Remove the feature box from DOM
+
+    // 🗑️ Remove the feature box from DOM
     removeFeatureBox(regionIndex, featureIndex);
-    
+
+    // Remove feature from array (this shifts all subsequent indices down)
     region.features.splice(featureIndex, 1);
     region.featureCount = region.features.length;
-    
+
     setCurrentRegions(regions);
-    
+
+    // 🔢 Renumber all remaining boxes for this region (features after deleted one shift down)
+    import('./spectrogram-feature-boxes.js').then(module => {
+        if (module.renumberFeatureBoxes) {
+            module.renumberFeatureBoxes(regionIndex);
+        }
+    });
+
     // Update complete button state (in case we deleted the last identified feature)
     updateCompleteButtonState();
-    
+
     renderFeatures(region.id, regionIndex);
 }
 
@@ -2923,6 +2975,14 @@ export function getRegions() {
 
 export function isInFrequencySelectionMode() {
     return isSelectingFrequency;
+}
+
+/**
+ * Get the current frequency selection (if any)
+ * @returns {Object|null} { regionIndex, featureIndex } or null
+ */
+export function getCurrentFrequencySelection() {
+    return currentFrequencySelection;
 }
 
 /**

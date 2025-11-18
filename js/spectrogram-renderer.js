@@ -23,6 +23,8 @@ let spectrogramMouseUpHandler = null;
 let spectrogramKeyDownHandler = null;
 let spectrogramSelectionSetup = false;
 let spectrogramFocusBlurHandler = null;
+let spectrogramVisibilityHandler = null;
+let spectrogramFocusHandler = null;
 
 // 🔥 FIX: Safety timeout to auto-cancel if mouseup never fires
 let spectrogramSelectionTimeout = null;
@@ -500,22 +502,47 @@ export function setupSpectrogramSelection() {
         console.warn('⚠️ [SETUP] setupSpectrogramSelection() called again but already setup - ignoring');
         return;
     }
-    
+
     console.log('✅ [SETUP] Setting up spectrogram selection (first time)');
-    
+
     const canvas = document.getElementById('spectrogram');
     if (!canvas) {
         console.warn('⚠️ [SETUP] Canvas not found - cannot setup selection');
         return;
     }
-    
+
     // Use the panel as container (same as waveform selection)
     const container = canvas.closest('.panel');
     if (!container) return;
-    
+
+    // 🔥 SLEEP FIX: Clean up on visibility change (computer wake from sleep!)
+    // This immediately cancels any stuck selection when page becomes visible again
+    spectrogramVisibilityHandler = () => {
+        if (document.visibilityState === 'visible') {
+            // Just became visible (e.g., woke from sleep) - clean up immediately!
+            if (spectrogramSelectionActive || spectrogramSelectionBox) {
+                console.log('👁️ Page visible again - cleaning up any stuck selection state');
+                cancelSpectrogramSelection();
+            }
+        }
+    };
+    document.addEventListener('visibilitychange', spectrogramVisibilityHandler);
+
+    // 🔥 SLEEP FIX: Also clean up on window focus (additional safety)
+    spectrogramFocusHandler = () => {
+        if (spectrogramSelectionActive || spectrogramSelectionBox) {
+            console.log('🎯 Window focused - cleaning up any stuck selection state');
+            cancelSpectrogramSelection();
+        }
+    };
+    window.addEventListener('focus', spectrogramFocusHandler);
+
+    spectrogramSelectionSetup = true;
+
     canvas.addEventListener('mousedown', (e) => {
-        // Only handle if in frequency selection mode
-        if (!isInFrequencySelectionMode()) {
+        // 🎯 NEW ARCHITECTURE: Allow drawing when zoomed into a region (no 'f' key needed!)
+        // If not zoomed in, don't handle - user is looking at full view
+        if (!zoomState.isInRegion()) {
             return;
         }
 
@@ -576,13 +603,13 @@ export function setupSpectrogramSelection() {
         
         // 🔥 FIX: Require minimum drag distance (5 pixels) before creating box
         // This prevents boxes from being created on accidental tiny movements
-        if (!spectrogramSelectionBox && isInFrequencySelectionMode()) {
+        if (!spectrogramSelectionBox) {
             // Calculate drag distance from start position
             if (spectrogramStartX !== null && spectrogramStartY !== null) {
                 const dragDistanceX = Math.abs(currentX - spectrogramStartX);
                 const dragDistanceY = Math.abs(currentY - spectrogramStartY);
                 const dragDistance = Math.max(dragDistanceX, dragDistanceY);
-                
+
                 // Only create box if user has dragged at least 5 pixels
                 if (dragDistance < 5) {
                     return; // Not enough drag yet, wait for more movement
@@ -737,7 +764,21 @@ export function cleanupSpectrogramSelection() {
         document.removeEventListener('keydown', spectrogramKeyDownHandler);
         spectrogramKeyDownHandler = null;
     }
-    // 🔥 REMOVED: No blur/focus handlers to clean up anymore!
+    if (spectrogramVisibilityHandler) {
+        document.removeEventListener('visibilitychange', spectrogramVisibilityHandler);
+        spectrogramVisibilityHandler = null;
+    }
+    if (spectrogramFocusHandler) {
+        window.removeEventListener('focus', spectrogramFocusHandler);
+        spectrogramFocusHandler = null;
+    }
+
+    // Clear any active timeouts
+    if (spectrogramSelectionTimeout) {
+        clearTimeout(spectrogramSelectionTimeout);
+        spectrogramSelectionTimeout = null;
+    }
+
     spectrogramSelectionSetup = false;
 }
 

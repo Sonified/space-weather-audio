@@ -1243,6 +1243,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.48 - Feature Box Numbering');
+        console.log('🔢 [0ms] v2.48 Feat: Added numbered labels to feature boxes - displays 1-indexed numbers in upper left corner with renumbering on deletion');
         console.log('🌋 [0ms] volcano-audio v2.47 - Feature Box Positioning and Synchronization');
         console.log('🎯 [0ms] v2.47 Refactor: Feature box positioning and synchronization - achieved perfect harmony between DOM and canvas');
         console.log('🌋 [0ms] volcano-audio v2.46 - Spectrogram Feature Selection Bug Fix');
