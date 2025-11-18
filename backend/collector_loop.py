@@ -11,6 +11,9 @@ import os
 import json
 import threading
 import boto3
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone, timedelta
 from flask import Flask, jsonify, Response, stream_with_context
 from flask_cors import CORS
@@ -3762,6 +3765,72 @@ def get_stations():
         'stations': active_stations
     })
 
+def send_error_email(participant_id, error_message, console_logs):
+    """
+    Send email notification about overheating error report.
+    Uses Gmail SMTP (or other SMTP server configured via env vars).
+    """
+    # Email configuration from environment variables
+    smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_username = os.getenv('SMTP_USERNAME', '')
+    smtp_password = os.getenv('SMTP_PASSWORD', '')
+    recipient_email = 'robertalexandermusic@gmail.com'
+    
+    # Skip if email not configured
+    if not smtp_username or not smtp_password:
+        print("⚠️ Email not configured (SMTP_USERNAME/SMTP_PASSWORD not set) - skipping email notification")
+        return False
+    
+    try:
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = smtp_username
+        msg['To'] = recipient_email
+        msg['Subject'] = '🌋🔥 Overheating reported on volcano.now.audio'
+        
+        # Format console logs (limit to last 50 entries to keep email manageable)
+        console_log_text = ""
+        if console_logs:
+            recent_logs = console_logs[-50:] if len(console_logs) > 50 else console_logs
+            console_log_text = "\n".join([
+                f"[{log.get('timestamp', '')}] {log.get('level', 'log').upper()}: {log.get('message', '')}"
+                for log in recent_logs
+            ])
+            if len(console_logs) > 50:
+                console_log_text = f"... ({len(console_logs) - 50} earlier log entries omitted) ...\n\n" + console_log_text
+        
+        # Email body
+        body = f"""Hey Robert!
+
+This just in! We've had an overheating report from {participant_id}. Here's what we know:
+
+Error message:
+{error_message}
+
+And here's some context that may be helpful:
+
+Console log:
+{console_log_text if console_log_text else '(No console logs available)'}
+"""
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Send email
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_username, smtp_password)
+            server.send_message(msg)
+        
+        print(f"✅ Error notification email sent to {recipient_email}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Failed to send error notification email: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 @app.route('/api/report-error', methods=['POST'])
 def report_error():
     """
@@ -3862,6 +3931,16 @@ def report_error():
         )
         
         print(f"✅ Error report saved: {key}")
+        
+        # Email sending temporarily disabled - not configured yet
+        # Send email notification (non-blocking - don't fail if email fails)
+        # try:
+        #     error_message = data.get('errorMessage', 'No error message provided')
+        #     console_logs = data.get('consoleLogs', [])
+        #     send_error_email(participant_id, error_message, console_logs)
+        # except Exception as email_error:
+        #     print(f"⚠️ Email notification failed (but report was saved): {email_error}")
+        print("📧 Email notification skipped (not configured)")
         
         return jsonify({
             'success': True,

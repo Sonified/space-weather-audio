@@ -48,7 +48,9 @@ import {
     trackSurveyStart,
     trackUserAction,
     markSessionAsSubmitted,
-    exportResponseMetadata
+    exportResponseMetadata,
+    getSessionState,
+    getSessionResponses
 } from '../Qualtrics/participant-response-manager.js';
 
 // ═══════════════════════════════════════════════════════════
@@ -354,32 +356,93 @@ export async function startStudyWorkflow() {
             // PRE-SURVEY (EVERY TIME - INCLUDING RETURNING VISITS)
             // ═══════════════════════════════════════════════════════════
             
-            // Check if pre-survey was completed today
-            const completedToday = hasCompletedPreSurveyToday();
             const participantId = getParticipantId();
             
-            if (completedToday) {
-                console.log('📊 Pre-Survey already completed today - skipping');
-                console.log('✅ User can proceed directly to experience');
-                // Don't show pre-survey modal - user can explore
-                return; // Exit early - user can explore
-            } else {
-                // Check if pre-survey was completed on a different day
-                const lastCompletionDate = localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
-                if (lastCompletionDate && lastCompletionDate !== getTodayDateString()) {
-                    console.log(`📅 Pre-Survey was completed on ${lastCompletionDate}, but today is ${getTodayDateString()} - clearing session`);
-                    // Clear the session for the new day
-                    await clearSessionForNewDay(participantId);
+            // Check if previous session was submitted (user completed their daily session)
+            const sessionState = getSessionState(participantId);
+            const sessionResponses = getSessionResponses(participantId);
+            
+            // Also check responses directly (in case sessionId mismatch)
+            // getStorageKey is: `participant_response_${participantId}`
+            let directResponses = null;
+            try {
+                const key = `participant_response_${participantId}`;
+                const responsesJson = localStorage.getItem(key);
+                if (responsesJson) {
+                    directResponses = JSON.parse(responsesJson);
                 }
-                
-                console.log('📊 Step 3: Pre-Survey (required every session)');
-                // For returning visits, open pre-survey directly (no welcome modal)
-                const { openPreSurveyModal } = await import('./ui-controls.js');
-                openPreSurveyModal();
-                console.log('📊 Pre-Survey modal opened (returning visit)');
-                // Pre-survey will be closed by user clicking submit, which triggers the workflow to continue
-                return; // Exit early - pre-survey event handler will continue workflow
+            } catch (e) {
+                // Ignore errors
             }
+            
+            console.log('🔍 Checking session state:', {
+                sessionStateExists: !!sessionState,
+                sessionStateStatus: sessionState?.status,
+                sessionId: sessionState?.sessionId,
+                sessionResponsesSubmitted: sessionResponses?.submitted,
+                directResponsesSubmitted: directResponses?.submitted,
+                hasQualtricsResponseId: !!(sessionResponses?.qualtricsResponseId || directResponses?.qualtricsResponseId)
+            });
+            
+            // Check if session was submitted (either via session state status OR responses.submitted flag)
+            const isSessionSubmitted = (sessionState && sessionState.status === 'submitted') || 
+                                      (sessionResponses && sessionResponses.submitted === true) ||
+                                      (directResponses && directResponses.submitted === true);
+            
+            if (isSessionSubmitted) {
+                console.log('✅ Previous session was submitted - starting NEW session for today');
+                console.log('🔄 Clearing submitted session and starting fresh');
+                // Clear the submitted session - user is starting a new daily session
+                // This also clears the pre-survey completion date
+                await clearSessionForNewDay(participantId);
+                console.log('📊 Starting new session - showing Pre-Survey');
+                // Continue to show pre-survey below (don't return early)
+            }
+            
+            // Check if pre-survey was completed today (for current in-progress session)
+            const completedToday = hasCompletedPreSurveyToday();
+            console.log('🔍 Pre-survey completion check:', {
+                completedToday,
+                completionDate: localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE),
+                today: getTodayDateString()
+            });
+            
+            if (completedToday) {
+                // Only skip pre-survey if session is still in-progress (not submitted)
+                // If session was just cleared above, this will be null and we'll show pre-survey
+                const currentSessionState = getSessionState(participantId);
+                console.log('🔍 Current session state after checks:', {
+                    exists: !!currentSessionState,
+                    status: currentSessionState?.status
+                });
+                
+                if (currentSessionState && currentSessionState.status === 'in-progress') {
+                    console.log('📊 Pre-Survey already completed today for current session - skipping');
+                    console.log('✅ User can proceed directly to experience');
+                    // Don't show pre-survey modal - user can explore
+                    return; // Exit early - user can explore
+                } else {
+                    // Session was cleared, doesn't exist, or was submitted - show pre-survey
+                    console.log('📊 Pre-Survey completion date exists but session was cleared/submitted - showing Pre-Survey');
+                    console.log('   Reason: Session state is', currentSessionState ? `status="${currentSessionState.status}"` : 'null');
+                }
+            }
+            
+            // Check if pre-survey was completed on a different day
+            const lastCompletionDate = localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
+            if (lastCompletionDate && lastCompletionDate !== getTodayDateString()) {
+                console.log(`📅 Pre-Survey was completed on ${lastCompletionDate}, but today is ${getTodayDateString()} - clearing session`);
+                // Clear the session for the new day
+                await clearSessionForNewDay(participantId);
+            }
+            
+            console.log('📊 Step 3: Pre-Survey (required every session)');
+            // For returning visits, open pre-survey directly (no welcome modal)
+            const { openPreSurveyModal } = await import('./ui-controls.js');
+            openPreSurveyModal();
+            console.log('📊 Pre-Survey modal opened (returning visit)');
+            // Pre-survey will be closed by user clicking submit, which triggers the workflow to continue
+            return; // Exit early - pre-survey event handler will continue workflow
         }
         
         // ═══════════════════════════════════════════════════════════
