@@ -535,7 +535,8 @@ export function setupModalEventListeners() {
         removeModalEventListeners();
     }
     
-    // Check if we're in Study Mode - if so, disable click-outside-to-close for ALL modals
+    // Check if we're in Study Mode (used for other modal behaviors, not click-outside-to-close)
+    // Note: Click-outside-to-close is now DISABLED for ALL modals regardless of mode
     // Note: This is a synchronous check, so we need to import synchronously
     let inStudyMode = false;
     try {
@@ -652,18 +653,14 @@ export function setupModalEventListeners() {
     if (!welcomeModal) {
         console.error('❌ Welcome modal not found in DOM');
     } else {
-        // In Study Mode: NEVER allow closing by clicking outside
-        // In Dev/Personal Mode: Allow closing by clicking outside (if we add it)
-        if (inStudyMode) {
-            // Prevent closing by clicking outside in Study Mode
-            welcomeModal.addEventListener('click', (e) => {
-                if (e.target === welcomeModal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-            });
-        }
+        // Prevent closing by clicking outside - clicks outside modal are ignored
+        welcomeModal.addEventListener('click', (e) => {
+            if (e.target === welcomeModal) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
         
         const welcomeSubmitBtn = welcomeModal.querySelector('.modal-submit');
         if (welcomeSubmitBtn) {
@@ -714,17 +711,14 @@ export function setupModalEventListeners() {
     if (!endModal) {
         console.error('❌ End modal not found in DOM');
     } else {
-        // In Study Mode: NEVER allow closing by clicking outside
-        if (inStudyMode) {
-            // Prevent closing by clicking outside in Study Mode
-            endModal.addEventListener('click', (e) => {
-                if (e.target === endModal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-            });
-        }
+        // Prevent closing by clicking outside - clicks outside modal are ignored
+        endModal.addEventListener('click', (e) => {
+            if (e.target === endModal) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
         
         const endSubmitBtn = endModal.querySelector('.modal-submit');
         if (endSubmitBtn) {
@@ -750,10 +744,12 @@ export function setupModalEventListeners() {
     if (!beginAnalysisModal) {
         console.error('❌ Begin Analysis modal not found in DOM');
     } else {
-        // Allow closing by clicking outside (not in Study Mode restriction)
+        // Prevent closing by clicking outside - clicks outside modal are ignored
         beginAnalysisModal.addEventListener('click', (e) => {
             if (e.target === beginAnalysisModal) {
-                closeBeginAnalysisModal(false); // Explicitly pass false to ensure overlay fades out
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
             }
         });
         
@@ -800,10 +796,12 @@ export function setupModalEventListeners() {
     if (!completeConfirmationModal) {
         console.error('❌ Complete Confirmation modal not found in DOM');
     } else {
-        // Allow closing by clicking outside
+        // Prevent closing by clicking outside - clicks outside modal are ignored
         completeConfirmationModal.addEventListener('click', (e) => {
             if (e.target === completeConfirmationModal) {
-                closeCompleteConfirmationModal();
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
             }
         });
         
@@ -861,10 +859,12 @@ export function setupModalEventListeners() {
     if (!missingStudyIdModal) {
         console.error('❌ Missing Study ID modal not found in DOM');
     } else {
-        // Allow closing by clicking outside
+        // Prevent closing by clicking outside - clicks outside modal are ignored
         missingStudyIdModal.addEventListener('click', (e) => {
             if (e.target === missingStudyIdModal) {
-                closeMissingStudyIdModal();
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
             }
         });
         
@@ -909,24 +909,14 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updatePreSurveySubmitButton);
         });
         
-        // In Study Mode: NEVER allow closing by clicking outside
-        // In Dev/Personal Mode: Allow closing by clicking outside
-        if (!inStudyMode) {
-            preSurveyModal.addEventListener('click', (e) => {
-                if (e.target === preSurveyModal) {
-                    closePreSurveyModal();
-                }
-            });
-        } else {
-            // Prevent closing by clicking outside in Study Mode
-            preSurveyModal.addEventListener('click', (e) => {
-                if (e.target === preSurveyModal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-            });
-        }
+        // Prevent closing by clicking outside - clicks outside modal are ignored
+        preSurveyModal.addEventListener('click', (e) => {
+            if (e.target === preSurveyModal) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
         
         if (preSurveyCloseBtn) {
             preSurveyCloseBtn.addEventListener('click', (e) => {
@@ -1054,24 +1044,14 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updatePostSurveySubmitButton);
         });
         
-        // In Study Mode: NEVER allow closing by clicking outside
-        // In Dev/Personal Mode: Allow closing by clicking outside
-        if (!inStudyMode) {
-            postSurveyModal.addEventListener('click', (e) => {
-                if (e.target === postSurveyModal) {
-                    closePostSurveyModal();
-                }
-            });
-        } else {
-            // Prevent closing by clicking outside in Study Mode
-            postSurveyModal.addEventListener('click', (e) => {
-                if (e.target === postSurveyModal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-            });
-        }
+        // Prevent closing by clicking outside - clicks outside modal are ignored
+        postSurveyModal.addEventListener('click', (e) => {
+            if (e.target === postSurveyModal) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
         
         if (postSurveyCloseBtn) {
             postSurveyCloseBtn.addEventListener('click', (e) => {
@@ -1163,24 +1143,14 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updateActivityLevelSubmitButton);
         });
         
-        // In Study Mode: NEVER allow closing by clicking outside
-        // In Dev/Personal Mode: Allow closing by clicking outside
-        if (!inStudyMode) {
-            activityLevelModal.addEventListener('click', (e) => {
-                if (e.target === activityLevelModal) {
-                    closeActivityLevelModal();
-                }
-            });
-        } else {
-            // Prevent closing by clicking outside in Study Mode
-            activityLevelModal.addEventListener('click', (e) => {
-                if (e.target === activityLevelModal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-            });
-        }
+        // Prevent closing by clicking outside - clicks outside modal are ignored
+        activityLevelModal.addEventListener('click', (e) => {
+            if (e.target === activityLevelModal) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
         
         if (activityLevelCloseBtn) {
             activityLevelCloseBtn.addEventListener('click', (e) => {
@@ -1282,26 +1252,15 @@ export function setupModalEventListeners() {
             });
         });
         
-        // In Study Mode: NEVER allow closing by clicking outside
-        // In Dev/Personal Mode: Allow closing by clicking outside
-        if (!inStudyMode) {
-            awesfModal.addEventListener('click', (e) => {
-                // Only close if clicking directly on the modal background, not on children
-                if (e.target === awesfModal) {
-                    closeAwesfModal();
-                }
-            });
-        } else {
-            // Prevent closing by clicking outside in Study Mode
-            awesfModal.addEventListener('click', (e) => {
-                // Only prevent if clicking directly on modal background
-                if (e.target === awesfModal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-            });
-        }
+        // Prevent closing by clicking outside - clicks outside modal are ignored
+        awesfModal.addEventListener('click', (e) => {
+            // Only prevent if clicking directly on modal background
+            if (e.target === awesfModal) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
         
         if (awesfCloseBtn) {
             awesfCloseBtn.addEventListener('click', (e) => {
@@ -1361,16 +1320,14 @@ export function setupModalEventListeners() {
     if (!tutorialIntroModal) {
         console.error('❌ Tutorial Intro modal not found in DOM');
     } else {
-        // Prevent closing by clicking outside in Study Mode
-        if (inStudyMode) {
-            tutorialIntroModal.addEventListener('click', (e) => {
-                if (e.target === tutorialIntroModal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-            });
-        }
+        // Prevent closing by clicking outside - clicks outside modal are ignored
+        tutorialIntroModal.addEventListener('click', (e) => {
+            if (e.target === tutorialIntroModal) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
         
         const tutorialIntroSubmitBtn = tutorialIntroModal.querySelector('.modal-submit');
         if (tutorialIntroSubmitBtn) {
@@ -1417,10 +1374,12 @@ export function setupModalEventListeners() {
     if (!tutorialRevisitModal) {
         console.error('❌ Tutorial Revisit modal not found in DOM');
     } else {
-        // Allow closing by clicking outside
+        // Prevent closing by clicking outside - clicks outside modal are ignored
         tutorialRevisitModal.addEventListener('click', (e) => {
             if (e.target === tutorialRevisitModal) {
-                closeTutorialRevisitModal();
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
             }
         });
         
@@ -1525,8 +1484,45 @@ export function openParticipantModal() {
     
     // Get participant ID from URL (takes precedence) or localStorage
     const participantId = getParticipantId();
+    const urlId = getParticipantIdFromURL(); // Check if ID came from Qualtrics URL
     const participantIdInput = document.getElementById('participantId');
     const participantSubmitBtn = document.querySelector('#participantModal .modal-submit');
+    const modalTitle = modal.querySelector('.modal-title');
+    const instructionText = modal.querySelector('.modal-body p');
+    
+    // Determine context: initial setup vs upper right corner click
+    const hasExistingId = participantId && participantId.trim().length > 0;
+    const idFromQualtrics = urlId && urlId.trim().length > 0;
+    
+    // Dynamically update modal text based on context
+    if (hasExistingId && !idFromQualtrics) {
+        // User clicked from upper right corner - ID exists in localStorage
+        if (modalTitle) {
+            modalTitle.textContent = "You're All Set";
+        }
+        if (instructionText) {
+            instructionText.textContent = "Your participant ID is stored.";
+            instructionText.style.fontWeight = 'normal'; // Remove bold styling for confirmation message
+        }
+    } else if (hasExistingId && idFromQualtrics) {
+        // Initial setup - ID came from Qualtrics URL
+        if (modalTitle) {
+            modalTitle.textContent = "Welcome";
+        }
+        if (instructionText) {
+            instructionText.textContent = "Your participant ID has successfully been transferred from Qualtrics:";
+            instructionText.style.fontWeight = 'bold'; // Keep bold styling for instruction
+        }
+    } else {
+        // Initial setup - no ID exists
+        if (modalTitle) {
+            modalTitle.textContent = "Welcome";
+        }
+        if (instructionText) {
+            instructionText.textContent = "Enter your participant ID number to begin:";
+            instructionText.style.fontWeight = 'bold'; // Keep bold styling for instruction
+        }
+    }
     
     // Fade in overlay background (standard design pattern)
     fadeInOverlay();
@@ -1535,8 +1531,6 @@ export function openParticipantModal() {
         // Pre-populate with ID from URL or localStorage
         participantIdInput.value = participantId || '';
         
-        // If ID came from URL, show a message
-        const urlId = getParticipantIdFromURL();
         if (urlId) {
             console.log('🔗 Participant ID loaded from URL:', urlId);
         }
@@ -1558,6 +1552,7 @@ export function openParticipantModal() {
     console.log('   Modal element:', modal);
     console.log('   Modal display:', modal.style.display);
     console.log('   Overlay visible:', document.getElementById('permanentOverlay')?.style.display);
+    console.log('   Has existing ID:', hasExistingId);
 }
 
 export async function closeParticipantModal(keepOverlay = null) {

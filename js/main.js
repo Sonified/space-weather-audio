@@ -1412,6 +1412,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.53 - Modal UX Improvements');
+        console.log('🔧 [0ms] v2.53 Fix: Disabled click-outside-to-close for all modals - clicks outside modal area are now completely ignored');
+        console.log('🎨 [0ms] v2.53 Feat: Dynamic participant modal text - shows different messages based on context (initial setup vs upper right corner click, Qualtrics transfer vs manual entry)');
         console.log('🌋 [0ms] volcano-audio v2.52 - Bug Fix: Keyboard Event Handlers');
         console.log('🔧 [0ms] v2.52 Fix: Added guard clauses to handleSecretKeyListener and handleDebugJumpListener to prevent TypeError when e.key is undefined');
         console.log('🌋 [0ms] volcano-audio v2.51 - UI Polish & Tutorial Improvements');

@@ -253,3 +253,29 @@ Added early return guard clauses (`if (!e.key) { return; }`) at the beginning of
 **Files Modified:**
 - `js/main.js` - Added guard clauses to `handleSecretKeyListener` and `handleDebugJumpListener` functions
 
+---
+
+## Version v2.53 - Modal UX Improvements
+
+**Commit:** `v2.53 Fix: Disabled click-outside-to-close for all modals, added dynamic participant modal text based on context`
+
+**Major Changes:**
+- ✅ Disabled click-outside-to-close behavior for ALL modals - clicks outside modal area are now completely ignored
+- ✅ Fixed bug where users could accidentally close modals by clicking outside with no way to bring them back
+- ✅ Added dynamic text to participant modal based on context:
+  - **Upper right corner click (with ID)**: "You're All Set" / "Your participant ID is stored."
+  - **Initial setup from Qualtrics**: "Welcome" / "Your participant ID has successfully been transferred from Qualtrics:"
+  - **Initial setup (no ID)**: "Welcome" / "Enter your participant ID number to begin:"
+
+**Problem:**
+Users could accidentally click outside modal areas, which would hide the overlay with no way to bring it back. This was particularly problematic during study workflows where modals are required.
+
+**Solution:**
+1. Removed all conditional click-outside-to-close handlers
+2. Added preventDefault/stopPropagation handlers to all modals to completely ignore clicks outside the modal content area
+3. Made participant modal text context-aware by checking if ID exists and if it came from Qualtrics URL
+
+**Files Modified:**
+- `js/ui-controls.js` - Disabled click-outside-to-close for all modals, added dynamic text logic to `openParticipantModal()`
+- `js/main.js` - Version number updated to v2.53
+

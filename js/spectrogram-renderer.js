@@ -195,6 +195,8 @@ let spectrogramFocusBlurHandler = null;
 let spectrogramVisibilityHandler = null;
 let spectrogramFocusHandler = null;
 let spectrogramBlurHandler = null;
+let spectrogramResizeObserver = null;
+let spectrogramRepositionOnVisibility = null;
 
 // 🔥 FIX: Safety timeout to auto-cancel if mouseup never fires
 let spectrogramSelectionTimeout = null;
@@ -718,6 +720,48 @@ export function setupSpectrogramSelection() {
     spectrogramOverlayCtx = spectrogramOverlayCanvas.getContext('2d');
     container.appendChild(spectrogramOverlayCanvas);
     
+    // 🔥 SLEEP FIX: Update overlay position when canvas resizes or layout changes
+    // After sleep, browser may recalculate layout causing misalignment
+    // This ResizeObserver keeps overlay aligned with main canvas (like playhead overlay does)
+    spectrogramResizeObserver = new ResizeObserver(() => {
+        if (spectrogramOverlayCanvas && canvas) {
+            const canvasRect = canvas.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
+            spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
+            spectrogramOverlayCanvas.width = canvas.width;
+            spectrogramOverlayCanvas.height = canvas.height;
+            spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
+            spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
+            
+            // Redraw boxes after repositioning to ensure they're still visible
+            if (spectrogramOverlayCtx) {
+                redrawCanvasBoxes();
+            }
+        }
+    });
+    spectrogramResizeObserver.observe(canvas);
+    
+    // Also reposition on visibility change (catches sleep/wake)
+    spectrogramRepositionOnVisibility = () => {
+        if (document.visibilityState === 'visible' && spectrogramOverlayCanvas && canvas) {
+            const canvasRect = canvas.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
+            spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
+            spectrogramOverlayCanvas.width = canvas.width;
+            spectrogramOverlayCanvas.height = canvas.height;
+            spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
+            spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
+            
+            // Redraw boxes after repositioning
+            if (spectrogramOverlayCtx) {
+                redrawCanvasBoxes();
+            }
+        }
+    };
+    document.addEventListener('visibilitychange', spectrogramRepositionOnVisibility);
+    
     console.log('✅ Created spectrogram selection overlay canvas:', {
         left: spectrogramOverlayCanvas.style.left,
         top: spectrogramOverlayCanvas.style.top,
@@ -737,6 +781,15 @@ export function setupSpectrogramSelection() {
             if (spectrogramSelectionActive || spectrogramSelectionBox) {
                 console.log('👁️ Page visible again - cleaning up any stuck selection state');
                 cancelSpectrogramSelection();
+            }
+            // 🔥 SLEEP FIX: Also reset any stale mouse coordinates that might break tracking
+            // After sleep, browser mouse events can be in a weird state
+            if (!spectrogramSelectionActive && (spectrogramStartX !== null || spectrogramCurrentX !== null)) {
+                console.log('👁️ Page visible again - resetting stale mouse coordinates after sleep');
+                spectrogramStartX = null;
+                spectrogramStartY = null;
+                spectrogramCurrentX = null;
+                spectrogramCurrentY = null;
             }
         }
     };
@@ -873,6 +926,20 @@ export function setupSpectrogramSelection() {
         if (spectrogramSelectionActive) {
             console.log('🖱️ Mouse left spectrogram canvas during selection - canceling');
             cancelSpectrogramSelection();
+        }
+    });
+    
+    // 🔥 SLEEP FIX: Reset mouse tracking state when mouse enters canvas after wake
+    // This ensures mouse events work properly after computer sleep
+    canvas.addEventListener('mouseenter', () => {
+        // If we have stale state (coordinates but not active), reset everything
+        // This handles the case where sleep broke mouse tracking
+        if (!spectrogramSelectionActive && (spectrogramStartX !== null || spectrogramCurrentX !== null)) {
+            console.log('🖱️ Mouse entered spectrogram canvas - resetting stale mouse state after sleep');
+            spectrogramStartX = null;
+            spectrogramStartY = null;
+            spectrogramCurrentX = null;
+            spectrogramCurrentY = null;
         }
     });
     
@@ -1189,6 +1256,14 @@ export function cleanupSpectrogramSelection() {
     if (spectrogramBlurHandler) {
         window.removeEventListener('blur', spectrogramBlurHandler);
         spectrogramBlurHandler = null;
+    }
+    if (spectrogramResizeObserver) {
+        spectrogramResizeObserver.disconnect();
+        spectrogramResizeObserver = null;
+    }
+    if (spectrogramRepositionOnVisibility) {
+        document.removeEventListener('visibilitychange', spectrogramRepositionOnVisibility);
+        spectrogramRepositionOnVisibility = null;
     }
 
     // Clear any active timeouts
