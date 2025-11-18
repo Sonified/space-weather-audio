@@ -18,6 +18,7 @@ let lowPassIndex = 0;
 let lowPassAlpha = 0.95; // Low-pass filter coefficient (higher = more filtering)
 let lastAudioTime = 0; // Track when we last received audio
 let fadeMultiplier = 1.0; // Fade multiplier (1.0 = full, 0.0 = faded out)
+let errorModeActive = false; // When true, dials flame effect way up
 
 /**
  * Show the oscilloscope panel (positioned in the bar below spectrogram)
@@ -87,13 +88,19 @@ function analyzeLowFrequency(samples) {
 
 /**
  * Update panel glow based on low frequency amplitude
+ * Applies glow to visualization panel only, positioned behind panel content
+ * Uses multiple sine waves to create variable, flame-like intensity
  */
 function updatePanelGlow() {
-    const panel = document.querySelector('.panel-visualization');
-    if (!panel) return;
+    // Get visualization panel (main panel only)
+    const visualizationPanel = document.querySelector('.panel-visualization');
+    
+    if (!visualizationPanel) return;
+    
+    // Get current time for sinusoidal variations
+    const now = performance.now();
     
     // Check if audio has stopped (no samples for 200ms)
-    const now = performance.now();
     const timeSinceAudio = now - lastAudioTime;
     if (timeSinceAudio > 200) {
         // Fade out gradually
@@ -103,25 +110,69 @@ function updatePanelGlow() {
         fadeMultiplier = Math.min(1, fadeMultiplier + 0.05);
     }
     
-    // Map amplitude (0-1) to glow intensity (bigger, more fire effect)
-    const intensity = Math.min(1, lowFreqAmplitude * 3) * fadeMultiplier; // Scale up, cap at 1, apply fade
-    const glowOpacity = intensity * 0.25; // Max 25% opacity (increased from 15%)
-    const glowBlur = 25 + (intensity * 50); // 25-75px blur (bigger)
-    const glowSpread = intensity * 20; // 0-20px spread (more)
+    // Base intensity from audio amplitude
+    let baseIntensity = Math.min(1, lowFreqAmplitude * 3) * fadeMultiplier;
+    
+    // 🔥 ERROR MODE: Dial flame effect way up!
+    if (errorModeActive) {
+        baseIntensity = Math.min(1, lowFreqAmplitude * 8); // Much stronger amplification
+        fadeMultiplier = 1.0; // Keep it at full intensity
+    }
+    
+    // Create variable flame-like intensity using multiple sine waves as multipliers
+    // Different frequencies and phases create organic, heat-like variations
+    const time = now / 1000; // Time in seconds
+    
+    // Multiple sine waves at different frequencies (heat waves - higher frequencies for more dynamic variation)
+    // These will multiply the base intensity to create variation
+    const wave1 = Math.sin(time * 3.2) * 0.3;      // Primary wave (~3.2 Hz)
+    const wave2 = Math.sin(time * 5.5 + Math.PI / 3) * 0.2;  // Medium wave (~5.5 Hz, phase shifted)
+    const wave3 = Math.sin(time * 8.3 + Math.PI / 2) * 0.15;  // Faster wave (~8.3 Hz, phase shifted)
+    const wave4 = Math.sin(time * 12.1 + Math.PI) * 0.1;      // Fast wave (~12.1 Hz, phase shifted)
+    
+    // Combine waves to create a multiplier (centered around 1.0, varying above/below)
+    // Sum ranges from ~-0.75 to ~0.75, so we add 1.0 to center it around 1.0
+    const waveMultiplier = 1.0 + (wave1 + wave2 + wave3 + wave4); // Ranges from ~0.25 to ~1.75
+    
+    // Apply multiplier to base intensity (this creates rising and falling like heat)
+    // Clamp the multiplier to reasonable bounds (0.8 to 2.0) - ranges from 0.8x to 2.0x
+    const clampedMultiplier = Math.max(0.8, Math.min(2.0, waveMultiplier));
+    let intensity = baseIntensity * clampedMultiplier;
+    intensity = Math.max(0, Math.min(1, intensity)); // Clamp final intensity to 0-1
+    
+    const glowOpacity = errorModeActive 
+        ? intensity * 0.25  // Max 25% opacity when error (reduced to 1/4)
+        : intensity * 0.0625; // Max 6.25% opacity normally (reduced to 1/4)
+    const glowBlur = errorModeActive
+        ? 25 + (intensity * 50)  // 25-75px blur when error (reduced to 1/4)
+        : 6.25 + (intensity * 12.5);  // 6.25-18.75px blur normally (reduced to 1/4)
+    const glowSpread = errorModeActive
+        ? intensity * 25  // 0-25px spread when error (reduced to 1/4)
+        : intensity * 5; // 0-5px spread normally (reduced to 1/4)
     
     // Fire-like colors: orange/red gradient
     const red = 255;
     const green = 100 + (intensity * 80); // 100-180 (orange to yellow)
     const blue = 50 + (intensity * 30); // 50-80 (warm tones)
     
-    // Preserve existing box-shadow from CSS and add glow
-    const existingShadow = '0 10px 20px rgba(80, 20, 20, 0.35), 0 6px 12px rgba(80, 20, 20, 0.25), 0 3px 6px rgba(255, 100, 100, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6)';
-    
-    panel.style.boxShadow = `
-        ${existingShadow},
-        0 0 ${glowBlur}px ${glowSpread}px rgba(${red}, ${green}, ${blue}, ${glowOpacity}),
-        inset 0 0 ${glowBlur * 0.5}px rgba(${red}, ${green}, ${blue}, ${glowOpacity * 0.3})
+    // Create glow using box-shadow - combine with existing panel shadows
+    // The glow appears around the panel edges
+    const existingShadows = `
+        0 10px 20px rgba(80, 20, 20, 0.35),
+        0 6px 12px rgba(80, 20, 20, 0.25),
+        0 3px 6px rgba(255, 100, 100, 0.15),
+        0 1px 3px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6)
     `;
+    
+    const glowShadow = `
+        ${existingShadows},
+        0 0 ${glowBlur}px ${glowSpread}px rgba(${red}, ${green}, ${blue}, ${glowOpacity}),
+        0 0 ${glowBlur * 1.5}px ${glowSpread * 1.5}px rgba(${red}, ${green}, ${blue}, ${glowOpacity * 0.5})
+    `;
+    
+    // Apply glow to visualization panel via CSS custom property
+    visualizationPanel.style.setProperty('--glow-shadow', glowShadow);
 }
 
 /**
@@ -306,6 +357,17 @@ export function clearOscilloscope() {
     
     if (ctx && canvas) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
+/**
+ * Enable error mode - dials flame effect way up
+ */
+export function setErrorMode(enabled) {
+    errorModeActive = enabled;
+    if (enabled) {
+        fadeMultiplier = 1.0; // Keep at full intensity
+        console.log('🔥 Error mode enabled - flame effect dialed way up!');
     }
 }
 

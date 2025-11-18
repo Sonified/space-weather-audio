@@ -92,20 +92,67 @@ export function getCurrentRegions() {
 
 /**
  * Save regions to localStorage (persists across page reloads)
+ * Merges new regions with existing ones to preserve regions from different time ranges
  */
 function saveRegionsToStorage(volcano, regions) {
     if (!volcano) return;
     
     try {
         const storageKey = STORAGE_KEY_PREFIX + volcano;
-        // Save regions with all data including notes
+        
+        // Load existing regions from localStorage
+        let existingRegions = [];
+        try {
+            const stored = localStorage.getItem(storageKey);
+            if (stored) {
+                const data = JSON.parse(stored);
+                if (data && data.regions && Array.isArray(data.regions)) {
+                    existingRegions = data.regions;
+                }
+            }
+        } catch (e) {
+            // If we can't load existing, start fresh
+            existingRegions = [];
+        }
+        
+        // Create a map of existing regions by ID for quick lookup
+        const existingRegionsMap = new Map();
+        existingRegions.forEach(region => {
+            if (region.id !== undefined) {
+                existingRegionsMap.set(region.id, region);
+            }
+        });
+        
+        // Merge: update existing regions and add new ones
+        const mergedRegions = [...existingRegions]; // Start with all existing
+        
+        regions.forEach(newRegion => {
+            if (newRegion.id !== undefined) {
+                const existingIndex = mergedRegions.findIndex(r => r.id === newRegion.id);
+                if (existingIndex >= 0) {
+                    // Update existing region (replace it)
+                    mergedRegions[existingIndex] = newRegion;
+                } else {
+                    // Add new region
+                    mergedRegions.push(newRegion);
+                }
+            } else {
+                // Region without ID - add it (shouldn't happen, but handle gracefully)
+                mergedRegions.push(newRegion);
+            }
+        });
+        
+        // Save merged regions
         const dataToSave = {
             volcano: volcano,
-            regions: regions,
+            regions: mergedRegions,
             savedAt: new Date().toISOString()
         };
         localStorage.setItem(storageKey, JSON.stringify(dataToSave));
-        console.log(`💾 Saved ${regions.length} regions for ${volcano} to localStorage`);
+        
+        const addedCount = regions.length;
+        const totalCount = mergedRegions.length;
+        console.log(`💾 Saved ${addedCount} region(s) for ${volcano} to localStorage (total: ${totalCount} regions preserved)`);
     } catch (error) {
         console.error('❌ Failed to save regions to localStorage:', error);
         // localStorage might be full or disabled - continue without persistence
@@ -114,6 +161,7 @@ function saveRegionsToStorage(volcano, regions) {
 
 /**
  * Load regions from localStorage (restores after page reload)
+ * Filters out regions that fall outside the current time range
  */
 function loadRegionsFromStorage(volcano) {
     if (!volcano) return null;
@@ -128,8 +176,53 @@ function loadRegionsFromStorage(volcano) {
         
         const data = JSON.parse(stored);
         if (data && data.regions && Array.isArray(data.regions)) {
-            console.log(`📂 Loaded ${data.regions.length} regions for ${volcano} from localStorage`);
-            return data.regions;
+            // Filter regions by time range if data time range is available
+            let filteredRegions = data.regions;
+            
+            if (State.dataStartTime && State.dataEndTime) {
+                const dataStartMs = State.dataStartTime.getTime();
+                const dataEndMs = State.dataEndTime.getTime();
+                
+                filteredRegions = data.regions.filter(region => {
+                    // Check if region falls within the current time range
+                    let regionStartMs, regionEndMs;
+                    
+                    if (region.startSample !== undefined && region.endSample !== undefined) {
+                        // New format: convert from sample indices to time
+                        // We need zoomState for this, but if it's not initialized, skip filtering
+                        if (!zoomState.isInitialized()) {
+                            return false; // Don't load if we can't determine time range
+                        }
+                        const regionStartSeconds = zoomState.sampleToTime(region.startSample);
+                        const regionEndSeconds = zoomState.sampleToTime(region.endSample);
+                        regionStartMs = dataStartMs + (regionStartSeconds * 1000);
+                        regionEndMs = dataStartMs + (regionEndSeconds * 1000);
+                    } else if (region.startTime && region.stopTime) {
+                        // Old format: use timestamps directly
+                        regionStartMs = new Date(region.startTime).getTime();
+                        regionEndMs = new Date(region.stopTime).getTime();
+                    } else {
+                        // Can't determine region time - exclude it
+                        return false;
+                    }
+                    
+                    // Region is included if it overlaps with the current time range at all
+                    // (region starts before data ends AND region ends after data starts)
+                    return regionStartMs < dataEndMs && regionEndMs > dataStartMs;
+                });
+                
+                if (filteredRegions.length !== data.regions.length) {
+                    console.log(`📂 Loaded ${data.regions.length} regions for ${volcano} from localStorage, filtered to ${filteredRegions.length} within time range`);
+                } else {
+                    console.log(`📂 Loaded ${data.regions.length} regions for ${volcano} from localStorage`);
+                }
+            } else {
+                // No time range available yet - don't load regions
+                console.log(`📂 Skipping region load for ${volcano} - time range not available yet`);
+                return null;
+            }
+            
+            return filteredRegions;
         }
     } catch (error) {
         console.error('❌ Failed to load regions from localStorage:', error);
@@ -253,6 +346,8 @@ function getTotalFeatureCount() {
 /**
  * Initialize region tracker
  * Sets up event listeners and prepares UI
+ * NOTE: Regions are NOT loaded here - they are only loaded after fetchData is called
+ * This ensures we know the volcano and time range before loading regions
  */
 export function initRegionTracker() {
     // Only log in dev/personal modes, not study mode
@@ -266,28 +361,9 @@ export function initRegionTracker() {
     // Initialize current volcano
     currentVolcano = getCurrentVolcano();
     if (currentVolcano) {
-        // ✅ Load regions from localStorage if available, otherwise initialize empty array
-        if (!regionsByVolcano.has(currentVolcano)) {
-            const loadedRegions = loadRegionsFromStorage(currentVolcano);
-            if (loadedRegions && loadedRegions.length > 0) {
-                regionsByVolcano.set(currentVolcano, loadedRegions);
-                console.log(`📂 Restored ${loadedRegions.length} regions for ${currentVolcano} from localStorage`);
-                
-                // Render the loaded regions
-                renderRegions();
-                
-                // Rebuild canvas feature boxes from loaded regions
-                import('./spectrogram-renderer.js').then(module => {
-                    if (module.redrawAllCanvasFeatureBoxes) {
-                        module.redrawAllCanvasFeatureBoxes();
-                    }
-                }).catch(() => {
-                    // Module not loaded yet, that's okay
-                });
-            } else {
-                regionsByVolcano.set(currentVolcano, []);
-            }
-        }
+        // ✅ Start with empty regions - they will be loaded after fetchData is called
+        // This ensures we know the time range before loading (regions outside range are filtered out)
+        regionsByVolcano.set(currentVolcano, []);
     }
     
     // Region cards will appear dynamically in #regionsList

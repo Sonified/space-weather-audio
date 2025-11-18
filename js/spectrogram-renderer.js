@@ -731,7 +731,7 @@ export function setupSpectrogramSelection() {
     spectrogramOverlayCanvas.id = 'spectrogram-selection-overlay';
     spectrogramOverlayCanvas.style.position = 'absolute';
     spectrogramOverlayCanvas.style.pointerEvents = 'none';  // Pass events through to main canvas
-    spectrogramOverlayCanvas.style.zIndex = '10';  // Above spectrogram, below other UI
+    spectrogramOverlayCanvas.style.zIndex = '20';  // Above spectrogram glow and other panels
     spectrogramOverlayCanvas.style.background = 'transparent';  // See through to spectrogram
     
     // Match main canvas size and position EXACTLY
@@ -932,7 +932,7 @@ export function setupSpectrogramSelection() {
                     spectrogramOverlayCanvas.id = 'spectrogram-selection-overlay';
                     spectrogramOverlayCanvas.style.position = 'absolute';
                     spectrogramOverlayCanvas.style.pointerEvents = 'none';
-                    spectrogramOverlayCanvas.style.zIndex = '10';
+                    spectrogramOverlayCanvas.style.zIndex = '20';  // Above spectrogram glow and other panels
                     spectrogramOverlayCanvas.style.background = 'transparent';
                     
                     const canvasRect = canvas.getBoundingClientRect();

@@ -12,6 +12,11 @@ const MAX_LOG_ENTRIES = 500; // Limit to prevent memory issues
 // Track if error has been reported to prevent duplicate submissions
 let errorReported = false;
 
+// Pink noise generator for flame effect
+let pinkNoiseNode = null;
+let pinkNoiseSource = null;
+let errorFlameActive = false;
+
 /**
  * Capture console logs
  */
@@ -121,7 +126,162 @@ function isCriticalError(error, source, lineno, colno) {
 }
 
 /**
- * Show error reporting UI in status bar
+ * Generate pink noise using Web Audio API
+ * Pink noise has equal energy per octave (1/f noise)
+ */
+function createPinkNoiseNode(audioContext) {
+    const bufferSize = 4096;
+    const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    // Generate pink noise using Voss-McCartney algorithm
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    
+    for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+        data[i] *= 0.11; // Scale down
+        b6 = white * 0.115926;
+    }
+    
+    const pinkNoise = audioContext.createBufferSource();
+    pinkNoise.buffer = buffer;
+    pinkNoise.loop = true;
+    
+    return pinkNoise;
+}
+
+/**
+ * Start pink noise-driven flame effect
+ */
+async function startErrorFlameEffect() {
+    if (errorFlameActive) return;
+    
+    try {
+        // Get or create audio context
+        const State = await import('./audio-state.js');
+        let audioContext = State.audioContext;
+        
+        // Create audio context if it doesn't exist
+        if (!audioContext) {
+            audioContext = new AudioContext({ 
+                sampleRate: 44100,
+                latencyHint: 'playback'
+            });
+            State.setAudioContext(audioContext);
+            console.log('🎵 Created audio context for flame effect');
+        }
+        
+        // Resume audio context if suspended (required for Web Audio API)
+        if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+        }
+        
+        // Create pink noise source
+        pinkNoiseSource = createPinkNoiseNode(audioContext);
+        
+        // Create gain node - AMP IT UP for strong visual effect!
+        pinkNoiseNode = audioContext.createGain();
+        pinkNoiseNode.gain.value = 5.0; // AMPED UP for strong flame effect signal
+        
+        // Create analyser to feed oscilloscope
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        
+        // Connect: pink noise -> gain (amped) -> analyser
+        // DO NOT connect analyser to destination - visual only, no audio!
+        pinkNoiseSource.connect(pinkNoiseNode);
+        pinkNoiseNode.connect(analyser);
+        // Note: analyser is NOT connected to destination - silent to user but strong signal for visuals!
+        
+        // Start pink noise
+        pinkNoiseSource.start(0);
+        
+        // Enable error mode in oscilloscope renderer (dials flame way up)
+        const { setErrorMode } = await import('./oscilloscope-renderer.js');
+        setErrorMode(true);
+        
+        // Feed pink noise data to oscilloscope renderer
+        const bufferSize = analyser.fftSize;
+        const buffer = new Float32Array(bufferSize);
+        
+        function feedPinkNoiseToFlame() {
+            if (!errorFlameActive || !analyser) return;
+            
+            analyser.getFloatTimeDomainData(buffer);
+            
+            // Send to oscilloscope renderer (drives flame effect)
+            import('./oscilloscope-renderer.js').then(({ addOscilloscopeData }) => {
+                // Send chunks of pink noise samples
+                const chunkSize = 128;
+                for (let i = 0; i < buffer.length; i += chunkSize) {
+                    const chunk = buffer.slice(i, i + chunkSize);
+                    addOscilloscopeData(chunk);
+                }
+            });
+            
+            requestAnimationFrame(feedPinkNoiseToFlame);
+        }
+        
+        errorFlameActive = true;
+        feedPinkNoiseToFlame();
+        
+        console.log('🔥 Error flame effect started (pink noise driven)');
+    } catch (error) {
+        console.error('❌ Failed to start error flame effect:', error);
+    }
+}
+
+/**
+ * Stop pink noise-driven flame effect
+ */
+async function stopErrorFlameEffect() {
+    if (!errorFlameActive) return;
+    
+    errorFlameActive = false;
+    
+    // Disable error mode in oscilloscope renderer
+    const { setErrorMode } = await import('./oscilloscope-renderer.js');
+    setErrorMode(false);
+    
+    if (pinkNoiseSource) {
+        try {
+            pinkNoiseSource.stop();
+        } catch (e) {
+            // Already stopped
+        }
+        pinkNoiseSource = null;
+    }
+    
+    if (pinkNoiseNode) {
+        try {
+            pinkNoiseNode.disconnect();
+        } catch (e) {
+            // Already disconnected
+        }
+        pinkNoiseNode = null;
+    }
+    
+    console.log('🔥 Error flame effect stopped');
+}
+
+/**
+ * Warm up the body background
+ */
+function warmUpBackground() {
+    // Fade body background to warmer/brighter colors
+    document.body.style.transition = 'background 1s ease-in-out';
+    document.body.style.background = 'linear-gradient(135deg, #3f0a0a 0%, #4d1a1a 50%, #5a2a2a 100%)';
+}
+
+/**
+ * Show error reporting UI in status bar and auto-submit
  */
 function showErrorReportingUI(errorMessage, errorDetails) {
     if (errorReported) {
@@ -133,46 +293,19 @@ function showErrorReportingUI(errorMessage, errorDetails) {
         return; // Status element not found
     }
 
-    // Store error details for submission
-    statusEl._errorMessage = errorMessage;
-    statusEl._errorDetails = errorDetails;
-
-    // Show message in status bar with click handler
-    statusEl.textContent = 'Interface overheated, click to submit your error.';
+    // Show message in status bar
+    statusEl.textContent = 'The interface has overheated. Our team is working on it, thanks for your patience!';
     statusEl.className = 'status error';
-    statusEl.style.cursor = 'pointer';
-    statusEl.style.userSelect = 'none';
+    statusEl.style.cursor = 'default';
     
-    // Add click handler
-    statusEl.addEventListener('click', handleErrorReportClick, { once: true });
-}
-
-/**
- * Handle click on error message in status bar
- */
-async function handleErrorReportClick() {
-    const statusEl = document.getElementById('status');
-    if (!statusEl || !statusEl._errorMessage) {
-        return;
-    }
-
-    await submitErrorReport(statusEl._errorMessage, statusEl._errorDetails);
-}
-
-/**
- * Show success message after error report submission
- */
-function showSuccessMessage() {
-    const statusEl = document.getElementById('status');
-    if (statusEl) {
-        statusEl.textContent = 'Thanks! Our team is on it 🌋';
-        statusEl.className = 'status success';
-        statusEl.style.cursor = 'default';
-        
-        // Clear error details
-        delete statusEl._errorMessage;
-        delete statusEl._errorDetails;
-    }
+    // Warm up background
+    warmUpBackground();
+    
+    // Start pink noise-driven flame effect (dialed way up)
+    startErrorFlameEffect();
+    
+    // Auto-submit error report (no click required)
+    submitErrorReport(errorMessage, errorDetails);
 }
 
 /**
@@ -213,7 +346,7 @@ async function submitErrorReport(errorMessage, errorDetails) {
 
         if (response.ok) {
             console.log('✅ Error report submitted successfully');
-            showSuccessMessage();
+            // Message stays as the error message - no need to change it
         } else {
             console.error('❌ Failed to submit error report:', response.statusText);
             errorReported = false; // Allow retry

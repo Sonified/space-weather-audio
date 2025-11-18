@@ -58,16 +58,37 @@ h2 {
     transform: translateZ(0);
 }
 
+/* Glow effect on visualization panel only */
+.panel-visualization {
+    overflow: visible; /* Allow glow to extend beyond panel */
+    /* Glow is applied via box-shadow on the panel itself */
+    box-shadow: var(--glow-shadow, 
+        0 10px 20px rgba(80, 20, 20, 0.35),
+        0 6px 12px rgba(80, 20, 20, 0.25),
+        0 3px 6px rgba(255, 100, 100, 0.15),
+        0 1px 3px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6)
+    );
+    transition: box-shadow 0.1s ease-out;
+    z-index: 0; /* Lowest z-index - glow appears behind everything */
+    position: relative; /* Ensure z-index works */
+}
+
+
 /* Panel: Simulate panel */
 .panel-simulate {
     padding-top: 8px;
     padding-bottom: 8px;
+    position: relative;
+    z-index: 10; /* Above visualization panel glow */
 }
 
 /* Panel: Cache panel */
 .panel-cache {
     padding-top: 8px;
     padding-bottom: 8px;
+    position: relative;
+    z-index: 10; /* Above visualization panel glow */
 }
 
 /* Panel: Volcano/Station selection panel - Medium-light grey (#9a9a9a) */
@@ -111,6 +132,7 @@ h2 {
     border-top: 1px solid rgba(220, 220, 220, 0.6) !important;
     border-bottom: 1px solid rgba(130, 130, 130, 0.5) !important;
     position: relative;
+    z-index: 10; /* Above visualization panel glow */
 }
 
 .panel-selection::before {
@@ -187,6 +209,7 @@ h2 {
     padding-top: 8px;
     padding-bottom: 8px;
     position: relative;
+    z-index: 10; /* Above visualization panel glow */
 }
 
 .panel-playback::before {
@@ -238,6 +261,8 @@ h2 {
 .panel-metrics {
     padding-top: 8px;
     padding-bottom: 8px;
+    position: relative;
+    z-index: 10; /* Above visualization panel glow */
 }
 
 .controls {
@@ -662,11 +687,13 @@ button.loop-active:hover:not(:disabled) {
     white-space: nowrap;
     text-overflow: ellipsis;
     min-width: 0; /* Allow flex item to shrink below content size */
+    background: rgba(40, 40, 40, 0.85); /* Dark background like .status.info */
+    color: #e0e0e0; /* Light text color */
 }
 
 .status.info { background: rgba(40, 40, 40, 0.85); color: #e0e0e0; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; border: 1px solid rgba(80, 80, 80, 0.9); }
 .status.success { color: #2e7d32; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
-.status.error { color: #ff6f00; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
+.status.error { color: #ffcc99; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
 
 .status.loading {
     background: linear-gradient(

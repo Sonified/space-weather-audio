@@ -1534,6 +1534,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Setup spectrogram frequency selection
     setupSpectrogramSelection();
     
+    // Initialize oscilloscope visualization immediately (don't wait for audio)
+    import('./oscilloscope-renderer.js').then(({ initOscilloscope }) => {
+        initOscilloscope();
+        console.log('🎨 Oscilloscope initialized on UI load');
+    });
+    
     // Initialize keyboard shortcuts
     initKeyboardShortcuts();
     
@@ -1988,7 +1994,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
     
     // Data Fetching
-    document.getElementById('startBtn').addEventListener('click', startStreaming);
+    document.getElementById('startBtn').addEventListener('click', (e) => {
+        startStreaming(e);
+    });
     document.getElementById('forceIrisBtn').addEventListener('click', toggleForceIris);
     
     // Playback Controls
