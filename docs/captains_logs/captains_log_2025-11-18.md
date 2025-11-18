@@ -279,3 +279,5 @@ Users could accidentally click outside modal areas, which would hide the overlay
 - `js/ui-controls.js` - Disabled click-outside-to-close for all modals, added dynamic text logic to `openParticipantModal()`
 - `js/main.js` - Version number updated to v2.53
 
+**Git Commit:** `cde60b7` - v2.53 Fix: Disabled click-outside-to-close for all modals, added dynamic participant modal text based on context
+

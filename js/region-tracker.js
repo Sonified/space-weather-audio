@@ -2772,7 +2772,7 @@ export function zoomToRegion(regionIndex) {
         // Check if tutorial is active - if so, don't override tutorial messages
         if (!isTutorialActive()) {
             statusEl.className = 'status info';
-            statusEl.textContent = `Type (${regionNumber}) again to play this region, (f) to select a feature, (esc) to zoom out.`;
+            statusEl.textContent = `Type (${regionNumber}) again to play this region, click and drag to select a feature, (esc) to zoom out.`;
         }
     }
     

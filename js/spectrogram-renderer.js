@@ -60,6 +60,35 @@ export function clearAllCanvasFeatureBoxes() {
 }
 
 /**
+ * Show safeguard message when stuck state is detected
+ */
+function showStuckStateMessage() {
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.textContent = 'Difficulty Creating Regions? Please refresh your page to continue. Thanks!';
+        statusEl.style.color = '#ffa500'; // Orange color for warning (less alarming than red)
+        statusEl.style.fontWeight = '600';
+        console.warn('⚠️ [SAFEGUARD] Stuck state detected - showing safeguard message');
+    }
+}
+
+/**
+ * Hide safeguard message when state is restored
+ */
+function hideStuckStateMessage() {
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        // Only clear if it's our safeguard message (don't clear other status messages)
+        if (statusEl.textContent.includes('Difficulty Creating Regions')) {
+            statusEl.textContent = '';
+            statusEl.style.color = ''; // Reset to default
+            statusEl.style.fontWeight = '';
+            console.log('✅ [SAFEGUARD] Stuck state resolved - hiding safeguard message');
+        }
+    }
+}
+
+/**
  * Check if a click point is within any canvas feature box
  * Returns {regionIndex, featureIndex} if clicked, null otherwise
  */
@@ -791,6 +820,15 @@ export function setupSpectrogramSelection() {
                 spectrogramCurrentX = null;
                 spectrogramCurrentY = null;
             }
+            // 🔥 FIX: Verify overlay context is ready after sleep - if not, show safeguard message
+            if (!spectrogramOverlayCtx || !spectrogramOverlayCanvas) {
+                console.warn('⚠️ [SLEEP WAKE] Overlay context missing after sleep - may need refresh');
+                // Don't show message immediately - wait for user to try clicking first
+                // The mousedown handler will detect and show the message if needed
+            } else {
+                // Overlay context is good - hide any existing safeguard message
+                hideStuckStateMessage();
+            }
         }
     };
     document.addEventListener('visibilitychange', spectrogramVisibilityHandler);
@@ -839,8 +877,10 @@ export function setupSpectrogramSelection() {
 
         // 🔥 FIX: ALWAYS force-reset state before starting new selection
         // Don't cancel and return - just clean up silently and start fresh
+        let wasCleaningUp = false;
         if (spectrogramSelectionActive || spectrogramSelectionBox) {
             console.log('🧹 Cleaning up stale selection state before starting new one');
+            wasCleaningUp = true;
 
             // Clear any existing timeout
             if (spectrogramSelectionTimeout) {
@@ -854,21 +894,67 @@ export function setupSpectrogramSelection() {
                 spectrogramSelectionBox = null;
             }
 
-            // Reset all state
+            // 🔥 AGGRESSIVE RESET: Force reset ALL state variables to ensure clean slate
             spectrogramSelectionActive = false;
             spectrogramStartX = null;
             spectrogramStartY = null;
             spectrogramCurrentX = null;
             spectrogramCurrentY = null;
+            
+            // 🔥 FIX: Verify overlay context is ready - if not, we're in a stuck state!
+            if (!spectrogramOverlayCtx || !spectrogramOverlayCanvas) {
+                console.error('⚠️ [STUCK STATE DETECTED] Overlay context not ready after cleanup!');
+                showStuckStateMessage();
+                // Try to reinitialize overlay canvas
+                const container = canvas.closest('.panel');
+                if (container && !spectrogramOverlayCanvas) {
+                    console.log('🔄 Attempting to reinitialize overlay canvas...');
+                    // Recreate overlay canvas
+                    spectrogramOverlayCanvas = document.createElement('canvas');
+                    spectrogramOverlayCanvas.id = 'spectrogram-selection-overlay';
+                    spectrogramOverlayCanvas.style.position = 'absolute';
+                    spectrogramOverlayCanvas.style.pointerEvents = 'none';
+                    spectrogramOverlayCanvas.style.zIndex = '10';
+                    spectrogramOverlayCanvas.style.background = 'transparent';
+                    
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
+                    spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
+                    spectrogramOverlayCanvas.width = canvas.width;
+                    spectrogramOverlayCanvas.height = canvas.height;
+                    spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
+                    spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
+                    
+                    container.appendChild(spectrogramOverlayCanvas);
+                    spectrogramOverlayCtx = spectrogramOverlayCanvas.getContext('2d');
+                    
+                    if (spectrogramOverlayCtx) {
+                        console.log('✅ Overlay canvas reinitialized successfully');
+                        hideStuckStateMessage();
+                    } else {
+                        console.error('❌ Failed to reinitialize overlay canvas');
+                        return; // Can't proceed without overlay context
+                    }
+                } else {
+                    return; // Can't proceed without overlay context
+                }
+            }
 
             // DON'T return - continue to start new selection below!
         }
         
-        // DEBUGGING: DON'T clear - let boxes accumulate to see what's happening
-        // if (spectrogramOverlayCtx) {
-        //     spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
-        //     console.log('🧹 Cleared overlay canvas for new selection');
-        // }
+        // 🔥 VERIFY: After cleanup, ensure overlay context is still valid before proceeding
+        if (!spectrogramOverlayCtx || !spectrogramOverlayCanvas) {
+            console.error('⚠️ [STUCK STATE DETECTED] Overlay context missing before starting selection!');
+            showStuckStateMessage();
+            return; // Can't start selection without overlay context
+        }
+        
+        // Hide safeguard message if we got here successfully
+        if (wasCleaningUp) {
+            hideStuckStateMessage();
+        }
 
         // Reuse canvasRect from above (already calculated for box click detection)
         spectrogramStartX = e.clientX - canvasRect.left;
@@ -894,6 +980,19 @@ export function setupSpectrogramSelection() {
     });
     
     canvas.addEventListener('mousemove', (e) => {
+        // 🔥 STUCK STATE DETECTION: If selection is active but overlay context is missing, we're stuck!
+        if (spectrogramSelectionActive && !spectrogramOverlayCtx) {
+            console.error('⚠️ [STUCK STATE DETECTED] Selection active but overlay context missing in mousemove!');
+            showStuckStateMessage();
+            // Force reset state
+            spectrogramSelectionActive = false;
+            spectrogramStartX = null;
+            spectrogramStartY = null;
+            spectrogramCurrentX = null;
+            spectrogramCurrentY = null;
+            return;
+        }
+        
         if (!spectrogramSelectionActive || !spectrogramOverlayCtx) return;
         
         const canvasRect = canvas.getBoundingClientRect();
@@ -1048,6 +1147,9 @@ export function cancelSpectrogramSelection() {
     spectrogramStartY = null;
     spectrogramCurrentX = null;
     spectrogramCurrentY = null;
+    
+    // 🔥 FIX: Hide safeguard message when canceling (state is being reset)
+    hideStuckStateMessage();
     
     // DON'T clear the overlay - that would delete all completed boxes!
     // Just redraw without the current incomplete drag

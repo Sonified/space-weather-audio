@@ -1412,6 +1412,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.54 - Stuck State Fix & UI Improvements');
+        console.log('🔧 [0ms] v2.54 Fix: Fixed stuck state after sleep mode - added aggressive state reset, overlay context recovery, and safeguard message');
+        console.log('🎨 [0ms] v2.54 Feat: Changed feature selection instructions from "(f) key" to "click and drag"');
+        console.log('🎨 [0ms] v2.54 Feat: Pre-survey modal now shows "Welcome back!" for returning visitors');
         console.log('🌋 [0ms] volcano-audio v2.53 - Modal UX Improvements');
         console.log('🔧 [0ms] v2.53 Fix: Disabled click-outside-to-close for all modals - clicks outside modal area are now completely ignored');
         console.log('🎨 [0ms] v2.53 Feat: Dynamic participant modal text - shows different messages based on context (initial setup vs upper right corner click, Qualtrics transfer vs manual entry)');

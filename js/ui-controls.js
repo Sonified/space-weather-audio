@@ -1962,6 +1962,19 @@ export function openPreSurveyModal() {
         return;
     }
     
+    // 🔥 Check if this is a returning visit (user has seen welcome before)
+    // If they've seen welcome, change title to "Welcome back!"
+    const modalTitle = preSurveyModal.querySelector('.modal-title');
+    if (modalTitle) {
+        const hasSeenWelcome = localStorage.getItem('study_has_seen_welcome') === 'true';
+        if (hasSeenWelcome) {
+            modalTitle.textContent = 'Welcome back!';
+        } else {
+            // First visit - use default title
+            modalTitle.textContent = '📊 Pre-Survey';
+        }
+    }
+    
     // Fade in overlay background (standard design pattern)
     fadeInOverlay();
     
