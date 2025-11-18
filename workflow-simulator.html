@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Simulator - Volcano Audio</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #4a5d4e 0%, #3d4e41 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #c8e6c9;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #2d3e2f;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+        
+        h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            color: #a5d6a7;
+        }
+        
+        .subtitle {
+            color: #81c784;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #a5d6a7;
+            border-bottom: 2px solid #66bb6a;
+            padding-bottom: 8px;
+        }
+        
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .sim-btn {
+            padding: 16px 24px;
+            background: linear-gradient(135deg, #558b2f 0%, #4caf50 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
+        
+        .sim-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
+            background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+        }
+        
+        .sim-btn:active {
+            transform: translateY(0);
+        }
+        
+        .sim-btn.secondary {
+            background: linear-gradient(135deg, #66bb6a 0%, #558b2f 100%);
+            box-shadow: 0 4px 15px rgba(102, 187, 106, 0.3);
+        }
+        
+        .sim-btn.secondary:hover {
+            box-shadow: 0 6px 20px rgba(102, 187, 106, 0.5);
+            background: linear-gradient(135deg, #558b2f 0%, #4caf50 100%);
+        }
+        
+        .sim-btn.danger {
+            background: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);
+            color: #1b5e20;
+            box-shadow: 0 4px 15px rgba(129, 199, 132, 0.3);
+        }
+        
+        .sim-btn.danger:hover {
+            box-shadow: 0 6px 20px rgba(129, 199, 132, 0.5);
+            background: linear-gradient(135deg, #66bb6a 0%, #558b2f 100%);
+            color: white;
+        }
+        
+        .info-box {
+            background: #3d4e41;
+            border-left: 4px solid #66bb6a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #a5d6a7;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #2e7d32;
+            color: #c8e6c9;
+            border: 1px solid #4caf50;
+            display: block;
+        }
+        
+        .status.info {
+            background: #3d4e41;
+            color: #a5d6a7;
+            border: 1px solid #558b2f;
+            display: block;
+        }
+        
+        .current-state {
+            background: #3d4e41;
+            border: 1px solid #66bb6a;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+        
+        .current-state h3 {
+            margin-bottom: 10px;
+            color: #81c784;
+        }
+        
+        .current-state pre {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 16px;
+            color: #000;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001;">
+            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.95;">🎬 Workflow Simulator</h1>
+            <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end;">
+                <div id="participantIdDisplay" style="display: block; margin-bottom: 0;">
+                    <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
+                        Participant ID: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <p class="subtitle">Test different study workflow scenarios quickly</p>
+        
+        <div class="section">
+            <h2 class="section-title">🚀 Beginning Flows</h2>
+            <div class="button-grid">
+                <button class="sim-btn" onclick="simulateFirstVisitEver()">
+                    🆕 First Visit Ever<br>
+                    <small>(Participant → Welcome → Pre-Survey → Tutorial)</small>
+                </button>
+                <button class="sim-btn" onclick="simulateReturningVisit()">
+                    🔁 Returning Visit<br>
+                    <small>(Pre-Survey → Experience)</small>
+                </button>
+                <button class="sim-btn" onclick="simulateFirstVisitNewWeek()">
+                    📅 First Visit New Week<br>
+                    <small>(Pre-Survey → Experience → AWE-SF)</small>
+                </button>
+                <button class="sim-btn" onclick="simulateDirectToTutorial()">
+                    🎓 Go Directly to Tutorial<br>
+                    <small>(Skip modals, start tutorial immediately)</small>
+                </button>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">🏁 End Flows</h2>
+            <div class="button-grid">
+                <button class="sim-btn secondary" onclick="simulateEndFlow()">
+                    ✅ Complete End Flow<br>
+                    <small>(Activity Level → AWE-SF → Post-Survey → End)</small>
+                </button>
+                <button class="sim-btn secondary" onclick="simulateEndFlowNoAwesf()">
+                    ✅ End Flow (No AWE-SF)<br>
+                    <small>(Activity Level → Post-Survey → End)</small>
+                </button>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">🔧 Utilities</h2>
+            <div class="button-grid">
+                <button class="sim-btn danger" onclick="resetAllFlags()">
+                    🧹 Reset All Flags<br>
+                    <small>(Clear localStorage, start fresh)</small>
+                </button>
+                <button class="sim-btn" onclick="showCurrentState()">
+                    📊 Show Current State<br>
+                    <small>(View localStorage flags)</small>
+                </button>
+            </div>
+        </div>
+        
+        <div id="status" class="status"></div>
+        
+        <div id="currentState" class="current-state" style="display: none;">
+            <h3>Current State:</h3>
+            <pre id="stateContent"></pre>
+        </div>
+        
+        <div class="info-box">
+            <strong>💡 How it works:</strong><br>
+            Click a button to set up the workflow state, then it will open <code>index.html</code> in a new tab with the appropriate configuration. 
+            The workflow will start automatically based on the state you selected.
+        </div>
+    </div>
+    
+    <script>
+        const STORAGE_KEYS = {
+            HAS_SEEN_PARTICIPANT_SETUP: 'study_has_seen_participant_setup',
+            HAS_SEEN_WELCOME: 'study_has_seen_welcome',
+            HAS_SEEN_TUTORIAL: 'study_has_seen_tutorial',
+            LAST_AWESF_DATE: 'study_last_awesf_date',
+            WEEKLY_SESSION_COUNT: 'study_weekly_session_count',
+            WEEK_START_DATE: 'study_week_start_date'
+        };
+        
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 5000);
+        }
+        
+        function setupState(config) {
+            // Set mode
+            localStorage.setItem('selectedMode', config.mode || 'study');
+            
+            // Set participant ID if provided
+            if (config.participantId) {
+                localStorage.setItem('participantId', config.participantId);
+            }
+            
+            // Set workflow flags
+            if (config.flags) {
+                Object.entries(config.flags).forEach(([key, value]) => {
+                    if (value !== null) {
+                        localStorage.setItem(key, value);
+                    } else {
+                        localStorage.removeItem(key);
+                    }
+                });
+            }
+            
+            // Clear flags not in config
+            Object.values(STORAGE_KEYS).forEach(key => {
+                if (!config.flags || !(key in config.flags)) {
+                    localStorage.removeItem(key);
+                }
+            });
+        }
+        
+        function launchWorkflow(config) {
+            setupState(config);
+            showStatus(`✅ State configured! Opening workflow...`, 'success');
+            
+            // Open index.html in new tab
+            setTimeout(() => {
+                window.open('index.html?mode=study', '_blank');
+            }, 500);
+        }
+        
+        function simulateFirstVisitEver() {
+            launchWorkflow({
+                mode: 'study',
+                participantId: `R_${Math.random().toString(36).substring(2, 18)}`,
+                flags: {
+                    [STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP]: null, // Not seen
+                    [STORAGE_KEYS.HAS_SEEN_WELCOME]: null,
+                    [STORAGE_KEYS.HAS_SEEN_TUTORIAL]: null,
+                    [STORAGE_KEYS.LAST_AWESF_DATE]: null,
+                    [STORAGE_KEYS.WEEKLY_SESSION_COUNT]: null,
+                    [STORAGE_KEYS.WEEK_START_DATE]: null
+                }
+            });
+        }
+        
+        function simulateReturningVisit() {
+            launchWorkflow({
+                mode: 'study',
+                participantId: `R_${Math.random().toString(36).substring(2, 18)}`,
+                flags: {
+                    [STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP]: 'true',
+                    [STORAGE_KEYS.HAS_SEEN_WELCOME]: 'true',
+                    [STORAGE_KEYS.HAS_SEEN_TUTORIAL]: 'true',
+                    [STORAGE_KEYS.LAST_AWESF_DATE]: new Date().toISOString(), // Already done this week
+                    [STORAGE_KEYS.WEEKLY_SESSION_COUNT]: '2',
+                    [STORAGE_KEYS.WEEK_START_DATE]: new Date().toISOString()
+                }
+            });
+        }
+        
+        function simulateFirstVisitNewWeek() {
+            const lastWeek = new Date();
+            lastWeek.setDate(lastWeek.getDate() - 8); // 8 days ago
+            
+            launchWorkflow({
+                mode: 'study',
+                participantId: `R_${Math.random().toString(36).substring(2, 18)}`,
+                flags: {
+                    [STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP]: 'true',
+                    [STORAGE_KEYS.HAS_SEEN_WELCOME]: 'true',
+                    [STORAGE_KEYS.HAS_SEEN_TUTORIAL]: 'true',
+                    [STORAGE_KEYS.LAST_AWESF_DATE]: lastWeek.toISOString(), // Last week
+                    [STORAGE_KEYS.WEEKLY_SESSION_COUNT]: '1',
+                    [STORAGE_KEYS.WEEK_START_DATE]: new Date().toISOString()
+                }
+            });
+        }
+        
+        function simulateDirectToTutorial() {
+            launchWorkflow({
+                mode: 'study',
+                participantId: `R_${Math.random().toString(36).substring(2, 18)}`,
+                flags: {
+                    [STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP]: 'true', // Skip participant modal
+                    [STORAGE_KEYS.HAS_SEEN_WELCOME]: 'true', // Skip welcome modal
+                    [STORAGE_KEYS.HAS_SEEN_TUTORIAL]: null, // Tutorial NOT seen, so it will run
+                    [STORAGE_KEYS.LAST_AWESF_DATE]: null,
+                    [STORAGE_KEYS.WEEKLY_SESSION_COUNT]: null,
+                    [STORAGE_KEYS.WEEK_START_DATE]: null
+                }
+            });
+        }
+        
+        function simulateEndFlow() {
+            // Set up state as if user has completed pre-survey and experience
+            setupState({
+                mode: 'study',
+                participantId: `R_${Math.random().toString(36).substring(2, 18)}`,
+                flags: {
+                    [STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP]: 'true',
+                    [STORAGE_KEYS.HAS_SEEN_WELCOME]: 'true',
+                    [STORAGE_KEYS.HAS_SEEN_TUTORIAL]: 'true',
+                    [STORAGE_KEYS.LAST_AWESF_DATE]: null, // Needs AWE-SF
+                    [STORAGE_KEYS.WEEKLY_SESSION_COUNT]: '1',
+                    [STORAGE_KEYS.WEEK_START_DATE]: new Date().toISOString()
+                }
+            });
+            showStatus(`✅ State configured! Opening end flow...`, 'success');
+            
+            // Open with startAt=end parameter
+            setTimeout(() => {
+                window.open('index.html?mode=study&startAt=end', '_blank');
+            }, 500);
+        }
+        
+        function simulateEndFlowNoAwesf() {
+            setupState({
+                mode: 'study',
+                participantId: `R_${Math.random().toString(36).substring(2, 18)}`,
+                flags: {
+                    [STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP]: 'true',
+                    [STORAGE_KEYS.HAS_SEEN_WELCOME]: 'true',
+                    [STORAGE_KEYS.HAS_SEEN_TUTORIAL]: 'true',
+                    [STORAGE_KEYS.LAST_AWESF_DATE]: new Date().toISOString(), // Already done
+                    [STORAGE_KEYS.WEEKLY_SESSION_COUNT]: '2',
+                    [STORAGE_KEYS.WEEK_START_DATE]: new Date().toISOString()
+                }
+            });
+            showStatus(`✅ State configured! Opening end flow (no AWE-SF)...`, 'success');
+            
+            // Open with startAt=end parameter
+            setTimeout(() => {
+                window.open('index.html?mode=study&startAt=end', '_blank');
+            }, 500);
+        }
+        
+        function resetAllFlags() {
+            // Clear all study flags
+            Object.values(STORAGE_KEYS).forEach(key => {
+                localStorage.removeItem(key);
+            });
+            localStorage.removeItem('participantId');
+            localStorage.removeItem('selectedMode');
+            
+            showStatus('✅ All flags reset! Ready for fresh start.', 'success');
+        }
+        
+        function showCurrentState() {
+            const state = {
+                mode: localStorage.getItem('selectedMode') || 'not set',
+                participantId: localStorage.getItem('participantId') || 'not set',
+                flags: {}
+            };
+            
+            Object.entries(STORAGE_KEYS).forEach(([name, key]) => {
+                state.flags[name] = localStorage.getItem(key) || 'not set';
+            });
+            
+            const stateEl = document.getElementById('currentState');
+            const contentEl = document.getElementById('stateContent');
+            contentEl.textContent = JSON.stringify(state, null, 2);
+            stateEl.style.display = 'block';
+        }
+        
+        // Handle startAt parameter for end flows
+        if (window.location.search.includes('startAt=end')) {
+            // This would be handled in index.html, but we can set a flag
+            localStorage.setItem('workflow_start_at', 'end');
+        }
+        
+        // Update participant ID display (same as main UI)
+        function updateParticipantIdDisplay() {
+            const participantId = localStorage.getItem('participantId');
+            const valueElement = document.getElementById('participantIdValue');
+            if (valueElement) {
+                valueElement.textContent = participantId || '--';
+            }
+        }
+        
+        // Participant ID display click handler (EXACT same as main UI)
+        const participantIdText = document.getElementById('participantIdText');
+        if (participantIdText) {
+            participantIdText.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('👤 Participant ID display clicked - opening modal');
+                // Navigate to main app with modal trigger (same behavior as main UI)
+                localStorage.setItem('skipStudyWorkflow', 'true');
+                window.location.href = `index.html?mode=study&openParticipant=true`;
+            });
+            // Add hover effect (same as main UI)
+            participantIdText.addEventListener('mouseenter', function() {
+                this.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+            });
+            participantIdText.addEventListener('mouseleave', function() {
+                this.style.backgroundColor = 'transparent';
+            });
+        }
+        
+        // Initialize participant ID display
+        updateParticipantIdDisplay();
+    </script>
+</body>
+</html>
+

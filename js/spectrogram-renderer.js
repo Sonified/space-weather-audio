@@ -5,18 +5,113 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode } from './region-tracker.js';
-import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport } from './spectrogram-complete-renderer.js';
+import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions } from './region-tracker.js';
+import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, getSpectrogramViewport } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
+import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 
-// Spectrogram selection state
+// Spectrogram selection state (pure canvas - separate overlay layer!)
 let spectrogramSelectionActive = false;
 let spectrogramStartX = null;
 let spectrogramStartY = null;
-let spectrogramEndY = null;
-export let spectrogramSelectionBox = null;
+let spectrogramCurrentX = null;  // Current drag position (for canvas rendering)
+let spectrogramCurrentY = null;  // Current drag position (for canvas rendering)
+export let spectrogramSelectionBox = null;  // DEPRECATED - kept for compatibility during transition
+
+// Overlay canvas for selection box (separate layer - no conflicts!)
+let spectrogramOverlayCanvas = null;
+let spectrogramOverlayCtx = null;
+
+// Store completed boxes to redraw them all (replaces orange DOM boxes!)
+// NOTE: We rebuild this from actual feature data, so it stays in sync!
+let completedSelectionBoxes = [];
+
+/**
+ * Add a feature box to the canvas overlay
+ * NOTE: Actually rebuilds from source - ensures sync with feature array!
+ */
+export function addCanvasFeatureBox(regionIndex, featureIndex, featureData) {
+    // Rebuild from source to ensure sync (handles renumbering automatically!)
+    rebuildCanvasBoxesFromFeatures();
+}
+
+/**
+ * Remove a feature box from the canvas overlay
+ * NOTE: Actually rebuilds from source - ensures sync with feature array!
+ */
+export function removeCanvasFeatureBox(regionIndex, featureIndex) {
+    // Rebuild from source to ensure sync (handles renumbering automatically!)
+    rebuildCanvasBoxesFromFeatures();
+}
+
+/**
+ * Clear all feature boxes from the canvas overlay
+ */
+export function clearAllCanvasFeatureBoxes() {
+    completedSelectionBoxes = [];
+    
+    if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
+        spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+    }
+    
+    console.log('🧹 Cleared all canvas feature boxes');
+}
+
+/**
+ * Rebuild canvas boxes from actual feature data (keeps them in sync!)
+ * Uses same logic as orange boxes - rebuilds from source of truth
+ * This ensures boxes match the actual feature array (no orphans, numbers shift correctly)
+ */
+function rebuildCanvasBoxesFromFeatures() {
+    const regions = getCurrentRegions();
+    if (!regions) return;
+    
+    completedSelectionBoxes = [];
+    
+    // Rebuild boxes from actual feature data (always in sync!)
+    regions.forEach((region, regionIndex) => {
+        if (!region.features) return;
+        
+        region.features.forEach((feature, featureIndex) => {
+            // Only add boxes for complete features
+            if (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime) {
+                completedSelectionBoxes.push({
+                    regionIndex,
+                    featureIndex,
+                    startTime: feature.startTime,
+                    endTime: feature.endTime,
+                    lowFreq: parseFloat(feature.lowFreq),
+                    highFreq: parseFloat(feature.highFreq)
+                });
+            }
+        });
+    });
+    
+    // Redraw with rebuilt boxes
+    redrawCanvasBoxes();
+}
+
+/**
+ * Redraw canvas boxes (internal - clears and draws all boxes)
+ */
+function redrawCanvasBoxes() {
+    if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
+        spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+        for (const savedBox of completedSelectionBoxes) {
+            drawSavedBox(spectrogramOverlayCtx, savedBox);
+        }
+    }
+}
+
+/**
+ * Redraw all canvas feature boxes (called after zoom, speed change, deletion, etc.)
+ * Rebuilds from source of truth to stay in sync!
+ */
+export function redrawAllCanvasFeatureBoxes() {
+    rebuildCanvasBoxesFromFeatures();
+}
 
 // 🔥 FIX: Track event listeners for cleanup to prevent memory leaks
 let spectrogramMouseUpHandler = null;
@@ -328,6 +423,9 @@ export async function changeFrequencyScale() {
                     
                     ctx.globalAlpha = 1.0;
                     
+                    // Redraw canvas feature boxes during transition (smooth interpolation!)
+                    redrawAllCanvasFeatureBoxes();
+                    
                     if (progress < 1.0) {
                         requestAnimationFrame(fadeStep);
                     } else {
@@ -336,6 +434,7 @@ export async function changeFrequencyScale() {
 
                         // Update feature box positions for new frequency scale
                         updateAllFeatureBoxPositions();
+                        redrawAllCanvasFeatureBoxes(); // Update canvas boxes too!
 
                         // Resume playhead
                         if (playbackWasActive) {
@@ -435,6 +534,9 @@ export async function changeFrequencyScale() {
                 // Reset alpha after drawing playhead
                 ctx.globalAlpha = 1.0;
                 
+                // Redraw canvas feature boxes during transition (smooth interpolation!)
+                redrawAllCanvasFeatureBoxes();
+                
                 if (progress < 1.0) {
                     requestAnimationFrame(fadeStep);
                 } else {
@@ -444,6 +546,7 @@ export async function changeFrequencyScale() {
 
                     // Update feature box positions for new frequency scale
                     updateAllFeatureBoxPositions();
+                        redrawAllCanvasFeatureBoxes(); // Update canvas boxes too!
 
                     // 🔥 RESUME playhead updates!
                     if (playbackWasActive) {
@@ -464,6 +567,7 @@ export async function changeFrequencyScale() {
 
             // Update feature box positions for new frequency scale
             updateAllFeatureBoxPositions();
+            redrawAllCanvasFeatureBoxes(); // Update canvas boxes too!
         }
     } else {
         console.log('⚠️ No animation - no rendered spectrogram');
@@ -474,6 +578,7 @@ export async function changeFrequencyScale() {
 
         // Update feature box positions for new frequency scale (even if no spectrogram yet)
         updateAllFeatureBoxPositions();
+        redrawAllCanvasFeatureBoxes(); // Update canvas boxes too!
     }
 }
 
@@ -514,6 +619,40 @@ export function setupSpectrogramSelection() {
     // Use the panel as container (same as waveform selection)
     const container = canvas.closest('.panel');
     if (!container) return;
+    
+    // ✅ Create overlay canvas for selection box (separate layer - no conflicts!)
+    spectrogramOverlayCanvas = document.createElement('canvas');
+    spectrogramOverlayCanvas.id = 'spectrogram-selection-overlay';
+    spectrogramOverlayCanvas.style.position = 'absolute';
+    spectrogramOverlayCanvas.style.pointerEvents = 'none';  // Pass events through to main canvas
+    spectrogramOverlayCanvas.style.zIndex = '10';  // Above spectrogram, below other UI
+    spectrogramOverlayCanvas.style.background = 'transparent';  // See through to spectrogram
+    
+    // Match main canvas size and position EXACTLY
+    const canvasRect = canvas.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
+    spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
+    
+    // Use SAME dimensions as main canvas
+    spectrogramOverlayCanvas.width = canvas.width;
+    spectrogramOverlayCanvas.height = canvas.height;
+    spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
+    spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
+    
+    spectrogramOverlayCtx = spectrogramOverlayCanvas.getContext('2d');
+    container.appendChild(spectrogramOverlayCanvas);
+    
+    console.log('✅ Created spectrogram selection overlay canvas:', {
+        left: spectrogramOverlayCanvas.style.left,
+        top: spectrogramOverlayCanvas.style.top,
+        width: spectrogramOverlayCanvas.width,
+        height: spectrogramOverlayCanvas.height,
+        styleWidth: spectrogramOverlayCanvas.style.width,
+        styleHeight: spectrogramOverlayCanvas.style.height,
+        canvasWidth: canvas.width,
+        canvasOffsetWidth: canvas.offsetWidth
+    });
 
     // 🔥 SLEEP FIX: Clean up on visibility change (computer wake from sleep!)
     // This immediately cancels any stuck selection when page becomes visible again
@@ -557,7 +696,7 @@ export function setupSpectrogramSelection() {
                 spectrogramSelectionTimeout = null;
             }
 
-            // Delete any orphaned box
+            // Delete any orphaned box (legacy DOM cleanup)
             if (spectrogramSelectionBox) {
                 spectrogramSelectionBox.remove();
                 spectrogramSelectionBox = null;
@@ -567,15 +706,23 @@ export function setupSpectrogramSelection() {
             spectrogramSelectionActive = false;
             spectrogramStartX = null;
             spectrogramStartY = null;
-            spectrogramEndY = null;
+            spectrogramCurrentX = null;
+            spectrogramCurrentY = null;
 
             // DON'T return - continue to start new selection below!
         }
+        
+        // DEBUGGING: DON'T clear - let boxes accumulate to see what's happening
+        // if (spectrogramOverlayCtx) {
+        //     spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+        //     console.log('🧹 Cleared overlay canvas for new selection');
+        // }
 
         const canvasRect = canvas.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
         spectrogramStartX = e.clientX - canvasRect.left;
         spectrogramStartY = e.clientY - canvasRect.top;
+        spectrogramCurrentX = null;  // Reset - will be set on first mousemove
+        spectrogramCurrentY = null;  // Reset - will be set on first mousemove
         spectrogramSelectionActive = true;
 
         // 🔥 FIX: Safety timeout - if mouseup never fires, auto-cancel after 5 seconds
@@ -595,58 +742,30 @@ export function setupSpectrogramSelection() {
     });
     
     canvas.addEventListener('mousemove', (e) => {
-        if (!spectrogramSelectionActive) return;
+        if (!spectrogramSelectionActive || !spectrogramOverlayCtx) return;
         
         const canvasRect = canvas.getBoundingClientRect();
         const currentX = e.clientX - canvasRect.left;
         const currentY = e.clientY - canvasRect.top;
         
-        // 🔥 FIX: Require minimum drag distance (5 pixels) before creating box
-        // This prevents boxes from being created on accidental tiny movements
-        if (!spectrogramSelectionBox) {
-            // Calculate drag distance from start position
-            if (spectrogramStartX !== null && spectrogramStartY !== null) {
-                const dragDistanceX = Math.abs(currentX - spectrogramStartX);
-                const dragDistanceY = Math.abs(currentY - spectrogramStartY);
-                const dragDistance = Math.max(dragDistanceX, dragDistanceY);
-
-                // Only create box if user has dragged at least 5 pixels
-                if (dragDistance < 5) {
-                    return; // Not enough drag yet, wait for more movement
-                }
-            }
-            
-            const containerRect = container.getBoundingClientRect();
-            
-            spectrogramSelectionBox = document.createElement('div');
-            spectrogramSelectionBox.className = 'selection-box';
-            spectrogramSelectionBox.style.position = 'absolute';
-            spectrogramSelectionBox.style.left = (spectrogramStartX + canvasRect.left - containerRect.left) + 'px';
-            spectrogramSelectionBox.style.top = (spectrogramStartY + canvasRect.top - containerRect.top) + 'px';
-            spectrogramSelectionBox.style.width = '0px';
-            spectrogramSelectionBox.style.height = '0px';
-            spectrogramSelectionBox.style.border = '2px solid #ff4444';
-            spectrogramSelectionBox.style.background = 'rgba(255, 68, 68, 0.2)';
-            spectrogramSelectionBox.style.pointerEvents = 'none';
-            spectrogramSelectionBox.style.zIndex = '100';
-            container.appendChild(spectrogramSelectionBox);
+        // ✅ PURE CANVAS: Update state
+        spectrogramCurrentX = currentX;
+        spectrogramCurrentY = currentY;
+        
+        // Draw ALL boxes (completed + current dragging)
+        const width = spectrogramOverlayCanvas.width;
+        const height = spectrogramOverlayCanvas.height;
+        
+        // Clear and redraw everything
+        spectrogramOverlayCtx.clearRect(0, 0, width, height);
+        
+        // Redraw all completed boxes
+        for (const box of completedSelectionBoxes) {
+            drawSavedBox(spectrogramOverlayCtx, box);
         }
         
-        if (!spectrogramSelectionBox) return;
-        
-        const containerRect = container.getBoundingClientRect();
-        spectrogramEndY = currentY;
-        
-        const left = Math.min(spectrogramStartX, currentX);
-        const top = Math.min(spectrogramStartY, currentY);
-        const width = Math.abs(currentX - spectrogramStartX);
-        const height = Math.abs(currentY - spectrogramStartY);
-        
-        
-        spectrogramSelectionBox.style.left = (left + canvasRect.left - containerRect.left) + 'px';
-        spectrogramSelectionBox.style.top = (top + canvasRect.top - containerRect.top) + 'px';
-        spectrogramSelectionBox.style.width = width + 'px';
-        spectrogramSelectionBox.style.height = height + 'px';
+        // Draw current dragging box
+        drawSpectrogramSelectionBox(spectrogramOverlayCtx, width, height);
     });
     
     // 🔥 REMOVED: mouseleave handler - waveform doesn't have one and works fine!
@@ -658,15 +777,26 @@ export function setupSpectrogramSelection() {
             return;
         }
         
-        // 🔥 FIX: If no box was created (user just clicked, didn't drag), cancel and reset
-        if (!spectrogramSelectionBox) {
+        // Check if user actually dragged (minimum 5 pixels)
+        if (spectrogramCurrentX === null || spectrogramCurrentY === null) {
+            // User just clicked, didn't drag - cancel
+            cancelSpectrogramSelection();
+            return;
+        }
+        
+        const dragDistanceX = Math.abs(spectrogramCurrentX - spectrogramStartX);
+        const dragDistanceY = Math.abs(spectrogramCurrentY - spectrogramStartY);
+        const dragDistance = Math.max(dragDistanceX, dragDistanceY);
+        
+        if (dragDistance < 5) {
+            // Not enough drag - cancel
             cancelSpectrogramSelection();
             return;
         }
         
         const rect = canvas.getBoundingClientRect();
-        const endY_css = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-        const endX_css = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const endY_css = spectrogramCurrentY;
+        const endX_css = spectrogramCurrentX;
 
         // Convert CSS pixels to DEVICE pixels (same coordinate system as axis!)
         const scaleX = canvas.width / canvas.offsetWidth;
@@ -676,29 +806,31 @@ export function setupSpectrogramSelection() {
         const startX_device = spectrogramStartX * scaleX;
         const endX_device = endX_css * scaleX;
 
-        await handleSpectrogramSelection(
-            startY_device, endY_device,
-            canvas.height,  // ← DEVICE PIXELS (like axis)!
-            startX_device, endX_device,
-            canvas.width    // ← DEVICE PIXELS!
-        );
-        
         // 🔥 FIX: Clear safety timeout since mouseup fired successfully
         if (spectrogramSelectionTimeout) {
             clearTimeout(spectrogramSelectionTimeout);
             spectrogramSelectionTimeout = null;
         }
         
-        // DON'T delete the box - keep it and convert to persistent feature box!
-        // (Will be converted to orange in addFeatureBox)
-        // Note: spectrogramSelectionBox is exported so region-tracker.js can access it
-        // Reset the selection box variable so a new one can be created for the next selection
-        // (The box itself is now managed by spectrogram-feature-boxes.js)
-        spectrogramSelectionBox = null;
+        // Stop accepting new mouse moves first
         spectrogramSelectionActive = false;
+        
+        // Call the handler (this creates the data for the feature and returns region/feature indices)
+        const result = await handleSpectrogramSelection(
+            startY_device, endY_device,
+            canvas.height,  // ← DEVICE PIXELS (like axis)!
+            startX_device, endX_device,
+            canvas.width    // ← DEVICE PIXELS!
+        );
+        
+        // ✅ Rebuild canvas boxes from feature data (ensures sync with array!)
+        rebuildCanvasBoxesFromFeatures();
+        
+        // Reset coordinate state for next box
         spectrogramStartX = null;
         spectrogramStartY = null;
-        spectrogramEndY = null;
+        spectrogramCurrentX = null;
+        spectrogramCurrentY = null;
     };
     
     // 🔥 FIX: Use canvas instead of document for mouseup (like waveform does)
@@ -727,8 +859,9 @@ export function setupSpectrogramSelection() {
 }
 
 /**
- * Cancel active spectrogram selection (remove box and reset state)
+ * Cancel active spectrogram selection (reset state)
  * Called when user presses Escape or exits feature selection mode
+ * NOTE: Does NOT clear completed boxes - only cancels the current drag!
  */
 export function cancelSpectrogramSelection() {
     // 🔥 FIX: Clear safety timeout when canceling
@@ -737,14 +870,190 @@ export function cancelSpectrogramSelection() {
         spectrogramSelectionTimeout = null;
     }
     
+    // ✅ PURE CANVAS: Just reset state
+    spectrogramSelectionActive = false;
+    spectrogramStartX = null;
+    spectrogramStartY = null;
+    spectrogramCurrentX = null;
+    spectrogramCurrentY = null;
+    
+    // DON'T clear the overlay - that would delete all completed boxes!
+    // Just redraw without the current incomplete drag
+    if (spectrogramOverlayCtx) {
+        spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+        // Redraw all completed boxes
+        for (const box of completedSelectionBoxes) {
+            drawSavedBox(spectrogramOverlayCtx, box);
+        }
+        console.log(`🧹 Canceled current drag, kept ${completedSelectionBoxes.length} completed boxes`);
+    }
+    
+    // DEPRECATED: Legacy DOM box cleanup (kept for transition period)
     if (spectrogramSelectionBox) {
         spectrogramSelectionBox.remove();
         spectrogramSelectionBox = null;
     }
-    spectrogramSelectionActive = false;
-    spectrogramStartX = null;
-    spectrogramStartY = null;
-    spectrogramEndY = null;
+}
+
+/**
+ * Draw a saved box from eternal coordinates (time/frequency)
+ * EXACT COPY of orange box coordinate conversion logic!
+ */
+function drawSavedBox(ctx, box) {
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    
+    // Need zoom state and data times
+    if (!State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) {
+        return;
+    }
+    
+    // Convert eternal coordinates (time/frequency) to pixel positions
+    const lowFreq = box.lowFreq;
+    const highFreq = box.highFreq;
+    
+    // Get original sample rate from metadata (same as orange boxes!)
+    // NOT hardcoded - comes from State.currentMetadata.original_sample_rate
+    const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+    const originalNyquist = originalSampleRate / 2; // Calculated from metadata, not assumed!
+    
+    // Get current playback rate (CRITICAL for stretching!)
+    const playbackRate = State.currentPlaybackRate || 1.0;
+    
+    // Convert frequencies to Y positions (DEVICE PIXELS) - WITH SCALE INTERPOLATION! 🎯
+    // Use exact same interpolation logic as Y-axis ticks during scale transitions
+    const scaleTransition = getScaleTransitionState();
+    
+    let lowFreqY_device, highFreqY_device;
+    
+    if (scaleTransition.inProgress && scaleTransition.oldScaleType) {
+        // Interpolate between old and new scale positions (like axis ticks!)
+        const oldLowY = getYPositionForFrequencyScaled(lowFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
+        const newLowY = getYPositionForFrequencyScaled(lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        const oldHighY = getYPositionForFrequencyScaled(highFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
+        const newHighY = getYPositionForFrequencyScaled(highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        
+        lowFreqY_device = oldLowY + (newLowY - oldLowY) * scaleTransition.interpolationFactor;
+        highFreqY_device = oldHighY + (newHighY - oldHighY) * scaleTransition.interpolationFactor;
+    } else {
+        // No transition - use current scale directly
+        lowFreqY_device = getYPositionForFrequencyScaled(lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        highFreqY_device = getYPositionForFrequencyScaled(highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+    }
+    
+    // Convert times to X positions (DEVICE PIXELS) - EXACT COPY of orange box logic!
+    const startTimestamp = new Date(box.startTime);
+    const endTimestamp = new Date(box.endTime);
+    
+    // Use EXACT same interpolated time range as spectrogram elastic stretching!
+    const interpolatedRange = getInterpolatedTimeRange();
+    const displayStartMs = interpolatedRange.startTime.getTime();
+    const displayEndMs = interpolatedRange.endTime.getTime();
+    const displaySpanMs = displayEndMs - displayStartMs;
+    
+    const startMs = startTimestamp.getTime();
+    const endMs = endTimestamp.getTime();
+    
+    const startProgress = (startMs - displayStartMs) / displaySpanMs;
+    const endProgress = (endMs - displayStartMs) / displaySpanMs;
+    
+    // Convert to DEVICE pixels (orange boxes use CSS pixels with canvas.offsetWidth)
+    const startX_device = startProgress * canvas.width;
+    const endX_device = endProgress * canvas.width;
+    
+    // Check if completely off-screen horizontally (don't draw)
+    if (endX_device < 0 || startX_device > canvas.width) {
+        return;
+    }
+    
+    // Check if completely off-screen vertically (don't draw)
+    const topY = Math.min(highFreqY_device, lowFreqY_device);
+    const bottomY = Math.max(highFreqY_device, lowFreqY_device);
+    if (bottomY < 0 || topY > canvas.height) {
+        return;
+    }
+    
+    // Calculate box dimensions
+    const x = Math.min(startX_device, endX_device);
+    const y = Math.min(highFreqY_device, lowFreqY_device);
+    const width = Math.abs(endX_device - startX_device);
+    const height = Math.abs(lowFreqY_device - highFreqY_device);
+    
+    // Draw the box (red, like old temp boxes)
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, width, height);
+    
+    ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
+    ctx.fillRect(x, y, width, height);
+    
+    // Add feature number label in upper left corner (like orange boxes!)
+    const numberText = (box.featureIndex + 1).toString(); // 1-indexed for display
+    ctx.font = '16px Arial, sans-serif'; // Removed bold for flatter look
+    ctx.fillStyle = 'rgba(255, 160, 80, 0.9)'; // Slightly more opaque, less 3D
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    
+    // No shadow - completely flat text
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    
+    // Position: 6px from left, 7px from top (moved down more)
+    ctx.fillText(numberText, x + 6, y + 7);
+}
+
+/**
+ * Draw active selection box on spectrogram canvas
+ * ✅ PURE CANVAS: Renders directly with ctx.strokeRect() - no DOM manipulation!
+ * Called from playhead rendering loop (spectrogram-playhead.js)
+ */
+export function drawSpectrogramSelectionBox(ctx, canvasWidth, canvasHeight) {
+    // Only draw if actively selecting
+    if (!spectrogramSelectionActive || spectrogramStartX === null || spectrogramStartY === null) {
+        return;
+    }
+    
+    // Only draw if user has dragged at least 5 pixels
+    if (spectrogramCurrentX === null || spectrogramCurrentY === null) {
+        return;
+    }
+    
+    const dragDistanceX = Math.abs(spectrogramCurrentX - spectrogramStartX);
+    const dragDistanceY = Math.abs(spectrogramCurrentY - spectrogramStartY);
+    const dragDistance = Math.max(dragDistanceX, dragDistanceY);
+    
+    if (dragDistance < 5) {
+        return; // Not enough drag yet
+    }
+    
+    // Convert CSS pixels to device pixels for rendering
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    
+    const scaleX = canvas.width / canvas.offsetWidth;
+    const scaleY = canvas.height / canvas.offsetHeight;
+    
+    const startX_device = spectrogramStartX * scaleX;
+    const startY_device = spectrogramStartY * scaleY;
+    const currentX_device = spectrogramCurrentX * scaleX;
+    const currentY_device = spectrogramCurrentY * scaleY;
+    
+    // Calculate normalized rectangle
+    const x = Math.min(startX_device, currentX_device);
+    const y = Math.min(startY_device, currentY_device);
+    const width = Math.abs(currentX_device - startX_device);
+    const height = Math.abs(currentY_device - startY_device);
+    
+    // Draw selection box on canvas (matches the old DOM style)
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, width, height);
+    
+    // Semi-transparent fill
+    ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
+    ctx.fillRect(x, y, width, height);
 }
 
 /**
@@ -777,6 +1086,13 @@ export function cleanupSpectrogramSelection() {
     if (spectrogramSelectionTimeout) {
         clearTimeout(spectrogramSelectionTimeout);
         spectrogramSelectionTimeout = null;
+    }
+    
+    // Remove overlay canvas
+    if (spectrogramOverlayCanvas) {
+        spectrogramOverlayCanvas.remove();
+        spectrogramOverlayCanvas = null;
+        spectrogramOverlayCtx = null;
     }
 
     spectrogramSelectionSetup = false;

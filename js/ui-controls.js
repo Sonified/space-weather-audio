@@ -23,25 +23,58 @@ import {
 } from '../Qualtrics/participant-response-manager.js';
 import { isAdminMode } from './admin-mode.js';
 import { getRegions } from './region-tracker.js';
-import { isStudyMode, CURRENT_MODE, AppMode } from './master-modes.js';
+import { isStudyMode, isStudyCleanMode, CURRENT_MODE, AppMode, isLocalEnvironment } from './master-modes.js';
 import { modalManager } from './modal-manager.js';
 
 /**
  * Fade in the permanent overlay background (modal background)
  * Standard design pattern: background fades up when modal appears
- * @deprecated Use modalManager.fadeInOverlay() instead
+ * If overlay is already visible, skips the fade to prevent flicker
  */
 function fadeInOverlay() {
-    modalManager.fadeInOverlay();
+    const overlay = document.getElementById('permanentOverlay');
+    if (!overlay) return;
+    
+    // Check if overlay is already visible (opacity > 0 and display is not 'none')
+    const isAlreadyVisible = overlay.style.display !== 'none' && 
+                            (overlay.style.opacity === '1' || 
+                             parseFloat(overlay.style.opacity) > 0 ||
+                             !overlay.style.opacity); // No inline style means CSS default (likely visible)
+    
+    if (isAlreadyVisible) {
+        // Overlay already visible - just ensure it's displayed, no fade needed
+        overlay.style.display = 'flex';
+        overlay.style.opacity = '1';
+        return;
+    }
+    
+    // Overlay not visible - fade it in
+    overlay.style.opacity = '0';
+    overlay.style.display = 'flex';
+    
+    // Force reflow
+    void overlay.offsetHeight;
+    
+    overlay.style.transition = 'opacity 0.3s ease-in';
+    overlay.style.opacity = '1';
 }
 
 /**
  * Fade out the permanent overlay background (modal background)
  * Standard design pattern: background fades down when modal leaves
- * @deprecated Use modalManager.fadeOutOverlay() instead
  */
 function fadeOutOverlay() {
-    modalManager.fadeOutOverlay();
+    const overlay = document.getElementById('permanentOverlay');
+    if (!overlay) return;
+    
+    overlay.style.transition = 'opacity 0.3s ease-out';
+    overlay.style.opacity = '0';
+    
+    setTimeout(() => {
+        if (overlay.style.opacity === '0') {
+            overlay.style.display = 'none';
+        }
+    }, 300);
 }
 
 export function loadStations() {
@@ -334,43 +367,162 @@ export async function purgeCloudflareCache() {
 let modalListenersSetup = false;
 
 /**
- * Close ALL modals - centralized function to prevent multiple modals showing
- * Call this before opening any modal to ensure only one modal is visible at a time
- * @deprecated Use modalManager.closeAllModals() instead
+ * Determine if there's another modal coming after this one in the workflow
+ * Returns the next modal ID if there is one, null if this is the last modal
+ * @param {string} currentModalId - The current modal ID being closed
+ * @returns {string|null} - Next modal ID or null
  */
-export function closeAllModals() {
-    modalManager.closeAllModals();
+async function getNextModalInWorkflow(currentModalId) {
+    // Only check workflow sequence in study mode
+    if (!isStudyMode()) {
+        return null; // In non-study modes, no automatic workflow
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // GOSPEL: Follow VISIT RULES from study-workflow.js exactly
+    // Use the same logic functions from study-workflow.js
+    // ═══════════════════════════════════════════════════════════
+    // 
+    // FIRST VISIT EVER:
+    //   1. Participant Setup → 2. Welcome → 3. Pre-Survey → 4. Tutorial → 
+    //   5. Experience → 6. Activity Level → 7. AWE-SF (if first time week) → 
+    //   8. Post-Survey → 9. End
+    // 
+    // SUBSEQUENT VISITS (SAME WEEK):
+    //   1. Pre-Survey → 2. Experience → 3. Activity Level → 
+    //   4. Post-Survey → 5. End
+    // 
+    // FIRST VISIT OF NEW WEEK:
+    //   1. Pre-Survey → 2. Experience → 3. Activity Level → 
+    //   4. AWE-SF → 5. Post-Survey → 6. End
+    
+    // Use workflow logic functions from study-workflow.js (same source of truth)
+    // Note: These functions handle study_clean mode and test modes correctly
+    const { hasSeenTutorial, hasCompletedAwesfThisWeek, hasSeenParticipantSetup } = await import('./study-workflow.js');
+    
+    // Tutorial should show if they haven't seen it yet (regardless of participant setup status)
+    // The check for first visit ever is just for determining the flow, but tutorial is independent
+    const needsTutorial = !hasSeenTutorial();
+    const needsAwesf = !hasCompletedAwesfThisWeek();
+    
+    // Check if this is first visit ever for flow routing
+    const isFirstVisitEver = !hasSeenParticipantSetup();
+    
+    switch (currentModalId) {
+        case 'participantModal':
+            // FIRST VISIT EVER: Step 1 → Step 2
+            // Participant Setup → Welcome
+            return 'welcomeModal';
+            
+        case 'welcomeModal':
+            // FIRST VISIT EVER: Step 2 → Step 3
+            // Welcome → Pre-Survey
+            return 'preSurveyModal';
+            
+        case 'preSurveyModal':
+            // Step 3 → Step 4 (if first visit) OR Step 3 → Experience (if returning)
+            // Pre-Survey → Tutorial Intro (FIRST VISIT EVER only) OR Experience (returning visits - no modal)
+            if (needsTutorial) {
+                // FIRST VISIT EVER: Pre-Survey → Tutorial Intro
+                return 'tutorialIntroModal';
+            }
+            // SUBSEQUENT VISITS: Pre-Survey → Experience (no modal, user explores)
+            // Activity Level will come later when user clicks Submit (handled by handleStudyModeSubmit)
+            return null; // No next modal - close overlay and let user explore
+            
+        case 'tutorialIntroModal':
+            // FIRST VISIT EVER: Step 4 → Step 5 (Experience - not a modal)
+            // Tutorial Intro → (tutorial runs, then user explores)
+            // No next modal - tutorial will handle opening activity level later via workflow
+            return null;
+            
+        case 'activityLevelModal':
+            // Step 6 → Step 7 (if first time this week) OR Step 6 → Step 8 (if already done this week)
+            // Activity Level → AWE-SF (if first time each week) OR Post-Survey
+            if (needsAwesf) {
+                // FIRST VISIT OF NEW WEEK or FIRST VISIT EVER: Activity Level → AWE-SF
+                return 'awesfModal';
+            }
+            // SUBSEQUENT VISITS (SAME WEEK): Activity Level → Post-Survey (skip AWE-SF)
+            return 'postSurveyModal';
+            
+        case 'awesfModal':
+            // Step 7 → Step 8
+            // AWE-SF → Post-Survey (always)
+            return 'postSurveyModal';
+            
+        case 'postSurveyModal':
+            // Step 8 → Step 9
+            // Post-Survey → End (always)
+            return 'endModal';
+            
+        case 'endModal':
+            // Step 9 - Last modal, no next
+            return null;
+            
+        default:
+            // Not a workflow modal
+            return null;
+    }
 }
 
 /**
- * Enable or disable quick-fill buttons based on current mode
- * Disables in STUDY mode, enables in STUDY_CLEAN, DEV, and PERSONAL modes
+ * Close ALL modals - centralized function to prevent multiple modals showing
+ * Call this before opening any modal to ensure only one modal is visible at a time
+ */
+export function closeAllModals() {
+    const allModalIds = [
+        'welcomeModal',
+        'participantModal',
+        'preSurveyModal',
+        'postSurveyModal',
+        'activityLevelModal',
+        'awesfModal',
+        'endModal',
+        'beginAnalysisModal',
+        'missingStudyIdModal',
+        'completeConfirmationModal',
+        'tutorialIntroModal'
+    ];
+    
+    allModalIds.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    });
+}
+
+/**
+ * Enable or disable quick-fill buttons based on environment
+ * Shows quick-fill buttons on local server, hides them in production
+ * Single variable check: isLocalEnvironment()
  */
 export function toggleQuickFillButtons() {
-    // Disable quick-fill buttons in STUDY mode only (keep enabled in STUDY_CLEAN, DEV, PERSONAL)
-    const shouldDisable = CURRENT_MODE === AppMode.STUDY;
+    // Single variable: show quick-fill on local, hide in production
+    const showQuickFill = isLocalEnvironment();
     
     // Find all quick-fill button containers and buttons
     const quickFillContainers = document.querySelectorAll('.quick-fill-buttons');
     const quickFillButtons = document.querySelectorAll('.quick-fill-btn');
     
     quickFillContainers.forEach(container => {
-        if (shouldDisable) {
-            container.style.display = 'none';
-        } else {
+        if (showQuickFill) {
             container.style.display = 'flex';
+        } else {
+            container.style.display = 'none';
         }
     });
     
     quickFillButtons.forEach(btn => {
-        if (shouldDisable) {
-            btn.disabled = true;
-            btn.style.opacity = '0.5';
-            btn.style.cursor = 'not-allowed';
-        } else {
+        if (showQuickFill) {
             btn.disabled = false;
             btn.style.opacity = '1';
             btn.style.cursor = 'pointer';
+        } else {
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
         }
     });
 }
@@ -446,10 +598,21 @@ export function setupModalEventListeners() {
             participantSubmitBtn.addEventListener('click', async () => {
                 submitParticipantSetup();  // Save data
                 
-                // Close modal (ModalManager handles it)
-                await modalManager.closeModal('participantModal', {
-                    keepOverlay: true  // Keep overlay if in workflow
-                });
+                // Mark participant setup as seen when user submits (not before)
+                if (isStudyMode()) {
+                    localStorage.setItem('study_has_seen_participant_setup', 'true');
+                    console.log('✅ Participant setup marked as seen');
+                }
+                
+                // Close modal (auto-detects next modal and keeps overlay)
+                await closeParticipantModal();
+                
+                // In study mode, open welcome modal next
+                if (isStudyMode()) {
+                    setTimeout(() => {
+                        openWelcomeModal();
+                    }, 350);
+                }
             });
         }
         
@@ -505,9 +668,17 @@ export function setupModalEventListeners() {
         const welcomeSubmitBtn = welcomeModal.querySelector('.modal-submit');
         if (welcomeSubmitBtn) {
             welcomeSubmitBtn.addEventListener('click', async () => {
-                await modalManager.closeModal('welcomeModal', {
-                    keepOverlay: true  // Keep for pre-survey
-                });
+                // Mark welcome as seen when user submits (not before opening)
+                if (isStudyMode()) {
+                    localStorage.setItem('study_has_seen_welcome', 'true');
+                    console.log('✅ Welcome marked as seen');
+                }
+                
+                await closeWelcomeModal();
+                // Open pre-survey after welcome closes
+                setTimeout(() => {
+                    openPreSurveyModal();
+                }, 350);
             });
         }
         
@@ -558,9 +729,18 @@ export function setupModalEventListeners() {
         const endSubmitBtn = endModal.querySelector('.modal-submit');
         if (endSubmitBtn) {
             endSubmitBtn.addEventListener('click', async () => {
-                await modalManager.closeModal('endModal', {
-                    keepOverlay: false  // Final fade-out
-                });
+                closeEndModal();
+                
+                // Check if we should run the study end walkthrough
+                const { isStudyEndMode } = await import('./master-modes.js');
+                if (isStudyEndMode()) {
+                    console.log('🎬 End modal closed - starting Study End Walkthrough...');
+                    // Small delay to ensure modal is fully closed
+                    setTimeout(async () => {
+                        const { runStudyEndWalkthrough } = await import('./tutorial-coordinator.js');
+                        await runStudyEndWalkthrough();
+                    }, 500);
+                }
             });
         }
     }
@@ -573,13 +753,15 @@ export function setupModalEventListeners() {
         // Allow closing by clicking outside (not in Study Mode restriction)
         beginAnalysisModal.addEventListener('click', (e) => {
             if (e.target === beginAnalysisModal) {
-                closeBeginAnalysisModal();
+                closeBeginAnalysisModal(false); // Explicitly pass false to ensure overlay fades out
             }
         });
         
         const beginAnalysisCancelBtn = beginAnalysisModal.querySelector('.modal-cancel');
         if (beginAnalysisCancelBtn) {
-            beginAnalysisCancelBtn.addEventListener('click', closeBeginAnalysisModal);
+            beginAnalysisCancelBtn.addEventListener('click', () => {
+                closeBeginAnalysisModal(false); // Explicitly pass false to ensure overlay fades out
+            });
         }
         
         // The submit button will be handled in main.js to proceed with the workflow
@@ -608,7 +790,7 @@ export function setupModalEventListeners() {
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
-                closeBeginAnalysisModal();
+                closeBeginAnalysisModal(false); // Explicitly pass false to ensure overlay fades out
             }
         });
     }
@@ -653,11 +835,23 @@ export function setupModalEventListeners() {
                 enableAllTutorialRestrictedFeatures();
                 console.log('✅ Features enabled after feature selection');
                 
-                // Close confirmation modal
-                closeCompleteConfirmationModal();
-                
-                // Open Activity Level modal (first question after the test)
-                openActivityLevelModal();
+                // In study mode, use the workflow. Otherwise, open activity level directly
+                const { isStudyMode } = await import('./master-modes.js');
+                if (isStudyMode()) {
+                    console.log('🎓 Study Mode: Starting submit workflow...');
+                    // Close with keepOverlay: true so overlay stays for Activity Level modal
+                    await modalManager.closeModal('completeConfirmationModal', {
+                        keepOverlay: true
+                    });
+                    console.log('✅ Complete Confirmation modal closed (overlay kept for workflow)');
+                    
+                    const { handleStudyModeSubmit } = await import('./study-workflow.js');
+                    await handleStudyModeSubmit();
+                } else {
+                    // Not in study mode - close normally and open Activity Level modal directly
+                    closeCompleteConfirmationModal();
+                    openActivityLevelModal();
+                }
             });
         }
     }
@@ -745,9 +939,38 @@ export function setupModalEventListeners() {
             preSurveySubmitBtn.addEventListener('click', async () => {
                 await submitPreSurvey();  // Save data
                 
-                await modalManager.closeModal('preSurveyModal', {
-                    keepOverlay: false  // Fade out - back to app
-                });
+                // Auto-detect next modal using workflow logic
+                const nextModal = await getNextModalInWorkflow('preSurveyModal');
+                console.log('🔍 Pre-Survey submit: nextModal =', nextModal);
+                
+                await closePreSurveyModal(nextModal !== null);
+                
+                // In study mode, open the next modal in workflow
+                if (isStudyMode() && nextModal) {
+                    setTimeout(() => {
+                        // Only open tutorial intro if it's the first visit
+                        // For returning visits, close modal and let user explore (Activity Level comes after Submit)
+                        if (nextModal === 'tutorialIntroModal') {
+                            console.log('🎓 Opening Tutorial Intro modal...');
+                            openTutorialIntroModal();
+                        } else if (nextModal === 'activityLevelModal') {
+                            // This shouldn't happen after pre-survey - Activity Level comes after Submit
+                            // But if it does, we should close overlay and let user explore
+                            console.warn('⚠️ Pre-Survey: Activity Level detected as next modal - this is wrong! Closing overlay and letting user explore.');
+                            fadeOutOverlay();
+                        } else {
+                            // Returning visit: Pre-Survey → Experience (no modal, user explores)
+                            // Activity Level will open when user clicks Submit button
+                            console.log('📊 Pre-Survey complete - ready for experience. Activity Level will show after Submit.');
+                            fadeOutOverlay(); // Make sure overlay is closed
+                        }
+                    }, 350);
+                } else if (isStudyMode() && !nextModal) {
+                    // No next modal - this is correct for returning visits
+                    // Close overlay and let user explore
+                    console.log('📊 Pre-Survey complete - no next modal (returning visit). Closing overlay, ready for experience.');
+                    fadeOutOverlay();
+                }
             });
         }
         
@@ -861,9 +1084,35 @@ export function setupModalEventListeners() {
             postSurveySubmitBtn.addEventListener('click', async () => {
                 await submitPostSurvey();  // Save data
                 
-                await modalManager.closeModal('postSurveyModal', {
-                    keepOverlay: true  // Keep for end modal
-                });
+                await closePostSurveyModal();
+                
+                // In study mode, submit to Qualtrics and show end modal
+                if (isStudyMode()) {
+                    setTimeout(async () => {
+                        try {
+                            // Submit all surveys to Qualtrics
+                            const { attemptSubmission } = await import('./ui-controls.js');
+                            await attemptSubmission(true);  // fromWorkflow=true
+                            console.log('✅ Submission complete');
+                        } catch (error) {
+                            console.error('❌ Error during submission:', error);
+                            // Continue to show end modal even if submission fails
+                        }
+                        
+                        // Show end modal (always show, even if submission had issues)
+                        const { getParticipantId } = await import('./qualtrics-api.js');
+                        const { incrementSessionCount } = await import('./study-workflow.js');
+                        const participantId = getParticipantId();
+                        const sessionCount = incrementSessionCount();
+                        
+                        console.log('🎉 Opening end modal...', { participantId, sessionCount });
+                        
+                        // Show end modal (openEndModal already updates the content)
+                        const { openEndModal } = await import('./ui-controls.js');
+                        openEndModal(participantId, sessionCount);
+                        console.log('✅ End modal should now be visible');
+                    }, 350);
+                }
             });
         }
         
@@ -942,27 +1191,41 @@ export function setupModalEventListeners() {
         
         if (activityLevelSubmitBtn) {
             activityLevelSubmitBtn.addEventListener('click', async () => {
+                console.log('🔵 Activity Level submit button clicked');
                 const success = await submitActivityLevelSurvey();  // Save data
-                
+
                 if (!success) {
                     // If submission failed (e.g., no participant ID), don't close modal
                     // The function already showed an alert, so user can fix the issue
+                    console.log('❌ Activity Level submission failed - keeping modal open');
                     return;
                 }
-                
-                // If we're in study mode workflow, the workflow will handle the transition
-                // Otherwise, close the modal
+
+                console.log('✅ Activity Level submission successful');
+
+                // If we're in study mode workflow, close the modal so the workflow promise resolves
+                // The workflow is waiting for the modal to close via its promise from openModal
                 const { isStudyMode } = await import('./master-modes.js');
+                console.log('🔍 isStudyMode:', isStudyMode());
                 if (isStudyMode()) {
-                    // Workflow handles transition - just close with overlay kept
-                    await modalManager.closeModal('activityLevelModal', {
-                        keepOverlay: true  // Keep for next survey
-                    });
+                    console.log('✅ Activity Level saved - closing modal for workflow...');
+                    // Close the modal (auto-detects next modal and keeps overlay)
+                    await closeActivityLevelModal();
+                    // Open next survey in workflow
+                    const needsAwesf = !localStorage.getItem('study_last_awesf_date');
+                    if (needsAwesf) {
+                        setTimeout(() => {
+                            openAwesfModal();
+                        }, 350);
+                    } else {
+                        setTimeout(() => {
+                            openPostSurveyModal();
+                        }, 350);
+                    }
+                    console.log('✅ Activity Level modal closed - workflow will continue');
                 } else {
                     // Not in workflow - close normally
-                    await modalManager.closeModal('activityLevelModal', {
-                        keepOverlay: false
-                    });
+                    await closeActivityLevelModal();
                 }
             });
         }
@@ -1002,16 +1265,36 @@ export function setupModalEventListeners() {
         
         // Listen for changes to enable/disable submit button
         awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
-            radio.addEventListener('change', updateAwesfSubmitButton);
+            radio.addEventListener('change', (e) => {
+                e.stopPropagation(); // Prevent event from bubbling
+                updateAwesfSubmitButton();
+            });
+            // Also prevent click events from bubbling
+            radio.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent click from bubbling to modal/overlay
+            });
+        });
+        
+        // Also prevent label clicks from bubbling (labels are often used with radio buttons)
+        awesfModal.querySelectorAll('label').forEach(label => {
+            label.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent label clicks from bubbling
+            });
         });
         
         // In Study Mode: NEVER allow closing by clicking outside
         // In Dev/Personal Mode: Allow closing by clicking outside
         if (!inStudyMode) {
-            awesfModal.addEventListener('click', closeAwesfModal);
+            awesfModal.addEventListener('click', (e) => {
+                // Only close if clicking directly on the modal background, not on children
+                if (e.target === awesfModal) {
+                    closeAwesfModal();
+                }
+            });
         } else {
             // Prevent closing by clicking outside in Study Mode
             awesfModal.addEventListener('click', (e) => {
+                // Only prevent if clicking directly on modal background
                 if (e.target === awesfModal) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1031,9 +1314,11 @@ export function setupModalEventListeners() {
             awesfSubmitBtn.addEventListener('click', async () => {
                 await submitAwesfSurvey();  // Save data
                 
-                await modalManager.closeModal('awesfModal', {
-                    keepOverlay: true  // Keep for post-survey
-                });
+                await closeAwesfModal();
+                // Open post-survey after AWE-SF closes
+                setTimeout(() => {
+                    openPostSurveyModal();
+                }, 350);
             });
         }
         
@@ -1043,7 +1328,12 @@ export function setupModalEventListeners() {
         // Quick-fill button handlers for AWE-SF
         awesfModal.querySelectorAll('.quick-fill-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent event from bubbling to modal/overlay
+                e.preventDefault(); // Prevent any default behavior
+                
                 const value = btn.getAttribute('data-value');
+                console.log(`🔵 Quick-fill button clicked: filling all AWE-SF questions with value ${value}`);
+                
                 // Fill all AWE-SF radio buttons with this value
                 awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
                     if (radio.value === value) {
@@ -1051,6 +1341,10 @@ export function setupModalEventListeners() {
                         radio.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 });
+                
+                // Update submit button state after filling
+                updateAwesfSubmitButton();
+                
                 // Visual feedback
                 btn.style.background = '#4CAF50';
                 btn.style.color = 'white';
@@ -1059,6 +1353,117 @@ export function setupModalEventListeners() {
                     btn.style.color = '#4CAF50';
                 }, 200);
             });
+        });
+    }
+    
+    // Tutorial Intro modal event listeners
+    const tutorialIntroModal = document.getElementById('tutorialIntroModal');
+    if (!tutorialIntroModal) {
+        console.error('❌ Tutorial Intro modal not found in DOM');
+    } else {
+        // Prevent closing by clicking outside in Study Mode
+        if (inStudyMode) {
+            tutorialIntroModal.addEventListener('click', (e) => {
+                if (e.target === tutorialIntroModal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+        }
+        
+        const tutorialIntroSubmitBtn = tutorialIntroModal.querySelector('.modal-submit');
+        if (tutorialIntroSubmitBtn) {
+            tutorialIntroSubmitBtn.addEventListener('click', async () => {
+                closeTutorialIntroModal();
+                
+                // Start the tutorial after modal closes
+                setTimeout(async () => {
+                    const { runInitialTutorial } = await import('./tutorial.js');
+                    await runInitialTutorial();
+                    
+                    // Mark tutorial as seen after it completes
+                    const { markTutorialAsSeen } = await import('./study-workflow.js');
+                    markTutorialAsSeen();
+                }, 350);
+            });
+        }
+        
+        // Keyboard support: Enter to begin tutorial
+        const tutorialIntroKeyHandler = (e) => {
+            // Only handle if modal is visible
+            if (tutorialIntroModal.style.display === 'none' || tutorialIntroModal.style.display === '') return;
+            
+            // Don't trigger if user is typing in an input field
+            if (e.target.tagName === 'INPUT' && e.target.type === 'text') {
+                return;
+            }
+            
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (tutorialIntroSubmitBtn) {
+                    tutorialIntroSubmitBtn.click();
+                }
+            }
+        };
+        
+        document.addEventListener('keydown', tutorialIntroKeyHandler);
+        tutorialIntroModal._keyHandler = tutorialIntroKeyHandler;
+    }
+    
+    // Tutorial Revisit modal event listeners
+    const tutorialRevisitModal = document.getElementById('tutorialRevisitModal');
+    if (!tutorialRevisitModal) {
+        console.error('❌ Tutorial Revisit modal not found in DOM');
+    } else {
+        // Allow closing by clicking outside
+        tutorialRevisitModal.addEventListener('click', (e) => {
+            if (e.target === tutorialRevisitModal) {
+                closeTutorialRevisitModal();
+            }
+        });
+        
+        const tutorialRevisitYesBtn = tutorialRevisitModal.querySelector('.modal-submit');
+        const tutorialRevisitCancelBtn = tutorialRevisitModal.querySelector('.modal-cancel');
+        
+        if (tutorialRevisitYesBtn) {
+            tutorialRevisitYesBtn.addEventListener('click', async () => {
+                closeTutorialRevisitModal(false);
+                
+                // Clear tutorial seen flag to restart tutorial
+                localStorage.removeItem('study_has_seen_tutorial');
+                console.log('🔄 Tutorial flag cleared - will restart tutorial');
+                
+                // Restart the tutorial
+                setTimeout(async () => {
+                    const { runInitialTutorial } = await import('./tutorial-coordinator.js');
+                    await runInitialTutorial();
+                }, 300);
+            });
+        }
+        
+        if (tutorialRevisitCancelBtn) {
+            tutorialRevisitCancelBtn.addEventListener('click', () => {
+                closeTutorialRevisitModal(false);
+            });
+        }
+        
+        // Keyboard support: Enter for Yes, Escape for Cancel
+        tutorialRevisitModal.addEventListener('keydown', (e) => {
+            if (tutorialRevisitModal.style.display === 'none') return;
+            
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (tutorialRevisitYesBtn) {
+                    tutorialRevisitYesBtn.click();
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeTutorialRevisitModal(false);
+            }
         });
     }
     
@@ -1105,8 +1510,18 @@ function removeModalEventListeners() {
 }
 
 export function openParticipantModal() {
+    console.log('🔍 openParticipantModal() called');
+    
     // Close all other modals first
     closeAllModals();
+    
+    const modal = document.getElementById('participantModal');
+    if (!modal) {
+        console.error('❌ CRITICAL: Participant modal not found in DOM!');
+        console.error('   This means modals were not initialized. Check initializeModals() was called.');
+        // Don't fade in overlay if modal doesn't exist
+        return;
+    }
     
     // Get participant ID from URL (takes precedence) or localStorage
     const participantId = getParticipantId();
@@ -1125,24 +1540,45 @@ export function openParticipantModal() {
         if (urlId) {
             console.log('🔗 Participant ID loaded from URL:', urlId);
         }
+    } else {
+        console.warn('⚠️ Participant ID input not found');
     }
     
     // Update button state based on whether there's a value
     if (participantSubmitBtn) {
         const hasValue = participantIdInput && participantIdInput.value.trim().length > 0;
         participantSubmitBtn.disabled = !hasValue;
+    } else {
+        console.warn('⚠️ Participant submit button not found');
     }
     
-    const modal = document.getElementById('participantModal');
-    if (modal) {
-        modal.style.display = 'flex';
-        console.log('👤 Participant Setup modal opened');
-    } else {
-        console.error('❌ Participant modal not found in DOM');
-    }
+    // Show the modal
+    modal.style.display = 'flex';
+    console.log('👤 Participant Setup modal opened');
+    console.log('   Modal element:', modal);
+    console.log('   Modal display:', modal.style.display);
+    console.log('   Overlay visible:', document.getElementById('permanentOverlay')?.style.display);
 }
 
-export async function closeParticipantModal(event) {
+export async function closeParticipantModal(keepOverlay = null) {
+    // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
+    if (keepOverlay === null) {
+        // If opened manually (not as part of workflow), always fade out overlay
+        // Check if this is a manual open by seeing if we're in the middle of a workflow
+        // If workflow is skipped OR if participant setup was already seen, this is manual
+        const skipWorkflow = localStorage.getItem('skipStudyWorkflow') === 'true';
+        const hasSeenParticipantSetup = localStorage.getItem('study_has_seen_participant_setup') === 'true';
+        
+        if (skipWorkflow || hasSeenParticipantSetup) {
+            // Manual open - always fade out overlay
+            keepOverlay = false;
+        } else {
+            // Part of workflow - check if there's a next modal
+            const nextModal = await getNextModalInWorkflow('participantModal');
+            keepOverlay = nextModal !== null;
+        }
+    }
+    
     // Only allow programmatic closing (after submission), not by clicking outside
     // Reset field to saved value (or empty) when closing without saving
     // In STUDY_CLEAN mode, don't load saved participant ID
@@ -1162,14 +1598,22 @@ export async function closeParticipantModal(event) {
         participantSubmitBtn.disabled = !hasValue;
     }
     
-    await modalManager.closeModal('participantModal', { keepOverlay: false });
-    console.log('👤 Participant Setup modal closed');
+    const modal = document.getElementById('participantModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`👤 Participant Setup modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 // Welcome Modal Functions
-export async function openWelcomeModal() {
+export function openWelcomeModal() {
     // In Study Mode, ONLY allow welcome modal through the workflow - NEVER allow manual opening
-    const { isStudyMode, isStudyCleanMode } = await import('./master-modes.js');
     if (isStudyMode()) {
         // In STUDY mode, welcome modal can ONLY be opened through the workflow
         // Check if we're in the workflow by checking if pre-survey is already open
@@ -1214,20 +1658,43 @@ export async function openWelcomeModal() {
     console.log('👋 Welcome modal opened');
 }
 
-export async function closeWelcomeModal() {
-    await modalManager.closeModal('welcomeModal', { keepOverlay: false });
-    console.log('👋 Welcome modal closed');
+export async function closeWelcomeModal(keepOverlay = null) {
+    // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
+    if (keepOverlay === null) {
+        const nextModal = await getNextModalInWorkflow('welcomeModal');
+        keepOverlay = nextModal !== null;
+    }
+    
+    const modal = document.getElementById('welcomeModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`👋 Welcome modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 // End Modal Functions
 export function openEndModal(participantId, sessionCount) {
+    console.log('🔍 openEndModal called', { participantId, sessionCount });
+    
     // Close all other modals first
     closeAllModals();
     
     const modal = document.getElementById('endModal');
+    if (!modal) {
+        console.error('❌ CRITICAL: End modal not found in DOM!');
+        return;
+    }
+    console.log('✅ End modal found in DOM');
     
     // Fade in overlay background (standard design pattern)
     fadeInOverlay();
+    console.log('✅ Overlay faded in');
     
     // Update submission time with local time including seconds
     const now = new Date();
@@ -1249,9 +1716,23 @@ export function openEndModal(participantId, sessionCount) {
     console.log('🎉 End modal opened');
 }
 
-export async function closeEndModal() {
-    await modalManager.closeModal('endModal', { keepOverlay: false });
-    console.log('🎉 End modal closed');
+export function closeEndModal(keepOverlay = null) {
+    // End modal is always the last - never keep overlay
+    if (keepOverlay === null) {
+        keepOverlay = false;
+    }
+    
+    const modal = document.getElementById('endModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`🎉 End modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 // Begin Analysis Modal Functions
@@ -1276,9 +1757,23 @@ export function openBeginAnalysisModal() {
     }
 }
 
-export async function closeBeginAnalysisModal() {
-    await modalManager.closeModal('beginAnalysisModal', { keepOverlay: false });
-    console.log('🔵 Begin Analysis modal closed');
+export function closeBeginAnalysisModal(keepOverlay = null) {
+    // Begin Analysis modal is not part of workflow sequence - default to false
+    if (keepOverlay === null) {
+        keepOverlay = false;
+    }
+    
+    const modal = document.getElementById('beginAnalysisModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`🔵 Begin Analysis modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 // Complete Confirmation Modal Functions
@@ -1299,9 +1794,96 @@ export function openCompleteConfirmationModal() {
     }
 }
 
-export async function closeCompleteConfirmationModal() {
-    await modalManager.closeModal('completeConfirmationModal', { keepOverlay: false });
-    console.log('✅ Complete Confirmation modal closed');
+export function closeCompleteConfirmationModal(keepOverlay = null) {
+    // Complete Confirmation modal is not part of workflow sequence - default to false
+    if (keepOverlay === null) {
+        keepOverlay = false;
+    }
+    
+    const modal = document.getElementById('completeConfirmationModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`✅ Complete Confirmation modal closed (keepOverlay: ${keepOverlay})`);
+}
+
+// Tutorial Intro Modal Functions
+export function openTutorialIntroModal() {
+    // Close all other modals first
+    closeAllModals();
+    
+    const modal = document.getElementById('tutorialIntroModal');
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
+    
+    if (modal) {
+        modal.style.display = 'flex';
+        console.log('🎓 Tutorial Intro modal opened');
+    } else {
+        console.error('❌ Tutorial Intro modal not found in DOM');
+    }
+}
+
+export function closeTutorialIntroModal(keepOverlay = null) {
+    // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
+    // Tutorial intro is followed by the tutorial itself (not a modal), so always fade out
+    if (keepOverlay === null) {
+        keepOverlay = false; // Tutorial starts after this, no next modal
+    }
+    
+    const modal = document.getElementById('tutorialIntroModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`🎓 Tutorial Intro modal closed (keepOverlay: ${keepOverlay})`);
+}
+
+// Tutorial Revisit Modal Functions
+export function openTutorialRevisitModal() {
+    // Close all other modals first
+    closeAllModals();
+    
+    const modal = document.getElementById('tutorialRevisitModal');
+    if (!modal) {
+        console.error('❌ Tutorial Revisit modal not found in DOM');
+        return;
+    }
+    
+    // Fade in overlay background
+    fadeInOverlay();
+    
+    modal.style.display = 'flex';
+    console.log('❓ Tutorial Revisit modal opened');
+}
+
+export function closeTutorialRevisitModal(keepOverlay = null) {
+    if (keepOverlay === null) {
+        keepOverlay = false;
+    }
+    
+    const modal = document.getElementById('tutorialRevisitModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`❓ Tutorial Revisit modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 // Missing Study ID Modal Functions
@@ -1320,14 +1902,25 @@ export function openMissingStudyIdModal() {
     }
 }
 
-export async function closeMissingStudyIdModal() {
+export function closeMissingStudyIdModal(keepOverlay = null) {
     // If participant ID is now set, fade out the overlay
     // Otherwise, keep overlay visible for participant modal
-    const participantId = getParticipantId();
-    const keepOverlay = !participantId;  // Keep overlay if no participant ID (participant modal will show)
+    if (keepOverlay === null) {
+        const participantId = getParticipantId();
+        keepOverlay = !participantId;  // Keep overlay if no participant ID (participant modal will show)
+    }
     
-    await modalManager.closeModal('missingStudyIdModal', { keepOverlay });
-    console.log('⚠️ Missing Study ID modal closed');
+    const modal = document.getElementById('missingStudyIdModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`⚠️ Missing Study ID modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 export function submitParticipantSetup() {
@@ -1349,7 +1942,7 @@ export function submitParticipantSetup() {
     
     const statusEl = document.getElementById('status');
     statusEl.className = 'status success';
-    statusEl.textContent = `✅ Participant setup recorded: ${participantId || 'Anonymous'}`;
+    statusEl.textContent = `✅ ID recorded`;
     
     // Update participant ID display in top panel
     // Always show the display (even if no ID set) so users can click to enter their ID
@@ -1390,9 +1983,24 @@ export function openPreSurveyModal() {
     }
 }
 
-export async function closePreSurveyModal(event) {
-    await modalManager.closeModal('preSurveyModal', { keepOverlay: false });
-    console.log('📊 Pre-Survey modal closed');
+export async function closePreSurveyModal(keepOverlay = null) {
+    // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
+    if (keepOverlay === null) {
+        const nextModal = await getNextModalInWorkflow('preSurveyModal');
+        keepOverlay = nextModal !== null;
+    }
+    
+    const modal = document.getElementById('preSurveyModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`📊 Pre-Survey modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 export async function submitPreSurvey() {
@@ -1447,7 +2055,7 @@ export async function submitPreSurvey() {
             saveSurveyResponse(participantId, 'pre', surveyData);
             
             statusEl.className = 'status success';
-            statusEl.textContent = '✅ Pre-Survey saved! Complete all surveys to submit.';
+            statusEl.textContent = '✅ Pre-Survey saved!';
             
             // Modal will be closed by event handler
         } else {
@@ -1458,11 +2066,7 @@ export async function submitPreSurvey() {
             }, 350); // Wait for modal close animation
         }
         
-        setTimeout(() => {
-            document.querySelectorAll('#preSurveyModal input[type="radio"]').forEach(radio => {
-                radio.checked = false;
-            });
-        }, 300);
+        // Form doesn't need to clear itself - when modal reopens, it will be fresh
     } catch (error) {
         console.error('Failed to save pre-survey:', error);
         statusEl.className = 'status error';
@@ -1491,9 +2095,24 @@ export function openPostSurveyModal() {
     }
 }
 
-export async function closePostSurveyModal(event) {
-    await modalManager.closeModal('postSurveyModal', { keepOverlay: false });
-    console.log('📊 Post-Survey modal closed');
+export async function closePostSurveyModal(keepOverlay = null) {
+    // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
+    if (keepOverlay === null) {
+        const nextModal = await getNextModalInWorkflow('postSurveyModal');
+        keepOverlay = nextModal !== null;
+    }
+    
+    const modal = document.getElementById('postSurveyModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`📊 Post-Survey modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 export async function submitPostSurvey() {
@@ -1549,12 +2168,7 @@ export async function submitPostSurvey() {
         statusEl.textContent = '✅ Post-Survey saved! Complete all surveys to submit.';
         
         // Modal will be closed by event handler
-        
-        setTimeout(() => {
-            document.querySelectorAll('#postSurveyModal input[type="radio"]').forEach(radio => {
-                radio.checked = false;
-            });
-        }, 300);
+        // Form doesn't need to clear itself - when modal reopens, it will be fresh
     } catch (error) {
         console.error('Failed to save post-survey:', error);
         statusEl.className = 'status error';
@@ -1580,9 +2194,24 @@ export function openActivityLevelModal() {
     }
 }
 
-export async function closeActivityLevelModal(event) {
-    await modalManager.closeModal('activityLevelModal', { keepOverlay: false });
-    console.log('🌋 Activity Level modal closed');
+export async function closeActivityLevelModal(keepOverlay = null) {
+    // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
+    if (keepOverlay === null) {
+        const nextModal = await getNextModalInWorkflow('activityLevelModal');
+        keepOverlay = nextModal !== null;
+    }
+    
+    const modal = document.getElementById('activityLevelModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`🌋 Activity Level modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 export async function submitActivityLevelSurvey() {
@@ -1624,12 +2253,7 @@ export async function submitActivityLevelSurvey() {
         statusEl.textContent = '✅ Activity Level saved! Complete all surveys to submit.';
         
         // Modal will be closed by event handler
-        
-        setTimeout(() => {
-            document.querySelectorAll('#activityLevelModal input[type="radio"]').forEach(radio => {
-                radio.checked = false;
-            });
-        }, 300);
+        // Form doesn't need to clear itself - when modal reopens, it will be fresh
         
         return true;
     } catch (error) {
@@ -1661,9 +2285,24 @@ export function openAwesfModal() {
     }
 }
 
-export async function closeAwesfModal(event) {
-    await modalManager.closeModal('awesfModal', { keepOverlay: false });
-    console.log('✨ AWE-SF modal closed');
+export async function closeAwesfModal(keepOverlay = null) {
+    // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
+    if (keepOverlay === null) {
+        const nextModal = await getNextModalInWorkflow('awesfModal');
+        keepOverlay = nextModal !== null;
+    }
+    
+    const modal = document.getElementById('awesfModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Only fade out overlay if NOT keeping it for next modal
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    console.log(`✨ AWE-SF modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 export async function submitAwesfSurvey() {
@@ -1732,12 +2371,7 @@ export async function submitAwesfSurvey() {
         statusEl.textContent = '✅ AWE-SF saved! Complete all surveys to submit.';
         
         // Modal will be closed by event handler
-        
-        setTimeout(() => {
-            document.querySelectorAll('#awesfModal input[type="radio"]').forEach(radio => {
-                radio.checked = false;
-            });
-        }, 300);
+        // Form doesn't need to clear itself - when modal reopens, it will be fresh
     } catch (error) {
         console.error('Failed to save AWE-SF survey:', error);
         statusEl.className = 'status error';
@@ -1888,15 +2522,13 @@ export async function attemptSubmission(fromWorkflow = false) {
             if (fromWorkflow) {
                 console.log('   🔄 Transitioning back to main screen to collect participant ID...');
                 // Close any open modals and fade out overlay
-                await modalManager.closeAllModals();
-                await modalManager.fadeOutOverlay();
+                closeAllModals();
+                fadeOutOverlay();
                 // Open participant modal
-                await modalManager.openModal('participantModal', {
-                    keepOverlay: true,
-                    onOpen: () => {
-                        console.log('👤 Participant modal opened for ID collection');
-                    }
-                });
+                setTimeout(() => {
+                    openParticipantModal();
+                    console.log('👤 Participant modal opened for ID collection');
+                }, 350);
             }
             return;
         }
@@ -1938,9 +2570,11 @@ export async function attemptSubmission(fromWorkflow = false) {
         const hasPre = !!responses.pre;
         const hasPost = !!responses.post;
         const hasAwesf = !!responses.awesf;
+        const hasActivityLevel = !!responses.activityLevel;
         console.log('   Pre-Survey:', hasPre ? '✅ COMPLETE' : '❌ MISSING');
         console.log('   Post-Survey:', hasPost ? '✅ COMPLETE' : '❌ MISSING');
         console.log('   AWE-SF:', hasAwesf ? '✅ COMPLETE' : '❌ MISSING');
+        console.log('   Activity Level:', hasActivityLevel ? '✅ COMPLETE' : '❌ MISSING');
         
         if (hasPre) {
             console.log('   Pre-Survey Data:', JSON.stringify(responses.pre, null, 2));
@@ -1950,6 +2584,9 @@ export async function attemptSubmission(fromWorkflow = false) {
         }
         if (hasAwesf) {
             console.log('   AWE-SF Data:', JSON.stringify(responses.awesf, null, 2));
+        }
+        if (hasActivityLevel) {
+            console.log('   Activity Level Data:', JSON.stringify(responses.activityLevel, null, 2));
         }
         
         // Step 5: Check if session is complete
@@ -1962,6 +2599,7 @@ export async function attemptSubmission(fromWorkflow = false) {
             if (!hasPre) missingSurveys.push('Pre-Survey');
             if (!hasPost) missingSurveys.push('Post-Survey');
             if (!hasAwesf) missingSurveys.push('AWE-SF');
+            if (!hasActivityLevel) missingSurveys.push('Activity Level');
             
             const warningMsg = `Session incomplete. Missing: ${missingSurveys.join(', ')}. Submitting partial data...`;
             console.warn('   ⚠️ WARNING:', warningMsg);
@@ -2001,6 +2639,7 @@ export async function attemptSubmission(fromWorkflow = false) {
             pre: responses.pre || null,
             post: responses.post || null,
             awesf: responses.awesf || null,
+            activityLevel: responses.activityLevel || null,
             sessionId: responses.sessionId,
             participantId: responses.participantId,
             createdAt: responses.createdAt,
@@ -2012,7 +2651,8 @@ export async function attemptSubmission(fromWorkflow = false) {
             pre: hasPre ? 1 : 0,
             post: hasPost ? 1 : 0,
             awesf: hasAwesf ? 1 : 0,
-            total: (hasPre ? 1 : 0) + (hasPost ? 1 : 0) + (hasAwesf ? 1 : 0)
+            activityLevel: hasActivityLevel ? 1 : 0,
+            total: (hasPre ? 1 : 0) + (hasPost ? 1 : 0) + (hasAwesf ? 1 : 0) + (hasActivityLevel ? 1 : 0)
         });
         
         // Detailed logging for each survey type
@@ -2031,6 +2671,11 @@ export async function attemptSubmission(fromWorkflow = false) {
         } else {
             console.warn('   ⚠️ AWE-SF data MISSING - will not be submitted to Qualtrics');
         }
+        if (combinedResponses.activityLevel) {
+            console.log('   ✅ Activity Level data included:', Object.keys(combinedResponses.activityLevel));
+        } else {
+            console.warn('   ⚠️ Activity Level data MISSING - will not be submitted to Qualtrics');
+        }
         
         // Step 7: Attempt submission
         console.log('\n📋 STEP 7: Submitting to Qualtrics API...');
@@ -2047,6 +2692,53 @@ export async function attemptSubmission(fromWorkflow = false) {
             valuesCount: 'Will be calculated by API'
         });
         
+        // ═══════════════════════════════════════════════════════════
+        // 🚫 QUALTRICS SUBMISSION DISABLED (TEMPORARY)
+        // ═══════════════════════════════════════════════════════════
+        console.log('\n   ═══════════════════════════════════════════════════════════');
+        console.log('   🚫 QUALTRICS SUBMISSION IS DISABLED');
+        console.log('   ═══════════════════════════════════════════════════════════');
+        console.log('   📤 Qualtrics submission WOULD happen now but is disabled.');
+        console.log('   📋 All data is prepared and ready for submission:');
+        console.log('      - Participant ID:', participantId);
+        console.log('      - Session ID:', combinedResponses.sessionId);
+        console.log('      - Pre-Survey:', hasPre ? '✅ Included' : '❌ Missing');
+        console.log('      - Post-Survey:', hasPost ? '✅ Included' : '❌ Missing');
+        console.log('      - AWE-SF:', hasAwesf ? '✅ Included' : '❌ Missing');
+        console.log('      - Regions:', formattedRegions.length, 'regions');
+        console.log('      - JSON Dump:', jsonDump ? '✅ Included' : '❌ Missing');
+        console.log('   💡 To enable submission, remove the disabled check in attemptSubmission()');
+        console.log('   ═══════════════════════════════════════════════════════════\n');
+        
+        statusEl.className = 'status info';
+        statusEl.textContent = '🚫 Qualtrics submission disabled (check console for details)';
+        
+        console.log('\n═══════════════════════════════════════════════════════════');
+        console.log('✅ SUBMISSION PREPARATION COMPLETED (SUBMISSION DISABLED)');
+        console.log('═══════════════════════════════════════════════════════════');
+        
+        // Simulate successful submission flow (without actually submitting)
+        const mockSubmissionResult = {
+            result: {
+                responseId: 'MOCK_RESPONSE_ID_DISABLED'
+            },
+            meta: {
+                httpStatus: '200 - OK (SIMULATED)'
+            }
+        };
+        
+        // Step 8: Mark session as submitted (with mock response ID)
+        console.log('\n📋 STEP 8: Marking session as submitted (MOCK MODE)...');
+        console.log('   ⚠️ Session will NOT be marked as submitted in disabled mode');
+        console.log('   💡 This allows testing the full workflow without affecting data');
+        
+        // Step 9: Export response metadata to JSON file (still works even when disabled)
+        console.log('\n📋 STEP 9: Exporting response metadata...');
+        exportResponseMetadata(participantId, 'MOCK_RESPONSE_ID_DISABLED', mockSubmissionResult);
+        console.log('   ✅ Response metadata exported to JSON file (for testing)');
+        
+        // Original submission code (commented out for now):
+        /*
         const startTime = Date.now();
         let submissionResult;
         
@@ -2125,6 +2817,7 @@ export async function attemptSubmission(fromWorkflow = false) {
             
             throw apiError;
         }
+        */
         
     } catch (error) {
         console.error('\n❌ FATAL ERROR in submission attempt:');

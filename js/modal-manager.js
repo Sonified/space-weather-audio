@@ -41,23 +41,32 @@ class ModalManager {
             }
             
             // If switching modals and keeping overlay visible
+            console.log(`🔧 openModal: Checking if swap needed. currentModal=${this.currentModal}, keepOverlay=${keepOverlay}`);
             if (this.currentModal && keepOverlay) {
-                await this.swapModal(modalId);
+                console.log(`🔧 openModal: SWAPPING modal (currentModal=${this.currentModal} -> ${modalId})`);
+                // Return the promise from swapModal so workflow waits for modal to close
+                return await this.swapModal(modalId, { onOpen, onClose });
             } else {
+                console.log(`🔧 openModal: FRESH OPEN (currentModal=${this.currentModal}, keepOverlay=${keepOverlay})`);
                 // Fresh open (with overlay fade-in)
                 await this.closeAllModals();
                 await this.fadeInOverlay();
                 modal.style.display = 'flex';
                 this.currentModal = modalId;
+                
+                if (onOpen) onOpen();
+
+                // Return promise that resolves when modal closes
+                console.log(`🔧 openModal: Creating promise for ${modalId}`);
+                console.log(`🔧 openModal: Modal element:`, modal);
+                console.log(`🔧 openModal: Current modal state:`, this.currentModal);
+                return new Promise((resolve) => {
+                    console.log(`🔧 openModal: Setting _closeResolver for ${modalId}`);
+                    modal._closeResolver = resolve;
+                    modal._onClose = onClose;
+                    console.log(`🔧 openModal: Resolver set! modal._closeResolver exists:`, !!modal._closeResolver);
+                });
             }
-            
-            if (onOpen) onOpen();
-            
-            // Return promise that resolves when modal closes
-            return new Promise((resolve) => {
-                modal._closeResolver = resolve;
-                modal._onClose = onClose;
-            });
             
         } finally {
             this.isTransitioning = false;
@@ -83,7 +92,16 @@ class ModalManager {
         
         try {
             const modal = document.getElementById(targetModal);
-            if (!modal) return;
+            if (!modal) {
+                console.error(`❌ closeModal: Modal element not found for ${targetModal}`);
+                return;
+            }
+            
+            console.log(`🔧 closeModal: Modal element found:`, modal);
+            console.log(`🔧 closeModal: Current modal state:`, this.currentModal);
+            console.log(`🔧 closeModal: Modal ID attribute:`, modal.id);
+            console.log(`🔧 closeModal: Checking _closeResolver for ${targetModal}:`, !!modal._closeResolver);
+            console.log(`🔧 closeModal: Modal keys:`, Object.keys(modal).filter(k => k.startsWith('_')));
             
             // Call onClose callback if exists
             if (modal._onClose) {
@@ -92,8 +110,12 @@ class ModalManager {
             
             // Resolve the waiting promise
             if (modal._closeResolver) {
+                console.log(`✅ closeModal: Resolving promise for ${targetModal}`);
                 modal._closeResolver(true);
                 modal._closeResolver = null;
+            } else {
+                console.warn(`⚠️ closeModal: No _closeResolver found for ${targetModal} - promise won't resolve!`);
+                console.warn(`⚠️ closeModal: This means the workflow promise won't resolve and will continue immediately`);
             }
             
             // Hide modal

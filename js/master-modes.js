@@ -6,17 +6,21 @@
 
 /**
  * Available Application Modes
- * 
+ *
  * PERSONAL: Skip tutorial, direct access to app
  * DEV: Current development environment with tutorial
  * STUDY: Full research workflow (pre-surveys → tutorial → post-surveys → Qualtrics)
  * STUDY_CLEAN: Same as STUDY but resets all flags on each load (for testing)
+ * STUDY_END: Study completion mode with end walkthrough (runs after study workflow completes)
+ * TEST_STUDY_END: Debug mode to test the study end walkthrough (last 2 messages)
  */
 export const AppMode = {
     PERSONAL: 'personal',
     DEV: 'dev',
     STUDY: 'study',
-    STUDY_CLEAN: 'study_clean'
+    STUDY_CLEAN: 'study_clean',
+    STUDY_END: 'study_end',
+    TEST_STUDY_END: 'test_study_end'
 };
 
 /**
@@ -30,7 +34,7 @@ export const DEFAULT_MODE = AppMode.DEV; // Default if no localStorage selection
  * Detect if running locally vs production
  * Returns true if running on localhost, 127.0.0.1, or file:// protocol
  */
-function isLocalEnvironment() {
+export function isLocalEnvironment() {
     if (typeof window === 'undefined') return false;
     
     const hostname = window.location.hostname;
@@ -115,6 +119,40 @@ const MODE_CONFIG = {
         showProgressIndicator: true, // Show "Step 1 of 4: Pre-Survey" etc.
         enforceSequence: true, // Must complete steps in order
         resetFlagsOnLoad: true // Reset all study flags on each load
+    },
+    
+    [AppMode.STUDY_END]: {
+        name: 'Study End Mode',
+        description: 'Skip pre-survey and tutorial, go straight to analysis, then end walkthrough',
+        skipTutorial: true,
+        showPreSurveys: false,
+        showPostSurveys: true,
+        requireQualtricsSubmission: true,
+        enableAdminFeatures: false,
+        showSubmitButton: true,
+        autoStartPlayback: false,
+        // Study End specific config - runs walkthrough after completion
+        requireResponseId: true, // Must have Qualtrics ResponseID in URL
+        showProgressIndicator: false, // No progress indicator needed
+        enforceSequence: true, // Must complete steps in order
+        runEndWalkthrough: true // Run the study end walkthrough after completion
+    },
+
+    [AppMode.TEST_STUDY_END]: {
+        name: 'Test Study End Mode',
+        description: 'Debug mode - jump to last 2 messages of study end walkthrough',
+        skipTutorial: true,
+        showPreSurveys: false,
+        showPostSurveys: false,
+        requireQualtricsSubmission: false,
+        enableAdminFeatures: true,
+        showSubmitButton: true,
+        autoStartPlayback: false,
+        // Test mode specific config
+        requireResponseId: false, // No ResponseID needed for testing
+        showProgressIndicator: false, // No progress indicator
+        enforceSequence: false, // Don't enforce sequence
+        runDebugJump: true // Run the debug jump function on load
     }
 };
 
@@ -137,11 +175,19 @@ export function isDevMode() {
 }
 
 export function isStudyMode() {
-    return CURRENT_MODE === AppMode.STUDY || CURRENT_MODE === AppMode.STUDY_CLEAN;
+    return CURRENT_MODE === AppMode.STUDY || CURRENT_MODE === AppMode.STUDY_CLEAN || CURRENT_MODE === AppMode.STUDY_END || CURRENT_MODE === AppMode.TEST_STUDY_END;
+}
+
+export function isStudyEndMode() {
+    return CURRENT_MODE === AppMode.STUDY_END;
 }
 
 export function isStudyCleanMode() {
     return CURRENT_MODE === AppMode.STUDY_CLEAN;
+}
+
+export function isTestStudyEndMode() {
+    return CURRENT_MODE === AppMode.TEST_STUDY_END;
 }
 
 /**

@@ -79,25 +79,34 @@ export function initTutorial() {
             window.addEventListener('keydown', (e) => {
                 // Skip animations and advance tutorial on Enter/Return (but not if user is typing in an input field)
                 if (e.key === 'Enter' || e.key === 'Return') {
+                    console.log('⌨️ Enter key detected! tutorialPhase:', tutorialPhase);
                     const activeElement = document.activeElement;
                     const isInputField = activeElement && (
                         activeElement.tagName === 'INPUT' ||
                         activeElement.tagName === 'TEXTAREA' ||
                         activeElement.isContentEditable
                     );
-                    
+
+                    console.log('🔍 activeElement:', activeElement?.tagName, 'isInputField:', isInputField);
+
                     // Only skip if not in an input field
                     if (!isInputField) {
                         e.preventDefault();
-                        
+                        console.log('✅ Not in input field - proceeding with skip');
+
                         // Skip current animation
                         skipAnimations();
-                        
+
                         // Advance to next tutorial phase if we're in a tutorial sequence
                         // (advanceTutorialPhase will clear overlay and pulse)
                         if (tutorialPhase) {
+                            console.log('▶️ Advancing tutorial phase:', tutorialPhase);
                             advanceTutorialPhase();
+                        } else {
+                            console.log('⚠️ No tutorial phase set - not advancing');
                         }
+                    } else {
+                        console.log('⏸️ In input field - skipping handler');
                     }
                 }
             });

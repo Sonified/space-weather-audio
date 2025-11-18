@@ -96,6 +96,7 @@ export let waitingForAddFeatureButtonClick = false;
 export let waitingForZoomOut = false;
 export let waitingForNumberKeyPress = false;
 export let targetNumberKey = null; // '1' or '2'
+export let waitingForBeginAnalysisClick = false;
 export let _selectionTutorialResolve = null;
 export let _waveformClickResolve = null;
 export let _regionCreationResolve = null;
@@ -112,6 +113,7 @@ export let _typeDropdownResolve = null;
 export let _addFeatureButtonClickResolve = null;
 export let _zoomOutResolve = null;
 export let _numberKeyPressResolve = null;
+export let _beginAnalysisClickResolve = null;
 export let regionButtonsDisabled = false;
 export let enabledRegionPlayButtons = new Map(); // Map<regionIndex, enabled>
 export let enabledRegionZoomButtons = new Map(); // Map<regionIndex, enabled>
@@ -207,6 +209,7 @@ export function setWaitingForAddFeatureButtonClick(value) { waitingForAddFeature
 export function setWaitingForZoomOut(value) { waitingForZoomOut = value; }
 export function setWaitingForNumberKeyPress(value) { waitingForNumberKeyPress = value; }
 export function setTargetNumberKey(value) { targetNumberKey = value; }
+export function setWaitingForBeginAnalysisClick(value) { waitingForBeginAnalysisClick = value; }
 export function setFeatureSelectionResolve(value) { _featureSelectionResolve = value; }
 export function setFeatureDescriptionResolve(value) { _featureDescriptionResolve = value; }
 export function setRepetitionDropdownResolve(value) { _repetitionDropdownResolve = value; }
@@ -214,6 +217,7 @@ export function setTypeDropdownResolve(value) { _typeDropdownResolve = value; }
 export function setAddFeatureButtonClickResolve(value) { _addFeatureButtonClickResolve = value; }
 export function setZoomOutResolve(value) { _zoomOutResolve = value; }
 export function setNumberKeyPressResolve(value) { _numberKeyPressResolve = value; }
+export function setBeginAnalysisClickResolve(value) { _beginAnalysisClickResolve = value; }
 export function setRegionButtonsDisabled(value) { regionButtonsDisabled = value; }
 export function setRegionPlayButtonEnabled(regionIndex, enabled) {
     if (enabled) {

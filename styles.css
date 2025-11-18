@@ -2060,6 +2060,37 @@ textarea.freq-input::-webkit-scrollbar {
     border-style: solid !important;
 }
 
+/* Sticky status animations - zen parallax glide */
+@keyframes slideDownGentle {
+    0% {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideUpGentle {
+    0% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+}
+
+.sticky-status-container {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* Tutorial overlay */
 .tutorial-click-me {
     font-size: 28px;

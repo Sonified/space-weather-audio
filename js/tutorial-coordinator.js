@@ -130,25 +130,25 @@ function skippableWait(durationMs) {
         let timeoutId = null;
         let isResolved = false;
         const cancelled = { value: false }; // Cancellation flag for waitForPlaybackResume
-        
+
         const cleanup = () => {
             cancelled.value = true; // Cancel any pending playback resume wait
-            
+
             // 🔥 FIX: Call cleanup function if it exists to clear timeout chain
             if (cancelled.cleanup) {
                 cancelled.cleanup();
                 cancelled.cleanup = null;
             }
-            
+
             if (timeoutId !== null) {
                 clearTimeout(timeoutId);
                 timeoutId = null;
             }
         };
-        
+
         const tick = () => {
             if (isResolved) return;
-            
+
             // Check if playback is paused (but NOT during pause button tutorial OR during any tutorial)
             // During pause button tutorial, we want timer to continue so we can show unpause instructions
             // During any tutorial, we don't want waits to pause when playback ends/pauses
@@ -163,9 +163,9 @@ function skippableWait(durationMs) {
                 });
                 return;
             }
-            
+
             elapsed += checkInterval;
-            
+
             if (elapsed >= durationMs) {
                 isResolved = true;
                 cleanup();
@@ -174,11 +174,13 @@ function skippableWait(durationMs) {
                 timeoutId = setTimeout(tick, checkInterval);
             }
         };
-        
+
         timeoutId = setTimeout(tick, checkInterval);
-        
+
         // Store timeout so Enter key can skip it
+        console.log('🔧 skippableWait: Setting tutorial phase "timed_wait" for', durationMs, 'ms');
         setTutorialPhase('timed_wait', [timeoutId], () => {
+            console.log('⚡ skippableWait: Enter key pressed - skipping wait!');
             isResolved = true;
             cleanup();
             resolve();
@@ -511,11 +513,34 @@ function waitForSelection() {
         // Set flag so waveform-renderer.js knows to resolve this promise
         State.setWaitingForSelection(true);
         State.setSelectionTutorialResolve(resolve);
-        
+
         // Store phase for Enter key skipping
         setTutorialPhase('waiting_for_selection', [], () => {
             State.setWaitingForSelection(false);
             State.setSelectionTutorialResolve(null);
+            resolve();
+        });
+    });
+}
+
+/**
+ * Wait for user to click Begin Analysis button
+ */
+function waitForBeginAnalysisClick() {
+    return new Promise((resolve) => {
+        // Set flag so main.js click handler knows to resolve this promise
+        State.setWaitingForBeginAnalysisClick(true);
+        State.setBeginAnalysisClickResolve(resolve);
+
+        // Store phase for Enter key skipping
+        setTutorialPhase('waiting_for_begin_analysis_click', [], () => {
+            console.log('🎯 Begin Analysis click: Skipped via Enter key');
+            State.setWaitingForBeginAnalysisClick(false);
+            State.setBeginAnalysisClickResolve(null);
+
+            // Fire the beginAnalysisConfirmed event to transition into analysis mode
+            window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
+
             resolve();
         });
     });
@@ -1057,16 +1082,13 @@ async function runSelectionTutorial() {
         // Wait for selection to complete
         await selectionPromise;
     } else if (raceResult === 'selection') {
-        // Selection completed first - no need to append or wait further
-        // The promise already resolved
+        // Selection completed first - the promise already resolved via Promise.race
+        // Ensure the selection state is properly set before continuing
+        // Add a small delay to ensure all state updates have propagated
+        await new Promise(resolve => setTimeout(resolve, 0));
     }
 
     // Note: Region creation is already enabled by study-workflow.js before tutorial starts
-
-    // Wait 0.5 seconds, then show "Nice!" for 1 second
-    await skippableWait(500);
-    setStatusTextAndTrack('Nice!', 'status success');
-    await skippableWait(1000);
 
     // Selection tutorial complete - transition to region introduction
     // Clear tutorial phase
@@ -1368,12 +1390,12 @@ async function runFeatureSelectionTutorial() {
     setStatusTextAndTrack('There are no right or wrong answers, just observations', 'status info');
     await skippableWait(8000);
     
-    // "When you are done, you can hit enter/return." (4s)
-    setStatusTextAndTrack('When you are done, you can hit enter/return.', 'status info');
+    // "You can start typing now to provide a description." (4s)
+    setStatusTextAndTrack('You can start typing now to provide a description.', 'status info');
     await skippableWait(4000);
     
-    // "You can start typing now to provide a description."
-    setStatusTextAndTrack('You can start typing now to provide a description.', 'status info');
+    // "When you are done, you can hit enter/return."
+    setStatusTextAndTrack('When you are done, you can hit enter/return.', 'status info');
     
     // Set up listener to switch message as soon as user starts typing
     const notesField = document.getElementById(`notes-${activeRegionIndex}-${featureIndex}`);
@@ -1604,6 +1626,273 @@ async function runSecondRegionTutorial() {
 
 /**
  * ═══════════════════════════════════════════════════════════
+ * BEGIN ANALYSIS TUTORIAL - End tutorial and transition to analysis
+ * ═══════════════════════════════════════════════════════════
+ */
+async function runBeginAnalysisTutorial() {
+    console.log('🎬 runBeginAnalysisTutorial() START');
+
+    // Message 1: Explain Begin Analysis button
+    console.log('📝 Setting message 1...');
+    setStatusTextAndTrack('For your weekly sessions you will begin by selecting one volcano and clicking Begin Analysis. 👇', 'status info');
+    console.log('⏳ Starting 6s skippable wait...');
+    await skippableWait(6000);
+    console.log('✅ Message 1 wait complete');
+
+    // Message 2: Instruct to click Begin Analysis (center-aligned with arrow)
+    console.log('📝 Setting message 2...');
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        // Set textAlign BEFORE calling setStatusTextAndTrack so it gets preserved
+        statusEl.style.textAlign = 'center';
+    }
+    setStatusTextAndTrack('Click Begin Analysis now to end the tutorial ↘️', 'status info');
+
+    // Wait partway through, then fade in Begin Analysis button
+    console.log('⏳ Starting 2.5s skippable wait before fading in button...');
+    await skippableWait(2500);
+    console.log('✅ Message 2 wait complete');
+
+    const completeBtn = document.getElementById('completeBtn');
+    if (completeBtn) {
+        // Make button visible and ensure it's enabled (even if already visible)
+        completeBtn.style.display = 'flex';
+        completeBtn.style.alignItems = 'center';
+        completeBtn.style.justifyContent = 'center';
+        completeBtn.disabled = false; // Explicitly enable it
+        completeBtn.style.cursor = 'pointer';
+        completeBtn.style.opacity = '1';
+        completeBtn.style.transition = 'opacity 0.5s ease-in-out';
+        console.log('✅ Begin Analysis button faded in and enabled');
+    }
+
+    // Wait for Begin Analysis button click
+    console.log('⏳ Waiting for Begin Analysis button click...');
+    await waitForBeginAnalysisClick();
+    console.log('✅ Begin Analysis button clicked');
+
+    // Reset text alignment
+    if (statusEl) {
+        statusEl.style.textAlign = '';
+    }
+
+    console.log('🎓 Begin Analysis tutorial complete - user transitioned to analysis mode');
+}
+
+/**
+ * 🧹 CLEANUP: Clear ALL pending tutorial resolvers
+ * Call this when ending tutorial early or transitioning modes
+ */
+export function clearAllTutorialResolvers() {
+    console.log('🧹 Clearing all tutorial resolvers...');
+    
+    // Clear all the promise resolvers
+    State.setWaveformClickResolve(null);
+    State.setSelectionTutorialResolve(null);
+    State.setRegionCreationResolve(null);
+    State.setRegionPlayClickResolve(null);
+    State.setRegionPlayOrResumeResolve(null);
+    State.setRegionZoomResolve(null);
+    State.setLoopButtonClickResolve(null);
+    State.setFrequencyScaleChangeResolve(null);
+    State.setFrequencyScaleKeysResolve(null);
+    State.setFeatureSelectionResolve(null);
+    State.setFeatureDescriptionResolve(null);
+    State.setRepetitionDropdownResolve(null);
+    State.setTypeDropdownResolve(null);
+    State.setAddFeatureButtonClickResolve(null);
+    State.setZoomOutResolve(null);
+    State.setNumberKeyPressResolve(null);
+    State.setBeginAnalysisClickResolve(null);
+    
+    // Clear all the waiting flags
+    State.setWaitingForSelection(false);
+    State.setWaitingForRegionCreation(false);
+    State.setWaitingForRegionPlayClick(false);
+    State.setWaitingForRegionPlayOrResume(false);
+    State.setWaitingForRegionZoom(false);
+    State.setWaitingForLoopButtonClick(false);
+    State.setWaitingForFrequencyScaleChange(false);
+    State.setWaitingForFrequencyScaleKeys(false);
+    State.setWaitingForFeatureSelection(false);
+    State.setWaitingForFeatureDescription(false);
+    State.setWaitingForRepetitionDropdown(false);
+    State.setWaitingForTypeDropdown(false);
+    State.setWaitingForAddFeatureButtonClick(false);
+    State.setWaitingForZoomOut(false);
+    State.setWaitingForNumberKeyPress(false);
+    State.setWaitingForBeginAnalysisClick(false);
+    
+    // Clear tutorial phase
+    clearTutorialPhase();
+    
+    console.log('✅ All tutorial resolvers cleared');
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════
+ * STUDY END WALKTHROUGH - Runs after study completion
+ * ═══════════════════════════════════════════════════════════
+ *
+ * A celebratory walkthrough that runs after the study workflow completes.
+ * Helps users understand what they've accomplished and what they can do next.
+ */
+export async function runStudyEndWalkthrough(startAtMessageIndex = 0) {
+    try {
+        console.log('🎬 Starting Study End Walkthrough...');
+
+        // 🔥 EXORCISE ALL GHOSTS IMMEDIATELY!
+        clearAllTutorialResolvers();
+
+        // 🔥 FIX: Initialize tutorial system so Enter key works!
+        const { initTutorial } = await import('./tutorial-state.js');
+        initTutorial();
+        console.log('✅ Tutorial system initialized - Enter key will work');
+
+        // Enable all features first
+        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        enableAllTutorialRestrictedFeatures();
+
+        // Wait a moment for the end modal to close (skip if debugging)
+        if (startAtMessageIndex === 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        // NEW Message -2: Explain Begin Analysis button
+        if (-2 >= startAtMessageIndex) {
+            setStatusTextAndTrack('For your weekly sessions you will begin by selecting one volcano and clicking Begin Analysis. 👇', 'status info');
+
+            await skippableWait(6000);
+        }
+
+        // NEW Message -1: Instruct to click Begin Analysis (center-aligned with arrow)
+        if (-1 >= startAtMessageIndex) {
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+                statusEl.className = 'status info';
+                statusEl.style.textAlign = 'center';
+                statusEl.style.display = 'block';
+                statusEl.textContent = 'Click Begin Analysis now to end the tutorial ↘️';
+            }
+
+            // Wait partway through (skippable with Enter), then fade in Begin Analysis button
+            await skippableWait(2500);
+
+            const completeBtn = document.getElementById('completeBtn');
+            if (completeBtn) {
+                // Make button visible and ensure it's enabled (even if already visible)
+                completeBtn.style.display = 'flex';
+                completeBtn.style.alignItems = 'center';
+                completeBtn.style.justifyContent = 'center';
+                completeBtn.disabled = false; // Explicitly enable it
+                completeBtn.style.cursor = 'pointer';
+                completeBtn.style.opacity = '1';
+                completeBtn.style.transition = 'opacity 0.5s ease-in-out';
+                console.log('✅ Begin Analysis button faded in and enabled:', completeBtn);
+
+                // Wait for Begin Analysis button click (integrated with core system)
+                await waitForBeginAnalysisClick();
+            } else {
+                // Fallback if button not found
+                await skippableWait(5000);
+            }
+
+            // Reset text alignment
+            if (statusEl) {
+                statusEl.style.textAlign = '';
+            }
+        }
+
+        // NEW Message 0: Explain Complete button
+        if (0 >= startAtMessageIndex) {
+            setStatusTextAndTrack('When you are finished with your analysis you can press "Complete."', 'status info');
+
+            // TODO: Show/enable Complete button
+            // const completeBtn = document.getElementById('completeBtn');
+            // if (completeBtn) {
+            //     completeBtn.style.display = 'block';
+            //     completeBtn.disabled = false;
+            // }
+
+            await skippableWait(6000);
+        }
+
+        // Message 1: Show celebration message
+        if (1 >= startAtMessageIndex) {
+            setStatusTextAndTrack('🎉 Congratulations! You\'ve completed the tutorial!', 'status success');
+            await skippableWait(5000);
+        }
+
+        // Message 2: Explain what they accomplished
+        if (2 >= startAtMessageIndex) {
+            setStatusTextAndTrack('You\'ve successfully analyzed seismic data and identified volcanic features.', 'status info');
+            await skippableWait(6000);
+        }
+
+        // Message 3: Show what they can do now
+        if (3 >= startAtMessageIndex) {
+            setStatusTextAndTrack('You can now explore more data, try different volcanoes, or experiment with playback speeds.', 'status info');
+            await skippableWait(6000);
+        }
+
+        // Message 4: Highlight key features they might want to try
+        if (4 >= startAtMessageIndex) {
+            setStatusTextAndTrack('Try adjusting the frequency scale (Linear, Square Root, or Logarithmic) to see different perspectives.', 'status info');
+            await skippableWait(6000);
+        }
+
+        // Message 5: Final message
+        if (5 >= startAtMessageIndex) {
+            setStatusTextAndTrack('Thank you for participating! Feel free to explore and enjoy the sounds of Earth\'s volcanoes. 🌋', 'status success');
+            await skippableWait(7000);
+        }
+
+        // Clear tutorial phase
+        clearTutorialPhase();
+
+        console.log('✅ Study End Walkthrough complete!');
+    } catch (error) {
+        console.error('❌ Error in study end walkthrough:', error);
+        clearTutorialPhase();
+    }
+}
+
+/**
+ * DEBUG: Jump to 2 messages before end of study walkthrough
+ * Useful for testing the tail end of the tutorial
+ * This calls the REAL runStudyEndWalkthrough but skips to near the end
+ */
+export async function debugJumpToStudyEnd(startAtMessageIndex = -2) {
+    try {
+        console.log('🐛 DEBUG: Running REAL study end walkthrough starting at message', startAtMessageIndex);
+        console.log('🐛 DEBUG: Waiting 4 seconds for you to load data...');
+
+        // 🔥 KILL ALL GHOSTS FIRST!
+        clearAllTutorialResolvers();
+
+        // 🔥 FIX: Initialize tutorial system so Enter key works!
+        const { initTutorial } = await import('./tutorial-state.js');
+        initTutorial();
+        console.log('✅ Tutorial system initialized - Enter key will work');
+
+        // Enable all features first (same as beginning of study end)
+        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        enableAllTutorialRestrictedFeatures();
+
+        // Wait 4 seconds for user to load data
+        await new Promise(resolve => setTimeout(resolve, 4000));
+
+        // Call the REAL function with a skip parameter
+        await runStudyEndWalkthrough(startAtMessageIndex);
+
+    } catch (error) {
+        console.error('❌ DEBUG: Error in study end jump:', error);
+        clearTutorialPhase();
+    }
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════
  * MAIN SEQUENCE - The beautiful linear flow ✨
  * ═══════════════════════════════════════════════════════════
  * 
@@ -1615,10 +1904,10 @@ export async function runMainTutorial() {
     try {
         // Frequency scale dropdown is already disabled by runInitialTutorial()
         // (which runs before this function)
-        
-        await showWellDoneMessage();           // 2s - "Success!"
+
+        await showWellDoneMessage();            // 2s - "Success!"
         await showVolumeSliderTutorial();      // 5s - volume slider glow and message
-        await showVolcanoMessage();            // 5s  
+        await showVolcanoMessage();            // 5s
         await showStationMetadataMessage();    // 7s
         await runPauseButtonTutorial();        // wait for user to pause & resume
         await showSpectrogramExplanation();    // 5s + 600ms fade
@@ -1627,7 +1916,8 @@ export async function runMainTutorial() {
         await runRegionIntroduction();         // region introduction tutorial
         await runRegionZoomingTutorial();      // region zooming tutorial (includes loop button)
         await runFrequencyScaleTutorial();     // frequency scale tutorial (includes feature selection tutorial)
-        
+        await runBeginAnalysisTutorial();      // Begin Analysis button - ends tutorial and transitions to analysis mode
+
         console.log('🎓 Tutorial complete!');
         // Note: Features are enabled inside runZoomOutTutorial() after the last message completes
     } finally {
@@ -1648,13 +1938,30 @@ export async function runInitialTutorial() {
         // Disable frequency scale dropdown IMMEDIATELY at the very start
         disableFrequencyScaleDropdown();
         
+        // 🔒 HARD DISABLE Begin Analysis button at tutorial start (first visit only)
+        const { hasSeenTutorial } = await import('./study-workflow.js');
+        if (!hasSeenTutorial()) {
+            const completeBtn = document.getElementById('completeBtn');
+            if (completeBtn) {
+                completeBtn.disabled = true;
+                completeBtn.style.opacity = '0.5';
+                completeBtn.style.cursor = 'not-allowed';
+                console.log('🔒 Begin Analysis button HARD DISABLED at tutorial start');
+            }
+            
+            // ✅ Enable region creation NOW (tutorial needs it, but only during tutorial)
+            const { setRegionCreationEnabled } = await import('./audio-state.js');
+            setRegionCreationEnabled(true);
+            console.log('✅ Region creation ENABLED for tutorial');
+        }
+
         // Show initial fetch tutorial (always, even if data is already loaded)
         await showInitialFetchTutorial();
-        
+
         // After data is fetched, continue with main tutorial
         // Small delay to let the UI settle after data loads
         await skippableWait(200);
-        
+
         // Run the main tutorial sequence
         await runMainTutorial();
     } catch (error) {

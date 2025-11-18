@@ -46,33 +46,35 @@ export function createEndModal() {
                 <h3 class="modal-title">Complete!</h3>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 20px; color: #333; font-size: 16px; line-height: 1.6; font-weight: 600;">
-                    Your session was successfully submitted at <span id="submissionTime" style="color: #28a745;">--</span>
+                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6; font-weight: 600;">
+                    Your session was successfully submitted at <span id="submissionTime" style="color: #1a237e;">--</span>
                 </p>
-                <p style="margin-bottom: 20px; color: #333; font-size: 16px; line-height: 1.6;">
-                    Your anonymized data has been associated with participant ID: <span id="submissionParticipantId" style="font-weight: 600; color: #007bff;">--</span>
+                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6;">
+                    Your anonymized data has been associated with participant ID: <span id="submissionParticipantId" style="font-weight: 600; color: #1a237e;">--</span>
                 </p>
-                <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #007bff;">
-                    <p style="margin-bottom: 10px; color: #333; font-size: 15px; line-height: 1.6;">
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #c62828;">
+                    <p style="margin-bottom: 10px; color: #333; font-size: 17px; line-height: 1.6;">
                         <strong>Study Progress:</strong>
                     </p>
-                    <p style="margin-bottom: 8px; color: #555; font-size: 14px; line-height: 1.6;">
+                    <p style="margin-bottom: 8px; color: #555; font-size: 18px; line-height: 1.6;">
                         • This is <strong>week 1</strong> of the study
                     </p>
-                    <p style="margin-bottom: 8px; color: #555; font-size: 14px; line-height: 1.6;">
+                    <p style="margin-bottom: 8px; color: #555; font-size: 18px; line-height: 1.6;">
                         • There are <strong>2 weeks remaining</strong>
                     </p>
-                    <p style="margin-bottom: 0; color: #555; font-size: 14px; line-height: 1.6;">
+                    <p style="margin-bottom: 0; color: #555; font-size: 18px; line-height: 1.6;">
                         • You have completed <strong><span id="sessionCount">1</span> session(s)</strong> this week
                     </p>
                 </div>
-                <p style="margin-bottom: 20px; color: #666; font-size: 14px; line-height: 1.6; font-style: italic;">
+                <p style="margin-bottom: 20px; color: #666; font-size: 18px; line-height: 1.6; font-style: italic;">
                     All participants are asked to complete two weekly sessions, though you may complete more if you wish.
                 </p>
-                <p style="margin-bottom: 20px; color: #333; font-size: 16px; line-height: 1.6; text-align: center; font-weight: 600;">
+                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6; text-align: center; font-weight: 600;">
                     Thank you for your submission!
                 </p>
-                <button type="button" class="modal-submit">Close</button>
+                <p style="margin-bottom: 20px; color: #666; font-size: 18px; line-height: 1.6; text-align: center;">
+                    You can now safely close this window.
+                </p>
             </div>
         </div>
     `;
@@ -120,6 +122,56 @@ export function createCompleteConfirmationModal() {
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                     <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #28a745; border: 2px solid #28a745; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Complete</button>
                     <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+export function createTutorialIntroModal() {
+    const modal = document.createElement('div');
+    modal.id = 'tutorialIntroModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Tutorial Introduction</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
+                    We will begin with a brief tutorial to provide an introduction to the interface.
+                </p>
+                <p style="margin-bottom: 30px; color: #555; font-size: 16px; line-height: 1.6; text-align: center;">
+                    It will take approximately 5 minutes to complete.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Begin Tutorial</button>
+                </div>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+export function createTutorialRevisitModal() {
+    const modal = document.createElement('div');
+    modal.id = 'tutorialRevisitModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Revisit Tutorial</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 30px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
+                    Would you like to revisit the tutorial?
+                </p>
+                <div style="display: flex; flex-direction: row; gap: 15px; align-items: center; justify-content: center;">
+                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 120px;">Yes</button>
+                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 120px;">Cancel</button>
                 </div>
             </div>
         </div>
@@ -668,50 +720,13 @@ export function createAwesfModal() {
 }
 
 // Initialize and inject modals into the page
-export function initializeModals() {
-    // 🔥 FIX: Prevent duplicate initialization
-    // If modals are already initialized, clean them up first
+export async function initializeModals() {
+    // 🔥 FIX: NEVER reinitialize while modals are already initialized!
+    // Modals are stateful actors - destroying them mid-workflow breaks promise chains!
     if (modalsInitialized) {
-        console.warn('⚠️ Modals already initialized - cleaning up old modals first');
-        // Import and call removeModalEventListeners if available
-        // (This will be handled by setupModalEventListeners guard)
+        console.warn('⚠️ Modals already initialized - skipping reinitialization');
+        return; // Just bail! Don't destroy and recreate!
     }
-    
-    // 🔥 FIX: Remove existing modals before creating new ones to prevent duplicates
-    // This prevents detached DOM nodes from accumulating
-    const existingModals = [
-        'welcomeModal',
-        'participantModal',
-        'preSurveyModal',
-        'postSurveyModal',
-        'activityLevelModal',
-        'awesfModal',
-        'endModal',
-        'beginAnalysisModal',
-        'missingStudyIdModal',
-        'completeConfirmationModal'
-    ];
-    
-    existingModals.forEach(modalId => {
-        const existing = document.getElementById(modalId);
-        if (existing) {
-            // 🔥 FIX: Explicitly remove modal from DOM and clear all references
-            // First, clear all event listeners by cloning (breaks all references)
-            if (existing.parentNode) {
-                // Clone to break event listener references
-                const cloned = existing.cloneNode(false); // Shallow clone (no children, no listeners)
-                existing.parentNode.replaceChild(cloned, existing);
-                // Remove the clone (original is now detached)
-                cloned.parentNode.removeChild(cloned);
-            } else {
-                // Already detached, but clear any remaining references
-                // Remove all child nodes to break internal references
-                while (existing.firstChild) {
-                    existing.removeChild(existing.firstChild);
-                }
-            }
-        }
-    });
     
     const welcomeModal = createWelcomeModal();
     const participantModal = createParticipantModal();
@@ -723,6 +738,8 @@ export function initializeModals() {
     const beginAnalysisModal = createBeginAnalysisModal();
     const missingStudyIdModal = createMissingStudyIdModal();
     const completeConfirmationModal = createCompleteConfirmationModal();
+    const tutorialIntroModal = createTutorialIntroModal();
+    const tutorialRevisitModal = createTutorialRevisitModal();
     
     // Append modals to the permanent overlay instead of body
     const overlay = document.getElementById('permanentOverlay');
@@ -736,12 +753,45 @@ export function initializeModals() {
     overlay.appendChild(beginAnalysisModal);
     overlay.appendChild(missingStudyIdModal);
     overlay.appendChild(completeConfirmationModal);
+    overlay.appendChild(tutorialIntroModal);
+    overlay.appendChild(tutorialRevisitModal);
     
-    // Pre-populate participant ID from localStorage if available
+    // Pre-populate participant ID from URL (Qualtrics) or localStorage
     // BUT NOT in STUDY_CLEAN mode (always start fresh)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
     const isStudyClean = storedMode === 'study_clean';
-    const savedParticipantId = isStudyClean ? null : localStorage.getItem('participantId');
+    
+    // Check URL first (Qualtrics ResponseID), then localStorage
+    let savedParticipantId = null;
+    if (!isStudyClean) {
+        // Try to get from URL (Qualtrics redirect)
+        try {
+            const { getParticipantIdFromURL } = await import('./qualtrics-api.js');
+            const urlId = getParticipantIdFromURL();
+            if (urlId) {
+                savedParticipantId = urlId;
+                // Store it for future use
+                const { storeParticipantId } = await import('./qualtrics-api.js');
+                storeParticipantId(urlId);
+                console.log('🔗 Pre-populated participant ID from Qualtrics URL:', urlId);
+            } else {
+                // Fall back to localStorage
+                savedParticipantId = localStorage.getItem('participantId');
+                if (savedParticipantId) {
+                    console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
+                }
+            }
+        } catch (error) {
+            // If import fails, fall back to localStorage
+            savedParticipantId = localStorage.getItem('participantId');
+            if (savedParticipantId) {
+                console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
+            }
+        }
+    } else {
+        console.log('🧹 Study Clean Mode: Not pre-populating participant ID');
+    }
+    
     const participantIdInput = document.getElementById('participantId');
     const participantSubmitBtn = document.querySelector('#participantModal .modal-submit');
     
@@ -753,11 +803,6 @@ export function initializeModals() {
     if (participantSubmitBtn) {
         const hasValue = participantIdInput && participantIdInput.value.trim().length > 0;
         participantSubmitBtn.disabled = !hasValue;
-        if (savedParticipantId && !isStudyClean) {
-            console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
-        } else if (isStudyClean) {
-            console.log('🧹 Study Clean Mode: Not pre-populating participant ID');
-        }
     }
     
     modalsInitialized = true;

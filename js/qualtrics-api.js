@@ -3,51 +3,100 @@
  * Handles submission of survey responses to Qualtrics API
  */
 
-// Qualtrics API Configuration
-const QUALTRICS_CONFIG = {
-    BASE_URL: "https://oregon.yul1.qualtrics.com/API/v3",
-    SURVEY_ID: "SV_bNni117IsBWNZWu",
-    API_TOKEN: "FcoNLQoHtQVRAoUdIfqexMjIQgC3qqgut9Yg89Xo"
-};
+// Load survey configuration from config.json
+let SURVEY_CONFIG = null;
 
-// Question ID mappings based on survey structure
-const QUESTION_IDS = {
-    // Pre-session PANAS (QID5)
-    PRE_CALM: "QID5_1",
-    PRE_ENERGIZED: "QID5_2", 
-    PRE_CONNECTED: "QID5_3",
-    PRE_NERVOUS: "QID5_4",
-    PRE_FOCUSED: "QID5_5",
-    PRE_WONDER: "QID5_6",
+async function loadSurveyConfig() {
+    if (SURVEY_CONFIG) return SURVEY_CONFIG;
     
-    // Post-session PANAS (QID12)
-    POST_CALM: "QID12_1",
-    POST_ENERGIZED: "QID12_2",
-    POST_CONNECTED: "QID12_3", 
-    POST_NERVOUS: "QID12_4",
-    POST_FOCUSED: "QID12_5",
-    POST_WONDER: "QID12_6",
-    
-    // AWE-SF Scale (QID13) - 13 items
-    AWE_SLOW_DOWN: "QID13_1",
-    AWE_REDUCED_SELF: "QID13_2",
-    AWE_CHILLS: "QID13_3",
-    AWE_ONENESS: "QID13_4",
-    AWE_GRAND: "QID13_5",
-    AWE_DIMINISHED_SELF: "QID13_6",
-    AWE_TIME_SLOWING: "QID13_7",
-    AWE_CONNECTED: "QID13_8",
-    AWE_SMALL: "QID13_9",
-    AWE_VASTNESS: "QID13_10",
-    AWE_CHALLENGED: "QID13_11",
-    AWE_SELF_SHRINK: "QID13_12",
-    
-    // Activity Level (QID15) - 5-point scale
-    ACTIVITY_LEVEL: "QID15_1",
-    
-    // JSON dump field (QID11) - for storing event data
-    JSON_DUMP: "QID11"
-};
+    try {
+        const response = await fetch('./js/surveys/config.json');
+        SURVEY_CONFIG = await response.json();
+        return SURVEY_CONFIG;
+    } catch (error) {
+        console.error('❌ Failed to load survey config, using fallback:', error);
+        // Fallback to hardcoded values if config fails to load
+        SURVEY_CONFIG = {
+            qualtrics: {
+                baseUrl: "https://oregon.yul1.qualtrics.com/API/v3",
+                surveyId: "SV_bNni117IsBWNZWu",
+                apiToken: "FcoNLQoHtQVRAoUdIfqexMjIQgC3qqgut9Yg89Xo"
+            },
+            questionIds: {
+                pre: { fields: { calm: "QID5_1", energized: "QID5_2", connected: "QID5_3", nervous: "QID5_4", focused: "QID5_5", wonder: "QID5_6" } },
+                post: { fields: { calm: "QID12_1", energized: "QID12_2", connected: "QID12_3", nervous: "QID12_4", focused: "QID12_5", wonder: "QID12_6" } },
+                awesf: { fields: { slowDown: "QID13_1", reducedSelf: "QID13_2", chills: "QID13_3", oneness: "QID13_4", grand: "QID13_5", diminishedSelf: "QID13_6", timeSlowing: "QID13_7", awesfConnected: "QID13_8", small: "QID13_9", vastness: "QID13_10", challenged: "QID13_11", selfShrink: "QID13_12" } },
+                activityLevel: { field: "QID15_1" },
+                jsonDump: { qid: "QID11" }
+            },
+            choiceMappings: {
+                activityLevel: { uiToQualtrics: { "1": 2, "2": 7, "3": 8, "4": 9, "5": 10 } }
+            }
+        };
+        return SURVEY_CONFIG;
+    }
+}
+
+// Legacy constants for backwards compatibility (derived from config)
+let QUALTRICS_CONFIG = null;
+let QUESTION_IDS = null;
+
+async function getQualtricsConfig() {
+    const config = await loadSurveyConfig();
+    if (!QUALTRICS_CONFIG) {
+        QUALTRICS_CONFIG = {
+            BASE_URL: config.qualtrics.baseUrl,
+            SURVEY_ID: config.qualtrics.surveyId,
+            API_TOKEN: config.qualtrics.apiToken
+        };
+    }
+    return QUALTRICS_CONFIG;
+}
+
+async function getQuestionIds() {
+    const config = await loadSurveyConfig();
+    if (!QUESTION_IDS) {
+        const qids = config.questionIds;
+        QUESTION_IDS = {
+            // Pre-session PANAS
+            PRE_CALM: qids.pre.fields.calm,
+            PRE_ENERGIZED: qids.pre.fields.energized,
+            PRE_CONNECTED: qids.pre.fields.connected,
+            PRE_NERVOUS: qids.pre.fields.nervous,
+            PRE_FOCUSED: qids.pre.fields.focused,
+            PRE_WONDER: qids.pre.fields.wonder,
+            
+            // Post-session PANAS
+            POST_CALM: qids.post.fields.calm,
+            POST_ENERGIZED: qids.post.fields.energized,
+            POST_CONNECTED: qids.post.fields.connected,
+            POST_NERVOUS: qids.post.fields.nervous,
+            POST_FOCUSED: qids.post.fields.focused,
+            POST_WONDER: qids.post.fields.wonder,
+            
+            // AWE-SF Scale
+            AWE_SLOW_DOWN: qids.awesf.fields.slowDown,
+            AWE_REDUCED_SELF: qids.awesf.fields.reducedSelf,
+            AWE_CHILLS: qids.awesf.fields.chills,
+            AWE_ONENESS: qids.awesf.fields.oneness,
+            AWE_GRAND: qids.awesf.fields.grand,
+            AWE_DIMINISHED_SELF: qids.awesf.fields.diminishedSelf,
+            AWE_TIME_SLOWING: qids.awesf.fields.timeSlowing,
+            AWE_CONNECTED: qids.awesf.fields.awesfConnected,
+            AWE_SMALL: qids.awesf.fields.small,
+            AWE_VASTNESS: qids.awesf.fields.vastness,
+            AWE_CHALLENGED: qids.awesf.fields.challenged,
+            AWE_SELF_SHRINK: qids.awesf.fields.selfShrink,
+            
+            // Activity Level
+            ACTIVITY_LEVEL: qids.activityLevel.field,
+            
+            // JSON dump field
+            JSON_DUMP: qids.jsonDump.qid
+        };
+    }
+    return QUESTION_IDS;
+}
 
 /**
  * Submit combined survey responses to Qualtrics API (all surveys in one submission)
@@ -56,7 +105,12 @@ const QUESTION_IDS = {
  * @returns {Promise<Object>} - Response from Qualtrics API
  */
 export async function submitCombinedSurveyResponse(combinedResponses, participantId = null) {
-    const url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/responses`;
+    // Load config and get question IDs
+    const config = await loadSurveyConfig();
+    const qids = await getQuestionIds();
+    const qualConfig = await getQualtricsConfig();
+    
+    const url = `${qualConfig.BASE_URL}/surveys/${qualConfig.SURVEY_ID}/responses`;
     
     // Build the values object for Qualtrics API
     const values = {};
@@ -72,14 +126,15 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
     // Pre-session PANAS
     if (combinedResponses.pre) {
         const pre = combinedResponses.pre;
+        const preFields = config.questionIds.pre.fields;
         console.log('📋 Including Pre-survey data in submission:', pre);
-        if (pre.calm) values[QUESTION_IDS.PRE_CALM] = toNumber(pre.calm);
-        if (pre.energized) values[QUESTION_IDS.PRE_ENERGIZED] = toNumber(pre.energized);
-        if (pre.connected) values[QUESTION_IDS.PRE_CONNECTED] = toNumber(pre.connected);
-        if (pre.nervous) values[QUESTION_IDS.PRE_NERVOUS] = toNumber(pre.nervous);
-        if (pre.focused) values[QUESTION_IDS.PRE_FOCUSED] = toNumber(pre.focused);
-        if (pre.wonder) values[QUESTION_IDS.PRE_WONDER] = toNumber(pre.wonder);
-        console.log(`✅ Pre-survey values added: ${Object.keys(values).filter(k => k.startsWith('QID5')).length} fields`);
+        if (pre.calm) values[preFields.calm] = toNumber(pre.calm);
+        if (pre.energized) values[preFields.energized] = toNumber(pre.energized);
+        if (pre.connected) values[preFields.connected] = toNumber(pre.connected);
+        if (pre.nervous) values[preFields.nervous] = toNumber(pre.nervous);
+        if (pre.focused) values[preFields.focused] = toNumber(pre.focused);
+        if (pre.wonder) values[preFields.wonder] = toNumber(pre.wonder);
+        console.log(`✅ Pre-survey values added: ${Object.keys(values).filter(k => k.startsWith(config.questionIds.pre.qid)).length} fields`);
     } else {
         console.warn('⚠️ Pre-survey data not found in combinedResponses - skipping pre-survey submission');
     }
@@ -87,47 +142,43 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
     // Post-session PANAS
     if (combinedResponses.post) {
         const post = combinedResponses.post;
-        if (post.calm) values[QUESTION_IDS.POST_CALM] = toNumber(post.calm);
-        if (post.energized) values[QUESTION_IDS.POST_ENERGIZED] = toNumber(post.energized);
-        if (post.connected) values[QUESTION_IDS.POST_CONNECTED] = toNumber(post.connected);
-        if (post.nervous) values[QUESTION_IDS.POST_NERVOUS] = toNumber(post.nervous);
-        if (post.focused) values[QUESTION_IDS.POST_FOCUSED] = toNumber(post.focused);
-        if (post.wonder) values[QUESTION_IDS.POST_WONDER] = toNumber(post.wonder);
+        const postFields = config.questionIds.post.fields;
+        if (post.calm) values[postFields.calm] = toNumber(post.calm);
+        if (post.energized) values[postFields.energized] = toNumber(post.energized);
+        if (post.connected) values[postFields.connected] = toNumber(post.connected);
+        if (post.nervous) values[postFields.nervous] = toNumber(post.nervous);
+        if (post.focused) values[postFields.focused] = toNumber(post.focused);
+        if (post.wonder) values[postFields.wonder] = toNumber(post.wonder);
     }
     
     // AWE-SF Scale
     if (combinedResponses.awesf) {
         const awesf = combinedResponses.awesf;
-        if (awesf.slowDown) values[QUESTION_IDS.AWE_SLOW_DOWN] = toNumber(awesf.slowDown);
-        if (awesf.reducedSelf) values[QUESTION_IDS.AWE_REDUCED_SELF] = toNumber(awesf.reducedSelf);
-        if (awesf.chills) values[QUESTION_IDS.AWE_CHILLS] = toNumber(awesf.chills);
-        if (awesf.oneness) values[QUESTION_IDS.AWE_ONENESS] = toNumber(awesf.oneness);
-        if (awesf.grand) values[QUESTION_IDS.AWE_GRAND] = toNumber(awesf.grand);
-        if (awesf.diminishedSelf) values[QUESTION_IDS.AWE_DIMINISHED_SELF] = toNumber(awesf.diminishedSelf);
-        if (awesf.timeSlowing) values[QUESTION_IDS.AWE_TIME_SLOWING] = toNumber(awesf.timeSlowing);
-        if (awesf.awesfConnected) values[QUESTION_IDS.AWE_CONNECTED] = toNumber(awesf.awesfConnected);
-        if (awesf.small) values[QUESTION_IDS.AWE_SMALL] = toNumber(awesf.small);
-        if (awesf.vastness) values[QUESTION_IDS.AWE_VASTNESS] = toNumber(awesf.vastness);
-        if (awesf.challenged) values[QUESTION_IDS.AWE_CHALLENGED] = toNumber(awesf.challenged);
-        if (awesf.selfShrink) values[QUESTION_IDS.AWE_SELF_SHRINK] = toNumber(awesf.selfShrink);
+        const awesfFields = config.questionIds.awesf.fields;
+        if (awesf.slowDown) values[awesfFields.slowDown] = toNumber(awesf.slowDown);
+        if (awesf.reducedSelf) values[awesfFields.reducedSelf] = toNumber(awesf.reducedSelf);
+        if (awesf.chills) values[awesfFields.chills] = toNumber(awesf.chills);
+        if (awesf.oneness) values[awesfFields.oneness] = toNumber(awesf.oneness);
+        if (awesf.grand) values[awesfFields.grand] = toNumber(awesf.grand);
+        if (awesf.diminishedSelf) values[awesfFields.diminishedSelf] = toNumber(awesf.diminishedSelf);
+        if (awesf.timeSlowing) values[awesfFields.timeSlowing] = toNumber(awesf.timeSlowing);
+        if (awesf.awesfConnected) values[awesfFields.awesfConnected] = toNumber(awesf.awesfConnected);
+        if (awesf.small) values[awesfFields.small] = toNumber(awesf.small);
+        if (awesf.vastness) values[awesfFields.vastness] = toNumber(awesf.vastness);
+        if (awesf.challenged) values[awesfFields.challenged] = toNumber(awesf.challenged);
+        if (awesf.selfShrink) values[awesfFields.selfShrink] = toNumber(awesf.selfShrink);
     }
     
     // Activity Level (5-point scale)
-    // Map UI values (1-5) to Qualtrics choice IDs (2, 7, 8, 9, 10)
+    // Map UI values (1-5) to Qualtrics choice IDs using config
     if (combinedResponses.activityLevel) {
         const activityLevel = combinedResponses.activityLevel;
         if (activityLevel.activityLevel) {
             const uiValue = parseInt(activityLevel.activityLevel, 10);
-            const qualtricsChoiceMap = {
-                1: 2,   // UI 1 → Qualtrics 2 (Very low / Not active)
-                2: 7,   // UI 2 → Qualtrics 7 (Low / Moderately active)
-                3: 8,   // UI 3 → Qualtrics 8 (Somewhat low / Active)
-                4: 9,   // UI 4 → Qualtrics 9 (Moderate / Very Active)
-                5: 10   // UI 5 → Qualtrics 10 (Somewhat high / Extremely Active)
-            };
-            const qualtricsValue = qualtricsChoiceMap[uiValue];
+            const qualtricsChoiceMap = config.choiceMappings.activityLevel.uiToQualtrics;
+            const qualtricsValue = qualtricsChoiceMap[String(uiValue)];
             if (qualtricsValue) {
-                values[QUESTION_IDS.ACTIVITY_LEVEL] = qualtricsValue;
+                values[config.questionIds.activityLevel.field] = qualtricsValue;
             }
         }
     }
@@ -255,7 +306,7 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
         // Also keep QID11 for backwards compatibility (if it exists in survey)
         // But embedded data is the primary method now
         // TODO: Remove QID11 once embedded data fields are confirmed working
-        values[QUESTION_IDS.JSON_DUMP] = jsonDumpString;
+        values[config.questionIds.jsonDump.qid] = jsonDumpString;
     } else {
         console.warn('⚠️ No JSON dump provided in combinedResponses');
     }
@@ -297,25 +348,26 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
             hasPre: !!combinedResponses.pre,
             hasPost: !!combinedResponses.post,
             hasAwesf: !!combinedResponses.awesf,
-            hasJsonDump: !!values[QUESTION_IDS.JSON_DUMP],
+            hasJsonDump: !!values[config.questionIds.jsonDump.qid],
             allFieldIds: Object.keys(values)
         });
         
         // Log the full payload to verify JSON dump is included
-        if (payload.values[QUESTION_IDS.JSON_DUMP]) {
+        if (payload.values[config.questionIds.jsonDump.qid]) {
             console.log('📦 JSON Dump in payload:', {
-                fieldId: QUESTION_IDS.JSON_DUMP,
-                length: payload.values[QUESTION_IDS.JSON_DUMP].length,
-                preview: payload.values[QUESTION_IDS.JSON_DUMP].substring(0, 150) + '...'
+                fieldId: config.questionIds.jsonDump.qid,
+                length: payload.values[config.questionIds.jsonDump.qid].length,
+                preview: payload.values[config.questionIds.jsonDump.qid].substring(0, 150) + '...'
             });
         } else {
             console.warn('⚠️ JSON Dump NOT in payload values!');
         }
         
+        const qualConfig = await getQualtricsConfig();
         const response = await fetch(url, {
             method: 'POST',
             headers: {
-                'X-API-TOKEN': QUALTRICS_CONFIG.API_TOKEN,
+                'X-API-TOKEN': qualConfig.API_TOKEN,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload),
@@ -365,7 +417,8 @@ export async function getSurveyResponse(responseId) {
         throw new Error('Response ID is required');
     }
     
-    const url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/responses/${responseId}`;
+    const qualConfig = await getQualtricsConfig();
+    const url = `${qualConfig.BASE_URL}/surveys/${qualConfig.SURVEY_ID}/responses/${responseId}`;
     
     try {
         console.log('📥 Retrieving response from Qualtrics API:', {
@@ -376,7 +429,7 @@ export async function getSurveyResponse(responseId) {
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'X-API-TOKEN': QUALTRICS_CONFIG.API_TOKEN,
+                'X-API-TOKEN': qualConfig.API_TOKEN,
                 'Content-Type': 'application/json'
             },
             mode: 'cors'
@@ -417,7 +470,9 @@ export async function getSurveyResponse(responseId) {
  * @deprecated Use submitCombinedSurveyResponse instead for proper Qualtrics API usage
  */
 export async function submitSurveyResponse(responseData, participantId = null) {
-    const url = `${QUALTRICS_CONFIG.BASE_URL}/surveys/${QUALTRICS_CONFIG.SURVEY_ID}/responses`;
+    const config = await loadSurveyConfig();
+    const qualConfig = await getQualtricsConfig();
+    const url = `${qualConfig.BASE_URL}/surveys/${qualConfig.SURVEY_ID}/responses`;
     
     // Build the values object for Qualtrics API
     const values = {};
@@ -432,39 +487,42 @@ export async function submitSurveyResponse(responseData, participantId = null) {
     // Map survey data to Qualtrics question IDs
     if (responseData.surveyType === 'pre') {
         // Pre-session PANAS - convert strings to numbers
-        if (responseData.calm) values[QUESTION_IDS.PRE_CALM] = toNumber(responseData.calm);
-        if (responseData.energized) values[QUESTION_IDS.PRE_ENERGIZED] = toNumber(responseData.energized);
-        if (responseData.connected) values[QUESTION_IDS.PRE_CONNECTED] = toNumber(responseData.connected);
-        if (responseData.nervous) values[QUESTION_IDS.PRE_NERVOUS] = toNumber(responseData.nervous);
-        if (responseData.focused) values[QUESTION_IDS.PRE_FOCUSED] = toNumber(responseData.focused);
-        if (responseData.wonder) values[QUESTION_IDS.PRE_WONDER] = toNumber(responseData.wonder);
+        const preFields = config.questionIds.pre.fields;
+        if (responseData.calm) values[preFields.calm] = toNumber(responseData.calm);
+        if (responseData.energized) values[preFields.energized] = toNumber(responseData.energized);
+        if (responseData.connected) values[preFields.connected] = toNumber(responseData.connected);
+        if (responseData.nervous) values[preFields.nervous] = toNumber(responseData.nervous);
+        if (responseData.focused) values[preFields.focused] = toNumber(responseData.focused);
+        if (responseData.wonder) values[preFields.wonder] = toNumber(responseData.wonder);
     } else if (responseData.surveyType === 'post') {
         // Post-session PANAS - convert strings to numbers
-        if (responseData.calm) values[QUESTION_IDS.POST_CALM] = toNumber(responseData.calm);
-        if (responseData.energized) values[QUESTION_IDS.POST_ENERGIZED] = toNumber(responseData.energized);
-        if (responseData.connected) values[QUESTION_IDS.POST_CONNECTED] = toNumber(responseData.connected);
-        if (responseData.nervous) values[QUESTION_IDS.POST_NERVOUS] = toNumber(responseData.nervous);
-        if (responseData.focused) values[QUESTION_IDS.POST_FOCUSED] = toNumber(responseData.focused);
-        if (responseData.wonder) values[QUESTION_IDS.POST_WONDER] = toNumber(responseData.wonder);
+        const postFields = config.questionIds.post.fields;
+        if (responseData.calm) values[postFields.calm] = toNumber(responseData.calm);
+        if (responseData.energized) values[postFields.energized] = toNumber(responseData.energized);
+        if (responseData.connected) values[postFields.connected] = toNumber(responseData.connected);
+        if (responseData.nervous) values[postFields.nervous] = toNumber(responseData.nervous);
+        if (responseData.focused) values[postFields.focused] = toNumber(responseData.focused);
+        if (responseData.wonder) values[postFields.wonder] = toNumber(responseData.wonder);
     } else if (responseData.surveyType === 'awesf') {
         // AWE-SF Scale - convert strings to numbers
-        if (responseData.slowDown) values[QUESTION_IDS.AWE_SLOW_DOWN] = toNumber(responseData.slowDown);
-        if (responseData.reducedSelf) values[QUESTION_IDS.AWE_REDUCED_SELF] = toNumber(responseData.reducedSelf);
-        if (responseData.chills) values[QUESTION_IDS.AWE_CHILLS] = toNumber(responseData.chills);
-        if (responseData.oneness) values[QUESTION_IDS.AWE_ONENESS] = toNumber(responseData.oneness);
-        if (responseData.grand) values[QUESTION_IDS.AWE_GRAND] = toNumber(responseData.grand);
-        if (responseData.diminishedSelf) values[QUESTION_IDS.AWE_DIMINISHED_SELF] = toNumber(responseData.diminishedSelf);
-        if (responseData.timeSlowing) values[QUESTION_IDS.AWE_TIME_SLOWING] = toNumber(responseData.timeSlowing);
-        if (responseData.awesfConnected) values[QUESTION_IDS.AWE_CONNECTED] = toNumber(responseData.awesfConnected);
-        if (responseData.small) values[QUESTION_IDS.AWE_SMALL] = toNumber(responseData.small);
-        if (responseData.vastness) values[QUESTION_IDS.AWE_VASTNESS] = toNumber(responseData.vastness);
-        if (responseData.challenged) values[QUESTION_IDS.AWE_CHALLENGED] = toNumber(responseData.challenged);
-        if (responseData.selfShrink) values[QUESTION_IDS.AWE_SELF_SHRINK] = toNumber(responseData.selfShrink);
+        const awesfFields = config.questionIds.awesf.fields;
+        if (responseData.slowDown) values[awesfFields.slowDown] = toNumber(responseData.slowDown);
+        if (responseData.reducedSelf) values[awesfFields.reducedSelf] = toNumber(responseData.reducedSelf);
+        if (responseData.chills) values[awesfFields.chills] = toNumber(responseData.chills);
+        if (responseData.oneness) values[awesfFields.oneness] = toNumber(responseData.oneness);
+        if (responseData.grand) values[awesfFields.grand] = toNumber(responseData.grand);
+        if (responseData.diminishedSelf) values[awesfFields.diminishedSelf] = toNumber(responseData.diminishedSelf);
+        if (responseData.timeSlowing) values[awesfFields.timeSlowing] = toNumber(responseData.timeSlowing);
+        if (responseData.awesfConnected) values[awesfFields.awesfConnected] = toNumber(responseData.awesfConnected);
+        if (responseData.small) values[awesfFields.small] = toNumber(responseData.small);
+        if (responseData.vastness) values[awesfFields.vastness] = toNumber(responseData.vastness);
+        if (responseData.challenged) values[awesfFields.challenged] = toNumber(responseData.challenged);
+        if (responseData.selfShrink) values[awesfFields.selfShrink] = toNumber(responseData.selfShrink);
     }
     
     // Add JSON dump if provided (for event data)
     if (responseData.jsonDump) {
-        values[QUESTION_IDS.JSON_DUMP] = JSON.stringify(responseData.jsonDump);
+        values[config.questionIds.jsonDump.qid] = JSON.stringify(responseData.jsonDump);
     }
     
     // Build the request payload
@@ -493,7 +551,7 @@ export async function submitSurveyResponse(responseData, participantId = null) {
         const response = await fetch(url, {
             method: 'POST',
             headers: {
-                'X-API-TOKEN': QUALTRICS_CONFIG.API_TOKEN,
+                'X-API-TOKEN': qualConfig.API_TOKEN,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload),

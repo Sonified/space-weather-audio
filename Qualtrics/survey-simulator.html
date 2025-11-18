@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Survey Workflow Simulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .radio-group {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .radio-option {
+            flex: 1;
+            min-width: 150px;
+        }
+        
+        .radio-option input[type="radio"] {
+            width: auto;
+            margin-right: 8px;
+        }
+        
+        .radio-option label {
+            display: inline;
+            cursor: pointer;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-weight: 500;
+        }
+        
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border-left: 4px solid #1976d2;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-left: 4px solid #2e7d32;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            border-left: 4px solid #c62828;
+        }
+        
+        .status.warning {
+            background: #fff3e0;
+            color: #e65100;
+            border-left: 4px solid #e65100;
+        }
+        
+        .report {
+            margin-top: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .report h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .report-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            background: #f8f9fa;
+        }
+        
+        .report-item.success {
+            background: #e8f5e9;
+            border-left: 3px solid #2e7d32;
+        }
+        
+        .report-item.error {
+            background: #ffebee;
+            border-left: 3px solid #c62828;
+        }
+        
+        .report-item.warning {
+            background: #fff3e0;
+            border-left: 3px solid #e65100;
+        }
+        
+        .code-block {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        
+        .step-indicator {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .step {
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #e0e0e0;
+            color: #666;
+        }
+        
+        .step.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .step.completed {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .controls button {
+            flex: 1;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌋 Survey Workflow Simulator</h1>
+            <p>Test survey scenarios using the actual workflow logic</p>
+        </div>
+        
+        <div class="content">
+            <!-- Configuration Section -->
+            <div class="section">
+                <h2>📋 Test Configuration</h2>
+                
+                <div class="form-group">
+                    <label>Participant ID (Qualtrics ResponseID format)</label>
+                    <input type="text" id="participantId" placeholder="R_xxxxxxxxxxxxxxxx" pattern="R_[A-Za-z0-9]{16}">
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        Format: R_ + 16 alphanumeric characters (e.g., R_52tk7NzGjVDyyH8)
+                    </small>
+                    <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                        <button type="button" id="generateId" style="flex: 1; min-width: 150px; background: #4caf50;">🎲 Generate Random ID</button>
+                        <button type="button" id="useUrlId" style="flex: 1; min-width: 150px; background: #2196f3;">🔗 Use ID from URL</button>
+                        <button type="button" id="testWithExampleId" style="flex: 1; min-width: 150px; background: #ff9800;">🧪 Test with Example ID</button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Week Number</label>
+                    <select id="weekNumber">
+                        <option value="1">Week 1</option>
+                        <option value="2">Week 2</option>
+                        <option value="3">Week 3</option>
+                        <option value="4">Week 4</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Visit Number (this week)</label>
+                    <select id="visitNumber">
+                        <option value="1">Visit 1 (First visit of week)</option>
+                        <option value="2">Visit 2</option>
+                        <option value="3">Visit 3</option>
+                        <option value="4">Visit 4</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Test Scenario</label>
+                    <div class="radio-group">
+                        <div class="radio-option">
+                            <input type="radio" name="scenario" id="scenario-beginning" value="beginning" checked>
+                            <label for="scenario-beginning">Beginning</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" name="scenario" id="scenario-end" value="end">
+                            <label for="scenario-end">End</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" name="scenario" id="scenario-all" value="all">
+                            <label for="scenario-all">All Surveys</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" name="scenario" id="scenario-full" value="full">
+                            <label for="scenario-full">Full Day One</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <button id="launchWorkflow" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); flex: 1;">🚀 Launch Real Workflow</button>
+                    <button id="startTest" style="background: #4caf50; flex: 1;">🧪 Run Simulation Test</button>
+                    <button id="resetTest" style="background: #f44336;">🔄 Reset</button>
+                </div>
+                <div style="margin-top: 10px; padding: 10px; background: #e3f2fd; border-radius: 6px; color: #1976d2;">
+                    <strong>💡 Tip:</strong> "Launch Real Workflow" opens the actual app with your test scenario. "Run Simulation Test" validates data without opening modals.
+                </div>
+            </div>
+            
+            <!-- Status Section -->
+            <div id="statusSection" style="display: none;">
+                <div class="section">
+                    <h2>📊 Test Status</h2>
+                    <div id="statusMessage" class="status info"></div>
+                    <div id="stepIndicator" class="step-indicator"></div>
+                </div>
+            </div>
+            
+            <!-- Loading Indicator -->
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Running test...</p>
+            </div>
+            
+            <!-- Report Section -->
+            <div id="reportSection" style="display: none;">
+                <div class="section">
+                    <h2>📄 Test Report</h2>
+                    <div id="report" class="report"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        // Import the actual workflow modules
+        let workflowModule, qualtricsModule, responseManager;
+        
+        // Load modules dynamically
+        async function loadModules() {
+            try {
+                // Try relative paths first (if running from Qualtrics folder)
+                try {
+                    workflowModule = await import('../js/study-workflow.js');
+                    qualtricsModule = await import('../js/qualtrics-api.js');
+                    responseManager = await import('./participant-response-manager.js');
+                } catch (e) {
+                    // Try absolute paths (if running from root)
+                    workflowModule = await import('/js/study-workflow.js');
+                    qualtricsModule = await import('/js/qualtrics-api.js');
+                    responseManager = await import('/Qualtrics/participant-response-manager.js');
+                }
+                
+                console.log('✅ Modules loaded successfully');
+                return true;
+            } catch (error) {
+                console.error('❌ Error loading modules:', error);
+                showStatus('error', `Failed to load workflow modules: ${error.message}. Make sure you're running from the correct directory.`);
+                return false;
+            }
+        }
+        
+        // Load survey structure
+        let surveyStructure = null;
+        async function loadSurveyStructure() {
+            try {
+                const response = await fetch('./survey_structure.json');
+                surveyStructure = await response.json();
+                console.log('✅ Survey structure loaded');
+                return true;
+            } catch (error) {
+                console.error('❌ Error loading survey structure:', error);
+                showStatus('warning', 'Could not load survey structure. Validation will be limited.');
+                return false;
+            }
+        }
+        
+        // Generate Qualtrics ResponseID format: R_ + 16 alphanumeric characters
+        function generateQualtricsId() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let id = 'R_';
+            for (let i = 0; i < 16; i++) {
+                id += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return id;
+        }
+        
+        // Get ID from URL parameter (simulating Qualtrics redirect)
+        // Supports multiple parameter names that Qualtrics might use
+        function getIdFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // Try parameter names in order of likelihood (matching qualtrics-api.js)
+            const paramNames = ['ID', 'ResponseID', 'responseId', 'ParticipantID', 'participantId', 'participant_id', 'id', 'pid'];
+            
+            for (const paramName of paramNames) {
+                const id = urlParams.get(paramName);
+                if (id && id.trim()) {
+                    const trimmedId = id.trim();
+                    // Validate format if it looks like a Qualtrics ResponseID
+                    if (trimmedId.match(/^R_[A-Za-z0-9]{16}$/)) {
+                        return trimmedId;
+                    } else if (trimmedId.startsWith('R_')) {
+                        // Close but not quite right - might be useful anyway
+                        console.warn(`ID from URL doesn't match exact format: ${trimmedId}`);
+                        return trimmedId; // Return it anyway, validation will catch it
+                    }
+                }
+            }
+            
+            return null;
+        }
+        
+        // Initialize
+        let modulesLoaded = false;
+        window.addEventListener('DOMContentLoaded', async () => {
+            modulesLoaded = await loadModules();
+            await loadSurveyStructure();
+            
+            // Check for ID in URL (simulating Qualtrics redirect)
+            const urlId = getIdFromUrl();
+            if (urlId) {
+                document.getElementById('participantId').value = urlId;
+                const isValid = urlId.match(/^R_[A-Za-z0-9]{16}$/);
+                if (isValid) {
+                    showStatus('success', `✅ Auto-detected Participant ID from URL: ${urlId}`);
+                } else {
+                    showStatus('warning', `⚠️ Auto-detected ID from URL (format may be invalid): ${urlId}. Expected: R_ + 16 alphanumeric characters`);
+                }
+            } else {
+                // Generate a random ID by default
+                const defaultId = generateQualtricsId();
+                document.getElementById('participantId').value = defaultId;
+                const currentUrl = window.location.href.split('?')[0];
+                const exampleUrl = currentUrl + '?ID=R_52tk7NzGjVDyyH8';
+                showStatus('info', `Generated random Participant ID: ${defaultId}. <a href="${exampleUrl}" style="color: #2196f3; text-decoration: underline;">Click here</a> to test with example ID from URL, or add ?ID=R_xxxxxxxxxxxxxxxx to simulate Qualtrics redirect.`);
+            }
+            
+            // Set up event listeners
+            document.getElementById('generateId').addEventListener('click', () => {
+                document.getElementById('participantId').value = generateQualtricsId();
+            });
+            
+            document.getElementById('useUrlId').addEventListener('click', () => {
+                const urlId = getIdFromUrl();
+                if (urlId) {
+                    document.getElementById('participantId').value = urlId;
+                    const isValid = urlId.match(/^R_[A-Za-z0-9]{16}$/);
+                    if (isValid) {
+                        showStatus('success', `✅ Using Participant ID from URL: ${urlId}`);
+                    } else {
+                        showStatus('warning', `⚠️ Using ID from URL (format may be invalid): ${urlId}. Expected: R_ + 16 alphanumeric characters`);
+                    }
+                } else {
+                    const currentUrl = window.location.href.split('?')[0];
+                    const exampleUrl = currentUrl + '?ID=R_52tk7NzGjVDyyH8';
+                    showStatus('warning', `No ID found in URL. <a href="${exampleUrl}" style="color: #2196f3; text-decoration: underline;">Click here to test with example ID</a> or add ?ID=R_xxxxxxxxxxxxxxxx to the URL.`);
+                }
+            });
+            
+            // Test with example ID button - uses the demo ID from volcano.now.audio
+            document.getElementById('testWithExampleId').addEventListener('click', () => {
+                const exampleId = 'R_52tk7NzGjVDyyH8'; // From volcano.now.audio demo
+                document.getElementById('participantId').value = exampleId;
+                showStatus('success', `✅ Using example Participant ID: ${exampleId} (from volcano.now.audio demo)`);
+            });
+        });
+        
+        // UI Elements
+        const launchWorkflowBtn = document.getElementById('launchWorkflow');
+        const startTestBtn = document.getElementById('startTest');
+        const resetTestBtn = document.getElementById('resetTest');
+        const statusSection = document.getElementById('statusSection');
+        const statusMessage = document.getElementById('statusMessage');
+        const stepIndicator = document.getElementById('stepIndicator');
+        const reportSection = document.getElementById('reportSection');
+        const report = document.getElementById('report');
+        const loading = document.getElementById('loading');
+        
+        // Test state
+        let testState = {
+            participantId: null,
+            weekNumber: 1,
+            visitNumber: 1,
+            scenario: 'beginning',
+            currentStep: 0,
+            steps: [],
+            responses: {},
+            errors: [],
+            warnings: []
+        };
+        
+        // Show status (supports HTML for clickable links)
+        function showStatus(type, message) {
+            statusSection.style.display = 'block';
+            statusMessage.className = `status ${type}`;
+            statusMessage.innerHTML = message; // Use innerHTML to support clickable links
+        }
+        
+        // Update step indicator
+        function updateStepIndicator() {
+            stepIndicator.innerHTML = '';
+            testState.steps.forEach((step, index) => {
+                const stepEl = document.createElement('div');
+                stepEl.className = `step ${index === testState.currentStep ? 'active' : index < testState.currentStep ? 'completed' : ''}`;
+                stepEl.textContent = step.name;
+                stepIndicator.appendChild(stepEl);
+            });
+        }
+        
+        // Add report item
+        function addReportItem(type, title, content) {
+            const item = document.createElement('div');
+            item.className = `report-item ${type}`;
+            item.innerHTML = `<strong>${title}</strong><br>${content}`;
+            report.appendChild(item);
+        }
+        
+        // Clear report
+        function clearReport() {
+            report.innerHTML = '';
+            testState.errors = [];
+            testState.warnings = [];
+        }
+        
+        // Set up test state based on configuration
+        function setupTestState() {
+            let participantId = document.getElementById('participantId').value.trim();
+            
+            // Validate ID format
+            if (!participantId) {
+                participantId = generateQualtricsId();
+                document.getElementById('participantId').value = participantId;
+                showStatus('warning', `No ID provided. Generated: ${participantId}`);
+            } else if (!participantId.match(/^R_[A-Za-z0-9]{16}$/)) {
+                // If not in correct format, generate a new one but warn
+                const validId = generateQualtricsId();
+                showStatus('warning', `Invalid ID format. Expected R_ + 16 alphanumeric. Generated: ${validId}`);
+                participantId = validId;
+                document.getElementById('participantId').value = participantId;
+            }
+            
+            const weekNumber = parseInt(document.getElementById('weekNumber').value);
+            const visitNumber = parseInt(document.getElementById('visitNumber').value);
+            const scenario = document.querySelector('input[name="scenario"]:checked').value;
+            
+            testState = {
+                participantId,
+                weekNumber,
+                visitNumber,
+                scenario,
+                currentStep: 0,
+                steps: [],
+                responses: {},
+                errors: [],
+                warnings: []
+            };
+            
+            // Set up localStorage to simulate the scenario
+            setupLocalStorage(weekNumber, visitNumber);
+            
+            // Simulate ID coming from URL (like Qualtrics redirect)
+            // Store it the same way the real app does
+            qualtricsModule.storeParticipantId(participantId);
+            
+            // Determine steps based on scenario
+            determineSteps(scenario, visitNumber);
+        }
+        
+        // Set up localStorage to simulate the scenario
+        function setupLocalStorage(weekNumber, visitNumber) {
+            // Clear existing state
+            localStorage.clear();
+            
+            // Set participant ID
+            localStorage.setItem('participantId', testState.participantId);
+            localStorage.setItem('selectedMode', 'study');
+            
+            // Calculate week start date (Sunday of the specified week)
+            const now = new Date();
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - now.getDay() - (weekNumber - 1) * 7);
+            weekStart.setHours(0, 0, 0, 0);
+            const weekStartStr = weekStart.toISOString().split('T')[0];
+            
+            localStorage.setItem('study_week_start_date', weekStartStr);
+            localStorage.setItem('study_weekly_session_count', (visitNumber - 1).toString());
+            
+            // Set flags based on visit number
+            if (visitNumber === 1 && weekNumber === 1) {
+                // First visit ever - no flags set
+            } else {
+                // Returning visit - set flags
+                localStorage.setItem('study_has_seen_participant_setup', 'true');
+                localStorage.setItem('study_has_seen_welcome', 'true');
+                
+                if (weekNumber > 1 || visitNumber > 1) {
+                    localStorage.setItem('study_has_seen_tutorial', 'true');
+                }
+                
+                // Set AWE-SF date if not first visit of week
+                if (visitNumber > 1) {
+                    const awesfDate = new Date(weekStart);
+                    awesfDate.setDate(weekStart.getDate() + (visitNumber - 2));
+                    localStorage.setItem('study_last_awesf_date', awesfDate.toISOString());
+                }
+            }
+        }
+        
+        // Determine steps based on scenario
+        function determineSteps(scenario, visitNumber) {
+            const isFirstVisitEver = !localStorage.getItem('study_has_seen_participant_setup');
+            const isFirstVisitOfWeek = visitNumber === 1;
+            
+            testState.steps = [];
+            
+            if (scenario === 'beginning') {
+                if (isFirstVisitEver) {
+                    testState.steps = [
+                        { name: 'Participant Setup', type: 'participant' },
+                        { name: 'Welcome', type: 'welcome' },
+                        { name: 'Pre-Survey', type: 'pre' }
+                    ];
+                } else {
+                    testState.steps = [
+                        { name: 'Pre-Survey', type: 'pre' }
+                    ];
+                }
+            } else if (scenario === 'end') {
+                testState.steps = [
+                    { name: 'Activity Level', type: 'activityLevel' },
+                    ...(isFirstVisitOfWeek ? [{ name: 'AWE-SF', type: 'awesf' }] : []),
+                    { name: 'Post-Survey', type: 'post' },
+                    { name: 'End', type: 'end' }
+                ];
+            } else if (scenario === 'all') {
+                if (isFirstVisitEver) {
+                    testState.steps = [
+                        { name: 'Participant Setup', type: 'participant' },
+                        { name: 'Welcome', type: 'welcome' },
+                        { name: 'Pre-Survey', type: 'pre' },
+                        { name: 'Activity Level', type: 'activityLevel' },
+                        ...(isFirstVisitOfWeek ? [{ name: 'AWE-SF', type: 'awesf' }] : []),
+                        { name: 'Post-Survey', type: 'post' },
+                        { name: 'End', type: 'end' }
+                    ];
+                } else {
+                    testState.steps = [
+                        { name: 'Pre-Survey', type: 'pre' },
+                        { name: 'Activity Level', type: 'activityLevel' },
+                        ...(isFirstVisitOfWeek ? [{ name: 'AWE-SF', type: 'awesf' }] : []),
+                        { name: 'Post-Survey', type: 'post' },
+                        { name: 'End', type: 'end' }
+                    ];
+                }
+            } else if (scenario === 'full') {
+                // Full day one workflow
+                testState.steps = [
+                    { name: 'Participant Setup', type: 'participant' },
+                    { name: 'Welcome', type: 'welcome' },
+                    { name: 'Pre-Survey', type: 'pre' },
+                    { name: 'Tutorial Intro', type: 'tutorialIntro' },
+                    { name: 'Activity Level', type: 'activityLevel' },
+                    { name: 'AWE-SF', type: 'awesf' },
+                    { name: 'Post-Survey', type: 'post' },
+                    { name: 'End', type: 'end' }
+                ];
+            }
+        }
+        
+        // Generate test data for a survey type
+        function generateTestData(type) {
+            const data = {
+                surveyType: type,
+                timestamp: new Date().toISOString()
+            };
+            
+            if (type === 'pre' || type === 'post') {
+                // PANAS survey (1-5 scale)
+                data.calm = Math.floor(Math.random() * 5) + 1;
+                data.energized = Math.floor(Math.random() * 5) + 1;
+                data.connected = Math.floor(Math.random() * 5) + 1;
+                data.nervous = Math.floor(Math.random() * 5) + 1;
+                data.focused = Math.floor(Math.random() * 5) + 1;
+                data.wonder = Math.floor(Math.random() * 5) + 1;
+            } else if (type === 'awesf') {
+                // AWE-SF survey (1-7 scale)
+                const awesfFields = ['slowDown', 'reducedSelf', 'chills', 'oneness', 'grand', 
+                                    'diminishedSelf', 'timeSlowing', 'awesfConnected', 'small', 
+                                    'vastness', 'challenged', 'selfShrink'];
+                awesfFields.forEach(field => {
+                    data[field] = Math.floor(Math.random() * 7) + 1;
+                });
+            } else if (type === 'activityLevel') {
+                // Activity Level (1-5 scale)
+                data.activityLevel = Math.floor(Math.random() * 5) + 1;
+            }
+            
+            return data;
+        }
+        
+        // Validate response against survey structure
+        function validateResponse(type, data) {
+            const issues = [];
+            
+            if (!surveyStructure) {
+                return issues; // Can't validate without structure
+            }
+            
+            // Check required fields based on survey type
+            if (type === 'pre' || type === 'post') {
+                const requiredFields = ['calm', 'energized', 'connected', 'nervous', 'focused', 'wonder'];
+                requiredFields.forEach(field => {
+                    if (!data[field] || data[field] < 1 || data[field] > 5) {
+                        issues.push(`${field} is missing or out of range (1-5)`);
+                    }
+                });
+            } else if (type === 'awesf') {
+                const requiredFields = ['slowDown', 'reducedSelf', 'chills', 'oneness', 'grand', 
+                                       'diminishedSelf', 'timeSlowing', 'awesfConnected', 'small', 
+                                       'vastness', 'challenged', 'selfShrink'];
+                requiredFields.forEach(field => {
+                    if (!data[field] || data[field] < 1 || data[field] > 7) {
+                        issues.push(`${field} is missing or out of range (1-7)`);
+                    }
+                });
+            } else if (type === 'activityLevel') {
+                if (!data.activityLevel || data.activityLevel < 1 || data.activityLevel > 5) {
+                    issues.push('activityLevel is missing or out of range (1-5)');
+                }
+            }
+            
+            return issues;
+        }
+        
+        // Run a single step
+        async function runStep(step) {
+            showStatus('info', `Running: ${step.name}...`);
+            updateStepIndicator();
+            
+            try {
+                if (step.type === 'participant') {
+                    // Simulate participant setup
+                    // The ID is already stored from setupTestState, but we'll ensure it's set
+                    qualtricsModule.storeParticipantId(testState.participantId);
+                    localStorage.setItem('study_has_seen_participant_setup', 'true');
+                    
+                    // Check if ID was from URL (simulating Qualtrics redirect)
+                    const urlId = getIdFromUrl();
+                    const idSource = urlId === testState.participantId ? ' (from Qualtrics URL)' : '';
+                    
+                    addReportItem('success', `✅ ${step.name}`, `
+                        Participant ID: <strong>${testState.participantId}</strong>${idSource}<br>
+                        Format: ${testState.participantId.match(/^R_[A-Za-z0-9]{16}$/) ? '✅ Valid Qualtrics ResponseID' : '⚠️ Invalid format'}
+                    `);
+                    
+                } else if (step.type === 'welcome') {
+                    localStorage.setItem('study_has_seen_welcome', 'true');
+                    addReportItem('success', `✅ ${step.name}`, 'Welcome modal completed');
+                    
+                } else if (step.type === 'pre' || step.type === 'post' || step.type === 'awesf' || step.type === 'activityLevel') {
+                    // Generate and save survey data
+                    const surveyData = generateTestData(step.type);
+                    
+                    // Validate
+                    const validationIssues = validateResponse(step.type, surveyData);
+                    if (validationIssues.length > 0) {
+                        validationIssues.forEach(issue => {
+                            addReportItem('error', `❌ ${step.name} Validation`, issue);
+                            testState.errors.push(`${step.name}: ${issue}`);
+                        });
+                    } else {
+                        addReportItem('success', `✅ ${step.name}`, 'Data validated successfully');
+                    }
+                    
+                    // Save response
+                    responseManager.saveSurveyResponse(testState.participantId, step.type, surveyData);
+                    testState.responses[step.type] = surveyData;
+                    
+                    // Show data preview
+                    const preview = JSON.stringify(surveyData, null, 2);
+                    addReportItem('success', `📊 ${step.name} Data`, `<pre class="code-block">${preview}</pre>`);
+                    
+                } else if (step.type === 'tutorialIntro') {
+                    workflowModule.markTutorialAsSeen();
+                    localStorage.setItem('study_has_seen_tutorial', 'true');
+                    addReportItem('success', `✅ ${step.name}`, 'Tutorial intro completed');
+                    
+                } else if (step.type === 'end') {
+                    // Attempt submission
+                    addReportItem('info', `📤 ${step.name}`, 'Attempting submission to Qualtrics...');
+                    
+                    // Get combined responses
+                    const responses = responseManager.getSessionResponses(testState.participantId);
+                    if (responses) {
+                        const combinedResponses = {
+                            pre: responses.pre || null,
+                            post: responses.post || null,
+                            awesf: responses.awesf || null,
+                            activityLevel: responses.activityLevel || null,
+                            sessionId: responses.sessionId,
+                            participantId: responses.participantId
+                        };
+                        
+                        // Validate all responses
+                        let allValid = true;
+                        Object.keys(combinedResponses).forEach(key => {
+                            if (key !== 'sessionId' && key !== 'participantId' && combinedResponses[key]) {
+                                const issues = validateResponse(key, combinedResponses[key]);
+                                if (issues.length > 0) {
+                                    allValid = false;
+                                    issues.forEach(issue => {
+                                        addReportItem('error', `❌ ${key} Validation`, issue);
+                                    });
+                                }
+                            }
+                        });
+                        
+                        if (allValid) {
+                            addReportItem('success', '✅ All Responses Valid', 'Ready for Qualtrics submission');
+                            
+                            // Show submission preview
+                            const submissionPreview = JSON.stringify(combinedResponses, null, 2);
+                            addReportItem('info', '📦 Submission Preview', `<pre class="code-block">${submissionPreview}</pre>`);
+                            
+                            // Note: Actual submission would happen here, but we'll skip for testing
+                            addReportItem('warning', '⚠️ Submission Skipped', 'Test mode - not submitting to Qualtrics API');
+                        } else {
+                            addReportItem('error', '❌ Validation Failed', 'Some responses have validation errors');
+                        }
+                    } else {
+                        addReportItem('error', '❌ No Responses', 'No session responses found');
+                    }
+                }
+                
+                return true;
+            } catch (error) {
+                addReportItem('error', `❌ ${step.name} Error`, error.message);
+                testState.errors.push(`${step.name}: ${error.message}`);
+                console.error(`Error in ${step.name}:`, error);
+                return false;
+            }
+        }
+        
+        // Run all steps
+        async function runTest() {
+            if (!modulesLoaded) {
+                showStatus('error', 'Modules not loaded. Please refresh the page.');
+                return;
+            }
+            
+            clearReport();
+            setupTestState();
+            
+            loading.classList.add('active');
+            reportSection.style.display = 'block';
+            startTestBtn.disabled = true;
+            
+            showStatus('info', `Running ${testState.steps.length} steps...`);
+            
+            // Add test configuration to report
+            const urlId = getIdFromUrl();
+            const idSource = urlId === testState.participantId ? ' (from URL)' : ' (generated/entered)';
+            
+            addReportItem('info', '📋 Test Configuration', `
+                Participant ID: <strong>${testState.participantId}</strong>${idSource}<br>
+                Week: ${testState.weekNumber}<br>
+                Visit: ${testState.visitNumber}<br>
+                Scenario: ${testState.scenario}<br>
+                Steps: ${testState.steps.length}<br>
+                ${urlId ? `<br>🔗 Simulating Qualtrics redirect with ID from URL parameter` : ''}
+            `);
+            
+            // Run steps sequentially
+            for (let i = 0; i < testState.steps.length; i++) {
+                testState.currentStep = i;
+                const step = testState.steps[i];
+                
+                const success = await runStep(step);
+                
+                // Small delay between steps for visibility
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            // Final summary
+            const summary = `
+                <strong>Test Complete!</strong><br>
+                Steps Completed: ${testState.steps.length}<br>
+                Errors: ${testState.errors.length}<br>
+                Warnings: ${testState.warnings.length}<br>
+                Responses Collected: ${Object.keys(testState.responses).length}
+            `;
+            
+            if (testState.errors.length === 0) {
+                addReportItem('success', '✅ Test Summary', summary);
+                showStatus('success', 'Test completed successfully!');
+            } else {
+                addReportItem('error', '❌ Test Summary', summary);
+                showStatus('error', `Test completed with ${testState.errors.length} error(s)`);
+            }
+            
+            loading.classList.remove('active');
+            startTestBtn.disabled = false;
+        }
+        
+        // Launch the real workflow - sets up localStorage and opens the actual app
+        async function launchWorkflow() {
+            if (!modulesLoaded) {
+                showStatus('error', 'Modules not loaded. Please refresh the page.');
+                return;
+            }
+            
+            // Set up the test state (this sets up localStorage)
+            setupTestState();
+            
+            // IMPORTANT: localStorage is shared across tabs, so the main app will read this state
+            // We've already set up the flags in setupLocalStorage(), but we need to ensure
+            // the participant ID is stored and the mode is set
+            
+            // Store participant ID (will be read by main app)
+            qualtricsModule.storeParticipantId(testState.participantId);
+            
+            // Set mode to study (main app will read this)
+            localStorage.setItem('selectedMode', 'study');
+            
+            // Determine the target URL - try to find index.html relative to current location
+            let targetUrl = '../index.html';
+            
+            // Try to construct proper path
+            const currentPath = window.location.pathname;
+            if (currentPath.includes('/Qualtrics/')) {
+                targetUrl = '../index.html';
+            } else {
+                targetUrl = './index.html';
+            }
+            
+            // Build URL with parameters to simulate Qualtrics redirect
+            const url = new URL(targetUrl, window.location.origin);
+            url.searchParams.set('ID', testState.participantId);
+            url.searchParams.set('ResponseID', testState.participantId); // Also set ResponseID for Qualtrics format
+            
+            // Add mode parameter
+            url.searchParams.set('mode', 'study');
+            
+            showStatus('success', `🚀 Launching REAL workflow...`);
+            
+            // Show what we're setting up
+            const scenarioDesc = {
+                'beginning': 'Beginning of session (Participant → Welcome → Pre-Survey)',
+                'end': 'End of session (Activity Level → AWE-SF → Post-Survey → End)',
+                'all': 'All surveys in sequence',
+                'full': 'Full Day One workflow (complete first visit)'
+            };
+            
+            addReportItem('info', '📋 Launch Configuration', `
+                <strong>Setting up workflow state:</strong><br>
+                Participant ID: ${testState.participantId}<br>
+                Week: ${testState.weekNumber}<br>
+                Visit: ${testState.visitNumber}<br>
+                Scenario: ${testState.scenario}<br>
+                Description: ${scenarioDesc[testState.scenario]}<br>
+                <br>
+                <strong>localStorage flags set:</strong><br>
+                ${localStorage.getItem('study_has_seen_participant_setup') ? '✅ Participant Setup seen' : '❌ First visit (will show Participant Setup)'}<br>
+                ${localStorage.getItem('study_has_seen_welcome') ? '✅ Welcome seen' : '❌ First visit (will show Welcome)'}<br>
+                ${localStorage.getItem('study_has_seen_tutorial') ? '✅ Tutorial seen' : '❌ First visit (will show Tutorial)'}<br>
+                ${localStorage.getItem('study_last_awesf_date') ? '✅ AWE-SF done this week' : '❌ Will show AWE-SF'}
+            `);
+            
+            // Open in new window/tab so user can interact with real modals
+            // localStorage is shared, so the main app will read the state we just set
+            const newWindow = window.open(url.toString(), '_blank');
+            
+            if (newWindow) {
+                showStatus('success', `✅ Workflow launched! Check the new window/tab.`);
+                addReportItem('success', '🚀 Workflow Launched', `
+                    <strong>✅ Opened in new window/tab</strong><br>
+                    <br>
+                    The main app is now loading with:<br>
+                    • Participant ID: ${testState.participantId}<br>
+                    • Study Mode: Active<br>
+                    • Workflow State: Configured for ${scenarioDesc[testState.scenario]}<br>
+                    <br>
+                    <strong>You should see:</strong><br>
+                    ${testState.scenario === 'beginning' ? '• Participant Setup modal → Welcome modal → Pre-Survey modal' : ''}
+                    ${testState.scenario === 'end' ? '• Activity Level modal → AWE-SF modal (if first visit of week) → Post-Survey modal → End modal' : ''}
+                    ${testState.scenario === 'all' ? '• All modals in sequence based on visit type' : ''}
+                    ${testState.scenario === 'full' ? '• Full first-visit workflow: Participant → Welcome → Pre-Survey → Tutorial Intro → Activity Level → AWE-SF → Post-Survey → End' : ''}
+                    <br>
+                    <em>Note: localStorage state is shared, so the main app will read the flags we set up.</em>
+                `);
+            } else {
+                showStatus('error', '❌ Popup blocked! Please allow popups for this site and try again.');
+            }
+        }
+        
+        // Reset test
+        function resetTest() {
+            localStorage.clear();
+            sessionStorage.removeItem('simulator_config');
+            clearReport();
+            statusSection.style.display = 'none';
+            reportSection.style.display = 'none';
+            testState = {
+                participantId: null,
+                weekNumber: 1,
+                visitNumber: 1,
+                scenario: 'beginning',
+                currentStep: 0,
+                steps: [],
+                responses: {},
+                errors: [],
+                warnings: []
+            };
+            showStatus('info', 'Test reset. Configure and launch a new workflow.');
+        }
+        
+        // Event listeners
+        launchWorkflowBtn.addEventListener('click', launchWorkflow);
+        startTestBtn.addEventListener('click', runTest);
+        resetTestBtn.addEventListener('click', resetTest);
+    </script>
+</body>
+</html>
+

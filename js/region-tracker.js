@@ -23,7 +23,8 @@ import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { cancelSpectrogramSelection } from './spectrogram-renderer.js';
 import { isTutorialActive } from './tutorial-state.js';
-import { isStudyMode } from './master-modes.js';
+import { isStudyMode, isTestStudyEndMode } from './master-modes.js';
+import { hasSeenTutorial } from './study-workflow.js';
 
 // Region data structure - stored per volcano
 // Map<volcanoName, regions[]>
@@ -1315,11 +1316,8 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         
         setCurrentRegions(regions);
         
-        // 🎯 NEW: Add the selection box to the persistent tracker
-        const spectrogramRenderer = await import('./spectrogram-renderer.js');
-        if (spectrogramRenderer.spectrogramSelectionBox) {
-            addFeatureBox(regionIndex, featureIndex, spectrogramRenderer.spectrogramSelectionBox);
-        }
+        // 🎯 NEW ARCHITECTURE: Return region/feature indices for canvas box storage
+        // (OLD: used to call addFeatureBox() to create orange DOM boxes - now using pure canvas!)
         
         // Re-render the feature
         renderFeatures(regions[regionIndex].id, regionIndex);
@@ -1355,6 +1353,19 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             State.setWaitingForFeatureSelection(false);
             State.setFeatureSelectionResolve(null);
         }
+        
+        // ✅ Return indices and feature data for canvas box storage
+        const featureData = regions[regionIndex].features[featureIndex];
+        return { 
+            regionIndex, 
+            featureIndex,
+            featureData: {
+                startTime: featureData.startTime,
+                endTime: featureData.endTime,
+                lowFreq: parseFloat(featureData.lowFreq),
+                highFreq: parseFloat(featureData.highFreq)
+            }
+        };
     }
     
     // Clear selection state
@@ -1368,6 +1379,9 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         canvas.classList.remove('selecting');
         canvas.style.cursor = '';
     }
+    
+    // If we didn't save data, return null
+    return null;
 }
 
 /**
@@ -2355,6 +2369,13 @@ function deleteSpecificFeature(regionIndex, featureIndex) {
             module.renumberFeatureBoxes(regionIndex);
         }
     });
+    
+    // 🎨 Rebuild canvas boxes (handles deletion and renumbering automatically!)
+    import('./spectrogram-renderer.js').then(module => {
+        if (module.removeCanvasFeatureBox) {
+            module.removeCanvasFeatureBox(regionIndex, featureIndex);
+        }
+    });
 
     // Update complete button state (in case we deleted the last identified feature)
     updateCompleteButtonState();
@@ -3022,14 +3043,42 @@ export function updateCompleteButtonState() {
         
         // In study mode (STUDY and STUDY_CLEAN), "Begin Analysis" button should NEVER show
         // Region creation is enabled automatically before the tutorial starts
-        if (isStudyMode()) {
+        // BUT: TEST_STUDY_END is a debug mode and should show the button like DEV mode
+        const isRealStudyMode = isStudyMode() && !isTestStudyEndMode();
+
+        if (isRealStudyMode) {
             if (isBeginAnalysisMode) {
-                // Always hide "Begin Analysis" button in study mode
-                completeBtn.style.display = 'none';
+                // For FIRST VISIT: Always disable/hide button (tutorial will show it when ready)
+                // For ALL OTHER VISITS: Standard behavior - show button if data available
+                const isFirstVisit = !hasSeenTutorial();
+                
+                if (isFirstVisit) {
+                    // First visit = ALWAYS hide/disable button until tutorial enables it
+                    // Don't check isTutorialActive() because tutorialPhase might not be set yet
+                    // NOTE: Button will reappear when runBeginAnalysisTutorial() calls it (sets display='flex' and enabled=true)
+                    completeBtn.style.display = 'none';
+                    completeBtn.disabled = true;
+                    completeBtn.style.opacity = '0.5';
+                    completeBtn.style.cursor = 'not-allowed';
+                } else {
+                    // Returning visit - show button if data is available
+                    if (hasData) {
+                        completeBtn.style.display = 'flex';
+                        completeBtn.style.alignItems = 'center';
+                        completeBtn.style.justifyContent = 'center';
+                        completeBtn.disabled = false;
+                        completeBtn.style.opacity = '1';
+                        completeBtn.style.cursor = 'pointer';
+                    } else {
+                        completeBtn.style.display = 'none';
+                    }
+                }
             } else {
                 // This is the "Complete" button (post-transformation) - handle normally
                 if (hasData && !isTutorialActive()) {
-                    completeBtn.style.display = 'inline-block';
+                    completeBtn.style.display = 'flex';
+                    completeBtn.style.alignItems = 'center';
+                    completeBtn.style.justifyContent = 'center';
                     completeBtn.disabled = false;
                     completeBtn.style.opacity = '1';
                     completeBtn.style.cursor = 'pointer';
@@ -3038,17 +3087,29 @@ export function updateCompleteButtonState() {
                 }
             }
         } else {
-            // Non-study mode: show button but disable it when no data
-            completeBtn.style.display = 'inline-block';
-            completeBtn.disabled = !hasData;
-            if (hasData) {
-                completeBtn.style.opacity = '1';
-                completeBtn.style.cursor = 'pointer';
-                console.log('✅ Begin Analysis button ENABLED');
-            } else {
+            // Non-study mode: show button but disable it when no data OR during tutorial (first visit)
+            completeBtn.style.display = 'flex';
+            completeBtn.style.alignItems = 'center';
+            completeBtn.style.justifyContent = 'center';
+            // Disable during first visit - tutorial will enable it when ready
+            // Don't check isTutorialActive() because tutorialPhase might not be set yet
+            const isFirstVisit = !hasSeenTutorial();
+            if (isFirstVisit) {
+                completeBtn.disabled = true;
                 completeBtn.style.opacity = '0.5';
                 completeBtn.style.cursor = 'not-allowed';
-                console.log('❌ Begin Analysis button DISABLED');
+                console.log('❌ Begin Analysis button DISABLED (first visit - tutorial will enable)');
+            } else {
+                completeBtn.disabled = !hasData;
+                if (hasData) {
+                    completeBtn.style.opacity = '1';
+                    completeBtn.style.cursor = 'pointer';
+                    console.log('✅ Begin Analysis button ENABLED');
+                } else {
+                    completeBtn.style.opacity = '0.5';
+                    completeBtn.style.cursor = 'not-allowed';
+                    console.log('❌ Begin Analysis button DISABLED');
+                }
             }
         }
     } else {

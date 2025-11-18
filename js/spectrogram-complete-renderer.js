@@ -1113,6 +1113,9 @@ export function updateSpectrogramViewport(playbackRate) {
     //     drawSpectrogramSelection(ctx, width, height);
     // }
     
+    // NOTE: Selection box now drawn on separate overlay canvas (spectrogram-renderer.js)
+    // No need to draw it here - completely separate layer with no conflicts!
+    
     // NOTE: Feature box positions are updated AFTER zoom transitions complete
     // (in region-tracker.js zoom completion callbacks), not during animation loops
 }

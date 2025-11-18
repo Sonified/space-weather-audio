@@ -32,7 +32,16 @@
  */
 
 import { isStudyMode, isStudyCleanMode } from './master-modes.js';
-import { modalManager } from './modal-manager.js';
+import { 
+    openParticipantModal,
+    openWelcomeModal,
+    openPreSurveyModal,
+    closePreSurveyModal,
+    openActivityLevelModal,
+    openAwesfModal,
+    openPostSurveyModal,
+    openEndModal
+} from './ui-controls.js';
 import { getParticipantId } from './qualtrics-api.js';
 import { 
     saveSurveyResponse,
@@ -58,8 +67,11 @@ const STORAGE_KEYS = {
 /**
  * Check if user has seen participant setup (once ever)
  */
-function hasSeenParticipantSetup() {
+export function hasSeenParticipantSetup() {
+    // Always act like first time in clean/test modes
     if (isStudyCleanMode()) return false;
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    if (storedMode === 'test_study_end') return false;
     return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP) === 'true';
 }
 
@@ -71,8 +83,11 @@ function markParticipantSetupAsSeen() {
 /**
  * Check if user has seen welcome modal (once ever)
  */
-function hasSeenWelcome() {
+export function hasSeenWelcome() {
+    // Always act like first time in clean/test modes
     if (isStudyCleanMode()) return false;
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    if (storedMode === 'test_study_end') return false;
     return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME) === 'true';
 }
 
@@ -84,12 +99,15 @@ function markWelcomeAsSeen() {
 /**
  * Check if user has seen tutorial (once ever)
  */
-function hasSeenTutorial() {
+export function hasSeenTutorial() {
+    // Always act like first time in clean/test modes
     if (isStudyCleanMode()) return false;
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    if (storedMode === 'test_study_end') return false;
     return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_TUTORIAL) === 'true';
 }
 
-function markTutorialAsSeen() {
+export function markTutorialAsSeen() {
     localStorage.setItem(STORAGE_KEYS.HAS_SEEN_TUTORIAL, 'true');
     console.log('✅ Tutorial marked as seen (forever)');
 }
@@ -97,8 +115,11 @@ function markTutorialAsSeen() {
 /**
  * Check if AWE-SF has been completed this week
  */
-function hasCompletedAwesfThisWeek() {
+export function hasCompletedAwesfThisWeek() {
+    // Always act like first time in clean/test modes (always show AWE-SF)
     if (isStudyCleanMode()) return false;
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    if (storedMode === 'test_study_end') return false;
     
     const lastDate = localStorage.getItem(STORAGE_KEYS.LAST_AWESF_DATE);
     if (!lastDate) return false;
@@ -150,7 +171,7 @@ function getSessionCountThisWeek() {
     }
 }
 
-function incrementSessionCount() {
+export function incrementSessionCount() {
     const currentCount = getSessionCountThisWeek();
     const newCount = currentCount + 1;
     localStorage.setItem(STORAGE_KEYS.WEEKLY_SESSION_COUNT, newCount.toString());
@@ -194,9 +215,22 @@ export async function startStudyWorkflow() {
     console.log(`🎓 STUDY MODE: Starting workflow (mode: ${CURRENT_MODE})`);
     console.log('═══════════════════════════════════════════════════════════');
     
-    // 🔥 STUDY CLEAN MODE: Reset EVERYTHING
-    if (isStudyCleanMode()) {
-        console.log('🧹 STUDY CLEAN MODE: Resetting to brand new participant state');
+    // Verify modals exist before proceeding
+    const participantModal = document.getElementById('participantModal');
+    if (!participantModal) {
+        console.error('❌ CRITICAL: Participant modal not found! Cannot start workflow.');
+        console.error('   Modals may not have been initialized. Check initializeModals() was called.');
+        return;
+    }
+    console.log('✅ Participant modal found in DOM');
+    
+    // 🔥 STUDY CLEAN MODE OR TEST_STUDY_END: Reset EVERYTHING (always act like first time)
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    const isTestMode = storedMode === 'test_study_end';
+    
+    if (isStudyCleanMode() || isTestMode) {
+        const modeName = isStudyCleanMode() ? 'STUDY CLEAN MODE' : 'TEST_STUDY_END MODE';
+        console.log(`🧹 ${modeName}: Resetting to brand new participant state (always first time)`);
         
         // Clear participant ID
         localStorage.removeItem('participantId');
@@ -211,12 +245,18 @@ export async function startStudyWorkflow() {
         console.log(`   ✅ Cleared: ${flagsCleared.join(', ')}`);
         
         console.log('   🎭 Result: Will show FULL onboarding (Participant → Welcome → Pre-Survey → Tutorial)');
+        console.log('   🎭 AWE-SF will always show (first time each week)');
     }
     
     // Disable waveform clicks initially (tutorial will enable when ready)
     const { disableWaveformClicks } = await import('./tutorial-effects.js');
     disableWaveformClicks();
     console.log('🔒 Waveform clicks disabled (will be enabled by tutorial)');
+    
+    // 🔒 Region creation disabled until tutorial starts OR Begin Analysis is pressed
+    const { setRegionCreationEnabled } = await import('./audio-state.js');
+    setRegionCreationEnabled(false); // Explicitly disable at start (will be enabled when tutorial starts)
+    console.log('🔒 Region creation DISABLED (will be enabled when tutorial starts)');
     
     try {
         // ═══════════════════════════════════════════════════════════
@@ -234,17 +274,16 @@ export async function startStudyWorkflow() {
             console.log('🆕 FIRST VISIT EVER - Full onboarding workflow');
             
             // Step 1: Participant Setup (once ever)
-        console.log('📋 Step 1: Participant Setup (first time)');
-            await modalManager.openModal('participantModal', {
-                keepOverlay: true,
-                onOpen: () => console.log('👤 Participant modal opened')
-            });
-        markParticipantSetupAsSeen();
-        
+            console.log('📋 Step 1: Participant Setup (first time)');
+            openParticipantModal();
+            console.log('👤 Participant modal opened');
+            // DON'T mark as seen here - mark it when user submits (in ui-controls.js event handler)
+            
             // Step 2: Welcome (once ever)
             console.log('👋 Step 2: Welcome modal (first time)');
-            await modalManager.swapModal('welcomeModal');
-            markWelcomeAsSeen();
+            // Note: Welcome modal will be opened by user clicking submit on participant modal
+            // The event handler will call openWelcomeModal() after participant setup
+            // DON'T mark as seen here - mark it when the modal is actually closed (in ui-controls.js)
             
     } else {
             // ═══════════════════════════════════════════════════════════
@@ -252,46 +291,59 @@ export async function startStudyWorkflow() {
             // ═══════════════════════════════════════════════════════════
             
             console.log('🔁 RETURNING VISIT - Skipping onboarding');
+            
+            // Enable all features immediately for returning visits (no tutorial needed)
+            const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+            await enableAllTutorialRestrictedFeatures();
+            console.log('✅ All features enabled for returning visit');
+            
+            // Enable region creation for returning visits
+            const { setRegionCreationEnabled } = await import('./audio-state.js');
+            setRegionCreationEnabled(true);
+            console.log('✅ Region creation enabled for returning visit');
+            
+            // For returning visits, ensure Begin Analysis button is visible
+            // (It starts visible, tutorial hides it - but returning visits skip tutorial)
+            const { updateCompleteButtonState } = await import('./region-tracker.js');
+            updateCompleteButtonState();
+            console.log('✅ Begin Analysis button state updated for returning visit');
+            
+            // ═══════════════════════════════════════════════════════════
+            // PRE-SURVEY (EVERY TIME - INCLUDING RETURNING VISITS)
+            // ═══════════════════════════════════════════════════════════
+            
+            console.log('📊 Step 3: Pre-Survey (required every session)');
+            // For returning visits, open pre-survey directly (no welcome modal)
+            const { openPreSurveyModal } = await import('./ui-controls.js');
+            openPreSurveyModal();
+            console.log('📊 Pre-Survey modal opened (returning visit)');
+            // Pre-survey will be closed by user clicking submit, which triggers the workflow to continue
+            return; // Exit early - pre-survey event handler will continue workflow
         }
         
         // ═══════════════════════════════════════════════════════════
-        // PRE-SURVEY (EVERY TIME)
+        // PRE-SURVEY (EVERY TIME - FIRST VISIT EVER)
         // ═══════════════════════════════════════════════════════════
         
         console.log('📊 Step 3: Pre-Survey (required every session)');
-    
-        // If welcome was open, swap. Otherwise open fresh.
-        if (modalManager.currentModal === 'welcomeModal') {
-            await modalManager.swapModal('preSurveyModal');
-        } else {
-            await modalManager.openModal('preSurveyModal', {
-                keepOverlay: true,
-                onOpen: () => {
-                    const participantId = getParticipantId();
-                    if (participantId) trackSurveyStart(participantId, 'pre');
-                }
-            });
-    }
-    
-        console.log('✅ Pre-survey completed');
-        
-        // Close pre-survey and fade out overlay (back to app)
-        await modalManager.closeModal('preSurveyModal', {
-            keepOverlay: false
-        });
+        // Note: Pre-survey will be opened by user clicking submit on welcome modal
+        // The event handler will call openPreSurveyModal() after welcome
+        // Pre-survey will be closed by user clicking submit, which triggers the workflow to continue
     
         // ═══════════════════════════════════════════════════════════
         // TUTORIAL (FIRST TIME ONLY)
         // ═══════════════════════════════════════════════════════════
         
-    // Enable region creation before tutorial (tutorial requires waveform clicks)
-    const { setRegionCreationEnabled } = await import('./audio-state.js');
-    setRegionCreationEnabled(true);
+    // Region creation will be enabled when tutorial starts (tutorial requires it)
+    // For first visit: disabled until tutorial starts
+    // For returning visit: enabled below (line 297)
     
     if (!hasSeenTutorial()) {
             console.log('🎓 Step 4: Tutorial (first time)');
-        await runTutorialWorkflow();
-        markTutorialAsSeen();
+        // Tutorial intro modal will be opened by pre-survey submit handler
+        // When user clicks "Begin Tutorial", the modal will start the tutorial
+        // Note: Tutorial will be marked as seen when it completes
+        console.log('💡 Waiting for tutorial intro modal - tutorial will start when user clicks "Begin Tutorial"');
     } else {
             console.log('✅ Step 4: Tutorial (skipped - already completed)');
         // Enable all features since tutorial won't run
@@ -311,7 +363,9 @@ export async function startStudyWorkflow() {
         
     } catch (error) {
         console.error('❌ Error in study workflow:', error);
-        await modalManager.closeModal();  // Clean up on error
+        // Clean up on error - close any open modals
+        const { closeAllModals } = await import('./ui-controls.js');
+        closeAllModals();
     }
 }
 
@@ -326,7 +380,7 @@ export async function startStudyWorkflow() {
  * - PERSONAL/DEV modes: Direct submission (no surveys)
  */
 export async function handleStudyModeSubmit() {
-    const { CURRENT_MODE, isStudyMode } = await import('./master-modes.js');
+    const { CURRENT_MODE, isStudyMode, isStudyEndMode } = await import('./master-modes.js');
     
     // In STUDY mode: Show post-session surveys
     if (isStudyMode()) {
@@ -342,73 +396,28 @@ export async function handleStudyModeSubmit() {
             // ═══════════════════════════════════════════════════════════
             
             console.log('📋 Step 6: Activity Level (every time)');
-            await modalManager.openModal('activityLevelModal', {
-                keepOverlay: true,
-                onOpen: () => {
-            const participantId = getParticipantId();
-                    if (participantId) trackSurveyStart(participantId, 'activityLevel');
-                }
-            });
-            console.log('✅ Activity Level completed');
+            console.log('🔄 Opening Activity Level modal...');
             
-            // ═══════════════════════════════════════════════════════════
-            // AWE-SF (FIRST TIME EACH WEEK)
-            // ═══════════════════════════════════════════════════════════
+            // Open Activity Level modal - event handlers will chain the rest
+            // Activity Level → AWE-SF (if needed) → Post-Survey → End
+            openActivityLevelModal();
+            const activityParticipantId = getParticipantId();
+            if (activityParticipantId) trackSurveyStart(activityParticipantId, 'activityLevel');
             
-            const needsAwesf = !hasCompletedAwesfThisWeek();
-            console.log(`🔍 AWE-SF check: needsAwesf=${needsAwesf}`);
+            console.log('✅ Activity Level opened - event handlers will chain to AWE-SF → Post-Survey → End');
+            console.log('💡 Workflow will complete when user finishes Post-Survey (handled by event handler)');
             
-            if (needsAwesf) {
-                console.log('📋 Step 7: AWE-SF (first time this week)');
-                await modalManager.swapModal('awesfModal');
-                markAwesfCompleted();
-                console.log('✅ AWE-SF completed');
-            } else {
-                console.log('✅ Step 7: AWE-SF (skipped - already completed this week)');
-            }
-            
-            // ═══════════════════════════════════════════════════════════
-            // POST-SURVEY (EVERY TIME)
-            // ═══════════════════════════════════════════════════════════
-            
-            console.log('📋 Step 8: Post-Survey (every time)');
-            await modalManager.swapModal('postSurveyModal');
-            console.log('✅ Post-Survey completed');
-                    
-            // ═══════════════════════════════════════════════════════════
-            // SUBMIT TO QUALTRICS
-            // ═══════════════════════════════════════════════════════════
-            
-            console.log('📤 Step 9: Submitting to Qualtrics');
-            const { attemptSubmission } = await import('./ui-controls.js');
-            await attemptSubmission(true);  // fromWorkflow=true
-            
-            // ═══════════════════════════════════════════════════════════
-            // END/CONFIRMATION (EVERY TIME)
-            // ═══════════════════════════════════════════════════════════
-            
-            console.log('🎉 Step 10: Showing completion modal (every time)');
-                    const participantId = getParticipantId();
-            const sessionCount = incrementSessionCount();
-            
-            // Update end modal content before showing
-            updateEndModalContent(participantId, sessionCount);
-            
-            await modalManager.swapModal('endModal');
-            
-            // End modal will close with full fade-out when user clicks "Close"
-            // (handled by button event listener in ui-controls.js)
-            
-            console.log('═══════════════════════════════════════════════════════════');
-            console.log('✅ STUDY MODE: Workflow complete!');
-            console.log('═══════════════════════════════════════════════════════════');
+            // Workflow continues via event handlers:
+            // Activity Level → AWE-SF (if needed) → Post-Survey → Qualtrics submission → End modal
+            // Post-Survey event handler will handle submission and end modal
             
             return true;
             
         } catch (error) {
             console.error('❌ Fatal error in handleStudyModeSubmit:', error);
             console.error('Stack trace:', error.stack);
-            await modalManager.closeModal();  // Clean up on error
+            const { closeAllModals } = await import('./ui-controls.js');
+            closeAllModals(); // Clean up on error
             return false;
         }
     }

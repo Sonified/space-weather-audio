@@ -15,7 +15,7 @@ import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSp
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
-import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal } from './ui-controls.js';
+import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
@@ -29,6 +29,7 @@ import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFe
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown } from './tutorial.js';
+import { isTutorialActive } from './tutorial-state.js';
 import { 
     CURRENT_MODE, 
     AppMode, 
@@ -985,10 +986,62 @@ async function initializeDevMode() {
 async function initializeStudyMode() {
     console.log('🎓 STUDY MODE: Full research workflow');
     
-    const { startStudyWorkflow } = await import('./study-workflow.js');
-    await startStudyWorkflow();
+    // Check if we should skip workflow (e.g., just opening participant modal)
+    const skipWorkflow = localStorage.getItem('skipStudyWorkflow') === 'true';
+    if (skipWorkflow) {
+        console.log('⏭️ Skipping study workflow (participant modal only)');
+        localStorage.removeItem('skipStudyWorkflow'); // Clean up
+        return;
+    }
+    
+    // Check if we should start at end flow (for testing)
+    const urlParams = new URLSearchParams(window.location.search);
+    const startAt = urlParams.get('startAt') || localStorage.getItem('workflow_start_at');
+    
+    if (startAt === 'end') {
+        console.log('🏁 Starting at END FLOW (Activity Level → AWE-SF → Post-Survey → End)');
+        localStorage.removeItem('workflow_start_at'); // Clear flag after use
+        
+        // Enable features and go straight to submit workflow
+        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        await enableAllTutorialRestrictedFeatures();
+        
+        const { setRegionCreationEnabled } = await import('./audio-state.js');
+        setRegionCreationEnabled(true);
+        
+        // Wait a bit for modals to be fully initialized, then start the end flow
+        setTimeout(async () => {
+            const { handleStudyModeSubmit } = await import('./study-workflow.js');
+            await handleStudyModeSubmit();
+        }, 500);
+    } else {
+        const { startStudyWorkflow } = await import('./study-workflow.js');
+        await startStudyWorkflow();
+    }
     
     console.log('✅ Study mode initialized');
+}
+
+/**
+ * STUDY END MODE: Skip pre-survey and tutorial, go straight to analysis, then end walkthrough
+ */
+async function initializeStudyEndMode() {
+    console.log('🎬 STUDY END MODE: Skip pre-survey/tutorial, go to analysis + end walkthrough');
+    
+    // Enable all features immediately (skip tutorial)
+    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+    await enableAllTutorialRestrictedFeatures();
+    
+    // Enable region creation
+    const { setRegionCreationEnabled } = await import('./audio-state.js');
+    setRegionCreationEnabled(true);
+    
+    // User can now explore data and click Submit when ready
+    // The submit handler will run post-survey, then end walkthrough
+    console.log('🔍 Ready for analysis - user can explore and click Submit when done');
+    console.log('💡 Post-survey and end walkthrough will run after Submit');
+    
+    console.log('✅ Study End mode initialized');
 }
 
 /**
@@ -1014,10 +1067,16 @@ async function initializeApp() {
             break;
             
         case AppMode.STUDY_END:
-            // Study End mode: Personal mode with post-surveys enabled
-            await initializePersonalMode();
+            // Study End mode: Full study workflow + end walkthrough after completion
+            await initializeStudyEndMode();
             break;
-            
+
+        case AppMode.TEST_STUDY_END:
+            // Test Study End mode: Debug mode to test study end walkthrough
+            // Don't initialize any mode - just wait for user to load data then trigger debug jump
+            console.log('🐛 Test Study End Mode: Ready. Load data, then type "testend" or it will auto-trigger.');
+            break;
+
         default:
             console.error(`❌ Unknown mode: ${CURRENT_MODE}`);
             await initializeDevMode(); // Fallback to dev
@@ -1033,16 +1092,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     // ═══════════════════════════════════════════════════════════
     // 🎯 MASTER MODE - Initialize and check configuration
     // ═══════════════════════════════════════════════════════════
-    const { initializeMasterMode, shouldSkipTutorial, isStudyMode, isPersonalMode, isDevMode, CURRENT_MODE } = await import('./master-modes.js');
+    const { initializeMasterMode, shouldSkipTutorial, isStudyMode, isPersonalMode, isDevMode, isStudyEndMode, isTestStudyEndMode, CURRENT_MODE, AppMode } = await import('./master-modes.js');
     initializeMasterMode();
     
-    // Hide Begin Analysis button in study mode (STUDY and STUDY_CLEAN) until data is ready
-    if (isStudyMode()) {
-        const completeBtn = document.getElementById('completeBtn');
-        if (completeBtn) {
-            completeBtn.style.display = 'none';
-        }
-    }
+    // Don't hide Begin Analysis button initially - let updateCompleteButtonState() handle visibility
+    // Tutorial will hide it when needed, returning visits will keep it visible
     
     // Initialize mode selector dropdown
     const modeSelectorContainer = document.getElementById('modeSelectorContainer');
@@ -1055,8 +1109,9 @@ window.addEventListener('DOMContentLoaded', async () => {
                     window.location.protocol === 'file:';
     
     // Show mode selector only in local environment
-    // Hide mode selector in production (study mode is enforced)
+    // Hide mode selector in study mode (reveal with "dvdv"), show in dev/personal modes
     if (isLocal && (isPersonalMode() || isDevMode())) {
+        // Dev/Personal: Show mode selector immediately
         if (modeSelectorContainer) {
             modeSelectorContainer.style.visibility = 'visible';
             modeSelectorContainer.style.opacity = '1';
@@ -1068,10 +1123,8 @@ window.addEventListener('DOMContentLoaded', async () => {
             modeSelectorContainer.style.opacity = '0';
         }
     }
-    
-    // Track if first menu has been exited (any modal closed or user interaction)
-    let firstMenuExited = false;
-    
+    // Study mode (local): Hidden by default, revealed by "dvdv"
+
     // Secret key sequence to reveal mode selector (hardcoded, no server needed)
     // Only used for study modes
     const modeSelectorSecret = 'dvdv';
@@ -1089,13 +1142,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     }
     
-    // Listen for secret key sequence before first menu exit
+    // Listen for secret key sequence (anytime, anywhere)
     function handleSecretKeyListener(e) {
-        // Only listen if first menu hasn't been exited
-        if (firstMenuExited) {
-            return;
-        }
-        
         // Reset sequence if too much time passes (2 seconds)
         if (keySequenceTimeout) {
             clearTimeout(keySequenceTimeout);
@@ -1103,16 +1151,16 @@ window.addEventListener('DOMContentLoaded', async () => {
         keySequenceTimeout = setTimeout(() => {
             keySequence = '';
         }, 2000);
-        
+
         // Add current key to sequence
         keySequence += e.key.toLowerCase();
-        
+
         // Keep only last N characters (where N is secret length)
         const secretLength = modeSelectorSecret.length;
         if (keySequence.length > secretLength) {
             keySequence = keySequence.slice(-secretLength);
         }
-        
+
         // Check if sequence matches secret
         if (keySequence === modeSelectorSecret.toLowerCase()) {
             showModeSelector();
@@ -1129,40 +1177,54 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (isStudyMode() && isLocal) {
         window.addEventListener('keydown', handleSecretKeyListener);
     }
-    
-    // Track when first menu is exited (any modal closes or user clicks/interacts)
-    function markFirstMenuExited() {
-        if (!firstMenuExited) {
-            firstMenuExited = true;
-            // Remove key listener once first menu is exited
-            window.removeEventListener('keydown', handleSecretKeyListener);
-            console.log('🔒 Mode selector key listener disabled (first menu exited)');
+
+    // 🐛 DEBUG: Secret key sequence to jump to study end walkthrough
+    // Useful for testing the tail end of the tutorial
+    const debugJumpSecret = 'testend';
+    let debugKeySequence = '';
+    let debugKeySequenceTimeout = null;
+
+    function handleDebugJumpListener(e) {
+        // Reset sequence if too much time passes (2 seconds)
+        if (debugKeySequenceTimeout) {
+            clearTimeout(debugKeySequenceTimeout);
+        }
+        debugKeySequenceTimeout = setTimeout(() => {
+            debugKeySequence = '';
+        }, 2000);
+
+        // Add current key to sequence
+        debugKeySequence += e.key.toLowerCase();
+
+        // Keep only last N characters
+        const secretLength = debugJumpSecret.length;
+        if (debugKeySequence.length > secretLength) {
+            debugKeySequence = debugKeySequence.slice(-secretLength);
+        }
+
+        // Check if sequence matches
+        if (debugKeySequence === debugJumpSecret.toLowerCase()) {
+            console.log('🐛 DEBUG: Jumping to study end walkthrough...');
+            debugKeySequence = ''; // Reset
+            if (debugKeySequenceTimeout) {
+                clearTimeout(debugKeySequenceTimeout);
+                debugKeySequenceTimeout = null;
+            }
+
+            // Import and run the debug function
+            import('./tutorial-coordinator.js').then(module => {
+                module.debugJumpToStudyEnd();
+            });
         }
     }
-    
-    // Listen for modal closes (Study Mode)
-    const checkModalClose = setInterval(() => {
-        const permanentOverlay = document.getElementById('permanentOverlay');
-        if (permanentOverlay && permanentOverlay.style.display === 'none') {
-            markFirstMenuExited();
-            clearInterval(checkModalClose);
-        }
-    }, 100);
-    
-    // Also mark as exited on any click/interaction after a short delay
-    setTimeout(() => {
-        const interactionHandler = () => {
-            // Don't mark as exited if modals are still showing
-            const permanentOverlay = document.getElementById('permanentOverlay');
-            if (!permanentOverlay || permanentOverlay.style.display === 'none') {
-                markFirstMenuExited();
-                document.removeEventListener('click', interactionHandler);
-                document.removeEventListener('keydown', interactionHandler);
-            }
-        };
-        document.addEventListener('click', interactionHandler, { once: true });
-        document.addEventListener('keydown', interactionHandler, { once: true });
-    }, 1000);
+
+    // Add debug key listener (only in local environment)
+    if (isLocal) {
+        window.addEventListener('keydown', handleDebugJumpListener);
+        console.log('🐛 DEBUG: Type "testend" to jump to study end walkthrough');
+    }
+
+    // (Mode selector key listener stays active - no need to disable it)
     
     if (modeSelector) {
         // Set current mode as selected
@@ -1199,7 +1261,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Hide simulate panel in Study Mode (surveys are controlled by workflow)
-    if (isStudyMode()) {
+    // But exclude STUDY_END and TEST_STUDY_END modes - they behave differently (no initial modals)
+    if (isStudyMode() && !isStudyEndMode() && !isTestStudyEndMode()) {
         const simulatePanel = document.querySelector('.panel-simulate');
         if (simulatePanel) {
             simulatePanel.style.display = 'none';
@@ -1207,17 +1270,23 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
         
         // Show permanent overlay in Study Mode (it will be shown/hidden by modals)
+        // BUT: Start hidden - modals will fade it in when they open
         const permanentOverlay = document.getElementById('permanentOverlay');
         if (permanentOverlay) {
-            permanentOverlay.style.display = 'flex';
-            console.log('🎓 Study Mode: Permanent overlay enabled');
+            permanentOverlay.style.display = 'none'; // Start hidden - modals will show it
+            permanentOverlay.style.opacity = '0'; // Ensure opacity starts at 0
+            console.log('🎓 Study Mode: Permanent overlay ready (will be shown by modals)');
         }
     } else {
-        // Hide permanent overlay in non-Study modes (Dev, Personal)
+        // Hide permanent overlay in non-Study modes (Dev, Personal, STUDY_END, TEST_STUDY_END)
         const permanentOverlay = document.getElementById('permanentOverlay');
         if (permanentOverlay) {
             permanentOverlay.style.display = 'none';
-            if (!isStudyMode()) {
+            if (isStudyEndMode()) {
+                console.log('🎬 Study End Mode: Permanent overlay hidden (no initial modals)');
+            } else if (isTestStudyEndMode()) {
+                console.log('🐛 Test Study End Mode: Permanent overlay hidden');
+            } else if (!isStudyMode()) {
                 console.log(`✅ ${CURRENT_MODE.toUpperCase()} Mode: Permanent overlay hidden`);
             }
         }
@@ -1228,7 +1297,17 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!shouldSkipTutorial()) {
         initTutorial();
     }
-    
+
+    // 🐛 DEBUG: Test Study End Mode - Auto-run debug jump after a delay
+    if (isTestStudyEndMode()) {
+        console.log('🐛 Test Study End Mode: Auto-trigger in 1 second (then 4s wait for data load)...');
+        console.log('🐛 (Or type "testend" to trigger manually)');
+        setTimeout(async () => {
+            const { debugJumpToStudyEnd } = await import('./tutorial-coordinator.js');
+            debugJumpToStudyEnd();
+        }, 1000);
+    }
+
     // Parse participant ID from URL parameters on page load
     // Qualtrics redirects with: ?ResponseID=${e://Field/ResponseID}
     // This automatically captures the ResponseID and stores it for survey submissions
@@ -1239,12 +1318,24 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
     
+    // Check if we should open participant modal from URL parameter (for simulator)
+    // This should ONLY open the modal, not trigger study workflow
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('openParticipant') === 'true') {
+        // Prevent study workflow from auto-starting
+        localStorage.setItem('skipStudyWorkflow', 'true');
+        // Small delay to ensure modals are initialized
+        setTimeout(() => {
+            openParticipantModal();
+        }, 500);
+    }
+    
     // Update participant ID display
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] volcano-audio v2.48 - Feature Box Numbering');
-        console.log('🔢 [0ms] v2.48 Feat: Added numbered labels to feature boxes - displays 1-indexed numbers in upper left corner with renumbering on deletion');
+        console.log('🌋 [0ms] volcano-audio v2.49 - Pure Canvas Feature Boxes');
+        console.log('🎨 [0ms] v2.49 Refactor: Replaced DOM-based orange feature boxes with pure canvas rendering - eliminates appendChild() circular event issues, adds smooth interpolation during scale/zoom transitions, auto-syncs with feature array for deletion/renumbering');
         console.log('🌋 [0ms] volcano-audio v2.47 - Feature Box Positioning and Synchronization');
         console.log('🎯 [0ms] v2.47 Refactor: Feature box positioning and synchronization - achieved perfect harmony between DOM and canvas');
         console.log('🌋 [0ms] volcano-audio v2.46 - Spectrogram Feature Selection Bug Fix');
@@ -1319,7 +1410,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     startMemoryMonitoring();
     
     // Initialize modals first (all modes need them)
-    initializeModals();
+    try {
+        await initializeModals();
+        console.log('✅ Modals initialized successfully');
+    } catch (error) {
+        console.error('❌ CRITICAL: Failed to initialize modals:', error);
+        // Don't proceed if modals failed - this will cause dark screen
+        throw error;
+    }
     
     // Setup UI controls (all modes need them)
     setupModalEventListeners();
@@ -1328,7 +1426,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     initRegionTracker();
     
     // Initialize complete button state (disabled until first feature is identified)
-    updateCompleteButtonState(); // Begin Analysis button
+    // During tutorial (first visit), button state is handled by tutorial coordinator
+    if (!isTutorialActive()) {
+        updateCompleteButtonState(); // Begin Analysis button
+    }
     updateCmpltButtonState(); // Complete button
     
     // Setup spectrogram frequency selection
@@ -1840,10 +1941,33 @@ window.addEventListener('DOMContentLoaded', async () => {
     const completeBtn = document.getElementById('completeBtn');
     if (completeBtn) {
         completeBtn.addEventListener('click', (e) => {
+            // 🔒 Prevent clicks when button is disabled (during tutorial)
+            if (completeBtn.disabled) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔒 Begin Analysis button click blocked - button is disabled');
+                return;
+            }
+            
             e.preventDefault();
             e.stopPropagation();
             console.log('🔵 Begin Analysis button clicked');
-            openBeginAnalysisModal();
+
+            // Check if tutorial is waiting for this click
+            if (State.waitingForBeginAnalysisClick && State._beginAnalysisClickResolve) {
+                console.log('✅ Tutorial waiting - skipping modal and transitioning to analysis mode');
+                State.setWaitingForBeginAnalysisClick(false);
+
+                // Fire the beginAnalysisConfirmed event to transition into analysis mode
+                window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
+
+                // Resolve the tutorial promise
+                State._beginAnalysisClickResolve();
+                State.setBeginAnalysisClickResolve(null);
+            } else {
+                // Normal flow - show confirmation modal
+                openBeginAnalysisModal();
+            }
         });
     } else {
         console.warn('⚠️ Begin Analysis button (completeBtn) not found in DOM');
@@ -1851,6 +1975,22 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Listen for confirmation to proceed with workflow
     window.addEventListener('beginAnalysisConfirmed', async () => {
+        // Disable auto play checkbox after Begin Analysis is confirmed
+        const autoPlayCheckbox = document.getElementById('autoPlay');
+        if (autoPlayCheckbox) {
+            autoPlayCheckbox.checked = false;
+            autoPlayCheckbox.disabled = true;
+            console.log('✅ Auto play disabled after Begin Analysis confirmation');
+        }
+        
+        // Disable play on click checkbox after Begin Analysis is confirmed
+        const playOnClickCheckbox = document.getElementById('playOnClick');
+        if (playOnClickCheckbox) {
+            playOnClickCheckbox.checked = false;
+            playOnClickCheckbox.disabled = true;
+            console.log('✅ Play on click disabled after Begin Analysis confirmation');
+        }
+        
         // Enable region creation after "Begin Analysis" is confirmed
         const { setRegionCreationEnabled } = await import('./audio-state.js');
         setRegionCreationEnabled(true);
@@ -1930,6 +2070,38 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('✅ Participant ID display click handler attached');
     } else {
         console.warn('⚠️ Participant ID display element not found when attaching click handler');
+    }
+    
+    // Tutorial help button click handler (only show in study mode)
+    const tutorialHelpBtn = document.getElementById('tutorialHelpBtn');
+    if (tutorialHelpBtn) {
+        // Show button only in study mode
+        if (isStudyMode()) {
+            tutorialHelpBtn.style.display = 'flex';
+        }
+        
+        tutorialHelpBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('❓ Tutorial help button clicked');
+            const { openTutorialRevisitModal } = await import('./ui-controls.js');
+            openTutorialRevisitModal();
+        });
+        
+        // Add hover effect
+        tutorialHelpBtn.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+            this.style.borderColor = '#ddd';
+            this.style.color = '#ddd';
+        });
+        tutorialHelpBtn.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = 'transparent';
+            this.style.borderColor = '#aaa';
+            this.style.color = '#aaa';
+        });
+        console.log('✅ Tutorial help button click handler attached');
+    } else {
+        console.warn('⚠️ Tutorial help button not found in DOM');
     }
     
     if (!isStudyMode()) {

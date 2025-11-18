@@ -273,6 +273,15 @@ export function drawWaveformXAxis() {
 
                     // 📦 Update feature boxes to move smoothly with the zoom transition!
                     updateAllFeatureBoxPositions();
+                    
+                    // 🎨 Update canvas feature boxes too (follow elastic horizontal stretch!)
+                    import('./spectrogram-renderer.js').then(module => {
+                        if (module.redrawAllCanvasFeatureBoxes) {
+                            module.redrawAllCanvasFeatureBoxes();
+                        }
+                    }).catch(() => {
+                        // Module not loaded yet, that's okay
+                    });
                 });
             }
         } else {

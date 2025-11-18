@@ -1,0 +1,107 @@
+{
+  "qualtrics": {
+    "baseUrl": "https://oregon.yul1.qualtrics.com/API/v3",
+    "surveyId": "SV_bNni117IsBWNZWu",
+    "dataCenterId": "oregon.yul1",
+    "apiToken": "FcoNLQoHtQVRAoUdIfqexMjIQgC3qqgut9Yg89Xo"
+  },
+  "questionIds": {
+    "pre": {
+      "qid": "QID5",
+      "fields": {
+        "calm": "QID5_1",
+        "energized": "QID5_2",
+        "connected": "QID5_3",
+        "nervous": "QID5_4",
+        "focused": "QID5_5",
+        "wonder": "QID5_6"
+      }
+    },
+    "post": {
+      "qid": "QID12",
+      "fields": {
+        "calm": "QID12_1",
+        "energized": "QID12_2",
+        "connected": "QID12_3",
+        "nervous": "QID12_4",
+        "focused": "QID12_5",
+        "wonder": "QID12_6"
+      }
+    },
+    "awesf": {
+      "qid": "QID13",
+      "fields": {
+        "slowDown": "QID13_1",
+        "reducedSelf": "QID13_2",
+        "chills": "QID13_3",
+        "oneness": "QID13_4",
+        "grand": "QID13_5",
+        "diminishedSelf": "QID13_6",
+        "timeSlowing": "QID13_7",
+        "awesfConnected": "QID13_8",
+        "small": "QID13_9",
+        "vastness": "QID13_10",
+        "challenged": "QID13_11",
+        "selfShrink": "QID13_12"
+      }
+    },
+    "activityLevel": {
+      "qid": "QID15",
+      "field": "QID15_1"
+    },
+    "eventTracking": {
+      "qid": "QID8",
+      "description": "Matrix question for event/feature tracking"
+    },
+    "jsonDump": {
+      "qid": "QID11",
+      "description": "JSON data dump field (backwards compatibility)"
+    }
+  },
+  "choiceMappings": {
+    "activityLevel": {
+      "description": "Map UI values (1-5) to Qualtrics choice IDs",
+      "uiToQualtrics": {
+        "1": 2,
+        "2": 7,
+        "3": 8,
+        "4": 9,
+        "5": 10
+      },
+      "labels": {
+        "1": "Not active",
+        "2": "Moderately active",
+        "3": "Active",
+        "4": "Very Active",
+        "5": "Extremely Active"
+      }
+    }
+  },
+  "surveys": {
+    "pre": {
+      "name": "Pre-Session PANAS",
+      "type": "panas",
+      "questions": 6,
+      "scale": "1-5"
+    },
+    "post": {
+      "name": "Post-Session PANAS",
+      "type": "panas",
+      "questions": 6,
+      "scale": "1-5"
+    },
+    "awesf": {
+      "name": "AWE-SF Scale",
+      "type": "awesf",
+      "questions": 12,
+      "scale": "1-7"
+    },
+    "activityLevel": {
+      "name": "Activity Level Assessment",
+      "type": "single_choice",
+      "questions": 1,
+      "scale": "1-5"
+    }
+  }
+}
+

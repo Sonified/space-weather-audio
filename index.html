@@ -26,15 +26,18 @@
                     <option value="dev" selected>🔧 Dev</option>
                     <option value="study">🎓 Study</option>
                     <option value="study_clean">🧹 Study Clean</option>
+                    <option value="study_end">🎬 Study End</option>
+                    <option value="test_study_end">🐛 Test Study End</option>
                 </select>
             </div>
             <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.95;">Volcano Audification Study</h1>
-            <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end;">
+            <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
                 <div id="participantIdDisplay" style="display: none; margin-bottom: 0;">
                     <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
                         Participant ID: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
                     </span>
                 </div>
+                <button id="tutorialHelpBtn" type="button" style="margin-bottom: 0; width: 24px; height: 24px; border-radius: 50%; border: 1px solid #aaa; background: transparent; color: #aaa; cursor: pointer; font-size: 14px; font-weight: 600; padding: 0; display: none; align-items: center; justify-content: center; transition: all 0.2s;" title="Help - Revisit Tutorial">?</button>
             </div>
         </div>
         
@@ -157,7 +160,7 @@
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none; opacity: 0.5;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" disabled style="flex: 1; min-width: 0;">
                 </div>
-                <button type="button" id="completeBtn" disabled class="begin-analysis-btn" style="margin-left: auto; padding: 10px 16px; font-size: 16px; font-weight: 700; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: not-allowed; white-space: nowrap; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); opacity: 0.5;" onmouseover="if(!this.disabled) { this.style.background='#0056b3'; this.style.boxShadow='0 3px 6px rgba(0,0,0,0.3)'; }" onmouseout="if(!this.disabled) { this.style.background='#007bff'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)'; }">Begin Analysis</button>
+                <button type="button" id="completeBtn" disabled class="begin-analysis-btn" style="margin-left: auto; padding: 10px 16px; font-size: 16px; font-weight: 700; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: not-allowed; white-space: nowrap; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); opacity: 0.5; display: flex; align-items: center; justify-content: center; vertical-align: middle;" onmouseover="if(!this.disabled) { this.style.background='#0056b3'; this.style.boxShadow='0 3px 6px rgba(0,0,0,0.3)'; }" onmouseout="if(!this.disabled) { this.style.background='#007bff'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)'; }">Begin Analysis</button>
                 <div style="display: none; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(500px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
                         <input type="checkbox" id="removeDCOffset" checked style="width: 20px; height: 20px; cursor: pointer;">

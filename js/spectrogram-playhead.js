@@ -126,8 +126,14 @@ export function drawSpectrogramPlayhead() {
         ctx.lineTo(playheadX, height);
         ctx.stroke();
         ctx.globalAlpha = 1.0;  // Reset alpha
+        
+        // NOTE: Selection box now drawn on separate overlay canvas (spectrogram-renderer.js)
     }
 }
+
+// NOTE: drawSpectrogramWithOverlays() removed - no longer needed
+// Selection box now renders on separate overlay canvas in spectrogram-renderer.js
+// This eliminates conflicts with playhead updates, viewport refreshes, and other rendering systems
 
 /**
  * Draw scrub preview on spectrogram (white/gray line while hovering/dragging)

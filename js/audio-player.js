@@ -307,6 +307,15 @@ export function updatePlaybackSpeed() {
     }).catch(() => {
         // Module not loaded yet, that's okay
     });
+    
+    // Update canvas feature boxes too!
+    import('./spectrogram-renderer.js').then(module => {
+        if (module.redrawAllCanvasFeatureBoxes) {
+            module.redrawAllCanvasFeatureBoxes();
+        }
+    }).catch(() => {
+        // Module not loaded yet, that's okay
+    });
 }
 
 export function changePlaybackSpeed() {

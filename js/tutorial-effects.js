@@ -24,6 +24,11 @@ let activeTypingBaseText = null;
 // Status click handler state
 let clickHandlerAttached = false;
 
+// Sticky status state
+let stickyStatusElement = null;
+let statusIntersectionObserver = null;
+let isStatusOffScreen = false;
+
 /**
  * Create tutorial overlay with custom text
  * @param {string} text - The text to display (default: 'Click me!')
@@ -284,6 +289,158 @@ export function skipAnimations() {
 }
 
 /**
+ * Create and manage sticky status element that appears when original scrolls off-screen
+ * Only active during tutorials
+ */
+function setupStickyStatus() {
+    const statusEl = document.getElementById('status');
+    if (!statusEl) return;
+
+    // Clean up existing observer
+    if (statusIntersectionObserver) {
+        statusIntersectionObserver.disconnect();
+        statusIntersectionObserver = null;
+    }
+
+    // Create intersection observer to detect when status starts scrolling up
+    statusIntersectionObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            // Show sticky VERY early - when status is still 95% visible (just barely started scrolling)
+            const shouldShowSticky = entry.intersectionRatio < 0.95 && entry.boundingClientRect.top < entry.rootBounds.top;
+
+            if (shouldShowSticky && !isStatusOffScreen) {
+                isStatusOffScreen = true;
+                showStickyStatus();
+            }
+            // Hide sticky when status is fully back
+            else if (entry.intersectionRatio >= 0.95 && isStatusOffScreen) {
+                isStatusOffScreen = false;
+                hideStickyStatus();
+            }
+        });
+    }, {
+        threshold: [0, 0.5, 0.9, 0.95, 1], // Fine-grained thresholds at high visibility
+        rootMargin: '0px'
+    });
+
+    statusIntersectionObserver.observe(statusEl);
+}
+
+/**
+ * Show sticky status at top of viewport
+ */
+function showStickyStatus() {
+    if (stickyStatusElement) return; // Already shown
+
+    const statusEl = document.getElementById('status');
+    if (!statusEl) return;
+
+    // Get dimensions and position of original element
+    const computedStyle = window.getComputedStyle(statusEl);
+    const statusRect = statusEl.getBoundingClientRect();
+    const statusWidth = statusRect.width;
+    const statusLeftOffset = statusRect.left;
+
+    // Use lighter soft salmon background to match original better
+    const bgColor = 'rgba(255, 215, 195, 0.98)'; // Lighter soft salmon, more opaque
+    const textColor = '#333'; // Dark text for readability
+
+    // Create sticky container
+    stickyStatusElement = document.createElement('div');
+    stickyStatusElement.id = 'sticky-status';
+    stickyStatusElement.className = statusEl.className + ' sticky-status-container';
+    stickyStatusElement.textContent = statusEl.textContent;
+
+    // Style it to match original's width and left alignment, hugging top (no top padding!)
+    stickyStatusElement.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: ${statusLeftOffset}px;
+        z-index: 9999;
+        width: ${statusWidth}px;
+        background: ${bgColor} !important;
+        color: ${textColor} !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        border-radius: 6px;
+        transition: opacity 0.5s ease-in-out;
+        padding: 5px 15px 10px 15px;
+        pointer-events: none;
+        opacity: 0;
+        text-align: left;
+        box-sizing: border-box;
+    `;
+
+    document.body.appendChild(stickyStatusElement);
+
+    // Force browser to paint initial state before fading in
+    setTimeout(() => {
+        if (stickyStatusElement) {
+            stickyStatusElement.style.opacity = '1';
+        }
+    }, 10);
+
+    // Sync content changes from original status to sticky
+    const observer = new MutationObserver(() => {
+        if (stickyStatusElement && statusEl) {
+            stickyStatusElement.textContent = statusEl.textContent;
+            stickyStatusElement.className = statusEl.className + ' sticky-status-container';
+            // Keep the soft salmon background even when content changes
+        }
+    });
+    observer.observe(statusEl, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class']
+    });
+
+    // Store observer for cleanup
+    stickyStatusElement._mutationObserver = observer;
+}
+
+/**
+ * Hide sticky status
+ */
+function hideStickyStatus() {
+    if (!stickyStatusElement) return;
+
+    // Cleanup mutation observer
+    if (stickyStatusElement._mutationObserver) {
+        stickyStatusElement._mutationObserver.disconnect();
+    }
+
+    // Fade out faster (tied to browser render, feels natural)
+    stickyStatusElement.style.transition = 'opacity 0.25s ease-in-out';
+    stickyStatusElement.style.opacity = '0';
+
+    setTimeout(() => {
+        if (stickyStatusElement) {
+            stickyStatusElement.remove();
+            stickyStatusElement = null;
+        }
+    }, 250); // Match transition duration
+}
+
+/**
+ * Cleanup sticky status system
+ */
+function cleanupStickyStatus() {
+    if (statusIntersectionObserver) {
+        statusIntersectionObserver.disconnect();
+        statusIntersectionObserver = null;
+    }
+    if (stickyStatusElement) {
+        if (stickyStatusElement._mutationObserver) {
+            stickyStatusElement._mutationObserver.disconnect();
+        }
+        stickyStatusElement.remove();
+        stickyStatusElement = null;
+    }
+    isStatusOffScreen = false;
+}
+
+/**
  * Attach click handler to status element to copy text to clipboard
  */
 function attachStatusClickHandler() {
@@ -322,19 +479,34 @@ function attachStatusClickHandler() {
 export function setStatusText(text, className = 'status info') {
     const statusEl = document.getElementById('status');
     if (statusEl) {
-        statusEl.className = className;
+        // Preserve textAlign if it's already set to 'center'
+        const preserveTextAlign = statusEl.style.textAlign === 'center';
         
+        statusEl.className = className;
+
         // Ensure click handler is attached
         attachStatusClickHandler();
-        
+
+        // Setup sticky status if not already done (for tutorials)
+        if (!statusIntersectionObserver) {
+            setupStickyStatus();
+        }
+
         // Handle empty strings - just clear without animation
         if (!text || text.trim() === '') {
             statusEl.textContent = '';
             return;
         }
-        
+
         // Type out the text (including period if present - it will pulse at the end)
         typeText(statusEl, text, 20, 10);
+        
+        // Restore textAlign after typing starts
+        if (preserveTextAlign) {
+            setTimeout(() => {
+                statusEl.style.textAlign = 'center';
+            }, 50);
+        }
     }
 }
 
@@ -670,7 +842,16 @@ export function enableFrequencyScaleDropdown() {
  * Enable all features that are restricted during tutorial
  * Called when tutorial shouldn't run or has been completed
  */
+/**
+ * Cleanup sticky status when tutorial ends
+ */
+export function cleanupTutorialEffects() {
+    cleanupStickyStatus();
+}
+
 export async function enableAllTutorialRestrictedFeatures() {
+    // Cleanup sticky status
+    cleanupStickyStatus();
     // Enable loop button
     const loopBtn = document.getElementById('loopBtn');
     if (loopBtn) {
@@ -723,6 +904,14 @@ export async function enableAllTutorialRestrictedFeatures() {
     if (!isStudyMode()) {
         console.log('✅ Frequency scale dropdown enabled');
     }
+
+    // Enable region creation (for personal/dev modes, or after tutorial in study mode)
+    import('./audio-state.js').then(({ setRegionCreationEnabled }) => {
+        setRegionCreationEnabled(true);
+        if (!isStudyMode()) {
+            console.log('✅ Region creation enabled');
+        }
+    });
 
     // Update Begin Analysis button visibility (show it now that tutorial is complete)
     import('./region-tracker.js').then(({ updateCompleteButtonState }) => {

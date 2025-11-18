@@ -268,6 +268,7 @@ export function saveSurveyResponse(participantId, surveyType, surveyData) {
                 pre: null,
                 post: null,
                 awesf: null,
+                activityLevel: null,
                 createdAt: new Date().toISOString()
             };
         }
@@ -299,7 +300,8 @@ export function saveSurveyResponse(participantId, surveyType, surveyData) {
             allSurveysNow: {
                 hasPre: !!responses.pre,
                 hasPost: !!responses.post,
-                hasAwesf: !!responses.awesf
+                hasAwesf: !!responses.awesf,
+                hasActivityLevel: !!responses.activityLevel
             }
         });
         
@@ -307,6 +309,7 @@ export function saveSurveyResponse(participantId, surveyType, surveyData) {
         const hasPre = !!responses.pre;
         const hasPost = !!responses.post;
         const hasAwesf = !!responses.awesf;
+        const hasActivityLevel = !!responses.activityLevel;
         
         // IMPORTANT: Do NOT mark session as 'completed' here!
         // A session should only be marked as 'completed' AFTER successful submission to Qualtrics.
@@ -320,7 +323,8 @@ export function saveSurveyResponse(participantId, surveyType, surveyData) {
             hasPre,
             hasPost,
             hasAwesf,
-            allComplete: hasPre && hasPost && hasAwesf
+            hasActivityLevel,
+            allComplete: hasPre && hasPost && hasAwesf && hasActivityLevel
         });
         
         // Save to localStorage
@@ -475,6 +479,15 @@ export function exportResponseMetadata(participantId, qualtricsResponseId, submi
         console.warn('Cannot export: missing participantId or qualtricsResponseId');
         return;
     }
+    
+    // 🚫 DISABLED: File download is for local testing only
+    // User prefers console logs for validation
+    console.log('📋 Response Metadata (file download disabled):', {
+        participantId,
+        qualtricsResponseId,
+        submissionResult
+    });
+    return;
     
     try {
         const sessionState = getSessionState(participantId);
