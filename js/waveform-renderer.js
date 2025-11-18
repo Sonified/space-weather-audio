@@ -588,10 +588,10 @@ export function drawWaveformWithSelection() {
         }
         const selectionWidth = endX - startX;
         
-        ctx.fillStyle = 'rgba(255, 180, 0, 0.4)'; // More orange, 10% more transparent
+        ctx.fillStyle = 'rgba(255, 220, 120, 0.25)'; // Softer, less intense yellow
         ctx.fillRect(startX, 0, selectionWidth, height);
         
-        ctx.strokeStyle = 'rgba(255, 140, 0, 0.9)'; // More orange, 10% more transparent
+        ctx.strokeStyle = 'rgba(255, 180, 100, 0.6)'; // Softer, less intense yellow-orange
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(startX, 0);

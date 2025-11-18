@@ -863,11 +863,11 @@ export function drawSpectrogramSelection(ctx, canvasWidth, canvasHeight) {
     
     const selectionWidth = endX - startX;
     
-    // Lighter yellow (8% fill, 35% stroke)
-    ctx.fillStyle = 'rgba(255, 255, 0, 0.08)';
+    // Softer, less intense yellow
+    ctx.fillStyle = 'rgba(255, 240, 160, 0.12)';
     ctx.fillRect(startX, 0, selectionWidth, canvasHeight);
     
-    ctx.strokeStyle = 'rgba(255, 200, 0, 0.35)';
+    ctx.strokeStyle = 'rgba(255, 200, 120, 0.4)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(startX, 0);
