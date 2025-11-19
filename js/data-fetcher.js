@@ -927,17 +927,17 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 updatePlaybackDuration();
                                 State.setIsFetchingNewData(false);
                                 
-                                // Enable speed and volume controls
-                                const speedSlider = document.getElementById('playbackSpeed');
-                                const volumeSlider = document.getElementById('volumeSlider');
-                                const speedLabel = document.getElementById('speedLabel');
-                                const volumeLabel = document.getElementById('volumeLabel');
-                                // Don't enable speed slider here - it will be enabled when speed tutorial starts
-                                // if (speedSlider) speedSlider.disabled = false;
-                                if (volumeSlider) volumeSlider.disabled = false;
-                                // Keep speed label dimmed until speed tutorial starts
-                                // if (speedLabel) speedLabel.style.opacity = '1';
-                                if (volumeLabel) volumeLabel.style.opacity = '1';
+                                // Enable volume slider if tutorial is in progress (speed gets enabled during speed tutorial step)
+                                (async () => {
+                                    const { isTutorialInProgress } = await import('./study-workflow.js');
+                                    if (isTutorialInProgress()) {
+                                        const volumeSlider = document.getElementById('volumeSlider');
+                                        const volumeLabel = document.getElementById('volumeLabel');
+                                        if (volumeSlider) volumeSlider.disabled = false;
+                                        if (volumeLabel) volumeLabel.style.opacity = '1';
+                                        console.log('🔓 Volume slider ENABLED after fetch (tutorial in progress)');
+                                    }
+                                })();
                                 
                                 // Set completion message immediately (loading animation already stopped above)
                                 const statusEl = document.getElementById('status');
@@ -949,11 +949,18 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 // Tutorial is now managed by runInitialTutorial() which waits for data to be fetched
                                 // No need to call runMainTutorial() here - it will be called automatically
                                 
-                                setTimeout(() => {
+                                setTimeout(async () => {
                                     const statusEl = document.getElementById('status');
                                     if (statusEl) {
                                         statusEl.classList.remove('loading');
                                         statusEl.className = 'status success';
+                                        
+                                        // Check if returning to mid-session (Begin Analysis already clicked)
+                                        const { hasBegunAnalysisThisSession } = await import('./study-workflow.js');
+                                        if (hasBegunAnalysisThisSession()) {
+                                            const { setStatusText } = await import('./tutorial-effects.js');
+                                            setStatusText('Click and drag on the waveform to select a new region.', 'status info');
+                                        }
                                     }
                                 }, 200);
                                 
@@ -1302,7 +1309,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
 // ===== MODE 2: RAILWAY BACKEND (ORIGINAL PATH) =====
 // ⚠️ DEPRECATED CODE - DO NOT UPDATE EVER. DO NOT TOUCH THIS CODE.
 // This code path is deprecated and should not be modified.
-export async function fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize) {
+// 🚫 COMMENTED OUT - Railway fetch path disabled
+/* export async function fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize) {
     const formatTime = (date) => {
         return date.toISOString().slice(0, 19);
     };
@@ -1565,17 +1573,17 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
                 // Update playback duration
                 updatePlaybackDuration();
                 
-                // Enable speed and volume controls
-                const speedSlider = document.getElementById('playbackSpeed');
-                const volumeSlider = document.getElementById('volumeSlider');
-                const speedLabel = document.getElementById('speedLabel');
-                const volumeLabel = document.getElementById('volumeLabel');
-                // Don't enable speed slider here - it will be enabled when speed tutorial starts
-                // if (speedSlider) speedSlider.disabled = false;
-                if (volumeSlider) volumeSlider.disabled = false;
-                // Keep speed label dimmed until speed tutorial starts
-                // if (speedLabel) speedLabel.style.opacity = '1';
-                if (volumeLabel) volumeLabel.style.opacity = '1';
+                // Enable volume slider if tutorial is in progress (speed gets enabled during speed tutorial step)
+                (async () => {
+                    const { isTutorialInProgress } = await import('./study-workflow.js');
+                    if (isTutorialInProgress()) {
+                        const volumeSlider = document.getElementById('volumeSlider');
+                        const volumeLabel = document.getElementById('volumeLabel');
+                        if (volumeSlider) volumeSlider.disabled = false;
+                        if (volumeLabel) volumeLabel.style.opacity = '1';
+                        console.log('🔓 Volume slider ENABLED after fetch (tutorial in progress)');
+                    }
+                })();
                 
                 // Note: Features are enabled by default - only tutorial disables them
                 // Tutorial is now managed by runInitialTutorial() which waits for data to be fetched
@@ -1678,5 +1686,5 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     });
     
     console.log('✅ Streaming complete from Railway backend');
-}
+} */
 

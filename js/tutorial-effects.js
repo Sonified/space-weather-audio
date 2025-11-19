@@ -866,9 +866,7 @@ export async function enableAllTutorialRestrictedFeatures() {
     const speedSlider = document.getElementById('playbackSpeed');
     if (speedSlider) {
         speedSlider.disabled = false;
-        if (!isStudyMode()) {
-            console.log('✅ Speed slider enabled');
-        }
+        console.log('🔓 Speed slider ENABLED');
     }
     const speedLabel = document.getElementById('speedLabel');
     if (speedLabel) {
@@ -879,9 +877,7 @@ export async function enableAllTutorialRestrictedFeatures() {
     const volumeSlider = document.getElementById('volumeSlider');
     if (volumeSlider) {
         volumeSlider.disabled = false;
-        if (!isStudyMode()) {
-            console.log('✅ Volume slider enabled');
-        }
+        console.log('🔓 Volume slider ENABLED');
     }
     const volumeLabel = document.getElementById('volumeLabel');
     if (volumeLabel) {

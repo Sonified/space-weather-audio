@@ -286,21 +286,17 @@ export function switchVolcanoRegions(newVolcano) {
     // Update current volcano
     currentVolcano = newVolcano;
     
-    // ✅ Load regions from localStorage if available, otherwise initialize empty array
+    // Initialize empty array for new volcano (regions will be loaded AFTER Fetch Data is clicked)
+    // Don't load regions here - they should only load after data fetch completes
     if (!regionsByVolcano.has(newVolcano)) {
-        const loadedRegions = loadRegionsFromStorage(newVolcano);
-        if (loadedRegions && loadedRegions.length > 0) {
-            regionsByVolcano.set(newVolcano, loadedRegions);
-            console.log(`📂 Restored ${loadedRegions.length} regions for ${newVolcano} from localStorage`);
-        } else {
-            regionsByVolcano.set(newVolcano, []);
-        }
+        regionsByVolcano.set(newVolcano, []);
+        console.log(`📂 Initialized empty region array for ${newVolcano} (will load after Fetch Data)`);
     }
     
-    // Re-render regions for the new volcano
+    // Re-render regions for the new volcano (will be empty until data is fetched)
     renderRegions();
     
-    // ✅ Rebuild canvas feature boxes from loaded regions
+    // Clear canvas feature boxes (no regions loaded yet)
     import('./spectrogram-renderer.js').then(module => {
         if (module.redrawAllCanvasFeatureBoxes) {
             module.redrawAllCanvasFeatureBoxes();

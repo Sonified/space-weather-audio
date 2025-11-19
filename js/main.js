@@ -18,7 +18,8 @@ import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-c
 import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
-import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
+import { fetchFromR2Worker } from './data-fetcher.js';
+// fetchFromRailway is disabled
 import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
 import { initErrorReporter } from './error-reporter.js';
@@ -970,16 +971,18 @@ export async function startStreaming(event) {
         
         try {
         if (forceIrisFetch) {
-            console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Using Railway backend`);
-            await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
+            console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Railway backend DISABLED`);
+            throw new Error('Railway backend is disabled');
+            // await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
         } else if (isActiveStation) {
             if (!isStudyMode()) {
                 console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
             }
             await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart);
         } else {
-            console.log(`🚂 ${logTime()} Using Railway backend (inactive station)`);
-            await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
+            console.log(`🚂 ${logTime()} Railway backend disabled - inactive stations not supported`);
+            throw new Error('Railway backend is disabled - inactive stations not supported');
+            // await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
             }
             
             // Data fetch completed successfully - mark this volcano as having data
@@ -1155,6 +1158,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log('═══════════════════════════════════════════════════════════');
     console.log('🌋 VOLCANO AUDIFICATION STUDY');
     console.log('═══════════════════════════════════════════════════════════');
+    
+    // ═══════════════════════════════════════════════════════════
+    // 📏 STATUS AUTO-RESIZE - Shrink font when text overflows
+    // ═══════════════════════════════════════════════════════════
+    const { setupStatusAutoResize } = await import('./status-auto-resize.js');
+    setupStatusAutoResize();
     
     // ═══════════════════════════════════════════════════════════
     // 🎯 MASTER MODE - Initialize and check configuration
@@ -1431,6 +1440,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.57 - Corrupted State Detection: Pre-Survey Completion Edge Case');
+        console.log('🛡️ [0ms] v2.57 Fix: Added detection for users who completed pre-survey but stopped before tutorial');
+        console.log('🔥 [0ms] v2.57 Feat: Two corrupted state checks - Case 1: Seen participant setup but no tutorial, Case 2: Completed pre-survey but no tutorial');
+        console.log('🧹 [0ms] v2.57 Fix: Both cases trigger full reset to brand new participant state for clean restart');
         console.log('🌋 [0ms] volcano-audio v2.56 - Canvas Redrawing: Aggressive Destroy/Recreate on Visibility Change');
         console.log('🎨 [0ms] v2.56 Fix: Canvas feature boxes now redraw after tab switch/sleep - implemented aggressive destroy/recreate strategy for overlay canvas');
         console.log('🔧 [0ms] v2.56 Feat: When page becomes hidden, cleanupSpectrogramSelection() destroys overlay canvas to save memory');

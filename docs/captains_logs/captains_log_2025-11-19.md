@@ -1,5 +1,31 @@
 # Captain's Log - 2025-11-19
 
+## v2.57 - Corrupted State Detection: Pre-Survey Completion Edge Case
+
+### Bug Fixed
+
+**Corrupted State: Pre-Survey Completed But Tutorial Not Started**
+- **Problem**: Users who completed pre-survey but closed the page before starting tutorial would end up in a corrupted state where they had `study_pre_survey_completion_date` set but `study_tutorial_completed` null and `study_tutorial_in_progress` null. System didn't know how to handle this edge case.
+- **Root Cause**: Only checked for participant setup + no tutorial completion, but didn't account for pre-survey completion without tutorial.
+- **Solution**: Added two corrupted state checks in `study-workflow.js`:
+  - **Case 1**: Seen participant setup BUT no tutorial completion AND not in tutorial → Reset
+  - **Case 2**: Has pre-survey date BUT no tutorial completion AND not in tutorial → Reset
+  - Both trigger complete flag reset to brand new participant state
+
+### Architecture Notes
+
+**Corrupted State Detection Logic**
+- Checks run at very top of `startStudyWorkflow()` before any modal logic
+- Uses `!isTutorialInProgress()` to allow users actively in tutorial to continue
+- Clears ALL `STORAGE_KEYS` entries to ensure clean restart
+- Prevents users from getting stuck in impossible states
+
+### Git Commit
+**Version**: v2.57  
+**Commit Message**: v2.57 Corrupted State Detection: Added pre-survey completion edge case handling
+
+---
+
 ## v2.56 - Canvas Redrawing: Aggressive Destroy/Recreate on Visibility Change
 
 ### Bug Fixed

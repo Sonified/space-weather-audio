@@ -63,7 +63,7 @@ function checkTimeoutOnVisibilityChange() {
     const now = Date.now();
     const inactiveTime = now - lastActivityTime;
     
-    console.log(`👁️ Page became visible. Inactive time: ${(inactiveTime / 1000).toFixed(0)}s`);
+    // console.log(`👁️ Page became visible. Inactive time: ${(inactiveTime / 1000).toFixed(0)}s`);
     
     // If they were gone for 20+ minutes, timeout immediately
     if (inactiveTime >= INACTIVE_TIMEOUT_MS) {
@@ -157,7 +157,7 @@ function hideTimeoutWarning() {
 /**
  * Handle session timeout (20 min or manual end)
  */
-async function handleSessionTimeout() {
+export async function handleSessionTimeout() {
     console.log('⏰ Session timed out due to inactivity');
     
     // 1. Stop audio playback
@@ -171,7 +171,7 @@ async function handleSessionTimeout() {
     // 2. Submit pre-survey data with timeout flag and regions/features
     try {
         const { getParticipantId } = await import('./qualtrics-api.js');
-        const { getSessionResponses, trackUserAction } = await import('../Qualtrics/participant-response-manager.js');
+        const { getSessionResponses, trackUserAction, getSessionState } = await import('../Qualtrics/participant-response-manager.js');
         const { getRegions } = await import('./region-tracker.js');
         const { submitCombinedSurveyResponse } = await import('./qualtrics-api.js');
         

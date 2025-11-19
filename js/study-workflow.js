@@ -751,6 +751,66 @@ export async function startStudyWorkflow() {
     }
     console.log('✅ Participant modal found in DOM');
     
+    // ⏰ TIMEOUT CHECK: Only matters if user has clicked "Begin Analysis" (actively in session)
+    // If they haven't clicked Begin Analysis, they're still in onboarding - timeout doesn't apply
+    if (hasBegunAnalysisThisSession()) {
+        // Check for simulated idle time FIRST (for testing)
+        const simulatedLastActivity = localStorage.getItem('test_simulated_last_activity');
+        const sessionStartTime = localStorage.getItem(STORAGE_KEYS.CURRENT_SESSION_START);
+        
+        if (simulatedLastActivity || sessionStartTime) {
+            const now = Date.now();
+            let lastActivityTime;
+            
+            // Use simulated time if available, otherwise use session start
+            if (simulatedLastActivity) {
+                lastActivityTime = parseInt(simulatedLastActivity);
+                console.log('🧪 Using simulated last activity time for timeout check');
+            } else {
+                lastActivityTime = new Date(sessionStartTime).getTime();
+            }
+            
+            const inactiveTime = now - lastActivityTime;
+            const INACTIVE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+            
+            if (inactiveTime >= INACTIVE_TIMEOUT_MS) {
+                console.log(`⏰ Session timeout detected: ${(inactiveTime / 1000 / 60).toFixed(1)} minutes elapsed`);
+                const { handleSessionTimeout } = await import('./session-management.js');
+                handleSessionTimeout();
+                return; // Exit - timeout modal will handle continuation
+            }
+        }
+    }
+    
+    // 🔥 CORRUPTED STATE CHECK: Incomplete onboarding? Reset to brand new
+    const hasPreSurvey = localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE) !== null;
+    const isInTutorial = isTutorialInProgress();
+    
+    // Case 1: Seen participant setup but no tutorial completion AND not actively in tutorial
+    if (hasSeenParticipantSetup() && !tutorialCompleted() && !isInTutorial) {
+        console.log('⚠️ CORRUPTED STATE: User has seen participant setup but never completed tutorial');
+        console.log(`   Has pre-survey: ${hasPreSurvey}, Tutorial in progress: ${isInTutorial}`);
+        console.log('🧹 Resetting to brand new participant state...');
+        
+        // Clear ALL study workflow flags
+        Object.entries(STORAGE_KEYS).forEach(([name, key]) => {
+            localStorage.removeItem(key);
+        });
+        console.log('✅ All flags cleared - will restart from participant setup');
+    }
+    
+    // Case 2: Completed pre-survey but tutorial is not in progress AND not completed (stopped between pre-survey and tutorial)
+    if (hasPreSurvey && !tutorialCompleted() && !isInTutorial) {
+        console.log('⚠️ CORRUPTED STATE: User completed pre-survey but stopped before tutorial');
+        console.log('🧹 Resetting to brand new participant state...');
+        
+        // Clear ALL study workflow flags
+        Object.entries(STORAGE_KEYS).forEach(([name, key]) => {
+            localStorage.removeItem(key);
+        });
+        console.log('✅ All flags cleared - will restart from participant setup');
+    }
+    
     // 🔥 STUDY CLEAN MODE OR TUTORIAL_END: Reset EVERYTHING (always act like first time)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
     const isTestMode = storedMode === 'tutorial_end';
@@ -776,6 +836,28 @@ export async function startStudyWorkflow() {
         
         console.log('   🎭 Result: Will show FULL onboarding (Participant → Welcome → Pre-Survey → Tutorial)');
         console.log('   🎭 AWE-SF will show (simulates W1S1)');
+    }
+    
+    // 🔥 STUCK STATE: Tutorial started but not completed? Resume tutorial
+    if (isTutorialInProgress() && !tutorialCompleted()) {
+        console.log('🔄 Tutorial in progress - opening tutorial intro modal to resume');
+        const { openTutorialIntroModal } = await import('./ui-controls.js');
+        openTutorialIntroModal();
+        return; // Exit - tutorial modal will handle continuation
+    }
+    
+    // 🔥 SIMPLE CHECK: Tutorial done but Begin Analysis not clicked? Show Welcome Back
+    if (tutorialCompleted() && !hasBegunAnalysisThisSession()) {
+        console.log('👋 SIMPLE CHECK: Tutorial done, Begin Analysis not clicked → Opening Welcome Back modal');
+        
+        // Enable all features for returning users (tutorial already completed)
+        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        await enableAllTutorialRestrictedFeatures();
+        console.log('✅ All features enabled for returning user (before Welcome Back modal)');
+        
+        const { openWelcomeBackModal } = await import('./ui-controls.js');
+        openWelcomeBackModal();
+        return; // Exit - modal will handle workflow continuation
     }
     
     // 🔥 RETURNING MODE (W2 S1 RETURNING): Mid-session, simulates page refresh after Begin Analysis
@@ -935,6 +1017,14 @@ export async function startStudyWorkflow() {
             
             console.log('🔁 RETURNING VISIT - Skipping onboarding');
             
+            // Check if tutorial is completed - if NOT, show tutorial intro modal
+            if (!tutorialCompleted()) {
+                console.log('🎓 Tutorial not completed - opening Tutorial Intro modal');
+                const { openTutorialIntroModal } = await import('./ui-controls.js');
+                openTutorialIntroModal();
+                return; // Exit - tutorial modal will handle continuation
+            }
+            
             // Enable all features immediately for returning visits (no tutorial needed)
             const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
             await enableAllTutorialRestrictedFeatures();
@@ -947,7 +1037,11 @@ export async function startStudyWorkflow() {
             // For returning visits, check if they've clicked "Begin Analysis" THIS SESSION
             // If so, transform button to "Complete" mode AND re-enable region creation (restore session state)
             if (hasBegunAnalysisThisSession()) {
-                console.log('🔄 Begin Analysis already clicked this session - restoring analysis mode');
+                console.log('👋 Welcome back! Hit Fetch Data to resume your session.');
+                
+                // Set status message with typing animation
+                const { setStatusText } = await import('./tutorial-effects.js');
+                setStatusText('👋 Welcome back! Hit Fetch Data to resume your session.', 'status info');
                 
                 // Enable region creation (user clicked Begin Analysis before refresh)
                 const { setRegionCreationEnabled } = await import('./audio-state.js');
@@ -1070,6 +1164,13 @@ export async function startStudyWorkflow() {
                 }
             }
             
+            // Check if they've already seen Welcome Back AND clicked Begin Analysis
+            // If Begin Analysis hasn't been clicked, clear the Welcome Back flag so they see it again
+            if (!hasBegunAnalysisThisSession()) {
+                console.log('🔄 Begin Analysis not clicked - clearing Welcome Back flag to show modal again');
+                localStorage.removeItem(STORAGE_KEYS.HAS_SEEN_WELCOME_BACK);
+            }
+            
             // Check if pre-survey was completed on a different day
             const lastCompletionDate = localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
             if (lastCompletionDate && lastCompletionDate !== getTodayDateString()) {
@@ -1078,9 +1179,9 @@ export async function startStudyWorkflow() {
                 await clearSessionForNewDay(participantId);
             }
             
-            // Check if they've already seen Welcome Back this session
-            if (!hasSeenWelcomeBack()) {
-                console.log('👋 Step 2.5: Welcome Back (returning visit)');
+            // Show Welcome Back if they haven't clicked Begin Analysis yet (even if they've seen it before reload)
+            if (!hasSeenWelcomeBack() || !hasBegunAnalysisThisSession()) {
+                console.log('👋 Step 2.5: Welcome Back (returning visit - not yet begun analysis)');
                 // For returning visits, show welcome back modal first, then pre-survey
                 const { openWelcomeBackModal } = await import('./ui-controls.js');
                 openWelcomeBackModal();
@@ -1088,7 +1189,7 @@ export async function startStudyWorkflow() {
                 // Welcome Back modal will close and open pre-survey when user clicks "Start Now"
                 return; // Exit early - welcome back modal event handler will continue workflow
             } else {
-                console.log('👋 Welcome Back already seen this session, proceeding to Pre-Survey');
+                console.log('👋 Welcome Back already seen this session AND Begin Analysis clicked, proceeding to Pre-Survey');
                 // Fall through to pre-survey
             }
         }

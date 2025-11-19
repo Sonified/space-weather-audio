@@ -172,11 +172,22 @@ export async function startSpeedSliderTutorial() {
     speedSliderCrossedThreshold = false;
     
     try {
-        // Enable speed slider when tutorial starts
+        // Enable speed and volume sliders when tutorial starts
         speedSlider.disabled = false;
         const speedLabelEl = document.getElementById('speedLabel');
         if (speedLabelEl) {
             speedLabelEl.style.opacity = '1';
+        }
+        
+        // Enable volume slider too (user should be able to adjust during tutorial)
+        const volumeSlider = document.getElementById('volumeSlider');
+        if (volumeSlider) {
+            volumeSlider.disabled = false;
+            console.log('🔓 Volume slider ENABLED (during tutorial)');
+        }
+        const volumeLabelEl = document.getElementById('volumeLabel');
+        if (volumeLabelEl) {
+            volumeLabelEl.style.opacity = '1';
         }
         
         // Add glow to slider knob

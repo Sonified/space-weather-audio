@@ -1566,9 +1566,24 @@ export function setupModalEventListeners() {
         const tutorialIntroSubmitBtn = tutorialIntroModal.querySelector('.modal-submit');
         if (tutorialIntroSubmitBtn) {
             tutorialIntroSubmitBtn.addEventListener('click', async () => {
+                console.log('🎓🔥 BEGIN TUTORIAL BUTTON CLICKED - DISABLING CONTROLS NOW');
+                console.trace('Stack trace for Begin Tutorial click:');
+                
                 // Mark tutorial as in progress immediately when user clicks "Begin Tutorial"
                 const { markTutorialAsInProgress } = await import('./study-workflow.js');
                 markTutorialAsInProgress();
+                
+                // Disable speed and volume controls during tutorial (tutorial will re-enable at appropriate time)
+                const speedSlider = document.getElementById('playbackSpeed');
+                const volumeSlider = document.getElementById('volumeSlider');
+                const speedLabel = document.getElementById('speedLabel');
+                const volumeLabel = document.getElementById('volumeLabel');
+                if (speedSlider) speedSlider.disabled = true;
+                if (volumeSlider) volumeSlider.disabled = true;
+                if (speedLabel) speedLabel.style.opacity = '0.5';
+                if (volumeLabel) volumeLabel.style.opacity = '0.5';
+                
+                console.log('🔒 Speed and volume controls DISABLED for tutorial');
                 
                 closeTutorialIntroModal();
                 
@@ -1794,7 +1809,7 @@ export function openParticipantModal() {
     if (hasExistingId && !idFromQualtrics) {
         // User clicked from upper right corner - ID exists in localStorage
         if (modalTitle) {
-            modalTitle.textContent = "You're All Set";
+            modalTitle.textContent = "Welcome!";
         }
         if (instructionText) {
             instructionText.textContent = "Your participant ID is stored.";
@@ -2603,6 +2618,12 @@ export async function submitPreSurvey() {
             } catch (error) {
                 console.warn('⚠️ Could not start session tracking:', error);
             }
+            
+            // Wait 3s, then show next instruction with typing effect
+            setTimeout(async () => {
+                const { setStatusText } = await import('./tutorial-effects.js');
+                setStatusText('<- Select a volcano to the left and hit Fetch Data to begin.', 'status info');
+            }, 3000);
             
             // Modal will be closed by event handler
         } else {

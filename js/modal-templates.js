@@ -13,7 +13,7 @@ export function createWelcomeModal() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">🌋 Welcome!</h3>
+                <h3 class="modal-title">🌋 Volcano Audification Study</h3>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">

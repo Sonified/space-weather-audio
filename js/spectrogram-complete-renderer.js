@@ -145,9 +145,9 @@ export function startMemoryMonitoring() {
     
     // Only log in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🏥 Starting memory health monitoring (every 5 seconds)');
+        console.log('🏥 Starting memory health monitoring (every 10 seconds)');
     }
-    memoryMonitorInterval = setInterval(memoryHealthCheck, 5000);
+    memoryMonitorInterval = setInterval(memoryHealthCheck, 10000);
     memoryHealthCheck();
 }
 
