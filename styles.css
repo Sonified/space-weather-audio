@@ -1298,8 +1298,8 @@ input[type="checkbox"] {
 
 .modal-form-group input:focus {
     outline: none;
-    border-color: #cc5533;
-    box-shadow: 0 0 0 3px rgba(204, 85, 51, 0.1);
+    border-color: #0056b3;
+    box-shadow: 0 0 0 3px rgba(0, 86, 179, 0.1);
 }
 
 .mood-scale-container {
@@ -1418,6 +1418,14 @@ input[type="checkbox"] {
     padding: 9px 24px;
     font-size: 18px;
     margin-top: 6px;
+    background: #0056b3 !important; /* Blue to match other modal buttons */
+    border-color: #0056b3 !important;
+    color: white !important;
+}
+
+.modal-submit:hover:not(:disabled) {
+    background: #004085 !important; /* Darker blue on hover */
+    border-color: #004085 !important;
 }
 
 .mood-survey-intro {

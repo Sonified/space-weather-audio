@@ -89,7 +89,10 @@ const STORAGE_KEYS = {
     TOTAL_SESSIONS_COMPLETED: 'study_total_sessions_completed',
     TOTAL_SESSION_TIME: 'study_total_session_time', // in milliseconds
     SESSION_HISTORY: 'study_session_history', // JSON array of session objects
-    CURRENT_SESSION_START: 'study_current_session_start' // timestamp of current session
+    CURRENT_SESSION_START: 'study_current_session_start', // timestamp of current session
+    TOTAL_REGIONS_IDENTIFIED: 'study_total_regions_identified', // cumulative across all sessions
+    TOTAL_FEATURES_IDENTIFIED: 'study_total_features_identified', // cumulative across all sessions
+    SESSION_COMPLETION_TRACKER: 'study_session_completion_tracker' // tracks which specific sessions are complete
 };
 
 /**
@@ -415,6 +418,175 @@ export function getSessionStats() {
             totalSessionTimeHours: 0,
             sessionHistory: [],
             currentSessionStart: null
+        };
+    }
+}
+
+/**
+ * Increment cumulative region and feature counts
+ * Called after successful session submission
+ * @param {number} regionCount - Number of regions identified in this session
+ * @param {number} featureCount - Number of features identified in this session
+ */
+export function incrementCumulativeCounts(regionCount = 0, featureCount = 0) {
+    try {
+        // Get current cumulative counts
+        const currentRegions = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_REGIONS_IDENTIFIED) || '0') || 0;
+        const currentFeatures = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_FEATURES_IDENTIFIED) || '0') || 0;
+        
+        // Add this session's counts
+        const newRegions = currentRegions + regionCount;
+        const newFeatures = currentFeatures + featureCount;
+        
+        // Save updated counts
+        localStorage.setItem(STORAGE_KEYS.TOTAL_REGIONS_IDENTIFIED, newRegions.toString());
+        localStorage.setItem(STORAGE_KEYS.TOTAL_FEATURES_IDENTIFIED, newFeatures.toString());
+        
+        console.log(`📊 Cumulative counts updated: ${newRegions} regions (+${regionCount}), ${newFeatures} features (+${featureCount})`);
+        
+        return {
+            totalRegions: newRegions,
+            totalFeatures: newFeatures,
+            sessionRegions: regionCount,
+            sessionFeatures: featureCount
+        };
+    } catch (error) {
+        console.error('❌ Error incrementing cumulative counts:', error);
+        return null;
+    }
+}
+
+/**
+ * Get cumulative region and feature counts across all sessions
+ * @returns {Object} - {totalRegions, totalFeatures}
+ */
+export function getCumulativeCounts() {
+    try {
+        const totalRegions = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_REGIONS_IDENTIFIED) || '0') || 0;
+        const totalFeatures = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_FEATURES_IDENTIFIED) || '0') || 0;
+        
+        return {
+            totalRegions,
+            totalFeatures
+        };
+    } catch (error) {
+        console.error('❌ Error getting cumulative counts:', error);
+        return {
+            totalRegions: 0,
+            totalFeatures: 0
+        };
+    }
+}
+
+/**
+ * Get current week number and session number within that week
+ * Uses the tracker as source of truth to determine which session to mark next
+ * @returns {Object} - {currentWeek: 1-3, sessionNumber: 1-2, weeklySessionCount: number}
+ */
+export function getCurrentWeekAndSession() {
+    const STUDY_START_DATE = new Date('2025-11-17T00:00:00');
+    const TOTAL_STUDY_WEEKS = 3;
+    const now = new Date();
+    
+    // Calculate current week
+    const weeksDiff = Math.floor((now - STUDY_START_DATE) / (7 * 24 * 60 * 60 * 1000));
+    const currentWeek = Math.max(1, Math.min(weeksDiff + 1, TOTAL_STUDY_WEEKS));
+    
+    // Get tracker to see what's already complete
+    const tracker = getSessionCompletionTracker();
+    const weekKey = `week${currentWeek}`;
+    const weekSessions = tracker[weekKey] || [false, false];
+    
+    // Determine next available session in current week
+    let sessionNumber;
+    if (!weekSessions[0]) {
+        sessionNumber = 1; // Session 1 not complete yet
+    } else if (!weekSessions[1]) {
+        sessionNumber = 2; // Session 1 done, Session 2 not complete
+    } else {
+        sessionNumber = 2; // Both complete, default to 2 (prevents overflow)
+    }
+    
+    // Get weekly session count for backward compatibility
+    const weeklySessionCount = (weekSessions[0] ? 1 : 0) + (weekSessions[1] ? 1 : 0);
+    
+    return {
+        currentWeek,
+        sessionNumber,
+        weeklySessionCount,
+        alreadyComplete: weekSessions[sessionNumber - 1] === true // Flag if already marked complete
+    };
+}
+
+/**
+ * Mark a specific session as complete
+ * @param {number} week - Week number (1-3)
+ * @param {number} session - Session number within week (1-2)
+ */
+export function markSessionComplete(week, session) {
+    try {
+        // Load existing tracker
+        const stored = localStorage.getItem(STORAGE_KEYS.SESSION_COMPLETION_TRACKER);
+        let tracker = stored ? JSON.parse(stored) : {};
+        
+        // Initialize structure if needed
+        if (!tracker.week1) tracker.week1 = [false, false];
+        if (!tracker.week2) tracker.week2 = [false, false];
+        if (!tracker.week3) tracker.week3 = [false, false];
+        
+        // Mark session complete
+        const weekKey = `week${week}`;
+        if (tracker[weekKey] && session >= 1 && session <= 2) {
+            tracker[weekKey][session - 1] = true;
+            localStorage.setItem(STORAGE_KEYS.SESSION_COMPLETION_TRACKER, JSON.stringify(tracker));
+            console.log(`✅ Marked Week ${week}, Session ${session} as complete`);
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        console.error('❌ Error marking session complete:', error);
+        return false;
+    }
+}
+
+/**
+ * Get session completion tracker
+ * @returns {Object} - {week1: [bool, bool], week2: [bool, bool], week3: [bool, bool], completedCount: number, totalSessions: 6}
+ */
+export function getSessionCompletionTracker() {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEYS.SESSION_COMPLETION_TRACKER);
+        let tracker = stored ? JSON.parse(stored) : {};
+        
+        // Initialize structure if needed
+        if (!tracker.week1) tracker.week1 = [false, false];
+        if (!tracker.week2) tracker.week2 = [false, false];
+        if (!tracker.week3) tracker.week3 = [false, false];
+        
+        // Calculate completed count
+        const completedCount = 
+            (tracker.week1[0] ? 1 : 0) + (tracker.week1[1] ? 1 : 0) +
+            (tracker.week2[0] ? 1 : 0) + (tracker.week2[1] ? 1 : 0) +
+            (tracker.week3[0] ? 1 : 0) + (tracker.week3[1] ? 1 : 0);
+        
+        return {
+            week1: tracker.week1,
+            week2: tracker.week2,
+            week3: tracker.week3,
+            completedCount,
+            totalSessions: 6,
+            progressPercent: Math.round((completedCount / 6) * 100)
+        };
+    } catch (error) {
+        console.error('❌ Error getting session completion tracker:', error);
+        return {
+            week1: [false, false],
+            week2: [false, false],
+            week3: [false, false],
+            completedCount: 0,
+            totalSessions: 6,
+            progressPercent: 0
         };
     }
 }

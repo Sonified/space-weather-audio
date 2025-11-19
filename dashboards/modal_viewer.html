@@ -153,6 +153,47 @@
             <h1>🌋 Modal Interface Viewer</h1>
             <p>Testing ground for all survey and workflow modals</p>
         </div>
+        
+        <!-- Test Controls for Cumulative Stats -->
+        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #ff6b6b;">🧪 Test Cumulative Stats</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="setCumulativeStats(5, 15)" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #ddd; background: white; color: black; cursor: pointer;">
+                    Set: 5 regions, 15 features
+                </button>
+                <button onclick="setCumulativeStats(12, 47)" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #ddd; background: white; color: black; cursor: pointer;">
+                    Set: 12 regions, 47 features
+                </button>
+                <button onclick="setCumulativeStats(0, 0)" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #ddd; background: white; color: black; cursor: pointer;">
+                    Clear stats
+                </button>
+                <button onclick="showCurrentStats()" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #0056b3; background: #0056b3; color: white; cursor: pointer;">
+                    Show current stats
+                </button>
+            </div>
+        </div>
+        
+        <!-- Test Controls for Session Progress -->
+        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #ff6b6b;">📊 Test Session Progress</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="setSessionProgress(1, 1)" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #ddd; background: white; color: black; cursor: pointer;">
+                    Week 1, Session 1
+                </button>
+                <button onclick="setSessionProgress(1, 2)" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #ddd; background: white; color: black; cursor: pointer;">
+                    + Week 1, Session 2
+                </button>
+                <button onclick="setSessionProgress(2, 1)" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #ddd; background: white; color: black; cursor: pointer;">
+                    + Week 2, Session 1
+                </button>
+                <button onclick="setSessionProgress(3, 2)" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #ddd; background: white; color: black; cursor: pointer;">
+                    Complete All 6!
+                </button>
+                <button onclick="clearSessionProgress()" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cc3333; background: #cc3333; color: white; cursor: pointer;">
+                    Clear all
+                </button>
+            </div>
+        </div>
 
         <div class="sections-container">
             <!-- Pre-Test Section (Left Column) -->
@@ -195,6 +236,8 @@
     <script type="module">
         import { initializeModals } from '../js/modal-templates.js';
         import { modalManager } from '../js/modal-manager.js';
+        import { openEndModal } from '../js/ui-controls.js';
+        import { getParticipantId } from '../js/qualtrics-api.js';
 
         // Initialize modals on page load
         await initializeModals();
@@ -203,6 +246,19 @@
         // Make showModal available globally
         window.showModal = async function(modalId) {
             console.log(`📂 Opening modal: ${modalId}`);
+            
+            // Special handling for end modal - use the EXACT same method as the study flow
+            if (modalId === 'endModal') {
+                // Get participant ID (or fallback to test ID)
+                const participantId = getParticipantId() || 'TEST-12345';
+                
+                // Get session count from localStorage (or default to 1)
+                const sessionCount = parseInt(localStorage.getItem('study_weekly_session_count') || '1', 10);
+                
+                // Use the EXACT same openEndModal function that participants see
+                openEndModal(participantId, sessionCount);
+                return; // Don't use modalManager for end modal - use the real function
+            }
             
             // Open modal and wait for it to close
             await modalManager.openModal(modalId, {
@@ -322,6 +378,67 @@
         });
 
         console.log('🎉 Modal Viewer Dashboard Ready!');
+        
+        // Helper functions for testing cumulative stats
+        window.setCumulativeStats = function(regions, features) {
+            localStorage.setItem('study_total_regions_identified', regions.toString());
+            localStorage.setItem('study_total_features_identified', features.toString());
+            console.log(`✅ Set cumulative stats: ${regions} regions, ${features} features`);
+            alert(`Cumulative stats set to:\n${regions} regions\n${features} features\n\nOpen the End modal to see them!`);
+        };
+        
+        window.showCurrentStats = function() {
+            const regions = localStorage.getItem('study_total_regions_identified') || '0';
+            const features = localStorage.getItem('study_total_features_identified') || '0';
+            alert(`Current cumulative stats:\n${regions} regions, ${features} features`);
+            console.log(`📊 Current cumulative stats: ${regions} regions, ${features} features`);
+        };
+        
+        // Session progress test functions
+        window.setSessionProgress = function(maxWeek, maxSession) {
+            const tracker = {
+                week1: [false, false],
+                week2: [false, false],
+                week3: [false, false]
+            };
+            
+            // Fill up to the specified week and session
+            if (maxWeek >= 1) {
+                tracker.week1[0] = true;
+                if (maxWeek === 1 && maxSession >= 2) tracker.week1[1] = true;
+                if (maxWeek >= 2) tracker.week1[1] = true;
+            }
+            if (maxWeek >= 2) {
+                tracker.week2[0] = true;
+                if (maxWeek === 2 && maxSession >= 2) tracker.week2[1] = true;
+                if (maxWeek >= 3) tracker.week2[1] = true;
+            }
+            if (maxWeek >= 3) {
+                tracker.week3[0] = true;
+                if (maxSession >= 2) tracker.week3[1] = true;
+            }
+            
+            localStorage.setItem('study_session_completion_tracker', JSON.stringify(tracker));
+            
+            const completed = 
+                (tracker.week1[0] ? 1 : 0) + (tracker.week1[1] ? 1 : 0) +
+                (tracker.week2[0] ? 1 : 0) + (tracker.week2[1] ? 1 : 0) +
+                (tracker.week3[0] ? 1 : 0) + (tracker.week3[1] ? 1 : 0);
+            
+            console.log(`✅ Set session progress: ${completed}/6 sessions complete`);
+            alert(`Session progress set to ${completed}/6 sessions complete!\n\nOpen the End modal to see the visual tracker!`);
+        };
+        
+        window.clearSessionProgress = function() {
+            const tracker = {
+                week1: [false, false],
+                week2: [false, false],
+                week3: [false, false]
+            };
+            localStorage.setItem('study_session_completion_tracker', JSON.stringify(tracker));
+            console.log('🔄 Cleared all session progress');
+            alert('Session progress cleared!');
+        };
     </script>
 </body>
 </html>

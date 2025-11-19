@@ -13,7 +13,7 @@ export function createWelcomeModal() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Welcome!</h3>
+                <h3 class="modal-title">🌋 Welcome!</h3>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
@@ -41,42 +41,121 @@ export function createEndModal() {
     modal.className = 'modal-window';
     modal.style.display = 'none';
     modal.innerHTML = `
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Complete!</h3>
+        <div class="modal-content" style="animation: fadeInModal 0.3s ease-in; max-width: 650px; border: 2px solid #8B4513; box-shadow: 0 0 20px rgba(139, 69, 19, 0.15), 0 10px 40px rgba(0, 0, 0, 0.3); background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(139, 69, 19, 0.03) 2px, rgba(139, 69, 19, 0.03) 4px), repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 69, 19, 0.03) 2px, rgba(139, 69, 19, 0.03) 4px), linear-gradient(to bottom, rgba(255, 250, 240, 0.05) 0%, rgba(255, 255, 255, 1) 100%), white; position: relative; overflow: hidden;">
+            <!-- Watermark -->
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 200px; opacity: 0.04; pointer-events: none; mix-blend-mode: multiply; z-index: 0;">
+                🌋
             </div>
-            <div class="modal-body">
-                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6; font-weight: 600;">
-                    Your session was successfully submitted at <span id="submissionTime" style="color: #1a237e;">--</span>
-                </p>
-                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6;">
-                    Your anonymized data has been associated with participant ID: <span id="submissionParticipantId" style="font-weight: 600; color: #1a237e;">--</span>
-                </p>
-                <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #c62828;">
-                    <p style="margin-bottom: 10px; color: #333; font-size: 17px; line-height: 1.6;">
-                        <strong>Study Progress:</strong>
+            
+            <!-- Formal Header -->
+            <div style="text-align: center; padding: 30px 20px 15px 20px; position: relative; z-index: 1;">
+                <h3 style="font-size: 32px; font-weight: 600; color: #550000; margin: 0 0 15px 0; letter-spacing: 1px;">
+                    <span style="font-size: 38px;">🌋</span> Session Completed
+                </h3>
+                <!-- Elegant divider line -->
+                <div style="width: 200px; height: 2px; margin: 0 auto; background: linear-gradient(90deg, rgba(139, 69, 19, 0) 0%, rgba(139, 69, 19, 0.8) 50%, rgba(139, 69, 19, 0) 100%); box-shadow: 0 1px 3px rgba(139, 69, 19, 0.2);"></div>
+            </div>
+            
+            <div style="padding: 0 20px; position: relative; z-index: 1;">
+                <!-- Submission Time Card -->
+                <div style="background: linear-gradient(to bottom, rgba(255, 255, 255, 1) 0%, rgba(250, 248, 246, 1) 100%); padding: 18px; border-radius: 8px; margin: 15px 0 12px 0; border: 1px solid #d0d0d0; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);">
+                    <p style="margin: 0; color: #550000; font-size: 16px; line-height: 1.5; text-align: center; font-weight: 500;">
+                        Submitted on <strong><span id="submissionDate" style="color: #550000;">--</span></strong> at <strong><span id="submissionTime" style="color: #550000;">--</span></strong>
                     </p>
-                    <p style="margin-bottom: 8px; color: #555; font-size: 18px; line-height: 1.6;">
-                        • This is <strong>week 1</strong> of the study
-                    </p>
-                    <p style="margin-bottom: 8px; color: #555; font-size: 18px; line-height: 1.6;">
-                        • There are <strong>2 weeks remaining</strong>
-                    </p>
-                    <p style="margin-bottom: 0; color: #555; font-size: 18px; line-height: 1.6;">
-                        • You have completed <strong><span id="sessionCount">1</span> session(s)</strong> this week
+                    <p style="margin: 12px 0 0 0; color: #550000; font-size: 16px; line-height: 1.5; text-align: center; font-weight: 500;">
+                        Participant ID: <span id="submissionParticipantId" style="display: inline-block; background: #0056b3; color: white; padding: 5px 14px; border-radius: 20px; font-weight: 600; font-size: 15px;">--</span>
                     </p>
                 </div>
-                <p style="margin-bottom: 20px; color: #666; font-size: 18px; line-height: 1.6; font-style: italic;">
-                    All participants are asked to complete two weekly sessions, though you may complete more if you wish.
+                
+                <!-- Study Progress Card -->
+                <div style="background: linear-gradient(to bottom, rgba(255, 255, 255, 1) 0%, rgba(250, 248, 246, 1) 100%); padding: 20px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #d0d0d0; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);">
+                    <p style="margin: 0 0 15px 0; color: #550000; font-size: 18px; line-height: 1.4; text-align: center; font-weight: 600;">
+                        Study Progress
+                    </p>
+                    
+                    <!-- Overall Progress Percentage -->
+                    <p style="margin: 0 0 12px 0; text-align: center; color: #0056b3; font-size: 22px; font-weight: 600;">
+                        <span id="overallProgressPercent">0%</span> Complete
+                    </p>
+                    
+                    <!-- Visual Session Tracker -->
+                    <div style="display: flex; justify-content: center; gap: 20px; margin-bottom: 20px;">
+                        <!-- Week 1 -->
+                        <div style="text-align: center;">
+                            <p style="margin: 0 0 8px 0; color: #550000; font-size: 14px; font-weight: 600;">Week 1</p>
+                            <div style="display: flex; gap: 6px;">
+                                <div id="week1session1" style="width: 30px; height: 30px; border: 2px solid #0056b3; border-radius: 4px; background: #e9ecef;"></div>
+                                <div id="week1session2" style="width: 30px; height: 30px; border: 2px solid #0056b3; border-radius: 4px; background: #e9ecef;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Week 2 -->
+                        <div style="text-align: center;">
+                            <p style="margin: 0 0 8px 0; color: #550000; font-size: 14px; font-weight: 600;">Week 2</p>
+                            <div style="display: flex; gap: 6px;">
+                                <div id="week2session1" style="width: 30px; height: 30px; border: 2px solid #0056b3; border-radius: 4px; background: #e9ecef;"></div>
+                                <div id="week2session2" style="width: 30px; height: 30px; border: 2px solid #0056b3; border-radius: 4px; background: #e9ecef;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Week 3 -->
+                        <div style="text-align: center;">
+                            <p style="margin: 0 0 8px 0; color: #550000; font-size: 14px; font-weight: 600;">Week 3</p>
+                            <div style="display: flex; gap: 6px;">
+                                <div id="week3session1" style="width: 30px; height: 30px; border: 2px solid #0056b3; border-radius: 4px; background: #e9ecef;"></div>
+                                <div id="week3session2" style="width: 30px; height: 30px; border: 2px solid #0056b3; border-radius: 4px; background: #e9ecef;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+                
+                <!-- Cumulative Stats Card -->
+                <div id="cumulativeStatsCard" style="background: linear-gradient(to bottom, rgba(255, 255, 255, 1) 0%, rgba(250, 248, 246, 1) 100%); padding: 18px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #d0d0d0; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);">
+                    <p style="margin: 0 0 8px 0; color: #550000; font-size: 16px; line-height: 1.5; text-align: center; font-weight: 600;">
+                        Cumulative Data Summary
+                    </p>
+                    <p style="margin: 0; color: #550000; font-size: 15px; line-height: 1.5; text-align: center; font-weight: 500;">
+                        Total identified: <strong><span id="cumulativeRegions" style="color: #0056b3;">0</span> <span id="cumulativeRegionWord">regions</span></strong>, <strong><span id="cumulativeFeatures" style="color: #0056b3;">0</span> <span id="cumulativeFeatureWord">features</span></strong>
+                    </p>
+                </div>
+                
+                <!-- Requirements Notice -->
+                <p style="margin-bottom: 20px; color: #550000; font-size: 15px; line-height: 1.5; text-align: center; padding: 0 10px; font-weight: 500;">
+                    All participants are required to complete two sessions per week.
                 </p>
-                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6; text-align: center; font-weight: 600;">
-                    Thank you for your submission!
-                </p>
-                <p style="margin-bottom: 20px; color: #666; font-size: 18px; line-height: 1.6; text-align: center;">
-                    You can now safely close this window.
-                </p>
+                
+                <!-- Next Steps -->
+                <div style="text-align: center; margin-bottom: 20px; padding: 15px; background: linear-gradient(to bottom, rgba(255, 255, 255, 1) 0%, rgba(250, 248, 246, 1) 100%); border-radius: 8px; border: 1px solid #d0d0d0; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);">
+                    <p style="margin: 0 0 8px 0; color: #550000; font-size: 17px; line-height: 1.4; font-weight: 600;">
+                        Next Steps
+                    </p>
+                    <p style="margin: 0; color: #550000; font-size: 15px; line-height: 1.5; font-weight: 500;">
+                        Your data has been recorded. You may now close this window.
+                    </p>
+                </div>
+                
+                <!-- Close Button -->
+                <div style="text-align: center; margin-top: 25px; padding-bottom: 10px;">
+                    <button onclick="window.close();" style="background: #0056b3; color: white; border: 2px solid #003d82; padding: 12px 36px; font-size: 16px; font-weight: 600; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15); transition: all 0.2s; letter-spacing: 0.5px;" onmouseover="this.style.background='#003d82'; this.style.boxShadow='0 3px 8px rgba(0, 0, 0, 0.2)';" onmouseout="this.style.background='#0056b3'; this.style.boxShadow='0 2px 6px rgba(0, 0, 0, 0.15)';">
+                        Close Window
+                    </button>
+                </div>
             </div>
         </div>
+        
+        <style>
+            @keyframes fadeInModal {
+                from {
+                    opacity: 0;
+                    transform: translateY(-10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+        </style>
     `;
     return modal;
 }
@@ -112,10 +191,10 @@ export function createBeginAnalysisModal() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Ready to begin?</h3>
+                <h3 class="modal-title">🌋 Ready to begin?</h3>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 30px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
+                <p style="margin-bottom: 30px; color: #550000; font-size: 18px; line-height: 1.6; text-align: center;">
                     You won't be able to switch volcanoes after this. Your session should be completed in one sitting. Please use high-quality speakers or headphones.
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
@@ -134,17 +213,20 @@ export function createCompleteConfirmationModal() {
     modal.className = 'modal-window';
     modal.style.display = 'none';
     modal.innerHTML = `
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
-                <h3 class="modal-title">Ready to Complete?</h3>
+                <h3 class="modal-title">🌋 All Done?</h3>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 30px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
-                    Are you ready to complete your analysis? You will proceed to answer a few final questions.
+                <p style="margin-bottom: 20px; color: #550000; font-size: 18px; line-height: 1.6; text-align: center;">
+                    You have identified <strong><span id="completeRegionCount" style="color: #0056b3;">0</span> <span id="completeRegionWord">regions</span></strong> with a total of <strong><span id="completeFeatureCount" style="color: #0056b3;">0</span> <span id="completeFeatureWord">features</span></strong>.
+                </p>
+                <p style="margin-bottom: 30px; color: #550000; font-size: 18px; line-height: 1.6; text-align: center;">
+                    Once you continue, you won't be able to add more regions. You'll complete a brief post-survey to finish your session.
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #28a745; border: 2px solid #28a745; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Complete</button>
-                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Cancel</button>
+                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #28a745; border: 2px solid #28a745; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 180px;">Yes, I'm Done</button>
+                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #cc3333; border: 2px solid #cc3333; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 180px;">Not yet</button>
                 </div>
             </div>
         </div>
@@ -160,7 +242,7 @@ export function createTutorialIntroModal() {
     modal.innerHTML = `
         <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
-                <h3 class="modal-title">Tutorial Introduction</h3>
+                <h3 class="modal-title">🌋 Tutorial Introduction</h3>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 20px; color: #333; font-size: 22px; line-height: 1.6; text-align: center;">
@@ -185,12 +267,12 @@ export function createTutorialRevisitModal() {
     modal.className = 'modal-window';
     modal.style.display = 'none';
     modal.innerHTML = `
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
-                <h3 class="modal-title" id="tutorialRevisitTitle">Revisit Tutorial</h3>
+                <h3 class="modal-title" id="tutorialRevisitTitle">🌋 Revisit Tutorial</h3>
             </div>
             <div class="modal-body">
-                <p id="tutorialRevisitSubtext" style="margin-bottom: 30px; color: #333; font-size: 22px; font-weight: bold; line-height: 1.6; text-align: center;">
+                <p id="tutorialRevisitSubtext" style="margin-bottom: 30px; color: #550000; font-size: 22px; font-weight: bold; line-height: 1.6; text-align: center;">
                     Would you like to revisit the tutorial?
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; justify-content: center;">
@@ -212,13 +294,13 @@ export function createMissingStudyIdModal() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Study ID Required</h3>
+                <h3 class="modal-title">🌋 Study ID Required</h3>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 20px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
+                <p style="margin-bottom: 20px; color: #550000; font-size: 18px; line-height: 1.6; text-align: center;">
                     Your study ID has not been associated with this computer.
                 </p>
-                <p style="margin-bottom: 20px; color: #555; font-size: 16px; line-height: 1.6; text-align: center;">
+                <p style="margin-bottom: 20px; color: #550000; font-size: 16px; line-height: 1.6; text-align: center;">
                     In order for your data to be accepted, you will need to enter your study ID or reach out for assistance.
                 </p>
                 <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
@@ -246,11 +328,11 @@ export function createParticipantModal() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Welcome</h3>
+                <h3 class="modal-title">🌋 Welcome</h3>
                 <button class="modal-close" style="display: none;">&times;</button>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 20px; color: #333; font-size: 16px; font-weight: bold;">Enter your participant ID number to begin:</p>
+                <p style="margin-bottom: 20px; color: #550000; font-size: 16px; font-weight: bold;">Enter your participant ID number to begin:</p>
                 <div class="modal-form-group">
                     <label for="participantId" style="display: none;">Participant ID/Number:</label>
                     <input type="text" id="participantId" placeholder="Enter participant identifier" style="font-size: 18px;">
@@ -478,7 +560,7 @@ export function createPreSurveyModal() {
 }
 
 export function createPostSurveyModal() {
-    return createMoodSurveyModal('post', 'postSurveyModal', '📊 Post-Survey');
+    return createMoodSurveyModal('post', 'postSurveyModal', '🌋 Post-Survey');
 }
 
 export function createActivityLevelModal() {
@@ -489,12 +571,12 @@ export function createActivityLevelModal() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Activity Level Assessment</h3>
+                <h3 class="modal-title">🌋 Activity Level Assessment</h3>
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <!-- Question -->
-                <div style="font-size: 18px; color: #333; margin-bottom: 30px; text-align: center; font-weight: normal;">
+                <div style="font-size: 18px; color: #550000; margin-bottom: 30px; text-align: center; font-weight: normal;">
                     Based on your current knowledge and previous interactions with audified seismic data, during the last 24 hours what is the level of activity displayed here?
                 </div>
                 
@@ -539,7 +621,7 @@ export function createAwesfModal() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Please take a moment to reflect on your experience</h3>
+                <h3 class="modal-title">🌋 Please take a moment to reflect on your experience</h3>
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">

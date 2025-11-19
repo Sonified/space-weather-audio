@@ -1996,7 +1996,7 @@ export async function closeWelcomeModal(keepOverlay = null) {
 }
 
 // End Modal Functions
-export function openEndModal(participantId, sessionCount) {
+export async function openEndModal(participantId, sessionCount) {
     console.log('🔍 openEndModal called', { participantId, sessionCount });
     
     // Close all other modals first
@@ -2013,24 +2013,124 @@ export function openEndModal(participantId, sessionCount) {
     fadeInOverlay();
     console.log('✅ Overlay faded in');
     
-    // Update submission time with local time including seconds
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        second: '2-digit',
-        hour12: true 
-    });
-    document.getElementById('submissionTime').textContent = timeString;
+    // Update submission date and time in formal certificate format
+    try {
+        const now = new Date();
+        
+        // Format date: "November 19, 2025"
+        const dateString = now.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric'
+        });
+        
+        // Format time: "01:44:40 AM"
+        const timeString = now.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit',
+            hour12: true 
+        });
+        
+        const dateEl = document.getElementById('submissionDate');
+        const timeEl = document.getElementById('submissionTime');
+        
+        if (dateEl) {
+            dateEl.textContent = dateString;
+        }
+        if (timeEl) {
+            timeEl.textContent = timeString;
+        }
+    } catch (error) {
+        console.warn('⚠️ Could not update submission date/time:', error);
+    }
     
     // Update participant ID
-    document.getElementById('submissionParticipantId').textContent = participantId;
+    try {
+        const pidEl = document.getElementById('submissionParticipantId');
+        if (pidEl) {
+            pidEl.textContent = participantId || 'Unknown';
+        }
+    } catch (error) {
+        console.warn('⚠️ Could not update participant ID:', error);
+    }
     
-    // Update session count
-    document.getElementById('sessionCount').textContent = sessionCount;
+    // Week and session text removed from modal - no longer needed
     
-    modal.style.display = 'flex';
-    console.log('🎉 End modal opened');
+    // Update visual session tracker
+    try {
+        const { getSessionCompletionTracker } = await import('./study-workflow.js');
+        const tracker = getSessionCompletionTracker();
+        
+        // Update overall progress percentage
+        const overallProgressPercentEl = document.getElementById('overallProgressPercent');
+        if (overallProgressPercentEl) {
+            overallProgressPercentEl.textContent = `${tracker.progressPercent}%`;
+        }
+        
+        // Update visual session boxes
+        const weeks = ['week1', 'week2', 'week3'];
+        weeks.forEach((week, weekIndex) => {
+            for (let session = 1; session <= 2; session++) {
+                const boxId = `${week}session${session}`;
+                const boxEl = document.getElementById(boxId);
+                if (boxEl && tracker[week] && tracker[week][session - 1]) {
+                    // Filled - completed session
+                    boxEl.style.background = 'linear-gradient(135deg, #0056b3 0%, #0066cc 100%)';
+                    boxEl.style.boxShadow = '0 2px 4px rgba(0, 86, 179, 0.3)';
+                } else if (boxEl) {
+                    // Empty - not completed
+                    boxEl.style.background = '#e9ecef';
+                    boxEl.style.boxShadow = 'none';
+                }
+            }
+        });
+    } catch (error) {
+        console.warn('⚠️ Could not update session tracker:', error);
+    }
+    
+    // Update cumulative stats (always display, even if 0)
+    try {
+        const { getCumulativeCounts } = await import('./study-workflow.js');
+        const cumulativeStats = getCumulativeCounts();
+        
+        const cumulativeCard = document.getElementById('cumulativeStatsCard');
+        const cumulativeRegionsEl = document.getElementById('cumulativeRegions');
+        const cumulativeRegionWordEl = document.getElementById('cumulativeRegionWord');
+        const cumulativeFeaturesEl = document.getElementById('cumulativeFeatures');
+        const cumulativeFeatureWordEl = document.getElementById('cumulativeFeatureWord');
+        
+        if (cumulativeStats) {
+            if (cumulativeRegionsEl) {
+                cumulativeRegionsEl.textContent = cumulativeStats.totalRegions;
+            }
+            if (cumulativeRegionWordEl) {
+                cumulativeRegionWordEl.textContent = cumulativeStats.totalRegions === 1 ? 'region' : 'regions';
+            }
+            if (cumulativeFeaturesEl) {
+                cumulativeFeaturesEl.textContent = cumulativeStats.totalFeatures;
+            }
+            if (cumulativeFeatureWordEl) {
+                cumulativeFeatureWordEl.textContent = cumulativeStats.totalFeatures === 1 ? 'feature' : 'features';
+            }
+            // Always show the card
+            if (cumulativeCard) {
+                cumulativeCard.style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ Could not load cumulative stats:', error);
+    }
+    
+    // Display the modal (final step - always try to show something)
+    try {
+        modal.style.display = 'flex';
+        console.log('🎉 End modal opened');
+    } catch (error) {
+        console.error('❌ CRITICAL: Could not display end modal:', error);
+        // Last resort: try to show SOMETHING
+        alert('Session completed! You may close this window.');
+    }
 }
 
 export function closeEndModal(keepOverlay = null) {
@@ -2147,18 +2247,45 @@ export async function closeWelcomeBackModal(keepOverlay = null) {
 }
 
 // Complete Confirmation Modal Functions
-export function openCompleteConfirmationModal() {
+export async function openCompleteConfirmationModal() {
     // Close all other modals first
     closeAllModals();
     
     const modal = document.getElementById('completeConfirmationModal');
+    
+    // Get regions and calculate counts
+    const { getRegions } = await import('./region-tracker.js');
+    const regions = getRegions();
+    const regionCount = regions.length;
+    
+    // Calculate total features across all regions
+    const featureCount = regions.reduce((total, region) => total + (region.featureCount || 0), 0);
+    
+    // Update the modal content
+    const regionCountEl = document.getElementById('completeRegionCount');
+    const regionWordEl = document.getElementById('completeRegionWord');
+    const featureCountEl = document.getElementById('completeFeatureCount');
+    const featureWordEl = document.getElementById('completeFeatureWord');
+    
+    if (regionCountEl) {
+        regionCountEl.textContent = regionCount;
+    }
+    if (regionWordEl) {
+        regionWordEl.textContent = regionCount === 1 ? 'region' : 'regions';
+    }
+    if (featureCountEl) {
+        featureCountEl.textContent = featureCount;
+    }
+    if (featureWordEl) {
+        featureWordEl.textContent = featureCount === 1 ? 'feature' : 'features';
+    }
     
     // Fade in overlay background (standard design pattern)
     fadeInOverlay();
     
     if (modal) {
         modal.style.display = 'flex';
-        console.log('✅ Complete Confirmation modal opened');
+        console.log(`✅ Complete Confirmation modal opened (${regionCount} regions, ${featureCount} features)`);
     } else {
         console.error('❌ Complete Confirmation modal not found in DOM');
     }
@@ -3108,7 +3235,7 @@ export async function attemptSubmission(fromWorkflow = false) {
         let sessionRecord = null;
         
         try {
-            const { getSessionCountThisWeek, getSessionStats, completeSession } = await import('./study-workflow.js');
+            const { getSessionCountThisWeek, getSessionStats, completeSession, incrementCumulativeCounts, getCurrentWeekAndSession, markSessionComplete } = await import('./study-workflow.js');
             
             try {
                 weeklySessionCount = getSessionCountThisWeek() || 0;
@@ -3130,6 +3257,29 @@ export async function attemptSubmission(fromWorkflow = false) {
                 sessionRecord = completeSession(completedAllSurveys, true); // true = submitted to Qualtrics
             } catch (e) {
                 console.warn('⚠️ Could not complete session record:', e);
+            }
+            
+            try {
+                // Increment cumulative region and feature counts
+                const regionCount = formattedRegions.length;
+                const featureCount = formattedRegions.reduce((sum, r) => sum + (r.features?.length || 0), 0);
+                incrementCumulativeCounts(regionCount, featureCount);
+            } catch (e) {
+                console.warn('⚠️ Could not increment cumulative counts:', e);
+            }
+            
+            try {
+                // Mark this specific session as complete in the tracker
+                const { currentWeek, sessionNumber, alreadyComplete } = getCurrentWeekAndSession();
+                
+                if (alreadyComplete) {
+                    console.warn(`⚠️ Week ${currentWeek}, Session ${sessionNumber} already marked complete - participant may be resubmitting`);
+                } else {
+                    markSessionComplete(currentWeek, sessionNumber);
+                    console.log(`✅ Marked Week ${currentWeek}, Session ${sessionNumber} as complete`);
+                }
+            } catch (e) {
+                console.warn('⚠️ Could not mark session complete in tracker:', e);
             }
         } catch (error) {
             console.warn('⚠️ Could not import session tracking functions:', error);
@@ -3160,6 +3310,40 @@ export async function attemptSubmission(fromWorkflow = false) {
                 totalSessionTimeMs: (globalStats && globalStats.totalSessionTime) || 0,
                 totalSessionTimeHours: (globalStats && globalStats.totalSessionTimeHours) || 0
             },
+            
+            // Cumulative region and feature counts (across all sessions)
+            cumulativeStats: (() => {
+                try {
+                    const stored = localStorage.getItem('study_total_regions_identified');
+                    const totalRegions = parseInt(stored || '0') || 0;
+                    const storedFeatures = localStorage.getItem('study_total_features_identified');
+                    const totalFeatures = parseInt(storedFeatures || '0') || 0;
+                    return {
+                        totalRegionsIdentified: totalRegions,
+                        totalFeaturesIdentified: totalFeatures
+                    };
+                } catch (e) {
+                    return { totalRegionsIdentified: 0, totalFeaturesIdentified: 0 };
+                }
+            })(),
+            
+            // Session completion tracker (which specific sessions are complete)
+            sessionCompletionTracker: (() => {
+                try {
+                    const stored = localStorage.getItem('study_session_completion_tracker');
+                    return stored ? JSON.parse(stored) : {
+                        week1: [false, false],
+                        week2: [false, false],
+                        week3: [false, false]
+                    };
+                } catch (e) {
+                    return {
+                        week1: [false, false],
+                        week2: [false, false],
+                        week3: [false, false]
+                    };
+                }
+            })(),
             
             // Event tracking and regions
             tracking: trackingData || null,
