@@ -2042,6 +2042,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Cache & Download
     document.getElementById('purgeCacheBtn').addEventListener('click', purgeCloudflareCache);
     document.getElementById('downloadBtn').addEventListener('click', downloadAudio);
+    document.getElementById('exportRegionsBtn').addEventListener('click', exportRegionsData);
     
     // Station Selection
     document.getElementById('volcano').addEventListener('change', (e) => {

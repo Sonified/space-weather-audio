@@ -354,6 +354,32 @@ export function loadRegionsAfterDataFetch() {
     
     const loadedRegions = loadRegionsFromStorage(volcano);
     if (loadedRegions && loadedRegions.length > 0) {
+        // 🔧 CRITICAL FIX: Recalculate sample indices from timestamps!
+        // Sample indices are relative to the current data fetch and MUST be recalculated
+        // otherwise regions will drift when data is re-fetched with a different time range
+        loadedRegions.forEach(region => {
+            if (region.startTime && region.stopTime && zoomState.isInitialized()) {
+                // Recalculate sample indices from absolute timestamps
+                const dataStartMs = State.dataStartTime.getTime();
+                const regionStartMs = new Date(region.startTime).getTime();
+                const regionEndMs = new Date(region.stopTime).getTime();
+                const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+                const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+                
+                // Update sample indices for current data fetch
+                const oldStartSample = region.startSample;
+                const oldEndSample = region.endSample;
+                region.startSample = zoomState.timeToSample(regionStartSeconds);
+                region.endSample = zoomState.timeToSample(regionEndSeconds);
+                
+                if (!isStudyMode()) {
+                    console.log(`🔧 Region ${region.id} timestamps: ${region.startTime} → ${region.stopTime}`);
+                    console.log(`🔧 Recalculated samples: ${oldStartSample?.toLocaleString()} → ${region.startSample.toLocaleString()} (start)`);
+                    console.log(`🔧 Recalculated samples: ${oldEndSample?.toLocaleString()} → ${region.endSample.toLocaleString()} (end)`);
+                }
+            }
+        });
+        
         regionsByVolcano.set(volcano, loadedRegions);
         console.log(`📂 Restored ${loadedRegions.length} region(s) for ${volcano} from localStorage after data fetch`);
         
@@ -746,19 +772,27 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
             }
         }
         
-        // 🏛️ Use sample indices if available (new format), otherwise fall back to timestamps (backward compatibility)
+        // 🏛️ ALWAYS use timestamps as source of truth (they're absolute and don't drift)
+        // Sample indices are relative to a specific data fetch and become stale after reload
         let regionStartSeconds, regionEndSeconds;
+        let conversionMethod = 'unknown';
         
-        if (region.startSample !== undefined && region.endSample !== undefined) {
-            // New format: convert from eternal sample indices
-            regionStartSeconds = zoomState.sampleToTime(region.startSample);
-            regionEndSeconds = zoomState.sampleToTime(region.endSample);
-        } else {
-            // Old format: convert from timestamps (backward compatibility)
+        if (region.startTime && region.stopTime) {
+            // Convert from absolute timestamps (source of truth!)
             const regionStartMs = new Date(region.startTime).getTime();
             const regionEndMs = new Date(region.stopTime).getTime();
             regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
             regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+            conversionMethod = 'timestamps';
+        } else if (region.startSample !== undefined && region.endSample !== undefined) {
+            // Old format fallback: convert from sample indices (may drift!)
+            regionStartSeconds = zoomState.sampleToTime(region.startSample);
+            regionEndSeconds = zoomState.sampleToTime(region.endSample);
+            conversionMethod = 'samples';
+            console.warn(`⚠️ Region ${index} using OLD sample-based positioning - may drift! Please recreate this region.`);
+        } else {
+            // No valid data - skip this region
+            return;
         }
         
         // console.log(`   Drawing region ${index}: ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
@@ -770,9 +804,10 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
             // Get the current interpolated time range (same range the x-axis ticks are using)
             const interpolatedRange = getInterpolatedTimeRange();
 
-            // Convert region samples to real-world timestamps (eternal truth)
-            const regionStartTimestamp = zoomState.sampleToRealTimestamp(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds));
-            const regionEndTimestamp = zoomState.sampleToRealTimestamp(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds));
+            // 🔥 FIX: Use saved timestamps DIRECTLY (not sample conversions which accumulate rounding errors!)
+            // This matches how features are positioned, ensuring regions and features stay in sync
+            const regionStartTimestamp = new Date(region.startTime);
+            const regionEndTimestamp = new Date(region.stopTime);
 
             // Calculate where these timestamps fall within the interpolated display range
             const displayStartMs = interpolatedRange.startTime.getTime();
@@ -850,17 +885,20 @@ export function drawSpectrogramRegionHighlights(ctx, canvasWidth, canvasHeight) 
     if (regions.length === 0) return;
     
     regions.forEach((region, index) => {
-        // Convert region to seconds
+        // Convert region to seconds - ALWAYS use timestamps as source of truth
         let regionStartSeconds, regionEndSeconds;
-        if (region.startSample !== undefined && region.endSample !== undefined) {
-            regionStartSeconds = zoomState.sampleToTime(region.startSample);
-            regionEndSeconds = zoomState.sampleToTime(region.endSample);
-        } else {
+        if (region.startTime && region.stopTime) {
             const dataStartMs = State.dataStartTime.getTime();
             const regionStartMs = new Date(region.startTime).getTime();
             const regionEndMs = new Date(region.stopTime).getTime();
             regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
             regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+        } else if (region.startSample !== undefined && region.endSample !== undefined) {
+            // Old format fallback
+            regionStartSeconds = zoomState.sampleToTime(region.startSample);
+            regionEndSeconds = zoomState.sampleToTime(region.endSample);
+        } else {
+            return; // No valid data
         }
         
         // Use interpolated time range (same as waveform)
@@ -998,18 +1036,21 @@ function calculateButtonPositions(region, index) {
     const canvasWidth = buttonsCanvas.width;   // Current device pixels from buttons canvas
     const canvasHeight = buttonsCanvas.height; // Current device pixels from buttons canvas
     
-    // Calculate region position (same logic as drawRegionHighlights)
+    // Calculate region position - ALWAYS use timestamps as source of truth
     const dataStartMs = State.dataStartTime.getTime();
     let regionStartSeconds, regionEndSeconds;
     
-    if (region.startSample !== undefined && region.endSample !== undefined) {
-        regionStartSeconds = zoomState.sampleToTime(region.startSample);
-        regionEndSeconds = zoomState.sampleToTime(region.endSample);
-    } else {
+    if (region.startTime && region.stopTime) {
         const regionStartMs = new Date(region.startTime).getTime();
         const regionEndMs = new Date(region.stopTime).getTime();
         regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
         regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    } else if (region.startSample !== undefined && region.endSample !== undefined) {
+        // Old format fallback
+        regionStartSeconds = zoomState.sampleToTime(region.startSample);
+        regionEndSeconds = zoomState.sampleToTime(region.endSample);
+    } else {
+        return null; // No valid data
     }
     
     // Calculate pixel positions (same logic as drawRegionHighlights)
@@ -2209,20 +2250,22 @@ function setSelectionFromActiveRegion() {
     }
     
     // No existing selection - set it to match region bounds
-    // 🏛️ Use sample indices if available (new format), otherwise fall back to timestamps (backward compatibility)
+    // 🏛️ ALWAYS use timestamps as source of truth (sample indices drift after reload)
     let regionStartSeconds, regionEndSeconds;
     
-    if (region.startSample !== undefined && region.endSample !== undefined) {
-        // New format: convert from eternal sample indices
-        regionStartSeconds = zoomState.sampleToTime(region.startSample);
-        regionEndSeconds = zoomState.sampleToTime(region.endSample);
-    } else {
-        // Old format: convert from timestamps (backward compatibility)
+    if (region.startTime && region.stopTime) {
+        // Convert from absolute timestamps (source of truth!)
         const dataStartMs = State.dataStartTime.getTime();
         const regionStartMs = new Date(region.startTime).getTime();
         const regionEndMs = new Date(region.stopTime).getTime();
         regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
         regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    } else if (region.startSample !== undefined && region.endSample !== undefined) {
+        // Old format fallback
+        regionStartSeconds = zoomState.sampleToTime(region.startSample);
+        regionEndSeconds = zoomState.sampleToTime(region.endSample);
+    } else {
+        return false; // No valid data
     }
     
     // Set selection to region's time range
