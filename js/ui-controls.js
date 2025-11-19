@@ -2868,6 +2868,14 @@ async function checkAndSubmitIfComplete(participantId) {
                     console.log('📋 Qualtrics Response ID:', qualtricsResponseId);
                 }
                 
+                // Upload submission data to R2 (backup)
+                try {
+                    const { uploadSubmissionData } = await import('./data-uploader.js');
+                    await uploadSubmissionData(participantId, jsonDump);
+                } catch (error) {
+                    console.warn('⚠️ Could not upload submission to R2:', error);
+                }
+                
                 // Mark session as submitted with Qualtrics response ID
                 markSessionAsSubmitted(participantId, qualtricsResponseId);
                 

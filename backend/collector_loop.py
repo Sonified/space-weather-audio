@@ -4,7 +4,7 @@ Seismic Data Collector Service for Railway Deployment
 Runs data collection every 10 minutes at :02, :12, :22, :32, :42, :52
 Provides HTTP API for health monitoring, status, validation, and gap detection
 """
-__version__ = "2025_11_17_v2.48"
+__version__ = "2025_11_19_v2.49"
 import time
 import sys
 import os
@@ -3569,6 +3569,98 @@ def get_collector_state():
         'last_run_completed_previous': latest_run_timestamp,  # Previous instances (from file)
         'currently_running': status['currently_running']
     })
+
+@app.route('/api/upload-user-data', methods=['POST'])
+def upload_user_data():
+    """
+    Store user's localStorage data to R2
+    Structure: volcano-audio-anonymized-data/participants/{participantId}/
+        - user-status/status.json (current state, overwritten)
+        - submissions/{participantId}_Complete_{timestamp}.json (append-only)
+    """
+    from flask import request
+    
+    try:
+        data = request.get_json()
+        
+        if not data or 'participantId' not in data:
+            return jsonify({'error': 'Missing participantId'}), 400
+        
+        participant_id = data['participantId']
+        timestamp = data.get('timestamp', datetime.now(timezone.utc).isoformat())
+        upload_type = data.get('uploadType', 'submission')  # 'submission' or 'status'
+        
+        s3 = get_s3_client()
+        base_path = f'volcano-audio-anonymized-data/participants/{participant_id}'
+        
+        uploaded_files = []
+        
+        # 1. Always update user-status/status.json (overwrite)
+        status_data = {
+            'participantId': participant_id,
+            'lastUpdated': timestamp,
+            'studyProgress': {
+                'hasSeenParticipantSetup': data.get('hasSeenParticipantSetup', False),
+                'hasSeenWelcome': data.get('hasSeenWelcome', False),
+                'hasSeenTutorial': data.get('hasSeenTutorial', False),
+                'tutorialCompleted': data.get('tutorialCompleted', False),
+                'weeklySessionCount': data.get('weeklySessionCount', 0),
+                'weekStartDate': data.get('weekStartDate', None),
+                'lastAwesfDate': data.get('lastAwesfDate', None)
+            },
+            'sessionTracking': {
+                'totalSessionsStarted': data.get('totalSessionsStarted', 0),
+                'totalSessionsCompleted': data.get('totalSessionsCompleted', 0),
+                'totalSessionTime': data.get('totalSessionTime', 0),
+                'totalSessionTimeHours': data.get('totalSessionTimeHours', 0)
+            },
+            'preferences': {
+                'selectedVolcano': data.get('selectedVolcano', None),
+                'selectedMode': data.get('selectedMode', None)
+            }
+        }
+        
+        status_key = f'{base_path}/user-status/status.json'
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=status_key,
+            Body=json.dumps(status_data, indent=2),
+            ContentType='application/json'
+        )
+        uploaded_files.append(status_key)
+        
+        # 2. If submission data provided, save to submissions/ (append-only)
+        if upload_type == 'submission' and 'submissionData' in data:
+            # Format timestamp for filename: 2025-11-19_14-30-45
+            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            timestamp_str = dt.strftime('%Y-%m-%d_%H-%M-%S')
+            
+            submission_key = f'{base_path}/submissions/{participant_id}_Complete_{timestamp_str}.json'
+            s3.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=submission_key,
+                Body=json.dumps(data['submissionData'], indent=2),
+                ContentType='application/json'
+            )
+            uploaded_files.append(submission_key)
+        
+        print(f"✅ Uploaded user data for {participant_id}: {uploaded_files}")
+        
+        return jsonify({
+            'status': 'success',
+            'participantId': participant_id,
+            'timestamp': timestamp,
+            'filesUploaded': uploaded_files
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error uploading user data: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'status': 'failed'
+        }), 500
 
 @app.route('/health')
 def health():

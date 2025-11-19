@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R2 Upload Test - Volcano Audio</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        
+        h1 {
+            color: #ff6b6b;
+            border-bottom: 3px solid #ff6b6b;
+            padding-bottom: 10px;
+        }
+        
+        .test-section {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .test-section h2 {
+            color: #4ecdc4;
+            margin-top: 0;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .log {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        .success { color: #4ecdc4; }
+        .error { color: #ff6b6b; }
+        .info { color: #ffd93d; }
+        .data { color: #95e1d3; }
+        
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        
+        .status.idle { background: #555; }
+        .status.running { background: #ffd93d; color: #1a1a1a; }
+        .status.success { background: #4ecdc4; color: #1a1a1a; }
+        .status.failed { background: #ff6b6b; }
+        
+        .info-box {
+            background: #2a4a5a;
+            border-left: 4px solid #4ecdc4;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .setup-data {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .setup-data label {
+            font-weight: 600;
+            color: #4ecdc4;
+        }
+        
+        .setup-data input, .setup-data select {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            padding: 8px;
+            border-radius: 4px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <h1>🗂️ R2 User Data Upload - Integration Test</h1>
+    
+    <div class="info-box">
+        <strong>ℹ️ About this test:</strong><br>
+        This page loads the ACTUAL <code>js/data-uploader.js</code> module and tests the real upload functions.
+        It simulates localStorage data and tests both status-only and full submission uploads.
+    </div>
+    
+    <!-- Setup Section -->
+    <div class="test-section">
+        <h2>⚙️ Setup Test Data</h2>
+        <div class="setup-data">
+            <div>
+                <label>Participant ID:</label>
+                <input type="text" id="participantId" value="">
+            </div>
+            <div>
+                <label>Selected Volcano:</label>
+                <select id="selectedVolcano">
+                    <option value="Okmok">Okmok</option>
+                    <option value="Spurr">Spurr</option>
+                    <option value="Redoubt">Redoubt</option>
+                </select>
+            </div>
+        </div>
+        <button onclick="setupTestData()">📝 Setup Test localStorage</button>
+        <button onclick="clearTestData()">🗑️ Clear localStorage</button>
+        <button onclick="showLocalStorage()">👁️ Show localStorage</button>
+    </div>
+    
+    <!-- Test 1: Upload Status -->
+    <div class="test-section">
+        <h2>Test 1: Upload User Status <span class="status idle" id="status1">IDLE</span></h2>
+        <p>Tests <code>uploadUserStatus(participantId)</code> - uploads current state to user-status/status.json</p>
+        <button onclick="runTest1()">▶️ Run Test 1</button>
+        <div class="log" id="log1">Waiting to run...</div>
+    </div>
+    
+    <!-- Test 2: Upload Submission -->
+    <div class="test-section">
+        <h2>Test 2: Upload Submission Data <span class="status idle" id="status2">IDLE</span></h2>
+        <p>Tests <code>uploadSubmissionData(participantId, submissionData)</code> - uploads to submissions/ folder</p>
+        <button onclick="runTest2()">▶️ Run Test 2</button>
+        <div class="log" id="log2">Waiting to run...</div>
+    </div>
+    
+    <!-- Test 3: Full Flow -->
+    <div class="test-section">
+        <h2>Test 3: Simulate Full Session Completion <span class="status idle" id="status3">IDLE</span></h2>
+        <p>Simulates what happens when a user completes all surveys and submits to Qualtrics</p>
+        <button onclick="runTest3()">▶️ Run Test 3 (Full Flow)</button>
+        <div class="log" id="log3">Waiting to run...</div>
+    </div>
+
+    <script type="module">
+        // Import the ACTUAL data-uploader module
+        import { uploadUserStatus, uploadSubmissionData } from '../js/data-uploader.js';
+        
+        // Make functions available globally for onclick handlers
+        window.uploadUserStatus = uploadUserStatus;
+        window.uploadSubmissionData = uploadSubmissionData;
+        
+        // Generate unique test participant ID
+        const testParticipantId = `TEST_${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        document.getElementById('participantId').value = testParticipantId;
+        
+        // Logging helpers
+        function log(testNum, message, type = 'info') {
+            const logEl = document.getElementById(`log${testNum}`);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'data' ? 'data' : 'info';
+            logEl.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+        
+        function setStatus(testNum, status) {
+            const statusEl = document.getElementById(`status${testNum}`);
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = status.toUpperCase();
+        }
+        
+        function clearLog(testNum) {
+            document.getElementById(`log${testNum}`).innerHTML = '';
+        }
+        
+        // Setup test data in localStorage
+        window.setupTestData = function() {
+            const participantId = document.getElementById('participantId').value;
+            const volcano = document.getElementById('selectedVolcano').value;
+            
+            // Set participant ID
+            localStorage.setItem('participantId', participantId);
+            
+            // Study progress flags
+            localStorage.setItem('study_has_seen_participant_setup', 'true');
+            localStorage.setItem('study_has_seen_welcome', 'true');
+            localStorage.setItem('study_has_seen_tutorial', 'true');
+            localStorage.setItem('study_tutorial_completed', 'true');
+            
+            // Session tracking
+            localStorage.setItem('study_weekly_session_count', '2');
+            localStorage.setItem('study_week_start_date', '2025-11-17');
+            localStorage.setItem('study_total_sessions_started', '3');
+            localStorage.setItem('study_total_sessions_completed', '2');
+            localStorage.setItem('study_total_session_time', '7200000'); // 2 hours
+            
+            // Session history
+            const sessionHistory = [
+                {
+                    startTime: '2025-11-19T14:00:00.000Z',
+                    endTime: '2025-11-19T15:30:00.000Z',
+                    duration: 5400000,
+                    completedAllSurveys: true,
+                    submittedToQualtrics: true
+                },
+                {
+                    startTime: '2025-11-20T10:00:00.000Z',
+                    endTime: '2025-11-20T11:00:00.000Z',
+                    duration: 3600000,
+                    completedAllSurveys: true,
+                    submittedToQualtrics: true
+                }
+            ];
+            localStorage.setItem('study_session_history', JSON.stringify(sessionHistory));
+            
+            // Current session
+            localStorage.setItem('study_current_session_start', new Date().toISOString());
+            
+            // Preferences
+            localStorage.setItem('selectedVolcano', volcano);
+            localStorage.setItem('selectedMode', 'study');
+            
+            // Mock response data
+            const responses = {
+                sessionId: 'test-session-' + Date.now(),
+                participantId: participantId,
+                createdAt: new Date().toISOString(),
+                pre: { mood: 3, energy: 4, stress: 2 },
+                post: { mood: 4, energy: 4, stress: 1 },
+                submitted: false
+            };
+            localStorage.setItem(`participant_response_${participantId}`, JSON.stringify(responses));
+            
+            alert('✅ Test data set up in localStorage!\n\nParticipant ID: ' + participantId);
+        };
+        
+        window.clearTestData = function() {
+            localStorage.clear();
+            alert('🗑️ localStorage cleared!');
+        };
+        
+        window.showLocalStorage = function() {
+            const data = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                data[key] = localStorage.getItem(key);
+            }
+            console.log('📦 localStorage:', data);
+            alert('📦 localStorage dumped to console (F12)');
+        };
+        
+        // Test 1: Upload Status Only
+        window.runTest1 = async function() {
+            clearLog(1);
+            setStatus(1, 'running');
+            log(1, '🚀 Starting Test 1: Upload User Status', 'info');
+            
+            const participantId = document.getElementById('participantId').value;
+            
+            if (!participantId) {
+                log(1, '❌ Error: No participant ID set!', 'error');
+                setStatus(1, 'failed');
+                return;
+            }
+            
+            log(1, `📋 Participant ID: ${participantId}`, 'info');
+            log(1, '📤 Calling uploadUserStatus()...', 'info');
+            
+            try {
+                const result = await uploadUserStatus(participantId);
+                
+                log(1, '📥 Response received:', 'info');
+                log(1, JSON.stringify(result, null, 2), 'data');
+                
+                if (result.status === 'success') {
+                    log(1, '✅ Upload successful!', 'success');
+                    log(1, `📁 Files uploaded: ${result.filesUploaded?.length || 0}`, 'success');
+                    result.filesUploaded?.forEach(file => {
+                        log(1, `   - ${file}`, 'data');
+                    });
+                    setStatus(1, 'success');
+                } else {
+                    log(1, `❌ Upload failed: ${result.error || result.reason}`, 'error');
+                    setStatus(1, 'failed');
+                }
+            } catch (error) {
+                log(1, `❌ Error: ${error.message}`, 'error');
+                console.error(error);
+                setStatus(1, 'failed');
+            }
+        };
+        
+        // Test 2: Upload Submission Data
+        window.runTest2 = async function() {
+            clearLog(2);
+            setStatus(2, 'running');
+            log(2, '🚀 Starting Test 2: Upload Submission Data', 'info');
+            
+            const participantId = document.getElementById('participantId').value;
+            
+            if (!participantId) {
+                log(2, '❌ Error: No participant ID set!', 'error');
+                setStatus(2, 'failed');
+                return;
+            }
+            
+            // Create mock submission data (jsonDump)
+            const submissionData = {
+                sessionId: 'test-session-' + Date.now(),
+                participantId: participantId,
+                sessionStarted: '2025-11-19T14:00:00.000Z',
+                sessionEnded: new Date().toISOString(),
+                sessionDurationMs: 5400000,
+                completedAllSurveys: true,
+                submittedToQualtrics: true,
+                sessionTimedOut: false,
+                weeklySessionCount: 2,
+                globalStats: {
+                    totalSessionsStarted: 3,
+                    totalSessionsCompleted: 2,
+                    totalSessionTimeMs: 7200000,
+                    totalSessionTimeHours: 2.0
+                },
+                regions: [
+                    {
+                        regionId: 'test-region-1',
+                        startTime: 100.5,
+                        endTime: 200.3,
+                        description: 'Test seismic event',
+                        features: [
+                            {
+                                featureNumber: 1,
+                                featureType: 'Tremor',
+                                featureRepetition: 'Singular',
+                                featureStartTime: 110.2,
+                                featureEndTime: 120.5,
+                                featureNotes: 'Test feature from dashboard',
+                                frequency: 'Low'
+                            }
+                        ]
+                    }
+                ]
+            };
+            
+            log(2, `📋 Participant ID: ${participantId}`, 'info');
+            log(2, `📊 Submission data: ${submissionData.regions.length} regions`, 'info');
+            log(2, '📤 Calling uploadSubmissionData()...', 'info');
+            
+            try {
+                const result = await uploadSubmissionData(participantId, submissionData);
+                
+                log(2, '📥 Response received:', 'info');
+                log(2, JSON.stringify(result, null, 2), 'data');
+                
+                if (result.status === 'success') {
+                    log(2, '✅ Upload successful!', 'success');
+                    log(2, `📁 Files uploaded: ${result.filesUploaded?.length || 0}`, 'success');
+                    result.filesUploaded?.forEach(file => {
+                        log(2, `   - ${file}`, 'data');
+                    });
+                    
+                    // Check if both files were created
+                    const files = result.filesUploaded || [];
+                    const hasStatus = files.some(f => f.includes('user-status/status.json'));
+                    const hasSubmission = files.some(f => f.includes('submissions/') && f.includes('_Complete_'));
+                    
+                    if (hasStatus && hasSubmission) {
+                        log(2, '✅ Both files created correctly!', 'success');
+                        log(2, '   ✓ user-status/status.json', 'success');
+                        log(2, '   ✓ submissions/*_Complete_*.json', 'success');
+                    } else {
+                        log(2, '⚠️  Missing expected files:', 'error');
+                        if (!hasStatus) log(2, '   ✗ user-status/status.json', 'error');
+                        if (!hasSubmission) log(2, '   ✗ submissions file', 'error');
+                    }
+                    
+                    setStatus(2, 'success');
+                } else {
+                    log(2, `❌ Upload failed: ${result.error || result.reason}`, 'error');
+                    setStatus(2, 'failed');
+                }
+            } catch (error) {
+                log(2, `❌ Error: ${error.message}`, 'error');
+                console.error(error);
+                setStatus(2, 'failed');
+            }
+        };
+        
+        // Test 3: Full Flow (what happens in real app)
+        window.runTest3 = async function() {
+            clearLog(3);
+            setStatus(3, 'running');
+            log(3, '🚀 Starting Test 3: Full Session Completion Flow', 'info');
+            log(3, '   (Simulating what happens in ui-controls.js after Qualtrics submission)', 'info');
+            
+            const participantId = document.getElementById('participantId').value;
+            
+            if (!participantId) {
+                log(3, '❌ Error: No participant ID set!', 'error');
+                setStatus(3, 'failed');
+                return;
+            }
+            
+            log(3, '1️⃣ User completes all surveys...', 'info');
+            log(3, '2️⃣ Data submitted to Qualtrics... ✅', 'info');
+            log(3, '3️⃣ Now uploading to R2 as backup...', 'info');
+            
+            // Simulate the jsonDump that gets created in attemptSubmission()
+            const jsonDump = {
+                sessionId: 'session-' + Date.now(),
+                participantId: participantId,
+                sessionStarted: '2025-11-19T14:00:00.000Z',
+                sessionEnded: new Date().toISOString(),
+                sessionDurationMs: 5400000,
+                completedAllSurveys: true,
+                submittedToQualtrics: true,
+                sessionTimedOut: false,
+                weeklySessionCount: parseInt(localStorage.getItem('study_weekly_session_count') || '0'),
+                globalStats: {
+                    totalSessionsStarted: parseInt(localStorage.getItem('study_total_sessions_started') || '0'),
+                    totalSessionsCompleted: parseInt(localStorage.getItem('study_total_sessions_completed') || '0'),
+                    totalSessionTimeMs: parseInt(localStorage.getItem('study_total_session_time') || '0'),
+                    totalSessionTimeHours: parseFloat((parseInt(localStorage.getItem('study_total_session_time') || '0') / 3600000).toFixed(2))
+                },
+                regions: [
+                    {
+                        regionId: 'region-1',
+                        startTime: 150.0,
+                        endTime: 250.0,
+                        description: 'Full flow test region',
+                        features: []
+                    }
+                ]
+            };
+            
+            try {
+                // This is what happens in ui-controls.js after successful Qualtrics submission
+                const result = await uploadSubmissionData(participantId, jsonDump);
+                
+                log(3, '📥 R2 Upload response:', 'info');
+                log(3, JSON.stringify(result, null, 2), 'data');
+                
+                if (result.status === 'success') {
+                    log(3, '✅ Full flow complete!', 'success');
+                    log(3, '   ✓ Qualtrics submission: SUCCESS (simulated)', 'success');
+                    log(3, '   ✓ R2 backup: SUCCESS', 'success');
+                    log(3, '', 'info');
+                    log(3, '📂 Check R2 bucket:', 'info');
+                    log(3, `   volcano-audio-anonymized-data/participants/${participantId}/`, 'data');
+                    result.filesUploaded?.forEach(file => {
+                        log(3, `      - ${file.split('/').slice(-2).join('/')}`, 'data');
+                    });
+                    setStatus(3, 'success');
+                } else {
+                    log(3, `❌ R2 backup failed: ${result.error || result.reason}`, 'error');
+                    log(3, '⚠️  Note: In production, this failure would NOT block Qualtrics submission', 'info');
+                    setStatus(3, 'failed');
+                }
+            } catch (error) {
+                log(3, `❌ Error: ${error.message}`, 'error');
+                log(3, '⚠️  Note: In production, this error would NOT block Qualtrics submission', 'info');
+                console.error(error);
+                setStatus(3, 'failed');
+            }
+        };
+        
+        console.log('✅ R2 Upload Test Dashboard loaded');
+        console.log('📦 Imported modules:', { uploadUserStatus, uploadSubmissionData });
+    </script>
+</body>
+</html>
+

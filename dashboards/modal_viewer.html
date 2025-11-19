@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modal Viewer - Volcano Audio</title>
+    <link rel="stylesheet" href="../styles.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 30px;
+            margin: 0;
+        }
+        
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .dashboard-header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .dashboard-header h1 {
+            font-size: 36px;
+            margin: 0 0 10px 0;
+            color: #ff6b6b;
+        }
+        
+        .dashboard-header p {
+            font-size: 18px;
+            margin: 0;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .sections-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        
+        .section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .section-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #ffd93d;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 24px;
+            background: #ffd93d;
+            border-radius: 2px;
+        }
+        
+        .button-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .modal-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        
+        .modal-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+            filter: brightness(1.1);
+        }
+        
+        .modal-button:active {
+            transform: translateY(0);
+        }
+        
+        .pre-test .modal-button {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+        }
+        
+        .post-test .modal-button {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+        
+        .utility .modal-button {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        
+        .stats-bar {
+            display: flex;
+            justify-content: space-around;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #ffd93d;
+            display: block;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 5px;
+        }
+        
+        @media (max-width: 1200px) {
+            .sections-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Permanent Overlay (required for modals) -->
+    <div id="permanentOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; align-items: center; justify-content: center;"></div>
+
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <h1>🌋 Modal Interface Viewer</h1>
+            <p>Testing ground for all survey and workflow modals</p>
+        </div>
+
+        <div class="sections-container">
+            <!-- Pre-Test Section (Left Column) -->
+            <div class="section pre-test">
+                <h2 class="section-title">Pre-Test Modals</h2>
+                <div class="button-grid">
+                    <button class="modal-button" onclick="showModal('welcomeModal')">Welcome</button>
+                    <button class="modal-button" onclick="showModal('participantModal')">Participant ID</button>
+                    <button class="modal-button" onclick="showModal('welcomeBackModal')">Welcome Back</button>
+                    <button class="modal-button" onclick="showModal('tutorialIntroModal')">Tutorial Intro</button>
+                    <button class="modal-button" onclick="showModal('tutorialRevisitModal')">Tutorial Revisit</button>
+                    <button class="modal-button" onclick="showModal('beginAnalysisModal')">Begin Analysis</button>
+                    <button class="modal-button" onclick="showModal('preSurveyModal')">Pre-Survey</button>
+                </div>
+            </div>
+
+            <!-- Post-Test Section (Middle Column) -->
+            <div class="section post-test">
+                <h2 class="section-title">Post-Test Modals</h2>
+                <div class="button-grid">
+                    <button class="modal-button" onclick="showModal('completeConfirmationModal')">Complete Confirmation</button>
+                    <button class="modal-button" onclick="showModal('postSurveyModal')">Post-Survey</button>
+                    <button class="modal-button" onclick="showModal('activityLevelModal')">Activity Level</button>
+                    <button class="modal-button" onclick="showModal('awesfModal')">AWE-SF</button>
+                    <button class="modal-button" onclick="showModal('endModal')">End</button>
+                </div>
+            </div>
+
+            <!-- Utility Modals Section (Right Column) -->
+            <div class="section utility">
+                <h2 class="section-title">Utility Modals</h2>
+                <div class="button-grid">
+                    <button class="modal-button" onclick="showModal('missingStudyIdModal')">Missing Study ID</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Modal System -->
+    <script type="module">
+        import { initializeModals } from '../js/modal-templates.js';
+        import { modalManager } from '../js/modal-manager.js';
+
+        // Initialize modals on page load
+        await initializeModals();
+        console.log('✅ All modals loaded and ready');
+
+        // Make showModal available globally
+        window.showModal = async function(modalId) {
+            console.log(`📂 Opening modal: ${modalId}`);
+            
+            // Open modal and wait for it to close
+            await modalManager.openModal(modalId, {
+                onOpen: () => {
+                    console.log(`✅ Modal opened: ${modalId}`);
+                },
+                onClose: () => {
+                    console.log(`❌ Modal closed: ${modalId}`);
+                }
+            });
+            
+            console.log(`🔄 Modal interaction complete: ${modalId}`);
+        };
+
+        // Handle Escape key to close modals
+        document.addEventListener('keydown', async (e) => {
+            if (e.key === 'Escape' && modalManager.currentModal) {
+                console.log(`🔑 Escape pressed - closing ${modalManager.currentModal}`);
+                await modalManager.closeModal();
+            }
+        });
+
+        // Handle modal close buttons
+        document.addEventListener('click', async (e) => {
+            // Close button
+            if (e.target.classList.contains('modal-close')) {
+                const modal = e.target.closest('.modal-window');
+                if (modal) {
+                    await modalManager.closeModal(modal.id);
+                }
+            }
+            
+            // Submit button (just close the modal for demo purposes)
+            if (e.target.classList.contains('modal-submit')) {
+                const modal = e.target.closest('.modal-window');
+                if (modal) {
+                    console.log(`✓ Submit button clicked in ${modal.id}`);
+                    await modalManager.closeModal(modal.id);
+                }
+            }
+            
+            // Cancel button
+            if (e.target.classList.contains('modal-cancel')) {
+                const modal = e.target.closest('.modal-window');
+                if (modal) {
+                    console.log(`✗ Cancel button clicked in ${modal.id}`);
+                    await modalManager.closeModal(modal.id);
+                }
+            }
+            
+            // Exit button
+            if (e.target.classList.contains('modal-exit')) {
+                const modal = e.target.closest('.modal-window');
+                if (modal) {
+                    console.log(`⬅️ Exit button clicked in ${modal.id}`);
+                    await modalManager.closeModal(modal.id);
+                }
+            }
+        });
+
+        // Enable submit buttons when forms are filled (basic demo functionality)
+        document.addEventListener('input', (e) => {
+            if (e.target.id === 'participantId') {
+                const submitBtn = document.querySelector('#participantModal .modal-submit');
+                if (submitBtn) {
+                    submitBtn.disabled = e.target.value.trim().length === 0;
+                }
+            }
+        });
+
+        // Enable submit buttons when all radio buttons in a survey are filled
+        function checkSurveyComplete(modalId) {
+            const modal = document.getElementById(modalId);
+            if (!modal) return;
+            
+            const radioGroups = [...new Set(
+                [...modal.querySelectorAll('input[type="radio"]')].map(r => r.name)
+            )];
+            
+            const allFilled = radioGroups.every(group => {
+                return modal.querySelector(`input[name="${group}"]:checked`) !== null;
+            });
+            
+            const submitBtn = modal.querySelector('.modal-submit');
+            if (submitBtn) {
+                submitBtn.disabled = !allFilled;
+            }
+        }
+
+        // Listen for radio button changes
+        document.addEventListener('change', (e) => {
+            if (e.target.type === 'radio') {
+                const modal = e.target.closest('.modal-window');
+                if (modal) {
+                    checkSurveyComplete(modal.id);
+                }
+            }
+        });
+
+        // Quick-fill button functionality
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('quick-fill-btn')) {
+                const value = e.target.dataset.value;
+                const surveyId = e.target.dataset.survey;
+                const modal = document.getElementById(surveyId);
+                
+                if (modal) {
+                    const radios = modal.querySelectorAll('input[type="radio"]');
+                    radios.forEach(radio => {
+                        if (radio.value === value) {
+                            radio.checked = true;
+                        }
+                    });
+                    checkSurveyComplete(surveyId);
+                }
+            }
+        });
+
+        console.log('🎉 Modal Viewer Dashboard Ready!');
+    </script>
+</body>
+</html>
+

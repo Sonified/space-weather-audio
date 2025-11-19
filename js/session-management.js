@@ -291,6 +291,14 @@ async function handleSessionTimeout() {
                 const result = await submitCombinedSurveyResponse(combinedResponses, participantId);
                 console.log('✅ Timeout submission successful:', result);
                 
+                // Upload submission data to R2 (backup)
+                try {
+                    const { uploadSubmissionData } = await import('./data-uploader.js');
+                    await uploadSubmissionData(participantId, jsonDump);
+                } catch (error) {
+                    console.warn('⚠️ Could not upload timeout submission to R2:', error);
+                }
+                
                 // Track the timeout event
                 trackUserAction(participantId, 'session_timeout', {
                     timestamp: new Date().toISOString(),
