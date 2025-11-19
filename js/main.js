@@ -1441,6 +1441,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
         console.log('🌋 [0ms] volcano-audio v2.58 - Data Redundancy: Survey Responses in Embedded Data');
+        console.log('📌 [0ms] Git commit: eee44db - v2.58 Data Redundancy: Survey responses in embedded data');
         console.log('💾 [0ms] v2.58 Feat: Survey responses now included in SessionTracking embedded data for complete redundancy');
         console.log('🔒 [0ms] v2.58 Feat: All survey answers (PRE, POST, AWE-SF, ACTIVITY LEVEL) backed up in embedded data alongside standard Qualtrics responses');
         console.log('🎯 [0ms] v2.58 Benefit: Complete session data in one JSON structure - protects against Qualtrics data loss');
