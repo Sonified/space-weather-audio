@@ -1451,7 +1451,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
         console.log('🌋 [0ms] volcano-audio v2.61 - Session Timeout & Status Message Improvements');
-        console.log('📌 [0ms] Git commit: [hash] - v2.61 Session Timeout & Status Message Improvements');
+        console.log('📌 [0ms] Git commit: 45e5cff - v2.61 Session Timeout & Status Message Improvements');
         console.log('🔐 [0ms] v2.61 Feat: Timeout session ID pairing - ties timeout to participant ID to prevent false timeouts');
         console.log('🧹 [0ms] v2.61 Refactor: Renamed completeSession() to closeSession() for clarity');
         console.log('🎓 [0ms] v2.61 Fix: All status messages now respect tutorial mode - no message interference');
