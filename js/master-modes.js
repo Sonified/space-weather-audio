@@ -212,7 +212,7 @@ const MODE_CONFIG = {
         forceWelcomeBackModal: true,
         showAwesfSurvey: false  // Second session of week = no AWE-SF
     },
-    
+
     [AppMode.TUTORIAL_END]: {
         name: 'Tutorial End',
         description: 'Test mode - jump to last 2 tutorial messages (tests tutorial completion flow)',
@@ -251,7 +251,7 @@ export function isDevMode() {
 
 export function isStudyMode() {
     return CURRENT_MODE === AppMode.STUDY || 
-           CURRENT_MODE === AppMode.STUDY_CLEAN ||
+           CURRENT_MODE === AppMode.STUDY_CLEAN || 
            CURRENT_MODE === AppMode.STUDY_W2_S1 ||
            CURRENT_MODE === AppMode.STUDY_W2_S1_RETURNING ||
            CURRENT_MODE === AppMode.STUDY_W2_S2;

@@ -1375,7 +1375,8 @@ export function setupModalEventListeners() {
                     // Close the modal (auto-detects next modal and keeps overlay)
                     await closeActivityLevelModal();
                     // Open next survey in workflow
-                    const needsAwesf = !localStorage.getItem('study_last_awesf_date');
+                    const { shouldShowAwesf } = await import('./study-workflow.js');
+                    const needsAwesf = shouldShowAwesf();
                     if (needsAwesf) {
                         setTimeout(() => {
                             openAwesfModal();

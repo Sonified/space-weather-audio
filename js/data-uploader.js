@@ -35,7 +35,7 @@ function gatherUserData(participantId) {
         // Session tracking
         const weeklySessionCount = parseInt(localStorage.getItem('study_weekly_session_count') || '0', 10);
         const weekStartDate = localStorage.getItem('study_week_start_date');
-        const lastAwesfDate = localStorage.getItem('study_last_awesf_date');
+        const sessionCompletionTracker = localStorage.getItem('study_session_completion_tracker');
         
         const totalSessionsStarted = parseInt(localStorage.getItem('study_total_sessions_started') || '0', 10);
         const totalSessionsCompleted = parseInt(localStorage.getItem('study_total_sessions_completed') || '0', 10);
@@ -69,7 +69,7 @@ function gatherUserData(participantId) {
             // Session tracking
             weeklySessionCount,
             weekStartDate,
-            lastAwesfDate,
+            sessionCompletionTracker,
             totalSessionsStarted,
             totalSessionsCompleted,
             totalSessionTime,

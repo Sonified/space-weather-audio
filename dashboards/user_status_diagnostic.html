@@ -151,7 +151,13 @@
         <div class="section" id="sessionResponses"></div>
 
         <h2>🏁 Workflow Flags</h2>
-        <div class="section" id="workflowFlags"></div>
+        <div class="section">
+            <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
+                💡 Change flags below and click "Save All Changes" to update your localStorage state
+            </p>
+            <div id="workflowFlags"></div>
+            <button class="button" onclick="saveAllFlags()" style="margin-top: 15px; background: #4CAF50;">💾 Save All Changes</button>
+        </div>
 
         <h2>🌋 Volcano Selection</h2>
         <div class="section" id="volcanoSelection"></div>
@@ -164,13 +170,17 @@
 
         <h2>🔧 Diagnostic Actions</h2>
         <div class="section">
-            <h3>Reset Study Flags</h3>
-            <button class="button" onclick="resetStudyFlags()">Reset All Study Flags</button>
-            <p>This will reset all study workflow flags (participant setup, welcome, tutorial, etc.)</p>
+            <h3>Quick Presets</h3>
+            <button class="button" onclick="setPreset('first_time')">🆕 First Time User</button>
+            <button class="button" onclick="setPreset('mid_tutorial')">📚 Mid-Tutorial</button>
+            <button class="button" onclick="setPreset('returning_user')">🔄 Returning User (W2S1)</button>
+            <button class="button" onclick="setPreset('mid_session')">⚡ Mid-Session</button>
+            <p style="margin-top: 10px;">Quick presets to test different user states</p>
             
-            <h3>Clear Session</h3>
-            <button class="button danger" onclick="clearSession()">Clear Current Session</button>
-            <p>This will clear the current session state and responses</p>
+            <h3 style="margin-top: 20px;">Manual Actions</h3>
+            <button class="button" onclick="resetStudyFlags()">🧹 Reset All Study Flags</button>
+            <button class="button danger" onclick="clearSession()">🗑️ Clear Current Session</button>
+            <button class="button danger" onclick="clearAllData()">💣 Clear Everything</button>
         </div>
     </div>
 
@@ -207,7 +217,6 @@
                 'study_has_seen_welcome': localStorage.getItem('study_has_seen_welcome'),
                 'study_has_seen_tutorial': localStorage.getItem('study_has_seen_tutorial'),
                 'study_tutorial_completed': localStorage.getItem('study_tutorial_completed'),
-                'study_last_awesf_date': localStorage.getItem('study_last_awesf_date'),
                 'study_weekly_session_count': localStorage.getItem('study_weekly_session_count'),
                 'study_week_start_date': localStorage.getItem('study_week_start_date'),
                 'study_pre_survey_completion_date': localStorage.getItem('study_pre_survey_completion_date'),
@@ -341,10 +350,44 @@
             }
             document.getElementById('sessionResponses').innerHTML = responsesHtml;
 
-            // Workflow Flags
-            let flagsHtml = '<span class="key">Workflow Flags:</span><br>';
+            // Workflow Flags - Interactive Controls
+            let flagsHtml = '';
             Object.entries(workflowFlags).forEach(([key, value]) => {
-                flagsHtml += `<div><span class="key">${key}:</span> ${formatValue(value)}</div>`;
+                const isJsonField = key.includes('tracker') || key.includes('history');
+                const isNumberField = key.includes('total') || key.includes('count') || key.includes('time');
+                const isDateField = key.includes('date') && !isNumberField;
+                const isBooleanField = (key.includes('has_seen') || key.includes('completed') || key.includes('clicked')) && !isNumberField;
+                
+                flagsHtml += `<div style="margin: 12px 0; padding: 12px; background: #1e1e1e; border-radius: 5px; border-left: 3px solid #2196F3;">`;
+                flagsHtml += `<label style="display: block; margin-bottom: 5px;"><span class="key">${key}</span></label>`;
+                
+                if (isNumberField) {
+                    // Number input
+                    const displayValue = value || '';
+                    flagsHtml += `<input type="number" id="flag_${key}" value="${displayValue}" placeholder="Number" style="width: 100%; padding: 8px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; font-size: 14px;">`;
+                    flagsHtml += `<p style="font-size: 11px; color: #888; margin: 5px 0 0 0;">Number (leave empty for null)</p>`;
+                } else if (isBooleanField) {
+                    // Boolean dropdown
+                    const currentVal = value === 'true' ? 'true' : value === 'false' ? 'false' : 'null';
+                    flagsHtml += `<select id="flag_${key}" style="width: 100%; padding: 8px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; font-size: 14px;">`;
+                    flagsHtml += `<option value="null" ${currentVal === 'null' ? 'selected' : ''}>❌ Not Set (null)</option>`;
+                    flagsHtml += `<option value="true" ${currentVal === 'true' ? 'selected' : ''}>✅ True</option>`;
+                    flagsHtml += `<option value="false" ${currentVal === 'false' ? 'selected' : ''}>❌ False</option>`;
+                    flagsHtml += `</select>`;
+                } else if (isJsonField) {
+                    // JSON textarea
+                    const displayValue = value || '';
+                    flagsHtml += `<textarea id="flag_${key}" rows="4" style="width: 100%; padding: 8px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; font-family: 'Monaco', monospace; font-size: 13px;">${displayValue}</textarea>`;
+                    flagsHtml += `<p style="font-size: 11px; color: #888; margin: 5px 0 0 0;">JSON format (leave empty for null)</p>`;
+                } else {
+                    // Text input for dates, numbers, etc.
+                    const displayValue = value || '';
+                    const placeholder = isDateField ? 'YYYY-MM-DD or ISO date' : isNumberField ? 'Number' : 'Text value';
+                    flagsHtml += `<input type="text" id="flag_${key}" value="${displayValue}" placeholder="${placeholder}" style="width: 100%; padding: 8px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; font-size: 14px;">`;
+                    flagsHtml += `<p style="font-size: 11px; color: #888; margin: 5px 0 0 0;">Leave empty for null</p>`;
+                }
+                
+                flagsHtml += `</div>`;
             });
             document.getElementById('workflowFlags').innerHTML = flagsHtml;
 
@@ -426,7 +469,6 @@ MODE: ${localStorage.getItem('selectedMode') || 'Using default'}
                     'study_has_seen_welcome',
                     'study_has_seen_tutorial',
                     'study_tutorial_completed',
-                    'study_last_awesf_date',
                     'study_weekly_session_count',
                     'study_week_start_date',
                     'study_pre_survey_completion_date',
@@ -467,6 +509,93 @@ MODE: ${localStorage.getItem('selectedMode') || 'Using default'}
                     location.reload();
                 }
             }
+        }
+
+        function saveAllFlags() {
+            const workflowFlags = getWorkflowFlags();
+            let changedCount = 0;
+            
+            Object.keys(workflowFlags).forEach(key => {
+                const element = document.getElementById(`flag_${key}`);
+                if (!element) return;
+                
+                let newValue = element.value;
+                
+                // Handle different input types
+                if (element.tagName === 'SELECT') {
+                    // Boolean dropdown
+                    if (newValue === 'null') {
+                        localStorage.removeItem(key);
+                    } else {
+                        localStorage.setItem(key, newValue);
+                    }
+                    changedCount++;
+                } else if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
+                    // Text input or textarea
+                    if (newValue.trim() === '') {
+                        localStorage.removeItem(key);
+                    } else {
+                        localStorage.setItem(key, newValue);
+                    }
+                    changedCount++;
+                }
+            });
+            
+            alert(`✅ Saved ${changedCount} flags! Refresh the report to see changes.`);
+            generateReport();
+        }
+        
+        function setPreset(presetName) {
+            switch (presetName) {
+                case 'first_time':
+                    // Clear everything - brand new user
+                    localStorage.clear();
+                    alert('✅ Set to: First Time User\nAll flags cleared. The app will show full onboarding.');
+                    break;
+                    
+                case 'mid_tutorial':
+                    // User has done participant setup and pre-survey, but not finished tutorial
+                    localStorage.setItem('study_has_seen_participant_setup', 'true');
+                    localStorage.setItem('study_has_seen_welcome', 'true');
+                    localStorage.setItem('study_pre_survey_completion_date', getTodayDateString());
+                    localStorage.removeItem('study_tutorial_completed');
+                    localStorage.removeItem('study_begin_analysis_clicked_this_session');
+                    alert('✅ Set to: Mid-Tutorial\nUser has completed setup and pre-survey, currently in tutorial.');
+                    break;
+                    
+                case 'returning_user':
+                    // Returning user starting Week 2 Session 1
+                    localStorage.setItem('study_has_seen_participant_setup', 'true');
+                    localStorage.setItem('study_has_seen_welcome', 'true');
+                    localStorage.setItem('study_tutorial_completed', 'true');
+                    const tracker = {
+                        week1: [true, true],
+                        week2: [false, false],
+                        week3: [false, false]
+                    };
+                    localStorage.setItem('study_session_completion_tracker', JSON.stringify(tracker));
+                    localStorage.removeItem('study_pre_survey_completion_date');
+                    localStorage.removeItem('study_begin_analysis_clicked_this_session');
+                    alert('✅ Set to: Returning User (W2S1)\nCompleted Week 1, starting Week 2 Session 1. Will show Welcome Back → Pre-Survey.');
+                    break;
+                    
+                case 'mid_session':
+                    // Mid-session, can analyze immediately
+                    localStorage.setItem('study_has_seen_participant_setup', 'true');
+                    localStorage.setItem('study_has_seen_welcome', 'true');
+                    localStorage.setItem('study_tutorial_completed', 'true');
+                    localStorage.setItem('study_begin_analysis_clicked_this_session', 'true');
+                    localStorage.setItem('study_pre_survey_completion_date', getTodayDateString());
+                    alert('✅ Set to: Mid-Session\nUser has completed everything and clicked Begin Analysis. Can analyze immediately.');
+                    break;
+            }
+            
+            generateReport();
+        }
+        
+        function getTodayDateString() {
+            const today = new Date();
+            return today.toISOString().split('T')[0];
         }
 
         // Generate report on page load
