@@ -158,6 +158,7 @@ async function handleCriticalError(errorMessage, errorDetails) {
 
 /**
  * Submit error report to backend
+ * 🔥 TEMPORARILY DISABLED - Just log to console for now
  */
 async function submitErrorReport(errorMessage, errorDetails) {
     if (errorReported) return;
@@ -190,13 +191,16 @@ async function submitErrorReport(errorMessage, errorDetails) {
     };
     
     // Log what we're about to send
-    console.error('📤 Submitting error report:', {
+    console.error('📤 [BACKEND SUBMISSION DISABLED] Error report ready:', {
         errorMessage,
         errorDetails,
         participantId,
         timestamp: errorReport.timestamp
     });
+    console.error('📋 Full error report (not sent to backend):', errorReport);
     
+    // 🔥 BACKEND SUBMISSION DISABLED - uncomment below to re-enable
+    /*
     try {
         const response = await fetch('https://volcano-audio-collector-production.up.railway.app/api/report-error', {
             method: 'POST',
@@ -214,6 +218,7 @@ async function submitErrorReport(errorMessage, errorDetails) {
         console.error('❌ Error submitting report:', error);
         errorReported = false; // Allow retry
     }
+    */
 }
 
 /**

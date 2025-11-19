@@ -490,12 +490,12 @@
                 // Header: Onboarding
                 { type: 'header', icon: '👤', label: 'ONBOARDING' },
                 { type: 'checkbox', key: 'study_has_seen_participant_setup', label: 'Participant Setup Seen', value: workflowFlags.study_has_seen_participant_setup },
+                { type: 'checkbox', key: 'study_has_seen_welcome', label: 'Welcome Seen', value: workflowFlags.study_has_seen_welcome },
                 { type: 'checkbox', key: 'study_tutorial_in_progress', label: 'Tutorial In Progress', value: workflowFlags.study_tutorial_in_progress },
                 { type: 'checkbox', key: 'study_tutorial_completed', label: 'Tutorial Completed', value: workflowFlags.study_tutorial_completed },
                 
                 // Header: Current Session
                 { type: 'header', icon: '⚡', label: 'CURRENT SESSION' },
-                { type: 'checkbox', key: 'study_has_seen_welcome', label: 'Welcome Seen', value: workflowFlags.study_has_seen_welcome },
                 { type: 'checkbox', key: 'study_has_seen_welcome_back', label: 'Welcome Back Seen', value: workflowFlags.study_has_seen_welcome_back },
                 { type: 'checkbox', key: 'study_pre_survey_completion_date', label: 'Pre-Survey Done Today', value: workflowFlags.study_pre_survey_completion_date, isDate: true },
                 { type: 'checkbox', key: 'study_begin_analysis_clicked_this_session', label: 'Begin Analysis Clicked', value: workflowFlags.study_begin_analysis_clicked_this_session },
@@ -888,11 +888,11 @@ MODE: ${localStorage.getItem('selectedMode') || 'Using default'}
 
 👤 ONBOARDING
 study_has_seen_participant_setup: ${workflowFlags.study_has_seen_participant_setup || 'null'}
+study_has_seen_welcome: ${workflowFlags.study_has_seen_welcome || 'null'}
 study_tutorial_in_progress: ${workflowFlags.study_tutorial_in_progress || 'null'}
 study_tutorial_completed: ${workflowFlags.study_tutorial_completed || 'null'}
 
 ⚡ CURRENT SESSION
-study_has_seen_welcome: ${workflowFlags.study_has_seen_welcome || 'null'}
 study_has_seen_welcome_back: ${workflowFlags.study_has_seen_welcome_back || 'null'}
 study_pre_survey_completion_date: ${workflowFlags.study_pre_survey_completion_date || 'null'}
 study_begin_analysis_clicked_this_session: ${workflowFlags.study_begin_analysis_clicked_this_session || 'null'}
@@ -967,23 +967,23 @@ study_session_completion_tracker: ${workflowFlags.study_session_completion_track
             if (sectionId === 'onboarding') {
                 // Clear onboarding flags
                 localStorage.removeItem('study_has_seen_participant_setup');
+                localStorage.removeItem('study_has_seen_welcome');
                 localStorage.removeItem('study_tutorial_in_progress');
                 localStorage.removeItem('study_tutorial_completed');
                 document.getElementById('flag_study_has_seen_participant_setup').checked = false;
+                document.getElementById('flag_study_has_seen_welcome').checked = false;
                 document.getElementById('flag_study_tutorial_in_progress').checked = false;
                 document.getElementById('flag_study_tutorial_completed').checked = false;
-                clearedCount = 3;
+                clearedCount = 4;
             } else if (sectionId === 'current_session') {
                 // Clear current session flags
-                localStorage.removeItem('study_has_seen_welcome');
                 localStorage.removeItem('study_has_seen_welcome_back');
                 localStorage.removeItem('study_pre_survey_completion_date');
                 localStorage.removeItem('study_begin_analysis_clicked_this_session');
-                document.getElementById('flag_study_has_seen_welcome').checked = false;
                 document.getElementById('flag_study_has_seen_welcome_back').checked = false;
                 document.getElementById('flag_study_pre_survey_completion_date').checked = false;
                 document.getElementById('flag_study_begin_analysis_clicked_this_session').checked = false;
-                clearedCount = 4;
+                clearedCount = 3;
             } else if (sectionId === 'session_completion_historical') {
                 // Clear session completion tracker
                 const tracker = {
