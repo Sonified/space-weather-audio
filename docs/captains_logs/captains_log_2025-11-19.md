@@ -1,5 +1,34 @@
 # Captain's Log - 2025-11-19
 
+## v2.56 - Canvas Redrawing: Aggressive Destroy/Recreate on Visibility Change
+
+### Bug Fixed
+
+**Canvas Feature Boxes Disappearing After Tab Switch/Sleep**
+- **Problem**: Feature boxes disappeared when switching tabs or waking computer from sleep, and would never redraw automatically. Error logs showed "rebuildCanvasBoxesFromRegions is not a function" indicating the redraw attempt was failing.
+- **Root Cause**: Visibility change handler was calling `cleanupOnUnload()` which destroyed the overlay canvas to save memory, but when page became visible again it wasn't recreating the canvas or redrawing features. Additionally, we were calling the wrong function name (`rebuildCanvasBoxesFromRegions` instead of `redrawAllCanvasFeatureBoxes`).
+- **Solution**: Implemented aggressive destroy/recreate strategy:
+  - When `document.hidden` is true: Call `cleanupSpectrogramSelection()` to destroy overlay canvas
+  - When `document.hidden` is false: Call `setupSpectrogramSelection()` to recreate canvas, then `redrawAllCanvasFeatureBoxes()` to restore all features
+  - Audio continues playing in background (cancelAllRAFLoops only stops visual animations)
+
+### Architecture Notes
+
+**cancelAllRAFLoops() Does NOT Stop Audio**
+- Only cancels RequestAnimationFrame loops for visual elements:
+  - `playbackIndicatorRAF` - Red playback line animation
+  - `spectrogramRAF` - Scrolling spectrogram visualization
+  - `resizeRAF` - Resize handler animation
+  - `crossfadeAnimation` - Volume crossfade animation
+- Actual audio continues playing in Web Audio worklet (separate audio thread)
+- Perfect behavior: Save CPU when hidden, restore visuals when visible, audio uninterrupted
+
+### Git Commit
+**Version**: v2.56  
+**Commit Message**: v2.56 Canvas Redrawing: Aggressive destroy/recreate strategy for overlay canvas on visibility change
+
+---
+
 ## v2.55 - Critical Bug Fixes: Region Persistence & Button States
 
 ### Major Bugs Fixed

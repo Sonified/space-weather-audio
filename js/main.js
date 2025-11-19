@@ -1431,6 +1431,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.56 - Canvas Redrawing: Aggressive Destroy/Recreate on Visibility Change');
+        console.log('🎨 [0ms] v2.56 Fix: Canvas feature boxes now redraw after tab switch/sleep - implemented aggressive destroy/recreate strategy for overlay canvas');
+        console.log('🔧 [0ms] v2.56 Feat: When page becomes hidden, cleanupSpectrogramSelection() destroys overlay canvas to save memory');
+        console.log('🔧 [0ms] v2.56 Feat: When page becomes visible, setupSpectrogramSelection() recreates canvas and redrawAllCanvasFeatureBoxes() restores features');
+        console.log('🎵 [0ms] v2.56 Note: Audio playback continues in background (cancelAllRAFLoops only stops visual animations, not audio)');
         console.log('🌋 [0ms] volcano-audio v2.55 - Critical Bug Fixes: Region Persistence & Button States');
         console.log('🐛 [0ms] v2.55 Fix: MAJOR - Regions/features now persist after page refresh (were being saved but not loaded)');
         console.log('🐛 [0ms] v2.55 Fix: CRITICAL - Timestamp filtering now uses absolute times instead of relative samples (prevented regions from loading across different time ranges)');
@@ -2330,8 +2335,27 @@ window.addEventListener('DOMContentLoaded', async () => {
                 // 🔥 FIX: Store visibility change handler reference for cleanup
                 const visibilityChangeHandler = () => {
                     if (document.hidden) {
-                        cleanupOnUnload();
+                        // Aggressive cleanup when hidden - save memory, stop animations
+                        console.log('💤 Page hidden - aggressive cleanup');
+                        audioPlayerModule.cancelAllRAFLoops();
+                        axisModule.cancelScaleTransitionRAF();
+                        cleanupSpectrogramSelection(); // Destroy canvas overlay
                     } else {
+                        // Page visible again - recreate everything and restore state
+                        console.log('👁️ Page visible again - recreating canvas and restoring state');
+                        
+                        // Recreate spectrogram selection canvas
+                        setupSpectrogramSelection();
+                        
+                        // Redraw all feature boxes on fresh canvas
+                        import('./spectrogram-renderer.js').then(module => {
+                            if (module.redrawAllCanvasFeatureBoxes) {
+                                module.redrawAllCanvasFeatureBoxes();
+                            }
+                        }).catch(() => {
+                            // Module not loaded yet
+                        });
+                        
                         // Restart playhead if playing when tab becomes visible again
                         if (State.playbackState === PlaybackState.PLAYING) {
                             startPlaybackIndicator();
