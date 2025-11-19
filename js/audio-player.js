@@ -14,6 +14,7 @@ import { drawSpectrogram, startVisualization } from './spectrogram-renderer.js';
 import { updateActiveRegionPlayButton, getActivePlayingRegionIndex, getCurrentRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries, isAtBoundaryEnd, getRestartPosition, formatBoundaries } from './playback-boundaries.js';
+import { setPlayingState } from './oscilloscope-renderer.js';
 
 // ===== RAF CLEANUP HELPER =====
 
@@ -68,6 +69,9 @@ export function startPlayback() {
     
     console.log('▶️ Starting playback');
     
+    // 🔥 Notify oscilloscope that playback started (for flame effect fade)
+    setPlayingState(true);
+    
     // 🎓 Tutorial: Resolve promise if waiting for region play or resume
     if (State.waitingForRegionPlayOrResume && State._regionPlayOrResumeResolve) {
         State.setWaitingForRegionPlayOrResume(false);
@@ -113,6 +117,9 @@ export function pausePlayback() {
     State.setPlaybackState(PlaybackState.PAUSED);
     
     console.log('⏸️ Pausing playback');
+    
+    // 🔥 Notify oscilloscope that playback paused (for flame effect fade)
+    setPlayingState(false);
     
     // 🔥 FIX: Cancel animation frame loops to prevent memory leaks
     cancelAllRAFLoops();
@@ -405,6 +412,10 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         // (It will handle fade-in automatically if needed)
         if (shouldStartPlayback) {
             State.setPlaybackState(PlaybackState.PLAYING);
+            
+            // 🔥 Notify oscilloscope that playback started (for flame effect fade)
+            setPlayingState(true);
+            
             State.workletNode.port.postMessage({ type: 'play' });
             
             // Update play/pause button to show "Pause"

@@ -29,7 +29,7 @@ import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionB
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions, updateCompleteButtonState, updateCmpltButtonState, showAddRegionButton } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
-import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown } from './tutorial.js';
+import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown, removeVolumeSliderGlow } from './tutorial.js';
 import { isTutorialActive } from './tutorial-state.js';
 import { 
     CURRENT_MODE, 
@@ -453,6 +453,11 @@ export async function initAudioWorklet() {
                 
                 State.setPlaybackState(PlaybackState.PLAYING);
                 
+                // 🔥 Notify oscilloscope that playback started (for flame effect fade)
+                import('./oscilloscope-renderer.js').then(({ setPlayingState }) => {
+                    setPlayingState(true);
+                });
+                
                 if (State.totalAudioDuration > 0) {
                     startPlaybackIndicator();
                 }
@@ -462,6 +467,11 @@ export async function initAudioWorklet() {
                 cancelAllRAFLoops();
                 
                 State.setPlaybackState(PlaybackState.STOPPED);
+                
+                // 🔥 Notify oscilloscope that playback stopped (for flame effect fade)
+                import('./oscilloscope-renderer.js').then(({ setPlayingState }) => {
+                    setPlayingState(false);
+                });
                 
                 if (finishedTotalSamples && State.totalAudioDuration > 0) {
                     const finalPosition = finishedTotalSamples / 44100;
@@ -909,6 +919,11 @@ export async function startStreaming(event) {
             
             State.setPlaybackState(PlaybackState.STOPPED);
             
+            // 🔥 Notify oscilloscope that playback stopped (for flame effect fade)
+            import('./oscilloscope-renderer.js').then(({ setPlayingState }) => {
+                setPlayingState(false);
+            });
+            
             // 🔥 Hint to browser that GC would be nice (only works with --js-flags="--expose-gc")
             if (typeof window !== 'undefined' && window.gc) {
                 console.log('🗑️ Requesting manual garbage collection...');
@@ -935,6 +950,11 @@ export async function startStreaming(event) {
         
         State.setPlaybackState(PlaybackState.PLAYING);
         State.setStreamStartTime(performance.now());
+        
+        // 🔥 Notify oscilloscope that playback started (for flame effect fade)
+        import('./oscilloscope-renderer.js').then(({ setPlayingState }) => {
+            setPlayingState(true);
+        });
         
         let dotCount = 0;
         const interval = setInterval(() => {
@@ -1132,6 +1152,8 @@ async function initializeApp() {
             
         case AppMode.STUDY:
         case AppMode.STUDY_CLEAN:
+        case AppMode.STUDY_RETURNING_CLEAN_1:
+        case AppMode.STUDY_RETURNING_CLEAN_2:
             await initializeStudyMode();
             break;
             
@@ -1508,6 +1530,18 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Start memory health monitoring
     startMemoryMonitoring();
     
+    // ═══════════════════════════════════════════════════════════
+    // 🚨 STUDY MODE: Show overlay IMMEDIATELY to prevent UI interaction
+    // ═══════════════════════════════════════════════════════════
+    if (isStudyMode()) {
+        const overlay = document.getElementById('permanentOverlay');
+        if (overlay) {
+            overlay.style.display = 'flex';
+            overlay.style.opacity = '1';
+            console.log('🔒 Overlay shown immediately (study mode)');
+        }
+    }
+    
     // Initialize modals first (all modes need them)
     try {
         await initializeModals();
@@ -1559,7 +1593,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Load saved volcano selection (or use default)
-    loadSavedVolcano();
+    await loadSavedVolcano();
     
     // ═══════════════════════════════════════════════════════════
     // 🎯 MODE-AWARE ROUTING
@@ -1733,8 +1767,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Blur sliders after interaction
     const playbackSpeedSlider = document.getElementById('playbackSpeed');
-    const volumeSlider = document.getElementById('volumeSlider');
-    [playbackSpeedSlider, volumeSlider].forEach(slider => {
+    const volumeSliderForBlur = document.getElementById('volumeSlider');
+    [playbackSpeedSlider, volumeSliderForBlur].forEach(slider => {
         slider.addEventListener('mouseup', () => slider.blur());
         slider.addEventListener('change', () => slider.blur());
     });
@@ -2005,8 +2039,21 @@ window.addEventListener('DOMContentLoaded', async () => {
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
     document.getElementById('loopBtn').addEventListener('click', toggleLoop);
-    document.getElementById('playbackSpeed').addEventListener('input', changePlaybackSpeed);
-    document.getElementById('volumeSlider').addEventListener('input', changeVolume);
+    document.getElementById('playbackSpeed').addEventListener('input', () => {
+        changePlaybackSpeed();
+        // Remove glow when user interacts with speed slider
+        const speedSlider = document.getElementById('playbackSpeed');
+        if (speedSlider) {
+            speedSlider.classList.remove('speed-slider-glow');
+        }
+    });
+    const volumeSlider = document.getElementById('volumeSlider');
+    if (volumeSlider) {
+        // Remove glow on mousedown/touchstart (when user clicks down, not on release)
+        volumeSlider.addEventListener('mousedown', removeVolumeSliderGlow);
+        volumeSlider.addEventListener('touchstart', removeVolumeSliderGlow);
+        volumeSlider.addEventListener('input', changeVolume);
+    }
     
     // Waveform Filters
     document.getElementById('removeDCOffset').addEventListener('change', handleWaveformFilterChange);
@@ -2085,6 +2132,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Listen for confirmation to proceed with workflow
     window.addEventListener('beginAnalysisConfirmed', async () => {
+        // Mark tutorial as completed (Begin Analysis was clicked)
+        const { markTutorialAsCompleted } = await import('./study-workflow.js');
+        markTutorialAsCompleted();
+        
         // Disable auto play checkbox after Begin Analysis is confirmed
         const autoPlayCheckbox = document.getElementById('autoPlay');
         if (autoPlayCheckbox) {

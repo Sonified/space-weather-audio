@@ -15,10 +15,17 @@ let lowFreqAmplitude = 0; // Low frequency amplitude for glow effect
 let lowFreqSmoother = 0; // Smooth the amplitude changes
 let lowPassBuffer = new Float32Array(128); // Buffer for low-pass filtering
 let lowPassIndex = 0;
-let lowPassAlpha = 0.95; // Low-pass filter coefficient (higher = more filtering)
-let lastAudioTime = 0; // Track when we last received audio
-let fadeMultiplier = 1.0; // Fade multiplier (1.0 = full, 0.0 = faded out)
+let lowPassAlpha = 0.92; // Low-pass filter coefficient (higher = more filtering) - increased for smoother, less jumpy flames
+let lastAudioTime = 0; // Will be set when first audio arrives
+let fadeMultiplier = 0.0; // Fade multiplier (1.0 = full, 0.0 = faded out) - start at 0, fade in when audio arrives
 let errorModeActive = false; // When true, dials flame effect way up
+let isCurrentlyPlaying = false; // Track playing state (set externally via setPlayingState)
+let lastPlayingState = false; // Track previous playing state to detect toggles
+let lastFadeUpdateTime = 0; // Track last fade update for delta-time calculation
+
+// 🔥 GLOW FADE DURATION: Randomized fade durations (400ms - 3000ms)
+let glowFadeUpDuration = 500; // Fade in duration (randomized on state toggle)
+let glowFadeDownDuration = 500; // Fade out duration (randomized on state toggle)
 
 /**
  * Show the oscilloscope panel (positioned in the bar below spectrogram)
@@ -77,11 +84,11 @@ function analyzeLowFrequency(samples) {
     }
     const avg = bufferSum / lowPassBuffer.length;
     
-    // Heavy exponential smoothing (very low-passed, alpha = 0.95 means 95% old, 5% new)
+    // Exponential smoothing (reduced for more responsiveness)
     lowFreqSmoother = lowFreqSmoother * lowPassAlpha + avg * (1 - lowPassAlpha);
     
-    // Additional smoothing layer for very smooth transitions
-    lowFreqAmplitude = lowFreqAmplitude * 0.9 + lowFreqSmoother * 0.1;
+    // Second smoothing layer (reduced for more responsiveness)
+    lowFreqAmplitude = lowFreqAmplitude * 0.75 + lowFreqSmoother * 0.25;
     
     return lowFreqAmplitude;
 }
@@ -101,17 +108,27 @@ function updatePanelGlow() {
     const now = performance.now();
     
     // Check if audio has stopped (no samples for 200ms)
-    const timeSinceAudio = now - lastAudioTime;
+    const timeSinceAudio = lastAudioTime === 0 ? Infinity : now - lastAudioTime;
+    
+    // Frame-rate independent fade: uses randomized fade durations
+    if (lastFadeUpdateTime === 0) {
+        lastFadeUpdateTime = now; // Initialize on first frame
+    }
+    const deltaTime = now - lastFadeUpdateTime;
+    lastFadeUpdateTime = now;
+    
     if (timeSinceAudio > 200) {
-        // Fade out gradually
-        fadeMultiplier = Math.max(0, fadeMultiplier - 0.02); // Fade out over ~1 second
+        // Fade out gradually (frame-rate independent) - uses randomized fade down duration
+        const fadeRate = deltaTime / glowFadeDownDuration; // Fraction to change per millisecond
+        fadeMultiplier = Math.max(0, fadeMultiplier - fadeRate);
     } else {
-        // Fade back in when audio resumes
-        fadeMultiplier = Math.min(1, fadeMultiplier + 0.05);
+        // Fade in gradually (frame-rate independent) - uses randomized fade up duration
+        const fadeRate = deltaTime / glowFadeUpDuration; // Fraction to change per millisecond
+        fadeMultiplier = Math.min(1, fadeMultiplier + fadeRate);
     }
     
-    // Base intensity from audio amplitude
-    let baseIntensity = Math.min(1, lowFreqAmplitude * 3) * fadeMultiplier;
+    // Base intensity from audio amplitude - reduced for less prominent flames
+    let baseIntensity = Math.min(1, lowFreqAmplitude * 3.5) * fadeMultiplier;
     
     // 🔥 ERROR MODE: Dial flame effect way up!
     if (errorModeActive) {
@@ -123,56 +140,98 @@ function updatePanelGlow() {
     // Different frequencies and phases create organic, heat-like variations
     const time = now / 1000; // Time in seconds
     
-    // Multiple sine waves at different frequencies (heat waves - higher frequencies for more dynamic variation)
+    // Multiple sine waves at different frequencies (heat waves - further reduced amplitudes for smoother flames)
     // These will multiply the base intensity to create variation
-    const wave1 = Math.sin(time * 3.2) * 0.3;      // Primary wave (~3.2 Hz)
-    const wave2 = Math.sin(time * 5.5 + Math.PI / 3) * 0.2;  // Medium wave (~5.5 Hz, phase shifted)
-    const wave3 = Math.sin(time * 8.3 + Math.PI / 2) * 0.15;  // Faster wave (~8.3 Hz, phase shifted)
-    const wave4 = Math.sin(time * 12.1 + Math.PI) * 0.1;      // Fast wave (~12.1 Hz, phase shifted)
+    const wave1 = Math.sin(time * 4.2) * 0.12;      // Primary wave (~4.2 Hz) - further reduced amplitude
+    const wave2 = Math.sin(time * 6.8 + Math.PI / 3) * 0.1;  // Medium wave (~6.8 Hz) - further reduced amplitude
+    const wave3 = Math.sin(time * 10.2 + Math.PI / 2) * 0.08;  // Faster wave (~10.2 Hz) - further reduced amplitude
+    const wave4 = Math.sin(time * 15.5 + Math.PI) * 0.06;      // Fast wave (~15.5 Hz) - further reduced amplitude
     
     // Combine waves to create a multiplier (centered around 1.0, varying above/below)
-    // Sum ranges from ~-0.75 to ~0.75, so we add 1.0 to center it around 1.0
-    const waveMultiplier = 1.0 + (wave1 + wave2 + wave3 + wave4); // Ranges from ~0.25 to ~1.75
+    // Sum ranges from ~-0.6 to ~0.6, so we add 1.0 to center it around 1.0
+    const waveMultiplier = 1.0 + (wave1 + wave2 + wave3 + wave4); // Ranges from ~0.4 to ~1.6
     
     // Apply multiplier to base intensity (this creates rising and falling like heat)
-    // Clamp the multiplier to reasonable bounds (0.8 to 2.0) - ranges from 0.8x to 2.0x
-    const clampedMultiplier = Math.max(0.8, Math.min(2.0, waveMultiplier));
+    // Clamp the multiplier to even tighter bounds (0.92 to 1.15) - smoother, less jumpy variation
+    const clampedMultiplier = Math.max(0.92, Math.min(1.15, waveMultiplier));
     let intensity = baseIntensity * clampedMultiplier;
     intensity = Math.max(0, Math.min(1, intensity)); // Clamp final intensity to 0-1
     
     const glowOpacity = errorModeActive 
-        ? intensity * 0.25  // Max 25% opacity when error (reduced to 1/4)
-        : intensity * 0.0625; // Max 6.25% opacity normally (reduced to 1/4)
+        ? intensity * 0.18  // Max 18% opacity when error (reduced 10%)
+        : intensity * 0.15; // Max 15% opacity normally (reduced for less prominent)
     const glowBlur = errorModeActive
-        ? 25 + (intensity * 50)  // 25-75px blur when error (reduced to 1/4)
-        : 6.25 + (intensity * 12.5);  // 6.25-18.75px blur normally (reduced to 1/4)
+        ? 30 + (intensity * 60)  // 30-90px blur when error
+        : 20 + (intensity * 50);  // 20-70px blur normally (reduced for less prominent)
     const glowSpread = errorModeActive
-        ? intensity * 25  // 0-25px spread when error (reduced to 1/4)
-        : intensity * 5; // 0-5px spread normally (reduced to 1/4)
+        ? intensity * 30  // 0-30px spread when error
+        : 12 + (intensity * 5); // 12-17px spread normally (reduced for less prominent)
     
-    // Fire-like colors: orange/red gradient
+    // Fire-like colors: subtle orange → amber variation
     const red = 255;
-    const green = 100 + (intensity * 80); // 100-180 (orange to yellow)
-    const blue = 50 + (intensity * 30); // 50-80 (warm tones)
+    const green = 100 + (intensity * 80); // 100-180 (orange to amber)
+    const blue = 40 + (intensity * 40); // 40-80 (warm tones)
     
-    // Create glow using box-shadow - combine with existing panel shadows
-    // The glow appears around the panel edges
-    const existingShadows = `
-        0 10px 20px rgba(80, 20, 20, 0.35),
-        0 6px 12px rgba(80, 20, 20, 0.25),
-        0 3px 6px rgba(255, 100, 100, 0.15),
-        0 1px 3px rgba(0, 0, 0, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.6)
+    // ===== AMBIENT GLOW PARAMETERS =====
+    // Glow LOW (at rest/paused) - ALWAYS VISIBLE
+    const minGlowOpacity = 0.18;   // 18% opacity minimum (always visible ambient glow)
+    const minBlurScale = 0.3;      // 30% blur size (minimal variation - mostly opacity fade)
+    
+    // Glow HIGH (when playing) - FADES UP (not expanding)
+    const maxGlowOpacity = 0.28;    // 28% opacity maximum
+    const maxBlurScale = 0.32;      // 32% blur size (minimal variation - mostly opacity fade)
+    
+    // Fade time: Randomized between 400ms-3000ms on each state toggle (separate for fade up/down)
+    
+    // Calculate actual glow based on fadeMultiplier (0 = paused/minimum, 1 = playing/maximum)
+    const glowFactor = minGlowOpacity + (maxGlowOpacity - minGlowOpacity) * fadeMultiplier;
+    const blurFactor = minBlurScale + (maxBlurScale - minBlurScale) * fadeMultiplier;
+    
+    // 🔥 STATIC GLOW INTENSITY MULTIPLIER (opacity boost)
+    const staticGlowMultiplier = 2; // 20% of original 10x
+    
+    // 🔥 AMBIENT GLOW: Blur multiplier for ambient glow
+    const ambientBlurMultiplier = 6; // 6x blur radius
+    
+    // Single set of glow values - no instant switching! Fades smoothly with glowFactor
+    // Old 4-layer configuration (commented out):
+    // 0 0 ${66 * blurFactor * ambientBlurMultiplier}px ${11 * blurFactor * ambientBlurMultiplier}px rgba(255, 100, 0, ${Math.min(1, 0.135 * glowFactor * staticGlowMultiplier)}),
+    // 0 0 ${88 * blurFactor * ambientBlurMultiplier}px ${17 * blurFactor * ambientBlurMultiplier}px rgba(255, 120, 20, ${Math.min(1, 0.108 * glowFactor * staticGlowMultiplier)}),
+    // 0 0 ${110 * blurFactor * ambientBlurMultiplier}px ${22 * blurFactor * ambientBlurMultiplier}px rgba(200, 80, 0, ${Math.min(1, 0.09 * glowFactor * staticGlowMultiplier)}),
+    // 0 0 ${44 * blurFactor * ambientBlurMultiplier}px ${6 * blurFactor * ambientBlurMultiplier}px rgba(255, 140, 40, ${Math.min(1, 0.072 * glowFactor * staticGlowMultiplier)})
+    
+    // Single smooth ambient glow (no banding possible!)
+    const staticGlow = `
+        0 0 ${80 * blurFactor * ambientBlurMultiplier}px ${15 * blurFactor * ambientBlurMultiplier}px rgba(255, 105, 15, ${Math.min(1, 0.35 * glowFactor * staticGlowMultiplier)})
     `;
     
-    const glowShadow = `
-        ${existingShadows},
+    // Combine static glow + animated flame glow + panel styling
+    const fullShadow = `
+        ${staticGlow},
         0 0 ${glowBlur}px ${glowSpread}px rgba(${red}, ${green}, ${blue}, ${glowOpacity}),
-        0 0 ${glowBlur * 1.5}px ${glowSpread * 1.5}px rgba(${red}, ${green}, ${blue}, ${glowOpacity * 0.5})
+        0 0 ${glowBlur * 1.5}px ${glowSpread * 1.5}px rgba(${red}, ${green}, ${blue}, ${glowOpacity * 0.5}),
+        0 1px 3px rgba(0, 0, 0, ${0.05 + 0.05 * glowFactor}),
+        inset 0 1px 0 rgba(255, 255, 255, ${0.3 + 0.3 * glowFactor})
     `;
     
-    // Apply glow to visualization panel via CSS custom property
-    visualizationPanel.style.setProperty('--glow-shadow', glowShadow);
+    // Apply complete shadow directly (bypassing CSS)
+    visualizationPanel.style.boxShadow = fullShadow;
+}
+
+/**
+ * Set the current playing state (called from audio-player.js)
+ * Randomizes fade durations when state toggles
+ */
+export function setPlayingState(isPlaying) {
+    // Detect state toggle
+    if (isPlaying !== lastPlayingState) {
+        // Randomize fade durations between 400ms and 3000ms
+        glowFadeUpDuration = 400 + Math.random() * 2600; // 400-3000ms
+        glowFadeDownDuration = 400 + Math.random() * 2600; // 400-3000ms
+        // console.log(`🎮 State toggle: ${lastPlayingState} → ${isPlaying} | Fade up: ${glowFadeUpDuration.toFixed(0)}ms, Fade down: ${glowFadeDownDuration.toFixed(0)}ms`);
+    }
+    lastPlayingState = isPlaying;
+    isCurrentlyPlaying = isPlaying;
 }
 
 /**
@@ -181,14 +240,15 @@ function updatePanelGlow() {
 export function addOscilloscopeData(samples) {
     if (!isInitialized || !samples || samples.length === 0) return;
     
-    // Update last audio time
-    lastAudioTime = performance.now();
+    // Only update lastAudioTime when actually playing (not when paused/outputting silence)
+    if (isCurrentlyPlaying) {
+        lastAudioTime = performance.now();
+    }
     
     // Analyze low frequency amplitude
     analyzeLowFrequency(samples);
     
-    // Update panel glow
-    updatePanelGlow();
+    // Note: updatePanelGlow() now runs in render() loop for continuous sine wave animation
     
     // Add new samples to buffer (circular buffer)
     for (let i = 0; i < samples.length; i++) {
@@ -203,16 +263,9 @@ export function addOscilloscopeData(samples) {
 function render() {
     if (!ctx || !canvas) return;
     
-    // Check if audio has stopped and update fade
-    const now = performance.now();
-    const timeSinceAudio = now - lastAudioTime;
-    if (timeSinceAudio > 200) {
-        // Fade out gradually
-        fadeMultiplier = Math.max(0, fadeMultiplier - 0.02); // Fade out over ~1 second
-    } else {
-        // Fade back in when audio resumes
-        fadeMultiplier = Math.min(1, fadeMultiplier + 0.05);
-    }
+    // 🔥 Update panel glow every frame (sine waves need to run continuously)
+    // Note: updatePanelGlow() also handles fadeMultiplier updates
+    updatePanelGlow();
     
     const width = canvas.width;
     const height = canvas.height;

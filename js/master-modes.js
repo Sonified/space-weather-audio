@@ -11,6 +11,8 @@
  * DEV: Current development environment with tutorial
  * STUDY: Full research workflow (pre-surveys → tutorial → post-surveys → Qualtrics)
  * STUDY_CLEAN: Same as STUDY but resets all flags on each load (for testing)
+ * STUDY_RETURNING_CLEAN_1: Returning user, first session of the week (resets flags)
+ * STUDY_RETURNING_CLEAN_2: Returning user, second session of the week (resets flags)
  * STUDY_END: Study completion mode with end walkthrough (runs after study workflow completes)
  * TEST_STUDY_END: Debug mode to test the study end walkthrough (last 2 messages)
  */
@@ -19,6 +21,8 @@ export const AppMode = {
     DEV: 'dev',
     STUDY: 'study',
     STUDY_CLEAN: 'study_clean',
+    STUDY_RETURNING_CLEAN_1: 'study_returning_clean_1',
+    STUDY_RETURNING_CLEAN_2: 'study_returning_clean_2',
     STUDY_END: 'study_end',
     TEST_STUDY_END: 'test_study_end'
 };
@@ -121,6 +125,48 @@ const MODE_CONFIG = {
         resetFlagsOnLoad: true // Reset all study flags on each load
     },
     
+    [AppMode.STUDY_RETURNING_CLEAN_1]: {
+        name: 'Study Returning Clean 1',
+        description: 'Returning user - first session of the week (resets flags, shows Welcome Back)',
+        skipTutorial: true, // Already completed tutorial
+        showPreSurveys: true,
+        showPostSurveys: true,
+        requireQualtricsSubmission: true,
+        enableAdminFeatures: false,
+        showSubmitButton: true,
+        autoStartPlayback: false,
+        // Study-specific config
+        requireResponseId: true,
+        showProgressIndicator: true,
+        enforceSequence: true,
+        resetFlagsOnLoad: true,
+        // Returning user config
+        simulateReturningUser: true,
+        weeklySessionCount: 1, // First session of the week
+        forceWelcomeBackModal: true
+    },
+    
+    [AppMode.STUDY_RETURNING_CLEAN_2]: {
+        name: 'Study Returning Clean 2',
+        description: 'Returning user - second session of the week (resets flags, shows Welcome Back)',
+        skipTutorial: true, // Already completed tutorial
+        showPreSurveys: true,
+        showPostSurveys: true,
+        requireQualtricsSubmission: true,
+        enableAdminFeatures: false,
+        showSubmitButton: true,
+        autoStartPlayback: false,
+        // Study-specific config
+        requireResponseId: true,
+        showProgressIndicator: true,
+        enforceSequence: true,
+        resetFlagsOnLoad: true,
+        // Returning user config
+        simulateReturningUser: true,
+        weeklySessionCount: 2, // Second session of the week
+        forceWelcomeBackModal: true
+    },
+    
     [AppMode.STUDY_END]: {
         name: 'Study End Mode',
         description: 'Skip pre-survey and tutorial, go straight to analysis, then end walkthrough',
@@ -175,7 +221,12 @@ export function isDevMode() {
 }
 
 export function isStudyMode() {
-    return CURRENT_MODE === AppMode.STUDY || CURRENT_MODE === AppMode.STUDY_CLEAN || CURRENT_MODE === AppMode.STUDY_END || CURRENT_MODE === AppMode.TEST_STUDY_END;
+    return CURRENT_MODE === AppMode.STUDY || 
+           CURRENT_MODE === AppMode.STUDY_CLEAN || 
+           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_1 || 
+           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_2 || 
+           CURRENT_MODE === AppMode.STUDY_END || 
+           CURRENT_MODE === AppMode.TEST_STUDY_END;
 }
 
 export function isStudyEndMode() {
@@ -183,7 +234,19 @@ export function isStudyEndMode() {
 }
 
 export function isStudyCleanMode() {
-    return CURRENT_MODE === AppMode.STUDY_CLEAN;
+    return CURRENT_MODE === AppMode.STUDY_CLEAN || 
+           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_1 || 
+           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_2;
+}
+
+export function isStudyReturningCleanMode() {
+    return CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_1 || 
+           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_2;
+}
+
+export function getWeeklySessionCount() {
+    const config = MODE_CONFIG[CURRENT_MODE];
+    return config.weeklySessionCount || 0;
 }
 
 export function isTestStudyEndMode() {

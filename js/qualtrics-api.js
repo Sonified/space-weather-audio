@@ -339,10 +339,7 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
             inValues: 'SessionTracking' in values
         });
         
-        // Also keep QID11 for backwards compatibility (if it exists in survey)
-        // But embedded data is the primary method now
-        // TODO: Remove QID11 once embedded data fields are confirmed working
-        values[config.questionIds.jsonDump.qid] = jsonDumpString;
+        // NOTE: We do NOT send to QID11 anymore - embedded data is reliable, text fields are not
     } else {
         console.warn('⚠️ No JSON dump provided in combinedResponses');
     }
@@ -384,19 +381,19 @@ export async function submitCombinedSurveyResponse(combinedResponses, participan
             hasPre: !!combinedResponses.pre,
             hasPost: !!combinedResponses.post,
             hasAwesf: !!combinedResponses.awesf,
-            hasJsonDump: !!values[config.questionIds.jsonDump.qid],
+            hasSessionTracking: !!values.SessionTracking,
             allFieldIds: Object.keys(values)
         });
         
-        // Log the full payload to verify JSON dump is included
-        if (payload.values[config.questionIds.jsonDump.qid]) {
-            console.log('📦 JSON Dump in payload:', {
-                fieldId: config.questionIds.jsonDump.qid,
-                length: payload.values[config.questionIds.jsonDump.qid].length,
-                preview: payload.values[config.questionIds.jsonDump.qid].substring(0, 150) + '...'
+        // Log the full payload to verify SessionTracking embedded data is included
+        if (payload.values.SessionTracking) {
+            console.log('📦 SessionTracking (embedded data) in payload:', {
+                fieldName: 'SessionTracking',
+                length: payload.values.SessionTracking.length,
+                preview: payload.values.SessionTracking.substring(0, 150) + '...'
             });
         } else {
-            console.warn('⚠️ JSON Dump NOT in payload values!');
+            console.warn('⚠️ SessionTracking embedded data NOT in payload values!');
         }
         
         const qualConfig = await getQualtricsConfig();

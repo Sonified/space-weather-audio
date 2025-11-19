@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Timeout Test - Volcano Audio</title>
+    <link rel="stylesheet" href="../styles.css">
+    <style>
+        /* Additional styles for the test page */
+        .test-info {
+            background: linear-gradient(135deg, rgba(255, 250, 250, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+            max-width: 800px;
+            margin: 20px auto;
+        }
+        
+        .test-info h2 {
+            color: #550000;
+            margin-bottom: 10px;
+        }
+        
+        .test-info p {
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .test-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .test-controls button {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="test-info">
+            <h2>⏰ Session Timeout Test Dashboard</h2>
+            <p>This page tests the actual session timeout modals from <code>js/session-management.js</code>.</p>
+            <p><strong>Status:</strong> <span id="test-status">Ready - click a button to test</span></p>
+            <p><strong>Countdown:</strong> <span id="test-countdown">No active countdown</span></p>
+            <p style="color: #666; font-size: 14px; margin-top: 10px;">
+                ✅ <strong>Visibility tracking enabled:</strong> Switch tabs or minimize for 20+ minutes and come back to test!
+            </p>
+            <div class="test-controls">
+                <button onclick="showWarning()">Show Warning Modal</button>
+                <button onclick="showTimeout()">Show Timeout Modal</button>
+                <button onclick="hideAll()">Hide All Modals</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal overlay will be injected here by session-management.js -->
+    
+    <script type="module">
+        import { 
+            showTimeoutWarning, 
+            showTimeoutMessage, 
+            setLastActivityTime,
+            resetActivityTimer,
+            stopActivityTimer
+        } from '../js/session-management.js';
+        
+        const INACTIVE_WARNING_MS = 10 * 60 * 1000;  // 10 minutes
+        const INACTIVE_TIMEOUT_MS = 20 * 60 * 1000;  // 20 minutes
+        
+        // Make functions available globally for onclick handlers
+        window.showWarning = function() {
+            // Simulate that 10 minutes have passed
+            setLastActivityTime(Date.now() - INACTIVE_WARNING_MS);
+            showTimeoutWarning();
+            document.getElementById('test-status').textContent = 'Showing 10-minute warning modal';
+            document.getElementById('test-countdown').textContent = '10 minutes remaining';
+        };
+        
+        window.showTimeout = function() {
+            // Simulate that 20 minutes have passed
+            setLastActivityTime(Date.now() - INACTIVE_TIMEOUT_MS);
+            showTimeoutMessage();
+            document.getElementById('test-status').textContent = 'Showing timeout modal (20 minutes elapsed)';
+            document.getElementById('test-countdown').textContent = 'Session ended';
+        };
+        
+        window.hideAll = function() {
+            // Hide warning modal
+            const warningModal = document.getElementById('timeout-warning-modal');
+            if (warningModal) {
+                warningModal.remove();
+            }
+            
+            // Hide timeout modal
+            const timeoutModal = document.getElementById('timeout-message-modal');
+            if (timeoutModal) {
+                timeoutModal.remove();
+            }
+            
+            // Reset timer
+            resetActivityTimer();
+            stopActivityTimer();
+            
+            document.getElementById('test-status').textContent = 'All modals hidden';
+            document.getElementById('test-countdown').textContent = 'No active countdown';
+        };
+        
+        // Update countdown display periodically when warning is showing
+        setInterval(() => {
+            const warningModal = document.getElementById('timeout-warning-modal');
+            if (warningModal) {
+                const countdownSpan = document.getElementById('timeout-countdown');
+                if (countdownSpan) {
+                    const minutes = parseInt(countdownSpan.textContent) || 10;
+                    document.getElementById('test-countdown').textContent = `${minutes} minute${minutes !== 1 ? 's' : ''} remaining`;
+                }
+            }
+        }, 1000);
+        
+        console.log('Session Timeout Test Dashboard loaded - using real session-management.js');
+    </script>
+</body>
+</html>

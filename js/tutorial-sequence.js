@@ -185,82 +185,130 @@ export async function startSpeedSliderTutorial() {
         // Show initial tutorial message about dragging the slider
         setStatusText('👇 Drag the playback speed slider left/right to change playback speed.', 'status info');
         
-        // Set up event handler for slider changes (detects interaction, direction, threshold)
-        let hasInteracted = false;
-        let recentValues = [];
-        const TREND_WINDOW_SIZE = 20;
-        const MIN_MOVEMENT_FOR_DIRECTION = 3;
-        const THRESHOLD = 667;
-        const TOLERANCE = 5;
+        // ═══════════════════════════════════════════════════════════
+        // STATE MACHINE: Polling-based detection with low-pass filter
+        // ═══════════════════════════════════════════════════════════
         
-        const handleSliderChange = () => {
-            if (!speedSliderTutorialActive) return;
+        // State machine parameters
+        const POLL_INTERVAL = 50; // 50ms polling rate (20 Hz)
+        const LOW_PASS_ALPHA = 0.80; // Smoothing factor for low-pass filter
+        const INITIAL_POSITIVE_THRESHOLD = 1.17; // 1.17x speed
+        const INITIAL_NEGATIVE_THRESHOLD = 0.95; // 0.95x speed
+        const CENTER_THRESHOLD = 1.0; // 1.0x speed (center)
+        const COOLDOWN_MS = 100; // 100ms cooldown between state transitions
+        
+        // State machine state
+        let stateMachineState = 'NEUTRAL'; // 'NEUTRAL' | 'POSITIVE' | 'NEGATIVE'
+        let filteredSliderValue = speedSliderInitialValue;
+        let positiveThreshold = INITIAL_POSITIVE_THRESHOLD;
+        let negativeThreshold = INITIAL_NEGATIVE_THRESHOLD;
+        let lastTransitionTime = 0;
+        let hasInteracted = false;
+        let pollingIntervalId = null;
+        
+        // Helper: Convert slider value to speed
+        const sliderValueToSpeed = (value) => {
+            if (value <= 667) {
+                const normalized = value / 667;
+                return 0.1 * Math.pow(10, normalized);
+            } else {
+                const normalized = (value - 667) / 333;
+                return Math.pow(15, normalized);
+            }
+        };
+        
+        // State machine polling loop
+        const stateMachineLoop = () => {
+            if (!speedSliderTutorialActive) {
+                return; // Stop if tutorial ended
+            }
             
-            const currentValue = parseFloat(speedSlider.value);
+            // Read raw slider value
+            const rawValue = parseFloat(speedSlider.value);
             
-            // Detect interaction
-            if (!hasInteracted && Math.abs(currentValue - speedSliderLastValue) > 0.5) {
+            // Apply low-pass filter: filteredValue = alpha * lastFiltered + (1 - alpha) * rawValue
+            filteredSliderValue = LOW_PASS_ALPHA * filteredSliderValue + (1 - LOW_PASS_ALPHA) * rawValue;
+            
+            // Convert to speed
+            const filteredSpeed = sliderValueToSpeed(filteredSliderValue);
+            
+            // Detect interaction (any movement from initial position)
+            if (!hasInteracted && Math.abs(filteredSliderValue - speedSliderInitialValue) > 1.0) {
                 hasInteracted = true;
+                console.log('🎮 [STATE MACHINE] User interaction detected');
                 if (speedSliderInteractionResolve) {
                     speedSliderInteractionResolve();
                     speedSliderInteractionResolve = null;
                 }
             }
             
-            // Track recent values for direction detection
-            if (hasInteracted) {
-                recentValues.push(currentValue);
-                if (recentValues.length > TREND_WINDOW_SIZE) {
-                    recentValues.shift();
-                }
-                
-                // Detect direction
-                if (speedSliderDirection === null && recentValues.length >= TREND_WINDOW_SIZE) {
-                    const oldestValue = recentValues[0];
-                    const newestValue = recentValues[recentValues.length - 1];
-                    const totalMovement = Math.abs(newestValue - oldestValue);
-                    
-                    if (totalMovement >= MIN_MOVEMENT_FOR_DIRECTION) {
-                        if (newestValue > oldestValue) {
-                            speedSliderDirection = 'faster';
-                        } else if (newestValue < oldestValue) {
-                            speedSliderDirection = 'slower';
+            // Check cooldown
+            const now = Date.now();
+            const inCooldown = (now - lastTransitionTime) < COOLDOWN_MS;
+            
+            if (!inCooldown && hasInteracted) {
+                // State transitions
+                if (stateMachineState === 'NEUTRAL') {
+                    // NEUTRAL → POSITIVE or NEGATIVE
+                    if (filteredSpeed >= positiveThreshold) {
+                        stateMachineState = 'POSITIVE';
+                        speedSliderDirection = 'faster';
+                        negativeThreshold = CENTER_THRESHOLD; // Set new threshold for opposite direction
+                        lastTransitionTime = now;
+                        console.log(`🎮 [STATE MACHINE] NEUTRAL → POSITIVE (speed: ${filteredSpeed.toFixed(2)}x)`);
+                        
+                        if (speedSliderDirectionResolve) {
+                            speedSliderDirectionResolve();
+                            speedSliderDirectionResolve = null;
                         }
+                    } else if (filteredSpeed <= negativeThreshold) {
+                        stateMachineState = 'NEGATIVE';
+                        speedSliderDirection = 'slower';
+                        positiveThreshold = CENTER_THRESHOLD; // Set new threshold for opposite direction
+                        lastTransitionTime = now;
+                        console.log(`🎮 [STATE MACHINE] NEUTRAL → NEGATIVE (speed: ${filteredSpeed.toFixed(2)}x)`);
                         
                         if (speedSliderDirectionResolve) {
                             speedSliderDirectionResolve();
                             speedSliderDirectionResolve = null;
                         }
                     }
-                }
-            }
-            
-            // Detect threshold cross
-            if (!speedSliderCrossedThreshold) {
-                const wasBelow = speedSliderLastValue < (THRESHOLD - TOLERANCE);
-                const wasAbove = speedSliderLastValue > (THRESHOLD + TOLERANCE);
-                const isBelow = currentValue < (THRESHOLD - TOLERANCE);
-                const isAbove = currentValue > (THRESHOLD + TOLERANCE);
-                const isNearThreshold = currentValue >= (THRESHOLD - TOLERANCE) && currentValue <= (THRESHOLD + TOLERANCE);
-                
-                const crossedFromBelow = wasBelow && (isAbove || isNearThreshold);
-                const crossedFromAbove = wasAbove && (isBelow || isNearThreshold);
-                
-                if (crossedFromBelow || crossedFromAbove) {
-                    speedSliderCrossedThreshold = true;
-                    if (speedSliderThresholdResolve) {
-                        speedSliderThresholdResolve();
-                        speedSliderThresholdResolve = null;
+                } else if (stateMachineState === 'POSITIVE') {
+                    // POSITIVE → NEGATIVE (crossing center going down)
+                    if (filteredSpeed <= negativeThreshold) {
+                        stateMachineState = 'NEGATIVE';
+                        speedSliderCrossedThreshold = true;
+                        lastTransitionTime = now;
+                        console.log(`🎮 [STATE MACHINE] POSITIVE → NEGATIVE (crossed center at ${filteredSpeed.toFixed(2)}x)`);
+                        
+                        if (speedSliderThresholdResolve) {
+                            speedSliderThresholdResolve();
+                            speedSliderThresholdResolve = null;
+                        }
+                    }
+                } else if (stateMachineState === 'NEGATIVE') {
+                    // NEGATIVE → POSITIVE (crossing center going up)
+                    if (filteredSpeed >= positiveThreshold) {
+                        stateMachineState = 'POSITIVE';
+                        speedSliderCrossedThreshold = true;
+                        lastTransitionTime = now;
+                        console.log(`🎮 [STATE MACHINE] NEGATIVE → POSITIVE (crossed center at ${filteredSpeed.toFixed(2)}x)`);
+                        
+                        if (speedSliderThresholdResolve) {
+                            speedSliderThresholdResolve();
+                            speedSliderThresholdResolve = null;
+                        }
                     }
                 }
             }
-            
-            speedSliderLastValue = currentValue;
         };
         
-        speedSlider.addEventListener('input', handleSliderChange);
-        speedSlider.addEventListener('change', handleSliderChange);
-        speedSlider._tutorialHandler = handleSliderChange;
+        // Start polling loop
+        console.log('🎮 [STATE MACHINE] Starting 50ms polling loop');
+        pollingIntervalId = setInterval(stateMachineLoop, POLL_INTERVAL);
+        
+        // Store interval ID for cleanup
+        speedSlider._stateMachineIntervalId = pollingIntervalId;
         
         // Wait for user to interact with slider
         await waitForSliderInteraction(speedSlider);
@@ -288,17 +336,30 @@ export async function startSpeedSliderTutorial() {
         setStatusText(`Now try going the other way. ${directionEmoji}`, 'status info');
         
         // Check if they've already crossed the threshold going the other way
-        const currentValue = parseFloat(speedSlider.value);
+        const currentSliderValue = parseFloat(speedSlider.value);
         const oppositeDirection = speedSliderDirection === 'faster' ? 'slower' : 'faster';
+        
+        // Convert current slider value to speed
+        let currentSpeed;
+        if (currentSliderValue <= 667) {
+            const normalized = currentSliderValue / 667;
+            currentSpeed = 0.1 * Math.pow(10, normalized);
+        } else {
+            const normalized = (currentSliderValue - 667) / 333;
+            currentSpeed = Math.pow(15, normalized);
+        }
+        
+        const CENTER_SPEED = 1.0;
+        const SPEED_TOLERANCE = 0.05; // 5% tolerance (0.95x - 1.05x)
         
         // Determine if they've already crossed based on direction
         let alreadyCrossed = false;
         if (oppositeDirection === 'slower') {
-            // They went faster first, now check if they're already slower (below threshold)
-            alreadyCrossed = currentValue < (THRESHOLD - TOLERANCE);
+            // They went faster first, now check if they're already slower (below center)
+            alreadyCrossed = currentSpeed < (CENTER_SPEED - SPEED_TOLERANCE);
         } else {
-            // They went slower first, now check if they're already faster (above threshold)
-            alreadyCrossed = currentValue > (THRESHOLD + TOLERANCE);
+            // They went slower first, now check if they're already faster (above center)
+            alreadyCrossed = currentSpeed > (CENTER_SPEED + SPEED_TOLERANCE);
         }
         
         if (!alreadyCrossed) {
@@ -433,11 +494,11 @@ export function endSpeedSliderTutorial() {
     if (speedSlider) {
         speedSlider.classList.remove('speed-slider-glow');
         
-        // Remove event listener
-        if (speedSlider._tutorialHandler) {
-            speedSlider.removeEventListener('input', speedSlider._tutorialHandler);
-            speedSlider.removeEventListener('change', speedSlider._tutorialHandler);
-            speedSlider._tutorialHandler = null;
+        // Stop state machine polling loop
+        if (speedSlider._stateMachineIntervalId) {
+            console.log('🎮 [STATE MACHINE] Stopping polling loop');
+            clearInterval(speedSlider._stateMachineIntervalId);
+            speedSlider._stateMachineIntervalId = null;
         }
         
         // Disconnect speed value observer if it exists

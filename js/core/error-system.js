@@ -1,0 +1,266 @@
+/**
+ * error-system.js
+ * CORE SYSTEM - No app dependencies, always works
+ * Standalone error detection and reporting
+ */
+
+const consoleLogs = [];
+const MAX_LOG_ENTRIES = 200;
+let errorReported = false;
+let flameEngine = null;
+
+/**
+ * Capture console logs
+ */
+function captureConsoleLogs() {
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    
+    function addLog(level, args) {
+        if (consoleLogs.length >= MAX_LOG_ENTRIES) {
+            consoleLogs.shift();
+        }
+        consoleLogs.push({
+            timestamp: new Date().toISOString(),
+            level: level,
+            message: args.map(arg => {
+                if (typeof arg === 'object') {
+                    try {
+                        return JSON.stringify(arg);
+                    } catch (e) {
+                        return String(arg);
+                    }
+                }
+                return String(arg);
+            }).join(' ')
+        });
+    }
+    
+    console.log = function(...args) {
+        originalLog.apply(console, args);
+        addLog('log', args);
+    };
+    
+    console.error = function(...args) {
+        originalError.apply(console, args);
+        addLog('error', args);
+    };
+    
+    console.warn = function(...args) {
+        originalWarn.apply(console, args);
+        addLog('warn', args);
+    };
+}
+
+/**
+ * Check if error is critical
+ */
+function isCriticalError(error, source) {
+    // Check error name directly
+    if (error && typeof error === 'object' && error.name) {
+        const errorName = String(error.name);
+        if (errorName === 'SyntaxError' || 
+            errorName === 'TypeError' || 
+            errorName === 'ReferenceError' || 
+            errorName === 'RangeError' ||
+            errorName === 'EvalError') {
+            return true;
+        }
+    }
+    
+    // Filter out non-critical patterns
+    const nonCriticalPatterns = [
+        /favicon\.ico/,
+        /net::ERR_/,
+        /Failed to load resource/,
+        /404/,
+        /ResizeObserver/
+    ];
+    
+    const errorString = String(error);
+    for (const pattern of nonCriticalPatterns) {
+        if (pattern.test(errorString)) {
+            return false;
+        }
+    }
+    
+    // Critical error patterns
+    const criticalPatterns = [
+        /SyntaxError/,
+        /TypeError/,
+        /ReferenceError/,
+        /RangeError/,
+        /is not a function/,
+        /Cannot read propert/,
+        /has already been declared/,
+        /Unexpected token/,
+        /Unexpected identifier/
+    ];
+    
+    for (const pattern of criticalPatterns) {
+        if (pattern.test(errorString)) {
+            return true;
+        }
+    }
+    
+    // If from our domain, likely critical
+    if (source && (source.includes('volcano') || source.includes('now.audio') || source.includes('localhost'))) {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * Show error UI and trigger overheat mode
+ */
+async function handleCriticalError(errorMessage, errorDetails) {
+    if (errorReported) {
+        return; // Already handled
+    }
+    
+    console.error('🔥 CRITICAL ERROR DETECTED (Core):', errorMessage);
+    
+    // Update status message
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.textContent = 'The interface has overheated. Our team is working on it, thank you for your patience!';
+        statusEl.className = 'status error';
+        statusEl.style.cursor = 'default';
+    }
+    
+    // Trigger flame effect
+    if (flameEngine && flameEngine.enterOverheatMode) {
+        await flameEngine.enterOverheatMode();
+    }
+    
+    // Disable UI buttons (fail gracefully if they don't exist)
+    try {
+        const startBtn = document.getElementById('startBtn');
+        if (startBtn) startBtn.disabled = true;
+        
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        if (playPauseBtn) playPauseBtn.disabled = true;
+        
+        const downloadBtn = document.getElementById('downloadBtn');
+        if (downloadBtn) downloadBtn.disabled = true;
+        
+        const completeBtn = document.getElementById('completeBtn');
+        if (completeBtn) completeBtn.disabled = true;
+    } catch (e) {
+        // Buttons might not exist yet
+    }
+    
+    // Submit error report
+    await submitErrorReport(errorMessage, errorDetails);
+}
+
+/**
+ * Submit error report to backend
+ */
+async function submitErrorReport(errorMessage, errorDetails) {
+    if (errorReported) return;
+    errorReported = true;
+    
+    // Try to get participant ID (fail gracefully)
+    let participantId = 'unknown';
+    try {
+        // Check if qualtrics API is available
+        if (window.qualtricsAPI && window.qualtricsAPI.getParticipantId) {
+            participantId = window.qualtricsAPI.getParticipantId() || 'unknown';
+        }
+    } catch (e) {
+        // Qualtrics API not available, continue with 'unknown'
+    }
+    
+    const errorReport = {
+        participantId: participantId,
+        timestamp: new Date().toISOString(),
+        errorMessage: errorMessage,
+        errorDetails: errorDetails,
+        consoleLogs: consoleLogs.slice(-100),
+        userAgent: navigator.userAgent,
+        url: window.location.href,
+        viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight
+        },
+        source: 'core-error-system'
+    };
+    
+    try {
+        const response = await fetch('https://volcano-audio-collector-production.up.railway.app/api/report-error', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(errorReport)
+        });
+        
+        if (response.ok) {
+            console.log('✅ Error report submitted (core)');
+        } else {
+            console.error('❌ Failed to submit error report:', response.statusText);
+            errorReported = false; // Allow retry
+        }
+    } catch (error) {
+        console.error('❌ Error submitting report:', error);
+        errorReported = false; // Allow retry
+    }
+}
+
+/**
+ * Initialize error system (called early)
+ */
+export function initErrorSystem(flameEngineRef) {
+    flameEngine = flameEngineRef;
+    
+    // Start capturing console
+    captureConsoleLogs();
+    
+    // Handle uncaught errors
+    window.onerror = (message, source, lineno, colno, error) => {
+        const errorMessage = String(message);
+        const errorDetails = {
+            source: source,
+            lineno: lineno,
+            colno: colno,
+            stack: error?.stack || 'No stack trace',
+            name: error?.name || 'Error',
+            type: 'window.onerror'
+        };
+        
+        const errorToCheck = error || message;
+        if (isCriticalError(errorToCheck, source)) {
+            handleCriticalError(errorMessage, errorDetails);
+        }
+        
+        return false; // Allow default error handling
+    };
+    
+    // Handle unhandled promise rejections
+    window.addEventListener('unhandledrejection', (event) => {
+        const error = event.reason;
+        const errorMessage = error?.message || String(error) || 'Unhandled Promise Rejection';
+        const errorDetails = {
+            type: 'unhandledrejection',
+            stack: error?.stack || 'No stack trace',
+            name: error?.name || 'PromiseRejection'
+        };
+        
+        if (isCriticalError(error, null)) {
+            handleCriticalError(errorMessage, errorDetails);
+        }
+    });
+    
+    console.log('✅ Core error system initialized');
+    
+    // Expose globally for app layer to use
+    window.coreErrorSystem = {
+        reportError: handleCriticalError
+    };
+    
+    return {
+        reportError: handleCriticalError
+    };
+}
+

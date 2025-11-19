@@ -442,7 +442,7 @@ async function showVolcanoMessage() {
     };
     const volcanoName = volcanoNameMap[volcanoValue] || 'the volcano';
     setStatusTextAndTrack(`This is the sound of seismic activity recorded at ${volcanoName} over the past 24 hours.`, 'status info');
-    await skippableWait(5000);
+    await skippableWait(7000);
 }
 
 async function showStationMetadataMessage() {
@@ -465,7 +465,7 @@ async function showStationMetadataMessage() {
                           channel.endsWith('E') ? 'east (E)' : 'seismic';
         
         setStatusTextAndTrack(`The station is ${distanceKm}km from the volcano, and is measuring activity in the ${component} component.`, 'status info');
-        await skippableWait(7000);
+        await skippableWait(8000);
     } catch (error) {
         console.warn('Could not parse station data for metadata message:', error);
         // Skip if parsing fails
@@ -479,8 +479,8 @@ async function showVolumeSliderTutorial() {
     // Show message about volume adjustment
     setStatusTextAndTrack('The volume can be adjusted here. ↘️', 'status info');
     
-    // Wait 6 seconds
-    await skippableWait(6000);
+    // Wait 8 seconds
+    await skippableWait(8000);
     
     // Remove glow
     removeVolumeSliderGlow();
@@ -507,21 +507,17 @@ async function runPauseButtonTutorial() {
 async function showSpectrogramExplanation() {
     addSpectrogramGlow();
     
-    // First message introducing the spectrogram
-    setStatusTextAndTrack('This is a spectrogram of the data.', 'status info');
-    await skippableWait(5000);
+    // First message about time flow
+    setStatusTextAndTrack('Time moves from left to right 👉', 'status info');
+    await skippableWait(4000);
     
-    // Second message about interesting features
+    // Second message about frequency
+    setStatusTextAndTrack('Frequency spans from low to high 👆', 'status info');
+    await skippableWait(4000);
+    
+    // Third message about interesting features
     setStatusTextAndTrack('You may notice a variety of interesting features.', 'status info');
     await skippableWait(5000);
-    
-    // Third message about time flow
-    setStatusTextAndTrack('Time flows from left to right 👉', 'status info');
-    await skippableWait(4000);
-    
-    // Fourth message about frequency
-    setStatusTextAndTrack('And frequency spans from low to high 👆', 'status info');
-    await skippableWait(4000);
     
     // Additional message about selecting features (keep glow)
     setStatusTextAndTrack('A bit later we will use this space for selecting features.', 'status info');

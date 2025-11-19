@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speed Slider Detection Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 10px;
+            line-height: 1.4;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #4CAF50;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 5px;
+        }
+        
+        h2 {
+            color: #2196F3;
+            margin-top: 15px;
+            margin-bottom: 8px;
+            border-left: 4px solid #2196F3;
+            padding-left: 8px;
+        }
+        
+        .section {
+            background: #2a2a2a;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 5px;
+            border: 1px solid #444;
+        }
+        
+        .slider-container {
+            margin: 10px 0;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #FFC107;
+            font-weight: bold;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #444;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2196F3;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2196F3;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .value-display {
+            display: inline-block;
+            margin-left: 10px;
+            color: #4CAF50;
+            font-weight: bold;
+            min-width: 80px;
+        }
+        
+        .status {
+            padding: 8px;
+            border-radius: 5px;
+            margin: 5px 0;
+            font-weight: bold;
+        }
+        
+        .status.active {
+            background: #4CAF50;
+            color: #1a1a1a;
+        }
+        
+        .status.inactive {
+            background: #666;
+            color: #ccc;
+        }
+        
+        .status.detecting-positive {
+            background: #FF9800;
+            color: #1a1a1a;
+        }
+        
+        .status.detecting-negative {
+            background: #2196F3;
+            color: #1a1a1a;
+        }
+        
+        .log {
+            background: #1a1a1a;
+            padding: 6px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            border: 1px solid #444;
+        }
+        
+        .log-entry {
+            margin: 3px 0;
+            padding: 3px;
+            border-left: 3px solid #444;
+            padding-left: 8px;
+        }
+        
+        .log-entry.positive {
+            border-left-color: #FF9800;
+        }
+        
+        .log-entry.negative {
+            border-left-color: #2196F3;
+        }
+        
+        .log-entry.neutral {
+            border-left-color: #666;
+        }
+        
+        .button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 6px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px 5px;
+        }
+        
+        .button:hover {
+            background: #1976D2;
+        }
+        
+        .button.danger {
+            background: #f44336;
+        }
+        
+        .button.danger:hover {
+            background: #d32f2f;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px;
+            margin: 10px 0;
+        }
+        
+        .stat-box {
+            background: #333;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #555;
+        }
+        
+        .stat-label {
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 3px;
+        }
+        
+        .stat-value {
+            color: #4CAF50;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .warning {
+            background: #FF9800;
+            color: #1a1a1a;
+            padding: 8px;
+            border-radius: 5px;
+            margin: 8px 0;
+            font-weight: bold;
+        }
+        
+        /* EXACT MIRROR OF ACTUAL SLIDER STYLES */
+            input[type="range"] {
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                appearance: none;
+            background: linear-gradient(to bottom, transparent 5px, rgba(140, 80, 70, 0.5) 5px, rgba(140, 80, 70, 0.5) 8px, transparent 8px);
+            height: 16px;
+            cursor: pointer;
+            padding: 0;
+            border: none;
+            outline: none;
+            border-radius: 4px;
+        }
+        
+        #speedValue {
+            display: inline-block;
+            width: 2.8em;
+            text-align: left;
+        }
+        
+        input[type="range"]::-webkit-slider-track {
+            background: rgba(140, 80, 70, 0.5);
+            height: 3px;
+            border-radius: 2px;
+            border: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            background: linear-gradient(135deg, #dd4444 0%, #bb2222 100%);
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.95);
+            cursor: pointer;
+            margin-top: -7.5px;
+            position: relative;
+            top: 2px;
+            box-shadow: 0 2px 6px rgba(180, 40, 40, 0.45);
+        }
+        
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: linear-gradient(135deg, #ee5555 0%, #cc3333 100%);
+            box-shadow: 0 3px 8px rgba(180, 40, 40, 0.55);
+        }
+        
+        input[type="range"]::-moz-range-track {
+            background: rgba(140, 80, 70, 0.5);
+            height: 3px;
+            border-radius: 2px;
+            border: none;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            background: linear-gradient(135deg, #dd4444 0%, #bb2222 100%);
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.95);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(180, 40, 40, 0.45);
+        }
+        
+        input[type="range"]::-moz-range-thumb:hover {
+            background: linear-gradient(135deg, #ee5555 0%, #cc3333 100%);
+            box-shadow: 0 3px 8px rgba(180, 40, 40, 0.55);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Speed Slider Detection Test</h1>
+        
+        <div class="warning">
+            ⚠️ This test page helps diagnose speed slider interaction issues. Adjust parameters below and test different interaction patterns.
+        </div>
+        
+        <div class="section">
+            <h2>🎮 Controls</h2>
+            <button class="button" id="startBtn">Start Monitoring</button>
+            <button class="button danger" id="stopBtn">Stop Monitoring</button>
+            <button class="button" id="clearLogBtn">Clear Log</button>
+            <button class="button" id="resetStatsBtn">Reset Stats</button>
+            <div style="display: flex; gap: 10px; margin-top: 8px;">
+                <div class="status inactive" id="sliderStatus" style="flex: 1;">
+                    Slider: Inactive (not being monitored)
+                </div>
+                <div class="status inactive" id="sliderStatusRight" style="flex: 1;">
+                    Status: Waiting
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🎚️ Speed Slider (Test Target - EXACT MIRROR)</h2>
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 15px 0 15px; box-sizing: border-box;">
+                <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none; opacity: 0.5; text-align: right;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
+                <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" style="width: 450px; min-width: 0;">
+            </div>
+            
+            <div style="text-align: right; padding: 0 15px; margin-top: 15px; margin-bottom: 8px;">
+                <button class="button" id="resetSpeedBtn" style="margin-bottom: 0;">Reset</button>
+            </div>
+            
+            <h3 style="color: #2196F3; margin-top: 15px; margin-bottom: 8px; font-size: 16px; text-align: right;">⚙️ Detection Parameters</h3>
+            
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 15px 0 15px; box-sizing: border-box; margin-bottom: 10px;">
+                <label for="positiveThreshold" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none; opacity: 0.5; text-align: right;">Positive Threshold: <span id="positiveThresholdValue">1.1x</span></label>
+                <input type="range" id="positiveThreshold" min="0" max="1000" step="1" value="679" style="width: 450px; min-width: 0;">
+            </div>
+            <small style="color: #888; padding: 0 15px; display: block; margin-bottom: 10px; text-align: right;">Absolute speed threshold above 1.0x (detect when speed crosses this value going up)</small>
+            
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 15px 0 15px; box-sizing: border-box; margin-bottom: 10px;">
+                <label for="negativeThreshold" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none; opacity: 0.5; text-align: right;">Negative Threshold: <span id="negativeThresholdValue">0.9x</span></label>
+                <input type="range" id="negativeThreshold" min="0" max="1000" step="1" value="636" style="width: 450px; min-width: 0;">
+            </div>
+            <small style="color: #888; padding: 0 15px; display: block; margin-bottom: 15px; text-align: right;">Absolute speed threshold below 1.0x (detect when speed crosses this value going down)</small>
+            
+            <div class="slider-container">
+                <label>
+                    Loop Rate (ms): 
+                    <span class="value-display" id="loopRateValue">50</span>
+                </label>
+                <input type="range" id="loopRate" min="10" max="200" step="10" value="50">
+                <small style="color: #888;">How often we check the slider value (lower = more frequent)</small>
+            </div>
+            
+            <div class="slider-container">
+                <label>
+                    Low-Pass Alpha (0-1): 
+                    <span class="value-display" id="lowPassAlphaValue">0.8</span>
+                </label>
+                <input type="range" id="lowPassAlpha" min="0.1" max="0.99" step="0.01" value="0.8">
+                <small style="color: #888;">Higher = more smoothing (0.8 = 80% old value, 20% new value)</small>
+            </div>
+            
+            <div class="slider-container">
+                <label>
+                    Detection Cooldown (ms): 
+                    <span class="value-display" id="cooldownValue">100</span>
+                </label>
+                <input type="range" id="cooldown" min="0" max="1000" step="50" value="100">
+                <small style="color: #888;">Time to wait after detection before detecting again (prevents spam)</small>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>📋 Parameters Export</h2>
+            <p style="color: #888; margin-bottom: 8px;">Copy these values to share your preferred settings:</p>
+            <textarea id="parametersExport" readonly style="width: 100%; min-height: 450px; padding: 10px; background: #1a1a1a; color: #e0e0e0; border: 1px solid #444; border-radius: 5px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 12px; resize: vertical;"></textarea>
+            <button class="button" id="copyParamsBtn" style="margin-top: 8px;">📋 Copy Parameters</button>
+        </div>
+        
+        <div class="section">
+            <h2>📝 Detection Log</h2>
+            <div class="log" id="logContainer">
+                <div class="log-entry neutral">Ready to start monitoring...</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>📊 Basic Stats</h2>
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-label">Raw Slider Value</div>
+                    <div class="stat-value" id="rawValue">667</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Filtered Slider Value</div>
+                    <div class="stat-value" id="filteredValue">667</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Speed (x)</div>
+                    <div class="stat-value" id="speedDisplay">1.00</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Change Rate</div>
+                    <div class="stat-value" id="changeRate">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Detections</div>
+                    <div class="stat-value" id="detectionCount">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Loop Calls</div>
+                    <div class="stat-value" id="loopCount">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State (using EXACT same slider range: 0-1000, default 667)
+        let isMonitoring = false;
+        let loopInterval = null;
+        let lastRawValue = 667;
+        let filteredValue = 667;
+        let lastFilteredValue = 667; // Track previous filtered value for change calculation
+        let lastDetectionTime = 0;
+        let detectionCount = 0;
+        let loopCount = 0;
+        let currentState = 'NEUTRAL'; // State machine: NEUTRAL | POSITIVE | NEGATIVE
+        let lastDetectionState = null; // Store last detection state (POSITIVE/NEGATIVE) for display
+        let savedPositiveThreshold = null; // Store user-set positive threshold slider value (initial: 1.17x)
+        let savedNegativeThreshold = null; // Store user-set negative threshold slider value (initial: 0.95x)
+        
+        // Get DOM elements (using EXACT same IDs as real interface)
+        const speedSlider = document.getElementById('playbackSpeed');
+        const speedValue = document.getElementById('speedValue');
+        const sliderStatus = document.getElementById('sliderStatus');
+        const sliderStatusRight = document.getElementById('sliderStatusRight');
+        
+        const loopRateSlider = document.getElementById('loopRate');
+        const loopRateValue = document.getElementById('loopRateValue');
+        const lowPassAlphaSlider = document.getElementById('lowPassAlpha');
+        const lowPassAlphaValue = document.getElementById('lowPassAlphaValue');
+        const positiveThresholdSlider = document.getElementById('positiveThreshold');
+        const positiveThresholdValue = document.getElementById('positiveThresholdValue');
+        const negativeThresholdSlider = document.getElementById('negativeThreshold');
+        const negativeThresholdValue = document.getElementById('negativeThresholdValue');
+        const cooldownSlider = document.getElementById('cooldown');
+        const cooldownValue = document.getElementById('cooldownValue');
+        
+        const rawValueDisplay = document.getElementById('rawValue');
+        const filteredValueDisplay = document.getElementById('filteredValue');
+        const changeRateDisplay = document.getElementById('changeRate');
+        const detectionCountDisplay = document.getElementById('detectionCount');
+        const loopCountDisplay = document.getElementById('loopCount');
+        const lastDetectionStatus = document.getElementById('lastDetectionStatus');
+        const lastDetectionDetails = document.getElementById('lastDetectionDetails');
+        const logContainer = document.getElementById('logContainer');
+        
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+        const resetStatsBtn = document.getElementById('resetStatsBtn');
+        const resetSpeedBtn = document.getElementById('resetSpeedBtn');
+        const parametersExport = document.getElementById('parametersExport');
+        const copyParamsBtn = document.getElementById('copyParamsBtn');
+        
+        // Update slider value display (EXACT same logic as audio-player.js)
+        speedSlider.addEventListener('input', (e) => {
+            const sliderValue = parseFloat(e.target.value);
+            
+            // Logarithmic mapping: 0-1000 -> 0.1-15, with 667 = 1.0 (EXACT same as real interface)
+            let baseSpeed;
+            if (sliderValue <= 667) {
+                const normalized = sliderValue / 667;
+                baseSpeed = 0.1 * Math.pow(10, normalized);
+            } else {
+                const normalized = (sliderValue - 667) / 333;
+                baseSpeed = Math.pow(15, normalized);
+            }
+            
+            speedValue.textContent = baseSpeed.toFixed(2) + 'x';
+            lastRawValue = sliderValue;
+            filteredValue = sliderValue; // Reset filtered value when user manually changes
+        });
+        
+        // Convert slider value to speed value (same logic as speed slider)
+        function getSpeedFromSliderValue(sliderValue) {
+            if (sliderValue <= 667) {
+                const normalized = sliderValue / 667;
+                return 0.1 * Math.pow(10, normalized);
+            } else {
+                const normalized = (sliderValue - 667) / 333;
+                return Math.pow(15, normalized);
+            }
+        }
+        
+        // Convert speed value to slider value (inverse of above)
+        function getSliderValueFromSpeed(speed) {
+            if (speed <= 1.0) {
+                const normalized = Math.log(speed / 0.1) / Math.log(10);
+                return Math.round(normalized * 667);
+            } else {
+                const normalized = Math.log(speed) / Math.log(15);
+                return Math.round(667 + normalized * 333);
+            }
+        }
+        
+        // Update parameters export text
+        function updateParametersExport() {
+            const loopRate = parseInt(loopRateSlider.value);
+            const lowPassAlpha = parseFloat(lowPassAlphaSlider.value);
+            const positiveThresholdSliderValue = parseInt(positiveThresholdSlider.value);
+            const negativeThresholdSliderValue = parseInt(negativeThresholdSlider.value);
+            const positiveThresholdSpeed = getSpeedFromSliderValue(positiveThresholdSliderValue);
+            const negativeThresholdSpeed = getSpeedFromSliderValue(negativeThresholdSliderValue);
+            const cooldown = parseInt(cooldownSlider.value);
+            
+            const params = `SPEED SLIDER DETECTION ALGORITHM (STATE-BASED)
+=============================================
+
+Core Parameters:
+- Loop Rate: ${loopRate} ms
+- Low-Pass Alpha: ${lowPassAlpha.toFixed(2)}
+- Initial Positive Threshold: ${positiveThresholdSpeed.toFixed(2)}x (slider value: ${positiveThresholdSliderValue})
+- Initial Negative Threshold: ${negativeThresholdSpeed.toFixed(2)}x (slider value: ${negativeThresholdSliderValue})
+- Detection Cooldown: ${cooldown} ms
+
+Speed Conversion Formula:
+- Slider range: 0-1000 (integer)
+- Center: 667 = 1.0x speed
+- For values 0-667: speed = 0.1 * Math.pow(10, value/667)
+- For values 668-1000: speed = Math.pow(15, (value-667)/333)
+- Result range: 0.1x to 15x
+
+State Machine:
+- Initial State: NEUTRAL
+- States: NEUTRAL | POSITIVE | NEGATIVE
+
+State Transitions:
+- NEUTRAL → POSITIVE: filteredSpeed >= ${positiveThresholdSpeed.toFixed(2)}x
+  Action: Set negativeThreshold = 1.0x
+  
+- NEUTRAL → NEGATIVE: filteredSpeed <= ${negativeThresholdSpeed.toFixed(2)}x
+  Action: Set positiveThreshold = 1.0x
+  
+- POSITIVE → NEGATIVE: filteredSpeed <= 1.0x (crossing center going down)
+  
+- NEGATIVE → POSITIVE: filteredSpeed >= 1.0x (crossing center going up)
+
+Filtering Process:
+- Read raw slider value every ${loopRate}ms
+- Apply low-pass filter: filteredValue = ${lowPassAlpha.toFixed(2)} * lastFiltered + ${(1-lowPassAlpha).toFixed(2)} * rawValue
+- Convert filtered value to speed using formula
+- Check speed against current thresholds based on state
+- If threshold crossed AND cooldown expired → transition state
+
+Cooldown:
+- ${cooldown}ms after any state transition
+- Prevents duplicate transitions from filter oscillation near threshold
+- Resets after cooldown expires
+
+Key Insight: After first detection out of NEUTRAL, system becomes a simple "above/below 1.0x" detector with filtered, noise-free tracking.
+
+EXPORTED: ${new Date().toISOString()}`;
+            
+            parametersExport.value = params;
+        }
+        
+        // Update parameter displays
+        loopRateSlider.addEventListener('input', (e) => {
+            loopRateValue.textContent = e.target.value;
+            updateParametersExport();
+            if (isMonitoring) {
+                restartMonitoring();
+            }
+        });
+        
+        lowPassAlphaSlider.addEventListener('input', (e) => {
+            lowPassAlphaValue.textContent = parseFloat(e.target.value).toFixed(2);
+            updateParametersExport();
+        });
+        
+        positiveThresholdSlider.addEventListener('input', (e) => {
+            const sliderValue = parseInt(e.target.value);
+            const thresholdSpeed = getSpeedFromSliderValue(sliderValue);
+            positiveThresholdValue.textContent = thresholdSpeed.toFixed(2) + 'x';
+            // Save user-set value (only if not 1.0x, which means it's a user adjustment, not auto-set)
+            if (sliderValue !== 667) {
+                savedPositiveThreshold = sliderValue;
+                localStorage.setItem('speedSliderTest_positiveThreshold', sliderValue.toString());
+            }
+            updateParametersExport();
+        });
+        
+        negativeThresholdSlider.addEventListener('input', (e) => {
+            const sliderValue = parseInt(e.target.value);
+            const thresholdSpeed = getSpeedFromSliderValue(sliderValue);
+            negativeThresholdValue.textContent = thresholdSpeed.toFixed(2) + 'x';
+            // Save user-set value (only if not 1.0x, which means it's a user adjustment, not auto-set)
+            if (sliderValue !== 667) {
+                savedNegativeThreshold = sliderValue;
+                localStorage.setItem('speedSliderTest_negativeThreshold', sliderValue.toString());
+            }
+            updateParametersExport();
+        });
+        
+        cooldownSlider.addEventListener('input', (e) => {
+            cooldownValue.textContent = e.target.value;
+            updateParametersExport();
+        });
+        
+        // Copy parameters to clipboard
+        copyParamsBtn.addEventListener('click', () => {
+            parametersExport.select();
+            document.execCommand('copy');
+            copyParamsBtn.textContent = '✅ Copied!';
+            setTimeout(() => {
+                copyParamsBtn.textContent = '📋 Copy Parameters';
+            }, 2000);
+        });
+        
+        // Add log entry
+        function addLogEntry(message, type = 'neutral') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logContainer.insertBefore(entry, logContainer.firstChild);
+            
+            // Keep only last 100 entries
+            while (logContainer.children.length > 100) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+        
+        // Detection loop
+        function detectionLoop() {
+            if (!isMonitoring) return;
+            
+            loopCount++;
+            loopCountDisplay.textContent = loopCount;
+            
+            const rawValue = parseFloat(speedSlider.value);
+            const lowPassAlpha = parseFloat(lowPassAlphaSlider.value);
+            const cooldown = parseInt(cooldownSlider.value);
+            
+            // Get threshold slider values and convert to speed values
+            const positiveThresholdSliderValue = parseInt(positiveThresholdSlider.value);
+            const negativeThresholdSliderValue = parseInt(negativeThresholdSlider.value);
+            const positiveThresholdSpeed = getSpeedFromSliderValue(positiveThresholdSliderValue);
+            const negativeThresholdSpeed = getSpeedFromSliderValue(negativeThresholdSliderValue);
+            
+            // Get current speed from slider
+            let currentSpeed;
+            if (rawValue <= 667) {
+                const normalized = rawValue / 667;
+                currentSpeed = 0.1 * Math.pow(10, normalized);
+            } else {
+                const normalized = (rawValue - 667) / 333;
+                currentSpeed = Math.pow(15, normalized);
+            }
+            
+            // Low-pass filter: filteredValue = alpha * oldValue + (1 - alpha) * newValue
+            filteredValue = lowPassAlpha * filteredValue + (1 - lowPassAlpha) * rawValue;
+            
+            // Calculate speed from filtered slider value
+            let filteredSpeed;
+            if (filteredValue <= 667) {
+                const normalized = filteredValue / 667;
+                filteredSpeed = 0.1 * Math.pow(10, normalized);
+            } else {
+                const normalized = (filteredValue - 667) / 333;
+                filteredSpeed = Math.pow(15, normalized);
+            }
+            
+            // Calculate speed change (in speed units, not slider units)
+            // Use previous filtered speed for accurate change calculation
+            let lastSpeed = getSpeedFromSliderValue(lastFilteredValue);
+            let speedChange = filteredSpeed - lastSpeed;
+            
+            // Check for detection (only if cooldown has passed)
+            const now = Date.now();
+            const timeSinceLastDetection = now - lastDetectionTime;
+            
+            // RESET TRACKING BASELINE after cooldown expires
+            // This ensures we can detect threshold crossings from the current position
+            let baselineReset = false;
+            if (timeSinceLastDetection >= cooldown) {
+                const loopRate = parseInt(loopRateSlider.value);
+                // Check if we just exited cooldown (within one loop period)
+                if (lastDetectionState && timeSinceLastDetection < cooldown + loopRate) {
+                    // Reset baseline to current filtered value for fresh detection
+                    lastFilteredValue = filteredValue;
+                    baselineReset = true;
+                    // Recalculate lastSpeed and speedChange with reset baseline
+                    lastSpeed = getSpeedFromSliderValue(lastFilteredValue);
+                    speedChange = filteredSpeed - lastSpeed;
+                    // Clear transition text after cooldown expires (switch to simpler format)
+                    if (lastDetectionState.transitionText) {
+                        delete lastDetectionState.transitionText;
+                    }
+                    addLogEntry(`🔄 Reset tracking baseline after cooldown (speed: ${filteredSpeed.toFixed(2)}x)`, 'neutral');
+                }
+            }
+            
+            // Update displays
+            rawValueDisplay.textContent = Math.round(rawValue);
+            filteredValueDisplay.textContent = Math.round(filteredValue);
+            document.getElementById('speedDisplay').textContent = filteredSpeed.toFixed(2);
+            changeRateDisplay.textContent = speedChange >= 0 ? `+${speedChange.toFixed(3)}x` : `${speedChange.toFixed(3)}x`;
+            
+            if (timeSinceLastDetection >= cooldown) {
+                // Get threshold values from sliders and convert to speed values
+                const positiveThresholdSliderValue = parseInt(positiveThresholdSlider.value);
+                const negativeThresholdSliderValue = parseInt(negativeThresholdSlider.value);
+                const positiveThresholdSpeed = getSpeedFromSliderValue(positiveThresholdSliderValue);
+                const negativeThresholdSpeed = getSpeedFromSliderValue(negativeThresholdSliderValue);
+                const centerThresholdSpeed = 1.0; // Always 1.0x for transitions between POSITIVE and NEGATIVE
+                
+                let stateChanged = false;
+                let newState = currentState;
+                let transitionMessage = '';
+                
+                // STATE MACHINE TRANSITIONS
+                if (currentState === 'NEUTRAL') {
+                    // NEUTRAL → POSITIVE: filteredSpeed >= 1.17x (initial positive threshold)
+                    if (filteredSpeed >= positiveThresholdSpeed && lastSpeed < positiveThresholdSpeed) {
+                        newState = 'POSITIVE';
+                        stateChanged = true;
+                        transitionMessage = `Entered POSITIVE state (crossed ${positiveThresholdSpeed.toFixed(2)}x threshold)`;
+                        
+                        // Set negative threshold to 1.0x for future transitions
+                        if (savedNegativeThreshold !== null) {
+                            negativeThresholdSlider.value = 667; // 1.0x
+                            negativeThresholdValue.textContent = '1.00x';
+                        }
+                    }
+                    // NEUTRAL → NEGATIVE: filteredSpeed <= 0.95x (initial negative threshold)
+                    else if (filteredSpeed <= negativeThresholdSpeed && lastSpeed > negativeThresholdSpeed) {
+                        newState = 'NEGATIVE';
+                        stateChanged = true;
+                        transitionMessage = `Entered NEGATIVE state (crossed ${negativeThresholdSpeed.toFixed(2)}x threshold)`;
+                        
+                        // Set positive threshold to 1.0x for future transitions
+                        if (savedPositiveThreshold !== null) {
+                            positiveThresholdSlider.value = 667; // 1.0x
+                            positiveThresholdValue.textContent = '1.00x';
+                        }
+                    }
+                }
+                else if (currentState === 'POSITIVE') {
+                    // POSITIVE → NEGATIVE: filteredSpeed <= 1.0x (crossing center going down)
+                    if (filteredSpeed <= centerThresholdSpeed && lastSpeed > centerThresholdSpeed) {
+                        newState = 'NEGATIVE';
+                        stateChanged = true;
+                        transitionMessage = `Entered NEGATIVE state (crossed 1.0x threshold going down)`;
+                        
+                        // Ensure positive threshold is at 1.0x (if not already)
+                        if (savedPositiveThreshold !== null && parseInt(positiveThresholdSlider.value) !== 667) {
+                            positiveThresholdSlider.value = 667; // 1.0x
+                            positiveThresholdValue.textContent = '1.00x';
+                        }
+                    }
+                }
+                else if (currentState === 'NEGATIVE') {
+                    // NEGATIVE → POSITIVE: filteredSpeed >= 1.0x (crossing center going up)
+                    if (filteredSpeed >= centerThresholdSpeed && lastSpeed < centerThresholdSpeed) {
+                        newState = 'POSITIVE';
+                        stateChanged = true;
+                        transitionMessage = `Entered POSITIVE state (crossed 1.0x threshold going up)`;
+                        
+                        // Ensure negative threshold is at 1.0x (if not already)
+                        if (savedNegativeThreshold !== null && parseInt(negativeThresholdSlider.value) !== 667) {
+                            negativeThresholdSlider.value = 667; // 1.0x
+                            negativeThresholdValue.textContent = '1.00x';
+                        }
+                    }
+                }
+                
+                // Handle state transition
+                if (stateChanged) {
+                    detectionCount++;
+                    lastDetectionTime = now;
+                    const previousState = currentState; // Store previous state before updating
+                    currentState = newState;
+                    detectionCountDisplay.textContent = detectionCount;
+                    
+                    // Determine which threshold was crossed
+                    let thresholdCrossed;
+                    if (previousState === 'NEUTRAL') {
+                        thresholdCrossed = newState === 'POSITIVE' ? positiveThresholdSpeed : negativeThresholdSpeed;
+                    } else {
+                        thresholdCrossed = centerThresholdSpeed; // 1.0x for POSITIVE ↔ NEGATIVE transitions
+                    }
+                    
+                    // Store detection state for display
+                    lastDetectionState = {
+                        type: newState,
+                        lastSpeed: lastSpeed,
+                        filteredSpeed: filteredSpeed,
+                        threshold: thresholdCrossed
+                    };
+                    
+                    // Update UI
+                    const statusColor = newState === 'POSITIVE' ? '#FF9800' : '#2196F3';
+                    const statusClass = newState === 'POSITIVE' ? 'detecting-positive' : 'detecting-negative';
+                    
+                    lastDetectionStatus.textContent = newState;
+                    lastDetectionStatus.style.color = statusColor;
+                    lastDetectionDetails.textContent = `Speed: ${lastSpeed.toFixed(2)}x → ${filteredSpeed.toFixed(2)}x\nState: ${previousState} → ${newState}`;
+                    
+                    sliderStatus.className = 'status active';
+                    sliderStatus.textContent = `State: ${newState}`;
+                    sliderStatusRight.className = `status ${statusClass}`;
+                    // Store transition info for display during cooldown
+                    lastDetectionState.transitionText = `${newState}: ${lastSpeed.toFixed(2)}x → ${filteredSpeed.toFixed(2)}x`;
+                    sliderStatusRight.textContent = lastDetectionState.transitionText;
+                    
+                    addLogEntry(`✅ ${transitionMessage}`, newState === 'POSITIVE' ? 'positive' : 'negative');
+                } else {
+                    // No state change - keep showing current state
+                    sliderStatus.className = 'status active';
+                    sliderStatus.textContent = `State: ${currentState}`;
+                    
+                    // Show current state on right (consistent format)
+                    if (currentState === 'POSITIVE') {
+                        sliderStatusRight.className = 'status detecting-positive';
+                        sliderStatusRight.textContent = `POSITIVE: ${filteredSpeed.toFixed(2)}x`;
+                    } else if (currentState === 'NEGATIVE') {
+                        sliderStatusRight.className = 'status detecting-negative';
+                        sliderStatusRight.textContent = `NEGATIVE: ${filteredSpeed.toFixed(2)}x`;
+                    } else {
+                        sliderStatusRight.className = 'status active';
+                        sliderStatusRight.textContent = `NEUTRAL: ${filteredSpeed.toFixed(2)}x`;
+                    }
+                    
+                    // Update status box with monitoring state
+                    lastDetectionStatus.textContent = currentState;
+                    lastDetectionStatus.style.color = currentState === 'NEUTRAL' ? '#4CAF50' : (currentState === 'POSITIVE' ? '#FF9800' : '#2196F3');
+                    lastDetectionDetails.textContent = `Speed: ${filteredSpeed.toFixed(2)}x\nChange: ${speedChange >= 0 ? '+' : ''}${speedChange.toFixed(3)}x`;
+                }
+            } else {
+                // In cooldown - show current state and cooldown info
+                const remainingCooldown = cooldown - timeSinceLastDetection;
+                sliderStatus.className = 'status active';
+                sliderStatus.textContent = `Cooldown: ${remainingCooldown}ms`;
+                
+                // Show transition text if available, otherwise show current state
+                if (lastDetectionState && lastDetectionState.transitionText) {
+                    // Keep showing the transition text during cooldown (consistent format)
+                    const statusClass = currentState === 'POSITIVE' ? 'detecting-positive' : 'detecting-negative';
+                    sliderStatusRight.className = `status ${statusClass}`;
+                    sliderStatusRight.textContent = lastDetectionState.transitionText;
+                } else {
+                    // Fallback: show current state
+                    if (currentState === 'POSITIVE') {
+                        sliderStatusRight.className = 'status detecting-positive';
+                        sliderStatusRight.textContent = `POSITIVE: ${filteredSpeed.toFixed(2)}x`;
+                    } else if (currentState === 'NEGATIVE') {
+                        sliderStatusRight.className = 'status detecting-negative';
+                        sliderStatusRight.textContent = `NEGATIVE: ${filteredSpeed.toFixed(2)}x`;
+                    } else {
+                        sliderStatusRight.className = 'status active';
+                        sliderStatusRight.textContent = `NEUTRAL: ${filteredSpeed.toFixed(2)}x`;
+                    }
+                }
+                
+                // Update status box with cooldown info
+                lastDetectionStatus.textContent = `Cooldown (${currentState})`;
+                lastDetectionStatus.style.color = '#888';
+                lastDetectionDetails.textContent = `${remainingCooldown}ms remaining\nSpeed: ${filteredSpeed.toFixed(2)}x\nState: ${currentState}`;
+            }
+            
+            // Update values for next iteration
+            lastRawValue = rawValue;
+            lastFilteredValue = filteredValue; // Track filtered value for change calculation
+        }
+        
+        // Start monitoring
+        function startMonitoring() {
+            if (isMonitoring) return;
+            
+            isMonitoring = true;
+            lastRawValue = parseFloat(speedSlider.value);
+            filteredValue = lastRawValue;
+            lastFilteredValue = lastRawValue; // Initialize previous filtered value
+            currentState = 'NEUTRAL'; // Reset to initial state
+            lastDetectionTime = 0; // Reset detection time
+            
+            // Update initial display
+            const initialSpeed = lastRawValue <= 667 
+                ? 0.1 * Math.pow(10, lastRawValue / 667)
+                : Math.pow(15, (lastRawValue - 667) / 333);
+            document.getElementById('speedDisplay').textContent = initialSpeed.toFixed(2);
+            
+            const loopRate = parseInt(loopRateSlider.value);
+            loopInterval = setInterval(detectionLoop, loopRate);
+            
+            sliderStatus.className = 'status active';
+            sliderStatus.textContent = 'State: NEUTRAL';
+            sliderStatusRight.className = 'status active';
+            sliderStatusRight.textContent = 'Monitoring...';
+            lastDetectionState = null; // Reset detection state
+            
+            // Update status box
+            lastDetectionStatus.textContent = 'NEUTRAL';
+            lastDetectionStatus.style.color = '#4CAF50';
+            lastDetectionDetails.textContent = 'Monitoring active\nWaiting for detection...';
+            
+            addLogEntry('🟢 Monitoring started (State: NEUTRAL)', 'neutral');
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        }
+        
+        // Stop monitoring
+        function stopMonitoring() {
+            if (!isMonitoring) return;
+            
+            isMonitoring = false;
+            if (loopInterval) {
+                clearInterval(loopInterval);
+                loopInterval = null;
+            }
+            
+            sliderStatus.className = 'status inactive';
+            sliderStatus.textContent = 'Monitoring stopped';
+            sliderStatusRight.className = 'status inactive';
+            sliderStatusRight.textContent = 'Stopped';
+            lastDetectionState = null; // Reset detection state
+            
+            // Update status box
+            lastDetectionStatus.textContent = 'Stopped';
+            lastDetectionStatus.style.color = '#666';
+            lastDetectionDetails.textContent = 'Monitoring has been stopped';
+            
+            addLogEntry('🔴 Monitoring stopped', 'neutral');
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+        
+        // Restart monitoring (when parameters change)
+        function restartMonitoring() {
+            if (isMonitoring) {
+                stopMonitoring();
+                setTimeout(startMonitoring, 100);
+            }
+        }
+        
+        // Clear log
+        function clearLog() {
+            logContainer.innerHTML = '<div class="log-entry neutral">Log cleared...</div>';
+        }
+        
+        // Reset stats
+        function resetStats() {
+            detectionCount = 0;
+            loopCount = 0;
+            lastDetectionTime = 0;
+            currentState = 'NEUTRAL'; // Reset state to NEUTRAL
+            lastDetectionState = null;
+            detectionCountDisplay.textContent = '0';
+            loopCountDisplay.textContent = '0';
+            sliderStatus.className = 'status active';
+            sliderStatus.textContent = 'State: NEUTRAL';
+            sliderStatusRight.className = 'status active';
+            sliderStatusRight.textContent = 'Monitoring...';
+            if (lastDetectionStatus) {
+                lastDetectionStatus.textContent = 'NEUTRAL';
+                lastDetectionStatus.style.color = '#4CAF50';
+                lastDetectionDetails.textContent = 'Statistics reset\nState: NEUTRAL';
+            }
+            addLogEntry('📊 Statistics reset (State: NEUTRAL)', 'neutral');
+        }
+        
+        // Reset speed slider to 1.0x (667)
+        function resetSpeedSlider() {
+            speedSlider.value = 667;
+            speedValue.textContent = '1.0x';
+            lastRawValue = 667;
+            filteredValue = 667;
+            lastFilteredValue = 667;
+            // Reset state machine to NEUTRAL
+            currentState = 'NEUTRAL';
+            lastDetectionTime = 0;
+            lastDetectionState = null;
+            sliderStatusRight.className = 'status active';
+            sliderStatusRight.textContent = 'State: NEUTRAL';
+            // Reset loop calls counter
+            loopCount = 0;
+            loopCountDisplay.textContent = '0';
+            
+            // Restore user-set threshold values (initial thresholds: 1.17x and 0.95x)
+            if (savedPositiveThreshold !== null) {
+                positiveThresholdSlider.value = savedPositiveThreshold;
+                const restoredPositiveSpeed = getSpeedFromSliderValue(savedPositiveThreshold);
+                positiveThresholdValue.textContent = restoredPositiveSpeed.toFixed(2) + 'x';
+                addLogEntry(`🔄 Restored positive threshold to ${restoredPositiveSpeed.toFixed(2)}x`, 'neutral');
+            }
+            if (savedNegativeThreshold !== null) {
+                negativeThresholdSlider.value = savedNegativeThreshold;
+                const restoredNegativeSpeed = getSpeedFromSliderValue(savedNegativeThreshold);
+                negativeThresholdValue.textContent = restoredNegativeSpeed.toFixed(2) + 'x';
+                addLogEntry(`🔄 Restored negative threshold to ${restoredNegativeSpeed.toFixed(2)}x`, 'neutral');
+            }
+            
+            // Update status display
+            sliderStatus.className = 'status active';
+            sliderStatus.textContent = 'State: NEUTRAL';
+            lastDetectionStatus.textContent = 'NEUTRAL';
+            lastDetectionStatus.style.color = '#4CAF50';
+            lastDetectionDetails.textContent = 'Speed slider reset to 1.0x\nState reset to NEUTRAL';
+            
+            // Trigger input event to update display
+            speedSlider.dispatchEvent(new Event('input'));
+            updateParametersExport();
+            addLogEntry('🔄 Speed slider reset to 1.0x (State: NEUTRAL)', 'neutral');
+        }
+        
+        // Event listeners
+        startBtn.addEventListener('click', startMonitoring);
+        stopBtn.addEventListener('click', stopMonitoring);
+        clearLogBtn.addEventListener('click', clearLog);
+        resetStatsBtn.addEventListener('click', resetStats);
+        resetSpeedBtn.addEventListener('click', resetSpeedSlider);
+        
+        // Initialize (EXACT same default as real interface: 667 = 1.0x)
+        stopBtn.disabled = true;
+        lastRawValue = 667;
+        filteredValue = 667;
+        lastFilteredValue = 667;
+        
+        // Load threshold values from localStorage or use defaults
+        const savedPositiveThresholdFromStorage = localStorage.getItem('speedSliderTest_positiveThreshold');
+        const savedNegativeThresholdFromStorage = localStorage.getItem('speedSliderTest_negativeThreshold');
+        
+        if (savedPositiveThresholdFromStorage !== null) {
+            const sliderValue = parseInt(savedPositiveThresholdFromStorage);
+            positiveThresholdSlider.value = sliderValue;
+            savedPositiveThreshold = sliderValue; // Store in variable for reset functionality
+        } else {
+            // Use default value: 1.17x (initial positive threshold)
+            savedPositiveThreshold = getSliderValueFromSpeed(1.17);
+            positiveThresholdSlider.value = savedPositiveThreshold;
+        }
+        
+        if (savedNegativeThresholdFromStorage !== null) {
+            const sliderValue = parseInt(savedNegativeThresholdFromStorage);
+            negativeThresholdSlider.value = sliderValue;
+            savedNegativeThreshold = sliderValue; // Store in variable for reset functionality
+        } else {
+            // Use default value: 0.95x (initial negative threshold)
+            savedNegativeThreshold = getSliderValueFromSpeed(0.95);
+            negativeThresholdSlider.value = savedNegativeThreshold;
+        }
+        
+        // Initialize threshold displays with speed values (using same conversion as speed slider)
+        const initialPositiveSliderValue = parseInt(positiveThresholdSlider.value);
+        const initialNegativeSliderValue = parseInt(negativeThresholdSlider.value);
+        const initialPositiveSpeed = getSpeedFromSliderValue(initialPositiveSliderValue);
+        const initialNegativeSpeed = getSpeedFromSliderValue(initialNegativeSliderValue);
+        positiveThresholdValue.textContent = initialPositiveSpeed.toFixed(2) + 'x';
+        negativeThresholdValue.textContent = initialNegativeSpeed.toFixed(2) + 'x';
+        
+        // Initialize parameters export
+        updateParametersExport();
+        
+        // Auto-start monitoring
+        addLogEntry('Auto-starting monitoring...', 'neutral');
+        startMonitoring();
+    </script>
+</body>
+</html>
+

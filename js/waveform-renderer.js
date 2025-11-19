@@ -769,6 +769,9 @@ export function setupWaveformInteraction() {
     canvas.addEventListener('mousedown', (e) => {
         if (!State.completeSamplesArray || State.totalAudioDuration === 0) return;
         
+        // Hide any existing "Add Region" button when starting a new selection
+        hideAddRegionButton();
+        
         // 🔥 FIX: Resolve tutorial promise FIRST (before any early returns)
         // This ensures the tutorial progresses even if clicks are disabled
         if (State._waveformClickResolve) {
@@ -1064,11 +1067,6 @@ export function setupWaveformInteraction() {
                 const newSelectionStart = Math.min(startPos, endPos);
                 const newSelectionEnd = Math.max(startPos, endPos);
                 const newIsLooping = State.isLooping;
-                
-                const zoomMode = zoomState.isInRegion() ? 'temple (zoomed)' : 'full view';
-                const zoomLevel = zoomState.isInitialized() ? zoomState.getZoomLevel().toFixed(1) : 'N/A';
-                console.log(`🖱️ Waveform selection created: ${newSelectionStart.toFixed(2)}s - ${newSelectionEnd.toFixed(2)}s (duration: ${(newSelectionEnd - newSelectionStart).toFixed(3)}s)`);
-                console.log(`   📍 Zoom mode: ${zoomMode} (${zoomLevel}x)`);
                 
                 // Print comprehensive diagnostics for the selection
                 const currentX = e.clientX - rect.left;

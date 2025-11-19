@@ -25,6 +25,7 @@ import { isAdminMode } from './admin-mode.js';
 import { getRegions } from './region-tracker.js';
 import { isStudyMode, isStudyCleanMode, CURRENT_MODE, AppMode, isLocalEnvironment } from './master-modes.js';
 import { modalManager } from './modal-manager.js';
+import { startActivityTimer } from './session-management.js';
 
 /**
  * Fade in the permanent overlay background (modal background)
@@ -91,7 +92,8 @@ function checkIfAnyModalVisible() {
         'missingStudyIdModal',
         'completeConfirmationModal',
         'tutorialIntroModal',
-        'tutorialRevisitModal'
+        'tutorialRevisitModal',
+        'welcomeBackModal'
     ];
     
     return allModalIds.some(modalId => {
@@ -201,7 +203,7 @@ export function loadStations() {
  * Load saved volcano selection from localStorage and apply it
  * Called on page load to restore user's preferred volcano
  */
-export function loadSavedVolcano() {
+export async function loadSavedVolcano() {
     const volcanoSelect = document.getElementById('volcano');
     if (!volcanoSelect) return;
     
@@ -217,6 +219,17 @@ export function loadSavedVolcano() {
     } else {
         // If no saved volcano or invalid, use default and load stations
         loadStations();
+    }
+    
+    // In study mode: If user has already clicked "Begin Analysis", keep volcano selector disabled
+    if (isStudyMode()) {
+        const { tutorialCompleted } = await import('./study-workflow.js');
+        if (tutorialCompleted()) {
+            volcanoSelect.disabled = true;
+            volcanoSelect.style.opacity = '0.5';
+            volcanoSelect.style.cursor = 'not-allowed';
+            console.log('🔒 Volcano selector disabled (Begin Analysis already completed)');
+        }
     }
 }
 
@@ -493,6 +506,10 @@ async function getNextModalInWorkflow(currentModalId) {
             // Welcome → Pre-Survey
             return 'preSurveyModal';
             
+        case 'welcomeBackModal':
+            // RETURNING VISIT: Welcome Back → Pre-Survey
+            return 'preSurveyModal';
+            
         case 'preSurveyModal':
             // Step 3 → Step 4 (if first visit) OR Step 3 → Experience (if returning)
             // Pre-Survey → Tutorial Intro (FIRST VISIT EVER only) OR Experience (returning visits - no modal)
@@ -556,7 +573,9 @@ export function closeAllModals() {
         'beginAnalysisModal',
         'missingStudyIdModal',
         'completeConfirmationModal',
-        'tutorialIntroModal'
+        'tutorialIntroModal',
+        'tutorialRevisitModal',
+        'welcomeBackModal'
     ];
     
     allModalIds.forEach(modalId => {
@@ -871,6 +890,40 @@ export function setupModalEventListeners() {
         });
     }
     
+    // Welcome Back modal event listeners
+    const welcomeBackModal = document.getElementById('welcomeBackModal');
+    if (!welcomeBackModal) {
+        console.error('❌ Welcome Back modal not found in DOM');
+    } else {
+        // Prevent closing by clicking outside - clicks outside modal are ignored
+        welcomeBackModal.addEventListener('click', (e) => {
+            if (e.target === welcomeBackModal) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
+        
+        const welcomeBackSubmitBtn = welcomeBackModal.querySelector('.modal-submit');
+        if (welcomeBackSubmitBtn) {
+            welcomeBackSubmitBtn.addEventListener('click', async () => {
+                await closeWelcomeBackModal();
+            });
+        }
+        
+        // Keyboard support: Enter to confirm
+        welcomeBackModal.addEventListener('keydown', (e) => {
+            // Only handle if modal is visible
+            if (welcomeBackModal.style.display === 'none') return;
+            
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeWelcomeBackModal();
+            }
+        });
+    }
+    
     // Complete Confirmation modal event listeners
     const completeConfirmationModal = document.getElementById('completeConfirmationModal');
     if (!completeConfirmationModal) {
@@ -1015,6 +1068,9 @@ export function setupModalEventListeners() {
                 
                 await closePreSurveyModal(nextModal !== null);
                 
+                // Start activity timer after pre-survey completion
+                startActivityTimer();
+                
                 // In study mode, open the next modal in workflow
                 if (isStudyMode() && nextModal) {
                     setTimeout(() => {
@@ -1090,9 +1146,43 @@ export function setupModalEventListeners() {
                 btn.style.color = 'white';
                 setTimeout(() => {
                     btn.style.background = 'white';
-                    btn.style.color = '#4CAF50';
+                    btn.style.color = '#666';
                 }, 200);
             });
+        });
+        
+        // Keyboard shortcut: Enter key picks random number and fills all
+        preSurveyModal.addEventListener('keydown', (e) => {
+            // Only handle if modal is visible
+            if (preSurveyModal.style.display === 'none') return;
+            
+            // Enter key: pick random number (1-5) and fill all
+            if (e.key === 'Enter' && !e.target.matches('input[type="text"], input[type="number"], button')) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Pick random number between 1 and 5
+                const randomValue = Math.floor(Math.random() * 5) + 1;
+                
+                // Fill all pre-survey radio buttons with this value
+                preSurveyModal.querySelectorAll(`input[name^="pre"]`).forEach(radio => {
+                    if (radio.value === randomValue.toString()) {
+                        radio.checked = true;
+                        radio.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+                
+                // Visual feedback on the button
+                const quickFillBtn = preSurveyModal.querySelector(`.quick-fill-btn[data-value="${randomValue}"]`);
+                if (quickFillBtn) {
+                    quickFillBtn.style.background = '#4CAF50';
+                    quickFillBtn.style.color = 'white';
+                    setTimeout(() => {
+                        quickFillBtn.style.background = 'white';
+                        quickFillBtn.style.color = '#666';
+                    }, 200);
+                }
+            }
         });
     }
     
@@ -1195,9 +1285,43 @@ export function setupModalEventListeners() {
                 btn.style.color = 'white';
                 setTimeout(() => {
                     btn.style.background = 'white';
-                    btn.style.color = '#4CAF50';
+                    btn.style.color = '#666';
                 }, 200);
             });
+        });
+        
+        // Keyboard shortcut: Enter key picks random number and fills all
+        postSurveyModal.addEventListener('keydown', (e) => {
+            // Only handle if modal is visible
+            if (postSurveyModal.style.display === 'none') return;
+            
+            // Enter key: pick random number (1-5) and fill all
+            if (e.key === 'Enter' && !e.target.matches('input[type="text"], input[type="number"], button')) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Pick random number between 1 and 5
+                const randomValue = Math.floor(Math.random() * 5) + 1;
+                
+                // Fill all post-survey radio buttons with this value
+                postSurveyModal.querySelectorAll(`input[name^="post"]`).forEach(radio => {
+                    if (radio.value === randomValue.toString()) {
+                        radio.checked = true;
+                        radio.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+                
+                // Visual feedback on the button
+                const quickFillBtn = postSurveyModal.querySelector(`.quick-fill-btn[data-value="${randomValue}"]`);
+                if (quickFillBtn) {
+                    quickFillBtn.style.background = '#4CAF50';
+                    quickFillBtn.style.color = 'white';
+                    setTimeout(() => {
+                        quickFillBtn.style.background = 'white';
+                        quickFillBtn.style.color = '#666';
+                    }, 200);
+                }
+            }
         });
     }
     
@@ -1389,9 +1513,46 @@ export function setupModalEventListeners() {
                 btn.style.color = 'white';
                 setTimeout(() => {
                     btn.style.background = 'white';
-                    btn.style.color = '#4CAF50';
+                    btn.style.color = '#666';
                 }, 200);
             });
+        });
+        
+        // Keyboard shortcut: Enter key picks random number and fills all (1-7 for AWESF)
+        awesfModal.addEventListener('keydown', (e) => {
+            // Only handle if modal is visible
+            if (awesfModal.style.display === 'none') return;
+            
+            // Enter key: pick random number (1-7) and fill all
+            if (e.key === 'Enter' && !e.target.matches('input[type="text"], input[type="number"], button')) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Pick random number between 1 and 7
+                const randomValue = Math.floor(Math.random() * 7) + 1;
+                
+                // Fill all AWE-SF radio buttons with this value
+                awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+                    if (radio.value === randomValue.toString()) {
+                        radio.checked = true;
+                        radio.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+                
+                // Update submit button state after filling
+                updateAwesfSubmitButton();
+                
+                // Visual feedback on the button
+                const quickFillBtn = awesfModal.querySelector(`.quick-fill-btn[data-value="${randomValue}"]`);
+                if (quickFillBtn) {
+                    quickFillBtn.style.background = '#4CAF50';
+                    quickFillBtn.style.color = 'white';
+                    setTimeout(() => {
+                        quickFillBtn.style.background = 'white';
+                        quickFillBtn.style.color = '#666';
+                    }, 200);
+                }
+            }
         });
     }
     
@@ -1932,6 +2093,59 @@ export function closeBeginAnalysisModal(keepOverlay = null) {
     console.log(`🔵 Begin Analysis modal closed (keepOverlay: ${keepOverlay})`);
 }
 
+// Welcome Back Modal Functions
+export function openWelcomeBackModal() {
+    // Close all other modals first
+    closeAllModals();
+    
+    const modal = document.getElementById('welcomeBackModal');
+    
+    // Fade in overlay background (standard design pattern)
+    fadeInOverlay();
+    
+    if (modal) {
+        modal.style.display = 'flex';
+        // Make modal focusable for keyboard events
+        modal.setAttribute('tabindex', '-1');
+        modal.style.outline = 'none'; // Remove browser's blue focus outline
+        // Focus the modal so keyboard events work
+        modal.focus();
+        console.log('👋 Welcome Back modal opened');
+    } else {
+        console.error('❌ Welcome Back modal not found in DOM');
+    }
+}
+
+export async function closeWelcomeBackModal(keepOverlay = null) {
+    // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
+    if (keepOverlay === null) {
+        const nextModal = await getNextModalInWorkflow('welcomeBackModal');
+        keepOverlay = nextModal !== null;
+    }
+    
+    const modal = document.getElementById('welcomeBackModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.removeAttribute('tabindex');
+        modal.blur();
+    }
+    
+    if (!keepOverlay) {
+        fadeOutOverlay();
+    }
+    
+    // If there's a next modal, open it
+    const nextModal = await getNextModalInWorkflow('welcomeBackModal');
+    if (nextModal) {
+        if (nextModal === 'preSurveyModal') {
+            const { openPreSurveyModal } = await import('./ui-controls.js');
+            openPreSurveyModal();
+        }
+    }
+    
+    console.log(`👋 Welcome Back modal closed (keepOverlay: ${keepOverlay})`);
+}
+
 // Complete Confirmation Modal Functions
 export function openCompleteConfirmationModal() {
     // Close all other modals first
@@ -2194,17 +2408,10 @@ export function openPreSurveyModal() {
         return;
     }
     
-    // 🔥 Check if this is a returning visit (user has seen welcome before)
-    // If they've seen welcome, change title to "Welcome back"
+    // Set title to default (Welcome Back modal handles the welcome back message)
     const modalTitle = preSurveyModal.querySelector('.modal-title');
     if (modalTitle) {
-        const hasSeenWelcome = localStorage.getItem('study_has_seen_welcome') === 'true';
-        if (hasSeenWelcome) {
-            modalTitle.textContent = 'Welcome back';
-        } else {
-            // First visit - use default title
-            modalTitle.textContent = '📊 Pre-Survey';
-        }
+        modalTitle.textContent = '🌋 Pre-Survey';
     }
     
     // Fade in overlay background (standard design pattern)
@@ -2296,6 +2503,15 @@ export async function submitPreSurvey() {
             
             statusEl.className = 'status success';
             statusEl.textContent = '✅ Pre-Survey saved!';
+            
+            // Start session tracking (analysis session begins after pre-survey)
+            try {
+                const { startSession } = await import('./study-workflow.js');
+                startSession();
+                console.log('🚀 Session tracking started');
+            } catch (error) {
+                console.warn('⚠️ Could not start session tracking:', error);
+            }
             
             // Modal will be closed by event handler
         } else {
@@ -2873,13 +3089,74 @@ export async function attemptSubmission(fromWorkflow = false) {
             hasFeatureTimes: formattedRegions.some(r => r.features?.some(f => f.featureStartTime && f.featureEndTime))
         });
         
-        // Build JSON dump with tracking information
+        // Get session counts and stats (BACKWARD COMPATIBLE - won't crash if missing)
+        let weeklySessionCount = 0;
+        let globalStats = {
+            totalSessionsStarted: 0,
+            totalSessionsCompleted: 0,
+            totalSessionTime: 0,
+            totalSessionTimeHours: 0
+        };
+        let sessionRecord = null;
+        
+        try {
+            const { getSessionCountThisWeek, getSessionStats, completeSession } = await import('./study-workflow.js');
+            
+            try {
+                weeklySessionCount = getSessionCountThisWeek() || 0;
+            } catch (e) {
+                console.warn('⚠️ Could not get weekly session count:', e);
+            }
+            
+            try {
+                globalStats = getSessionStats() || globalStats;
+            } catch (e) {
+                console.warn('⚠️ Could not get session stats:', e);
+            }
+            
+            try {
+                // Calculate if all surveys were completed
+                const completedAllSurveys = !!(responses.pre && responses.post && responses.awesf && responses.activityLevel);
+                
+                // Complete the current session and get the session record
+                sessionRecord = completeSession(completedAllSurveys, true); // true = submitted to Qualtrics
+            } catch (e) {
+                console.warn('⚠️ Could not complete session record:', e);
+            }
+        } catch (error) {
+            console.warn('⚠️ Could not import session tracking functions:', error);
+        }
+        
+        // Build JSON dump with tracking information and session metadata
+        // BACKWARD COMPATIBLE: All fields have safe defaults
         const jsonDump = {
-            sessionId: responses.sessionId,
-            participantId: responses.participantId,
-            sessionStarted: trackingData?.sessionStarted || sessionState.startedAt || null,
+            sessionId: responses.sessionId || null,
+            participantId: responses.participantId || null,
+            
+            // Session timing (safe fallbacks)
+            sessionStarted: trackingData?.sessionStarted || sessionState?.startedAt || sessionRecord?.startTime || null,
+            sessionEnded: (sessionRecord && sessionRecord.endTime) || new Date().toISOString(),
+            sessionDurationMs: (sessionRecord && sessionRecord.duration) || null,
+            
+            // Session completion status (safe booleans)
+            completedAllSurveys: Boolean(sessionRecord && sessionRecord.completedAllSurveys),
+            submittedToQualtrics: Boolean(sessionRecord && sessionRecord.submittedToQualtrics),
+            
+            // Session counts (this session) - safe defaults
+            weeklySessionCount: weeklySessionCount || 0,
+            
+            // Global statistics (all sessions) - safe defaults
+            globalStats: {
+                totalSessionsStarted: (globalStats && globalStats.totalSessionsStarted) || 0,
+                totalSessionsCompleted: (globalStats && globalStats.totalSessionsCompleted) || 0,
+                totalSessionTimeMs: (globalStats && globalStats.totalSessionTime) || 0,
+                totalSessionTimeHours: (globalStats && globalStats.totalSessionTimeHours) || 0
+            },
+            
+            // Event tracking and regions
             tracking: trackingData || null,
-            regions: formattedRegions,
+            regions: formattedRegions || [],
+            
             submissionTimestamp: new Date().toISOString()
         };
         

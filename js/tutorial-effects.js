@@ -780,7 +780,7 @@ export function removeVolumeSliderGlow() {
         // Remove glow class after fade completes
         setTimeout(() => {
             volumeSlider.classList.remove('volume-slider-glow', 'fading-out');
-        }, 500); // Match CSS transition duration
+        }, 1500); // Match CSS transition duration (1.5s)
     }
 }
 

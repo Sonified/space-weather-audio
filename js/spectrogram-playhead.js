@@ -107,11 +107,6 @@ export function drawSpectrogramPlayhead() {
             playheadX = Math.floor(progress * width);
         }
         
-        // Only redraw if playhead moved to a different pixel
-        if (playheadX === lastPlayheadX) {
-            return;  // Skip redraw - same position
-        }
-        
         lastPlayheadX = playheadX;
         
         // 🎉 MUCH SIMPLER: Just clear and redraw on overlay canvas!
@@ -123,28 +118,30 @@ export function drawSpectrogramPlayhead() {
         const pulseIntensity = 0.2 + Math.sin(time * 3) * 0.08;
         
         playheadOverlayCtx.shadowBlur = 6;
-        playheadOverlayCtx.shadowColor = 'rgba(255, 100, 100, 0.45)';
+        playheadOverlayCtx.shadowColor = 'rgba(255, 50, 50, 0.45)';
         playheadOverlayCtx.shadowOffsetX = 0;
         
         const gradient = playheadOverlayCtx.createLinearGradient(playheadX, 0, playheadX, height);
-        gradient.addColorStop(0, `rgba(255, 150, 150, ${(0.5 + pulseIntensity) * 0.9})`);
-        gradient.addColorStop(0.5, `rgba(255, 100, 100, ${(0.6 + pulseIntensity) * 0.9})`);
-        gradient.addColorStop(1, `rgba(255, 150, 150, ${(0.5 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(0, `rgba(255, 80, 80, ${(0.5 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(0.5, `rgba(255, 50, 50, ${(0.6 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(1, `rgba(255, 80, 80, ${(0.5 + pulseIntensity) * 0.9})`);
         
         playheadOverlayCtx.strokeStyle = gradient;
         playheadOverlayCtx.lineWidth = 2.5;
         playheadOverlayCtx.globalAlpha = 0.9;
+        // Account for line width and shadow to prevent extending beyond canvas bounds
+        const maxY = height - 1;
         playheadOverlayCtx.beginPath();
         playheadOverlayCtx.moveTo(playheadX, 0);
-        playheadOverlayCtx.lineTo(playheadX, height);
+        playheadOverlayCtx.lineTo(playheadX, maxY);
         playheadOverlayCtx.stroke();
         
         playheadOverlayCtx.shadowBlur = 0;
-        playheadOverlayCtx.strokeStyle = `rgba(255, 255, 255, ${(0.3 + pulseIntensity * 0.2) * 0.9})`;
+        playheadOverlayCtx.strokeStyle = `rgba(255, 150, 150, ${(0.2 + pulseIntensity * 0.1) * 0.9})`;
         playheadOverlayCtx.lineWidth = 1;
         playheadOverlayCtx.beginPath();
         playheadOverlayCtx.moveTo(playheadX, 0);
-        playheadOverlayCtx.lineTo(playheadX, height);
+        playheadOverlayCtx.lineTo(playheadX, maxY);
         playheadOverlayCtx.stroke();
         
         playheadOverlayCtx.globalAlpha = 1.0;
@@ -196,9 +193,11 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
     playheadOverlayCtx.globalAlpha = 0.9;
     playheadOverlayCtx.strokeStyle = isDragging ? '#bbbbbb' : '#ffffff';
     playheadOverlayCtx.lineWidth = 2;
+    // Account for line width to prevent extending beyond canvas bounds
+    const maxY = height - 1;
     playheadOverlayCtx.beginPath();
     playheadOverlayCtx.moveTo(previewX, 0);
-    playheadOverlayCtx.lineTo(previewX, height);
+    playheadOverlayCtx.lineTo(previewX, maxY);
     playheadOverlayCtx.stroke();
     playheadOverlayCtx.globalAlpha = 1.0;  // Reset alpha
     
@@ -223,27 +222,29 @@ export function clearSpectrogramScrubPreview() {
         const pulseIntensity = 0.2 + Math.sin(time * 3) * 0.08;
         
         playheadOverlayCtx.shadowBlur = 6;
-        playheadOverlayCtx.shadowColor = 'rgba(255, 100, 100, 0.45)';
+        playheadOverlayCtx.shadowColor = 'rgba(255, 50, 50, 0.45)';
         
         const gradient = playheadOverlayCtx.createLinearGradient(lastPlayheadX, 0, lastPlayheadX, height);
-        gradient.addColorStop(0, `rgba(255, 150, 150, ${(0.5 + pulseIntensity) * 0.9})`);
-        gradient.addColorStop(0.5, `rgba(255, 100, 100, ${(0.6 + pulseIntensity) * 0.9})`);
-        gradient.addColorStop(1, `rgba(255, 150, 150, ${(0.5 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(0, `rgba(255, 80, 80, ${(0.5 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(0.5, `rgba(255, 50, 50, ${(0.6 + pulseIntensity) * 0.9})`);
+        gradient.addColorStop(1, `rgba(255, 80, 80, ${(0.5 + pulseIntensity) * 0.9})`);
         
         playheadOverlayCtx.strokeStyle = gradient;
         playheadOverlayCtx.lineWidth = 2.5;
         playheadOverlayCtx.globalAlpha = 0.9;
+        // Account for line width and shadow to prevent extending beyond canvas bounds
+        const maxY = height - 1;
         playheadOverlayCtx.beginPath();
         playheadOverlayCtx.moveTo(lastPlayheadX, 0);
-        playheadOverlayCtx.lineTo(lastPlayheadX, height);
+        playheadOverlayCtx.lineTo(lastPlayheadX, maxY);
         playheadOverlayCtx.stroke();
         
         playheadOverlayCtx.shadowBlur = 0;
-        playheadOverlayCtx.strokeStyle = `rgba(255, 255, 255, ${(0.3 + pulseIntensity * 0.2) * 0.9})`;
+        playheadOverlayCtx.strokeStyle = `rgba(255, 150, 150, ${(0.2 + pulseIntensity * 0.1) * 0.9})`;
         playheadOverlayCtx.lineWidth = 1;
         playheadOverlayCtx.beginPath();
         playheadOverlayCtx.moveTo(lastPlayheadX, 0);
-        playheadOverlayCtx.lineTo(lastPlayheadX, height);
+        playheadOverlayCtx.lineTo(lastPlayheadX, maxY);
         playheadOverlayCtx.stroke();
         
         playheadOverlayCtx.globalAlpha = 1.0;

@@ -401,14 +401,7 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
     const canvas = document.getElementById('waveform');
     if (!canvas) return;
     
-    const panel = canvas.closest('.panel');
-    if (!panel) return;
-    
     // Calculate pixel positions from time values
-    const dataStartMs = State.dataStartTime.getTime();
-    const dataEndMs = State.dataEndTime.getTime();
-    const totalDurationMs = dataEndMs - dataStartMs;
-    
     const startProgress = (selectionStart / State.totalAudioDuration);
     const endProgress = (selectionEnd / State.totalAudioDuration);
     
@@ -416,12 +409,12 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
     const startX = startProgress * canvasWidth;
     const endX = endProgress * canvasWidth;
     
-    // Create or get button
+    // Create or get button - attach to body for free-floating positioning
     if (!addRegionButton) {
         addRegionButton = document.createElement('button');
         addRegionButton.className = 'add-region-button';
-        addRegionButton.textContent = '+ Add Region';
-        panel.appendChild(addRegionButton);
+        addRegionButton.textContent = 'Add Region (R)';
+        document.body.appendChild(addRegionButton);
     }
     
     // Update onclick with NEW selection times every time
@@ -430,18 +423,20 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
         createRegionFromSelectionTimes(selectionStart, selectionEnd);
     };
     
-    // Calculate button position relative to panel
+    // Calculate button position based on viewport coordinates
+    // Get canvas position in viewport
     const canvasRect = canvas.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    const buttonX = canvasRect.left - panelRect.left + (startX + endX) / 2;
-    const buttonTop = canvasRect.top - panelRect.top - 50; // 50px above waveform
+    
+    // Calculate center of selection in viewport coordinates
+    const centerX = canvasRect.left + (startX + endX) / 2;
+    const buttonTop = canvasRect.top - 39; // 39px above waveform top edge
     
     // Check if button is already visible and in a different position
     const isCurrentlyVisible = addRegionButton.style.display === 'block' && 
                                parseFloat(addRegionButton.style.opacity) > 0;
     const currentLeft = parseFloat(addRegionButton.style.left) || 0;
     const currentTop = parseFloat(addRegionButton.style.top) || 0;
-    const positionChanged = Math.abs(currentLeft - buttonX) > 1 || Math.abs(currentTop - buttonTop) > 1;
+    const positionChanged = Math.abs(currentLeft - centerX) > 1 || Math.abs(currentTop - buttonTop) > 1;
     
     if (isCurrentlyVisible && positionChanged) {
         // Fade out first, then move and fade in
@@ -454,8 +449,9 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
                 return;
             }
             
-            // Move to new position while invisible
-            addRegionButton.style.left = buttonX + 'px';
+            // Move to new position while invisible (viewport coordinates)
+            addRegionButton.style.position = 'fixed';
+            addRegionButton.style.left = centerX + 'px';
             addRegionButton.style.top = buttonTop + 'px';
             addRegionButton.style.transform = 'translateX(-50%)';
             
@@ -471,7 +467,8 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
         }, 150); // Wait for fade out to complete
     } else {
         // First time showing or same position - just fade in
-        addRegionButton.style.left = buttonX + 'px';
+        addRegionButton.style.position = 'fixed';
+        addRegionButton.style.left = centerX + 'px';
         addRegionButton.style.top = buttonTop + 'px';
         addRegionButton.style.transform = 'translateX(-50%)';
         addRegionButton.style.opacity = '0';
@@ -3239,88 +3236,49 @@ export function updateCompleteButtonState() {
             console.log(`🔵 updateCompleteButtonState: hasData=${hasData}, sampleCount=${sampleCount.toLocaleString()}`);
         }
         
+        // 🎯 NEW PHILOSOPHY: Button is ALWAYS VISIBLE, we only control enabled/disabled state
+        // Always ensure button is visible
+        completeBtn.style.display = 'flex';
+        completeBtn.style.alignItems = 'center';
+        completeBtn.style.justifyContent = 'center';
+        
         // Check if button is in "Begin Analysis" mode (before transformation) or "Complete" mode (after)
         const isBeginAnalysisMode = completeBtn.textContent === 'Begin Analysis';
         
-        // In study mode (STUDY and STUDY_CLEAN), "Begin Analysis" button should NEVER show
-        // Region creation is enabled automatically before the tutorial starts
-        // BUT: TEST_STUDY_END is a debug mode and should show the button like DEV mode
-        const isRealStudyMode = isStudyMode() && !isTestStudyEndMode();
-
-        if (isRealStudyMode) {
-            if (isBeginAnalysisMode) {
-                // For FIRST VISIT: Always disable/hide button (tutorial will show it when ready)
-                // For ALL OTHER VISITS: Standard behavior - show button if data available
-                const isFirstVisit = !hasSeenTutorial();
-                
-                // ✅ CRITICAL: If tutorial is currently showing the button, don't override it!
-                // Check if we're in the Begin Analysis tutorial step
-                const currentPhase = getTutorialPhase();
-                const isBeginAnalysisTutorialActive = currentPhase === 'waiting_for_begin_analysis_click';
-                
-                if (isFirstVisit) {
-                    // First visit = hide/disable button UNLESS tutorial is showing it
-                    if (isBeginAnalysisTutorialActive) {
-                        // Tutorial is controlling the button - don't override!
-                        // Button is already visible and enabled by runBeginAnalysisTutorial()
-                        return; // Exit early, let tutorial control it
-                    }
-                    
-                    // Tutorial not active - hide button until tutorial shows it
-                    completeBtn.style.display = 'none';
-                    completeBtn.disabled = true;
-                    completeBtn.style.opacity = '0.5';
-                    completeBtn.style.cursor = 'not-allowed';
-                } else {
-                    // Returning visit - show button if data is available
-                    if (hasData) {
-                        completeBtn.style.display = 'flex';
-                        completeBtn.style.alignItems = 'center';
-                        completeBtn.style.justifyContent = 'center';
-                        completeBtn.disabled = false;
-                        completeBtn.style.opacity = '1';
-                        completeBtn.style.cursor = 'pointer';
-                    } else {
-                        completeBtn.style.display = 'none';
-                    }
-                }
-            } else {
-                // This is the "Complete" button (post-transformation) - handle normally
-                if (hasData && !isTutorialActive()) {
-                    completeBtn.style.display = 'flex';
-                    completeBtn.style.alignItems = 'center';
-                    completeBtn.style.justifyContent = 'center';
-                    completeBtn.disabled = false;
-                    completeBtn.style.opacity = '1';
-                    completeBtn.style.cursor = 'pointer';
-                } else {
-                    completeBtn.style.display = 'none';
-                }
+        // Check if we're in the Begin Analysis tutorial step (tutorial controls the button then)
+        const currentPhase = getTutorialPhase();
+        const isBeginAnalysisTutorialActive = currentPhase === 'waiting_for_begin_analysis_click';
+        
+        if (isBeginAnalysisTutorialActive) {
+            // Tutorial is controlling the button - don't override!
+            return; // Exit early, let tutorial control it
+        }
+        
+        // Determine if button should be disabled
+        let shouldDisable = !hasData; // Default: disable if no data
+        
+        if (isBeginAnalysisMode) {
+            // Before transformation - disable if no data
+            shouldDisable = !hasData;
+        } else {
+            // After transformation (Complete button) - handled by updateCmpltButtonState()
+            // Just ensure it's visible, don't change disabled state here
+            return;
+        }
+        
+        // Update disabled state
+        completeBtn.disabled = shouldDisable;
+        if (shouldDisable) {
+            completeBtn.style.opacity = '0.5';
+            completeBtn.style.cursor = 'not-allowed';
+            if (!isStudyMode()) {
+                console.log('❌ Begin Analysis button DISABLED (no data)');
             }
         } else {
-            // Non-study mode: show button but disable it when no data OR during tutorial (first visit)
-            completeBtn.style.display = 'flex';
-            completeBtn.style.alignItems = 'center';
-            completeBtn.style.justifyContent = 'center';
-            // Disable during first visit - tutorial will enable it when ready
-            // Don't check isTutorialActive() because tutorialPhase might not be set yet
-            const isFirstVisit = !hasSeenTutorial();
-            if (isFirstVisit) {
-                completeBtn.disabled = true;
-                completeBtn.style.opacity = '0.5';
-                completeBtn.style.cursor = 'not-allowed';
-                console.log('❌ Begin Analysis button DISABLED (first visit - tutorial will enable)');
-            } else {
-                completeBtn.disabled = !hasData;
-                if (hasData) {
-                    completeBtn.style.opacity = '1';
-                    completeBtn.style.cursor = 'pointer';
-                    console.log('✅ Begin Analysis button ENABLED');
-                } else {
-                    completeBtn.style.opacity = '0.5';
-                    completeBtn.style.cursor = 'not-allowed';
-                    console.log('❌ Begin Analysis button DISABLED');
-                }
+            completeBtn.style.opacity = '1';
+            completeBtn.style.cursor = 'pointer';
+            if (!isStudyMode()) {
+                console.log('✅ Begin Analysis button ENABLED');
             }
         }
     } else {
@@ -3343,6 +3301,12 @@ export function updateCmpltButtonState() {
             console.log(`✅ updateCmpltButtonState: hasFeature=${hasFeature}`);
         }
         
+        // Ensure button is always visible
+        completeBtn.style.display = 'flex';
+        completeBtn.style.alignItems = 'center';
+        completeBtn.style.justifyContent = 'center';
+        
+        // Update disabled state based on features
         completeBtn.disabled = !hasFeature;
         if (hasFeature) {
             completeBtn.style.opacity = '1';

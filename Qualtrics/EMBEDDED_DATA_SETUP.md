@@ -63,33 +63,38 @@ We use **embedded data fields** (not text entry fields) to store JSON data in Qu
 **Setup in Qualtrics:**
 1. Go to **Survey Flow** in Qualtrics
 2. Add an **Embedded Data** element
-3. Name it: `JSON_data` (capital J, capital D)
+3. Name it: `JSON_data` (underscore, lowercase 'd')
 4. Leave value blank (will be populated via API)
 5. Save
 
 **Data Format:** JSON string containing interface interaction data (to be defined as we add more tracking)
 
+**IMPORTANT:** This field name MUST match exactly: `JSON_data` (not `JSON_Data` or `json_data`)
+
 ## Current Status
 
 **Requested:** November 13, 2025
 
-**Status:** ✅ Both fields have been added to Survey Flow (Nov 13, 2025)
+**Status:** ✅ Both fields confirmed in Survey Flow (verified Nov 19, 2025)
 
-## Future Implementation
+**Field Names (EXACT):**
+- `SessionTracking` (capital S, capital T, no spaces)
+- `JSON_data` (capital J, capital S, capital O, capital N, underscore, lowercase d, a, t, a)
 
-Once the embedded data fields are set up in Qualtrics:
+## Implementation Status
 
-1. **Update submission code** (`js/qualtrics-api.js`):
-   - ✅ Already sends `SessionTracking` in `embeddedData` object
+1. **Submission code** (`js/qualtrics-api.js`):
+   - ✅ Sends `SessionTracking` as embedded data field
    - ✅ Ready to send `JSON_data` when interface interaction tracking is added
+   - ✅ **NO LONGER sends to QID11** - embedded data only (as of Nov 19, 2025)
 
-2. **Update response viewer** (`Qualtrics/response-viewer.html`):
-   - ✅ Already parses and displays `SessionTracking` from embedded data
+2. **Response viewer** (`Qualtrics/response-viewer.html`):
+   - ✅ Parses and displays `SessionTracking` from embedded data
    - ✅ Ready to parse and display `JSON_data` when available
 
-3. **Remove QID11 dependency:**
-   - Currently still sending to QID11 for backwards compatibility
-   - Can remove QID11 once embedded data fields are confirmed working
+3. **QID11 Text Field:**
+   - ❌ **DEPRECATED** - Do not rely on QID11, it's unreliable
+   - ✅ All data now goes through embedded data fields only
 
 ## Testing
 

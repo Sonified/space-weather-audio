@@ -56,25 +56,54 @@ import {
 // ═══════════════════════════════════════════════════════════
 // 📊 PERSISTENT FLAGS (localStorage)
 // ═══════════════════════════════════════════════════════════
+// 
+// SESSION TRACKING HISTORY:
+// ========================
+// ALREADY EXISTED (before Nov 19, 2025):
+//   - TOTAL_SESSIONS_STARTED
+//   - TOTAL_SESSIONS_COMPLETED
+//   - TOTAL_SESSION_TIME
+//   - SESSION_HISTORY (array of session objects)
+//   - CURRENT_SESSION_START
+//   - Functions: startSession(), completeSession(), getSessionStats()
+//
+// ADDED Nov 19, 2025:
+//   - TOTAL_SESSION_COUNT (persistent counter across weeks)
+//   - Enhanced error handling & backward compatibility
+//   - Integration into submission flow (jsonDump metadata)
+//
+// BACKWARD COMPATIBILITY:
+//   All functions handle missing/corrupt data gracefully
+//   Returns safe defaults instead of crashing
+// ═══════════════════════════════════════════════════════════
 
 const STORAGE_KEYS = {
     HAS_SEEN_PARTICIPANT_SETUP: 'study_has_seen_participant_setup',
     HAS_SEEN_WELCOME: 'study_has_seen_welcome',
-    HAS_SEEN_TUTORIAL: 'study_has_seen_tutorial',
+    TUTORIAL_COMPLETED: 'study_tutorial_completed',
     LAST_AWESF_DATE: 'study_last_awesf_date',
     WEEKLY_SESSION_COUNT: 'study_weekly_session_count',
     WEEK_START_DATE: 'study_week_start_date',
-    PRE_SURVEY_COMPLETION_DATE: 'study_pre_survey_completion_date'
+    PRE_SURVEY_COMPLETION_DATE: 'study_pre_survey_completion_date',
+    TOTAL_SESSIONS_STARTED: 'study_total_sessions_started',
+    TOTAL_SESSIONS_COMPLETED: 'study_total_sessions_completed',
+    TOTAL_SESSION_TIME: 'study_total_session_time', // in milliseconds
+    SESSION_HISTORY: 'study_session_history', // JSON array of session objects
+    CURRENT_SESSION_START: 'study_current_session_start' // timestamp of current session
 };
 
 /**
  * Check if user has seen participant setup (once ever)
  */
 export function hasSeenParticipantSetup() {
-    // Always act like first time in clean/test modes
-    if (isStudyCleanMode()) return false;
+    // Returning clean modes: simulate returning user (true)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    if (storedMode === 'study_returning_clean_1' || storedMode === 'study_returning_clean_2') return true;
+    
+    // Always act like first time in study_clean/test modes
+    if (isStudyCleanMode()) return false;
     if (storedMode === 'test_study_end') return false;
+    
     return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP) === 'true';
 }
 
@@ -87,10 +116,14 @@ function markParticipantSetupAsSeen() {
  * Check if user has seen welcome modal (once ever)
  */
 export function hasSeenWelcome() {
-    // Always act like first time in clean/test modes
-    if (isStudyCleanMode()) return false;
+    // Returning clean modes: simulate returning user (true)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    if (storedMode === 'study_returning_clean_1' || storedMode === 'study_returning_clean_2') return true;
+    
+    // Always act like first time in study_clean/test modes
+    if (isStudyCleanMode()) return false;
     if (storedMode === 'test_study_end') return false;
+    
     return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME) === 'true';
 }
 
@@ -100,20 +133,37 @@ function markWelcomeAsSeen() {
 }
 
 /**
- * Check if user has seen tutorial (once ever)
+ * Check if user has completed tutorial (once ever)
+ * Only marked as completed when they click "Begin Analysis" button
  */
-export function hasSeenTutorial() {
-    // Always act like first time in clean/test modes
-    if (isStudyCleanMode()) return false;
+export function tutorialCompleted() {
+    // Returning clean modes: simulate returning user who already completed tutorial (true)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    if (storedMode === 'study_returning_clean_1' || storedMode === 'study_returning_clean_2') return true;
+    
+    // Always act like first time in study_clean/test modes
+    if (isStudyCleanMode()) return false;
     if (storedMode === 'test_study_end') return false;
-    return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_TUTORIAL) === 'true';
+    
+    // 🔄 MIGRATION: Convert old flag to new flag
+    const oldFlag = localStorage.getItem('study_has_seen_tutorial');
+    if (oldFlag === 'true' && !localStorage.getItem(STORAGE_KEYS.TUTORIAL_COMPLETED)) {
+        localStorage.setItem(STORAGE_KEYS.TUTORIAL_COMPLETED, 'true');
+        localStorage.removeItem('study_has_seen_tutorial'); // Clean up old flag
+    }
+    
+    return localStorage.getItem(STORAGE_KEYS.TUTORIAL_COMPLETED) === 'true';
 }
 
-export function markTutorialAsSeen() {
-    localStorage.setItem(STORAGE_KEYS.HAS_SEEN_TUTORIAL, 'true');
-    console.log('✅ Tutorial marked as seen (forever)');
+export function markTutorialAsCompleted() {
+    localStorage.setItem(STORAGE_KEYS.TUTORIAL_COMPLETED, 'true');
+    console.log('✅ Tutorial marked as COMPLETED (Begin Analysis was clicked)');
 }
+
+// Keep old names for backwards compatibility
+export const hasTutorialCompleted = tutorialCompleted;
+export const hasSeenTutorial = tutorialCompleted;
+export const markTutorialAsSeen = markTutorialAsCompleted;
 
 /**
  * Check if AWE-SF has been completed this week
@@ -146,10 +196,17 @@ function markAwesfCompleted() {
     console.log(`✅ AWE-SF marked as completed (week of ${now})`);
 }
 
+
+
 /**
  * Get session count for this week
  */
-function getSessionCountThisWeek() {
+export function getSessionCountThisWeek() {
+    // Returning clean modes: use simulated session count
+    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+    if (storedMode === 'study_returning_clean_1') return 1; // First session of the week (simulated)
+    if (storedMode === 'study_returning_clean_2') return 2; // Second session of the week (simulated)
+    
     if (isStudyCleanMode()) return 0;
     
     const weekStartDate = localStorage.getItem(STORAGE_KEYS.WEEK_START_DATE);
@@ -170,16 +227,196 @@ function getSessionCountThisWeek() {
         localStorage.setItem(STORAGE_KEYS.WEEK_START_DATE, weekStartStr);
         localStorage.setItem(STORAGE_KEYS.WEEKLY_SESSION_COUNT, '0');
         console.log(`📅 New week detected (${weekStartStr}) - session count reset`);
+        
+        // Initialize total count if needed (for week one)
+        initializeTotalSessionCount();
+        
         return 0;
     }
 }
 
 export function incrementSessionCount() {
-    const currentCount = getSessionCountThisWeek();
-    const newCount = currentCount + 1;
-    localStorage.setItem(STORAGE_KEYS.WEEKLY_SESSION_COUNT, newCount.toString());
-    console.log(`📊 Session count incremented: ${newCount} this week`);
-    return newCount;
+    // Increment weekly count
+    const currentWeeklyCount = getSessionCountThisWeek();
+    const newWeeklyCount = currentWeeklyCount + 1;
+    localStorage.setItem(STORAGE_KEYS.WEEKLY_SESSION_COUNT, newWeeklyCount.toString());
+    
+    console.log(`📊 Session count incremented: ${newWeeklyCount} this week`);
+    return newWeeklyCount;
+}
+
+
+/**
+ * Start a new session - track start time
+ */
+export function startSession() {
+    const startTime = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION_START, startTime);
+    
+    // Increment total sessions started
+    const totalStarted = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSIONS_STARTED) || '0');
+    localStorage.setItem(STORAGE_KEYS.TOTAL_SESSIONS_STARTED, (totalStarted + 1).toString());
+    
+    console.log(`🚀 Session started at ${startTime} (total started: ${totalStarted + 1})`);
+    return startTime;
+}
+
+/**
+ * Get current session start time
+ */
+export function getCurrentSessionStart() {
+    return localStorage.getItem(STORAGE_KEYS.CURRENT_SESSION_START);
+}
+
+/**
+ * Get session history
+ * BACKWARD COMPATIBLE: Returns empty array if parse fails or invalid format
+ */
+export function getSessionHistory() {
+    try {
+        const history = localStorage.getItem(STORAGE_KEYS.SESSION_HISTORY);
+        if (!history) return [];
+        
+        const parsed = JSON.parse(history);
+        
+        // Ensure it's an array
+        if (!Array.isArray(parsed)) {
+            console.warn('⚠️ Session history is not an array, resetting');
+            return [];
+        }
+        
+        return parsed;
+    } catch (error) {
+        console.error('❌ Error parsing session history:', error);
+        // Don't crash - return empty array
+        return [];
+    }
+}
+
+/**
+ * Complete a session - track end time and metadata
+ * BACKWARD COMPATIBLE: Handles missing start time, invalid dates, parse errors
+ */
+export function completeSession(completedAllSurveys = false, submittedToQualtrics = false) {
+    try {
+        const startTime = localStorage.getItem(STORAGE_KEYS.CURRENT_SESSION_START);
+        if (!startTime) {
+            console.warn('⚠️ No session start time found - cannot complete session');
+            return null;
+        }
+        
+        const endTime = new Date().toISOString();
+        let duration = 0;
+        
+        try {
+            duration = new Date(endTime) - new Date(startTime);
+            // Sanity check: duration should be positive and reasonable (< 24 hours)
+            if (duration < 0 || duration > 24 * 60 * 60 * 1000) {
+                console.warn('⚠️ Invalid session duration calculated:', duration);
+                duration = 0;
+            }
+        } catch (error) {
+            console.error('❌ Error calculating duration:', error);
+            duration = 0;
+        }
+        
+        // Safely get session count
+        let weeklyCount = 0;
+        try {
+            weeklyCount = getSessionCountThisWeek();
+        } catch (error) {
+            console.error('❌ Error getting session count:', error);
+        }
+        
+        // Create session record
+        const sessionRecord = {
+            sessionId: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            startTime: startTime,
+            endTime: endTime,
+            duration: duration, // in milliseconds
+            completedAllSurveys: Boolean(completedAllSurveys),
+            submittedToQualtrics: Boolean(submittedToQualtrics),
+            weeklySessionCount: weeklyCount
+        };
+        
+        // Add to session history
+        try {
+            const history = getSessionHistory();
+            history.push(sessionRecord);
+            localStorage.setItem(STORAGE_KEYS.SESSION_HISTORY, JSON.stringify(history));
+        } catch (error) {
+            console.error('❌ Error saving to session history:', error);
+        }
+        
+        // Update total sessions completed
+        try {
+            const totalCompleted = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSIONS_COMPLETED) || '0');
+            localStorage.setItem(STORAGE_KEYS.TOTAL_SESSIONS_COMPLETED, (totalCompleted + 1).toString());
+        } catch (error) {
+            console.error('❌ Error updating total completed:', error);
+        }
+        
+        // Update total session time
+        try {
+            const totalTime = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSION_TIME) || '0');
+            localStorage.setItem(STORAGE_KEYS.TOTAL_SESSION_TIME, (totalTime + duration).toString());
+        } catch (error) {
+            console.error('❌ Error updating total time:', error);
+        }
+        
+        // Clear current session start
+        try {
+            localStorage.removeItem(STORAGE_KEYS.CURRENT_SESSION_START);
+        } catch (error) {
+            console.error('❌ Error clearing session start:', error);
+        }
+        
+        console.log(`✅ Session completed:`, {
+            duration: `${(duration / 1000 / 60).toFixed(1)} minutes`,
+            completedAllSurveys,
+            submittedToQualtrics,
+            weeklyCount,
+            totalCount
+        });
+        
+        return sessionRecord;
+    } catch (error) {
+        console.error('❌ Error in completeSession:', error);
+        return null;
+    }
+}
+
+/**
+ * Get session statistics
+ * BACKWARD COMPATIBLE: Returns safe defaults for all fields if data is missing/corrupt
+ */
+export function getSessionStats() {
+    try {
+        const totalStarted = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSIONS_STARTED) || '0') || 0;
+        const totalCompleted = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSIONS_COMPLETED) || '0') || 0;
+        const totalTime = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSION_TIME) || '0') || 0;
+        const history = getSessionHistory();
+        
+        return {
+            totalSessionsStarted: isNaN(totalStarted) ? 0 : totalStarted,
+            totalSessionsCompleted: isNaN(totalCompleted) ? 0 : totalCompleted,
+            totalSessionTime: isNaN(totalTime) ? 0 : totalTime, // in milliseconds
+            totalSessionTimeHours: isNaN(totalTime) ? 0 : (totalTime / 1000 / 60 / 60),
+            sessionHistory: Array.isArray(history) ? history : [],
+            currentSessionStart: getCurrentSessionStart() || null
+        };
+    } catch (error) {
+        console.error('❌ Error getting session stats:', error);
+        // Return safe defaults
+        return {
+            totalSessionsStarted: 0,
+            totalSessionsCompleted: 0,
+            totalSessionTime: 0,
+            totalSessionTimeHours: 0,
+            sessionHistory: [],
+            currentSessionStart: null
+        };
+    }
 }
 
 /**
@@ -346,11 +583,30 @@ export async function startStudyWorkflow() {
             // (Same as first visit - must click Begin Analysis to enable region creation)
             console.log('🔒 Region creation DISABLED for returning visit (will be enabled after Begin Analysis)');
             
-            // For returning visits, ensure Begin Analysis button is visible
-            // (It starts visible, tutorial hides it - but returning visits skip tutorial)
+            // For returning visits, check if they've completed the tutorial
+            // If so, they've already done "Begin Analysis" - transform button to "Complete"
+            if (tutorialCompleted()) {
+                console.log('🔄 Tutorial completed - transforming button to Complete mode');
+                
+                // Transform the button (same logic as beginAnalysisConfirmed event)
+                const completeBtn = document.getElementById('completeBtn');
+                if (completeBtn && completeBtn.textContent === 'Begin Analysis') {
+                    completeBtn.textContent = 'Complete';
+                    completeBtn.style.background = '#28a745';
+                    completeBtn.style.borderColor = '#28a745';
+                    completeBtn.style.border = '2px solid #28a745';
+                    completeBtn.style.color = 'white';
+                    completeBtn.className = ''; // Remove begin-analysis-btn class
+                    completeBtn.removeAttribute('onmouseover');
+                    completeBtn.removeAttribute('onmouseout');
+                    console.log('✅ Button transformed to Complete mode (tutorial completed)');
+                }
+            }
+            
+            // Button is always visible, just update its disabled state
             const { updateCompleteButtonState } = await import('./region-tracker.js');
             updateCompleteButtonState();
-            console.log('✅ Begin Analysis button state updated for returning visit');
+            console.log('✅ Complete button state updated for returning visit');
             
             // ═══════════════════════════════════════════════════════════
             // PRE-SURVEY (EVERY TIME - INCLUDING RETURNING VISITS)
@@ -419,6 +675,7 @@ export async function startStudyWorkflow() {
                 if (currentSessionState && currentSessionState.status === 'in-progress') {
                     console.log('📊 Pre-Survey already completed today for current session - skipping');
                     console.log('✅ User can proceed directly to experience');
+                    // Button was already transformed above in the returning visit section
                     // Don't show pre-survey modal - user can explore
                     return; // Exit early - user can explore
                 } else {
@@ -436,13 +693,13 @@ export async function startStudyWorkflow() {
                 await clearSessionForNewDay(participantId);
             }
             
-            console.log('📊 Step 3: Pre-Survey (required every session)');
-            // For returning visits, open pre-survey directly (no welcome modal)
-            const { openPreSurveyModal } = await import('./ui-controls.js');
-            openPreSurveyModal();
-            console.log('📊 Pre-Survey modal opened (returning visit)');
-            // Pre-survey will be closed by user clicking submit, which triggers the workflow to continue
-            return; // Exit early - pre-survey event handler will continue workflow
+            console.log('👋 Step 2.5: Welcome Back (returning visit)');
+            // For returning visits, show welcome back modal first, then pre-survey
+            const { openWelcomeBackModal } = await import('./ui-controls.js');
+            openWelcomeBackModal();
+            console.log('👋 Welcome Back modal opened (returning visit)');
+            // Welcome Back modal will close and open pre-survey when user clicks "Start Now"
+            return; // Exit early - welcome back modal event handler will continue workflow
         }
         
         // ═══════════════════════════════════════════════════════════

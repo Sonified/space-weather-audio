@@ -294,7 +294,7 @@ function showErrorReportingUI(errorMessage, errorDetails) {
     }
 
     // Show message in status bar
-    statusEl.textContent = 'The interface has overheated. Our team is working on it, thanks for your patience!';
+    statusEl.textContent = 'The interface has overheated. Our team is working on it, thank you for your patience!';
     statusEl.className = 'status error';
     statusEl.style.cursor = 'default';
     

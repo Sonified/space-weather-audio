@@ -81,6 +81,29 @@ export function createEndModal() {
     return modal;
 }
 
+export function createWelcomeBackModal() {
+    const modal = document.createElement('div');
+    modal.id = 'welcomeBackModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" style="color: #550000;">🌋 Welcome back!</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 30px; color: #550000; font-size: 18px; line-height: 1.6; text-align: center;">
+                    Are you ready to begin? Your session should be completed in one sitting. Please use high-quality speakers or headphones.
+                </p>
+                <div style="display: flex; justify-content: center;">
+                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 220px;">Start Now</button>
+                </div>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
 export function createBeginAnalysisModal() {
     const modal = document.createElement('div');
     modal.id = 'beginAnalysisModal';
@@ -89,15 +112,15 @@ export function createBeginAnalysisModal() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Confirm Begin Analysis</h3>
+                <h3 class="modal-title">Ready to begin?</h3>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 30px; color: #333; font-size: 18px; line-height: 1.6; text-align: center;">
-                    Are you sure? Once you begin you will no longer be able to switch volcanoes.
+                    You won't be able to switch volcanoes after this. Your session should be completed in one sitting. Please use high-quality speakers or headphones.
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Begin Analysis</button>
-                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Cancel</button>
+                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 220px;">Begin Analysis</button>
+                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 220px;">Cancel</button>
                 </div>
             </div>
         </div>
@@ -257,12 +280,12 @@ function createMoodSurveyModal(surveyType, surveyId, title) {
                 
                 <!-- Quick-fill buttons -->
                 <div class="quick-fill-buttons" style="display: flex; gap: 8px; margin-bottom: 15px; padding: 10px; background: rgba(0, 0, 0, 0.05); border-radius: 6px; justify-content: center; flex-wrap: wrap;">
-                    <span style="font-weight: 600; color: #555; margin-right: 8px; align-self: center;">Quick fill:</span>
-                    <button type="button" class="quick-fill-btn" data-value="1" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">1</button>
-                    <button type="button" class="quick-fill-btn" data-value="2" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">2</button>
-                    <button type="button" class="quick-fill-btn" data-value="3" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">3</button>
-                    <button type="button" class="quick-fill-btn" data-value="4" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">4</button>
-                    <button type="button" class="quick-fill-btn" data-value="5" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">5</button>
+                    <span style="font-weight: 600; color: #550000; margin-right: 8px; align-self: center;">Quick fill:</span>
+                    <button type="button" class="quick-fill-btn" data-value="1" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">1</button>
+                    <button type="button" class="quick-fill-btn" data-value="2" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">2</button>
+                    <button type="button" class="quick-fill-btn" data-value="3" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">3</button>
+                    <button type="button" class="quick-fill-btn" data-value="4" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">4</button>
+                    <button type="button" class="quick-fill-btn" data-value="5" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">5</button>
                 </div>
                 
                 <!-- Scale header labels -->
@@ -441,7 +464,9 @@ function createMoodSurveyModal(surveyType, surveyId, title) {
                 </div>
                 </div>
                 
-                <button type="button" class="modal-submit" disabled>✓ Next</button>
+                <div style="display: flex; justify-content: center; margin-top: 20px;">
+                    <button type="button" class="modal-submit" disabled style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 220px;">✓ Next</button>
+                </div>
             </div>
         </div>
     `;
@@ -449,7 +474,7 @@ function createMoodSurveyModal(surveyType, surveyId, title) {
 }
 
 export function createPreSurveyModal() {
-    return createMoodSurveyModal('pre', 'preSurveyModal', '📊 Pre-Survey');
+    return createMoodSurveyModal('pre', 'preSurveyModal', '🌋 Pre-Survey');
 }
 
 export function createPostSurveyModal() {
@@ -520,14 +545,14 @@ export function createAwesfModal() {
             <div class="modal-body">
                 <!-- Quick-fill buttons -->
                 <div class="quick-fill-buttons" style="display: flex; gap: 8px; margin-bottom: 15px; padding: 10px; background: rgba(0, 0, 0, 0.05); border-radius: 6px; justify-content: center; flex-wrap: wrap;">
-                    <span style="font-weight: 600; color: #555; margin-right: 8px; align-self: center;">Quick fill:</span>
-                    <button type="button" class="quick-fill-btn" data-value="1" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">1</button>
-                    <button type="button" class="quick-fill-btn" data-value="2" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">2</button>
-                    <button type="button" class="quick-fill-btn" data-value="3" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">3</button>
-                    <button type="button" class="quick-fill-btn" data-value="4" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">4</button>
-                    <button type="button" class="quick-fill-btn" data-value="5" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">5</button>
-                    <button type="button" class="quick-fill-btn" data-value="6" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">6</button>
-                    <button type="button" class="quick-fill-btn" data-value="7" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 2px solid #4CAF50; background: white; color: #4CAF50; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='white'">7</button>
+                    <span style="font-weight: 600; color: #550000; margin-right: 8px; align-self: center;">Quick fill:</span>
+                    <button type="button" class="quick-fill-btn" data-value="1" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">1</button>
+                    <button type="button" class="quick-fill-btn" data-value="2" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">2</button>
+                    <button type="button" class="quick-fill-btn" data-value="3" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">3</button>
+                    <button type="button" class="quick-fill-btn" data-value="4" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">4</button>
+                    <button type="button" class="quick-fill-btn" data-value="5" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">5</button>
+                    <button type="button" class="quick-fill-btn" data-value="6" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">6</button>
+                    <button type="button" class="quick-fill-btn" data-value="7" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">7</button>
                 </div>
                 
                 <!-- Scale header labels -->
@@ -742,6 +767,7 @@ export async function initializeModals() {
     const completeConfirmationModal = createCompleteConfirmationModal();
     const tutorialIntroModal = createTutorialIntroModal();
     const tutorialRevisitModal = createTutorialRevisitModal();
+    const welcomeBackModal = createWelcomeBackModal();
     
     // Append modals to the permanent overlay instead of body
     const overlay = document.getElementById('permanentOverlay');
@@ -757,6 +783,7 @@ export async function initializeModals() {
     overlay.appendChild(completeConfirmationModal);
     overlay.appendChild(tutorialIntroModal);
     overlay.appendChild(tutorialRevisitModal);
+    overlay.appendChild(welcomeBackModal);
     
     // Pre-populate participant ID from URL (Qualtrics) or localStorage
     // BUT NOT in STUDY_CLEAN mode (always start fresh)
