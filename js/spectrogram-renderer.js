@@ -877,6 +877,14 @@ export function setupSpectrogramSelection() {
         // If not zoomed in, don't handle - user is looking at full view
         if (!zoomState.isInRegion()) {
             console.log('🖱️ [MOUSEDOWN] Not in region - returning early (zoom state says not zoomed in)');
+            
+            // Show helpful message if region creation is enabled but user isn't zoomed in
+            if (State.isRegionCreationEnabled()) {
+                import('./tutorial-effects.js').then(({ setStatusText }) => {
+                    setStatusText('Create a new region to zoom in and select features.', 'status info');
+                });
+            }
+            
             return;
         }
         

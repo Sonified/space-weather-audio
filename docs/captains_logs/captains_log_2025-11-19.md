@@ -1,5 +1,33 @@
 # Captain's Log - 2025-11-19
 
+## v2.60 - Bug Fix: Waveform Button Positioning Drift
+
+### Bug Fixed
+
+**CRITICAL: Hover Button Positioning Drift**
+- **Problem**: The hover buttons (zoom 🔍 and play ▶️) were drifting away from regions after page reload, even though regions themselves were correctly positioned
+- **Root Cause**: Three rendering systems were using different coordinate calculations:
+  1. ✅ Features - were already using timestamps directly (correct!)
+  2. ✅ Regions - fixed in previous version to use timestamps directly
+  3. ❌ Buttons - were STILL converting sample indices → timestamps (had rounding errors)
+- **Solution**: Updated `waveform-buttons-renderer.js` to use saved timestamps directly:
+  - Line 140-141: Changed main button positioning from `zoomState.sampleToRealTimestamp(region.startSample)` to `new Date(region.startTime)` and `new Date(region.stopTime)`
+  - Line 169-170: Same fix applied to transition animation positioning
+  - Now all three systems (features, regions, buttons) use the exact same coordinate calculation
+
+### Architecture Notes
+
+**Unified Coordinate System**
+- Saved timestamps (`region.startTime`, `region.stopTime`) are now the eternal source of truth
+- No sample index conversions = no rounding errors
+- No drift on reload! All three rendering systems perfectly synchronized
+
+### Git Commit
+**Version**: v2.60  
+**Commit Message**: v2.60 Bug Fix: Waveform button positioning drift - use timestamps directly instead of sample conversion
+
+---
+
 ## v2.59 - Bug Fix: Remove Unused Export Regions Button
 
 ### Bug Fixed

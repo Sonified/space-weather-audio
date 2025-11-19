@@ -1440,8 +1440,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.60 - Bug Fix: Waveform Button Positioning Drift');
+        console.log('📌 [0ms] Git commit: v2.60 Bug Fix: Waveform button positioning drift - use timestamps directly instead of sample conversion');
+        console.log('🐛 [0ms] v2.60 Fix: CRITICAL - Hover buttons (zoom 🔍 and play ▶️) were drifting away from regions after reload');
+        console.log('🔧 [0ms] v2.60 Fix: Updated waveform-buttons-renderer.js to use saved timestamps directly (new Date(region.startTime)) instead of converting samples → timestamps');
+        console.log('🎯 [0ms] v2.60 Result: All three rendering systems (features, regions, buttons) now use unified coordinate calculation - no drift on reload!');
         console.log('🌋 [0ms] volcano-audio v2.59 - Bug Fix: Remove Unused Export Regions Button');
-        console.log('📌 [0ms] Git commit: [hash] - v2.59 Bug Fix: Remove unused export regions button');
+        console.log('📌 [0ms] Git commit: 5dc33c5 - v2.59 Bug Fix: Remove unused export regions button');
         console.log('🐛 [0ms] v2.59 Fix: Removed exportRegionsBtn event listener that referenced non-existent exportRegionsData function');
         console.log('🧹 [0ms] v2.59 Fix: Removed Export Regions button from HTML - feature was accidentally added in commit 8af47a4 without implementation');
         console.log('✅ [0ms] v2.59 Result: Fixed critical error "exportRegionsData is not defined" on page load');

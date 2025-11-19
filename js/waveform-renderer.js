@@ -840,6 +840,15 @@ export function setupWaveformInteraction() {
             }
         }
         
+        // Check if region creation is enabled (requires "Begin Analysis" to be pressed)
+        if (!State.isRegionCreationEnabled()) {
+            // Import setStatusText dynamically to avoid circular dependency
+            import('./tutorial-effects.js').then(({ setStatusText }) => {
+                setStatusText('Click Begin Analysis to create a region and interact with the spectrogram.', 'status info');
+            });
+            return; // Don't allow waveform selection
+        }
+        
         // Normal waveform interaction - start selection/drag
         State.setSelectionStartX(startX);
         State.setIsDragging(true);

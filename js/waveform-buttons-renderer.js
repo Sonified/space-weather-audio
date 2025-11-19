@@ -137,8 +137,9 @@ export function drawRegionButtons() {
         let startX, endX;
         if (zoomState.isInitialized()) {
             const interpolatedRange = getInterpolatedTimeRange();
-            const regionStartTimestamp = zoomState.sampleToRealTimestamp(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds));
-            const regionEndTimestamp = zoomState.sampleToRealTimestamp(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds));
+            // 🔥 FIX: Use saved timestamps DIRECTLY (matches region positioning fix!)
+            const regionStartTimestamp = new Date(region.startTime);
+            const regionEndTimestamp = new Date(region.stopTime);
             const displayStartMs = interpolatedRange.startTime.getTime();
             const displayEndMs = interpolatedRange.endTime.getTime();
             const displaySpanMs = displayEndMs - displayStartMs;
@@ -165,8 +166,9 @@ export function drawRegionButtons() {
             const transitionProgress = getZoomTransitionProgress();
             const oldRange = getOldTimeRange();
             if (oldRange) {
-                const regionStartTimestamp = zoomState.sampleToRealTimestamp(region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds));
-                const regionEndTimestamp = zoomState.sampleToRealTimestamp(region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds));
+                // 🔥 FIX: Use saved timestamps DIRECTLY (matches region positioning fix!)
+                const regionStartTimestamp = new Date(region.startTime);
+                const regionEndTimestamp = new Date(region.stopTime);
                 const oldStartMs = regionStartTimestamp.getTime();
                 const oldEndMs = regionEndTimestamp.getTime();
                 const oldDisplayStartMs = oldRange.startTime.getTime();
