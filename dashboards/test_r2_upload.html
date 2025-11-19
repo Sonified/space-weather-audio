@@ -94,6 +94,70 @@
             border-radius: 4px;
         }
         
+        .backend-status {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .status-label {
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-dot.checking {
+            background: #888;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .status-dot.online {
+            background: #4ecdc4;
+            box-shadow: 0 0 8px #4ecdc4;
+        }
+        
+        .status-dot.offline {
+            background: #5c2d2d;
+            box-shadow: 0 0 8px #5c2d2d;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        .status-text {
+            font-size: 14px;
+            color: #e0e0e0;
+        }
+        
+        .status-details {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #aaa;
+            font-family: 'Courier New', monospace;
+        }
+        
         .setup-data {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -125,6 +189,18 @@
         It simulates localStorage data and tests both status-only and full submission uploads.
     </div>
     
+    <!-- Backend Status -->
+    <div class="backend-status">
+        <div class="status-row">
+            <span class="status-label">Backend Status:</span>
+            <span class="status-indicator" id="backendStatus">
+                <span class="status-dot checking"></span>
+                <span class="status-text">Checking...</span>
+            </span>
+        </div>
+        <div class="status-details" id="statusDetails"></div>
+    </div>
+    
     <!-- Setup Section -->
     <div class="test-section">
         <h2>⚙️ Setup Test Data</h2>
@@ -136,9 +212,11 @@
             <div>
                 <label>Selected Volcano:</label>
                 <select id="selectedVolcano">
-                    <option value="Okmok">Okmok</option>
+                    <option value="Kilauea">Kilauea</option>
+                    <option value="Maunaloa">Mauna Loa</option>
+                    <option value="Great Sitkin">Great Sitkin</option>
+                    <option value="Shishaldin">Shishaldin</option>
                     <option value="Spurr">Spurr</option>
-                    <option value="Redoubt">Redoubt</option>
                 </select>
             </div>
         </div>
@@ -495,6 +573,69 @@
         
         console.log('✅ R2 Upload Test Dashboard loaded');
         console.log('📦 Imported modules:', { uploadUserStatus, uploadSubmissionData });
+        
+        // Backend health check
+        const BACKEND_URL = 'https://volcano-audio-collector-production.up.railway.app';
+        let lastHealthCheck = null;
+        
+        async function checkBackendHealth() {
+            const statusDot = document.querySelector('.status-dot');
+            const statusText = document.querySelector('.status-text');
+            const statusDetails = document.getElementById('statusDetails');
+            
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${BACKEND_URL}/health`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const responseTime = Date.now() - startTime;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    lastHealthCheck = {
+                        status: 'online',
+                        version: data.version,
+                        uptime: data.uptime_seconds,
+                        responseTime: responseTime,
+                        timestamp: new Date().toLocaleTimeString()
+                    };
+                    
+                    // Update UI
+                    statusDot.className = 'status-dot online';
+                    statusText.textContent = 'Online';
+                    statusDetails.innerHTML = `
+                        Version: ${data.version} | 
+                        Uptime: ${Math.floor(data.uptime_seconds / 3600)}h ${Math.floor((data.uptime_seconds % 3600) / 60)}m | 
+                        Ping: ${responseTime}ms | 
+                        Last check: ${lastHealthCheck.timestamp}
+                    `;
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                lastHealthCheck = {
+                    status: 'offline',
+                    error: error.message,
+                    timestamp: new Date().toLocaleTimeString()
+                };
+                
+                // Update UI
+                statusDot.className = 'status-dot offline';
+                statusText.textContent = 'Offline';
+                statusDetails.innerHTML = `
+                    Error: ${error.message} | 
+                    Last check: ${lastHealthCheck.timestamp}
+                `;
+                console.error('Backend health check failed:', error);
+            }
+        }
+        
+        // Check immediately on load
+        checkBackendHealth();
+        
+        // Check every 10 seconds
+        setInterval(checkBackendHealth, 10000);
     </script>
 </body>
 </html>
