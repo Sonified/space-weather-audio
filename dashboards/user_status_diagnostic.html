@@ -206,10 +206,19 @@
                 'study_has_seen_participant_setup': localStorage.getItem('study_has_seen_participant_setup'),
                 'study_has_seen_welcome': localStorage.getItem('study_has_seen_welcome'),
                 'study_has_seen_tutorial': localStorage.getItem('study_has_seen_tutorial'),
+                'study_tutorial_completed': localStorage.getItem('study_tutorial_completed'),
                 'study_last_awesf_date': localStorage.getItem('study_last_awesf_date'),
                 'study_weekly_session_count': localStorage.getItem('study_weekly_session_count'),
                 'study_week_start_date': localStorage.getItem('study_week_start_date'),
-                'study_pre_survey_completion_date': localStorage.getItem('study_pre_survey_completion_date')
+                'study_pre_survey_completion_date': localStorage.getItem('study_pre_survey_completion_date'),
+                'study_total_sessions_started': localStorage.getItem('study_total_sessions_started'),
+                'study_total_sessions_completed': localStorage.getItem('study_total_sessions_completed'),
+                'study_total_session_time': localStorage.getItem('study_total_session_time'),
+                'study_total_regions_identified': localStorage.getItem('study_total_regions_identified'),
+                'study_total_features_identified': localStorage.getItem('study_total_features_identified'),
+                'study_session_completion_tracker': localStorage.getItem('study_session_completion_tracker'),
+                'study_session_history': localStorage.getItem('study_session_history'),
+                'study_current_session_start': localStorage.getItem('study_current_session_start')
             };
             return flags;
         }
@@ -367,6 +376,24 @@
             const sessionResponses = getSessionResponses(participantId);
             const workflowFlags = getWorkflowFlags();
             
+            // Strip out actual survey answers for privacy - only include metadata
+            let responsesMetadata = null;
+            if (sessionResponses) {
+                responsesMetadata = {
+                    sessionId: sessionResponses.sessionId,
+                    participantId: sessionResponses.participantId,
+                    hasPre: !!sessionResponses.pre,
+                    hasPost: !!sessionResponses.post,
+                    hasAwesf: !!sessionResponses.awesf,
+                    hasActivityLevel: !!sessionResponses.activityLevel,
+                    submitted: sessionResponses.submitted || false,
+                    submittedAt: sessionResponses.submittedAt || 'Not submitted',
+                    qualtricsResponseId: sessionResponses.qualtricsResponseId || 'None',
+                    createdAt: sessionResponses.createdAt,
+                    note: '(Survey answers excluded for privacy)'
+                };
+            }
+            
             const report = `USER STATUS DIAGNOSTIC REPORT
 Generated: ${new Date().toISOString()}
 
@@ -375,10 +402,10 @@ PARTICIPANT ID: ${participantId || 'NOT FOUND'}
 SESSION STATE:
 ${JSON.stringify(sessionState, null, 2)}
 
-SESSION RESPONSES:
-${JSON.stringify(sessionResponses, null, 2)}
+SESSION RESPONSES (metadata only):
+${JSON.stringify(responsesMetadata, null, 2)}
 
-WORKFLOW FLAGS:
+WORKFLOW FLAGS & TRACKING:
 ${JSON.stringify(workflowFlags, null, 2)}
 
 VOLCANO SELECTION: ${localStorage.getItem('selectedVolcano') || 'NOT SET'}
@@ -386,7 +413,7 @@ MODE: ${localStorage.getItem('selectedMode') || 'Using default'}
 `;
 
             navigator.clipboard.writeText(report).then(() => {
-                alert('Report copied to clipboard!');
+                alert('Report copied to clipboard! (Survey answers excluded for privacy)');
             }).catch(err => {
                 alert('Failed to copy: ' + err);
             });
@@ -398,13 +425,22 @@ MODE: ${localStorage.getItem('selectedMode') || 'Using default'}
                     'study_has_seen_participant_setup',
                     'study_has_seen_welcome',
                     'study_has_seen_tutorial',
+                    'study_tutorial_completed',
                     'study_last_awesf_date',
                     'study_weekly_session_count',
                     'study_week_start_date',
-                    'study_pre_survey_completion_date'
+                    'study_pre_survey_completion_date',
+                    'study_total_sessions_started',
+                    'study_total_sessions_completed',
+                    'study_total_session_time',
+                    'study_total_regions_identified',
+                    'study_total_features_identified',
+                    'study_session_completion_tracker',
+                    'study_session_history',
+                    'study_current_session_start'
                 ];
                 flags.forEach(flag => localStorage.removeItem(flag));
-                alert('Study flags reset! Refresh the page to see changes.');
+                alert('All study flags and tracking data reset! Refresh the page to see changes.');
                 generateReport();
             }
         }

@@ -23,7 +23,7 @@ import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { cancelSpectrogramSelection } from './spectrogram-renderer.js';
 import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
-import { isStudyMode, isTestStudyEndMode } from './master-modes.js';
+import { isStudyMode, isTutorialEndMode } from './master-modes.js';
 import { hasSeenTutorial } from './study-workflow.js';
 
 // Region data structure - stored per volcano

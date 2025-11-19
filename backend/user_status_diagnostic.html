@@ -133,7 +133,8 @@
 <body>
     <div class="container">
         <h1>🔍 User Status Diagnostic Report</h1>
-        <p class="timestamp">Generated: 2025-11-18 21:30:06</p>
+        <p class="timestamp" id="timestamp">Generated: <span id="generatedTime"></span></p>
+        <p style="font-size: 12px; color: #888;">Last Updated: 2025-11-19 (Added session tracker, begin_analysis flag, removed old AWE-SF date)</p>
         
         <div class="section">
             <button class="button" onclick="refreshReport()">🔄 Refresh Report</button>
@@ -203,13 +204,32 @@
 
         function getWorkflowFlags() {
             const flags = {
+                // Onboarding flags (persistent, once ever)
                 'study_has_seen_participant_setup': localStorage.getItem('study_has_seen_participant_setup'),
                 'study_has_seen_welcome': localStorage.getItem('study_has_seen_welcome'),
-                'study_has_seen_tutorial': localStorage.getItem('study_has_seen_tutorial'),
-                'study_last_awesf_date': localStorage.getItem('study_last_awesf_date'),
+                'study_tutorial_completed': localStorage.getItem('study_tutorial_completed'),
+                
+                // Session tracking (persistent)
+                'study_pre_survey_completion_date': localStorage.getItem('study_pre_survey_completion_date'),
+                'study_session_completion_tracker': localStorage.getItem('study_session_completion_tracker'),
+                
+                // Weekly tracking (persistent)
                 'study_weekly_session_count': localStorage.getItem('study_weekly_session_count'),
                 'study_week_start_date': localStorage.getItem('study_week_start_date'),
-                'study_pre_survey_completion_date': localStorage.getItem('study_pre_survey_completion_date')
+                
+                // Session-level flags (cleared each session)
+                'study_begin_analysis_clicked_this_session': localStorage.getItem('study_begin_analysis_clicked_this_session'),
+                
+                // Session history & stats (persistent)
+                'study_total_sessions_started': localStorage.getItem('study_total_sessions_started'),
+                'study_total_sessions_completed': localStorage.getItem('study_total_sessions_completed'),
+                'study_total_session_time': localStorage.getItem('study_total_session_time'),
+                'study_session_history': localStorage.getItem('study_session_history'),
+                'study_current_session_start': localStorage.getItem('study_current_session_start'),
+                
+                // Cumulative stats (persistent)
+                'study_total_regions_identified': localStorage.getItem('study_total_regions_identified'),
+                'study_total_features_identified': localStorage.getItem('study_total_features_identified')
             };
             return flags;
         }
@@ -234,6 +254,9 @@
         }
 
         function generateReport() {
+            // Update timestamp
+            document.getElementById('generatedTime').textContent = new Date().toLocaleString();
+            
             const participantId = getParticipantId();
             const sessionState = getSessionState();
             const sessionResponses = getSessionResponses(participantId);
@@ -334,9 +357,29 @@
 
             // Workflow Flags
             let flagsHtml = '<span class="key">Workflow Flags:</span><br>';
+            flagsHtml += '<div style="margin-top: 10px; padding: 10px; background: #1e1e1e; border-radius: 5px;">';
+            
             Object.entries(workflowFlags).forEach(([key, value]) => {
-                flagsHtml += `<div><span class="key">${key}:</span> ${formatValue(value)}</div>`;
+                // Parse JSON values for better display
+                let displayValue = value;
+                if (value && (key.includes('tracker') || key.includes('history'))) {
+                    try {
+                        const parsed = JSON.parse(value);
+                        displayValue = '<pre style="margin: 5px 0;">' + JSON.stringify(parsed, null, 2) + '</pre>';
+                    } catch (e) {
+                        displayValue = formatValue(value);
+                    }
+                } else {
+                    displayValue = formatValue(value);
+                }
+                
+                flagsHtml += `<div style="margin: 8px 0; padding: 8px; background: #2a2a2a; border-left: 3px solid #4CAF50; border-radius: 3px;">`;
+                flagsHtml += `<span class="key">${key}:</span><br>`;
+                flagsHtml += displayValue;
+                flagsHtml += `</div>`;
             });
+            
+            flagsHtml += '</div>';
             document.getElementById('workflowFlags').innerHTML = flagsHtml;
 
             // Volcano Selection
@@ -395,13 +438,30 @@ MODE: ${localStorage.getItem('selectedMode') || 'Using default'}
         function resetStudyFlags() {
             if (confirm('Are you sure you want to reset all study flags? This will make the system act like a first-time visit.')) {
                 const flags = [
+                    // Onboarding flags
                     'study_has_seen_participant_setup',
                     'study_has_seen_welcome',
-                    'study_has_seen_tutorial',
-                    'study_last_awesf_date',
+                    'study_tutorial_completed',
+                    
+                    // Session tracking
+                    'study_pre_survey_completion_date',
+                    'study_session_completion_tracker',
+                    'study_begin_analysis_clicked_this_session',
+                    
+                    // Weekly tracking
                     'study_weekly_session_count',
                     'study_week_start_date',
-                    'study_pre_survey_completion_date'
+                    
+                    // Session history & stats
+                    'study_total_sessions_started',
+                    'study_total_sessions_completed',
+                    'study_total_session_time',
+                    'study_session_history',
+                    'study_current_session_start',
+                    
+                    // Cumulative stats
+                    'study_total_regions_identified',
+                    'study_total_features_identified'
                 ];
                 flags.forEach(flag => localStorage.removeItem(flag));
                 alert('Study flags reset! Refresh the page to see changes.');

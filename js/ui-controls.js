@@ -137,7 +137,7 @@ function fadeInOverlay() {
  * Fade out the permanent overlay background (modal background)
  * Standard design pattern: background fades down when modal leaves
  */
-function fadeOutOverlay() {
+export function fadeOutOverlay() {
     const overlay = document.getElementById('permanentOverlay');
     if (!overlay) return;
     
@@ -221,14 +221,14 @@ export async function loadSavedVolcano() {
         loadStations();
     }
     
-    // In study mode: If user has already clicked "Begin Analysis", keep volcano selector disabled
+    // In study mode: If user has already clicked "Begin Analysis" THIS SESSION, keep volcano selector disabled
     if (isStudyMode()) {
-        const { tutorialCompleted } = await import('./study-workflow.js');
-        if (tutorialCompleted()) {
+        const { hasBegunAnalysisThisSession } = await import('./study-workflow.js');
+        if (hasBegunAnalysisThisSession()) {
             volcanoSelect.disabled = true;
             volcanoSelect.style.opacity = '0.5';
             volcanoSelect.style.cursor = 'not-allowed';
-            console.log('🔒 Volcano selector disabled (Begin Analysis already completed)');
+            console.log('🔒 Volcano selector disabled (Begin Analysis clicked this session)');
         }
     }
 }
@@ -823,17 +823,6 @@ export function setupModalEventListeners() {
         if (endSubmitBtn) {
             endSubmitBtn.addEventListener('click', async () => {
                 closeEndModal();
-                
-                // Check if we should run the study end walkthrough
-                const { isStudyEndMode } = await import('./master-modes.js');
-                if (isStudyEndMode()) {
-                    console.log('🎬 End modal closed - starting Study End Walkthrough...');
-                    // Small delay to ensure modal is fully closed
-                    setTimeout(async () => {
-                        const { runStudyEndWalkthrough } = await import('./tutorial-coordinator.js');
-                        await runStudyEndWalkthrough();
-                    }, 500);
-                }
             });
         }
     }

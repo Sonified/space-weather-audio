@@ -3,7 +3,10 @@
  * Session timeout management with inactivity detection
  * Shows warning at 10 minutes, hard timeout at 20 minutes
  * Only active in study modes (not dev/personal)
+ * Reports metadata mismatches silently for debugging
  */
+
+import { reportSessionStateInconsistency } from './silent-error-reporter.js';
 
 // ===== SESSION TIMEOUT MANAGEMENT =====
 
@@ -184,6 +187,18 @@ async function handleSessionTimeout() {
                 // Get regions/features
                 const regions = getRegions();
                 
+                // Get session state for consistency check
+                const sessionState = getSessionState(participantId);
+                
+                // 🔕 Check for session inconsistencies during timeout
+                if (sessionState && responses.sessionId !== sessionState.sessionId) {
+                    reportSessionStateInconsistency(
+                        'timeout_submission_session_id_mismatch',
+                        sessionState,
+                        responses
+                    ).catch(e => console.warn('Silent report failed:', e));
+                }
+                
                 // Format regions with features
                 const formattedRegions = regions.map(region => ({
                     regionId: region.id,
@@ -307,6 +322,15 @@ async function handleSessionTimeout() {
                 });
             } else {
                 console.warn('⚠️ No pre-survey data found for timeout submission');
+                
+                // 🔕 Report missing pre-survey at timeout
+                if (responses && !responses.pre) {
+                    reportSessionStateInconsistency(
+                        'timeout_missing_pre_survey',
+                        null,
+                        responses
+                    ).catch(e => console.warn('Silent report failed:', e));
+                }
             }
         } else {
             console.warn('⚠️ No participant ID found - cannot submit timeout data');

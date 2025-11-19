@@ -2,33 +2,47 @@
  * study-workflow.js
  * Orchestrates the full Study Mode workflow with all visit rules
  * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ⚠️ IMPORTANT: TEST MODE PHILOSOPHY
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Test modes (study_w2_s1, study_w2_s2, study_w2_s1_returning) ONLY set FLAGS.
+ * They DO NOT contain separate logic. All behavior is driven by the REAL LOGIC
+ * that responds to these flags.
+ * 
+ * When fixing bugs or adding features:
+ * ✅ DO: Fix the logic that checks flags (works for both real users and test modes)
+ * ❌ DON'T: Add special cases for test modes (defeats the purpose of testing)
+ * 
+ * Test modes simulate user states by setting the SAME flags that real users would have.
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
  * VISIT RULES:
  * ============
- * FIRST VISIT EVER:
+ * FIRST VISIT EVER (W1S1):
  *   1. Participant Setup (once ever)
  *   2. Welcome (once ever)
- *   3. Pre-Survey (every time)
+ *   3. Pre-Survey (every session)
  *   4. Tutorial (once ever)
  *   5. Experience
- *   6. Activity Level (every time)
- *   7. AWE-SF (first time each week)
- *   8. Post-Survey (every time)
- *   9. End/Confirmation (every time)
+ *   6. Activity Level (every session)
+ *   7. AWE-SF (Session 1 of each week only)
+ *   8. Post-Survey (every session)
+ *   9. End/Confirmation (every session)
  * 
- * SUBSEQUENT VISITS (SAME WEEK):
- *   1. Pre-Survey (every time)
+ * SESSION 2 OF ANY WEEK (W1S2, W2S2, W3S2):
+ *   1. Pre-Survey (every session)
  *   2. Experience
- *   3. Activity Level (every time)
- *   4. Post-Survey (every time)
- *   5. End/Confirmation (every time)
+ *   3. Activity Level (every session)
+ *   4. Post-Survey (every session) [NO AWE-SF]
+ *   5. End/Confirmation (every session)
  * 
- * FIRST VISIT OF NEW WEEK:
- *   1. Pre-Survey (every time)
+ * SESSION 1 OF NEW WEEK (W2S1, W3S1):
+ *   1. Pre-Survey (every session)
  *   2. Experience
- *   3. Activity Level (every time)
- *   4. AWE-SF (first time each week) ← Returns!
- *   5. Post-Survey (every time)
- *   6. End/Confirmation (every time)
+ *   3. Activity Level (every session)
+ *   4. AWE-SF (Session 1 of each week only) ← Returns!
+ *   5. Post-Survey (every session)
+ *   6. End/Confirmation (every session)
  */
 
 import { isStudyMode, isStudyCleanMode } from './master-modes.js';
@@ -81,7 +95,6 @@ const STORAGE_KEYS = {
     HAS_SEEN_PARTICIPANT_SETUP: 'study_has_seen_participant_setup',
     HAS_SEEN_WELCOME: 'study_has_seen_welcome',
     TUTORIAL_COMPLETED: 'study_tutorial_completed',
-    LAST_AWESF_DATE: 'study_last_awesf_date',
     WEEKLY_SESSION_COUNT: 'study_weekly_session_count',
     WEEK_START_DATE: 'study_week_start_date',
     PRE_SURVEY_COMPLETION_DATE: 'study_pre_survey_completion_date',
@@ -92,20 +105,21 @@ const STORAGE_KEYS = {
     CURRENT_SESSION_START: 'study_current_session_start', // timestamp of current session
     TOTAL_REGIONS_IDENTIFIED: 'study_total_regions_identified', // cumulative across all sessions
     TOTAL_FEATURES_IDENTIFIED: 'study_total_features_identified', // cumulative across all sessions
-    SESSION_COMPLETION_TRACKER: 'study_session_completion_tracker' // tracks which specific sessions are complete
+    SESSION_COMPLETION_TRACKER: 'study_session_completion_tracker', // tracks which specific sessions are complete
+    BEGIN_ANALYSIS_CLICKED_THIS_SESSION: 'study_begin_analysis_clicked_this_session' // SESSION-LEVEL: cleared each new session
 };
 
 /**
  * Check if user has seen participant setup (once ever)
  */
 export function hasSeenParticipantSetup() {
-    // Returning clean modes: simulate returning user (true)
+    // Returning modes: simulate returning user (true)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    if (storedMode === 'study_returning_clean_1' || storedMode === 'study_returning_clean_2') return true;
+    if (storedMode === 'study_w2_s1' || storedMode === 'study_w2_s1_returning' || storedMode === 'study_w2_s2') return true;
     
     // Always act like first time in study_clean/test modes
-    if (isStudyCleanMode()) return false;
-    if (storedMode === 'test_study_end') return false;
+    if (isStudyCleanMode() && storedMode === 'study_clean') return false;
+    if (storedMode === 'tutorial_end') return false;
     
     return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP) === 'true';
 }
@@ -119,13 +133,13 @@ function markParticipantSetupAsSeen() {
  * Check if user has seen welcome modal (once ever)
  */
 export function hasSeenWelcome() {
-    // Returning clean modes: simulate returning user (true)
+    // Returning modes: simulate returning user (true)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    if (storedMode === 'study_returning_clean_1' || storedMode === 'study_returning_clean_2') return true;
+    if (storedMode === 'study_w2_s1' || storedMode === 'study_w2_s1_returning' || storedMode === 'study_w2_s2') return true;
     
     // Always act like first time in study_clean/test modes
-    if (isStudyCleanMode()) return false;
-    if (storedMode === 'test_study_end') return false;
+    if (isStudyCleanMode() && storedMode === 'study_clean') return false;
+    if (storedMode === 'tutorial_end') return false;
     
     return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME) === 'true';
 }
@@ -140,13 +154,13 @@ function markWelcomeAsSeen() {
  * Only marked as completed when they click "Begin Analysis" button
  */
 export function tutorialCompleted() {
-    // Returning clean modes: simulate returning user who already completed tutorial (true)
+    // Returning modes: simulate returning user who already completed tutorial (true)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    if (storedMode === 'study_returning_clean_1' || storedMode === 'study_returning_clean_2') return true;
+    if (storedMode === 'study_w2_s1' || storedMode === 'study_w2_s1_returning' || storedMode === 'study_w2_s2') return true;
     
     // Always act like first time in study_clean/test modes
-    if (isStudyCleanMode()) return false;
-    if (storedMode === 'test_study_end') return false;
+    if (isStudyCleanMode() && storedMode === 'study_clean') return false;
+    if (storedMode === 'tutorial_end') return false;
     
     // 🔄 MIGRATION: Convert old flag to new flag
     const oldFlag = localStorage.getItem('study_has_seen_tutorial');
@@ -163,40 +177,59 @@ export function markTutorialAsCompleted() {
     console.log('✅ Tutorial marked as COMPLETED (Begin Analysis was clicked)');
 }
 
+/**
+ * Check if "Begin Analysis" was clicked THIS SESSION (session-level flag)
+ * This is separate from tutorialCompleted() which is a persistent flag
+ */
+export function hasBegunAnalysisThisSession() {
+    return localStorage.getItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION) === 'true';
+}
+
+/**
+ * Mark "Begin Analysis" as clicked THIS SESSION (session-level flag)
+ * This gets cleared at the start of each new session
+ */
+export function markBeginAnalysisClickedThisSession() {
+    localStorage.setItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION, 'true');
+    console.log('✅ Begin Analysis marked as clicked THIS SESSION');
+}
+
 // Keep old names for backwards compatibility
 export const hasTutorialCompleted = tutorialCompleted;
 export const hasSeenTutorial = tutorialCompleted;
 export const markTutorialAsSeen = markTutorialAsCompleted;
 
 /**
- * Check if AWE-SF has been completed this week
+ * Check if AWE-SF should be shown
+ * AWE-SF shows on Session 1 of each week only (W1S1, W2S1, W3S1)
+ * NOT shown on Session 2 of any week (W1S2, W2S2, W3S2)
  */
-export function hasCompletedAwesfThisWeek() {
-    // Always act like first time in clean/test modes (always show AWE-SF)
-    if (isStudyCleanMode()) return false;
+export function shouldShowAwesf() {
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    if (storedMode === 'test_study_end') return false;
     
-    const lastDate = localStorage.getItem(STORAGE_KEYS.LAST_AWESF_DATE);
-    if (!lastDate) return false;
+    // W2 S1 modes: Show AWE-SF (first session of week)
+    if (storedMode === 'study_w2_s1' || storedMode === 'study_w2_s1_returning') return true;
     
-    const lastAwesfDate = new Date(lastDate);
-    const now = new Date();
+    // W2 S2 mode: Don't show AWE-SF (second session of week)
+    if (storedMode === 'study_w2_s2') return false;
     
-    // Get start of this week (Sunday)
-    const startOfWeek = new Date(now);
-    startOfWeek.setHours(0, 0, 0, 0);
-    startOfWeek.setDate(now.getDate() - now.getDay());
+    // Study clean: Always show (simulates W1S1)
+    if (isStudyCleanMode() && storedMode === 'study_clean') return true;
+    if (storedMode === 'tutorial_end') return true;
     
-    const completed = lastAwesfDate >= startOfWeek;
-    console.log(`🔍 AWE-SF check: last=${lastDate}, startOfWeek=${startOfWeek.toISOString()}, completed=${completed}`);
-    return completed;
+    // Use session tracker to determine if this is Session 1 of the week
+    const { currentWeek, sessionNumber } = getCurrentWeekAndSession();
+    
+    // AWE-SF shows on Session 1 of any week, not on Session 2
+    const show = sessionNumber === 1;
+    
+    console.log(`🔍 AWE-SF check: Week ${currentWeek}, Session ${sessionNumber} → ${show ? 'SHOW AWE-SF' : 'SKIP AWE-SF'}`);
+    return show;
 }
 
-function markAwesfCompleted() {
-    const now = new Date().toISOString();
-    localStorage.setItem(STORAGE_KEYS.LAST_AWESF_DATE, now);
-    console.log(`✅ AWE-SF marked as completed (week of ${now})`);
+// Keep old function name for backward compatibility
+export function hasCompletedAwesfThisWeek() {
+    return !shouldShowAwesf();
 }
 
 
@@ -205,12 +238,12 @@ function markAwesfCompleted() {
  * Get session count for this week
  */
 export function getSessionCountThisWeek() {
-    // Returning clean modes: use simulated session count
+    // Returning modes: use simulated session count based on mode
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    if (storedMode === 'study_returning_clean_1') return 1; // First session of the week (simulated)
-    if (storedMode === 'study_returning_clean_2') return 2; // Second session of the week (simulated)
+    if (storedMode === 'study_w2_s1' || storedMode === 'study_w2_s1_returning') return 0; // First session of Week 2 (0 completed this week)
+    if (storedMode === 'study_w2_s2') return 1; // Second session of Week 2 (1 completed this week)
     
-    if (isStudyCleanMode()) return 0;
+    if (isStudyCleanMode() && storedMode === 'study_clean') return 0;
     
     const weekStartDate = localStorage.getItem(STORAGE_KEYS.WEEK_START_DATE);
     const sessionCount = parseInt(localStorage.getItem(STORAGE_KEYS.WEEKLY_SESSION_COUNT) || '0');
@@ -678,12 +711,15 @@ export async function startStudyWorkflow() {
     }
     console.log('✅ Participant modal found in DOM');
     
-    // 🔥 STUDY CLEAN MODE OR TEST_STUDY_END: Reset EVERYTHING (always act like first time)
+    // 🔥 STUDY CLEAN MODE OR TUTORIAL_END: Reset EVERYTHING (always act like first time)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    const isTestMode = storedMode === 'test_study_end';
+    const isTestMode = storedMode === 'tutorial_end';
+    const isPureStudyClean = storedMode === 'study_clean';
     
-    if (isStudyCleanMode() || isTestMode) {
-        const modeName = isStudyCleanMode() ? 'STUDY CLEAN MODE' : 'TEST_STUDY_END MODE';
+    // Only clear EVERYTHING for pure study_clean and test modes
+    // DO NOT clear for returning modes (W2 S1/S2 - they should act like returning users)
+    if (isPureStudyClean || isTestMode) {
+        const modeName = isPureStudyClean ? 'STUDY CLEAN MODE' : 'TUTORIAL_END MODE';
         console.log(`🧹 ${modeName}: Resetting to brand new participant state (always first time)`);
         
         // Clear participant ID
@@ -699,7 +735,119 @@ export async function startStudyWorkflow() {
         console.log(`   ✅ Cleared: ${flagsCleared.join(', ')}`);
         
         console.log('   🎭 Result: Will show FULL onboarding (Participant → Welcome → Pre-Survey → Tutorial)');
-        console.log('   🎭 AWE-SF will always show (first time each week)');
+        console.log('   🎭 AWE-SF will show (simulates W1S1)');
+    }
+    
+    // 🔥 RETURNING MODE (W2 S1 RETURNING): Mid-session, simulates page refresh after Begin Analysis
+    const isReturningMidSession = storedMode === 'study_w2_s1_returning';
+    if (isReturningMidSession) {
+        console.log(`🔁 RETURNING MID-SESSION: Preserving in-progress session (simulates page refresh)`);
+        
+        // Get participant ID (needed for session creation)
+        const participantId = getParticipantId();
+        
+        // Create an in-progress session with pre-survey data using saveSurveyResponse
+        if (participantId) {
+            const { saveSurveyResponse, trackSurveyStart } = await import('../Qualtrics/participant-response-manager.js');
+            
+            // Track that pre-survey was started
+            trackSurveyStart(participantId, 'pre');
+            
+            // Save pre-survey responses (this automatically creates the session)
+            const preSurveyData = {
+                surveyType: 'pre',
+                calm: '3',
+                energized: '3',
+                connected: '3',
+                nervous: '3',
+                focused: '3',
+                wonder: '3',
+                timestamp: new Date().toISOString(),
+                submittedAt: new Date().toISOString()
+            };
+            
+            saveSurveyResponse(participantId, 'pre', preSurveyData);
+            
+            console.log('   ✅ Created: in-progress session with pre-survey data');
+        }
+        
+        // Set session completion tracker (simulates completed Week 1)
+        const tracker = {
+            week1: [true, true],   // Both Week 1 sessions complete
+            week2: [false, false], // Starting Week 2 Session 1 (in progress)
+            week3: [false, false]
+        };
+        localStorage.setItem(STORAGE_KEYS.SESSION_COMPLETION_TRACKER, JSON.stringify(tracker));
+        console.log('   ✅ Set: session tracker (W1S1✅ W1S2✅ W2S1 in progress)');
+        
+        // Set BEGIN_ANALYSIS_CLICKED_THIS_SESSION = true (user already clicked it before refresh)
+        localStorage.setItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION, 'true');
+        console.log('   ✅ Set: BEGIN_ANALYSIS_CLICKED_THIS_SESSION = true (volcano locked, button shows Complete)');
+        
+        // Set pre-survey completion date to today (already completed in this session)
+        localStorage.setItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE, getTodayDateString());
+        console.log('   ✅ Set: PRE_SURVEY_COMPLETION_DATE = today (skip Welcome Back modal)');
+        
+        // Enable region creation (user already clicked Begin Analysis before refresh)
+        const { setRegionCreationEnabled } = await import('./audio-state.js');
+        setRegionCreationEnabled(true);
+        console.log('   ✅ Enabled: region creation (Begin Analysis was clicked before refresh)');
+        
+        console.log('   🎭 Result: No modals → volcano locked → button shows "Complete" → can analyze');
+    }
+    
+    // 🔥 RETURNING MODES (W2 S1 & S2): Set metadata to match real returning user state
+    const isReturningMode = storedMode === 'study_w2_s1' || storedMode === 'study_w2_s2';
+    if (isReturningMode) {
+        console.log(`🧹 RETURNING MODE: Setting metadata for ${storedMode === 'study_w2_s1' ? 'Week 2, Session 1' : 'Week 2, Session 2'}`);
+        
+        // Get participant ID before clearing (we need to keep this!)
+        const participantId = getParticipantId();
+        
+        // Clear session response data (pre-survey responses, session state)
+        // This clears the "in-progress" session that makes the app think you're mid-session
+        if (participantId) {
+            const { clearSession } = await import('../Qualtrics/participant-response-manager.js');
+            clearSession(participantId);
+            console.log('   ✅ Cleared: session responses and state (removes in-progress session)');
+        }
+        
+        // Clear SESSION-level flags only (NOT persistent onboarding/tutorial flags)
+        const sessionFlagsToClear = [
+            STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE,
+            STORAGE_KEYS.CURRENT_SESSION_START,
+            STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION  // SESSION flag - clear so volcano unlocked
+        ];
+        
+        sessionFlagsToClear.forEach(key => {
+            localStorage.removeItem(key);
+        });
+        
+        // Set session completion tracker based on mode
+        if (storedMode === 'study_w2_s1') {
+            // Week 2, Session 1: Week 1 complete, starting new week
+            const tracker = {
+                week1: [true, true],   // Both Week 1 sessions complete
+                week2: [false, false], // Starting Week 2 Session 1
+                week3: [false, false]
+            };
+            localStorage.setItem(STORAGE_KEYS.SESSION_COMPLETION_TRACKER, JSON.stringify(tracker));
+            console.log('   ✅ Set: session tracker (W1S1✅ W1S2✅ W2S1 starting)');
+            console.log('   ✅ AWE-SF will SHOW (Session 1 of week)');
+        } else {
+            // Week 2, Session 2: Week 1 complete, W2S1 complete, starting W2S2
+            const tracker = {
+                week1: [true, true],   // Both Week 1 sessions complete
+                week2: [true, false],  // W2S1 complete, starting W2S2
+                week3: [false, false]
+            };
+            localStorage.setItem(STORAGE_KEYS.SESSION_COMPLETION_TRACKER, JSON.stringify(tracker));
+            console.log('   ✅ Set: session tracker (W1S1✅ W1S2✅ W2S1✅ W2S2 starting)');
+            console.log('   ✅ AWE-SF will NOT show (Session 2 of week)');
+        }
+        
+        console.log('   ✅ Kept: participant ID, setup, welcome, TUTORIAL_COMPLETED flags');
+        console.log('   🎭 Result: Will show Welcome Back → Pre-Survey → can select volcano → Begin Analysis');
     }
     
     // Disable waveform clicks initially (tutorial will enable when ready)
@@ -755,10 +903,15 @@ export async function startStudyWorkflow() {
             // (Same as first visit - must click Begin Analysis to enable region creation)
             console.log('🔒 Region creation DISABLED for returning visit (will be enabled after Begin Analysis)');
             
-            // For returning visits, check if they've completed the tutorial
-            // If so, they've already done "Begin Analysis" - transform button to "Complete"
-            if (tutorialCompleted()) {
-                console.log('🔄 Tutorial completed - transforming button to Complete mode');
+            // For returning visits, check if they've clicked "Begin Analysis" THIS SESSION
+            // If so, transform button to "Complete" mode AND re-enable region creation (restore session state)
+            if (hasBegunAnalysisThisSession()) {
+                console.log('🔄 Begin Analysis already clicked this session - restoring analysis mode');
+                
+                // Enable region creation (user clicked Begin Analysis before refresh)
+                const { setRegionCreationEnabled } = await import('./audio-state.js');
+                setRegionCreationEnabled(true);
+                console.log('✅ Region creation ENABLED (restoring state from before refresh)');
                 
                 // Transform the button (same logic as beginAnalysisConfirmed event)
                 const completeBtn = document.getElementById('completeBtn');
@@ -771,8 +924,10 @@ export async function startStudyWorkflow() {
                     completeBtn.className = ''; // Remove begin-analysis-btn class
                     completeBtn.removeAttribute('onmouseover');
                     completeBtn.removeAttribute('onmouseout');
-                    console.log('✅ Button transformed to Complete mode (tutorial completed)');
+                    console.log('✅ Button transformed to Complete mode (Begin Analysis clicked this session)');
                 }
+            } else {
+                console.log('✅ Begin Analysis NOT clicked yet this session - button will show "Begin Analysis"');
             }
             
             // Button is always visible, just update its disabled state
@@ -848,6 +1003,9 @@ export async function startStudyWorkflow() {
                     console.log('📊 Pre-Survey already completed today for current session - skipping');
                     console.log('✅ User can proceed directly to experience');
                     // Button was already transformed above in the returning visit section
+                    // Hide modal overlay (user is mid-session, no modals needed)
+                    const { fadeOutOverlay } = await import('./ui-controls.js');
+                    fadeOutOverlay();
                     // Don't show pre-survey modal - user can explore
                     return; // Exit early - user can explore
                 } else {
@@ -933,7 +1091,7 @@ export async function startStudyWorkflow() {
  * - PERSONAL/DEV modes: Direct submission (no surveys)
  */
 export async function handleStudyModeSubmit() {
-    const { CURRENT_MODE, isStudyMode, isStudyEndMode } = await import('./master-modes.js');
+    const { CURRENT_MODE, isStudyMode } = await import('./master-modes.js');
     
     // In STUDY mode: Show post-session surveys
     if (isStudyMode()) {

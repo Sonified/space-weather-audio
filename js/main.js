@@ -22,6 +22,7 @@ import { fetchFromR2Worker, fetchFromRailway } from './data-fetcher.js';
 import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
 import { initErrorReporter } from './error-reporter.js';
+import { initSilentErrorReporter } from './silent-error-reporter.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
@@ -1111,27 +1112,6 @@ async function initializeStudyMode() {
     console.log('✅ Study mode initialized');
 }
 
-/**
- * STUDY END MODE: Skip pre-survey and tutorial, go straight to analysis, then end walkthrough
- */
-async function initializeStudyEndMode() {
-    console.log('🎬 STUDY END MODE: Skip pre-survey/tutorial, go to analysis + end walkthrough');
-    
-    // Enable all features immediately (skip tutorial)
-    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-    await enableAllTutorialRestrictedFeatures();
-    
-    // Enable region creation
-    const { setRegionCreationEnabled } = await import('./audio-state.js');
-    setRegionCreationEnabled(true);
-    
-    // User can now explore data and click Submit when ready
-    // The submit handler will run post-survey, then end walkthrough
-    console.log('🔍 Ready for analysis - user can explore and click Submit when done');
-    console.log('💡 Post-survey and end walkthrough will run after Submit');
-    
-    console.log('✅ Study End mode initialized');
-}
 
 /**
  * Route to appropriate workflow based on mode
@@ -1152,20 +1132,16 @@ async function initializeApp() {
             
         case AppMode.STUDY:
         case AppMode.STUDY_CLEAN:
-        case AppMode.STUDY_RETURNING_CLEAN_1:
-        case AppMode.STUDY_RETURNING_CLEAN_2:
+        case AppMode.STUDY_W2_S1:
+        case AppMode.STUDY_W2_S1_RETURNING:
+        case AppMode.STUDY_W2_S2:
             await initializeStudyMode();
             break;
             
-        case AppMode.STUDY_END:
-            // Study End mode: Full study workflow + end walkthrough after completion
-            await initializeStudyEndMode();
-            break;
-
-        case AppMode.TEST_STUDY_END:
-            // Test Study End mode: Debug mode to test study end walkthrough
+        case AppMode.TUTORIAL_END:
+            // Tutorial End mode: Debug mode to test tutorial end walkthrough
             // Don't initialize any mode - just wait for user to load data then trigger debug jump
-            console.log('🐛 Test Study End Mode: Ready. Load data, then type "testend" or it will auto-trigger.');
+            console.log('🎬 Tutorial End Mode: Ready. Load data, then type "testend" or it will auto-trigger.');
             break;
 
         default:
@@ -1183,11 +1159,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     // ═══════════════════════════════════════════════════════════
     // 🎯 MASTER MODE - Initialize and check configuration
     // ═══════════════════════════════════════════════════════════
-    const { initializeMasterMode, shouldSkipTutorial, isStudyMode, isPersonalMode, isDevMode, isStudyEndMode, isTestStudyEndMode, CURRENT_MODE, AppMode } = await import('./master-modes.js');
+    const { initializeMasterMode, shouldSkipTutorial, isStudyMode, isPersonalMode, isDevMode, isTutorialEndMode, CURRENT_MODE, AppMode } = await import('./master-modes.js');
     initializeMasterMode();
     
     // Initialize error reporter early (catches errors during initialization)
     initErrorReporter();
+    
+    // Initialize silent error reporter (tracks metadata mismatches quietly)
+    initSilentErrorReporter();
     
     // Don't hide Begin Analysis button initially - let updateCompleteButtonState() handle visibility
     // Tutorial will hide it when needed, returning visits will keep it visible
@@ -1202,22 +1181,42 @@ window.addEventListener('DOMContentLoaded', async () => {
                     window.location.hostname === '' ||
                     window.location.protocol === 'file:';
     
-    // Show mode selector only in local environment
-    // Hide mode selector in study mode (reveal with "dvdv"), show in dev/personal modes
-    if (isLocal && (isPersonalMode() || isDevMode())) {
-        // Dev/Personal: Show mode selector immediately
-        if (modeSelectorContainer) {
-            modeSelectorContainer.style.visibility = 'visible';
-            modeSelectorContainer.style.opacity = '1';
-        }
-    } else if (!isLocal) {
+    // Mode selector visibility logic:
+    // - Production (not local): Always hidden (study mode enforced)
+    // - Local non-study modes: Always visible (dev, personal, etc.)
+    // - Local test modes: Always visible (study_clean, study_w2_s1, study_w2_s2, tutorial_end)
+    // - Local production study mode only: Hidden by default, revealed by "dvdv"
+    
+    const isPureProductionStudy = CURRENT_MODE === AppMode.STUDY;
+    const isTestMode = CURRENT_MODE === AppMode.STUDY_CLEAN ||
+                       CURRENT_MODE === AppMode.STUDY_W2_S1 ||
+                       CURRENT_MODE === AppMode.STUDY_W2_S1_RETURNING ||
+                       CURRENT_MODE === AppMode.STUDY_W2_S2 ||
+                       CURRENT_MODE === AppMode.TUTORIAL_END;
+    
+    if (!isLocal) {
         // Production: Hide mode selector (study mode is enforced)
         if (modeSelectorContainer) {
             modeSelectorContainer.style.visibility = 'hidden';
             modeSelectorContainer.style.opacity = '0';
         }
+        console.log('🔒 Mode selector hidden (production environment)');
+    } else if (isLocal && !isPureProductionStudy) {
+        // Local: Show for all modes EXCEPT pure production study
+        // This includes: dev, personal, study_clean, study_w2_s1, study_w2_s2, tutorial_end
+        if (modeSelectorContainer) {
+            modeSelectorContainer.style.visibility = 'visible';
+            modeSelectorContainer.style.opacity = '1';
+        }
+        if (isTestMode) {
+            console.log('🧪 Mode selector visible (test mode)');
+        } else {
+            console.log('🔓 Mode selector visible (dev/personal mode)');
+        }
+    } else if (isPureProductionStudy && isLocal) {
+        // Pure production study mode (local): Hidden by default, revealed by "dvdv"
+        console.log('🔒 Mode selector hidden (type "dvdv" to reveal)');
     }
-    // Study mode (local): Hidden by default, revealed by "dvdv"
 
     // Secret key sequence to reveal mode selector (hardcoded, no server needed)
     // Only used for study modes
@@ -1271,9 +1270,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     }
     
-    // Add key listener on page load (only for study modes in local environment)
-    // Production: Disable secret key sequence (study mode is enforced)
-    if (isStudyMode() && isLocal) {
+    // Add key listener on page load (only for pure production study mode in local environment)
+    // Production (not local): Disable secret key sequence (study mode is enforced)
+    // Test modes: Don't need secret sequence (mode selector already visible)
+    if (isPureProductionStudy && isLocal) {
         window.addEventListener('keydown', handleSecretKeyListener);
     }
 
@@ -1365,8 +1365,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Hide simulate panel in Study Mode (surveys are controlled by workflow)
-    // But exclude STUDY_END and TEST_STUDY_END modes - they behave differently (no initial modals)
-    if (isStudyMode() && !isStudyEndMode() && !isTestStudyEndMode()) {
+    // But exclude TUTORIAL_END mode - it behaves differently (no initial modals)
+    if (isStudyMode()) {
         const simulatePanel = document.querySelector('.panel-simulate');
         if (simulatePanel) {
             simulatePanel.style.display = 'none';
@@ -1382,14 +1382,12 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.log('🎓 Study Mode: Permanent overlay ready (will be shown by modals)');
         }
     } else {
-        // Hide permanent overlay in non-Study modes (Dev, Personal, STUDY_END, TEST_STUDY_END)
+        // Hide permanent overlay in non-Study modes (Dev, Personal, TUTORIAL_END)
         const permanentOverlay = document.getElementById('permanentOverlay');
         if (permanentOverlay) {
             permanentOverlay.style.display = 'none';
-            if (isStudyEndMode()) {
-                console.log('🎬 Study End Mode: Permanent overlay hidden (no initial modals)');
-            } else if (isTestStudyEndMode()) {
-                console.log('🐛 Test Study End Mode: Permanent overlay hidden');
+            if (isTutorialEndMode()) {
+                console.log('🎬 Tutorial End Mode: Permanent overlay hidden (no initial modals)');
             } else if (!isStudyMode()) {
                 console.log(`✅ ${CURRENT_MODE.toUpperCase()} Mode: Permanent overlay hidden`);
             }
@@ -1403,7 +1401,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 
     // 🐛 DEBUG: Test Study End Mode - Auto-run debug jump after a delay
-    if (isTestStudyEndMode()) {
+    if (isTutorialEndMode()) {
         console.log('🐛 Test Study End Mode: Auto-trigger in 1 second (then 4s wait for data load)...');
         console.log('🐛 (Or type "testend" to trigger manually)');
         setTimeout(async () => {
@@ -2132,9 +2130,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Listen for confirmation to proceed with workflow
     window.addEventListener('beginAnalysisConfirmed', async () => {
-        // Mark tutorial as completed (Begin Analysis was clicked)
-        const { markTutorialAsCompleted } = await import('./study-workflow.js');
+        // Mark tutorial as completed (Begin Analysis was clicked) - PERSISTENT flag
+        const { markTutorialAsCompleted, markBeginAnalysisClickedThisSession } = await import('./study-workflow.js');
         markTutorialAsCompleted();
+        
+        // Mark Begin Analysis as clicked THIS SESSION - SESSION flag (cleared each new session)
+        markBeginAnalysisClickedThisSession();
         
         // Disable auto play checkbox after Begin Analysis is confirmed
         const autoPlayCheckbox = document.getElementById('autoPlay');

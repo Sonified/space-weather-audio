@@ -7,7 +7,10 @@
  * - Tracks session state (in-progress vs completed)
  * - Only submits once at the end when all surveys are complete
  * - Handles navigation away/back gracefully
+ * - Reports metadata mismatches silently for debugging
  */
+
+import { reportSessionIdMismatch, reportLocalStorageParseError, reportSessionStateInconsistency } from '../js/silent-error-reporter.js';
 
 const STORAGE_KEY_PREFIX = 'participant_response_';
 const SESSION_STATE_KEY = 'participant_session_state';
@@ -107,11 +110,28 @@ export function getSessionResponses(participantId) {
                     hasAwesf: !!responses.awesf
                 }
             });
+            
+            // 🔕 Silent report: Session ID mismatch detected
+            reportSessionIdMismatch(responses.sessionId, sessionState?.sessionId, {
+                context: 'getSessionResponses',
+                hasPre: !!responses.pre,
+                hasPost: !!responses.post,
+                hasAwesf: !!responses.awesf,
+                participantId: participantId
+            }).catch(e => console.warn('Silent report failed:', e));
         }
         
         return null;
     } catch (error) {
         console.error('Error reading session responses:', error);
+        
+        // 🔕 Silent report: localStorage parse error
+        if (error.name === 'SyntaxError') {
+            const rawValue = localStorage.getItem(getStorageKey(participantId));
+            reportLocalStorageParseError(getStorageKey(participantId), rawValue, error)
+                .catch(e => console.warn('Silent report failed:', e));
+        }
+        
         return null;
     }
 }
@@ -262,6 +282,17 @@ export function saveSurveyResponse(participantId, surveyType, surveyData) {
                 oldSessionId: responses?.sessionId,
                 newSessionId: sessionState.sessionId
             });
+            
+            // 🔕 Silent report: Session ID mismatch when saving survey
+            if (responses && responses.sessionId !== sessionState.sessionId) {
+                reportSessionIdMismatch(responses.sessionId, sessionState.sessionId, {
+                    context: 'saveSurveyResponse',
+                    surveyType: surveyType,
+                    participantId: participantId,
+                    oldSessionHadData: !!(responses.pre || responses.post || responses.awesf)
+                }).catch(e => console.warn('Silent report failed:', e));
+            }
+            
             responses = {
                 sessionId: sessionState.sessionId,
                 participantId,

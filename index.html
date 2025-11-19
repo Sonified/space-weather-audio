@@ -26,10 +26,10 @@
                     <option value="dev" selected>🔧 Dev</option>
                     <option value="study">🎓 Study</option>
                     <option value="study_clean">🧹 Study Clean</option>
-                    <option value="study_returning_clean_1">🔄 Study Returning Clean 1</option>
-                    <option value="study_returning_clean_2">🔄 Study Returning Clean 2</option>
-                    <option value="study_end">🎬 Study End</option>
-                    <option value="test_study_end">🐛 Test Study End</option>
+                    <option value="study_w2_s1">🔄 Study W2 S1</option>
+                    <option value="study_w2_s1_returning">🔁 Study W2 S1 Returning</option>
+                    <option value="study_w2_s2">🔄 Study W2 S2</option>
+                    <option value="tutorial_end">🎬 Tutorial End</option>
                 </select>
             </div>
             <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.88; color: #fff;">Volcano Audification Study</h1>
@@ -276,10 +276,10 @@
             const storedMode = localStorage.getItem('selectedMode');
             const isStudyMode = storedMode === 'study' || 
                                storedMode === 'study_clean' || 
-                               storedMode === 'study_returning_clean_1' || 
-                               storedMode === 'study_returning_clean_2' || 
-                               storedMode === 'study_end' || 
-                               storedMode === 'test_study_end';
+                               storedMode === 'study_w2_s1' || 
+                               storedMode === 'study_w2_s1_returning' || 
+                               storedMode === 'study_w2_s2' || 
+                               storedMode === 'tutorial_end';
             
             // Show overlay immediately if in study mode
             if (isStudyMode) {

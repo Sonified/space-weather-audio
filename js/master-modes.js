@@ -7,24 +7,27 @@
 /**
  * Available Application Modes
  *
+ * ⚠️ TEST MODE PHILOSOPHY: Test modes ONLY set flags. All behavior comes from REAL LOGIC
+ *    that checks those flags. Never add special cases for test modes - fix the logic instead.
+ *
  * PERSONAL: Skip tutorial, direct access to app
  * DEV: Current development environment with tutorial
  * STUDY: Full research workflow (pre-surveys → tutorial → post-surveys → Qualtrics)
- * STUDY_CLEAN: Same as STUDY but resets all flags on each load (for testing)
- * STUDY_RETURNING_CLEAN_1: Returning user, first session of the week (resets flags)
- * STUDY_RETURNING_CLEAN_2: Returning user, second session of the week (resets flags)
- * STUDY_END: Study completion mode with end walkthrough (runs after study workflow completes)
- * TEST_STUDY_END: Debug mode to test the study end walkthrough (last 2 messages)
+ * STUDY_CLEAN: Same as STUDY but resets all flags on each load (for testing first-time users)
+ * STUDY_W2_S1: Week 2, Session 1 - Sets flags for returning user (W1 complete, starting W2S1)
+ * STUDY_W2_S1_RETURNING: Week 2, Session 1 - Mid-session (already clicked Begin Analysis, simulates page refresh)
+ * STUDY_W2_S2: Week 2, Session 2 - Sets flags for returning user (W1 complete, W2S1 complete, starting W2S2)
+ * TUTORIAL_END: Test mode - jump to last 2 messages of tutorial (tests tutorial completion flow)
  */
 export const AppMode = {
     PERSONAL: 'personal',
     DEV: 'dev',
     STUDY: 'study',
     STUDY_CLEAN: 'study_clean',
-    STUDY_RETURNING_CLEAN_1: 'study_returning_clean_1',
-    STUDY_RETURNING_CLEAN_2: 'study_returning_clean_2',
-    STUDY_END: 'study_end',
-    TEST_STUDY_END: 'test_study_end'
+    STUDY_W2_S1: 'study_w2_s1',  // Week 2, Session 1 - starting new session
+    STUDY_W2_S1_RETURNING: 'study_w2_s1_returning',  // Week 2, Session 1 - mid-session (page refresh)
+    STUDY_W2_S2: 'study_w2_s2',  // Week 2, Session 2
+    TUTORIAL_END: 'tutorial_end'
 };
 
 /**
@@ -125,13 +128,13 @@ const MODE_CONFIG = {
         resetFlagsOnLoad: true // Reset all study flags on each load
     },
     
-    [AppMode.STUDY_RETURNING_CLEAN_1]: {
-        name: 'Study Returning Clean 1',
-        description: 'Returning user - first session of the week (resets flags, shows Welcome Back)',
-        skipTutorial: true, // Already completed tutorial
+    [AppMode.STUDY_W2_S1]: {
+        name: 'Study W2 S1',
+        description: 'Week 2, Session 1 - All Week 1 sessions complete, starting new week',
+        skipTutorial: true, // Already completed tutorial in Week 1
         showPreSurveys: true,
         showPostSurveys: true,
-        requireQualtricsSubmission: true,
+        requireQualtricsSubmission: false,  // TEST MODE - don't submit to Qualtrics
         enableAdminFeatures: false,
         showSubmitButton: true,
         autoStartPlayback: false,
@@ -140,19 +143,55 @@ const MODE_CONFIG = {
         showProgressIndicator: true,
         enforceSequence: true,
         resetFlagsOnLoad: true,
-        // Returning user config
+        // Test mode config (sets flags to simulate returning user state)
         simulateReturningUser: true,
-        weeklySessionCount: 1, // First session of the week
-        forceWelcomeBackModal: true
+        simulatedWeek: 2,
+        simulatedSession: 1,
+        completedSessions: {
+            week1: [true, true],  // Week 1 both sessions complete
+            week2: [false, false],
+            week3: [false, false]
+        },
+        forceWelcomeBackModal: true,
+        showAwesfSurvey: true  // First session of new week = AWE-SF appears
     },
     
-    [AppMode.STUDY_RETURNING_CLEAN_2]: {
-        name: 'Study Returning Clean 2',
-        description: 'Returning user - second session of the week (resets flags, shows Welcome Back)',
-        skipTutorial: true, // Already completed tutorial
+    [AppMode.STUDY_W2_S1_RETURNING]: {
+        name: 'Study W2 S1 Returning',
+        description: 'Week 2, Session 1 - Mid-session (Begin Analysis clicked, simulates page refresh)',
+        skipTutorial: true, // Already completed tutorial in Week 1
         showPreSurveys: true,
         showPostSurveys: true,
-        requireQualtricsSubmission: true,
+        requireQualtricsSubmission: false,  // TEST MODE - don't submit to Qualtrics
+        enableAdminFeatures: false,
+        showSubmitButton: true,
+        autoStartPlayback: false,
+        // Study-specific config
+        requireResponseId: true,
+        showProgressIndicator: true,
+        enforceSequence: true,
+        resetFlagsOnLoad: false,  // Don't clear session data - we're mid-session
+        // Test mode config (sets flags to simulate mid-session state)
+        simulateReturningUser: true,
+        simulateInProgressSession: true,  // Key difference - preserve in-progress session
+        simulatedWeek: 2,
+        simulatedSession: 1,
+        completedSessions: {
+            week1: [true, true],  // Week 1 both sessions complete
+            week2: [false, false],
+            week3: [false, false]
+        },
+        forceWelcomeBackModal: false,  // Don't show welcome - already mid-session
+        showAwesfSurvey: true  // First session of new week = AWE-SF appears (but not yet)
+    },
+    
+    [AppMode.STUDY_W2_S2]: {
+        name: 'Study W2 S2',
+        description: 'Week 2, Session 2 - Week 1 complete, W2S1 complete, starting W2S2',
+        skipTutorial: true, // Already completed tutorial in Week 1
+        showPreSurveys: true,
+        showPostSurveys: true,
+        requireQualtricsSubmission: false,  // TEST MODE - don't submit to Qualtrics
         enableAdminFeatures: false,
         showSubmitButton: true,
         autoStartPlayback: false,
@@ -161,44 +200,34 @@ const MODE_CONFIG = {
         showProgressIndicator: true,
         enforceSequence: true,
         resetFlagsOnLoad: true,
-        // Returning user config
+        // Test mode config (sets flags to simulate returning user state)
         simulateReturningUser: true,
-        weeklySessionCount: 2, // Second session of the week
-        forceWelcomeBackModal: true
+        simulatedWeek: 2,
+        simulatedSession: 2,
+        completedSessions: {
+            week1: [true, true],  // Week 1 both sessions complete
+            week2: [true, false], // Week 2 Session 1 complete
+            week3: [false, false]
+        },
+        forceWelcomeBackModal: true,
+        showAwesfSurvey: false  // Second session of week = no AWE-SF
     },
     
-    [AppMode.STUDY_END]: {
-        name: 'Study End Mode',
-        description: 'Skip pre-survey and tutorial, go straight to analysis, then end walkthrough',
-        skipTutorial: true,
-        showPreSurveys: false,
-        showPostSurveys: true,
-        requireQualtricsSubmission: true,
-        enableAdminFeatures: false,
-        showSubmitButton: true,
-        autoStartPlayback: false,
-        // Study End specific config - runs walkthrough after completion
-        requireResponseId: true, // Must have Qualtrics ResponseID in URL
-        showProgressIndicator: false, // No progress indicator needed
-        enforceSequence: true, // Must complete steps in order
-        runEndWalkthrough: true // Run the study end walkthrough after completion
-    },
-
-    [AppMode.TEST_STUDY_END]: {
-        name: 'Test Study End Mode',
-        description: 'Debug mode - jump to last 2 messages of study end walkthrough',
+    [AppMode.TUTORIAL_END]: {
+        name: 'Tutorial End',
+        description: 'Test mode - jump to last 2 tutorial messages (tests tutorial completion flow)',
         skipTutorial: true,
         showPreSurveys: false,
         showPostSurveys: false,
-        requireQualtricsSubmission: false,
+        requireQualtricsSubmission: false,  // TEST MODE - don't submit to Qualtrics
         enableAdminFeatures: true,
         showSubmitButton: true,
         autoStartPlayback: false,
-        // Test mode specific config
-        requireResponseId: false, // No ResponseID needed for testing
-        showProgressIndicator: false, // No progress indicator
-        enforceSequence: false, // Don't enforce sequence
-        runDebugJump: true // Run the debug jump function on load
+        // Test mode config - jump to end of tutorial
+        requireResponseId: false,  // No ResponseID needed for testing
+        showProgressIndicator: false,
+        enforceSequence: false,
+        runDebugJump: true  // Jump to last 2 tutorial messages on load
     }
 };
 
@@ -222,26 +251,23 @@ export function isDevMode() {
 
 export function isStudyMode() {
     return CURRENT_MODE === AppMode.STUDY || 
-           CURRENT_MODE === AppMode.STUDY_CLEAN || 
-           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_1 || 
-           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_2 || 
-           CURRENT_MODE === AppMode.STUDY_END || 
-           CURRENT_MODE === AppMode.TEST_STUDY_END;
-}
-
-export function isStudyEndMode() {
-    return CURRENT_MODE === AppMode.STUDY_END;
+           CURRENT_MODE === AppMode.STUDY_CLEAN ||
+           CURRENT_MODE === AppMode.STUDY_W2_S1 ||
+           CURRENT_MODE === AppMode.STUDY_W2_S1_RETURNING ||
+           CURRENT_MODE === AppMode.STUDY_W2_S2;
 }
 
 export function isStudyCleanMode() {
     return CURRENT_MODE === AppMode.STUDY_CLEAN || 
-           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_1 || 
-           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_2;
+           CURRENT_MODE === AppMode.STUDY_W2_S1 || 
+           CURRENT_MODE === AppMode.STUDY_W2_S1_RETURNING || 
+           CURRENT_MODE === AppMode.STUDY_W2_S2;
 }
 
-export function isStudyReturningCleanMode() {
-    return CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_1 || 
-           CURRENT_MODE === AppMode.STUDY_RETURNING_CLEAN_2;
+export function isStudyReturningMode() {
+    return CURRENT_MODE === AppMode.STUDY_W2_S1 || 
+           CURRENT_MODE === AppMode.STUDY_W2_S1_RETURNING || 
+           CURRENT_MODE === AppMode.STUDY_W2_S2;
 }
 
 export function getWeeklySessionCount() {
@@ -249,8 +275,8 @@ export function getWeeklySessionCount() {
     return config.weeklySessionCount || 0;
 }
 
-export function isTestStudyEndMode() {
-    return CURRENT_MODE === AppMode.TEST_STUDY_END;
+export function isTutorialEndMode() {
+    return CURRENT_MODE === AppMode.TUTORIAL_END;
 }
 
 /**
