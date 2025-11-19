@@ -1440,6 +1440,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.58 - Data Redundancy: Survey Responses in Embedded Data');
+        console.log('💾 [0ms] v2.58 Feat: Survey responses now included in SessionTracking embedded data for complete redundancy');
+        console.log('🔒 [0ms] v2.58 Feat: All survey answers (PRE, POST, AWE-SF, ACTIVITY LEVEL) backed up in embedded data alongside standard Qualtrics responses');
+        console.log('🎯 [0ms] v2.58 Benefit: Complete session data in one JSON structure - protects against Qualtrics data loss');
         console.log('🌋 [0ms] volcano-audio v2.57 - Corrupted State Detection: Pre-Survey Completion Edge Case');
         console.log('🛡️ [0ms] v2.57 Fix: Added detection for users who completed pre-survey but stopped before tutorial');
         console.log('🔥 [0ms] v2.57 Feat: Two corrupted state checks - Case 1: Seen participant setup but no tutorial, Case 2: Completed pre-survey but no tutorial');

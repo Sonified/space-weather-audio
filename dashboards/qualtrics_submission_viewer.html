@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qualtrics Submission Viewer | Volcano Audio</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #000000;
+            color: #cccccc;
+            min-height: 100vh;
+            padding: 16px;
+            font-size: 16px;
+            line-height: 1.7;
+        }
+
+        .container {
+            max-width: 1176px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            padding: 24px;
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #2a2a2a;
+        }
+
+        .two-column-layout {
+            display: grid;
+            grid-template-columns: 420px 1fr;
+            gap: 32px;
+            align-items: start;
+        }
+
+        .left-column {
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        @media (max-width: 1024px) {
+            .two-column-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        h1 {
+            font-size: 24px;
+            margin: 0;
+            color: #ffffff;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            color: #4d1a1a;
+            font-size: 0.95em;
+        }
+
+        .file-selector {
+            margin-bottom: 32px;
+            padding: 16px;
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #2a2a2a;
+        }
+
+        .file-input-wrapper {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .file-input-wrapper label {
+            color: #999999;
+            font-size: 13px;
+        }
+
+        input[type="file"] {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            color: #cccccc;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            font-size: 13px;
+        }
+
+        input[type="file"]:hover {
+            border-color: #3a3a3a;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #1a1a1a;
+            color: #ffffff;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background: #2a2a2a;
+            border-color: #3a3a3a;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .stats-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #2a2a2a;
+            overflow: hidden;
+        }
+
+        .stat-card {
+            padding: 12px 16px;
+            border-bottom: 2px solid #2a2a2a;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 70px;
+            justify-content: center;
+        }
+
+        .stat-card:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: #b3b3b3;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 600;
+            color: #ffffff;
+            line-height: 1;
+        }
+
+        .section {
+            background: #0a0a0a;
+            border-radius: 8px;
+            padding: 20px 24px;
+            border: 1px solid #2d2d2d;
+            margin-bottom: 48px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            margin-bottom: 20px;
+            color: #e6e6e6;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #2d2d2d;
+        }
+
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            max-width: 700px;
+        }
+
+        .volcano-section {
+            margin: 32px 0 16px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #333333;
+        }
+
+        .volcano-section:first-child {
+            margin-top: 0;
+        }
+
+        .volcano-name {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #666666;
+        }
+
+        .event-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 12px 16px;
+            border-left: 3px solid transparent;
+            border-bottom: 1px solid #1a1a1a;
+            background: transparent;
+            transition: all 0.2s ease;
+        }
+
+        .event-entry:hover {
+            background: #0f0f0f;
+        }
+
+        .event-label {
+            font-size: 16px;
+            color: #e6e6e6;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .event-time {
+            font-size: 14px;
+            color: #999999;
+            font-family: 'Monaco', 'Menlo', monospace;
+            min-width: 140px;
+            text-align: right;
+        }
+
+        .event-metadata {
+            font-size: 14px;
+            color: #b3b3b3;
+            padding-left: 32px;
+            margin-top: 6px;
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+
+        .time-gap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 24px 0;
+            padding: 16px 0;
+        }
+
+        .gap-line {
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, #333333 50%, transparent 100%);
+        }
+
+        .gap-label {
+            font-size: 12px;
+            color: #666666;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 4px 12px;
+            background: #0a0a0a;
+            border: 1px solid #333333;
+            border-radius: 12px;
+            white-space: nowrap;
+        }
+
+        .session-summary {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            background: #0f0f0f;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        .summary-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .summary-label {
+            font-size: 11px;
+            color: #666666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .summary-value {
+            font-size: 20px;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .region-card {
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 48px 0 24px 0;
+            max-width: 100%;
+        }
+
+        .region-header {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #333333;
+        }
+
+        .region-title {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #999999;
+        }
+
+        .region-meta {
+            font-size: 11px;
+            color: #444444;
+            font-weight: 400;
+        }
+
+        .features-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .feature-card {
+            background: #0f0f0f;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            padding: 24px;
+            margin-bottom: 16px;
+            max-width: 100%;
+        }
+
+        .feature-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #2a2a2a;
+        }
+
+        .feature-number {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #999999;
+        }
+
+        .feature-type {
+            padding: 5px 12px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            background: rgba(255, 59, 48, 0.15);
+            color: #ff3b30;
+        }
+
+        .feature-type.impulsive {
+            background: rgba(255, 59, 48, 0.15);
+            color: #ff3b30;
+        }
+
+        .feature-type.continuous {
+            background: rgba(94, 92, 230, 0.15);
+            color: #5e5ce6;
+        }
+
+        .feature-details {
+            display: grid;
+            grid-template-columns: 110px 1fr;
+            gap: 12px 24px;
+            font-size: 14px;
+        }
+
+        .detail-label {
+            color: #999999;
+            font-size: 13px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: right;
+        }
+
+        .detail-value {
+            color: #ffffff;
+            font-weight: 500;
+            font-size: 18px;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        .json-viewer {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 24px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            border: 1px solid #2a2a2a;
+            max-height: 600px;
+            overflow-y: auto;
+            display: none;
+            margin-bottom: 32px;
+        }
+
+        .json-viewer.visible {
+            display: block;
+        }
+        
+        .json-viewer pre {
+            margin: 0;
+            color: #cccccc;
+        }
+
+        .toggle-json-btn {
+            padding: 10px 20px;
+            background: #ff3b30;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+
+        .toggle-json-btn:hover {
+            background: #ff5449;
+        }
+
+        .toggle-json-btn:active {
+            transform: scale(0.98);
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999999;
+        }
+
+        .no-data h2 {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .no-data p {
+            color: #999999;
+            font-size: 14px;
+        }
+
+        .no-data-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.2;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2a2a2a;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3a3a3a;
+        }
+
+        .session-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px 24px;
+        }
+
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .meta-label {
+            color: #b3b3b3;
+            font-weight: 500;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .meta-value {
+            color: #e6e6e6;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            font-weight: 400;
+        }
+
+        .duration-badge {
+            display: inline-block;
+            padding: 8px 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .file-input-wrapper {
+                flex-direction: column;
+            }
+
+            input[type="file"] {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Qualtrics Submission Viewer</h1>
+            <button class="toggle-json-btn" onclick="toggleJson()">📄 View JSON</button>
+        </header>
+
+        <div id="jsonViewer" class="json-viewer section">
+            <h2 class="section-title">Raw JSON Data</h2>
+            <pre id="jsonContent"></pre>
+        </div>
+
+        <div class="file-selector">
+            <div class="file-input-wrapper">
+                <button onclick="loadExampleData()">🔄 Reload Data</button>
+                <input type="file" id="fileInput" accept=".json" />
+                <label style="color: #888; font-size: 0.9em;">or upload a different JSON file</label>
+            </div>
+        </div>
+
+        <div id="content">
+            <div class="no-data">
+                <div class="no-data-icon">⏳</div>
+                <h2>Loading Data...</h2>
+                <p>Please wait while we load the session data</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = null;
+
+        // Toggle JSON viewer
+        function toggleJson() {
+            const viewer = document.getElementById('jsonViewer');
+            viewer.classList.toggle('visible');
+            if (viewer.classList.contains('visible') && currentData) {
+                document.getElementById('jsonContent').textContent = JSON.stringify(currentData, null, 2);
+            }
+        }
+
+        // File input handler
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        renderData(data);
+                    } catch (error) {
+                        alert('Error parsing JSON file: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        // Load example data
+        async function loadExampleData() {
+            try {
+                const response = await fetch('../backend/tests/example_qualtrics_submission.json');
+                if (!response.ok) throw new Error('Failed to load example data');
+                const data = await response.json();
+                renderData(data);
+            } catch (error) {
+                alert('Error loading example data: ' + error.message);
+            }
+        }
+
+        // Render the data
+        function renderData(data) {
+            currentData = data;
+            
+            const sessionDuration = calculateDuration(data.sessionStarted, data.submissionTimestamp);
+            const eventCounts = countEventTypes(data.tracking.events);
+            const totalFeatures = data.regions.reduce((sum, r) => sum + (r.features?.length || 0), 0);
+
+            const html = `
+                <div class="two-column-layout">
+                    <div class="left-column">
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-label">Session Duration</div>
+                                <div class="stat-value">${sessionDuration}</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Total Events</div>
+                                <div class="stat-value">${data.tracking.events.length}</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Regions Created</div>
+                                <div class="stat-value">${data.regions.length}</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Features Identified</div>
+                                <div class="stat-value">${totalFeatures}</div>
+                            </div>
+                        </div>
+
+                        <div class="section">
+                            <h2 class="section-title">Session Metadata</h2>
+                            <div class="session-meta">
+                                <div class="meta-item">
+                                    <span class="meta-label">Session ID</span>
+                                    <span class="meta-value">${data.sessionId}</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-label">Participant ID</span>
+                                    <span class="meta-value">${data.participantId}</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-label">Started</span>
+                                    <span class="meta-value">${formatTimestamp(data.sessionStarted)}</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-label">Submitted</span>
+                                    <span class="meta-value">${formatTimestamp(data.submissionTimestamp)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${data.surveyResponses ? renderSurveyResponses(data.surveyResponses) : ''}
+                    </div>
+
+                    <div class="right-column">
+                        <div class="section">
+                            <h2 class="section-title">Event Timeline</h2>
+                            ${renderSessionSummary(data.tracking.events)}
+                            <div class="timeline">
+                                ${renderTimeline(data.tracking.events)}
+                            </div>
+                        </div>
+
+                        <div class="section">
+                            <h2 class="section-title">Regions & Features</h2>
+                            ${renderRegions(data.regions)}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // Render timeline with time gaps and color coding
+        function renderTimeline(events) {
+            let currentVolcano = null;
+            let html = '';
+            let lastTimestamp = null;
+            
+            events.forEach((event, index) => {
+                const currentTime = new Date(event.timestamp);
+                
+                // Show time gaps > 5 minutes
+                if (lastTimestamp) {
+                    const gap = (currentTime - lastTimestamp) / 1000 / 60; // minutes
+                    
+                    if (gap > 5) {
+                        const gapDisplay = formatGap(gap);
+                        html += `
+                            <div class="time-gap">
+                                <div class="gap-line"></div>
+                                <div class="gap-label">${gapDisplay} gap</div>
+                                <div class="gap-line"></div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                // Check if we need a new volcano header
+                const volcano = event.data?.volcano;
+                if (volcano && volcano !== currentVolcano) {
+                    currentVolcano = volcano;
+                    html += `
+                        <div class="volcano-section">
+                            <div class="volcano-name">${volcano.toUpperCase()}</div>
+                        </div>
+                    `;
+                }
+                
+                // Get clean event label and color
+                let label = formatEventType(event.type);
+                if (event.surveyType) {
+                    label += ` ${event.surveyType.toUpperCase()}`;
+                }
+                
+                if (event.type === 'volcano_selected') {
+                    label = 'Volcano Selected';
+                }
+                
+                const eventColor = getEventColor(event.type);
+                
+                html += `
+                    <div class="event-entry" style="border-left-color: ${eventColor};">
+                        <div class="event-label">${label}</div>
+                        <div class="event-time">${formatTimestamp(event.timestamp)}</div>
+                    </div>
+                `;
+                
+                // Metadata on its own line, indented
+                if (event.data && Object.keys(event.data).length > 0) {
+                    const metadata = formatMetadata(event.data, currentVolcano);
+                    if (metadata) {
+                        html += `<div class="event-metadata">${metadata}</div>`;
+                    }
+                }
+                
+                lastTimestamp = currentTime;
+            });
+            
+            return html;
+        }
+        
+        function formatGap(minutes) {
+            if (minutes > 60) {
+                const hours = Math.floor(minutes / 60);
+                const mins = Math.round(minutes % 60);
+                return `${hours}h ${mins}m`;
+            }
+            return `${Math.round(minutes)}m`;
+        }
+        
+        function getEventColor(type) {
+            const colors = {
+                'volcano_selected': '#ff3b30',
+                'survey_started': '#ff9f0a',
+                'survey_completed': '#34c759',
+                'fetch_data': '#5e5ce6'
+            };
+            return colors[type] || '#666666';
+        }
+        
+        function formatMetadata(data, currentVolcano) {
+            const parts = [];
+            for (const [key, value] of Object.entries(data)) {
+                // Skip volcano if it's the current section
+                if (key === 'volcano' && value === currentVolcano) continue;
+                
+                // Abbreviate keys
+                let shortKey = key;
+                if (key === 'station') shortKey = 'stn';
+                if (key === 'duration') shortKey = 'dur';
+                if (key === 'highpassFreq') shortKey = 'hpf';
+                if (key === 'enableNormalize') shortKey = 'norm';
+                
+                // Shorten values
+                let shortValue = value;
+                if (typeof value === 'string' && value.length > 25) {
+                    shortValue = value.substring(0, 22) + '...';
+                }
+                
+                parts.push(`${shortKey}: ${shortValue}`);
+            }
+            return parts.join(' • ');
+        }
+        
+        function renderSessionSummary(events) {
+            if (!events || events.length === 0) return '';
+            
+            const firstEvent = new Date(events[0].timestamp);
+            const lastEvent = new Date(events[events.length - 1].timestamp);
+            
+            // Find gaps
+            const gaps = [];
+            for (let i = 1; i < events.length; i++) {
+                const gap = (new Date(events[i].timestamp) - new Date(events[i-1].timestamp)) / 1000 / 60;
+                if (gap > 5) gaps.push(gap);
+            }
+            
+            const longestGap = gaps.length > 0 ? Math.max(...gaps) : 0;
+            const sessionType = longestGap > 60 ? 'Multiple Sessions' : 'Single Session';
+            
+            return `
+                <div class="session-summary">
+                    <div class="summary-item">
+                        <div class="summary-label">Session Type</div>
+                        <div class="summary-value">${sessionType}</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-label">Longest Break</div>
+                        <div class="summary-value">${longestGap > 0 ? formatGap(longestGap) : 'None'}</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-label">Activity Pattern</div>
+                        <div class="summary-value">${gaps.length} break${gaps.length !== 1 ? 's' : ''}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render regions
+        function renderRegions(regions) {
+            if (!regions || regions.length === 0) {
+                return '<div class="no-data"><p>No regions defined</p></div>';
+            }
+
+            return regions.map(region => `
+                <div class="region-card">
+                    <div class="region-header">
+                        <div class="region-title">Region ${region.regionNumber}</div>
+                        <div class="region-meta">
+                            ${region.features?.length || 0} feature${region.features?.length === 1 ? '' : 's'}
+                        </div>
+                    </div>
+                    <div class="features-grid">
+                        ${renderFeatures(region.features || [])}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Render features
+        function renderFeatures(features) {
+            if (!features || features.length === 0) {
+                return '<p style="color: #888;">No features in this region</p>';
+            }
+
+            return features.map(feature => `
+                <div class="feature-card">
+                    <div class="feature-header">
+                        <span class="feature-number">Feature ${feature.featureNumber}</span>
+                        <span class="feature-type ${feature.type?.toLowerCase() || 'unknown'}">${feature.type || 'Unknown'}</span>
+                    </div>
+                    <div class="feature-details">
+                        <div class="detail-label">Frequency</div>
+                        <div class="detail-value">${feature.lowFreq}-${feature.highFreq} Hz</div>
+                        
+                        <div class="detail-label">Duration</div>
+                        <div class="detail-value">${calculateDuration(feature.featureStartTime, feature.featureEndTime)}</div>
+                        
+                        <div class="detail-label">Playback</div>
+                        <div class="detail-value">${feature.speedFactor ? feature.speedFactor + 'x' : '1x'}</div>
+                        
+                        <div class="detail-label">Repetition</div>
+                        <div class="detail-value">${feature.repetition || 'N/A'}</div>
+                        
+                        <div class="detail-label">Events</div>
+                        <div class="detail-value">${feature.numberOfEvents || 0}</div>
+                        
+                        ${feature.notes ? `
+                            <div class="detail-label">Notes</div>
+                            <div class="detail-value">${feature.notes}</div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Render survey responses (redundancy backup from embedded data)
+        function renderSurveyResponses(responses) {
+            const surveyLabels = {
+                pre: 'Pre-Session',
+                post: 'Post-Session',
+                awesf: 'AWE-SF',
+                activityLevel: 'Activity Level'
+            };
+            
+            const fieldLabels = {
+                calm: 'Calm',
+                energized: 'Energized',
+                connected: 'Connected',
+                nervous: 'Nervous',
+                focused: 'Focused',
+                wonder: 'Wonder',
+                slowDown: 'Slow Down',
+                reducedSelf: 'Reduced Self',
+                chills: 'Chills',
+                oneness: 'Oneness',
+                grand: 'Grand',
+                diminishedSelf: 'Diminished Self',
+                timeSlowing: 'Time Slowing',
+                awesfConnected: 'Connected',
+                small: 'Small',
+                vastness: 'Vastness',
+                challenged: 'Challenged',
+                selfShrink: 'Self Shrink',
+                response: 'Response'
+            };
+
+            let html = `
+                <div class="section">
+                    <h2 class="section-title">Survey Responses</h2>
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+            `;
+
+            // Render each survey type
+            for (const [surveyType, surveyData] of Object.entries(responses)) {
+                if (!surveyData) continue;
+
+                html += `
+                    <div style="background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 6px; padding: 16px;">
+                        <div style="font-size: 13px; font-weight: 700; color: #999999; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #2a2a2a;">
+                            ${surveyLabels[surveyType] || surveyType}
+                        </div>
+                        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px;">
+                `;
+
+                // Render each field
+                for (const [fieldKey, fieldValue] of Object.entries(surveyData)) {
+                    if (fieldValue === null || fieldValue === undefined) continue;
+
+                    html += `
+                        <div style="font-size: 12px; color: #999999; text-align: right;">${fieldLabels[fieldKey] || fieldKey}</div>
+                        <div style="font-size: 15px; color: #ffffff; font-weight: 500;">${fieldValue}</div>
+                    `;
+                }
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            html += `
+                    </div>
+                </div>
+            `;
+
+            return html;
+        }
+
+        // Helper functions
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${month}/${day} ${hours}:${minutes}:${seconds}`;
+        }
+
+        function formatEventType(type) {
+            return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+
+        function formatEventData(data) {
+            if (!data) return '';
+            const parts = [];
+            for (const [key, value] of Object.entries(data)) {
+                parts.push(`<strong>${key}:</strong> ${value}`);
+            }
+            return parts.join(' • ');
+        }
+
+        function calculateDuration(start, end) {
+            const startDate = new Date(start);
+            const endDate = new Date(end);
+            const diff = endDate - startDate;
+            
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${seconds}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${seconds}s`;
+            } else {
+                return `${seconds}s`;
+            }
+        }
+
+        function countEventTypes(events) {
+            const counts = {};
+            events.forEach(event => {
+                counts[event.type] = (counts[event.type] || 0) + 1;
+            });
+            return counts;
+        }
+
+        // Auto-load example data when page loads
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Auto-loading example data...');
+            loadExampleData();
+        });
+    </script>
+</body>
+</html>
+

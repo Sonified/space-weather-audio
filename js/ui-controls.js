@@ -3334,6 +3334,15 @@ export async function attemptSubmission(fromWorkflow = false) {
             tracking: trackingData || null,
             regions: formattedRegions || [],
             
+            // ✨ REDUNDANCY: Include actual survey responses in embedded data
+            // This ensures we have a complete backup even if Qualtrics drops standard response data
+            surveyResponses: {
+                pre: responses.pre || null,
+                post: responses.post || null,
+                awesf: responses.awesf || null,
+                activityLevel: responses.activityLevel || null
+            },
+            
             submissionTimestamp: new Date().toISOString()
         };
         

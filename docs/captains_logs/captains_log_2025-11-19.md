@@ -1,5 +1,71 @@
 # Captain's Log - 2025-11-19
 
+## v2.58 - Data Redundancy: Survey Responses in Embedded Data
+
+### Feature Added
+
+**Complete Survey Response Backup in Embedded Data**
+- **Implementation**: Added `surveyResponses` field to the `jsonDump` object in `ui-controls.js` (lines 3337-3344)
+- **What's Included**: All survey responses are now duplicated in the `SessionTracking` embedded data:
+  - `pre`: Pre-session PANAS (calm, energized, connected, nervous, focused, wonder)
+  - `post`: Post-session PANAS (same 6 emotional states)
+  - `awesf`: AWE-SF scale (all 12 awe measurement items)
+  - `activityLevel`: Activity level assessment
+- **Benefits**:
+  - **Complete redundancy**: Survey responses stored TWICE (as standard Qualtrics responses AND in embedded data)
+  - **Data safety**: If Qualtrics drops standard responses, we have the embedded data backup
+  - **Single JSON structure**: One `SessionTracking` blob now contains EVERYTHING (session metadata, timing events, regions/features, AND survey responses)
+  - **Easier analysis**: Pull complete session data in one retrieval instead of piecing it together
+
+### Implementation Details
+
+**Safe Error Handling**
+- All fields use safe null defaults: `responses.pre || null`
+- Implementation wrapped in existing outer try-catch block
+- `responses` object validated before use (function returns early if null)
+- Follows existing code safety patterns throughout `jsonDump` construction
+- JSON.stringify() handles null values gracefully
+
+**Dashboard Updated**
+- Added `renderSurveyResponses()` function to `qualtrics_submission_viewer.html`
+- Displays all survey responses in a clean, compact format
+- Shows each survey type (PRE, POST, AWE-SF, ACTIVITY LEVEL) with all field values
+- Auto-renders when `surveyResponses` field is present in data
+
+**Example Data Updated**
+- `backend/tests/example_qualtrics_submission.json` now includes sample survey responses
+- Shows complete structure of what will be submitted to Qualtrics
+
+### Architecture Notes
+
+**What Gets Sent to Qualtrics Now**
+```javascript
+{
+    values: {
+        // Standard Qualtrics question responses
+        QID5_1: 5,  // PRE calm
+        QID5_2: 4,  // PRE energized
+        // ... all other QIDs
+        
+        // PLUS embedded data with EVERYTHING
+        SessionTracking: "{...complete session + survey responses...}",
+        ParticipantID: "R_xxx"
+    }
+}
+```
+
+**Why This Matters**
+- Previous implementation only backed up session metadata, timing, and regions/features
+- Survey responses were ONLY in standard Qualtrics format (vulnerable to data loss)
+- Now survey responses exist in TWO places for maximum data integrity
+- Critical for research study where losing participant responses would be catastrophic
+
+### Git Commit
+**Version**: v2.58  
+**Commit Message**: v2.58 Data Redundancy: Survey responses in embedded data
+
+---
+
 ## v2.57 - Corrupted State Detection: Pre-Survey Completion Edge Case
 
 ### Bug Fixed

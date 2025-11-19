@@ -1,0 +1,710 @@
+{
+  "sessionId": "session_1763466690285_9g8ri4meh",
+  "participantId": "R_s4h0i3w5f8c",
+  "sessionStarted": "2025-11-18T11:51:30.285Z",
+  "tracking": {
+    "sessionStarted": "2025-11-18T11:51:30.285Z",
+    "events": [
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T11:51:30.285Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T11:51:30.389Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T11:51:33.486Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T11:51:38.622Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T11:51:58.875Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T11:51:58.979Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T11:52:01.679Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T11:52:08.242Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T11:55:24.915Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T11:55:25.021Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T11:55:35.941Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T11:55:43.657Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T12:02:45.649Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T12:02:48.868Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T12:02:51.611Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T12:04:46.960Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T12:04:48.845Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:11:39.592Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T18:11:44.847Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:17:36.770Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T18:17:40.444Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:28:58.607Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T18:28:59.561Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:38:00.263Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:38:10.747Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T18:38:11.956Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:39:05.980Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T18:39:12.921Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:39:27.190Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T18:39:28.334Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:40:33.644Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T18:40:42.194Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:40:59.564Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T18:41:01.448Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:43:01.323Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T18:43:02.949Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:43:05.620Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:43:17.643Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:43:17.748Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:47:15.408Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:47:15.514Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:48:20.096Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:48:20.201Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:50:57.117Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:50:57.222Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:51:13.097Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:51:18.989Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:51:19.096Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:51:38.385Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:51:38.491Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:55:28.335Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:55:28.441Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:55:30.201Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:56:03.883Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:56:03.988Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:56:06.453Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T18:57:00.103Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:57:00.210Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T18:57:02.235Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T19:06:13.257Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:06:13.362Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:06:16.640Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T19:07:04.353Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:07:04.459Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:07:06.329Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T19:07:25.638Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:07:25.745Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:07:27.595Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T19:08:10.260Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:08:10.367Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:08:12.038Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T19:08:35.237Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T19:09:32.114Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:09:32.221Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:09:33.635Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T19:09:35.661Z"
+      },
+      {
+        "type": "volcano_selected",
+        "data": {
+          "volcano": "greatsitkin"
+        },
+        "timestamp": "2025-11-18T19:21:08.108Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:21:08.212Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "pre",
+        "timestamp": "2025-11-18T19:21:10.451Z"
+      },
+      {
+        "type": "fetch_data",
+        "data": {
+          "volcano": "greatsitkin",
+          "station": "AV.GSTD.--.BHZ",
+          "duration": 24,
+          "highpassFreq": "0.02",
+          "enableNormalize": true
+        },
+        "timestamp": "2025-11-18T19:21:12.519Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "activityLevel",
+        "timestamp": "2025-11-18T19:22:31.151Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "activityLevel",
+        "timestamp": "2025-11-18T19:22:31.152Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "activityLevel",
+        "timestamp": "2025-11-18T19:22:35.802Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "awesf",
+        "timestamp": "2025-11-18T19:22:36.161Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "awesf",
+        "timestamp": "2025-11-18T19:22:45.726Z"
+      },
+      {
+        "type": "survey_started",
+        "surveyType": "post",
+        "timestamp": "2025-11-18T19:22:46.085Z"
+      },
+      {
+        "type": "survey_completed",
+        "surveyType": "post",
+        "timestamp": "2025-11-18T19:22:52.260Z"
+      }
+    ]
+  },
+  "regions": [
+    {
+      "regionNumber": 1,
+      "regionId": 1,
+      "regionStartTime": "2025-11-18T04:28:31.200Z",
+      "regionEndTime": "2025-11-18T07:00:16.140Z",
+      "featureCount": 2,
+      "features": [
+        {
+          "featureNumber": 1,
+          "featureStartTime": "2025-11-18T06:28:25.340Z",
+          "featureEndTime": "2025-11-18T06:50:32.300Z",
+          "lowFreq": "6.56",
+          "highFreq": "23.11",
+          "type": "Impulsive",
+          "repetition": "Unique",
+          "notes": "Something hissy",
+          "speedFactor": 1,
+          "numberOfEvents": 2
+        },
+        {
+          "featureNumber": 2,
+          "featureStartTime": "2025-11-18T07:07:33.020Z",
+          "featureEndTime": "2025-11-18T07:19:54.760Z",
+          "lowFreq": "0.33",
+          "highFreq": "13.17",
+          "type": "Continuous",
+          "repetition": "Repeated",
+          "notes": "repeated and non-unique",
+          "speedFactor": 1,
+          "numberOfEvents": 2
+        }
+      ]
+    },
+    {
+      "regionNumber": 2,
+      "regionId": 2,
+      "regionStartTime": "2025-11-18T16:36:05.880Z",
+      "regionEndTime": "2025-11-18T18:21:34.160Z",
+      "featureCount": 1,
+      "features": [
+        {
+          "featureNumber": 1,
+          "featureStartTime": "2025-11-18T16:58:57.480Z",
+          "featureEndTime": "2025-11-18T18:14:33.220Z",
+          "lowFreq": "17.50",
+          "highFreq": "22.72",
+          "type": "Impulsive",
+          "repetition": "Unique",
+          "notes": "Descending hiss!",
+          "speedFactor": 1,
+          "numberOfEvents": 1
+        }
+      ]
+    }
+  ],
+  "surveyResponses": {
+    "pre": {
+      "calm": 5,
+      "energized": 4,
+      "connected": 6,
+      "nervous": 2,
+      "focused": 5,
+      "wonder": 7
+    },
+    "activityLevel": {
+      "response": 3
+    },
+    "awesf": {
+      "slowDown": 6,
+      "reducedSelf": 5,
+      "chills": 4,
+      "oneness": 6,
+      "grand": 7,
+      "diminishedSelf": 5,
+      "timeSlowing": 6,
+      "awesfConnected": 7,
+      "small": 5,
+      "vastness": 7,
+      "challenged": 4,
+      "selfShrink": 5
+    },
+    "post": {
+      "calm": 6,
+      "energized": 5,
+      "connected": 7,
+      "nervous": 1,
+      "focused": 6,
+      "wonder": 7
+    }
+  },
+  "submissionTimestamp": "2025-11-18T19:22:52.620Z"
+}
+
