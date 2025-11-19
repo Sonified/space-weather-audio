@@ -189,6 +189,14 @@ async function submitErrorReport(errorMessage, errorDetails) {
         source: 'core-error-system'
     };
     
+    // Log what we're about to send
+    console.error('📤 Submitting error report:', {
+        errorMessage,
+        errorDetails,
+        participantId,
+        timestamp: errorReport.timestamp
+    });
+    
     try {
         const response = await fetch('https://volcano-audio-collector-production.up.railway.app/api/report-error', {
             method: 'POST',
@@ -229,6 +237,13 @@ export function initErrorSystem(flameEngineRef) {
             type: 'window.onerror'
         };
         
+        // 🔥 ALWAYS log the error to console so we can see what's happening
+        console.error('🚨 CRITICAL ERROR CAUGHT:', errorMessage);
+        console.error('📍 Location:', `${source}:${lineno}:${colno}`);
+        console.error('📚 Stack:', error?.stack || 'No stack trace');
+        console.error('📦 Full error object:', error);
+        console.error('🔍 Error details:', errorDetails);
+        
         const errorToCheck = error || message;
         if (isCriticalError(errorToCheck, source)) {
             handleCriticalError(errorMessage, errorDetails);
@@ -246,6 +261,12 @@ export function initErrorSystem(flameEngineRef) {
             stack: error?.stack || 'No stack trace',
             name: error?.name || 'PromiseRejection'
         };
+        
+        // 🔥 ALWAYS log the error to console so we can see what's happening
+        console.error('🚨 UNHANDLED PROMISE REJECTION:', errorMessage);
+        console.error('📚 Stack:', error?.stack || 'No stack trace');
+        console.error('📦 Full error object:', error);
+        console.error('🔍 Error details:', errorDetails);
         
         if (isCriticalError(error, null)) {
             handleCriticalError(errorMessage, errorDetails);

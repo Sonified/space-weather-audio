@@ -218,15 +218,33 @@ export function createCompleteConfirmationModal() {
                 <h3 class="modal-title">🌋 All Done?</h3>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 20px; color: #550000; font-size: 18px; line-height: 1.6; text-align: center;">
-                    You have identified <strong><span id="completeRegionCount" style="color: #0056b3;">0</span> <span id="completeRegionWord">regions</span></strong> with a total of <strong><span id="completeFeatureCount" style="color: #0056b3;">0</span> <span id="completeFeatureWord">features</span></strong>.
-                </p>
+                <h4 style="margin-bottom: 20px; color: #550000; font-size: 20px; font-weight: bold; text-align: center;">
+                    You've Identified:
+                </h4>
+                <div style="display: flex; gap: 20px; justify-content: center; margin-bottom: 30px;">
+                    <div style="flex: 1; max-width: 150px;">
+                        <div style="text-align: center; margin-bottom: 10px; color: #550000; font-size: 16px; font-weight: 600;">
+                            Regions
+                        </div>
+                        <div style="background: #f8f9fa; border: 2px solid #550000; border-radius: 8px; padding: 20px; text-align: center;">
+                            <span id="completeRegionCount" style="font-size: 48px; font-weight: bold; color: #550000;">0</span>
+                        </div>
+                    </div>
+                    <div style="flex: 1; max-width: 150px;">
+                        <div style="text-align: center; margin-bottom: 10px; color: #550000; font-size: 16px; font-weight: 600;">
+                            Features
+                        </div>
+                        <div style="background: #f8f9fa; border: 2px solid #550000; border-radius: 8px; padding: 20px; text-align: center;">
+                            <span id="completeFeatureCount" style="font-size: 48px; font-weight: bold; color: #550000;">0</span>
+                        </div>
+                    </div>
+                </div>
                 <p style="margin-bottom: 30px; color: #550000; font-size: 18px; line-height: 1.6; text-align: center;">
-                    Once you continue, you won't be able to add more regions. You'll complete a brief post-survey to finish your session.
+                    Once you continue, you won't be able to add more features. You'll complete a brief post-survey to finish your session.
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                     <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #28a745; border: 2px solid #28a745; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 180px;">Yes, I'm Done</button>
-                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #cc3333; border: 2px solid #cc3333; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 180px;">Not yet</button>
+                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 180px;">Not yet</button>
                 </div>
             </div>
         </div>
@@ -253,7 +271,6 @@ export function createTutorialIntroModal() {
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                     <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #c62828; border: 2px solid #c62828; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Begin Tutorial</button>
-                    <a href="#" id="tutorialSkipLink" style="display: none; color: #666; font-size: 16px; text-decoration: underline; cursor: pointer; margin-top: 5px;">Skip</a>
                 </div>
             </div>
         </div>

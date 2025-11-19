@@ -12,8 +12,8 @@
  *
  * PERSONAL: Skip tutorial, direct access to app
  * DEV: Current development environment with tutorial
- * STUDY: Full research workflow (pre-surveys → tutorial → post-surveys → Qualtrics)
- * STUDY_CLEAN: Same as STUDY but resets all flags on each load (for testing first-time users)
+ * PRODUCTION: Volcano Audio Study Live Interface - What users get when they show up
+ * STUDY_CLEAN: Same as PRODUCTION but resets all flags on each load (for testing first-time users)
  * STUDY_W2_S1: Week 2, Session 1 - Sets flags for returning user (W1 complete, starting W2S1)
  * STUDY_W2_S1_RETURNING: Week 2, Session 1 - Mid-session (already clicked Begin Analysis, simulates page refresh)
  * STUDY_W2_S2: Week 2, Session 2 - Sets flags for returning user (W1 complete, W2S1 complete, starting W2S2)
@@ -22,7 +22,7 @@
 export const AppMode = {
     PERSONAL: 'personal',
     DEV: 'dev',
-    STUDY: 'study',
+    PRODUCTION: 'production',
     STUDY_CLEAN: 'study_clean',
     STUDY_W2_S1: 'study_w2_s1',  // Week 2, Session 1 - starting new session
     STUDY_W2_S1_RETURNING: 'study_w2_s1_returning',  // Week 2, Session 1 - mid-session (page refresh)
@@ -56,15 +56,23 @@ export function isLocalEnvironment() {
 
 // Check localStorage for user's mode selection (set by dropdown)
 // Falls back to DEFAULT_MODE if not set
-const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
+let storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
 
-// Production: Always force STUDY mode (ignore localStorage)
+// Backward compatibility: map old "study" to new "production"
+if (storedMode === 'study') {
+    storedMode = 'production';
+    if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('selectedMode', 'production');
+    }
+}
+
+// Production: Always force PRODUCTION mode (ignore localStorage)
 // Local: Allow mode switching via localStorage or DEFAULT_MODE
 export const CURRENT_MODE = isLocalEnvironment()
     ? (storedMode && Object.values(AppMode).includes(storedMode) 
         ? storedMode 
         : DEFAULT_MODE)
-    : AppMode.STUDY; // Force STUDY mode for production
+    : AppMode.PRODUCTION; // Force PRODUCTION mode for production
 
 /**
  * Mode Configuration
@@ -95,9 +103,9 @@ const MODE_CONFIG = {
         autoStartPlayback: false
     },
     
-    [AppMode.STUDY]: {
-        name: 'Study Mode',
-        description: 'Full research workflow with surveys and Qualtrics',
+    [AppMode.PRODUCTION]: {
+        name: 'Production Mode',
+        description: 'Volcano Audio Study Live Interface',
         skipTutorial: false,
         showPreSurveys: true,
         showPostSurveys: true,
@@ -250,7 +258,7 @@ export function isDevMode() {
 }
 
 export function isStudyMode() {
-    return CURRENT_MODE === AppMode.STUDY || 
+    return CURRENT_MODE === AppMode.PRODUCTION || 
            CURRENT_MODE === AppMode.STUDY_CLEAN || 
            CURRENT_MODE === AppMode.STUDY_W2_S1 ||
            CURRENT_MODE === AppMode.STUDY_W2_S1_RETURNING ||

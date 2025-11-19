@@ -507,15 +507,19 @@ async function runPauseButtonTutorial() {
 async function showSpectrogramExplanation() {
     addSpectrogramGlow();
     
-    // First message about time flow
+    // First message: What is this visualization?
+    setStatusTextAndTrack('This is a spectrogram of the seismometer data.', 'status info');
+    await skippableWait(4000);
+    
+    // Second message about time flow
     setStatusTextAndTrack('Time moves from left to right 👉', 'status info');
     await skippableWait(4000);
     
-    // Second message about frequency
+    // Third message about frequency
     setStatusTextAndTrack('Frequency spans from low to high 👆', 'status info');
     await skippableWait(4000);
     
-    // Third message about interesting features
+    // Fourth message about interesting features
     setStatusTextAndTrack('You may notice a variety of interesting features.', 'status info');
     await skippableWait(5000);
     

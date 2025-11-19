@@ -12,7 +12,7 @@ import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCan
 import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks } from './tutorial.js';
-import { updateCompleteButtonState } from './region-tracker.js';
+import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-tracker.js';
 import { isStudyMode } from './master-modes.js';
 import { isTutorialActive } from './tutorial-state.js';
 
@@ -458,6 +458,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         // Store start/end times for x-axis rendering
         State.setDataStartTime(adjustedStartTime);
         State.setDataEndTime(endTime);
+        
+        // 🔥 Load saved regions now that time range is known
+        loadRegionsAfterDataFetch();
         
         // Draw frequency axis with new metadata
         positionAxisCanvas();
@@ -908,9 +911,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 State.setAllReceivedData([]);
                                 console.log(`🧹 ${logTime()} Cleared allReceivedData (${chunkCount} chunks) - ArrayBuffers freed`);
                                 
-                                // Enable Begin Analysis button after data download completes (skip during tutorial)
+                                // Enable Begin Analysis/Complete button after data download completes (skip during tutorial)
                                 if (!isTutorialActive()) {
-                                    updateCompleteButtonState();
+                                    updateCompleteButtonState(); // Handles both "Begin Analysis" and "Complete" modes
                                 }
                                 
                                 // 🎨 Render complete spectrogram now that all data is ready
@@ -1059,9 +1062,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             State.setCompleteSamplesArray(stitchedFloat32);
             window.rawWaveformData = stitchedRaw;
             
-            // Enable Begin Analysis button after data download completes (skip during tutorial)
+            // Enable Begin Analysis/Complete button after data download completes (skip during tutorial)
             if (!isTutorialActive()) {
-                updateCompleteButtonState();
+                updateCompleteButtonState(); // Handles both "Begin Analysis" and "Complete" modes
             }
             
             // 🔥 FIX: Clear allReceivedData after stitching to free Float32Array chunks and their ArrayBuffers
@@ -1385,6 +1388,9 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     State.setDataStartTime(startTime);
     State.setDataEndTime(endTime);
     
+    // 🔥 Load saved regions now that time range is known
+    loadRegionsAfterDataFetch();
+    
     // Draw frequency axis with new metadata
     positionAxisCanvas();
     initializeAxisPlaybackRate();
@@ -1427,9 +1433,9 @@ export async function fetchFromRailway(stationData, startTime, duration, highpas
     // Store complete samples array for waveform drawing
     State.setCompleteSamplesArray(samples);
     
-    // Enable Begin Analysis button after data download completes (skip during tutorial)
+    // Enable Begin Analysis/Complete button after data download completes (skip during tutorial)
     if (!isTutorialActive()) {
-        updateCompleteButtonState();
+        updateCompleteButtonState(); // Handles both "Begin Analysis" and "Complete" modes
     }
     
     // Send samples to waveform worker BEFORE building waveform

@@ -320,6 +320,16 @@ async function handleSessionTimeout() {
                     regionCount: regions.length,
                     featureCount: regions.reduce((sum, r) => sum + (r.features?.length || 0), 0)
                 });
+                
+                // Clear session-level flags so next session starts fresh
+                try {
+                    localStorage.removeItem('study_has_seen_welcome_back');
+                    localStorage.removeItem('study_pre_survey_completion_date');
+                    localStorage.removeItem('study_begin_analysis_clicked_this_session');
+                    console.log('🧹 Cleared session flags after timeout');
+                } catch (error) {
+                    console.warn('⚠️ Could not clear session flags:', error);
+                }
             } else {
                 console.warn('⚠️ No pre-survey data found for timeout submission');
                 

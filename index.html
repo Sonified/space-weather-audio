@@ -22,9 +22,9 @@
             <div id="modeSelectorContainer" style="flex: 1; display: flex; align-items: center; gap: 8px; visibility: hidden; opacity: 0; transition: opacity 0.3s;">
                 <label for="modeSelector" style="font-size: 13px; font-weight: 600; color: #aaa; white-space: nowrap; user-select: none;">Mode:</label>
                 <select id="modeSelector" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer; min-width: 120px;">
+                    <option value="production">🎓 Production</option>
                     <option value="personal">👤 Personal</option>
                     <option value="dev" selected>🔧 Dev</option>
-                    <option value="study">🎓 Study</option>
                     <option value="study_clean">🧹 Study Clean</option>
                     <option value="study_w2_s1">🔄 Study W2 S1</option>
                     <option value="study_w2_s1_returning">🔁 Study W2 S1 Returning</option>
@@ -269,26 +269,8 @@
     </div>
     
     <!-- Permanent Modal Overlay Background -->
-    <!-- Hidden by default, shown only in Study Mode when modals are active -->
-    <!-- Inline script to show overlay immediately in study modes (prevents UI flash) -->
-    <script>
-        (function() {
-            const storedMode = localStorage.getItem('selectedMode');
-            const isStudyMode = storedMode === 'study' || 
-                               storedMode === 'study_clean' || 
-                               storedMode === 'study_w2_s1' || 
-                               storedMode === 'study_w2_s1_returning' || 
-                               storedMode === 'study_w2_s2' || 
-                               storedMode === 'tutorial_end';
-            
-            // Show overlay immediately if in study mode
-            if (isStudyMode) {
-                document.write('<div id="permanentOverlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.9); z-index: 1000; align-items: center; justify-content: center; opacity: 1;">');
-            } else {
-                document.write('<div id="permanentOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.9); z-index: 1000; align-items: center; justify-content: center;">');
-            }
-        })();
-    </script>
+    <!-- Starts hidden - modal system controls when it shows (based on flags and workflow logic) -->
+    <div id="permanentOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, #2e0c0c 0%, #240808 50%, #190303 100%); z-index: 1000; align-items: center; justify-content: center; opacity: 0;">
         <!-- Modals injected dynamically by js/modal-templates.js will appear here -->
     </div>
     

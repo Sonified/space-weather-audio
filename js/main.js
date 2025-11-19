@@ -1109,7 +1109,7 @@ async function initializeStudyMode() {
         await startStudyWorkflow();
     }
     
-    console.log('✅ Study mode initialized');
+    console.log('✅ Production mode initialized');
 }
 
 
@@ -1130,7 +1130,7 @@ async function initializeApp() {
             await initializeDevMode();
             break;
             
-        case AppMode.STUDY:
+        case AppMode.PRODUCTION:
         case AppMode.STUDY_CLEAN:
         case AppMode.STUDY_W2_S1:
         case AppMode.STUDY_W2_S1_RETURNING:
@@ -1187,7 +1187,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // - Local test modes: Always visible (study_clean, study_w2_s1, study_w2_s2, tutorial_end)
     // - Local production study mode only: Hidden by default, revealed by "dvdv"
     
-    const isPureProductionStudy = CURRENT_MODE === AppMode.STUDY;
+    const isPureProductionStudy = CURRENT_MODE === AppMode.PRODUCTION;
     const isTestMode = CURRENT_MODE === AppMode.STUDY_CLEAN ||
                        CURRENT_MODE === AppMode.STUDY_W2_S1 ||
                        CURRENT_MODE === AppMode.STUDY_W2_S1_RETURNING ||
@@ -1370,17 +1370,12 @@ window.addEventListener('DOMContentLoaded', async () => {
         const simulatePanel = document.querySelector('.panel-simulate');
         if (simulatePanel) {
             simulatePanel.style.display = 'none';
-            console.log('🎓 Study Mode: Simulate panel hidden (surveys controlled by workflow)');
+            console.log('🎓 Production Mode: Simulate panel hidden (surveys controlled by workflow)');
         }
         
-        // Show permanent overlay in Study Mode (it will be shown/hidden by modals)
-        // BUT: Start hidden - modals will fade it in when they open
-        const permanentOverlay = document.getElementById('permanentOverlay');
-        if (permanentOverlay) {
-            permanentOverlay.style.display = 'none'; // Start hidden - modals will show it
-            permanentOverlay.style.opacity = '0'; // Ensure opacity starts at 0
-            console.log('🎓 Study Mode: Permanent overlay ready (will be shown by modals)');
-        }
+        // Permanent overlay in Production Mode (fully controlled by modal system)
+        // Modal system checks flags and decides whether to show overlay
+        console.log('🎓 Production Mode: Modal system controls overlay (based on workflow flags)');
     } else {
         // Hide permanent overlay in non-Study modes (Dev, Personal, TUTORIAL_END)
         const permanentOverlay = document.getElementById('permanentOverlay');
@@ -1436,6 +1431,16 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.55 - Critical Bug Fixes: Region Persistence & Button States');
+        console.log('🐛 [0ms] v2.55 Fix: MAJOR - Regions/features now persist after page refresh (were being saved but not loaded)');
+        console.log('🐛 [0ms] v2.55 Fix: CRITICAL - Timestamp filtering now uses absolute times instead of relative samples (prevented regions from loading across different time ranges)');
+        console.log('🐛 [0ms] v2.55 Fix: Complete button click handler now correctly set for returning users (was opening wrong modal)');
+        console.log('🔧 [0ms] v2.55 Refactor: Unified updateCompleteButtonState() to handle both Begin Analysis and Complete modes (eliminated duplicate functions)');
+        console.log('🔍 [0ms] v2.55 Feat: Enhanced error logging - all errors now logged to console with full stack traces before reporting');
+        console.log('🎓 [0ms] v2.55 Feat: Added study_tutorial_in_progress flag to properly track tutorial lifecycle');
+        console.log('🎨 [0ms] v2.55 Feat: Added "This is a spectrogram" intro message to tutorial before time/frequency explanation');
+        console.log('🔒 [0ms] v2.55 Fix: Removed "Skip" option from Tutorial Introduction modal');
+        console.log('🛡️ [0ms] v2.55 Fix: Added emergency overlay canvas recovery for stuck states');
         console.log('🌋 [0ms] volcano-audio v2.54 - Stuck State Fix & UI Improvements');
         console.log('🔧 [0ms] v2.54 Fix: Fixed stuck state after sleep mode - added aggressive state reset, overlay context recovery, and safeguard message');
         console.log('🎨 [0ms] v2.54 Feat: Changed feature selection instructions from "(f) key" to "click and drag"');
@@ -1536,7 +1541,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (overlay) {
             overlay.style.display = 'flex';
             overlay.style.opacity = '1';
-            console.log('🔒 Overlay shown immediately (study mode)');
+            console.log('🌋 Volcano Audio - LIVE Production');
         }
     }
     

@@ -217,7 +217,10 @@ export async function loadSavedVolcano() {
         // Load stations for the saved volcano
         loadStations();
     } else {
-        // If no saved volcano or invalid, use default and load stations
+        // If no saved volcano or invalid, default to Kilauea
+        volcanoSelect.value = 'kilauea';
+        localStorage.setItem('selectedVolcano', 'kilauea');
+        console.log('🌋 Defaulted to Kilauea (first session)');
         loadStations();
     }
     
@@ -1563,6 +1566,10 @@ export function setupModalEventListeners() {
         const tutorialIntroSubmitBtn = tutorialIntroModal.querySelector('.modal-submit');
         if (tutorialIntroSubmitBtn) {
             tutorialIntroSubmitBtn.addEventListener('click', async () => {
+                // Mark tutorial as in progress immediately when user clicks "Begin Tutorial"
+                const { markTutorialAsInProgress } = await import('./study-workflow.js');
+                markTutorialAsInProgress();
+                
                 closeTutorialIntroModal();
                 
                 // Start the tutorial after modal closes
@@ -1577,30 +1584,7 @@ export function setupModalEventListeners() {
             });
         }
         
-        // Skip link handler (for returning visitors who need tutorial but flag wasn't set)
-        const tutorialSkipLink = tutorialIntroModal.querySelector('#tutorialSkipLink');
-        if (tutorialSkipLink) {
-            tutorialSkipLink.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                console.log('⏭️ Tutorial skipped by returning visitor');
-                
-                // Mark tutorial as seen so they don't see it again
-                const { markTutorialAsSeen } = await import('./study-workflow.js');
-                markTutorialAsSeen();
-                
-                // Enable all features since tutorial is being skipped
-                const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-                await enableAllTutorialRestrictedFeatures();
-                
-                // Close modal and let user explore
-                closeTutorialIntroModal();
-                fadeOutOverlay();
-                
-                console.log('✅ Tutorial skipped - features enabled, ready for experience');
-            });
-        }
+        // Skip link removed - all users must complete tutorial
         
         // Keyboard support: Enter to begin tutorial
         const tutorialIntroKeyHandler = (e) => {
@@ -2207,6 +2191,10 @@ export function openWelcomeBackModal() {
 }
 
 export async function closeWelcomeBackModal(keepOverlay = null) {
+    // Mark welcome back as seen (session-level flag)
+    const { markWelcomeBackAsSeen } = await import('./study-workflow.js');
+    markWelcomeBackAsSeen();
+    
     // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
     if (keepOverlay === null) {
         const nextModal = await getNextModalInWorkflow('welcomeBackModal');
@@ -2307,21 +2295,7 @@ export async function openTutorialIntroModal() {
     
     const modal = document.getElementById('tutorialIntroModal');
     
-    // Check if this is a returning visit but tutorial flag wasn't set
-    // If so, show skip option
-    const { hasSeenParticipantSetup } = await import('./study-workflow.js');
-    const isFirstVisitEver = !hasSeenParticipantSetup();
-    const skipLink = document.getElementById('tutorialSkipLink');
-    
-    if (skipLink) {
-        if (!isFirstVisitEver) {
-            // Returning visit but tutorial flag says they need it - show skip option
-            skipLink.style.display = 'block';
-        } else {
-            // First visit - hide skip option
-            skipLink.style.display = 'none';
-        }
-    }
+    // Skip option removed - all users must complete tutorial
     
     // Fade in overlay background (standard design pattern)
     fadeInOverlay();

@@ -965,16 +965,57 @@ export function setupSpectrogramSelection() {
         // 🔥 VERIFY: After cleanup, ensure overlay context is still valid before proceeding
         if (!spectrogramOverlayCtx || !spectrogramOverlayCanvas) {
             console.error('⚠️ [STUCK STATE DETECTED] Overlay context missing before starting selection!');
-            showStuckStateMessage();
-            return; // Can't start selection without overlay context
+            console.warn('🔄 Attempting emergency reinitialization of overlay canvas...');
+            
+            // EMERGENCY RECOVERY: Try to reinitialize the overlay canvas
+            const canvas = document.getElementById('spectrogram-canvas');
+            const container = document.getElementById('spectrogram-container');
+            
+            if (canvas && container) {
+                // Remove any existing overlay canvas
+                const existingOverlay = document.getElementById('spectrogram-selection-overlay');
+                if (existingOverlay) {
+                    existingOverlay.remove();
+                }
+                
+                // Recreate overlay canvas
+                spectrogramOverlayCanvas = document.createElement('canvas');
+                spectrogramOverlayCanvas.id = 'spectrogram-selection-overlay';
+                spectrogramOverlayCanvas.style.position = 'absolute';
+                spectrogramOverlayCanvas.style.pointerEvents = 'none';
+                spectrogramOverlayCanvas.style.zIndex = '20';
+                spectrogramOverlayCanvas.style.background = 'transparent';
+                
+                const canvasRect = canvas.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
+                spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
+                spectrogramOverlayCanvas.width = canvas.width;
+                spectrogramOverlayCanvas.height = canvas.height;
+                spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
+                spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
+                
+                container.appendChild(spectrogramOverlayCanvas);
+                spectrogramOverlayCtx = spectrogramOverlayCanvas.getContext('2d');
+                
+                if (spectrogramOverlayCtx) {
+                    console.log('✅ Emergency overlay canvas reinitialization successful!');
+                    hideStuckStateMessage();
+                } else {
+                    console.error('❌ Emergency reinitialization failed - showing safeguard message');
+                    showStuckStateMessage();
+                    return;
+                }
+            } else {
+                console.error('❌ Cannot reinitialize - canvas or container not found');
+                showStuckStateMessage();
+                return;
+            }
         }
         
         // Hide safeguard message if we got here successfully
-        if (wasCleaningUp) {
-            hideStuckStateMessage();
-        }
-
-        // Reuse canvasRect from above (already calculated for box click detection)
+        hideStuckStateMessage();
+        
         spectrogramStartX = e.clientX - canvasRect.left;
         spectrogramStartY = e.clientY - canvasRect.top;
         spectrogramCurrentX = null;  // Reset - will be set on first mousemove

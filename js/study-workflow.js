@@ -94,6 +94,8 @@ import {
 const STORAGE_KEYS = {
     HAS_SEEN_PARTICIPANT_SETUP: 'study_has_seen_participant_setup',
     HAS_SEEN_WELCOME: 'study_has_seen_welcome',
+    HAS_SEEN_WELCOME_BACK: 'study_has_seen_welcome_back', // SESSION-LEVEL: cleared each new session
+    TUTORIAL_IN_PROGRESS: 'study_tutorial_in_progress', // Set when user clicks "Begin Tutorial", cleared when completed
     TUTORIAL_COMPLETED: 'study_tutorial_completed',
     WEEKLY_SESSION_COUNT: 'study_weekly_session_count',
     WEEK_START_DATE: 'study_week_start_date',
@@ -150,6 +152,30 @@ function markWelcomeAsSeen() {
 }
 
 /**
+ * Check if user has seen welcome back modal (this session only)
+ */
+export function hasSeenWelcomeBack() {
+    return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME_BACK) === 'true';
+}
+
+export function markWelcomeBackAsSeen() {
+    localStorage.setItem(STORAGE_KEYS.HAS_SEEN_WELCOME_BACK, 'true');
+    console.log('✅ Welcome Back marked as seen (this session)');
+}
+
+/**
+ * Check if tutorial is in progress (user clicked "Begin Tutorial" but hasn't finished)
+ */
+export function isTutorialInProgress() {
+    return localStorage.getItem(STORAGE_KEYS.TUTORIAL_IN_PROGRESS) === 'true';
+}
+
+export function markTutorialAsInProgress() {
+    localStorage.setItem(STORAGE_KEYS.TUTORIAL_IN_PROGRESS, 'true');
+    console.log('▶️ Tutorial marked as IN PROGRESS');
+}
+
+/**
  * Check if user has completed tutorial (once ever)
  * Only marked as completed when they click "Begin Analysis" button
  */
@@ -174,6 +200,8 @@ export function tutorialCompleted() {
 
 export function markTutorialAsCompleted() {
     localStorage.setItem(STORAGE_KEYS.TUTORIAL_COMPLETED, 'true');
+    // Clear in-progress flag when marking as completed
+    localStorage.removeItem(STORAGE_KEYS.TUTORIAL_IN_PROGRESS);
     console.log('✅ Tutorial marked as COMPLETED (Begin Analysis was clicked)');
 }
 
@@ -405,6 +433,18 @@ export function completeSession(completedAllSurveys = false, submittedToQualtric
             localStorage.removeItem(STORAGE_KEYS.CURRENT_SESSION_START);
         } catch (error) {
             console.error('❌ Error clearing session start:', error);
+        }
+        
+        // Clear session-level flags so next session starts fresh
+        // NOTE: Do NOT clear HAS_SEEN_WELCOME - that's for first-time welcome only
+        // Returning users get "Welcome Back" modal automatically (HAS_SEEN_WELCOME_BACK cleared)
+        try {
+            localStorage.removeItem(STORAGE_KEYS.HAS_SEEN_WELCOME_BACK);
+            localStorage.removeItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
+            localStorage.removeItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION);
+            console.log('🧹 Cleared session flags for next session (welcome back, pre-survey, begin analysis)');
+        } catch (error) {
+            console.error('❌ Error clearing session flags:', error);
         }
         
         console.log(`✅ Session completed:`, {
@@ -814,6 +854,7 @@ export async function startStudyWorkflow() {
         
         // Clear SESSION-level flags only (NOT persistent onboarding/tutorial flags)
         const sessionFlagsToClear = [
+            STORAGE_KEYS.HAS_SEEN_WELCOME_BACK,  // SESSION flag - clear so Welcome Back shows
             STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE,
             STORAGE_KEYS.CURRENT_SESSION_START,
             STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION  // SESSION flag - clear so volcano unlocked
@@ -924,7 +965,21 @@ export async function startStudyWorkflow() {
                     completeBtn.className = ''; // Remove begin-analysis-btn class
                     completeBtn.removeAttribute('onmouseover');
                     completeBtn.removeAttribute('onmouseout');
-                    console.log('✅ Button transformed to Complete mode (Begin Analysis clicked this session)');
+                    
+                    // 🔥 FIX: Replace click handler to open Complete modal instead of Begin Analysis modal
+                    const { openCompleteConfirmationModal } = await import('./ui-controls.js');
+                    const newBtn = completeBtn.cloneNode(true);
+                    completeBtn.parentNode.replaceChild(newBtn, completeBtn);
+                    
+                    // Add Complete button click handler
+                    newBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('✅ Complete button clicked');
+                        openCompleteConfirmationModal();
+                    });
+                    
+                    console.log('✅ Button transformed to Complete mode with correct click handler');
                 }
             } else {
                 console.log('✅ Begin Analysis NOT clicked yet this session - button will show "Begin Analysis"');
@@ -1023,13 +1078,19 @@ export async function startStudyWorkflow() {
                 await clearSessionForNewDay(participantId);
             }
             
-            console.log('👋 Step 2.5: Welcome Back (returning visit)');
-            // For returning visits, show welcome back modal first, then pre-survey
-            const { openWelcomeBackModal } = await import('./ui-controls.js');
-            openWelcomeBackModal();
-            console.log('👋 Welcome Back modal opened (returning visit)');
-            // Welcome Back modal will close and open pre-survey when user clicks "Start Now"
-            return; // Exit early - welcome back modal event handler will continue workflow
+            // Check if they've already seen Welcome Back this session
+            if (!hasSeenWelcomeBack()) {
+                console.log('👋 Step 2.5: Welcome Back (returning visit)');
+                // For returning visits, show welcome back modal first, then pre-survey
+                const { openWelcomeBackModal } = await import('./ui-controls.js');
+                openWelcomeBackModal();
+                console.log('👋 Welcome Back modal opened (returning visit)');
+                // Welcome Back modal will close and open pre-survey when user clicks "Start Now"
+                return; // Exit early - welcome back modal event handler will continue workflow
+            } else {
+                console.log('👋 Welcome Back already seen this session, proceeding to Pre-Survey');
+                // Fall through to pre-survey
+            }
         }
         
         // ═══════════════════════════════════════════════════════════

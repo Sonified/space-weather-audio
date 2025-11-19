@@ -187,9 +187,15 @@ function loadRegionsFromStorage(volcano) {
                     // Check if region falls within the current time range
                     let regionStartMs, regionEndMs;
                     
-                    if (region.startSample !== undefined && region.endSample !== undefined) {
-                        // New format: convert from sample indices to time
-                        // We need zoomState for this, but if it's not initialized, skip filtering
+                    // 🔥 FIX: Always use saved timestamps for filtering if available
+                    // Sample indices are relative to data start and change between fetches!
+                    if (region.startTime && region.stopTime) {
+                        // Use absolute timestamps - these don't change between data fetches
+                        regionStartMs = new Date(region.startTime).getTime();
+                        regionEndMs = new Date(region.stopTime).getTime();
+                    } else if (region.startSample !== undefined && region.endSample !== undefined) {
+                        // Fallback: convert from sample indices (old regions without timestamps)
+                        // ⚠️ WARNING: This will be WRONG if data fetch time range has changed!
                         if (!zoomState.isInitialized()) {
                             return false; // Don't load if we can't determine time range
                         }
@@ -197,10 +203,6 @@ function loadRegionsFromStorage(volcano) {
                         const regionEndSeconds = zoomState.sampleToTime(region.endSample);
                         regionStartMs = dataStartMs + (regionStartSeconds * 1000);
                         regionEndMs = dataStartMs + (regionEndSeconds * 1000);
-                    } else if (region.startTime && region.stopTime) {
-                        // Old format: use timestamps directly
-                        regionStartMs = new Date(region.startTime).getTime();
-                        regionEndMs = new Date(region.stopTime).getTime();
                     } else {
                         // Can't determine region time - exclude it
                         return false;
@@ -341,6 +343,36 @@ const MAX_TOTAL_FEATURES = 100; // Global maximum features across all regions
 function getTotalFeatureCount() {
     const regions = getCurrentRegions();
     return regions.reduce((total, region) => total + region.featureCount, 0);
+}
+
+/**
+ * Load regions from storage after data fetch completes
+ * Call this after State.dataStartTime and State.dataEndTime are set
+ */
+export function loadRegionsAfterDataFetch() {
+    const volcano = getCurrentVolcano();
+    if (!volcano) {
+        console.warn('⚠️ Cannot load regions - no volcano selected');
+        return;
+    }
+    
+    const loadedRegions = loadRegionsFromStorage(volcano);
+    if (loadedRegions && loadedRegions.length > 0) {
+        regionsByVolcano.set(volcano, loadedRegions);
+        console.log(`📂 Restored ${loadedRegions.length} region(s) for ${volcano} from localStorage after data fetch`);
+        
+        // Re-render regions
+        renderRegions();
+        
+        // NOTE: Canvas feature boxes are automatically drawn by updatePlaybackSpeed() 
+        // (called in data-fetcher.js after data loads). No need to explicitly call here.
+        // This avoids duplicate work since updatePlaybackSpeed() -> redrawAllCanvasFeatureBoxes()
+        
+        // Update button states
+        updateCompleteButtonState();
+    } else {
+        console.log(`📂 No saved regions found for ${volcano}`);
+    }
 }
 
 /**
@@ -3223,104 +3255,79 @@ export function hasIdentifiedFeature() {
 }
 
 /**
- * Update the complete button state based on whether data has been downloaded
- * Button enables after a complete data set downloads for the first time
+ * Update the complete button state - SINGLE SOURCE OF TRUTH
+ * Handles BOTH modes: "Begin Analysis" (before transformation) and "Complete" (after transformation)
  */
-export function updateCompleteButtonState() {
+export async function updateCompleteButtonState() {
     const completeBtn = document.getElementById('completeBtn');
-    if (completeBtn) {
-        // Check if complete data set has been downloaded
-        const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
-        const sampleCount = State.completeSamplesArray ? State.completeSamplesArray.length : 0;
+    if (!completeBtn) {
+        console.warn('⚠️ updateCompleteButtonState: completeBtn not found in DOM');
+        return;
+    }
+    
+    // Always ensure button is visible
+    completeBtn.style.display = 'flex';
+    completeBtn.style.alignItems = 'center';
+    completeBtn.style.justifyContent = 'center';
+    
+    // Check if button is in "Begin Analysis" mode (before transformation) or "Complete" mode (after)
+    const isBeginAnalysisMode = completeBtn.textContent === 'Begin Analysis';
+    
+    // Check if tutorial is in progress - if so, don't override button state
+    const { isTutorialInProgress } = await import('./study-workflow.js');
+    
+    if (isTutorialInProgress()) {
+        // Tutorial in progress - don't override button state, let tutorial control it
         if (!isStudyMode()) {
-            console.log(`🔵 updateCompleteButtonState: hasData=${hasData}, sampleCount=${sampleCount.toLocaleString()}`);
+            console.log('🎓 Tutorial in progress - not changing button state');
         }
+        return; // Exit early, let tutorial control it
+    }
+    
+    // Determine what should control the button state
+    let shouldDisable;
+    
+    if (isBeginAnalysisMode) {
+        // BEGIN ANALYSIS MODE: Enable when data is loaded
+        const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
+        shouldDisable = !hasData;
         
-        // 🎯 NEW PHILOSOPHY: Button is ALWAYS VISIBLE, we only control enabled/disabled state
-        // Always ensure button is visible
-        completeBtn.style.display = 'flex';
-        completeBtn.style.alignItems = 'center';
-        completeBtn.style.justifyContent = 'center';
-        
-        // Check if button is in "Begin Analysis" mode (before transformation) or "Complete" mode (after)
-        const isBeginAnalysisMode = completeBtn.textContent === 'Begin Analysis';
-        
-        // Check if we're in the Begin Analysis tutorial step (tutorial controls the button then)
-        const currentPhase = getTutorialPhase();
-        const isBeginAnalysisTutorialActive = currentPhase === 'waiting_for_begin_analysis_click';
-        
-        if (isBeginAnalysisTutorialActive) {
-            // Tutorial is controlling the button - don't override!
-            return; // Exit early, let tutorial control it
-        }
-        
-        // Determine if button should be disabled
-        let shouldDisable = !hasData; // Default: disable if no data
-        
-        if (isBeginAnalysisMode) {
-            // Before transformation - disable if no data
-            shouldDisable = !hasData;
-        } else {
-            // After transformation (Complete button) - handled by updateCmpltButtonState()
-            // Just ensure it's visible, don't change disabled state here
-            return;
-        }
-        
-        // Update disabled state
-        completeBtn.disabled = shouldDisable;
-        if (shouldDisable) {
-            completeBtn.style.opacity = '0.5';
-            completeBtn.style.cursor = 'not-allowed';
-            if (!isStudyMode()) {
-                console.log('❌ Begin Analysis button DISABLED (no data)');
-            }
-        } else {
-            completeBtn.style.opacity = '1';
-            completeBtn.style.cursor = 'pointer';
-            if (!isStudyMode()) {
-                console.log('✅ Begin Analysis button ENABLED');
-            }
+        if (!isStudyMode()) {
+            const sampleCount = State.completeSamplesArray ? State.completeSamplesArray.length : 0;
+            console.log(`🔵 Begin Analysis button: hasData=${hasData}, samples=${sampleCount.toLocaleString()}`);
         }
     } else {
-        console.warn('⚠️ updateCompleteButtonState: completeBtn not found in DOM');
+        // COMPLETE MODE: Enable when at least one feature is identified
+        const hasFeature = hasIdentifiedFeature();
+        shouldDisable = !hasFeature;
+        
+        if (!isStudyMode()) {
+            console.log(`🔵 Complete button: hasFeature=${hasFeature}`);
+        }
+    }
+    
+    // Update disabled state
+    completeBtn.disabled = shouldDisable;
+    if (shouldDisable) {
+        completeBtn.style.opacity = '0.5';
+        completeBtn.style.cursor = 'not-allowed';
+        if (!isStudyMode()) {
+            console.log(`❌ ${isBeginAnalysisMode ? 'Begin Analysis' : 'Complete'} button DISABLED`);
+        }
+    } else {
+        completeBtn.style.opacity = '1';
+        completeBtn.style.cursor = 'pointer';
+        if (!isStudyMode()) {
+            console.log(`✅ ${isBeginAnalysisMode ? 'Begin Analysis' : 'Complete'} button ENABLED`);
+        }
     }
 }
 
 /**
- * Update the Complete button (completeBtn after transformation) state based on whether features have been identified
- * Button enables after at least one feature has been identified (has all required fields)
- * Uses the existing hasIdentifiedFeature() logic
+ * @deprecated Use updateCompleteButtonState() instead - it handles both modes
+ * Keeping for backward compatibility
  */
 export function updateCmpltButtonState() {
-    const completeBtn = document.getElementById('completeBtn');
-    if (completeBtn && completeBtn.textContent === 'Complete') {
-        // Only update if button has been transformed to Complete
-        const hasFeature = hasIdentifiedFeature();
-        
-        if (!isStudyMode()) {
-            console.log(`✅ updateCmpltButtonState: hasFeature=${hasFeature}`);
-        }
-        
-        // Ensure button is always visible
-        completeBtn.style.display = 'flex';
-        completeBtn.style.alignItems = 'center';
-        completeBtn.style.justifyContent = 'center';
-        
-        // Update disabled state based on features
-        completeBtn.disabled = !hasFeature;
-        if (hasFeature) {
-            completeBtn.style.opacity = '1';
-            completeBtn.style.cursor = 'pointer';
-            if (!isStudyMode()) {
-                console.log('✅ Complete button ENABLED');
-            }
-        } else {
-            completeBtn.style.opacity = '0.5';
-            completeBtn.style.cursor = 'not-allowed';
-            if (!isStudyMode()) {
-                console.log('❌ Complete button DISABLED');
-            }
-        }
-    }
+    updateCompleteButtonState();
 }
 

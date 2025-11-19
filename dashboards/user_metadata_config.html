@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Metadata</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚙️</text></svg>">
+    <style>
+        :root {
+            --standard-font-size: 16px;
+            --header-font-size: 18px;
+        }
+        body {
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            background: linear-gradient(135deg, #2e0c0c 0%, #240808 50%, #190303 100%);
+            min-height: 100vh;
+            color: #f0f0f0;
+            padding: 20px;
+            line-height: 1.6;
+            font-size: var(--standard-font-size);
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #d0d0d0;
+            padding-bottom: 10px;
+        }
+        h1 a {
+            color: #d0d0d0;
+            text-decoration: none;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        h1 a:hover {
+            color: #f0f0f0;
+        }
+        h2 {
+            color: #2196F3;
+            margin-top: 30px;
+            border-left: 4px solid #2196F3;
+            padding-left: 10px;
+        }
+        .section {
+            background: #2a2a2a;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border: 1px solid #444;
+        }
+        .key {
+            color: #FFC107;
+            font-weight: bold;
+        }
+        .value {
+            color: #4CAF50;
+        }
+        .null {
+            color: #f44336;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .warning {
+            color: #FF9800;
+        }
+        .error {
+            color: #f44336;
+        }
+        pre {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid #444;
+        }
+        .button {
+            background: #6d4c41;
+            color: #f0f0f0;
+            border: 1px solid #8d6e63;
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: var(--standard-font-size);
+            margin: 5px 5px;
+            transition: background 0.2s;
+        }
+        .button:hover {
+            background: #5d4037;
+        }
+        .button.danger {
+            background: #550000;
+            border: 1px solid #770000;
+        }
+        .button.danger:hover {
+            background: #440000;
+        }
+        .button.info {
+            background: #2196F3;
+            border: 1px solid #42a5f5;
+        }
+        .button.info:hover {
+            background: #1976D2;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 14px;
+        }
+        .info-card {
+            background: #1e1e1e;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 3px solid #2196F3;
+        }
+        .info-row {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid #333;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            color: #FFC107;
+            font-weight: bold;
+            min-width: 180px;
+            flex-shrink: 0;
+        }
+        .info-value {
+            color: #e0e0e0;
+            flex-grow: 1;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-badge.in-progress {
+            background: #FF9800;
+            color: #1a1a1a;
+        }
+        .status-badge.submitted {
+            background: #4CAF50;
+            color: #1a1a1a;
+        }
+        .status-badge.none {
+            background: #666;
+            color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><a href="http://127.0.0.1:5501/index.html" target="_blank" title="Open Main App">🌋 User Metadata</a></h1>
+
+        <div class="section">
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button class="button info" onclick="copyFlagsState()">📋 Copy State</button>
+                <button class="button" onclick="clearAllFlags()">🧹 Clear Flags</button>
+                <button class="button danger" onclick="clearAllMetadata()">🗑️ Clear All Metadata</button>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; background: #1e1e1e; border-radius: 5px; overflow: hidden;">
+                <thead>
+                    <tr style="background: #2a2a2a; border-bottom: 2px solid #444;">
+                        <th style="padding: 8px; text-align: center; color: #FFC107; width: 60px;">CHECK</th>
+                        <th style="padding: 8px; text-align: left; color: #FFC107; width: 300px;">DESCRIPTION</th>
+                        <th style="padding: 8px; text-align: left; color: #888; font-size: 13px;">VARIABLE</th>
+                    </tr>
+                </thead>
+                <tbody id="workflowFlagsTable"></tbody>
+            </table>
+        </div>
+
+        <div class="section" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <select id="sessionStatusSelect" onchange="updateSessionStatus()" style="padding: 6px 10px; background: #1a1a1a; color: #f0f0f0; border: 1px solid #444; border-radius: 5px; font-size: 15px; cursor: pointer; width: 160px; box-sizing: border-box;">
+                    <option value="">-- Not Set --</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="submitted">Submitted</option>
+                </select>
+                <label style="color: #bbb; font-size: 15px;">Session Status</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <select id="volcanoSelect" onchange="updateVolcanoSelection()" style="padding: 6px 10px; background: #1a1a1a; color: #f0f0f0; border: 1px solid #444; border-radius: 5px; font-size: 15px; cursor: pointer; width: 160px; box-sizing: border-box;">
+                    <option value="">-- Select Volcano --</option>
+                    <option value="kilauea">Kilauea</option>
+                    <option value="maunaloa">Mauna Loa</option>
+                    <option value="greatsitkin">Great Sitkin</option>
+                    <option value="shishaldin">Shishaldin</option>
+                    <option value="spurr">Spurr</option>
+                </select>
+                <label style="color: #bbb; font-size: 15px;">Selected Volcano</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <select id="modeSelect" onchange="updateModeSelection()" style="padding: 6px 10px; background: #1a1a1a; color: #f0f0f0; border: 1px solid #444; border-radius: 5px; font-size: 15px; cursor: pointer; width: 160px; box-sizing: border-box;">
+                    <option value="">-- Using Default --</option>
+                    <option value="production">🎓 Production</option>
+                    <option value="personal">👤 Personal</option>
+                    <option value="dev">🔧 Dev</option>
+                    <option value="study_clean">🧹 Study Clean</option>
+                    <option value="study_w2_s1">🔄 Study W2 S1</option>
+                    <option value="study_w2_s1_returning">🔁 Study W2 S1 Returning</option>
+                    <option value="study_w2_s2">🔄 Study W2 S2</option>
+                    <option value="tutorial_end">🎬 Tutorial End</option>
+                </select>
+                <label style="color: #bbb; font-size: 15px;">Selected Mode</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="number" id="idleMinutesInput" min="0" step="1" placeholder="0" onchange="simulateIdleTime()" style="padding: 6px 10px; background: #1a1a1a; color: #f0f0f0; border: 1px solid #444; border-radius: 5px; font-size: 15px; width: 160px; box-sizing: border-box;">
+                <label style="color: #bbb; font-size: 15px;">Simulate Idle for _ Minutes</label>
+            </div>
+            <div style="margin-top: 15px;">
+                <button class="button" onclick="copyToClipboard()">📋 Copy Report to Clipboard</button>
+            </div>
+        </div>
+
+        <h2>📋 Participant ID</h2>
+        <div class="section" id="participantId"></div>
+
+        <h2>📊 Session State</h2>
+        <div class="section" id="sessionState"></div>
+
+        <h2>📝 Session Responses</h2>
+        <div class="section" id="sessionResponses"></div>
+
+        <h2>📦 All localStorage Keys</h2>
+        <div class="section" id="allKeys"></div>
+
+        <h2>🔧 Diagnostic Actions</h2>
+        <div class="section">
+            <h3>Quick Presets</h3>
+            <button class="button" onclick="setPreset('first_time')">🆕 First Time User</button>
+            <button class="button" onclick="setPreset('mid_tutorial')">📚 Mid-Tutorial</button>
+            <button class="button" onclick="setPreset('returning_user')">🔄 Returning User (W2S1)</button>
+            <button class="button" onclick="setPreset('mid_session')">⚡ Mid-Session</button>
+            <p style="margin-top: 10px;">Quick presets to test different user states</p>
+            
+            <h3 style="margin-top: 20px;">Manual Actions</h3>
+            <button class="button" onclick="resetStudyFlags()">🧹 Reset All Study Flags</button>
+            <button class="button danger" onclick="clearSession()">🗑️ Clear Current Session</button>
+            <button class="button danger" onclick="clearAllData()">💣 Clear Everything</button>
+            
+            <h3 style="margin-top: 20px;">🧪 Test Cumulative Stats</h3>
+            <div style="margin: 15px 0;">
+                <div style="margin-bottom: 10px;">
+                    <label style="display: inline-block; width: 80px;">Regions:</label>
+                    <input type="number" id="testRegions" value="5" min="0" style="width: 60px; padding: 5px; background: #1a1a1a; color: #e0e0e0; border: 1px solid #444; border-radius: 3px;">
+                    <label style="display: inline-block; width: 80px; margin-left: 20px;">Features:</label>
+                    <input type="number" id="testFeatures" value="15" min="0" style="width: 60px; padding: 5px; background: #1a1a1a; color: #e0e0e0; border: 1px solid #444; border-radius: 3px;">
+                    <button class="button" onclick="setTestStats()" style="margin-left: 10px;">Set Stats</button>
+                </div>
+                <button class="button" onclick="setTestStats(5, 15)">Set: 5 regions, 15 features</button>
+                <button class="button" onclick="setTestStats(12, 47)">Set: 12 regions, 47 features</button>
+                <button class="button" onclick="clearStats()">Clear stats</button>
+                <button class="button" onclick="showCurrentStats()">Show current stats</button>
+            </div>
+            
+            <h3 style="margin-top: 20px;">📊 Test Session Progress</h3>
+            <div style="margin: 15px 0;">
+                <div style="margin-bottom: 8px;">
+                    <label style="display: inline-block; width: 150px;">
+                        <input type="checkbox" id="w1s1" onchange="updateSessionProgress()"> Week 1, Session 1
+                    </label>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label style="display: inline-block; width: 150px;">
+                        <input type="checkbox" id="w1s2" onchange="updateSessionProgress()"> Week 1, Session 2
+                    </label>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label style="display: inline-block; width: 150px;">
+                        <input type="checkbox" id="w2s1" onchange="updateSessionProgress()"> Week 2, Session 1
+                    </label>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label style="display: inline-block; width: 150px;">
+                        <input type="checkbox" id="w2s2" onchange="updateSessionProgress()"> Week 2, Session 2
+                    </label>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label style="display: inline-block; width: 150px;">
+                        <input type="checkbox" id="w3s1" onchange="updateSessionProgress()"> Week 3, Session 1
+                    </label>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label style="display: inline-block; width: 150px;">
+                        <input type="checkbox" id="w3s2" onchange="updateSessionProgress()"> Week 3, Session 2
+                    </label>
+                </div>
+                <button class="button" onclick="completeAllSessions()">Complete All 6!</button>
+                <button class="button" onclick="clearAllSessions()">Clear all</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function getParticipantId() {
+            return localStorage.getItem('participantId') || null;
+        }
+
+        function getSessionState() {
+            try {
+                const stateJson = localStorage.getItem('participant_session_state');
+                if (!stateJson) return null;
+                return JSON.parse(stateJson);
+            } catch (e) {
+                return { error: 'Failed to parse: ' + e.message };
+            }
+        }
+
+        function getSessionResponses(participantId) {
+            if (!participantId) return null;
+            try {
+                const key = `participant_response_${participantId}`;
+                const responsesJson = localStorage.getItem(key);
+                if (!responsesJson) return null;
+                return JSON.parse(responsesJson);
+            } catch (e) {
+                return { error: 'Failed to parse: ' + e.message };
+            }
+        }
+
+        function getWorkflowFlags() {
+            const flags = {
+                'study_has_seen_participant_setup': localStorage.getItem('study_has_seen_participant_setup'),
+                'study_has_seen_welcome': localStorage.getItem('study_has_seen_welcome'),
+                'study_has_seen_welcome_back': localStorage.getItem('study_has_seen_welcome_back'),
+                'study_has_seen_tutorial': localStorage.getItem('study_has_seen_tutorial'),
+                'study_tutorial_in_progress': localStorage.getItem('study_tutorial_in_progress'),
+                'study_tutorial_completed': localStorage.getItem('study_tutorial_completed'),
+                'study_begin_analysis_clicked_this_session': localStorage.getItem('study_begin_analysis_clicked_this_session'),
+                'study_weekly_session_count': localStorage.getItem('study_weekly_session_count'),
+                'study_week_start_date': localStorage.getItem('study_week_start_date'),
+                'study_pre_survey_completion_date': localStorage.getItem('study_pre_survey_completion_date'),
+                'study_total_sessions_started': localStorage.getItem('study_total_sessions_started'),
+                'study_total_sessions_completed': localStorage.getItem('study_total_sessions_completed'),
+                'study_total_session_time': localStorage.getItem('study_total_session_time'),
+                'study_total_regions_identified': localStorage.getItem('study_total_regions_identified'),
+                'study_total_features_identified': localStorage.getItem('study_total_features_identified'),
+                'study_session_completion_tracker': localStorage.getItem('study_session_completion_tracker'),
+                'study_session_history': localStorage.getItem('study_session_history'),
+                'study_current_session_start': localStorage.getItem('study_current_session_start')
+            };
+            return flags;
+        }
+
+        function getAllKeys() {
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                keys.push(key);
+            }
+            return keys.sort();
+        }
+
+        function formatValue(value) {
+            if (value === null || value === undefined) {
+                return '<span class="null">❌ NOT SET</span>';
+            }
+            if (typeof value === 'object') {
+                return '<pre>' + JSON.stringify(value, null, 2) + '</pre>';
+            }
+            return '<span class="value">' + String(value) + '</span>';
+        }
+
+        function generateReport() {
+            const participantId = getParticipantId();
+            const sessionState = getSessionState();
+            const sessionResponses = getSessionResponses(participantId);
+            const workflowFlags = getWorkflowFlags();
+            const selectedVolcano = localStorage.getItem('selectedVolcano');
+            const selectedMode = localStorage.getItem('selectedMode');
+            const allKeys = getAllKeys();
+
+            // Participant ID - editable text box
+            const participantIdHtml = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label style="color: #FFC107; font-weight: bold; min-width: 120px;">Participant ID:</label>
+                    <input type="text" id="participantIdInput" value="${participantId || ''}" 
+                           onchange="updateParticipantId()"
+                           style="flex: 1; padding: 6px 10px; background: #1a1a1a; color: #f0f0f0; border: 1px solid #444; border-radius: 5px; font-size: 15px; font-family: 'Monaco', monospace;">
+                </div>
+            `;
+            document.getElementById('participantId').innerHTML = participantIdHtml;
+
+            // Session State
+            let sessionStateHtml = '';
+            if (sessionState) {
+                // Format dates nicely
+                const formatDate = (dateStr) => {
+                    if (!dateStr || dateStr === 'Not submitted' || dateStr === 'None') return dateStr;
+                    try {
+                        const date = new Date(dateStr);
+                        return date.toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: true
+                        });
+                    } catch (e) {
+                        return dateStr;
+                    }
+                };
+                
+                const statusClass = sessionState.status === 'submitted' ? 'submitted' : 
+                                   sessionState.status === 'in-progress' ? 'in-progress' : 'none';
+                const statusText = sessionState.status === 'in-progress' ? 'In Progress' : 
+                                  sessionState.status === 'submitted' ? 'Submitted' : sessionState.status;
+                
+                sessionStateHtml = `
+                    <div class="info-card">
+                        <div class="info-row">
+                            <span class="info-label">Status:</span>
+                            <span class="info-value">
+                                <span class="status-badge ${statusClass}">${statusText}</span>
+                            </span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Session ID:</span>
+                            <span class="info-value">${sessionState.sessionId || '<span class="null">Not set</span>'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Participant ID:</span>
+                            <span class="info-value">${sessionState.participantId || '<span class="null">Not set</span>'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Started At:</span>
+                            <span class="info-value">${formatDate(sessionState.startedAt)}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Submitted At:</span>
+                            <span class="info-value">${formatDate(sessionState.submittedAt || 'Not submitted')}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Qualtrics Response ID:</span>
+                            <span class="info-value">${sessionState.qualtricsResponseId || '<span class="null">None</span>'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Last Updated:</span>
+                            <span class="info-value">${formatDate(sessionState.lastUpdated)}</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                sessionStateHtml = '<span class="null">❌ NO SESSION STATE FOUND</span>';
+            }
+            document.getElementById('sessionState').innerHTML = sessionStateHtml;
+
+            // Session Responses
+            let responsesHtml = '<span class="key">Session Responses:</span><br>';
+            if (sessionResponses) {
+                responsesHtml += '<pre>' + JSON.stringify({
+                    sessionId: sessionResponses.sessionId,
+                    participantId: sessionResponses.participantId,
+                    hasPre: !!sessionResponses.pre,
+                    hasPost: !!sessionResponses.post,
+                    hasAwesf: !!sessionResponses.awesf,
+                    hasActivityLevel: !!sessionResponses.activityLevel,
+                    submitted: sessionResponses.submitted || false,
+                    submittedAt: sessionResponses.submittedAt || 'Not submitted',
+                    qualtricsResponseId: sessionResponses.qualtricsResponseId || 'None',
+                    createdAt: sessionResponses.createdAt
+                }, null, 2) + '</pre>';
+            } else {
+                responsesHtml += '<span class="null">❌ NO RESPONSES FOUND</span>';
+            }
+            document.getElementById('sessionResponses').innerHTML = responsesHtml;
+
+            // Workflow Flags - Compact Table with Checkboxes
+            // (workflowFlags already declared above)
+            
+            // Parse session tracker for individual checkboxes
+            let sessionTracker = { week1: [false, false], week2: [false, false], week3: [false, false] };
+            try {
+                const trackerJson = localStorage.getItem('study_session_completion_tracker');
+                if (trackerJson) {
+                    sessionTracker = JSON.parse(trackerJson);
+                }
+            } catch (e) {}
+            
+            const flagRows = [
+                // Header: Onboarding
+                { type: 'header', icon: '👤', label: 'ONBOARDING' },
+                { type: 'checkbox', key: 'study_has_seen_participant_setup', label: 'Participant Setup Seen', value: workflowFlags.study_has_seen_participant_setup },
+                { type: 'checkbox', key: 'study_tutorial_in_progress', label: 'Tutorial In Progress', value: workflowFlags.study_tutorial_in_progress },
+                { type: 'checkbox', key: 'study_tutorial_completed', label: 'Tutorial Completed', value: workflowFlags.study_tutorial_completed },
+                
+                // Header: Current Session
+                { type: 'header', icon: '⚡', label: 'CURRENT SESSION' },
+                { type: 'checkbox', key: 'study_has_seen_welcome', label: 'Welcome Seen', value: workflowFlags.study_has_seen_welcome },
+                { type: 'checkbox', key: 'study_has_seen_welcome_back', label: 'Welcome Back Seen', value: workflowFlags.study_has_seen_welcome_back },
+                { type: 'checkbox', key: 'study_pre_survey_completion_date', label: 'Pre-Survey Done Today', value: workflowFlags.study_pre_survey_completion_date, isDate: true },
+                { type: 'checkbox', key: 'study_begin_analysis_clicked_this_session', label: 'Begin Analysis Clicked', value: workflowFlags.study_begin_analysis_clicked_this_session },
+                
+                // Header: Session Completion
+                { type: 'header', icon: '📅', label: 'SESSION COMPLETION (Historical)' },
+                { type: 'checkbox', key: 'session_w1s1', label: 'W1 / S1 Complete', value: sessionTracker.week1[0], sessionPath: 'week1[0]' },
+                { type: 'checkbox', key: 'session_w1s2', label: 'W1 / S2 Complete', value: sessionTracker.week1[1], sessionPath: 'week1[1]' },
+                { type: 'checkbox', key: 'session_w2s1', label: 'W2 / S1 Complete', value: sessionTracker.week2[0], sessionPath: 'week2[0]' },
+                { type: 'checkbox', key: 'session_w2s2', label: 'W2 / S2 Complete', value: sessionTracker.week2[1], sessionPath: 'week2[1]' },
+                { type: 'checkbox', key: 'session_w3s1', label: 'W3 / S1 Complete', value: sessionTracker.week3[0], sessionPath: 'week3[0]' },
+                { type: 'checkbox', key: 'session_w3s2', label: 'W3 / S2 Complete', value: sessionTracker.week3[1], sessionPath: 'week3[1]' }
+            ];
+            
+            let tableHtml = '';
+            flagRows.forEach(row => {
+                if (row.type === 'header') {
+                    const sectionId = row.label.replace(/\s+/g, '_').replace(/[()]/g, '').toLowerCase();
+                    tableHtml += `
+                        <tr style="background: #2a2a2a; border-top: 2px solid #444; cursor: pointer; transition: background 0.2s;" 
+                            onmouseover="this.style.background='#3a3a3a'" 
+                            onmouseout="this.style.background='#2a2a2a'"
+                            onclick="clearSection('${sectionId}')"
+                            title="Click to clear all flags in this section">
+                            <td colspan="3" style="padding: 8px; color: #2196F3; font-weight: bold; font-size: 15px;">
+                                ${row.icon} ${row.label}
+                            </td>
+                        </tr>`;
+                } else if (row.type === 'checkbox') {
+                    const isChecked = row.isDate ? !!row.value : row.value === 'true' || row.value === true;
+                    const displayKey = row.sessionPath ? `session_tracker.${row.sessionPath}` : row.key;
+                    tableHtml += `
+                        <tr style="border-bottom: 1px solid #333;">
+                            <td style="padding: 8px; text-align: center;">
+                                <input type="checkbox" id="flag_${row.key}" ${isChecked ? 'checked' : ''} 
+                                       style="width: 18px; height: 18px; cursor: pointer;" 
+                                       data-is-date="${row.isDate || false}"
+                                       onchange="saveFlagImmediately('${row.key}', ${row.isDate || false}, ${row.sessionPath ? `'${row.sessionPath}'` : 'null'})">
+                            </td>
+                            <td style="padding: 8px; color: #e0e0e0; font-size: 16px;">
+                                ${row.label}
+                            </td>
+                            <td style="padding: 8px; color: #888; font-size: 13px; font-family: 'Monaco', monospace; text-align: left; cursor: pointer; transition: color 0.2s;" 
+                                onmouseover="this.style.color='#2196F3'" 
+                                onmouseout="this.style.color='#888'"
+                                onclick="copyVariableToClipboard('${displayKey}')">
+                                ${displayKey}
+                            </td>
+                        </tr>`;
+                }
+            });
+            
+            document.getElementById('workflowFlagsTable').innerHTML = tableHtml;
+
+            // All Keys
+            let keysHtml = '<span class="key">All localStorage Keys (${allKeys.length} total):</span><br><pre>';
+            allKeys.forEach(key => {
+                keysHtml += key + '\\n';
+            });
+            keysHtml += '</pre>';
+            document.getElementById('allKeys').innerHTML = keysHtml.replace('${allKeys.length}', allKeys.length);
+        }
+
+        function refreshReport() {
+            generateReport();
+            alert('Report refreshed!');
+        }
+
+        function copyToClipboard() {
+            // Refresh data before copying
+            generateReport();
+            
+            const participantId = getParticipantId();
+            const sessionState = getSessionState();
+            const sessionResponses = getSessionResponses(participantId);
+            const workflowFlags = getWorkflowFlags();
+            
+            // Strip out actual survey answers for privacy - only include metadata
+            let responsesMetadata = null;
+            if (sessionResponses) {
+                responsesMetadata = {
+                    sessionId: sessionResponses.sessionId,
+                    participantId: sessionResponses.participantId,
+                    hasPre: !!sessionResponses.pre,
+                    hasPost: !!sessionResponses.post,
+                    hasAwesf: !!sessionResponses.awesf,
+                    hasActivityLevel: !!sessionResponses.activityLevel,
+                    submitted: sessionResponses.submitted || false,
+                    submittedAt: sessionResponses.submittedAt || 'Not submitted',
+                    qualtricsResponseId: sessionResponses.qualtricsResponseId || 'None',
+                    createdAt: sessionResponses.createdAt,
+                    note: '(Survey answers excluded for privacy)'
+                };
+            }
+            
+            const report = `USER STATUS DIAGNOSTIC REPORT
+Generated: ${new Date().toISOString()}
+
+PARTICIPANT ID: ${participantId || 'NOT FOUND'}
+
+SESSION STATE:
+${JSON.stringify(sessionState, null, 2)}
+
+SESSION RESPONSES (metadata only):
+${JSON.stringify(responsesMetadata, null, 2)}
+
+WORKFLOW FLAGS & TRACKING:
+${JSON.stringify(workflowFlags, null, 2)}
+
+VOLCANO SELECTION: ${localStorage.getItem('selectedVolcano') || 'NOT SET'}
+MODE: ${localStorage.getItem('selectedMode') || 'Using default'}
+`;
+
+            navigator.clipboard.writeText(report).then(() => {
+                showToast('✓ Copied to clipboard!', 'success');
+            }).catch(err => {
+                showToast('Failed to copy: ' + err, 'error');
+            });
+        }
+
+        function copyVariableToClipboard(variableName) {
+            navigator.clipboard.writeText(variableName).then(() => {
+                showToast(`Copied: ${variableName}`);
+            }).catch(err => {
+                showToast('Failed to copy', 'error');
+            });
+        }
+
+        function showToast(message, type = 'success') {
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.textContent = message;
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                padding: 12px 20px;
+                background: ${type === 'success' ? '#2196F3' : '#f44336'};
+                color: white;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: 600;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 10000;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            `;
+            
+            document.body.appendChild(toast);
+            
+            // Fade in
+            setTimeout(() => {
+                toast.style.opacity = '1';
+            }, 10);
+            
+            // Fade out and remove
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => {
+                    document.body.removeChild(toast);
+                }, 300);
+            }, 2000);
+        }
+
+        function resetStudyFlags() {
+            if (confirm('Are you sure you want to reset all study flags? This will make the system act like a first-time visit.')) {
+                const flags = [
+                    'study_has_seen_participant_setup',
+                    'study_has_seen_welcome',
+                    'study_has_seen_welcome_back',
+                    'study_has_seen_tutorial',
+                    'study_tutorial_completed',
+                    'study_weekly_session_count',
+                    'study_week_start_date',
+                    'study_pre_survey_completion_date',
+                    'study_total_sessions_started',
+                    'study_total_sessions_completed',
+                    'study_total_session_time',
+                    'study_total_regions_identified',
+                    'study_total_features_identified',
+                    'study_session_completion_tracker',
+                    'study_session_history',
+                    'study_current_session_start',
+                    'study_begin_analysis_clicked_this_session'
+                ];
+                flags.forEach(flag => localStorage.removeItem(flag));
+                alert('All study flags and tracking data reset! Refresh the page to see changes.');
+                generateReport();
+            }
+        }
+
+        function clearSession() {
+            const participantId = getParticipantId();
+            if (!participantId) {
+                alert('No participant ID found.');
+                return;
+            }
+            if (confirm('Are you sure you want to clear the current session? This will delete all session data and responses.')) {
+                localStorage.removeItem('participant_session_state');
+                localStorage.removeItem(`participant_response_${participantId}`);
+                alert('Session cleared!');
+                generateReport();
+            }
+        }
+
+        function clearAllData() {
+            if (confirm('⚠️ DANGER: Are you absolutely sure you want to clear ALL localStorage data? This cannot be undone!')) {
+                if (confirm('This will delete EVERYTHING including participant ID, session data, workflow flags, and all other stored data. Continue?')) {
+                    localStorage.clear();
+                    alert('All data cleared! Page will reload.');
+                    location.reload();
+                }
+            }
+        }
+
+        function saveFlagImmediately(flagKey, isDate, sessionPath) {
+            const checkbox = document.getElementById(`flag_${flagKey}`);
+            if (!checkbox) return;
+            
+            if (sessionPath) {
+                // Session completion checkbox - update tracker
+                let sessionTracker = { week1: [false, false], week2: [false, false], week3: [false, false] };
+                try {
+                    const trackerJson = localStorage.getItem('study_session_completion_tracker');
+                    if (trackerJson) sessionTracker = JSON.parse(trackerJson);
+                } catch (e) {}
+                
+                // Parse sessionPath like "week1[0]" into week and index
+                const match = sessionPath.match(/week(\d)\[(\d)\]/);
+                if (match) {
+                    const week = `week${match[1]}`;
+                    const index = parseInt(match[2]);
+                    sessionTracker[week][index] = checkbox.checked;
+                    localStorage.setItem('study_session_completion_tracker', JSON.stringify(sessionTracker));
+                }
+            } else if (isDate) {
+                // Date checkbox
+                if (checkbox.checked) {
+                    localStorage.setItem(flagKey, getTodayDateString());
+                } else {
+                    localStorage.removeItem(flagKey);
+                }
+            } else {
+                // Boolean checkbox
+                if (checkbox.checked) {
+                    localStorage.setItem(flagKey, 'true');
+                } else {
+                    localStorage.removeItem(flagKey);
+                }
+            }
+            
+            // Flash the row briefly to show it saved
+            const row = checkbox.closest('tr');
+            if (row) {
+                row.style.backgroundColor = '#2a4a2a';
+                setTimeout(() => { row.style.backgroundColor = ''; }, 200);
+            }
+        }
+        
+        function saveAllFlags() {
+            let changedCount = 0;
+            
+            // Build session tracker from individual checkboxes
+            const sessionTracker = {
+                week1: [
+                    document.getElementById('flag_session_w1s1')?.checked || false,
+                    document.getElementById('flag_session_w1s2')?.checked || false
+                ],
+                week2: [
+                    document.getElementById('flag_session_w2s1')?.checked || false,
+                    document.getElementById('flag_session_w2s2')?.checked || false
+                ],
+                week3: [
+                    document.getElementById('flag_session_w3s1')?.checked || false,
+                    document.getElementById('flag_session_w3s2')?.checked || false
+                ]
+            };
+            localStorage.setItem('study_session_completion_tracker', JSON.stringify(sessionTracker));
+            changedCount += 6; // 6 session checkboxes
+            
+            // Save individual flags
+            const flagMappings = [
+                { id: 'flag_study_has_seen_participant_setup', key: 'study_has_seen_participant_setup' },
+                { id: 'flag_study_has_seen_welcome', key: 'study_has_seen_welcome' },
+                { id: 'flag_study_has_seen_welcome_back', key: 'study_has_seen_welcome_back' },
+                { id: 'flag_study_tutorial_completed', key: 'study_tutorial_completed' },
+                { id: 'flag_study_begin_analysis_clicked_this_session', key: 'study_begin_analysis_clicked_this_session' },
+                { id: 'flag_study_pre_survey_completion_date', key: 'study_pre_survey_completion_date', isDate: true }
+            ];
+            
+            flagMappings.forEach(mapping => {
+                const checkbox = document.getElementById(mapping.id);
+                if (!checkbox) return;
+                
+                if (mapping.isDate) {
+                    // Date checkbox: checked = today, unchecked = null
+                    if (checkbox.checked) {
+                        localStorage.setItem(mapping.key, getTodayDateString());
+                    } else {
+                        localStorage.removeItem(mapping.key);
+                    }
+                } else {
+                    // Boolean checkbox: checked = 'true', unchecked = remove
+                    if (checkbox.checked) {
+                        localStorage.setItem(mapping.key, 'true');
+                    } else {
+                        localStorage.removeItem(mapping.key);
+                    }
+                }
+                changedCount++;
+            });
+            
+            alert(`✅ Saved ${changedCount} flags! Refresh the report to see changes.`);
+            generateReport();
+        }
+        
+        function setPreset(presetName) {
+            switch (presetName) {
+                case 'first_time':
+                    // Clear everything - brand new user
+                    localStorage.clear();
+                    alert('✅ Set to: First Time User\nAll flags cleared. The app will show full onboarding.');
+                    break;
+                    
+                case 'mid_tutorial':
+                    // User has done participant setup and pre-survey, but not finished tutorial
+                    localStorage.setItem('study_has_seen_participant_setup', 'true');
+                    localStorage.setItem('study_has_seen_welcome', 'true');
+                    localStorage.setItem('study_pre_survey_completion_date', getTodayDateString());
+                    localStorage.removeItem('study_tutorial_completed');
+                    localStorage.removeItem('study_begin_analysis_clicked_this_session');
+                    alert('✅ Set to: Mid-Tutorial\nUser has completed setup and pre-survey, currently in tutorial.');
+                    break;
+                    
+                case 'returning_user':
+                    // Returning user starting Week 2 Session 1
+                    localStorage.setItem('study_has_seen_participant_setup', 'true');
+                    localStorage.setItem('study_has_seen_welcome', 'true');
+                    localStorage.setItem('study_tutorial_completed', 'true');
+                    const tracker = {
+                        week1: [true, true],
+                        week2: [false, false],
+                        week3: [false, false]
+                    };
+                    localStorage.setItem('study_session_completion_tracker', JSON.stringify(tracker));
+                    localStorage.removeItem('study_pre_survey_completion_date');
+                    localStorage.removeItem('study_begin_analysis_clicked_this_session');
+                    alert('✅ Set to: Returning User (W2S1)\nCompleted Week 1, starting Week 2 Session 1. Will show Welcome Back → Pre-Survey.');
+                    break;
+                    
+                case 'mid_session':
+                    // Mid-session, can analyze immediately
+                    localStorage.setItem('study_has_seen_participant_setup', 'true');
+                    localStorage.setItem('study_has_seen_welcome', 'true');
+                    localStorage.setItem('study_tutorial_completed', 'true');
+                    localStorage.setItem('study_begin_analysis_clicked_this_session', 'true');
+                    localStorage.setItem('study_pre_survey_completion_date', getTodayDateString());
+                    alert('✅ Set to: Mid-Session\nUser has completed everything and clicked Begin Analysis. Can analyze immediately.');
+                    break;
+            }
+            
+            generateReport();
+        }
+        
+        function getTodayDateString() {
+            const today = new Date();
+            return today.toISOString().split('T')[0];
+        }
+
+        function updateParticipantId() {
+            const input = document.getElementById('participantIdInput');
+            const newId = input.value.trim();
+            
+            if (newId) {
+                localStorage.setItem('participantId', newId);
+                showToast(`Participant ID: ${newId}`);
+            } else {
+                localStorage.removeItem('participantId');
+                showToast('Participant ID cleared');
+            }
+            
+            generateReport();
+        }
+
+        function copyFlagsState() {
+            const workflowFlags = getWorkflowFlags();
+            
+            const report = `USER FLAGS STATE - ${new Date().toISOString()}
+
+👤 ONBOARDING
+study_has_seen_participant_setup: ${workflowFlags.study_has_seen_participant_setup || 'null'}
+study_tutorial_in_progress: ${workflowFlags.study_tutorial_in_progress || 'null'}
+study_tutorial_completed: ${workflowFlags.study_tutorial_completed || 'null'}
+
+⚡ CURRENT SESSION
+study_has_seen_welcome: ${workflowFlags.study_has_seen_welcome || 'null'}
+study_has_seen_welcome_back: ${workflowFlags.study_has_seen_welcome_back || 'null'}
+study_pre_survey_completion_date: ${workflowFlags.study_pre_survey_completion_date || 'null'}
+study_begin_analysis_clicked_this_session: ${workflowFlags.study_begin_analysis_clicked_this_session || 'null'}
+
+📅 SESSION COMPLETION (Historical)
+study_session_completion_tracker: ${workflowFlags.study_session_completion_tracker || 'null'}
+`;
+
+            navigator.clipboard.writeText(report).then(() => {
+                showToast('✓ Flags state copied to clipboard!');
+            }).catch(err => {
+                showToast('Failed to copy: ' + err, 'error');
+            });
+        }
+
+        function clearAllFlags() {
+            // Clear onboarding
+            localStorage.removeItem('study_has_seen_participant_setup');
+            localStorage.removeItem('study_tutorial_in_progress');
+            localStorage.removeItem('study_tutorial_completed');
+            
+            // Clear current session
+            localStorage.removeItem('study_has_seen_welcome');
+            localStorage.removeItem('study_has_seen_welcome_back');
+            localStorage.removeItem('study_pre_survey_completion_date');
+            localStorage.removeItem('study_begin_analysis_clicked_this_session');
+            
+            // Clear session completion tracker
+            const emptyTracker = {
+                week1: [false, false],
+                week2: [false, false],
+                week3: [false, false]
+            };
+            localStorage.setItem('study_session_completion_tracker', JSON.stringify(emptyTracker));
+            
+            // Uncheck all checkboxes
+            document.getElementById('flag_study_has_seen_participant_setup').checked = false;
+            document.getElementById('flag_study_tutorial_in_progress').checked = false;
+            document.getElementById('flag_study_tutorial_completed').checked = false;
+            document.getElementById('flag_study_has_seen_welcome').checked = false;
+            document.getElementById('flag_study_has_seen_welcome_back').checked = false;
+            document.getElementById('flag_study_pre_survey_completion_date').checked = false;
+            document.getElementById('flag_study_begin_analysis_clicked_this_session').checked = false;
+            document.getElementById('flag_session_w1s1').checked = false;
+            document.getElementById('flag_session_w1s2').checked = false;
+            document.getElementById('flag_session_w2s1').checked = false;
+            document.getElementById('flag_session_w2s2').checked = false;
+            document.getElementById('flag_session_w3s1').checked = false;
+            document.getElementById('flag_session_w3s2').checked = false;
+            
+            showToast('✓ Cleared all 13 flags');
+            generateReport();
+        }
+
+        function clearAllMetadata() {
+            // NUCLEAR OPTION: Clear ALL localStorage
+            // This sets the user up as a pure first-time user with no history
+            const keyCount = localStorage.length;
+            localStorage.clear();
+            
+            showToast(`💣 Nuked all ${keyCount} localStorage items - Pure first-time user`, 'success');
+            
+            // Reload page to reset all UI
+            setTimeout(() => {
+                location.reload();
+            }, 1500);
+        }
+
+        function clearSection(sectionId) {
+            let clearedCount = 0;
+            
+            if (sectionId === 'onboarding') {
+                // Clear onboarding flags
+                localStorage.removeItem('study_has_seen_participant_setup');
+                localStorage.removeItem('study_tutorial_in_progress');
+                localStorage.removeItem('study_tutorial_completed');
+                document.getElementById('flag_study_has_seen_participant_setup').checked = false;
+                document.getElementById('flag_study_tutorial_in_progress').checked = false;
+                document.getElementById('flag_study_tutorial_completed').checked = false;
+                clearedCount = 3;
+            } else if (sectionId === 'current_session') {
+                // Clear current session flags
+                localStorage.removeItem('study_has_seen_welcome');
+                localStorage.removeItem('study_has_seen_welcome_back');
+                localStorage.removeItem('study_pre_survey_completion_date');
+                localStorage.removeItem('study_begin_analysis_clicked_this_session');
+                document.getElementById('flag_study_has_seen_welcome').checked = false;
+                document.getElementById('flag_study_has_seen_welcome_back').checked = false;
+                document.getElementById('flag_study_pre_survey_completion_date').checked = false;
+                document.getElementById('flag_study_begin_analysis_clicked_this_session').checked = false;
+                clearedCount = 4;
+            } else if (sectionId === 'session_completion_historical') {
+                // Clear session completion tracker
+                const tracker = {
+                    week1: [false, false],
+                    week2: [false, false],
+                    week3: [false, false]
+                };
+                localStorage.setItem('study_session_completion_tracker', JSON.stringify(tracker));
+                document.getElementById('flag_session_w1s1').checked = false;
+                document.getElementById('flag_session_w1s2').checked = false;
+                document.getElementById('flag_session_w2s1').checked = false;
+                document.getElementById('flag_session_w2s2').checked = false;
+                document.getElementById('flag_session_w3s1').checked = false;
+                document.getElementById('flag_session_w3s2').checked = false;
+                clearedCount = 6;
+            }
+            
+            showToast(`✓ Cleared ${clearedCount} flags`);
+            generateReport();
+        }
+
+        // Test Cumulative Stats Functions
+        function setTestStats(regions, features) {
+            // If no parameters provided, read from inputs
+            if (regions === undefined || features === undefined) {
+                regions = parseInt(document.getElementById('testRegions').value) || 0;
+                features = parseInt(document.getElementById('testFeatures').value) || 0;
+            }
+            
+            const stats = {
+                regionCount: regions,
+                featureCount: features
+            };
+            
+            localStorage.setItem('test_cumulative_stats', JSON.stringify(stats));
+            alert(`✅ Set stats: ${regions} regions, ${features} features`);
+            generateReport();
+        }
+
+        function clearStats() {
+            localStorage.removeItem('test_cumulative_stats');
+            document.getElementById('testRegions').value = '5';
+            document.getElementById('testFeatures').value = '15';
+            alert('✅ Cumulative stats cleared');
+            generateReport();
+        }
+
+        function showCurrentStats() {
+            const statsJson = localStorage.getItem('test_cumulative_stats');
+            if (statsJson) {
+                const stats = JSON.parse(statsJson);
+                alert(`Current Stats:\n\nRegions: ${stats.regionCount}\nFeatures: ${stats.featureCount}`);
+            } else {
+                alert('No cumulative stats set');
+            }
+        }
+
+        function loadTestStatsInputs() {
+            const statsJson = localStorage.getItem('test_cumulative_stats');
+            if (statsJson) {
+                const stats = JSON.parse(statsJson);
+                document.getElementById('testRegions').value = stats.regionCount;
+                document.getElementById('testFeatures').value = stats.featureCount;
+            }
+        }
+
+        // Test Session Progress Functions
+        function updateSessionProgress() {
+            const progress = {
+                w1s1: document.getElementById('w1s1').checked,
+                w1s2: document.getElementById('w1s2').checked,
+                w2s1: document.getElementById('w2s1').checked,
+                w2s2: document.getElementById('w2s2').checked,
+                w3s1: document.getElementById('w3s1').checked,
+                w3s2: document.getElementById('w3s2').checked
+            };
+            
+            localStorage.setItem('test_session_progress', JSON.stringify(progress));
+            
+            // Also update the actual session tracker
+            const tracker = {
+                week1: [progress.w1s1, progress.w1s2],
+                week2: [progress.w2s1, progress.w2s2],
+                week3: [progress.w3s1, progress.w3s2]
+            };
+            localStorage.setItem('study_session_completion_tracker', JSON.stringify(tracker));
+            
+            // Show brief visual feedback
+            showSaveFeedback();
+            generateReport();
+        }
+        
+        function showSaveFeedback() {
+            // Create or get feedback element
+            let feedback = document.getElementById('sessionSaveFeedback');
+            if (!feedback) {
+                feedback = document.createElement('span');
+                feedback.id = 'sessionSaveFeedback';
+                feedback.style.cssText = 'color: #4CAF50; margin-left: 15px; font-size: 14px; transition: opacity 0.3s;';
+                document.querySelector('#w3s2').parentElement.parentElement.appendChild(feedback);
+            }
+            
+            feedback.textContent = '✓ Saved';
+            feedback.style.opacity = '1';
+            
+            // Fade out after 1 second
+            setTimeout(() => {
+                feedback.style.opacity = '0';
+            }, 1000);
+        }
+
+        function completeAllSessions() {
+            document.getElementById('w1s1').checked = true;
+            document.getElementById('w1s2').checked = true;
+            document.getElementById('w2s1').checked = true;
+            document.getElementById('w2s2').checked = true;
+            document.getElementById('w3s1').checked = true;
+            document.getElementById('w3s2').checked = true;
+            updateSessionProgress();
+            alert('✅ All 6 sessions marked as complete!');
+        }
+
+        function clearAllSessions() {
+            document.getElementById('w1s1').checked = false;
+            document.getElementById('w1s2').checked = false;
+            document.getElementById('w2s1').checked = false;
+            document.getElementById('w2s2').checked = false;
+            document.getElementById('w3s1').checked = false;
+            document.getElementById('w3s2').checked = false;
+            updateSessionProgress();
+            alert('✅ All sessions cleared!');
+        }
+
+        function loadTestSessionProgress() {
+            const progressJson = localStorage.getItem('test_session_progress');
+            if (progressJson) {
+                const progress = JSON.parse(progressJson);
+                document.getElementById('w1s1').checked = progress.w1s1 || false;
+                document.getElementById('w1s2').checked = progress.w1s2 || false;
+                document.getElementById('w2s1').checked = progress.w2s1 || false;
+                document.getElementById('w2s2').checked = progress.w2s2 || false;
+                document.getElementById('w3s1').checked = progress.w3s1 || false;
+                document.getElementById('w3s2').checked = progress.w3s2 || false;
+            }
+        }
+
+        // Volcano Selection Functions
+        function updateVolcanoSelection() {
+            const select = document.getElementById('volcanoSelect');
+            const value = select.value;
+            
+            if (value) {
+                localStorage.setItem('selectedVolcano', value);
+                showToast(`Volcano: ${value}`);
+            } else {
+                localStorage.removeItem('selectedVolcano');
+                showToast('Volcano cleared');
+            }
+            
+            generateReport();
+        }
+
+        function loadVolcanoSelection() {
+            const volcano = localStorage.getItem('selectedVolcano');
+            if (volcano) {
+                document.getElementById('volcanoSelect').value = volcano;
+            }
+        }
+
+        // Idle Time Simulation Functions
+        function simulateIdleTime() {
+            const input = document.getElementById('idleMinutesInput');
+            const minutes = parseInt(input.value);
+            
+            if (isNaN(minutes) || minutes < 0) {
+                showToast('Please enter a valid number', 'error');
+                return;
+            }
+            
+            if (minutes === 0) {
+                clearSimulatedIdle();
+                return;
+            }
+            
+            // Calculate timestamp as if user was last active X minutes ago
+            const simulatedLastActivity = Date.now() - (minutes * 60 * 1000);
+            
+            // Store in localStorage for the main app to pick up
+            localStorage.setItem('test_simulated_last_activity', simulatedLastActivity.toString());
+            localStorage.setItem('test_simulated_idle_minutes', minutes.toString());
+            
+            showToast(`Simulated ${minutes} minute(s) idle`);
+            generateReport();
+        }
+
+        function clearSimulatedIdle() {
+            localStorage.removeItem('test_simulated_last_activity');
+            localStorage.removeItem('test_simulated_idle_minutes');
+            document.getElementById('idleMinutesInput').value = '';
+            showToast('Idle simulation cleared');
+            generateReport();
+        }
+
+        function loadSimulatedIdle() {
+            const minutes = localStorage.getItem('test_simulated_idle_minutes');
+            if (minutes) {
+                document.getElementById('idleMinutesInput').value = minutes;
+            }
+        }
+
+        // Session Status Functions
+        function updateSessionStatus() {
+            const select = document.getElementById('sessionStatusSelect');
+            const value = select.value;
+            
+            try {
+                const sessionState = getSessionState();
+                
+                if (value) {
+                    const updatedState = sessionState || {};
+                    updatedState.status = value;
+                    
+                    if (value === 'submitted' && !updatedState.submittedAt) {
+                        updatedState.submittedAt = new Date().toISOString();
+                    }
+                    
+                    localStorage.setItem('participant_session_state', JSON.stringify(updatedState));
+                    showToast(`Session status: ${value}`);
+                } else {
+                    if (sessionState) {
+                        delete sessionState.status;
+                        localStorage.setItem('participant_session_state', JSON.stringify(sessionState));
+                    }
+                    showToast('Session status cleared');
+                }
+                
+                generateReport();
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        }
+
+        function loadSessionStatus() {
+            const sessionState = getSessionState();
+            if (sessionState && sessionState.status) {
+                document.getElementById('sessionStatusSelect').value = sessionState.status;
+            }
+        }
+
+        // Mode Selection Functions
+        function updateModeSelection() {
+            const select = document.getElementById('modeSelect');
+            const value = select.value;
+            
+            if (value) {
+                localStorage.setItem('selectedMode', value);
+                
+                // Try to update the main app's mode selector if it's in an iframe or parent window
+                try {
+                    if (window.opener && window.opener.document.getElementById('modeSelector')) {
+                        window.opener.document.getElementById('modeSelector').value = value;
+                        // Trigger change event to ensure the main app updates
+                        const event = new Event('change', { bubbles: true });
+                        window.opener.document.getElementById('modeSelector').dispatchEvent(event);
+                    }
+                } catch (e) {
+                    console.log('Could not update main app mode selector:', e.message);
+                }
+                
+                showToast(`Mode: ${value}`);
+            } else {
+                localStorage.removeItem('selectedMode');
+                showToast('Mode cleared');
+            }
+            
+            generateReport();
+        }
+
+        function loadModeSelection() {
+            let mode = localStorage.getItem('selectedMode');
+            // Backward compatibility: map old "study" to new "production"
+            if (mode === 'study') {
+                mode = 'production';
+                localStorage.setItem('selectedMode', 'production');
+            }
+            if (mode) {
+                document.getElementById('modeSelect').value = mode;
+            }
+        }
+
+        // Generate report on page load
+        generateReport();
+        loadTestStatsInputs();
+        loadTestSessionProgress();
+        loadSessionStatus();
+        loadVolcanoSelection();
+        loadModeSelection();
+        
+        // Add Enter key listener to launch main app
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.target.matches('input, textarea, select')) {
+                window.open('http://127.0.0.1:5501/index.html', '_blank');
+            }
+            
+            // Add Escape key listener to clear all flags
+            if (e.key === 'Escape') {
+                clearAllFlags();
+            }
+        });
+    </script>
+</body>
+</html>
