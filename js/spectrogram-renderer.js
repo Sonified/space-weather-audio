@@ -873,17 +873,32 @@ export function setupSpectrogramSelection() {
             activeRegionId: zoomState.isInitialized() ? zoomState.activeRegionId : 'N/A'
         });
         
+        // 🎯 Check if region creation is enabled (requires "Begin Analysis" to be pressed)
+        if (!State.isRegionCreationEnabled()) {
+            // User clicked spectrogram before Begin Analysis - show helpful message (only if not in tutorial)
+            import('./tutorial-state.js').then(({ isTutorialActive }) => {
+                if (!isTutorialActive()) {
+                    import('./tutorial-effects.js').then(({ setStatusText }) => {
+                        setStatusText('Click Begin Analysis to create a region and interact with the spectrogram.', 'status info');
+                    });
+                }
+            });
+            return; // Don't allow spectrogram selection
+        }
+        
         // 🎯 NEW ARCHITECTURE: Allow drawing when zoomed into a region (no 'f' key needed!)
         // If not zoomed in, don't handle - user is looking at full view
         if (!zoomState.isInRegion()) {
             console.log('🖱️ [MOUSEDOWN] Not in region - returning early (zoom state says not zoomed in)');
             
-            // Show helpful message if region creation is enabled but user isn't zoomed in
-            if (State.isRegionCreationEnabled()) {
-                import('./tutorial-effects.js').then(({ setStatusText }) => {
-                    setStatusText('Create a new region to zoom in and select features.', 'status info');
-                });
-            }
+            // Show helpful message - user needs to create a region first (only if not in tutorial)
+            import('./tutorial-state.js').then(({ isTutorialActive }) => {
+                if (!isTutorialActive()) {
+                    import('./tutorial-effects.js').then(({ setStatusText }) => {
+                        setStatusText('Create a new region to zoom in and select features.', 'status info');
+                    });
+                }
+            });
             
             return;
         }

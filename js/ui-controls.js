@@ -2619,10 +2619,24 @@ export async function submitPreSurvey() {
                 console.warn('⚠️ Could not start session tracking:', error);
             }
             
-            // Wait 3s, then show next instruction with typing effect
+            // Wait 3s, then show next instruction (only if data not fetched AND tutorial not active)
             setTimeout(async () => {
-                const { setStatusText } = await import('./tutorial-effects.js');
-                setStatusText('<- Select a volcano to the left and hit Fetch Data to begin.', 'status info');
+                // Check if tutorial is active - if so, let tutorial control messages
+                const { isTutorialActive } = await import('./tutorial-state.js');
+                if (isTutorialActive()) {
+                    return; // Tutorial controls its own messages
+                }
+                
+                // Check if data has already been fetched
+                const State = await import('./audio-state.js');
+                const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
+                
+                // Only show fetch instruction if no data loaded yet
+                if (!hasData) {
+                    const { setStatusText } = await import('./tutorial-effects.js');
+                    setStatusText('<- Select a volcano to the left and hit Fetch Data to begin.', 'status info');
+                }
+                // If data exists, the data-fetcher already set "Click Begin Analysis" message
             }, 3000);
             
             // Modal will be closed by event handler
@@ -3220,7 +3234,7 @@ export async function attemptSubmission(fromWorkflow = false) {
         let sessionRecord = null;
         
         try {
-            const { getSessionCountThisWeek, getSessionStats, completeSession, incrementCumulativeCounts, getCurrentWeekAndSession, markSessionComplete } = await import('./study-workflow.js');
+            const { getSessionCountThisWeek, getSessionStats, closeSession, incrementCumulativeCounts, getCurrentWeekAndSession, markSessionComplete } = await import('./study-workflow.js');
             
             try {
                 weeklySessionCount = getSessionCountThisWeek() || 0;
@@ -3238,10 +3252,10 @@ export async function attemptSubmission(fromWorkflow = false) {
                 // Calculate if all surveys were completed
                 const completedAllSurveys = !!(responses.pre && responses.post && responses.awesf && responses.activityLevel);
                 
-                // Complete the current session and get the session record
-                sessionRecord = completeSession(completedAllSurveys, true); // true = submitted to Qualtrics
+                // Close the current session and get the session record
+                sessionRecord = closeSession(completedAllSurveys, true); // true = submitted to Qualtrics
             } catch (e) {
-                console.warn('⚠️ Could not complete session record:', e);
+                console.warn('⚠️ Could not close session record:', e);
             }
             
             try {

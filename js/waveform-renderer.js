@@ -840,15 +840,6 @@ export function setupWaveformInteraction() {
             }
         }
         
-        // Check if region creation is enabled (requires "Begin Analysis" to be pressed)
-        if (!State.isRegionCreationEnabled()) {
-            // Import setStatusText dynamically to avoid circular dependency
-            import('./tutorial-effects.js').then(({ setStatusText }) => {
-                setStatusText('Click Begin Analysis to create a region and interact with the spectrogram.', 'status info');
-            });
-            return; // Don't allow waveform selection
-        }
-        
         // Normal waveform interaction - start selection/drag
         State.setSelectionStartX(startX);
         State.setIsDragging(true);
@@ -1102,24 +1093,42 @@ export function setupWaveformInteraction() {
                         State.setSelectionTutorialResolve(null);
                         State.setWaitingForSelection(false);
                     } else {
-                        // 🎓 Check if tutorial is active but user made selection early
+                        // 🎓 Check if tutorial is active
                         import('./tutorial-state.js').then(({ isTutorialActive }) => {
-                            if (isTutorialActive() && !State.waitingForSelection) {
-                                // User got ahead - show message and set up to skip to region creation
-                                statusEl.className = 'status success';
-                                statusEl.textContent = 'Nice! You just created a selection! Click Add Region or type (R) to create a new region.';
-                                
-                                // Mark waveform as clicked so tutorial overlay disappears
-                                State.setWaveformHasBeenClicked(true);
-                                
-                                // Set up to wait for region creation so tutorial can continue
-                                State.setWaitingForRegionCreation(true);
-                                // The promise will be set up when runRegionIntroduction is called
-                            } else {
-                                // Regular non-tutorial flow
-                                statusEl.className = 'status info';
-                                statusEl.textContent = 'Type (R) or click Add Region to create a new region.';
+                            // If tutorial is active, let it handle all messages
+                            if (isTutorialActive()) {
+                                // User got ahead or tutorial is guiding them
+                                if (!State.waitingForSelection) {
+                                    statusEl.className = 'status success';
+                                    statusEl.textContent = 'Nice! You just created a selection! Click Add Region or type (R) to create a new region.';
+                                    State.setWaveformHasBeenClicked(true);
+                                    State.setWaitingForRegionCreation(true);
+                                }
+                                // Otherwise tutorial is controlling, do nothing
+                                return; // Exit early - tutorial controls messages
                             }
+                            
+                            // Regular non-tutorial flow
+                            // Check if Begin Analysis has been clicked
+                                import('./study-workflow.js').then(({ hasBegunAnalysisThisSession }) => {
+                                    const hasBegunAnalysis = hasBegunAnalysisThisSession();
+                                    const newMessage = hasBegunAnalysis 
+                                        ? 'Type (R) or click Add Region to create a new region.'
+                                        : 'Explore mode: select a volcano and click Begin Analysis when ready.';
+                                    
+                                    // Only update if message has changed (check beginning of text)
+                                    if (!statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
+                                        statusEl.className = 'status info';
+                                        statusEl.textContent = newMessage;
+                                    }
+                                }).catch(() => {
+                                    // Fallback if import fails - assume no session started
+                                    const newMessage = 'Explore mode: select a volcano and click Begin Analysis when ready.';
+                                    if (!statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
+                                        statusEl.className = 'status info';
+                                        statusEl.textContent = newMessage;
+                                    }
+                                });
                         }).catch(() => {
                             // Fallback if import fails
                             statusEl.className = 'status info';

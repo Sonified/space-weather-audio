@@ -955,11 +955,21 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                         statusEl.classList.remove('loading');
                                         statusEl.className = 'status success';
                                         
+                                        // Check if tutorial is active - if so, let tutorial control messages
+                                        const { isTutorialActive } = await import('./tutorial-state.js');
+                                        if (isTutorialActive()) {
+                                            return; // Tutorial controls its own messages
+                                        }
+                                        
                                         // Check if returning to mid-session (Begin Analysis already clicked)
                                         const { hasBegunAnalysisThisSession } = await import('./study-workflow.js');
+                                        const { setStatusText } = await import('./tutorial-effects.js');
+                                        
                                         if (hasBegunAnalysisThisSession()) {
-                                            const { setStatusText } = await import('./tutorial-effects.js');
                                             setStatusText('Click and drag on the waveform to select a new region.', 'status info');
+                                        } else {
+                                            // New session - guide user to Begin Analysis
+                                            setStatusText('Click Begin Analysis to start your session.', 'status info');
                                         }
                                     }
                                 }, 200);

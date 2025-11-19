@@ -661,8 +661,8 @@ export async function startPauseButtonTutorial(onComplete = null) {
         
         setStatusText('Great!', 'status success');
         
-        // Wait 2 seconds after "Great!" finishes typing
-        await skippableWait(2000, 'pause_button_complete');
+        // Wait 1 second after "Great!" finishes typing
+        await skippableWait(1000, 'pause_button_complete');
         
     } finally {
         endPauseButtonTutorial();

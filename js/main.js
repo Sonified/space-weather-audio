@@ -1049,6 +1049,16 @@ async function updateParticipantIdDisplay() {
 async function initializePersonalMode() {
     console.log('👤 PERSONAL MODE: Direct access');
     
+    // 🧹 Set proper tutorial flags for personal mode (skip tutorial, go straight to analysis)
+    localStorage.setItem('study_tutorial_in_progress', 'false');
+    localStorage.setItem('study_tutorial_completed', 'true');
+    localStorage.setItem('study_has_seen_tutorial', 'true');
+    localStorage.removeItem('study_begin_analysis_clicked_this_session'); // Reset so user can click Begin Analysis
+    
+    if (!isStudyMode()) {
+        console.log('🧹 Set personal mode tutorial flags: completed=true, in_progress=false');
+    }
+    
     // Enable all features immediately
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
     enableAllTutorialRestrictedFeatures();
@@ -1440,6 +1450,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.61 - Session Timeout & Status Message Improvements');
+        console.log('📌 [0ms] Git commit: [hash] - v2.61 Session Timeout & Status Message Improvements');
+        console.log('🔐 [0ms] v2.61 Feat: Timeout session ID pairing - ties timeout to participant ID to prevent false timeouts');
+        console.log('🧹 [0ms] v2.61 Refactor: Renamed completeSession() to closeSession() for clarity');
+        console.log('🎓 [0ms] v2.61 Fix: All status messages now respect tutorial mode - no message interference');
+        console.log('🔄 [0ms] v2.61 Fix: Start new session button refreshes activity timestamp and timeout session ID');
+        console.log('👤 [0ms] v2.61 Fix: Personal mode properly clears tutorial flags and enables region creation');
+        console.log('⏱️ [0ms] v2.61 Feat: Pause tutorial "Great!" wait reduced from 2s to 1s for better pacing');
         console.log('🌋 [0ms] volcano-audio v2.60 - Bug Fix: Waveform Button Positioning Drift');
         console.log('📌 [0ms] Git commit: v2.60 Bug Fix: Waveform button positioning drift - use timestamps directly instead of sample conversion');
         console.log('🐛 [0ms] v2.60 Fix: CRITICAL - Hover buttons (zoom 🔍 and play ▶️) were drifting away from regions after reload');
@@ -1657,15 +1675,16 @@ window.addEventListener('DOMContentLoaded', async () => {
         // ✅ Switch to this volcano's regions (loads from localStorage if available)
         switchVolcanoRegions(selectedVolcano);
         
-        // If switching back to the volcano that already has data, disable fetch button
-        if (volcanoWithData && selectedVolcano === volcanoWithData) {
+        // 🎯 In STUDY mode: prevent re-fetching same volcano (one volcano per session)
+        // 👤 In PERSONAL/DEV modes: allow re-fetching any volcano anytime
+        if (isStudyMode() && volcanoWithData && selectedVolcano === volcanoWithData) {
             const fetchBtn = document.getElementById('startBtn');
             fetchBtn.disabled = true;
             fetchBtn.title = 'This volcano already has data loaded. Select a different volcano to fetch new data.';
             console.log(`🚫 Fetch button disabled - ${selectedVolcano} already has data`);
         } else {
             // Switching to a different volcano - enable fetch button
-        enableFetchButton();
+            enableFetchButton();
             const fetchBtn = document.getElementById('startBtn');
             if (fetchBtn) {
                 fetchBtn.title = '';

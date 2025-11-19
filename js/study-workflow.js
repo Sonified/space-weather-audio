@@ -79,7 +79,7 @@ import {
 //   - TOTAL_SESSION_TIME
 //   - SESSION_HISTORY (array of session objects)
 //   - CURRENT_SESSION_START
-//   - Functions: startSession(), completeSession(), getSessionStats()
+//   - Functions: startSession(), closeSession(), getSessionStats()
 //
 // ADDED Nov 19, 2025:
 //   - TOTAL_SESSION_COUNT (persistent counter across weeks)
@@ -91,13 +91,14 @@ import {
 //   Returns safe defaults instead of crashing
 // ═══════════════════════════════════════════════════════════
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
     HAS_SEEN_PARTICIPANT_SETUP: 'study_has_seen_participant_setup',
     HAS_SEEN_WELCOME: 'study_has_seen_welcome',
     HAS_SEEN_WELCOME_BACK: 'study_has_seen_welcome_back', // SESSION-LEVEL: cleared each new session
     TUTORIAL_IN_PROGRESS: 'study_tutorial_in_progress', // Set when user clicks "Begin Tutorial", cleared when completed
     TUTORIAL_COMPLETED: 'study_tutorial_completed',
     WEEKLY_SESSION_COUNT: 'study_weekly_session_count',
+    TIMEOUT_SESSION_ID: 'study_timeout_session_id', // Ties timeout to specific session
     WEEK_START_DATE: 'study_week_start_date',
     PRE_SURVEY_COMPLETION_DATE: 'study_pre_survey_completion_date',
     TOTAL_SESSIONS_STARTED: 'study_total_sessions_started',
@@ -315,7 +316,15 @@ export function incrementSessionCount() {
  */
 export function startSession() {
     const startTime = new Date().toISOString();
+    const participantId = getParticipantId();
+    
     localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION_START, startTime);
+    
+    // 🔐 Tie timeout to this specific user/session
+    if (participantId) {
+        localStorage.setItem(STORAGE_KEYS.TIMEOUT_SESSION_ID, participantId);
+        console.log(`🔐 Timeout session tied to participant: ${participantId}`);
+    }
     
     // Increment total sessions started
     const totalStarted = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSIONS_STARTED) || '0');
@@ -358,10 +367,10 @@ export function getSessionHistory() {
 }
 
 /**
- * Complete a session - track end time and metadata
+ * Close a session - track end time and metadata, clear session flags
  * BACKWARD COMPATIBLE: Handles missing start time, invalid dates, parse errors
  */
-export function completeSession(completedAllSurveys = false, submittedToQualtrics = false) {
+export function closeSession(completedAllSurveys = false, submittedToQualtrics = false) {
     try {
         const startTime = localStorage.getItem(STORAGE_KEYS.CURRENT_SESSION_START);
         if (!startTime) {
@@ -428,9 +437,10 @@ export function completeSession(completedAllSurveys = false, submittedToQualtric
             console.error('❌ Error updating total time:', error);
         }
         
-        // Clear current session start
+        // Clear current session start and timeout tracking
         try {
             localStorage.removeItem(STORAGE_KEYS.CURRENT_SESSION_START);
+            localStorage.removeItem(STORAGE_KEYS.TIMEOUT_SESSION_ID);
         } catch (error) {
             console.error('❌ Error clearing session start:', error);
         }
@@ -442,12 +452,12 @@ export function completeSession(completedAllSurveys = false, submittedToQualtric
             localStorage.removeItem(STORAGE_KEYS.HAS_SEEN_WELCOME_BACK);
             localStorage.removeItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
             localStorage.removeItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION);
-            console.log('🧹 Cleared session flags for next session (welcome back, pre-survey, begin analysis)');
+            console.log('🧹 Cleared session flags for next session (welcome back, pre-survey, begin analysis, timeout ID)');
         } catch (error) {
             console.error('❌ Error clearing session flags:', error);
         }
         
-        console.log(`✅ Session completed:`, {
+        console.log(`✅ Session closed:`, {
             duration: `${(duration / 1000 / 60).toFixed(1)} minutes`,
             completedAllSurveys,
             submittedToQualtrics,
@@ -457,7 +467,7 @@ export function completeSession(completedAllSurveys = false, submittedToQualtric
         
         return sessionRecord;
     } catch (error) {
-        console.error('❌ Error in completeSession:', error);
+        console.error('❌ Error in closeSession:', error);
         return null;
     }
 }
@@ -754,30 +764,31 @@ export async function startStudyWorkflow() {
     // ⏰ TIMEOUT CHECK: Only matters if user has clicked "Begin Analysis" (actively in session)
     // If they haven't clicked Begin Analysis, they're still in onboarding - timeout doesn't apply
     if (hasBegunAnalysisThisSession()) {
-        // Check for simulated idle time FIRST (for testing)
-        const simulatedLastActivity = localStorage.getItem('test_simulated_last_activity');
         const sessionStartTime = localStorage.getItem(STORAGE_KEYS.CURRENT_SESSION_START);
+        const timeoutSessionId = localStorage.getItem(STORAGE_KEYS.TIMEOUT_SESSION_ID);
+        const participantId = getParticipantId();
         
-        if (simulatedLastActivity || sessionStartTime) {
-            const now = Date.now();
-            let lastActivityTime;
-            
-            // Use simulated time if available, otherwise use session start
-            if (simulatedLastActivity) {
-                lastActivityTime = parseInt(simulatedLastActivity);
-                console.log('🧪 Using simulated last activity time for timeout check');
+        if (sessionStartTime && timeoutSessionId) {
+            // 🔐 Verify timeout belongs to THIS user/session
+            if (timeoutSessionId !== participantId) {
+                console.log(`🔒 Timeout session mismatch: stored="${timeoutSessionId}", current="${participantId}" - ignoring old timeout`);
+                // Clear mismatched timeout data
+                localStorage.removeItem(STORAGE_KEYS.CURRENT_SESSION_START);
+                localStorage.removeItem(STORAGE_KEYS.TIMEOUT_SESSION_ID);
             } else {
-                lastActivityTime = new Date(sessionStartTime).getTime();
-            }
-            
-            const inactiveTime = now - lastActivityTime;
-            const INACTIVE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
-            
-            if (inactiveTime >= INACTIVE_TIMEOUT_MS) {
-                console.log(`⏰ Session timeout detected: ${(inactiveTime / 1000 / 60).toFixed(1)} minutes elapsed`);
-                const { handleSessionTimeout } = await import('./session-management.js');
-                handleSessionTimeout();
-                return; // Exit - timeout modal will handle continuation
+                console.log(`✅ Timeout session match: ${timeoutSessionId} - checking elapsed time`);
+                
+                const now = Date.now();
+                const lastActivityTime = new Date(sessionStartTime).getTime();
+                const inactiveTime = now - lastActivityTime;
+                const INACTIVE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+                
+                if (inactiveTime >= INACTIVE_TIMEOUT_MS) {
+                    console.log(`⏰ Session timeout detected: ${(inactiveTime / 1000 / 60).toFixed(1)} minutes elapsed`);
+                    const { handleSessionTimeout } = await import('./session-management.js');
+                    handleSessionTimeout();
+                    return; // Exit - timeout modal will handle continuation
+                }
             }
         }
     }

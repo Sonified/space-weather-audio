@@ -1,5 +1,76 @@
 # Captain's Log - 2025-11-19
 
+## v2.61 - Session Timeout & Status Message Improvements
+
+### Features Added
+
+**Timeout Session ID Pairing System**
+- **Implementation**: Timeout tracking now tied to specific participant ID to prevent false timeouts from old sessions
+- **How It Works**:
+  - When session starts: Sets both `CURRENT_SESSION_START` timestamp AND `TIMEOUT_SESSION_ID` (participant ID)
+  - On page refresh: Checks if stored participant ID matches current participant ID
+  - If mismatch: Ignores old timeout (someone else's session or old test data)
+  - If match: Checks if 20+ minutes elapsed
+- **Console Logs**: Shows "✅ Timeout session match: [ID]" or "🔒 Timeout session mismatch" for easy debugging
+- **Files Modified**: `study-workflow.js` (startSession, startStudyWorkflow), `session-management.js` (restart button)
+
+**Session Cleanup Refactor**
+- **Renamed**: `completeSession()` → `closeSession()` for clarity (avoids confusion with "Complete" button)
+- **Clears Timeout Flags**: Now properly clears `CURRENT_SESSION_START` and `TIMEOUT_SESSION_ID` on submission and timeout
+- **Files Modified**: `study-workflow.js`, `ui-controls.js`, `session-management.js`
+
+### Bug Fixes
+
+**Tutorial Message Interference**
+- **Problem**: Status messages were competing with tutorial messages, causing duplicate "Fetch Data" instructions
+- **Solution**: Added `isTutorialActive()` guards to all automatic status messages:
+  - Pre-survey delayed message (ui-controls.js)
+  - Data load message (data-fetcher.js)
+  - Spectrogram click messages (spectrogram-renderer.js)
+  - Waveform selection message (waveform-renderer.js)
+- **Result**: Tutorial has complete message control, no interference
+
+**Personal Mode Initialization**
+- **Problem**: Personal mode wasn't properly clearing tutorial state, causing buttons to stay disabled
+- **Solution**: Personal mode now sets proper tutorial flags:
+  - `study_tutorial_in_progress` = 'false'
+  - `study_tutorial_completed` = 'true'
+  - `study_has_seen_tutorial` = 'true'
+- **Result**: Personal mode works correctly with all features enabled
+
+**Fetch Button Mode Awareness**
+- **Problem**: Fetch button disabled for same volcano in ALL modes
+- **Solution**: Only disable re-fetching in STUDY mode, allow it in PERSONAL/DEV modes
+- **Result**: Developers can freely re-fetch data for testing
+
+### Status Messages Added
+
+**Smart Context-Aware Messages**
+- After data loads (new session): "Click Begin Analysis to start your session."
+- After data loads (mid-session): "Click and drag on the waveform to select a new region."
+- Waveform click (before session): "Explore mode: select a volcano and click Begin Analysis when ready."
+- Waveform click (in session): "Type (R) or click Add Region to create a new region."
+- Spectrogram click (before Begin Analysis): "Click Begin Analysis to create a region and interact with the spectrogram."
+- Spectrogram click (after Begin Analysis, not zoomed): "Create a new region to zoom in and select features."
+
+### Architecture Notes
+
+**STORAGE_KEYS Export**
+- Added `export` to STORAGE_KEYS constant in `study-workflow.js`
+- Allows session-management.js to import and use proper constants
+- Fixes "CURRENT_SESSION_START is undefined" error
+
+**Testing Guide Created**
+- New doc: `docs/TESTING_TIMEOUT.md`
+- Shows how to test timeout locally using real system (no test flags)
+- Explains localStorage isolation between users
+
+### Git Commit
+**Version**: v2.61  
+**Commit Message**: v2.61 Session Timeout & Status Message Improvements
+
+---
+
 ## v2.60 - Bug Fix: Waveform Button Positioning Drift
 
 ### Bug Fixed

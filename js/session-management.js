@@ -229,7 +229,7 @@ export async function handleSessionTimeout() {
                        let sessionRecord = null;
                        
                        try {
-                           const { getSessionCountThisWeek, getSessionStats, completeSession } = await import('./study-workflow.js');
+                           const { getSessionCountThisWeek, getSessionStats, closeSession } = await import('./study-workflow.js');
                            
                            try {
                                weeklySessionCount = getSessionCountThisWeek() || 0;
@@ -244,9 +244,9 @@ export async function handleSessionTimeout() {
                            }
                            
                            try {
-                               // Complete the current session (they have pre-survey but timed out)
+                               // Close the current session (they have pre-survey but timed out)
                                const completedAllSurveys = false; // Timed out, so incomplete
-                               sessionRecord = completeSession(completedAllSurveys, true); // true = submitted to Qualtrics
+                               sessionRecord = closeSession(completedAllSurveys, true); // true = submitted to Qualtrics
                            } catch (e) {
                                console.warn('⚠️ Could not complete session record:', e);
                            }
@@ -326,7 +326,9 @@ export async function handleSessionTimeout() {
                     localStorage.removeItem('study_has_seen_welcome_back');
                     localStorage.removeItem('study_pre_survey_completion_date');
                     localStorage.removeItem('study_begin_analysis_clicked_this_session');
-                    console.log('🧹 Cleared session flags after timeout');
+                    localStorage.removeItem('study_current_session_start');
+                    localStorage.removeItem('study_timeout_session_id');
+                    console.log('🧹 Cleared session flags after timeout (including timeout tracking)');
                 } catch (error) {
                     console.warn('⚠️ Could not clear session flags:', error);
                 }
@@ -394,6 +396,23 @@ export function showTimeoutMessage() {
     document.getElementById('restart-session-btn').addEventListener('click', async () => {
         // Remove timeout modal
         modal.remove();
+        
+        // 🔄 Reset activity timestamp for fresh session start
+        const { STORAGE_KEYS } = await import('./study-workflow.js');
+        const { getParticipantId } = await import('./qualtrics-api.js');
+        const participantId = getParticipantId();
+        const now = Date.now();
+        
+        localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION_START, new Date(now).toISOString());
+        
+        // 🔐 Tie timeout to this specific user/session
+        if (participantId) {
+            localStorage.setItem(STORAGE_KEYS.TIMEOUT_SESSION_ID, participantId);
+            console.log(`🔐 Timeout session tied to participant: ${participantId}`);
+        }
+        
+        lastActivityTime = now;
+        console.log('🔄 Activity timestamp refreshed for new session');
         
         // Show pre-survey modal (your existing function)
         try {
