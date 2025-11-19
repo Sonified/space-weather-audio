@@ -1440,6 +1440,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.59 - Bug Fix: Remove Unused Export Regions Button');
+        console.log('📌 [0ms] Git commit: [hash] - v2.59 Bug Fix: Remove unused export regions button');
+        console.log('🐛 [0ms] v2.59 Fix: Removed exportRegionsBtn event listener that referenced non-existent exportRegionsData function');
+        console.log('🧹 [0ms] v2.59 Fix: Removed Export Regions button from HTML - feature was accidentally added in commit 8af47a4 without implementation');
+        console.log('✅ [0ms] v2.59 Result: Fixed critical error "exportRegionsData is not defined" on page load');
         console.log('🌋 [0ms] volcano-audio v2.58 - Data Redundancy: Survey Responses in Embedded Data');
         console.log('📌 [0ms] Git commit: eee44db - v2.58 Data Redundancy: Survey responses in embedded data');
         console.log('💾 [0ms] v2.58 Feat: Survey responses now included in SessionTracking embedded data for complete redundancy');
@@ -2042,7 +2047,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Cache & Download
     document.getElementById('purgeCacheBtn').addEventListener('click', purgeCloudflareCache);
     document.getElementById('downloadBtn').addEventListener('click', downloadAudio);
-    document.getElementById('exportRegionsBtn').addEventListener('click', exportRegionsData);
     
     // Station Selection
     document.getElementById('volcano').addEventListener('change', (e) => {

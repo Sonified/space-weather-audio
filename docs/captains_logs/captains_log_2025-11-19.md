@@ -1,5 +1,23 @@
 # Captain's Log - 2025-11-19
 
+## v2.59 - Bug Fix: Remove Unused Export Regions Button
+
+### Bug Fixed
+
+**Critical Error: exportRegionsData is not defined**
+- **Problem**: Page load generated critical error "ReferenceError: exportRegionsData is not defined" causing flame engine overheat mode
+- **Root Cause**: Commit `8af47a4` accidentally added `exportRegionsBtn` button and event listener without implementing the actual `exportRegionsData()` function. The button was never needed.
+- **Solution**: Removed all traces of the export regions feature:
+  - Removed event listener in `main.js` line 2045
+  - Removed button from `index.html`
+  - No functional impact since feature was never implemented or used
+
+### Git Commit
+**Version**: v2.59  
+**Commit Message**: v2.59 Bug Fix: Remove unused export regions button
+
+---
+
 ## v2.58 - Data Redundancy: Survey Responses in Embedded Data
 
 ### Feature Added
