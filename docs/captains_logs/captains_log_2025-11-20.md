@@ -1,5 +1,27 @@
 # Captain's Log - 2025-11-20
 
+## v2.65 - Spectrogram Transition & Zone Rendering Fixes
+
+### Bug Fixed
+**CRITICAL: Transition animation broken, zone rendering producing empty canvases**
+- **Problem**: 
+  1. Frame-skipping logic was dropping frames during zoom transitions, making the elastic canvas animation disappear
+  2. Zone sample calculation was wrong when changing frequency scale while zoomed in, producing empty canvases
+- **Root Cause**:
+  1. Time-based frame skipping (16ms window) was too aggressive and skipped legitimate frames
+  2. Zone sample calculation used absolute offsets instead of relative offsets from renderStartSeconds
+- **Solution**:
+  1. Changed frame-skipping from time-based to progress-based - only skips if called with identical progress value (same frame)
+  2. Fixed zone sample calculation to use relative offsets: `zone.start - renderStartSeconds` instead of `zone.start * originalSampleRate - startSample`
+- **Result**:
+  - Smooth, crisp transition animations restored
+  - Zone rendering works correctly when changing frequency scale while zoomed in
+  - More efficient - only prevents truly redundant work, doesn't skip legitimate frames
+- **Files Modified**: 
+  - `js/spectrogram-complete-renderer.js` - Fixed frame-skipping logic and zone sample calculation
+
+---
+
 ## v2.64 - UI Fix: Delete Feature Button CSS Specificity Issue
 
 ### Bug Fixed

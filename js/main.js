@@ -1450,6 +1450,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.65 - Spectrogram Transition & Zone Rendering Fixes');
+        console.log('📌 [0ms] Git commit: v2.65 Fix: Spectrogram transition frame-skipping & zone sample calculation');
+        console.log('🎨 [0ms] v2.65 Fix: Changed frame-skipping from time-based (16ms) to progress-based - only skips truly redundant calls, prevents dropped frames');
+        console.log('🔧 [0ms] v2.65 Fix: Fixed zone sample calculation in renderCompleteSpectrogramForRegion - use relative offsets from renderStartSeconds');
+        console.log('⚡ [0ms] v2.65 Perf: More efficient frame skipping - only prevents duplicate work, doesn\'t skip legitimate frames');
         console.log('🌋 [0ms] volcano-audio v2.64 - UI Fix: Delete Feature Button CSS Specificity Issue');
         console.log('📌 [0ms] Git commit: v2.64 UI Fix: Delete feature button CSS specificity - disabled button centering');
         console.log('🎨 [0ms] v2.64 Fix: CSS specificity battle where button:disabled override killed translateY(-50%) centering');

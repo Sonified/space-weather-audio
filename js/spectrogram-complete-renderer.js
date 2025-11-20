@@ -823,40 +823,22 @@ export function clearSmartRenderBounds() {
 export function drawInterpolatedSpectrogram() {
     // 🚨 ONLY call during transitions!
     if (!isZoomTransitionInProgress()) {
+        // Reset progress tracker when not in transition
+        window._drawInterpLastProgress = undefined;
         // console.log(`⚠️ drawInterpolatedSpectrogram: NOT in transition - returning early!`);
         return; // Not in transition - don't touch the display!
     }
     
-    // 🔍 DEBUG: Track how many times we're called per frame and SKIP redundant calls
-    if (!window._drawInterpCallCount) window._drawInterpCallCount = 0;
-    if (!window._drawInterpFrameTime) window._drawInterpFrameTime = performance.now();
-    if (!window._drawInterpLastProgress) window._drawInterpLastProgress = -1;
-    
-    const now = performance.now();
+    // 🔥 FIX: Prevent multiple draws of the same frame by tracking progress
+    // Only skip if we're being called again with the SAME progress (same frame)
+    // This prevents canvas from being cleared multiple times in one RAF frame
     const currentProgress = getZoomTransitionProgress();
-    
-    if (now - window._drawInterpFrameTime < 16) {
-        // Same frame (within 16ms)
-        window._drawInterpCallCount++;
-        if (window._drawInterpCallCount > 1) {
-            // console.warn(`⚠️ drawInterpolatedSpectrogram called ${window._drawInterpCallCount} times in one frame! SKIPPING to prevent canvas clear.`);
-            // 🚨 CRITICAL: Don't clear and redraw if we already drew this frame!
-            // The second call would clear what the first call drew!
-            return;
-        }
-    } else {
-        // New frame
-        window._drawInterpCallCount = 1;
-        window._drawInterpFrameTime = now;
-        window._drawInterpLastProgress = currentProgress;
+    if (window._drawInterpLastProgress !== undefined && 
+        Math.abs(window._drawInterpLastProgress - currentProgress) < 0.0001) {
+        // Same progress value - skip to prevent clearing canvas multiple times
+        return;
     }
-    
-    // Debug: log each RAF call (throttled)
-    // if (!window._lastDrawInterpLog || (performance.now() - window._lastDrawInterpLog) > 100) {
-    //     console.log('🔄 ⏱️ drawInterpolatedSpectrogram RAF:', performance.now().toFixed(0) + 'ms', 
-    //                 'renderReady=' + smartRenderBounds.renderComplete);
-    //     window._lastDrawInterpLog = performance.now();
-    // }
+    window._drawInterpLastProgress = currentProgress;
     
     const canvas = document.getElementById('spectrogram');
     if (!canvas || !State.dataStartTime || !State.dataEndTime) {
@@ -1884,9 +1866,14 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         
         for (let zoneIdx = 0; zoneIdx < renderPlan.length; zoneIdx++) {
             const zone = renderPlan[zoneIdx];
-            const zoneSampleStart = Math.floor(zone.start * originalSampleRate) - startSample;
-            const zoneSampleEnd = Math.floor(zone.end * originalSampleRate) - startSample;
-            const zoneSamples = regionSamples.slice(zoneSampleStart, zoneSampleEnd);
+            // 🔥 FIX: zone.start and zone.end are in seconds relative to data start
+            // regionSamples is already sliced from startSample to endSample
+            // So we need to convert zone bounds to samples relative to renderStartSeconds
+            const zoneStartRelativeToRender = zone.start - renderStartSeconds;
+            const zoneEndRelativeToRender = zone.end - renderStartSeconds;
+            const zoneSampleStart = Math.floor(zoneStartRelativeToRender * originalSampleRate);
+            const zoneSampleEnd = Math.floor(zoneEndRelativeToRender * originalSampleRate);
+            const zoneSamples = regionSamples.slice(Math.max(0, zoneSampleStart), Math.min(regionSamples.length, zoneSampleEnd));
             const zoneSampleCount = zoneSamples.length;
             
             // Calculate hopSize based on quality
