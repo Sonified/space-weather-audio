@@ -6,9 +6,10 @@
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
 import { drawInterpolatedWaveform, drawWaveformWithSelection } from './waveform-renderer.js';
-import { drawInterpolatedSpectrogram } from './spectrogram-complete-renderer.js';
+import { drawInterpolatedSpectrogram, updateSpectrogramViewport, cancelActiveRender } from './spectrogram-complete-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
+import { redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 
 // Debug flag for axis drawing logs (set to true to enable detailed logging)
 const DEBUG_AXIS = false;
@@ -283,13 +284,7 @@ export function drawWaveformXAxis() {
                     drawSpectrogramPlayhead(); // Update spectrogram playhead during transition
                     
                     // 🎨 Update canvas feature boxes too (follow elastic horizontal stretch!)
-                    import('./spectrogram-renderer.js').then(module => {
-                        if (module.redrawAllCanvasFeatureBoxes) {
-                            module.redrawAllCanvasFeatureBoxes();
-                        }
-                    }).catch(() => {
-                        // Module not loaded yet, that's okay
-                    });
+                    redrawAllCanvasFeatureBoxes();
                 });
             }
         } else {
@@ -935,18 +930,12 @@ export function stopZoomTransition() {
             if (zoomTransitionRAF === null) {
                 zoomTransitionRAF = requestAnimationFrame(() => {
                     zoomTransitionRAF = null; // Clear ID immediately to allow GC
-                import('./spectrogram-complete-renderer.js').then(module => {
-                    // Check if infinite canvas exists (high-res render is ready)
-                    // If it exists, update the viewport to display it
-                    const playbackRate = State.currentPlaybackRate || 1.0;
-                    if (module.updateSpectrogramViewport) {
-                        // This will only update if infiniteSpectrogramCanvas exists
-                        // (i.e., if the high-res render has completed)
-                        module.updateSpectrogramViewport(playbackRate);
-                    }
-                }).catch(err => {
-                    console.warn('⚠️ Could not update spectrogram viewport after emergency stop:', err);
-                });
+                // Check if infinite canvas exists (high-res render is ready)
+                // If it exists, update the viewport to display it
+                const playbackRate = State.currentPlaybackRate || 1.0;
+                // This will only update if infiniteSpectrogramCanvas exists
+                // (i.e., if the high-res render has completed)
+                updateSpectrogramViewport(playbackRate);
             });
             }
         }
@@ -1076,8 +1065,12 @@ export function getOldTimeRange() {
  * @returns {Promise} Resolves when animation completes
  */
 export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion = false) {
-    return new Promise((resolve) => {
-        // Cancel any existing transition
+    return new Promise(async (resolve) => {
+        // 🔥 OPTIMIZATION: Cancel any active background renders (but keep transition smooth!)
+        // This prevents render conflicts but doesn't interfere with the transition animation
+        cancelActiveRender();
+        
+        // Cancel any existing transition RAF
         if (zoomTransitionRAF) {
             cancelAnimationFrame(zoomTransitionRAF);
             zoomTransitionRAF = null;

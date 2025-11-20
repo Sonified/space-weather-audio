@@ -13,7 +13,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
-import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection } from './spectrogram-renderer.js';
+import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
 import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
@@ -29,6 +29,7 @@ import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis 
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions, updateCompleteButtonState, updateCmpltButtonState, showAddRegionButton } from './region-tracker.js';
+import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown, removeVolumeSliderGlow } from './tutorial.js';
@@ -1450,10 +1451,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] volcano-audio v2.65 - Spectrogram Transition & Zone Rendering Fixes');
-        console.log('📌 [0ms] Git commit: v2.65 Fix: Spectrogram transition frame-skipping & zone sample calculation');
-        console.log('🎨 [0ms] v2.65 Fix: Changed frame-skipping from time-based (16ms) to progress-based - only skips truly redundant calls, prevents dropped frames');
-        console.log('🔧 [0ms] v2.65 Fix: Fixed zone sample calculation in renderCompleteSpectrogramForRegion - use relative offsets from renderStartSeconds');
+        console.log('🌋 [0ms] volcano-audio v2.66 - Memory Optimization: Static Imports Replace Dynamic Imports');
+        console.log('📌 [0ms] Git commit: v2.66 Fix: Replaced 46 dynamic imports with static imports to prevent Function object accumulation');
+        console.log('🎨 [0ms] v2.66 Fix: Dynamic imports create new closures on every call (even if module cached) - caused 317k Function objects');
+        console.log('🔧 [0ms] v2.66 Fix: Static imports resolve once at module load - no closure accumulation, better memory efficiency');
         console.log('⚡ [0ms] v2.65 Perf: More efficient frame skipping - only prevents duplicate work, doesn\'t skip legitimate frames');
         console.log('🌋 [0ms] volcano-audio v2.64 - UI Fix: Delete Feature Button CSS Specificity Issue');
         console.log('📌 [0ms] Git commit: v2.64 UI Fix: Delete feature button CSS specificity - disabled button centering');
@@ -2044,13 +2045,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             }
 
             // Update feature box positions after resize (boxes need to reposition for new canvas dimensions)
-            import('./spectrogram-feature-boxes.js').then(module => {
-                if (module.updateAllFeatureBoxPositions) {
-                    module.updateAllFeatureBoxPositions();
-                }
-            }).catch(() => {
-                // Module not loaded yet, that's okay
-            });
+            updateAllFeatureBoxPositions();
 
             resizeRAF = null;
         });
@@ -2415,13 +2410,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                         setupSpectrogramSelection();
                         
                         // Redraw all feature boxes on fresh canvas
-                        import('./spectrogram-renderer.js').then(module => {
-                            if (module.redrawAllCanvasFeatureBoxes) {
-                                module.redrawAllCanvasFeatureBoxes();
-                            }
-                        }).catch(() => {
-                            // Module not loaded yet
-                        });
+                        redrawAllCanvasFeatureBoxes();
                         
                         // Restart playhead if playing when tab becomes visible again
                         if (State.playbackState === PlaybackState.PLAYING) {

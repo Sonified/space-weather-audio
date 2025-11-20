@@ -17,11 +17,11 @@ import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
-import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender } from './spectrogram-complete-renderer.js';
+import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender, clearSmartRenderBounds, getInfiniteCanvasStatus, getCachedFullStatus } from './spectrogram-complete-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
-import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
-import { cancelSpectrogramSelection } from './spectrogram-renderer.js';
+import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
+import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox } from './spectrogram-renderer.js';
 import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
 import { isStudyMode, isTutorialEndMode } from './master-modes.js';
 import { hasSeenTutorial } from './study-workflow.js';
@@ -211,6 +211,24 @@ function loadRegionsFromStorage(volcano) {
                         return false;
                     }
 
+                    // 🔥 STRICT BOUNDS CHECK: Region must be COMPLETELY within data bounds
+                    // Region cannot start before dataStartMs or end after dataEndMs
+                    if (regionStartMs < dataStartMs) {
+                        console.warn(`⚠️ Filtering out region ${region.id}: starts before data (${new Date(regionStartMs).toISOString()} < ${new Date(dataStartMs).toISOString()})`);
+                        return false; // Region starts before data begins
+                    }
+                    
+                    if (regionEndMs > dataEndMs) {
+                        console.warn(`⚠️ Filtering out region ${region.id}: ends after data (${new Date(regionEndMs).toISOString()} > ${new Date(dataEndMs).toISOString()})`);
+                        return false; // Region ends after data ends
+                    }
+                    
+                    // Also check if region is valid (start < end)
+                    if (regionStartMs >= regionEndMs) {
+                        console.warn(`⚠️ Filtering out region ${region.id}: invalid time range (start >= end)`);
+                        return false; // Invalid region
+                    }
+
                     // Simple rule: filter out regions older than 24 hours from NOW
                     const nowMs = Date.now();
                     const twentyFourHoursAgo = nowMs - (24 * 60 * 60 * 1000);
@@ -219,8 +237,8 @@ function loadRegionsFromStorage(volcano) {
                         return false; // Too old, don't load it
                     }
 
-                    // Also check if region overlaps with current data window
-                    return regionStartMs < dataEndMs && regionEndMs > dataStartMs;
+                    // Region is valid and within bounds
+                    return true;
                 });
                 
                 if (filteredRegions.length !== data.regions.length) {
@@ -307,13 +325,7 @@ export function switchVolcanoRegions(newVolcano) {
     renderRegions();
     
     // Clear canvas feature boxes (no regions loaded yet)
-    import('./spectrogram-renderer.js').then(module => {
-        if (module.redrawAllCanvasFeatureBoxes) {
-            module.redrawAllCanvasFeatureBoxes();
-        }
-    }).catch(() => {
-        // Module not loaded yet, that's okay
-    });
+    redrawAllCanvasFeatureBoxes();
     
     // Redraw waveform to update region highlights
     drawWaveformWithSelection();
@@ -371,10 +383,29 @@ export function loadRegionsAfterDataFetch() {
             if (region.startTime && region.stopTime && zoomState.isInitialized()) {
                 // Recalculate sample indices from absolute timestamps
                 const dataStartMs = State.dataStartTime.getTime();
+                const dataEndMs = State.dataEndTime.getTime();
                 const regionStartMs = new Date(region.startTime).getTime();
                 const regionEndMs = new Date(region.stopTime).getTime();
-                const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
-                const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+                
+                // 🔥 GUARD: Clamp region to data bounds if it extends beyond
+                // This prevents rendering regions that go "over the edge"
+                let clampedStartMs = Math.max(regionStartMs, dataStartMs);
+                let clampedEndMs = Math.min(regionEndMs, dataEndMs);
+                
+                // If clamping changed the region, update it
+                if (clampedStartMs !== regionStartMs || clampedEndMs !== regionEndMs) {
+                    console.warn(`⚠️ Region ${region.id} extends beyond data bounds - clamping:`, {
+                        original: `${new Date(regionStartMs).toISOString()} → ${new Date(regionEndMs).toISOString()}`,
+                        clamped: `${new Date(clampedStartMs).toISOString()} → ${new Date(clampedEndMs).toISOString()}`,
+                        dataBounds: `${new Date(dataStartMs).toISOString()} → ${new Date(dataEndMs).toISOString()}`
+                    });
+                    // Update region timestamps to clamped values
+                    region.startTime = new Date(clampedStartMs).toISOString();
+                    region.stopTime = new Date(clampedEndMs).toISOString();
+                }
+                
+                const regionStartSeconds = (clampedStartMs - dataStartMs) / 1000;
+                const regionEndSeconds = (clampedEndMs - dataStartMs) / 1000;
                 
                 // Update sample indices for current data fetch
                 const oldStartSample = region.startSample;
@@ -2860,18 +2891,10 @@ function deleteSpecificFeature(regionIndex, featureIndex) {
     setCurrentRegions(regions);
 
     // 🔢 Renumber all remaining boxes for this region (features after deleted one shift down)
-    import('./spectrogram-feature-boxes.js').then(module => {
-        if (module.renumberFeatureBoxes) {
-            module.renumberFeatureBoxes(regionIndex);
-        }
-    });
+    renumberFeatureBoxes(regionIndex);
     
     // 🎨 Rebuild canvas boxes (handles deletion and renumbering automatically!)
-    import('./spectrogram-renderer.js').then(module => {
-        if (module.removeCanvasFeatureBox) {
-            module.removeCanvasFeatureBox(regionIndex, featureIndex);
-        }
-    });
+    removeCanvasFeatureBox(regionIndex, featureIndex);
 
     // Update complete button state (in case we deleted the last identified feature)
     updateCompleteButtonState();
@@ -2931,13 +2954,7 @@ export function deleteRegion(index) {
         renderRegions();
         
         // ✅ Rebuild canvas boxes (removes boxes for deleted region!)
-        import('./spectrogram-renderer.js').then(module => {
-            if (module.redrawAllCanvasFeatureBoxes) {
-                module.redrawAllCanvasFeatureBoxes();
-            }
-        }).catch(() => {
-            // Module not loaded yet, that's okay
-        });
+        redrawAllCanvasFeatureBoxes();
         
         // Update complete button state (in case we deleted the last identified feature)
         updateCompleteButtonState(); // Begin Analysis button
@@ -3122,10 +3139,17 @@ export function zoomToRegion(regionIndex) {
     
     // 🎯 MAGIC TRICK: Predictive rendering with smart quality zones!
     // Detect zoom direction and calculate expanded render window
+    // 🔥 FIX: Get current visual position (where we are NOW, even mid-transition)
+    const currentPosition = isZoomTransitionInProgress() 
+        ? getInterpolatedTimeRange() 
+        : (zoomState.isInRegion() 
+            ? zoomState.getRegionRange() 
+            : { startTime: State.dataStartTime, endTime: State.dataEndTime });
+    
     const regionCenter = (regionStartSeconds + regionEndSeconds) / 2;
     const regionDuration = regionEndSeconds - regionStartSeconds;
-    const oldStartSeconds = (oldStartTime.getTime() - dataStartMs) / 1000;
-    const oldEndSeconds = (oldEndTime.getTime() - dataStartMs) / 1000;
+    const oldStartSeconds = (currentPosition.startTime.getTime() - dataStartMs) / 1000;
+    const oldEndSeconds = (currentPosition.endTime.getTime() - dataStartMs) / 1000;
     const oldDuration = oldEndSeconds - oldStartSeconds;
     const oldCenter = (oldStartSeconds + oldEndSeconds) / 2;
     
@@ -3276,10 +3300,8 @@ export function zoomToRegion(regionIndex) {
         // console.log('🎬 ⏱️ ZOOM ANIMATION COMPLETE:', performance.now().toFixed(0) + 'ms');
         
         // Clear smart render flag when animation completes
-        import('./spectrogram-complete-renderer.js').then(module => {
-            module.clearSmartRenderBounds();
-            // console.log('🎯 Cleared smart render bounds after zoom complete');
-        });
+        clearSmartRenderBounds();
+        // console.log('🎯 Cleared smart render bounds after zoom complete');
         
         // console.log('🔍 ========== ZOOM IN: Animation Complete ==========');
         // console.log('🏛️ Now inside region:', {
@@ -3304,9 +3326,7 @@ export function zoomToRegion(regionIndex) {
         // console.log('🔍 ========== END Zoom In ==========\n');
         
         // Update feature box positions after zoom transition completes
-        import('./spectrogram-feature-boxes.js').then(module => {
-            module.updateAllFeatureBoxPositions();
-        });
+        updateAllFeatureBoxPositions();
         
         // Rebuild waveform (fast)
         drawWaveform();
@@ -3321,9 +3341,7 @@ export function zoomToRegion(regionIndex) {
                 updateSpectrogramViewport(playbackRate);
                 
                 // Update feature box positions again after viewport update
-                import('./spectrogram-feature-boxes.js').then(module => {
-                    module.updateAllFeatureBoxPositions();
-                });
+                updateAllFeatureBoxPositions();
                 
                 // 🔍 Diagnostic: Track region zoom complete
                 // console.log('✅ REGION ZOOM IN complete');
@@ -3455,12 +3473,9 @@ export function zoomToFull() {
     cacheZoomedSpectrogram();
 
     // 🔍 DIAGNOSTIC: Log canvas states BEFORE zoom-out starts
-    import('./spectrogram-complete-renderer.js').then(module => {
-        console.log(`🔍 ZOOM OUT START - Canvas states:`, {
-            infiniteCanvas: module.getInfiniteCanvasStatus ? module.getInfiniteCanvasStatus() : 'NO STATUS FUNCTION',
-            cachedFull: module.getCachedFullStatus ? module.getCachedFullStatus() : 'NO STATUS FUNCTION',
-            cachedZoomed: module.getCachedZoomedStatus ? module.getCachedZoomedStatus() : 'NO STATUS FUNCTION'
-        });
+    console.log(`🔍 ZOOM OUT START - Canvas states:`, {
+        infiniteCanvas: getInfiniteCanvasStatus ? getInfiniteCanvasStatus() : 'NO STATUS FUNCTION',
+        cachedFull: getCachedFullStatus ? getCachedFullStatus() : 'NO STATUS FUNCTION'
     });
 
     // 🙏 Timestamps as source of truth: Return viewport to full data range
@@ -3549,9 +3564,7 @@ export function zoomToFull() {
         // console.log('🌍 ========== END Zoom Out ==========\n');
         
         // Update feature box positions after zoom transition completes
-        import('./spectrogram-feature-boxes.js').then(module => {
-            module.updateAllFeatureBoxPositions();
-        });
+        updateAllFeatureBoxPositions();
         
         // Rebuild waveform to ensure it's up to date (if we used cached version)
         if (State.cachedFullWaveformCanvas) {
@@ -3568,9 +3581,7 @@ export function zoomToFull() {
         updateSpectrogramViewport(playbackRate);
         
         // Update feature box positions again after viewport update
-        import('./spectrogram-feature-boxes.js').then(module => {
-            module.updateAllFeatureBoxPositions();
-        });
+        updateAllFeatureBoxPositions();
         
         // Clear cached spectrograms after transition (no longer needed)
         clearCachedFullSpectrogram();

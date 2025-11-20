@@ -10,11 +10,13 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
-import { drawSpectrogram, startVisualization } from './spectrogram-renderer.js';
+import { drawSpectrogram, startVisualization, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { updateActiveRegionPlayButton, getActivePlayingRegionIndex, getCurrentRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries, isAtBoundaryEnd, getRestartPosition, formatBoundaries } from './playback-boundaries.js';
 import { setPlayingState } from './oscilloscope-renderer.js';
+import { updateSpectrogramViewport } from './spectrogram-complete-renderer.js';
+import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 
 // ===== RAF CLEANUP HELPER =====
 
@@ -297,32 +299,13 @@ export function updatePlaybackSpeed() {
     updateAxisForPlaybackSpeed();
 
     // Update spectrogram viewport (works for both full and temple - GPU stretching!)
-    // Import dynamically to avoid circular dependency
-    import('./spectrogram-complete-renderer.js').then(module => {
-        if (module.updateSpectrogramViewport) {
-            module.updateSpectrogramViewport(finalSpeed);
-        }
-    }).catch(() => {
-        // Module not loaded yet, that's okay - will be called after rendering completes
-    });
+    updateSpectrogramViewport(finalSpeed);
 
     // Update feature box positions for new playback speed (horizontal stretching)
-    import('./spectrogram-feature-boxes.js').then(module => {
-        if (module.updateAllFeatureBoxPositions) {
-            module.updateAllFeatureBoxPositions();
-        }
-    }).catch(() => {
-        // Module not loaded yet, that's okay
-    });
+    updateAllFeatureBoxPositions();
     
     // Update canvas feature boxes too!
-    import('./spectrogram-renderer.js').then(module => {
-        if (module.redrawAllCanvasFeatureBoxes) {
-            module.redrawAllCanvasFeatureBoxes();
-        }
-    }).catch(() => {
-        // Module not loaded yet, that's okay
-    });
+    redrawAllCanvasFeatureBoxes();
 }
 
 export function changePlaybackSpeed() {

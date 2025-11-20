@@ -1,5 +1,27 @@
 # Captain's Log - 2025-11-20
 
+## v2.66 - Memory Optimization: Static Imports Replace Dynamic Imports
+
+### Memory Leak Fix
+**CRITICAL: Function object accumulation from dynamic imports**
+- **Problem**: 317,362 Function objects accumulating in memory, causing performance degradation
+- **Root Cause**: Dynamic imports (`import('./module.js').then(...)`) create new function closures on EVERY call, even though the module itself is cached. When called in RAF loops (60fps), event handlers, or transition animations, this creates thousands of function objects per second
+- **Solution**: Replaced 46 dynamic imports with static imports. Static imports resolve once at module load time - no closure accumulation, same function reference reused forever
+- **Result**:
+  - Eliminated Function object accumulation
+  - Better memory efficiency (one function reference vs thousands)
+  - Better performance (no async overhead, direct function calls)
+  - Simpler code (no `.then()` chains)
+- **Files Modified**:
+  - `js/region-tracker.js` - Replaced 11 dynamic imports
+  - `js/waveform-x-axis-renderer.js` - Replaced 3 dynamic imports (including one in RAF callback)
+  - `js/main.js` - Replaced 3 dynamic imports
+  - `js/audio-player.js` - Replaced 3 dynamic imports
+  - `js/spectrogram-renderer.js` - Replaced 5 dynamic imports
+  - `js/waveform-renderer.js` - Replaced 2 dynamic imports
+
+---
+
 ## v2.65 - Spectrogram Transition & Zone Rendering Fixes
 
 ### Bug Fixed

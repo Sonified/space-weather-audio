@@ -1619,6 +1619,31 @@ export function shouldCancelActiveRender(newRegionId) {
 }
 
 /**
+ * 🔥 GUARD: Check if rendering is currently in progress
+ * Used to wait for HQ render to complete before ending zoom transitions
+ */
+export function isRenderingInProgress() {
+    return renderingInProgress;
+}
+
+/**
+ * 🔥 GUARD: Check if a specific region's render is complete
+ * Returns true if render is complete (or not rendering), false if still rendering
+ */
+export function isRegionRenderComplete(regionId) {
+    // If not rendering at all, consider it "complete"
+    if (!renderingInProgress) {
+        return true;
+    }
+    // If rendering for a different region, consider this one "complete"
+    if (activeRenderRegionId !== regionId) {
+        return true;
+    }
+    // Still rendering this region
+    return false;
+}
+
+/**
  * Render spectrogram for a specific time range (region zoom)
  * 🔬 Renders high-res zoomed version in BACKGROUND
  * 

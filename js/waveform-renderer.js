@@ -16,6 +16,7 @@ import { zoomState } from './zoom-state.js';
 import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 import { isStudyMode } from './master-modes.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
+import { restoreViewportState } from './spectrogram-complete-renderer.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -1246,9 +1247,7 @@ export function setupWaveformInteraction() {
                 drawSpectrogramPlayhead();  // Update spectrogram immediately
                 
                 // 🔧 FIX: Restore spectrogram viewport state
-                import('./spectrogram-complete-renderer.js').then(({ restoreViewportState }) => {
-                    restoreViewportState();
-                });
+                restoreViewportState();
                 
                 // Seek to start and optionally start playback if playOnClick is enabled
                 // Worklet handles fades autonomously based on its current state
@@ -1291,9 +1290,7 @@ export function setupWaveformInteraction() {
                 drawSpectrogramPlayhead();  // Update spectrogram immediately after seek
                 
                 // 🔧 FIX: Restore spectrogram viewport state
-                import('./spectrogram-complete-renderer.js').then(({ restoreViewportState }) => {
-                    restoreViewportState();
-                });
+                restoreViewportState();
             }
         }
     });

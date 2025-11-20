@@ -7,10 +7,13 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, startFrequencySelection } from './region-tracker.js';
-import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, getSpectrogramViewport } from './spectrogram-complete-renderer.js';
+import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, getSpectrogramViewport, resetSpectrogramState, getInfiniteCanvasStatus } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
+import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
+import { animateScaleTransition } from './spectrogram-axis-renderer.js';
+import { startPlaybackIndicator } from './waveform-renderer.js';
 
 // Spectrogram selection state (pure canvas - separate overlay layer!)
 let spectrogramSelectionActive = false;
@@ -381,8 +384,7 @@ export async function changeFrequencyScale() {
 
     State.setFrequencyScale(value);
 
-    // Import feature box updater once at the top
-    const { updateAllFeatureBoxPositions } = await import('./spectrogram-feature-boxes.js');
+    // Use statically imported function (no dynamic import needed)
     
     // 🎓 Tutorial: Resolve promise if waiting for frequency scale change
     if (State.waitingForFrequencyScaleChange && State._frequencyScaleChangeResolve) {
@@ -417,7 +419,7 @@ export async function changeFrequencyScale() {
         }
         
         // Start axis animation immediately (don't wait for it)
-        const { animateScaleTransition } = await import('./spectrogram-axis-renderer.js');
+        // Use statically imported function
         const axisAnimationPromise = animateScaleTransition(oldScale);
         
         // Start spectrogram rendering immediately (in parallel with axis animation)
@@ -461,12 +463,10 @@ export async function changeFrequencyScale() {
                 oldSpectrogram.getContext('2d').drawImage(canvas, 0, 0);
                 
                 // Re-render region with new frequency scale (in "background") - start immediately!
-                const spectrogramModule = await import('./spectrogram-complete-renderer.js');
-                const { resetSpectrogramState } = spectrogramModule;
                 resetSpectrogramState(); // Clear state so it will re-render
                 
                 // Start rendering immediately (don't await - let it run in parallel with axis animation)
-                const spectrogramRenderPromise = spectrogramModule.renderCompleteSpectrogramForRegion(
+                const spectrogramRenderPromise = renderCompleteSpectrogramForRegion(
                     startSeconds, 
                     endSeconds, 
                     true  // Skip viewport update - we'll fade manually
@@ -478,7 +478,6 @@ export async function changeFrequencyScale() {
                 console.log('🎨 Spectrogram render complete - getting viewport for crossfade');
 
                 // Get the new spectrogram (without displaying it yet)
-                const { getSpectrogramViewport, getInfiniteCanvasStatus } = spectrogramModule;
                 const playbackRate = State.currentPlaybackRate || 1.0;
                 
                 // 🔥 DIAGNOSTIC: Check infinite canvas status before getting viewport
@@ -492,11 +491,9 @@ export async function changeFrequencyScale() {
                 if (!newSpectrogram) {
                     console.warn('⚠️ getSpectrogramViewport returned null - falling back to direct viewport update');
                     // Fallback: just update normally
-                    spectrogramModule.updateSpectrogramViewport(playbackRate);
+                    updateSpectrogramViewport(playbackRate);
                     if (playbackWasActive) {
-                        import('./waveform-renderer.js').then(module => {
-                            module.startPlaybackIndicator();
-                        });
+                        startPlaybackIndicator();
                     }
                     console.log('✅ Region scale transition complete (no fade)');
                     return;
@@ -569,7 +566,7 @@ export async function changeFrequencyScale() {
                         requestAnimationFrame(fadeStep);
                     } else {
                         // Fade complete - lock in new spectrogram
-                        spectrogramModule.updateSpectrogramViewport(playbackRate);
+                        updateSpectrogramViewport(playbackRate);
 
                         // Update feature box positions for new frequency scale
                         updateAllFeatureBoxPositions();
@@ -577,9 +574,7 @@ export async function changeFrequencyScale() {
 
                         // Resume playhead
                         if (playbackWasActive) {
-                            import('./waveform-renderer.js').then(module => {
-                                module.startPlaybackIndicator();
-                            });
+                            startPlaybackIndicator();
                         }
 
                         console.log('✅ Region scale transition complete (with fade)');
@@ -592,7 +587,6 @@ export async function changeFrequencyScale() {
             
             // OLD SPECTROGRAM IS ALREADY ON SCREEN - DON'T TOUCH IT!
             // Reset state flag so we can re-render (but don't clear the canvas!)
-            const { resetSpectrogramState } = await import('./spectrogram-complete-renderer.js');
             resetSpectrogramState();
             
             // Just render new spectrogram in background (skip viewport update) - start immediately!
@@ -603,7 +597,7 @@ export async function changeFrequencyScale() {
             await spectrogramRenderPromise;
             
             // Get the new spectrogram viewport without updating display canvas
-            const { getSpectrogramViewport } = await import('./spectrogram-complete-renderer.js');
+            // Use statically imported function
             const playbackRate = State.currentPlaybackRate || 1.0;
             const newSpectrogram = getSpectrogramViewport(playbackRate);
             
@@ -612,9 +606,7 @@ export async function changeFrequencyScale() {
                 updateSpectrogramViewport(playbackRate);
                 // Resume playhead if it was active
                 if (playbackWasActive) {
-                    import('./waveform-renderer.js').then(module => {
-                        module.startPlaybackIndicator();
-                    });
+                    startPlaybackIndicator();
                 }
                 return;
             }
@@ -689,9 +681,7 @@ export async function changeFrequencyScale() {
 
                     // 🔥 RESUME playhead updates!
                     if (playbackWasActive) {
-                        import('./waveform-renderer.js').then(module => {
-                            module.startPlaybackIndicator();
-                        });
+                        startPlaybackIndicator();
                     }
 
                     console.log('✅ Scale transition complete, cache updated, playhead resumed');
