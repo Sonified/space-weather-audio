@@ -1,5 +1,21 @@
 # Captain's Log - 2025-11-20
 
+## v2.67 - Fix: Blank Screen When Clicking "Not Yet" in Complete Confirmation Modal
+
+### Bug Fixed
+**CRITICAL: Blank screen when clicking "Not yet" at end of study**
+- **Problem**: When user reaches end of study and clicks "Not yet" in the complete confirmation modal, they see a blank screen instead of returning to their session
+- **Root Cause**: The overlay was only fading out (300ms delay) instead of being immediately removed, leaving the user with a blank screen blocking their view
+- **Solution**: When "Not yet" is clicked, immediately set overlay to `display: 'none'` and call `showUIElementsAfterModal()` to restore the UI instantly
+- **Result**:
+  - User can immediately continue working on their session
+  - No blank screen delay
+  - UI elements properly restored
+- **Files Modified**:
+  - `js/ui-controls.js` - Updated `closeCompleteConfirmationModal()` to immediately hide overlay and restore UI
+
+---
+
 ## v2.66 - Memory Optimization: Static Imports Replace Dynamic Imports
 
 ### Memory Leak Fix

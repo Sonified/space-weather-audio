@@ -2297,6 +2297,16 @@ export function closeCompleteConfirmationModal(keepOverlay = null) {
     
     // Only fade out overlay if NOT keeping it for next modal
     if (!keepOverlay) {
+        // 🔥 FIX: When user clicks "Not yet", immediately hide overlay to restore UI
+        // Don't wait for fade animation - user needs to continue working
+        const overlay = document.getElementById('permanentOverlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+            overlay.style.opacity = '0';
+        }
+        // Show UI elements immediately
+        showUIElementsAfterModal();
+    } else {
         fadeOutOverlay();
     }
     

@@ -1451,10 +1451,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] volcano-audio v2.66 - Memory Optimization: Static Imports Replace Dynamic Imports');
-        console.log('📌 [0ms] Git commit: v2.66 Fix: Replaced 46 dynamic imports with static imports to prevent Function object accumulation');
-        console.log('🎨 [0ms] v2.66 Fix: Dynamic imports create new closures on every call (even if module cached) - caused 317k Function objects');
-        console.log('🔧 [0ms] v2.66 Fix: Static imports resolve once at module load - no closure accumulation, better memory efficiency');
+        console.log('🌋 [0ms] volcano-audio v2.67 - Fix: Blank Screen When Clicking "Not Yet" in Complete Confirmation Modal');
+        console.log('📌 [0ms] Git commit: v2.67 Fix: Blank screen when clicking "Not yet" - immediately hide overlay and restore UI');
+        console.log('🎨 [0ms] v2.67 Fix: Overlay was only fading out (300ms delay) instead of being immediately removed, leaving blank screen');
+        console.log('🔧 [0ms] v2.67 Fix: When "Not yet" clicked, immediately set overlay display:none and show UI elements');
         console.log('⚡ [0ms] v2.65 Perf: More efficient frame skipping - only prevents duplicate work, doesn\'t skip legitimate frames');
         console.log('🌋 [0ms] volcano-audio v2.64 - UI Fix: Delete Feature Button CSS Specificity Issue');
         console.log('📌 [0ms] Git commit: v2.64 UI Fix: Delete feature button CSS specificity - disabled button centering');
