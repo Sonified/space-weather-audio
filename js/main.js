@@ -1450,6 +1450,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.log('🌋 [0ms] volcano-audio v2.62 - Bug Fix: Waveform Button Click Detection Drift');
+        console.log('📌 [0ms] Git commit: v2.62 Bug Fix: Waveform button click detection drift - use timestamps directly instead of sample conversion');
+        console.log('🎯 [0ms] v2.62 Fix: CRITICAL - Button click detection was using wrong coordinates after v2.60 visual fix');
+        console.log('🔧 [0ms] v2.62 Fix: Updated calculateButtonPositions() in region-tracker.js lines 1060-1061 and 1089-1090');
+        console.log('✅ [0ms] v2.62 Result: All 4 systems (features, regions, button rendering, click detection) now use unified timestamp coordinates');
         console.log('🌋 [0ms] volcano-audio v2.61 - Session Timeout & Status Message Improvements');
         console.log('📌 [0ms] Git commit: 45e5cff - v2.61 Session Timeout & Status Message Improvements');
         console.log('🔐 [0ms] v2.61 Feat: Timeout session ID pairing - ties timeout to participant ID to prevent false timeouts');

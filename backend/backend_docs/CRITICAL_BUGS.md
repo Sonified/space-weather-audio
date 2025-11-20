@@ -1,7 +1,7 @@
 # CRITICAL BUGS - Backend Data Collection
 
 **Date Discovered:** 2025-11-05  
-**Status:** ACTIVE - System is creating duplicate entries and may have date rollover issues
+**Status:** RESOLVED - 2025-11-19 - Fixed in collector_loop.py with /deduplicate endpoint (lines 5344-5539). System migrated from cron_job.py to collector_loop.py architecture.
 
 ---
 

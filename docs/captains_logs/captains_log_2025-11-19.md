@@ -1,5 +1,35 @@
 # Captain's Log - 2025-11-19
 
+## v2.62 - Bug Fix: Waveform Button Click Detection Drift
+
+### Bug Fixed
+
+**CRITICAL: Button Click Detection Using Wrong Coordinates**
+- **Problem**: After fixing visual button positions in v2.60, the clickable regions for buttons stayed in the wrong place! Buttons looked correct but clicks wouldn't register where you clicked.
+- **Root Cause**: The `calculateButtonPositions()` function in `region-tracker.js` was STILL using the old buggy sample conversion method to determine clickable areas, even though visual rendering had been fixed.
+- **Solution**: Fixed click detection coordinates in TWO places:
+  - **Line 1060-1061**: Main click detection - changed from `zoomState.sampleToRealTimestamp(region.startSample)` to `new Date(region.startTime)` and `new Date(region.stopTime)`
+  - **Line 1089-1090**: Transition animation click detection - same fix applied
+- **Result**: All FOUR systems now use unified coordinate system:
+  1. ✅ Features rendering - uses timestamps directly
+  2. ✅ Regions rendering - uses timestamps directly (fixed v2.60)
+  3. ✅ Buttons visual rendering - uses timestamps directly (fixed v2.60)
+  4. ✅ Button click detection - uses timestamps directly (fixed v2.62) **← THIS FIX**
+
+### Architecture Notes
+
+**The Complete Fix Journey**
+- v2.60 fixed visual button drift (rendering coordinates)
+- v2.62 fixed clickable region drift (click detection coordinates)
+- Root cause was always the same: timestamp → sample → timestamp conversions introduced rounding errors
+- Saved timestamps (`region.startTime`, `region.stopTime`) are now the eternal source of truth for ALL coordinate calculations
+
+### Git Commit
+**Version**: v2.62  
+**Commit Message**: v2.62 Bug Fix: Waveform button click detection drift - use timestamps directly instead of sample conversion
+
+---
+
 ## v2.61 - Session Timeout & Status Message Improvements
 
 ### Features Added
