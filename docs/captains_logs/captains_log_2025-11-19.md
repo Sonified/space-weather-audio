@@ -1,5 +1,24 @@
 # Captain's Log - 2025-11-19
 
+## v2.63 - Bug Fix: Non-Finite Gradient Values During Zoom
+
+### Bug Fixed
+
+**CRITICAL: createLinearGradient Crash During Zoom Transitions**
+- **Problem**: Error "Failed to execute 'createLinearGradient' on 'CanvasRenderingContext2D': The provided double value is non-finite" during zoom transitions
+- **Root Cause**: During zoom transitions, `interpEndMs` and `interpStartMs` could momentarily be equal, causing division by zero → `x = Infinity` or `x = NaN`. Canvas API crashes when trying to create gradient with non-finite values.
+- **Location**: `waveform-renderer.js` line 475-485 in `drawInterpolatedWaveform()`
+- **Solution**: Added two safety guards:
+  1. Check time range validity before division: `if (timeDiff <= 0) return;`
+  2. Check coordinate validity before creating gradient: `if (!isFinite(x) || !isFinite(height) || height <= 0) return;`
+- **Result**: Playhead gracefully skips drawing for invalid frames instead of crashing. Next frame continues smoothly.
+
+### Git Commit
+**Version**: v2.63  
+**Commit Message**: v2.63 Bug Fix: Non-finite gradient values during zoom - add safety guards for playhead rendering
+
+---
+
 ## v2.62 - Bug Fix: Waveform Button Click Detection Drift
 
 ### Bug Fixed

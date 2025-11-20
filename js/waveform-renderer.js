@@ -472,8 +472,20 @@ export function drawInterpolatedWaveform() {
             const playheadMs = playheadTimestamp.getTime();
 
             // Calculate playhead position within the interpolated time range
-            const progress = (playheadMs - interpStartMs) / (interpEndMs - interpStartMs);
+            const timeDiff = interpEndMs - interpStartMs;
+            
+            // Guard against division by zero or invalid time ranges
+            if (timeDiff <= 0) {
+                return; // Skip playhead drawing if time range is invalid
+            }
+            
+            const progress = (playheadMs - interpStartMs) / timeDiff;
             const x = progress * width;
+            
+            // Guard against non-finite values (NaN, Infinity)
+            if (!isFinite(x) || !isFinite(height) || height <= 0) {
+                return; // Skip playhead drawing if coordinates are invalid
+            }
 
             // Cool playhead with glow and gradient
             const time = performance.now() * 0.001;
