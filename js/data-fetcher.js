@@ -474,7 +474,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         
         // 🎯 Set totalAudioDuration early so red scan line appears immediately
         // (This is the EXPECTED duration - we'll update with actual samples at completion)
-        const expectedDuration = totalSamples / 44100; // AudioWorklet runs at 44.1 kHz
+        // 👑 CRITICAL: Use original sample rate from metadata, NOT AudioContext rate!
+        const originalSampleRate = State.currentMetadata?.original_sample_rate || 50;
+        const expectedDuration = totalSamples / originalSampleRate;
         State.setTotalAudioDuration(expectedDuration);
         console.log(`📊 ${logTime()} Set EXPECTED totalAudioDuration: ${expectedDuration.toFixed(2)}s (will update with actual at completion)`);
         
@@ -807,9 +809,11 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()} (from allReceivedData)`);
                     
                     // 🎯 UPDATE: Use ACTUAL sample count for duration (refining expected duration)
-                    State.setTotalAudioDuration(totalWorkletSamples / 44100);
+                    // 👑 CRITICAL: Use original sample rate from metadata, NOT AudioContext rate!
+                    const originalSampleRate = State.currentMetadata?.original_sample_rate || 50;
+                    State.setTotalAudioDuration(totalWorkletSamples / originalSampleRate);
                     document.getElementById('sampleCount').textContent = totalWorkletSamples.toLocaleString(); // Update with actual
-                    console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / 44100).toFixed(2)}s (actual samples: ${totalWorkletSamples.toLocaleString()}, expected: ${totalSamples.toLocaleString()})`);
+                    console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / originalSampleRate).toFixed(2)}s (actual samples: ${totalWorkletSamples.toLocaleString()}, expected: ${totalSamples.toLocaleString()})`);
                     
                     // 🏛️ Initialize zoom state with total sample count
                     zoomState.initialize(totalWorkletSamples);
@@ -833,7 +837,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 
                                 State.workletNode.port.postMessage({
                                     type: 'data-complete',
-                                    totalSamples: totalWorkletSamples
+                                    totalSamples: totalWorkletSamples,
+                                    sampleRate: originalSampleRate  // 🔥 CRITICAL: Send actual sample rate (50 Hz), not 44100!
                                 });
                                 
                                 // Remove this handler
@@ -1096,7 +1101,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             
             // Update UI metrics
             document.getElementById('sampleCount').textContent = stitchedFloat32.length.toLocaleString();
-            State.setTotalAudioDuration(stitchedFloat32.length / 44100);
+            // 👑 CRITICAL: Use original sample rate from metadata, NOT AudioContext rate!
+            const originalSampleRate = State.currentMetadata?.original_sample_rate || 50;
+            State.setTotalAudioDuration(stitchedFloat32.length / originalSampleRate);
             
             // 🎨 DON'T re-send samples - worker already has them!
             // Just trigger final waveform build with DC removal
@@ -1558,9 +1565,11 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     State.setLoadingInterval(null);
                 }
                 
+                const railwaySampleRate = State.currentMetadata?.original_sample_rate || 50;
                 State.workletNode.port.postMessage({ 
                     type: 'data-complete',
-                    totalSamples: totalRailwaySamples
+                    totalSamples: totalRailwaySamples,
+                    sampleRate: railwaySampleRate  // 🔥 CRITICAL: Send actual sample rate (50 Hz), not 44100!
                 });
                 
                 // Remove this handler

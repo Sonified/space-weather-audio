@@ -186,7 +186,7 @@ function loadRegionsFromStorage(volcano) {
                 filteredRegions = data.regions.filter(region => {
                     // Check if region falls within the current time range
                     let regionStartMs, regionEndMs;
-                    
+
                     // 🔥 FIX: Always use saved timestamps for filtering if available
                     // Sample indices are relative to data start and change between fetches!
                     if (region.startTime && region.stopTime) {
@@ -207,9 +207,16 @@ function loadRegionsFromStorage(volcano) {
                         // Can't determine region time - exclude it
                         return false;
                     }
-                    
-                    // Region is included if it overlaps with the current time range at all
-                    // (region starts before data ends AND region ends after data starts)
+
+                    // Simple rule: filter out regions older than 24 hours from NOW
+                    const nowMs = Date.now();
+                    const twentyFourHoursAgo = nowMs - (24 * 60 * 60 * 1000);
+
+                    if (regionEndMs < twentyFourHoursAgo) {
+                        return false; // Too old, don't load it
+                    }
+
+                    // Also check if region overlaps with current data window
                     return regionStartMs < dataEndMs && regionEndMs > dataStartMs;
                 });
                 
@@ -905,12 +912,9 @@ export function drawSpectrogramRegionHighlights(ctx, canvasWidth, canvasHeight) 
         let startX, endX;
         if (zoomState.isInitialized()) {
             const interpolatedRange = getInterpolatedTimeRange();
-            const regionStartTimestamp = zoomState.sampleToRealTimestamp(
-                region.startSample !== undefined ? region.startSample : zoomState.timeToSample(regionStartSeconds)
-            );
-            const regionEndTimestamp = zoomState.sampleToRealTimestamp(
-                region.endSample !== undefined ? region.endSample : zoomState.timeToSample(regionEndSeconds)
-            );
+            // 🔥 TIMESTAMPS ONLY - never use stored sample indices (rolling window!)
+            const regionStartTimestamp = new Date(region.startTime);
+            const regionEndTimestamp = new Date(region.stopTime);
             
             const displayStartMs = interpolatedRange.startTime.getTime();
             const displayEndMs = interpolatedRange.endTime.getTime();
@@ -2794,12 +2798,18 @@ export function zoomToRegion(regionIndex) {
         return;
     }
     
-    // 🏛️ Handle backward compatibility: if region doesn't have sample indices, we can't zoom
-    if (region.startSample === undefined || region.endSample === undefined) {
-        console.warn('⚠️ Cannot zoom: region missing sample indices (old format). Please recreate this region.');
+    // 🏛️ Handle backward compatibility: if region doesn't have timestamps, we can't zoom
+    if (!region.startTime || !region.stopTime) {
+        console.warn('⚠️ Cannot zoom: region missing timestamps (old format). Please recreate this region.');
         return;
     }
-    
+
+    // Timestamps calculated from region.startTime/stopTime (our only source of truth!)
+    const dataStartMs = State.dataStartTime.getTime();
+    const dataEndMs = State.dataEndTime.getTime();
+    const regionStartMs = new Date(region.startTime).getTime();
+    const regionEndMs = new Date(region.stopTime).getTime();
+
     // console.log(`🔍 Zooming into region ${regionIndex + 1} (samples ${region.startSample.toLocaleString()}-${region.endSample.toLocaleString()})`);
     
     // console.log('🔍 ========== ZOOM IN: Starting Region Zoom ==========');
@@ -2875,11 +2885,30 @@ export function zoomToRegion(regionIndex) {
         // console.log('💾 Cached full waveform canvas before zooming in');
     }
     
-    // Enter the temple (update zoomState AFTER reading current position)
-    zoomState.mode = 'region';
-    zoomState.currentViewStartSample = region.startSample;
-    zoomState.currentViewEndSample = region.endSample;
-    zoomState.activeRegionId = region.id;
+    // 🙏 Timestamps as a source of truth: Calculate seconds from timestamps
+    // (regionStartMs, regionEndMs, dataStartMs already calculated above at lines 2808-2811)
+    const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
+    const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
+    
+    // Set viewport to region timestamps directly
+    // No sample calculations - just store the eternal timestamps
+    zoomState.setViewportToRegion(region.startTime, region.stopTime, region.id);
+
+    console.log('🔍 ========== ZOOM DIAGNOSTIC ==========');
+    console.log('📅 Region timestamps:', {
+        startTime: region.startTime,
+        stopTime: region.stopTime,
+        regionStartMs,
+        regionEndMs
+    });
+    console.log('📅 Data time range:', {
+        dataStartTime: State.dataStartTime.toISOString(),
+        dataEndTime: State.dataEndTime.toISOString(),
+        dataStartMs,
+        dataEndMs: State.dataEndTime.getTime()
+    });
+    console.log('👑 Viewport set to timestamps (samples calculated on-the-fly)');
+    console.log('🔍 ========================================');
     
     // Update submit button visibility (show when zoomed in)
     if (typeof window.updateSubmitButtonVisibility === 'function') {
@@ -2897,10 +2926,7 @@ export function zoomToRegion(regionIndex) {
     
     // Immediately redraw regions at new positions
     drawWaveformWithSelection();
-    
-    const regionStartSeconds = zoomState.sampleToTime(region.startSample);
-    const regionEndSeconds = zoomState.sampleToTime(region.endSample);
-    
+
     State.setSelectionStart(null);
     State.setSelectionEnd(null);
     updateWorkletSelection();
@@ -2921,10 +2947,11 @@ export function zoomToRegion(regionIndex) {
             statusEl.textContent = `Type (${regionNumber}) again to play this region, click and drag to select a feature, (esc) to zoom out.`;
         }
     }
-    
-    const newStartTime = zoomState.sampleToRealTimestamp(region.startSample);
-    const newEndTime = zoomState.sampleToRealTimestamp(region.endSample);
-    
+
+    // 🔥 FIX: Use timestamps directly instead of converting from samples
+    const newStartTime = new Date(region.startTime);
+    const newEndTime = new Date(region.stopTime);
+
     // 🔍 Diagnostic: Track region zoom start
     // console.log('🔍 REGION ZOOM IN starting:', {
     //     startTime: regionStartSeconds,
@@ -2943,9 +2970,14 @@ export function zoomToRegion(regionIndex) {
     }
     
     // 🔬 START HIGH-RES RENDER IN BACKGROUND (don't wait!)
-    // console.log('🔬 Starting high-res render in background...');
+    console.log('🔬 Passing to renderCompleteSpectrogramForRegion:', {
+        regionStartSeconds,
+        regionEndSeconds,
+        duration: regionEndSeconds - regionStartSeconds,
+        regionId: region.id
+    });
     const renderPromise = renderCompleteSpectrogramForRegion(
-        regionStartSeconds, 
+        regionStartSeconds,
         regionEndSeconds,
         true,  // renderInBackground = true
         region.id  // Pass region ID for tracking
@@ -3128,11 +3160,9 @@ export function zoomToFull() {
     // 💾 Cache the zoomed spectrogram BEFORE resetting (so we can crossfade it)
     cacheZoomedSpectrogram();
     
-    // 🏛️ Exit the temple - return to full view (update zoomState AFTER reading current position)
-    zoomState.mode = 'full';
-    zoomState.currentViewStartSample = 0;
-    zoomState.currentViewEndSample = zoomState.totalSamples;
-    zoomState.activeRegionId = null;
+    // 🙏 Timestamps as source of truth: Return viewport to full data range
+    // No sample calculations - just restore the eternal timestamp boundaries
+    zoomState.setViewportToFull();
     
     // Update submit button visibility (hide when zoomed out)
     if (typeof window.updateSubmitButtonVisibility === 'function') {

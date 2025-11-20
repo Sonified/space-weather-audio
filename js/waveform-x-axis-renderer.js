@@ -71,10 +71,11 @@ export function drawWaveformXAxis() {
     let interpolationFactor = 1.0;
     
     // 🏛️ Inside the temple: show the temple's time range
+    // 🙏 Timestamps as source of truth: Use timestamps directly from region range
     if (zoomState.isInRegion()) {
         const regionRange = zoomState.getRegionRange();
-        displayStartTime = zoomState.sampleToRealTimestamp(regionRange.startSample);
-        displayEndTime = zoomState.sampleToRealTimestamp(regionRange.endSample);
+        displayStartTime = regionRange.startTime;
+        displayEndTime = regionRange.endTime;
     } else {
         // Full view: show full time range
         displayStartTime = State.dataStartTime;
@@ -955,12 +956,13 @@ export function stopZoomTransition() {
  */
 export function getInterpolatedTimeRange() {
     // 🏛️ Get the base time range (what we're interpolating TO)
+    // 🙏 Timestamps as source of truth: Use timestamps directly from region range
     let targetStartTime, targetEndTime;
 
     if (zoomState.isInRegion()) {
         const regionRange = zoomState.getRegionRange();
-        targetStartTime = zoomState.sampleToRealTimestamp(regionRange.startSample);
-        targetEndTime = zoomState.sampleToRealTimestamp(regionRange.endSample);
+        targetStartTime = regionRange.startTime;
+        targetEndTime = regionRange.endTime;
     } else {
         targetStartTime = State.dataStartTime;
         targetEndTime = State.dataEndTime;

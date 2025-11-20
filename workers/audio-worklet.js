@@ -30,6 +30,10 @@ class SeismicProcessor extends AudioWorkletProcessor {
     // ===== INITIALIZATION MODULES =====
     
     initializeBuffer() {
+        // 🔥 CRITICAL: Sample rate will be set when data loads (default to 100 Hz)
+        // AudioContext is 44.1kHz, but data comes in at original rate (50 Hz seismic, 100 Hz infrasound, variable for spacecraft)
+        this.sampleRate = 100; // Default, will be updated by 'data-complete' message
+        
         this.maxBufferSize = 44100 * 300; // 5 minutes max (13.2M samples, ~53MB)
         this.buffer = new Float32Array(this.maxBufferSize);
         this.buffer.fill(0);
@@ -170,7 +174,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
             } else if (type === 'seek') {
                 // 🏎️ AUTONOMOUS: Worklet decides how to seek based on current state
                 const { position } = event.data;
-                const targetSample = Math.floor(position * 44100);
+                const targetSample = Math.floor(position * this.sampleRate);
                 
                 if (this.isPlaying) {
                     // Crossfade seek: fade out → jump → fade in
@@ -188,6 +192,11 @@ class SeismicProcessor extends AudioWorkletProcessor {
             } else if (type === 'start-immediately') {
                 this.startImmediately();
             } else if (type === 'data-complete') {
+                // 🔥 CRITICAL: Set actual sample rate from metadata!
+                if (event.data.sampleRate) {
+                    this.sampleRate = event.data.sampleRate;
+                    console.log(`🎵 WORKLET: Sample rate set to ${this.sampleRate} Hz (from metadata)`);
+                }
                 this.markDataComplete(event.data.totalSamples);
             } else if (type === 'reset') {
                 this.resetState();
@@ -232,7 +241,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
     markDataComplete(totalSamples) {
         this.dataLoadingComplete = true;
         this.totalSamples = totalSamples || this.samplesInBuffer;
-        const bufferSeconds = this.samplesInBuffer / 44100;
+        const bufferSeconds = this.samplesInBuffer / this.sampleRate;
         const bufferMinutes = bufferSeconds / 60;
         console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
         console.log('🎵 WORKLET: Data complete. Total samples set to ' + this.totalSamples + ' (samplesInBuffer=' + this.samplesInBuffer + ')');
@@ -276,8 +285,8 @@ class SeismicProcessor extends AudioWorkletProcessor {
     seekToPositionInstant(targetSample) {
         // Clamp to selection bounds if selection exists
         if (this.selectionStart !== null && this.selectionEnd !== null) {
-            const startSample = Math.floor(this.selectionStart * 44100);
-            const endSample = Math.floor(this.selectionEnd * 44100);
+            const startSample = Math.floor(this.selectionStart * this.sampleRate);
+            const endSample = Math.floor(this.selectionEnd * this.sampleRate);
             targetSample = Math.max(startSample, Math.min(targetSample, endSample));
         }
         
@@ -293,7 +302,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 this.port.postMessage({
                     type: 'position',
                     samplePosition: targetSample,
-                    positionSeconds: targetSample / 44100
+                    positionSeconds: targetSample / this.sampleRate
                 });
                 return true;
             } else {
@@ -414,7 +423,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.readIndex = 0;
         this.writeIndex = this.samplesInBuffer;
         
-        console.log('📏 Expanded buffer to ' + (newSize / 44100 / 60).toFixed(1) + ' minutes');
+        console.log('📏 Expanded buffer to ' + (newSize / this.sampleRate / 60).toFixed(1) + ' minutes');
     }
     
     writeSamples(samples) {
@@ -441,7 +450,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         
         // Check if we can start playback (initial load)
         if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
-            const bufferSeconds = this.samplesInBuffer / 44100;
+            const bufferSeconds = this.samplesInBuffer / this.sampleRate;
             const bufferMinutes = bufferSeconds / 60;
             console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
             console.log('🎵 WORKLET addSamples: Threshold reached! samplesInBuffer=' + this.samplesInBuffer + ', minBuffer=' + this.minBufferBeforePlay);
@@ -480,12 +489,12 @@ class SeismicProcessor extends AudioWorkletProcessor {
         
         const loopEndSample = isFullFileLoop 
             ? this.samplesInBuffer 
-            : Math.floor(this.selectionEnd * 44100);
+            : Math.floor(this.selectionEnd * this.sampleRate);
         
         const samplesToEnd = loopEndSample - this.totalSamplesConsumed;
         
         const loopDuration = isFullFileLoop 
-            ? this.samplesInBuffer / 44100  // Full file duration in seconds
+            ? this.samplesInBuffer / this.sampleRate  // Full file duration in seconds
             : (this.selectionEnd - this.selectionStart); // Selection duration in seconds
         
         // 🎚️ AUTONOMOUS FADE TRIGGER: Start fade-out early enough to complete EXACTLY at boundary
@@ -517,7 +526,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     
                     // 🏎️ AUTONOMOUS: Set pending seek for loop (will be handled when fade completes)
                     if (this.isLooping) {
-                        const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * 44100);
+                        const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * this.sampleRate);
                         this.pendingSeekSample = loopTargetSample;
                         if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Starting fade-out for loop (${fadeTime}ms, ${FADE_SAMPLES_INPUT} input samples @ ${this.speed.toFixed(2)}x), will jump to ${loopTargetSample.toLocaleString()} when fade completes`);
                     }
@@ -534,7 +543,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 // No fade in progress - handle boundary immediately
                 if (this.isLooping) {
                     // Loop: jump to start (fade-in will happen if we were fading)
-                    const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * 44100);
+                    const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * this.sampleRate);
                     if (this.seekToPositionInstant(loopTargetSample)) {
                         // Jump successful - fade in if we were playing
                         if (this.isPlaying) {
@@ -547,7 +556,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     // Not looping: stop at end
                     this.isPlaying = false;
                     const stopPosition = isFullFileLoop 
-                        ? (this.samplesInBuffer / 44100) 
+                        ? (this.samplesInBuffer / this.sampleRate) 
                         : this.selectionEnd;
                     this.port.postMessage({ 
                         type: 'selection-end-reached',
@@ -571,7 +580,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 this.port.postMessage({
                     type: 'position',
                     samplePosition: this.totalSamplesConsumed,
-                    positionSeconds: this.totalSamplesConsumed / 44100
+                    positionSeconds: this.totalSamplesConsumed / this.sampleRate
                 });
             }
             this.samplesSinceLastPositionUpdate = 0;
@@ -687,7 +696,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
             if (this.samplesInBuffer === 0) {
                 if (!this.finishSent && this.hasStarted && this.dataLoadingComplete) {
                     this.isPlaying = false;
-                    const expectedDuration = this.totalSamples / (44100 * this.speed);
+                    const expectedDuration = this.totalSamples / (this.sampleRate * this.speed);
                     
                     // Send final position update at 100% before sending finished message
                     this.port.postMessage({
@@ -706,8 +715,8 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     this.finishSent = true;
                     
                     // Report buffer health
-                    const bufferSeconds = this.minBufferSeen / 44100;
-                    if (this.minBufferSeen < 44100) {
+                    const bufferSeconds = this.minBufferSeen / this.sampleRate;
+                    if (this.minBufferSeen < this.sampleRate) {
                         console.warn(`⚠️ Buffer health: Minimum buffer was ${this.minBufferSeen.toLocaleString()} samples (${bufferSeconds.toFixed(2)}s) - DANGEROUSLY LOW!`);
                     } else {
                         console.log(`✅ Buffer health: Minimum buffer was ${this.minBufferSeen.toLocaleString()} samples (${bufferSeconds.toFixed(2)}s)`);
@@ -806,13 +815,13 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                 const isFullFileLoop = (this.selectionStart === null || this.selectionEnd === null);
                                 const loopEndSample = isFullFileLoop 
                                     ? this.samplesInBuffer 
-                                    : Math.floor(this.selectionEnd * 44100);
+                                    : Math.floor(this.selectionEnd * this.sampleRate);
                                 
                                 if (this.totalSamplesConsumed >= loopEndSample) {
                                     // At boundary - handle loop or stop
                                     if (this.isLooping) {
                                         // Loop: jump to start and fade in
-                                        const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * 44100);
+                                        const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * this.sampleRate);
                                         if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Fade-out complete at boundary, looping to ${loopTargetSample.toLocaleString()}`);
                                         if (this.seekToPositionInstant(loopTargetSample)) {
                                             this.startFade(+1, this.fadeTimeMs);
@@ -822,7 +831,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                         // Not looping: stop at end
                                         this.isPlaying = false;
                                         const stopPosition = isFullFileLoop 
-                                            ? (this.samplesInBuffer / 44100) 
+                                            ? (this.samplesInBuffer / this.sampleRate) 
                                             : this.selectionEnd;
                                         this.port.postMessage({ 
                                             type: 'selection-end-reached',
@@ -964,13 +973,13 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                 const isFullFileLoop = (this.selectionStart === null || this.selectionEnd === null);
                                 const loopEndSample = isFullFileLoop 
                                     ? this.samplesInBuffer 
-                                    : Math.floor(this.selectionEnd * 44100);
+                                    : Math.floor(this.selectionEnd * this.sampleRate);
                                 
                                 if (this.totalSamplesConsumed >= loopEndSample) {
                                     // At boundary - handle loop or stop
                                     if (this.isLooping) {
                                         // Loop: jump to start and fade in
-                                        const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * 44100);
+                                        const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * this.sampleRate);
                                         if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Fade-out complete at boundary, looping to ${loopTargetSample.toLocaleString()}`);
                                         if (this.seekToPositionInstant(loopTargetSample)) {
                                             this.startFade(+1, this.fadeTimeMs);
@@ -980,7 +989,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                         // Not looping: stop at end
                                         this.isPlaying = false;
                                         const stopPosition = isFullFileLoop 
-                                            ? (this.samplesInBuffer / 44100) 
+                                            ? (this.samplesInBuffer / this.sampleRate) 
                                             : this.selectionEnd;
                                         this.port.postMessage({ 
                                             type: 'selection-end-reached',

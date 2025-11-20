@@ -1189,11 +1189,30 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
     if (!renderInBackground) {
         ctx.clearRect(0, 0, width, height);
     }
-    
-    const sampleRate = 44100;
-    const startSample = Math.floor(startSeconds * sampleRate);
-    const endSample = Math.floor(endSeconds * sampleRate);
-    
+
+    // 🔥 CRITICAL FIX: Use original sample rate (50 Hz), NOT AudioContext rate (44100 Hz)!
+    // completeSamplesArray is at original sample rate, not resampled to 44100 yet
+    const originalSampleRate = State.currentMetadata?.original_sample_rate || 50;
+    const startSample = Math.floor(startSeconds * originalSampleRate);
+    const endSample = Math.floor(endSeconds * originalSampleRate);
+
+    console.log('🎨 renderCompleteSpectrogramForRegion received:', {
+        startSeconds,
+        endSeconds,
+        duration: endSeconds - startSeconds
+    });
+    console.log('🎨 Calculated samples (using sampleRate=44100):', {
+        startSample: startSample.toLocaleString(),
+        endSample: endSample.toLocaleString(),
+        sampleCount: (endSample - startSample).toLocaleString()
+    });
+    console.log('🎨 completeSamplesArray info:', {
+        totalLength: State.completeSamplesArray?.length.toLocaleString(),
+        requestedRange: `${startSample.toLocaleString()} - ${endSample.toLocaleString()}`,
+        withinBounds: endSample <= (State.completeSamplesArray?.length || 0),
+        originalSampleRate: originalSampleRate
+    });
+
     // logInfiniteCanvasState('renderCompleteSpectrogramForRegion START');
     
     // Check if we need to re-render

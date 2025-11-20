@@ -37,22 +37,22 @@ export function getCurrentPlaybackBoundaries() {
         const regions = getCurrentRegions();
         const region = regions[activeRegionIndex];
         if (region) {
-            // Calculate region boundaries (handle both new and old format)
+            // 🙏 Timestamps as a source of truth: Always use timestamps first (they never drift)
             let start, end;
             
-            if (region.startSample !== undefined && region.endSample !== undefined) {
-                // New format: use sample indices
-                start = zoomState.sampleToTime(region.startSample);
-                end = zoomState.sampleToTime(region.endSample);
-            } else if (State.dataStartTime) {
-                // Old format: convert from timestamps
+            if (region.startTime && region.stopTime && State.dataStartTime) {
+                // Preferred: use eternal timestamps
                 const dataStartMs = State.dataStartTime.getTime();
                 const regionStartMs = new Date(region.startTime).getTime();
                 const regionEndMs = new Date(region.stopTime).getTime();
                 start = (regionStartMs - dataStartMs) / 1000;
                 end = (regionEndMs - dataStartMs) / 1000;
+            } else if (region.startSample !== undefined && region.endSample !== undefined) {
+                // Fallback: use sample indices (may be outdated if sample rate changed)
+                start = zoomState.sampleToTime(region.startSample);
+                end = zoomState.sampleToTime(region.endSample);
             } else {
-                // Fallback: no boundaries available
+                // No boundaries available
                 return getFallbackBoundaries();
             }
             
@@ -68,9 +68,16 @@ export function getCurrentPlaybackBoundaries() {
     // Priority 3: Inside temple (zoomed into region)
     if (zoomState.isInRegion()) {
         const regionRange = zoomState.getRegionRange();
+        // 🙏 Timestamps as a source of truth: Convert timestamps to seconds
+        const dataStartMs = State.dataStartTime.getTime();
+        const startMs = regionRange.startTime.getTime();
+        const endMs = regionRange.endTime.getTime();
+        const start = (startMs - dataStartMs) / 1000;
+        const end = (endMs - dataStartMs) / 1000;
+        
         return {
-            start: regionRange.startTime,
-            end: regionRange.endTime,
+            start,
+            end,
             loop: State.isLooping,
             source: 'temple'
         };

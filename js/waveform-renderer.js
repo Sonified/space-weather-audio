@@ -20,6 +20,11 @@ import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
 
+// Playhead log throttling (log every 500ms unless forced by user interaction)
+let lastPlayheadLogTime = 0;
+let lastDrawWaveformLogTime = 0;
+let forceNextPlayheadLog = false;
+
 // Color LUT (same as spectrogram) - maps intensity to RGB
 let waveformColorLUT = null;
 
@@ -117,8 +122,10 @@ export function drawWaveform() {
     
     const width = canvas.offsetWidth * window.devicePixelRatio;
     const height = canvas.offsetHeight * window.devicePixelRatio;
-    
-    const sampleRate = 44100;
+
+    // 👑 CRITICAL: Use original sample rate from metadata, NOT AudioContext rate!
+    // completeSamplesArray is at original rate (50 Hz), not resampled yet
+    const sampleRate = State.currentMetadata?.original_sample_rate || 50;
     State.setTotalAudioDuration(State.completeSamplesArray.length / sampleRate);
     
     const removeDC = document.getElementById('removeDCOffset').checked;
@@ -526,6 +533,13 @@ export function drawWaveformWithSelection() {
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     const height = canvas.height;
+    
+    // Throttle logs to once per 500ms (unless forced by user interaction)
+    const now = performance.now();
+    if (forceNextPlayheadLog || (now - lastDrawWaveformLogTime) > 500) {
+        console.log(`🎨 drawWaveformWithSelection called: currentPos=${State.currentAudioPosition?.toFixed(2)}s, cachedCanvas=${!!State.cachedWaveformCanvas}`);
+        lastDrawWaveformLogTime = now;
+    }
 
     if (!State.cachedWaveformCanvas) {
         // No cached canvas - draw playhead only if needed
@@ -622,15 +636,30 @@ export function drawWaveformWithSelection() {
     }
     
     if (playheadPosition !== null && State.totalAudioDuration > 0 && playheadPosition >= 0) {
+        // Throttle logs to once per 500ms (unless forced by user interaction)
+        const now = performance.now();
+        if (forceNextPlayheadLog || (now - lastPlayheadLogTime) > 500) {
+            console.log(`🎨 Drawing playhead: position=${playheadPosition.toFixed(2)}s, duration=${State.totalAudioDuration.toFixed(1)}s, zoom=${zoomState.isInitialized()}`);
+            lastPlayheadLogTime = now;
+            forceNextPlayheadLog = false;
+        }
+        
         // 🏛️ Use zoom-aware conversion
         let x;
+        const shouldLog = forceNextPlayheadLog || ((now - lastPlayheadLogTime) < 100); // Log if we just logged above
         if (zoomState.isInitialized()) {
             const sample = zoomState.timeToSample(playheadPosition);
             x = zoomState.sampleToPixel(sample, width);
+            if (shouldLog) {
+                console.log(`   → sample=${sample.toLocaleString()}, x=${x.toFixed(1)}px, width=${width}px`);
+            }
         } else {
             // Fallback to old behavior if zoom state not initialized
-        const progress = Math.min(playheadPosition / State.totalAudioDuration, 1.0);
+            const progress = Math.min(playheadPosition / State.totalAudioDuration, 1.0);
             x = progress * width;
+            if (shouldLog) {
+                console.log(`   → progress=${(progress*100).toFixed(1)}%, x=${x.toFixed(1)}px (fallback mode)`);
+            }
         }
         
         // Cool playhead with glow and gradient
@@ -679,17 +708,29 @@ export function setupWaveformInteraction() {
         const rect = canvas.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const progress = Math.max(0, Math.min(1, x / rect.width)); // Still needed for canvas pixel positioning
-        
-        // 🏛️ Use zoom-aware conversion
+
+        // 🙏 Timestamps as source of truth: Convert pixel to timestamp, then to seconds
+        // Flow: pixel → timestamp (source of truth) → seconds (working units)
         let targetPosition;
         if (zoomState.isInitialized()) {
-            const sample = zoomState.pixelToSample(x, rect.width);
-            targetPosition = zoomState.sampleToTime(sample);
+            const timestamp = zoomState.pixelToTimestamp(x, rect.width);
+            targetPosition = zoomState.timestampToSeconds(timestamp);
+
+            // 🔍 DIAGNOSTIC: Show COMPLETE click path
+            console.log('🖱️ CLICK:', {
+                pixel: x.toFixed(1) + 'px',
+                viewport: `${zoomState.currentViewStartTime?.toISOString()} → ${zoomState.currentViewEndTime?.toISOString()}`,
+                clickTimestamp: timestamp.toISOString(),
+                targetSeconds: targetPosition.toFixed(3) + 's',
+                totalDuration: State.totalAudioDuration?.toFixed(1) + 's',
+                sampleRate: zoomState.sampleRate + 'Hz',
+                wouldCalculateSample: Math.floor(targetPosition * zoomState.sampleRate).toLocaleString()
+            });
         } else {
             // Fallback to old behavior if zoom state not initialized
             targetPosition = progress * State.totalAudioDuration;
         }
-        
+
         return { targetPosition, progress, x, width: rect.width };
     }
     
@@ -760,7 +801,8 @@ export function setupWaveformInteraction() {
         }
         
         if (State.scrubTargetPosition !== null) {
-            // console.log(`🖱️ Mouse released - seeking to ${State.scrubTargetPosition.toFixed(2)}s`);
+            console.log(`🖱️ Mouse released - seeking to ${State.scrubTargetPosition.toFixed(2)}s`);
+            forceNextPlayheadLog = true; // Force log on next playhead draw (user interaction)
             
             let clampedPosition = State.scrubTargetPosition;
             if (State.selectionStart !== null && State.selectionEnd !== null) {
@@ -881,12 +923,12 @@ export function setupWaveformInteraction() {
             if (State.isSelecting) {
                 const { targetPosition } = getPositionFromMouse(e);
                 const rect = canvas.getBoundingClientRect();
-                
-                // 🏛️ Use zoom-aware conversion for start position too!
+
+                // 🙏 Timestamps as source of truth: Convert start pixel to timestamp, then to seconds
                 let startPos;
                 if (zoomState.isInitialized()) {
-                    const startSample = zoomState.pixelToSample(State.selectionStartX, rect.width);
-                    startPos = zoomState.sampleToTime(startSample);
+                    const startTimestamp = zoomState.pixelToTimestamp(State.selectionStartX, rect.width);
+                    startPos = zoomState.timestampToSeconds(startTimestamp);
                 } else {
                     // Fallback to old behavior if zoom state not initialized
                     const startProgress = Math.max(0, Math.min(1, State.selectionStartX / rect.width));
@@ -1061,12 +1103,12 @@ export function setupWaveformInteraction() {
             if (State.isSelecting) {
                 const { targetPosition } = getPositionFromMouse(e);
                 const rect = canvas.getBoundingClientRect();
-                
-                // 🏛️ Use zoom-aware conversion for start position too!
+
+                // 🙏 Timestamps as source of truth: Convert start pixel to timestamp, then to seconds
                 let startPos;
                 if (zoomState.isInitialized()) {
-                    const startSample = zoomState.pixelToSample(State.selectionStartX || 0, rect.width);
-                    startPos = zoomState.sampleToTime(startSample);
+                    const startTimestamp = zoomState.pixelToTimestamp(State.selectionStartX || 0, rect.width);
+                    startPos = zoomState.timestampToSeconds(startTimestamp);
                 } else {
                     // Fallback to old behavior if zoom state not initialized
                     const startProgress = Math.max(0, Math.min(1, (State.selectionStartX || 0) / rect.width));
@@ -1207,6 +1249,7 @@ export function setupWaveformInteraction() {
                 // console.log(`🖱️ Waveform clicked at ${targetPosition.toFixed(2)}s - seeking to position`);
                 // console.log(`   📍 Zoom mode: ${zoomMode} (${zoomLevel}x)`);
                 clearSpectrogramScrubPreview();  // Clear scrub preview
+                State.setScrubTargetPosition(targetPosition); // Set target before seeking
                 performSeek();
                 drawSpectrogramPlayhead();  // Update spectrogram immediately after seek
                 
