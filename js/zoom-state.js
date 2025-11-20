@@ -121,7 +121,13 @@ class ZoomState {
         const viewEndMs = this.currentViewEndTime.getTime();
         const timestampMs = timestamp.getTime();
 
-        const progress = (timestampMs - viewStartMs) / (viewEndMs - viewStartMs);
+        // 🔥 PROTECTION: Prevent division by zero if viewport has zero duration
+        const viewDuration = viewEndMs - viewStartMs;
+        if (viewDuration <= 0 || !isFinite(viewDuration)) {
+            return 0;
+        }
+
+        const progress = (timestampMs - viewStartMs) / viewDuration;
         return progress * canvasWidth;
     }
 
@@ -295,8 +301,8 @@ class ZoomState {
         this.currentViewEndTime = new Date(endTime);
         this.activeRegionId = regionId;
 
-        console.log(`🏛️ Entered temple (region ${regionId}):`);
-        console.log(`   👑 Viewport: ${this.currentViewStartTime.toISOString()} to ${this.currentViewEndTime.toISOString()}`);
+        // console.log(`🏛️ Entered temple (region ${regionId}):`);
+        // console.log(`   👑 Viewport: ${this.currentViewStartTime.toISOString()} to ${this.currentViewEndTime.toISOString()}`);
     }
 
     /**
@@ -308,10 +314,10 @@ class ZoomState {
         this.currentViewEndTime = State.dataEndTime ? new Date(State.dataEndTime) : null;
         this.activeRegionId = null;
 
-        console.log(`🏛️ Exited temple (back to full view)`);
-        if (this.currentViewStartTime && this.currentViewEndTime) {
-            console.log(`   👑 Viewport: ${this.currentViewStartTime.toISOString()} to ${this.currentViewEndTime.toISOString()}`);
-        }
+        // console.log(`🏛️ Exited temple (back to full view)`);
+        // if (this.currentViewStartTime && this.currentViewEndTime) {
+        //     console.log(`   👑 Viewport: ${this.currentViewStartTime.toISOString()} to ${this.currentViewEndTime.toISOString()}`);
+        // }
     }
 }
 

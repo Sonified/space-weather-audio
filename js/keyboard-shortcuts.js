@@ -70,9 +70,9 @@ function handleKeyboardShortcut(event) {
     }
     
     // Debug: Log all key presses during tutorial (can be removed later)
-    if (event.key === 'Escape' || (event.key >= '1' && event.key <= '9')) {
-        console.log(`⌨️ Keyboard shortcut handler called: key=${event.key}, target=${event.target.tagName}`);
-    }
+    // if (event.key === 'Escape' || (event.key >= '1' && event.key <= '9')) {
+    //     console.log(`⌨️ Keyboard shortcut handler called: key=${event.key}, target=${event.target.tagName}`);
+    // }
     
     // Number keys (1-9): Zoom to region, or play region if already zoomed into it
     if (event.key >= '1' && event.key <= '9') {
@@ -229,10 +229,27 @@ function handleKeyboardShortcut(event) {
         
         // Second priority: Zoom out if in a region
         if (zoomState.isInRegion()) {
-            console.log('🔍 [ESCAPE DEBUG] In region - preventing default and calling zoomToFull()');
+            // console.log('🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴');
+            // console.log('🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴');
+            // console.log('🔴🔴 ESCAPE PRESSED - STARTING ZOOM OUT 🔴🔴');
+            
+            // 🔍 DIAGNOSTIC: Check what's currently visible on the MAIN canvas before zoom out
+            // const mainCanvas = document.getElementById('spectrogram');
+            // if (mainCanvas) {
+            //     const mainCtx = mainCanvas.getContext('2d', { willReadFrequently: true });
+            //     const midX = Math.floor(mainCanvas.width / 2);
+            //     const midY = Math.floor(mainCanvas.height / 2);
+            //     const visiblePixel = mainCtx.getImageData(midX, midY, 1, 1).data;
+            //     console.log(`🔍 MAIN CANVAS (what user sees) center pixel:`, {
+            //         rgba: `${visiblePixel[0]}, ${visiblePixel[1]}, ${visiblePixel[2]}, ${visiblePixel[3]}`,
+            //         brightness: visiblePixel[0] + visiblePixel[1] + visiblePixel[2]
+            //     });
+            // }
+            
+            // console.log('🔍 [ESCAPE DEBUG] In region - preventing default and calling zoomToFull()');
             event.preventDefault();
             zoomToFull();
-            console.log('🔙 Escape key: Zoomed out to full view');
+            // console.log('🔙 Escape key: Zoomed out to full view');
         } else {
             console.log('🔍 [ESCAPE DEBUG] NOT in region and NOT in feature selection - Escape key ignored');
         }

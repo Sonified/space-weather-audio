@@ -33,6 +33,9 @@ let currentVolcano = null;
 let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
 
+// 🎨 ANIMATION TOGGLE: Set to true for smooth slide animation, false for instant reordering
+const ANIMATE_REGION_REORDER = true; // Change to true to enable smooth slide animation
+
 // localStorage key prefix for feature persistence
 const STORAGE_KEY_PREFIX = 'volcano_audio_regions_';
 
@@ -1747,20 +1750,245 @@ function formatFeatureButtonText(feature) {
 
 /**
  * Render all regions
+ * Active region (if any) is always displayed first, but keeps its original number
  */
 function renderRegions() {
     const container = document.getElementById('regionsList');
     if (!container) return;
     
-    container.innerHTML = '';
-    
     const regions = getCurrentRegions();
-    regions.forEach((region, index) => {
-        const regionCard = createRegionCard(region, index);
-        container.appendChild(regionCard);
+    
+    // Build array with original indices preserved
+    const regionsWithIndex = regions.map((region, originalIndex) => ({
+        region,
+        originalIndex
+    }));
+    
+    // Sort: active region first, then others in original order
+    const sortedRegions = [...regionsWithIndex];
+    if (activeRegionIndex !== null && activeRegionIndex >= 0 && activeRegionIndex < regions.length) {
+        const activeRegion = sortedRegions[activeRegionIndex];
+        if (activeRegion) {
+            sortedRegions.splice(activeRegionIndex, 1);
+            sortedRegions.unshift(activeRegion);
+        }
+    }
+    
+    // Check if we can reorder existing cards (smooth transition)
+    const existingCards = Array.from(container.children);
+    const cardMap = new Map();
+    existingCards.forEach(card => {
+        const regionId = card.dataset.regionId;
+        if (regionId) {
+            cardMap.set(regionId, card);
+        }
     });
     
+    // If we have all cards and count matches, reorder them smoothly
+    const canReorder = existingCards.length === regions.length && 
+                       sortedRegions.every(({ region }) => cardMap.has(String(region.id)));
+    
+    // Debug: Check if we're actually reordering
+    // if (canReorder && activeRegionIndex !== null) {
+    //     const firstRegionId = sortedRegions[0]?.region?.id;
+    //     const firstCardId = existingCards[0]?.dataset?.regionId;
+    //     if (firstRegionId !== firstCardId) {
+    //         console.log(`🔄 Reordering regions: active region will move to top (animation: ${ANIMATE_REGION_REORDER ? 'ON' : 'OFF'})`);
+    //     }
+    // }
+    
+    if (canReorder) {
+        // Get current order of cards in DOM
+        const currentOrder = Array.from(container.children).map(card => card.dataset.regionId);
+        
+        // Get target order
+        const targetOrder = sortedRegions.map(({ region }) => String(region.id));
+        
+        // Check if reordering is actually needed
+        const needsReorder = currentOrder.some((id, index) => id !== targetOrder[index]);
+        
+        if (needsReorder && ANIMATE_REGION_REORDER) {
+            // 🎨 ANIMATED MODE: Smooth slide animation
+            // console.log('🔄 Animating region reorder...', {
+            //     currentOrder: currentOrder,
+            //     targetOrder: targetOrder,
+            //     activeRegionIndex
+            // });
+            
+            // Store current positions using getBoundingClientRect (more reliable)
+            const containerRect = container.getBoundingClientRect();
+            const cardPositions = new Map();
+            const cardHeights = new Map();
+            
+            existingCards.forEach((card, index) => {
+                const regionId = card.dataset.regionId;
+                if (regionId) {
+                    const rect = card.getBoundingClientRect();
+                    // Position relative to container top
+                    const relativeTop = rect.top - containerRect.top + container.scrollTop;
+                    cardPositions.set(regionId, relativeTop);
+                    cardHeights.set(regionId, rect.height);
+                    // console.log(`  Current: Card ${regionId} at position ${index}, top: ${relativeTop.toFixed(0)}px`);
+                }
+            });
+            
+            // Update card content first (without reordering)
+            sortedRegions.forEach(({ region, originalIndex }) => {
+                const card = cardMap.get(String(region.id));
+                if (card) {
+                    // Update active class based on whether this is the active region
+                    const isActive = originalIndex === activeRegionIndex;
+                    if (isActive) {
+                        card.classList.add('active');
+                    } else {
+                        card.classList.remove('active');
+                    }
+                    // Update region number display (preserve original index)
+                    const regionLabel = card.querySelector('.region-label');
+                    if (regionLabel) {
+                        regionLabel.textContent = `Region ${originalIndex + 1}`;
+                    }
+                    // Update data attributes for event handlers
+                    updateRegionCardDataAttributes(card, originalIndex);
+                }
+            });
+            
+            // Calculate target positions - cards stack from first card's current position
+            const marginBottom = 6; // From CSS: margin-bottom: 6px
+            const targetPositions = new Map();
+            let currentY = cardPositions.get(existingCards[0]?.dataset?.regionId) || 0;
+            
+            sortedRegions.forEach(({ region }, index) => {
+                const card = cardMap.get(String(region.id));
+                if (card) {
+                    const height = cardHeights.get(String(region.id)) || card.getBoundingClientRect().height;
+                    targetPositions.set(String(region.id), currentY);
+                    // console.log(`  Target: Card ${region.id} at position ${index}, top: ${currentY.toFixed(0)}px`);
+                    currentY += height + marginBottom;
+                }
+            });
+            
+            // Set transforms to current positions BEFORE reordering
+            sortedRegions.forEach(({ region }) => {
+                const card = cardMap.get(String(region.id));
+                if (!card) return;
+                
+                const oldTop = cardPositions.get(String(region.id));
+                const targetTop = targetPositions.get(String(region.id));
+                
+                if (oldTop !== undefined && targetTop !== undefined) {
+                    const deltaY = oldTop - targetTop;
+                    // console.log(`  Card ${region.id}: deltaY = ${deltaY.toFixed(0)}px (from ${oldTop.toFixed(0)} to ${targetTop.toFixed(0)})`);
+                    
+                    if (Math.abs(deltaY) > 1) {
+                        // Set transform to maintain current visual position
+                        card.style.transform = `translateY(${deltaY}px)`;
+                        card.style.transition = 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+                    }
+                }
+            });
+            
+            // Force reflow to apply transforms
+            void container.offsetHeight;
+            
+            // Now reorder DOM nodes
+            sortedRegions.forEach(({ region }) => {
+                const card = cardMap.get(String(region.id));
+                if (card) {
+                    container.appendChild(card);
+                }
+            });
+            
+            // Animate to final position
+            requestAnimationFrame(() => {
+                sortedRegions.forEach(({ region }) => {
+                    const card = cardMap.get(String(region.id));
+                    if (card && card.style.transform) {
+                        // console.log(`  Animating card ${region.id} to final position`);
+                        card.style.transform = 'translateY(0)';
+                        
+                        // Clean up after animation completes
+                        setTimeout(() => {
+                            card.style.transition = '';
+                            card.style.transform = '';
+                        }, 500);
+                    }
+                });
+            });
+        } else if (needsReorder && !ANIMATE_REGION_REORDER) {
+            // 🎨 INSTANT MODE: Just reorder immediately without animation
+            // console.log('🔄 Instantly reordering regions (animation disabled)');
+            
+            // Update card content first
+            sortedRegions.forEach(({ region, originalIndex }) => {
+                const card = cardMap.get(String(region.id));
+                if (card) {
+                    // Update active class based on whether this is the active region
+                    const isActive = originalIndex === activeRegionIndex;
+                    if (isActive) {
+                        card.classList.add('active');
+                    } else {
+                        card.classList.remove('active');
+                    }
+                    // Update region number display (preserve original index)
+                    const regionLabel = card.querySelector('.region-label');
+                    if (regionLabel) {
+                        regionLabel.textContent = `Region ${originalIndex + 1}`;
+                    }
+                    // Update data attributes for event handlers
+                    updateRegionCardDataAttributes(card, originalIndex);
+                }
+            });
+            
+            // Instantly reorder DOM nodes
+            sortedRegions.forEach(({ region }) => {
+                const card = cardMap.get(String(region.id));
+                if (card) {
+                    container.appendChild(card);
+                }
+            });
+        } else {
+            // No reordering needed, just update content
+            sortedRegions.forEach(({ region, originalIndex }) => {
+                const card = cardMap.get(String(region.id));
+                if (card) {
+                    // Update active class based on whether this is the active region
+                    const isActive = originalIndex === activeRegionIndex;
+                    if (isActive) {
+                        card.classList.add('active');
+                    } else {
+                        card.classList.remove('active');
+                    }
+                    const regionLabel = card.querySelector('.region-label');
+                    if (regionLabel) {
+                        regionLabel.textContent = `Region ${originalIndex + 1}`;
+                    }
+                    updateRegionCardDataAttributes(card, originalIndex);
+                }
+            });
+        }
+    } else {
+        // Recreate all cards (new regions or count changed)
+        container.innerHTML = '';
+        sortedRegions.forEach(({ region, originalIndex }) => {
+            const regionCard = createRegionCard(region, originalIndex);
+            container.appendChild(regionCard);
+        });
+    }
+    
     // Region highlights are drawn by waveform-renderer.js, no need to call here
+}
+
+/**
+ * Update data attributes on region card elements to use correct index
+ * Event handlers are already bound via closures, so we just update data attributes
+ */
+function updateRegionCardDataAttributes(card, index) {
+    // Update all data-region-index attributes
+    const elementsWithIndex = card.querySelectorAll('[data-region-index]');
+    elementsWithIndex.forEach(el => {
+        el.dataset.regionIndex = index;
+    });
 }
 
 /**
@@ -1768,7 +1996,9 @@ function renderRegions() {
  */
 function createRegionCard(region, index) {
     const card = document.createElement('div');
-    card.className = 'region-card';
+    // Add 'active' class if this is the active region
+    const isActive = index === activeRegionIndex;
+    card.className = `region-card${isActive ? ' active' : ''}`;
     card.dataset.regionId = region.id;
     
     // Header bar
@@ -2890,25 +3120,73 @@ export function zoomToRegion(regionIndex) {
     const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
     const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
     
+    // 🎯 MAGIC TRICK: Predictive rendering with smart quality zones!
+    // Detect zoom direction and calculate expanded render window
+    const regionCenter = (regionStartSeconds + regionEndSeconds) / 2;
+    const regionDuration = regionEndSeconds - regionStartSeconds;
+    const oldStartSeconds = (oldStartTime.getTime() - dataStartMs) / 1000;
+    const oldEndSeconds = (oldEndTime.getTime() - dataStartMs) / 1000;
+    const oldDuration = oldEndSeconds - oldStartSeconds;
+    const oldCenter = (oldStartSeconds + oldEndSeconds) / 2;
+    
+    // Where is region center relative to current viewport center?
+    const relativePos = (regionCenter - oldCenter) / oldDuration;
+    
+    let expandedStartSeconds, expandedEndSeconds, zoomDirection;
+    if (relativePos < -0.2) {
+        // Coming from LEFT edge → render center + right (2x)
+        zoomDirection = 'left';
+        expandedStartSeconds = regionStartSeconds;
+        expandedEndSeconds = regionEndSeconds + regionDuration;
+        // console.log('🎯 Zoom from LEFT: rendering target + right buffer (2x)');
+    } else if (relativePos > 0.2) {
+        // Coming from RIGHT edge → render left + center (2x)
+        zoomDirection = 'right';
+        expandedStartSeconds = regionStartSeconds - regionDuration;
+        expandedEndSeconds = regionEndSeconds;
+        // console.log('🎯 Zoom from RIGHT: rendering left buffer + target (2x)');
+    } else {
+        // CENTER or unknown → render left + center + right (3x) to be safe
+        zoomDirection = 'center';
+        expandedStartSeconds = regionStartSeconds - regionDuration;
+        expandedEndSeconds = regionEndSeconds + regionDuration;
+        // console.log('🎯 Zoom from CENTER: rendering left + target + right (3x)');
+    }
+    
+    // Clamp to data bounds
+    const dataStartSeconds = 0;
+    const dataEndSeconds = (State.dataEndTime.getTime() - dataStartMs) / 1000;
+    expandedStartSeconds = Math.max(dataStartSeconds, expandedStartSeconds);
+    expandedEndSeconds = Math.min(dataEndSeconds, expandedEndSeconds);
+    
+    // console.log('🎯 Smart render window:', {
+    //     direction: zoomDirection,
+    //     target: `${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`,
+    //     expanded: `${expandedStartSeconds.toFixed(2)}s - ${expandedEndSeconds.toFixed(2)}s`,
+    //     targetDuration: regionDuration.toFixed(2),
+    //     expandedDuration: (expandedEndSeconds - expandedStartSeconds).toFixed(2),
+    //     multiplier: ((expandedEndSeconds - expandedStartSeconds) / regionDuration).toFixed(1) + 'x'
+    // });
+    
     // Set viewport to region timestamps directly
     // No sample calculations - just store the eternal timestamps
     zoomState.setViewportToRegion(region.startTime, region.stopTime, region.id);
 
-    console.log('🔍 ========== ZOOM DIAGNOSTIC ==========');
-    console.log('📅 Region timestamps:', {
-        startTime: region.startTime,
-        stopTime: region.stopTime,
-        regionStartMs,
-        regionEndMs
-    });
-    console.log('📅 Data time range:', {
-        dataStartTime: State.dataStartTime.toISOString(),
-        dataEndTime: State.dataEndTime.toISOString(),
-        dataStartMs,
-        dataEndMs: State.dataEndTime.getTime()
-    });
-    console.log('👑 Viewport set to timestamps (samples calculated on-the-fly)');
-    console.log('🔍 ========================================');
+    // console.log('🔍 ========== ZOOM DIAGNOSTIC ==========');
+    // console.log('📅 Region timestamps:', {
+    //     startTime: region.startTime,
+    //     stopTime: region.stopTime,
+    //     regionStartMs,
+    //     regionEndMs
+    // });
+    // console.log('📅 Data time range:', {
+    //     dataStartTime: State.dataStartTime.toISOString(),
+    //     dataEndTime: State.dataEndTime.toISOString(),
+    //     dataStartMs,
+    //     dataEndMs: State.dataEndTime.getTime()
+    // });
+    // console.log('👑 Viewport set to timestamps (samples calculated on-the-fly)');
+    // console.log('🔍 ========================================');
     
     // Update submit button visibility (show when zoomed in)
     if (typeof window.updateSubmitButtonVisibility === 'function') {
@@ -2932,6 +3210,9 @@ export function zoomToRegion(regionIndex) {
     updateWorkletSelection();
     
     setActiveRegion(regionIndex);
+    
+    // Reorder regions list so active region is at top (smooth slide animation)
+    renderRegions();
     
     // Expand this region's panel and collapse all others
     expandRegionAndCollapseOthers(regionIndex);
@@ -2969,23 +3250,36 @@ export function zoomToRegion(regionIndex) {
         cancelActiveRender();
     }
     
-    // 🔬 START HIGH-RES RENDER IN BACKGROUND (don't wait!)
-    console.log('🔬 Passing to renderCompleteSpectrogramForRegion:', {
-        regionStartSeconds,
-        regionEndSeconds,
-        duration: regionEndSeconds - regionStartSeconds,
-        regionId: region.id
-    });
+    // 🔬 START SMART PREDICTIVE RENDER IN BACKGROUND (don't wait!)
+    // console.log('🔬 Passing to renderCompleteSpectrogramForRegion with smart window:', {
+    //     target: `${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`,
+    //     expanded: `${expandedStartSeconds.toFixed(2)}s - ${expandedEndSeconds.toFixed(2)}s`,
+    //     direction: zoomDirection,
+    //     regionId: region.id
+    // });
     const renderPromise = renderCompleteSpectrogramForRegion(
         regionStartSeconds,
         regionEndSeconds,
         true,  // renderInBackground = true
-        region.id  // Pass region ID for tracking
+        region.id,  // Pass region ID for tracking
+        {
+            // 🎯 Smart predictive rendering with quality zones
+            expandedStart: expandedStartSeconds,
+            expandedEnd: expandedEndSeconds,
+            direction: zoomDirection
+        }
     );
     
     // 🎬 Animate with elastic friend - no waiting!
+    // console.log('🎬 ⏱️ ZOOM ANIMATION START:', performance.now().toFixed(0) + 'ms');
     animateZoomTransition(oldStartTime, oldEndTime, true).then(() => {
-        // console.log('🎬 Zoom animation complete');
+        // console.log('🎬 ⏱️ ZOOM ANIMATION COMPLETE:', performance.now().toFixed(0) + 'ms');
+        
+        // Clear smart render flag when animation completes
+        import('./spectrogram-complete-renderer.js').then(module => {
+            module.clearSmartRenderBounds();
+            // console.log('🎯 Cleared smart render bounds after zoom complete');
+        });
         
         // console.log('🔍 ========== ZOOM IN: Animation Complete ==========');
         // console.log('🏛️ Now inside region:', {
@@ -3032,7 +3326,7 @@ export function zoomToRegion(regionIndex) {
                 });
                 
                 // 🔍 Diagnostic: Track region zoom complete
-                console.log('✅ REGION ZOOM IN complete');
+                // console.log('✅ REGION ZOOM IN complete');
             } else {
                 console.log('🛑 Render completed but region changed - skipping viewport update');
             }
@@ -3159,7 +3453,16 @@ export function zoomToFull() {
     
     // 💾 Cache the zoomed spectrogram BEFORE resetting (so we can crossfade it)
     cacheZoomedSpectrogram();
-    
+
+    // 🔍 DIAGNOSTIC: Log canvas states BEFORE zoom-out starts
+    import('./spectrogram-complete-renderer.js').then(module => {
+        console.log(`🔍 ZOOM OUT START - Canvas states:`, {
+            infiniteCanvas: module.getInfiniteCanvasStatus ? module.getInfiniteCanvasStatus() : 'NO STATUS FUNCTION',
+            cachedFull: module.getCachedFullStatus ? module.getCachedFullStatus() : 'NO STATUS FUNCTION',
+            cachedZoomed: module.getCachedZoomedStatus ? module.getCachedZoomedStatus() : 'NO STATUS FUNCTION'
+        });
+    });
+
     // 🙏 Timestamps as source of truth: Return viewport to full data range
     // No sample calculations - just restore the eternal timestamp boundaries
     zoomState.setViewportToFull();
@@ -3172,6 +3475,9 @@ export function zoomToFull() {
     // 🔧 FIX: Clear active region to prevent UI confusion after zoom-out
     activeRegionIndex = null;
     
+    // Restore original region order (smooth slide animation)
+    renderRegions();
+    
     // Collapse all region panels and disable feature selection mode
     collapseAllRegions();
     stopFrequencySelection();
@@ -3181,9 +3487,9 @@ export function zoomToFull() {
     // Otherwise, boundaries will be full audio
     updateWorkletSelection();
 
-    // 🔧 FIX: Only reset spectrogram state (clears infinite canvas)
-    // DON'T clear the elastic friend - we need it for the transition!
-    resetSpectrogramState();
+    // 🔧 FIX: DON'T reset spectrogram state yet - keep infiniteCanvas visible!
+    // We'll clear it AFTER the fade-in completes (in animation completion handler)
+    // resetSpectrogramState(); // <-- Moved to after animation
 
     // 💾 Restore cached full waveform immediately (like spectrogram's elastic friend)
     // This allows drawInterpolatedWaveform() to stretch it during the transition
@@ -3211,6 +3517,12 @@ export function zoomToFull() {
     // 🎬 Wait for animation to complete, THEN rebuild infinite canvas for full view
     animateZoomTransition(oldStartTime, oldEndTime, false).then(() => {
         // console.log('🎬 Zoom-out animation complete - restoring full view');
+        
+        // DON'T reset spectrogram state - we just restored it!
+        // The spectrogram is fully functional and initialized after zoom out
+        // import('./spectrogram-complete-renderer.js').then(module => {
+        //     module.resetSpectrogramState();
+        // });
         
         // console.log('🌍 ========== ZOOM OUT: Animation Complete ==========');
         // console.log('🏛️ Now in full view:', {

@@ -449,6 +449,11 @@ export async function changeFrequencyScale() {
                 const regionRange = zoomState.getRegionRange();
                 console.log(`🔍 Inside region - animating scale transition`);
                 
+                // 🔥 FIX: Convert Date objects to seconds (renderCompleteSpectrogramForRegion expects seconds!)
+                const dataStartMs = State.dataStartTime ? State.dataStartTime.getTime() : 0;
+                const startSeconds = (regionRange.startTime.getTime() - dataStartMs) / 1000;
+                const endSeconds = (regionRange.endTime.getTime() - dataStartMs) / 1000;
+                
                 // 🔥 Capture old spectrogram BEFORE re-rendering
                 const oldSpectrogram = document.createElement('canvas');
                 oldSpectrogram.width = width;
@@ -462,20 +467,30 @@ export async function changeFrequencyScale() {
                 
                 // Start rendering immediately (don't await - let it run in parallel with axis animation)
                 const spectrogramRenderPromise = spectrogramModule.renderCompleteSpectrogramForRegion(
-                    regionRange.startTime, 
-                    regionRange.endTime, 
+                    startSeconds, 
+                    endSeconds, 
                     true  // Skip viewport update - we'll fade manually
                 );
                 
                 // Wait for spectrogram to finish rendering (may complete before or after axis animation)
                 await spectrogramRenderPromise;
-                
+
+                console.log('🎨 Spectrogram render complete - getting viewport for crossfade');
+
                 // Get the new spectrogram (without displaying it yet)
-                const { getSpectrogramViewport } = spectrogramModule;
+                const { getSpectrogramViewport, getInfiniteCanvasStatus } = spectrogramModule;
                 const playbackRate = State.currentPlaybackRate || 1.0;
-                const newSpectrogram = getSpectrogramViewport(playbackRate);
                 
+                // 🔥 DIAGNOSTIC: Check infinite canvas status before getting viewport
+                const infiniteCanvasStatus = getInfiniteCanvasStatus();
+                if (!isStudyMode()) {
+                    console.log(`🔍 Infinite canvas status: ${infiniteCanvasStatus}`);
+                }
+                
+                const newSpectrogram = getSpectrogramViewport(playbackRate);
+
                 if (!newSpectrogram) {
+                    console.warn('⚠️ getSpectrogramViewport returned null - falling back to direct viewport update');
                     // Fallback: just update normally
                     spectrogramModule.updateSpectrogramViewport(playbackRate);
                     if (playbackWasActive) {
@@ -486,6 +501,24 @@ export async function changeFrequencyScale() {
                     console.log('✅ Region scale transition complete (no fade)');
                     return;
                 }
+
+                // 🔥 DIAGNOSTIC: Verify the viewport canvas has content (not all black)
+                const testCtx = newSpectrogram.getContext('2d');
+                const imageData = testCtx.getImageData(0, 0, Math.min(100, newSpectrogram.width), Math.min(100, newSpectrogram.height));
+                let hasContent = false;
+                for (let i = 0; i < imageData.data.length; i += 4) {
+                    // Check if pixel is not pure black (allow some tolerance)
+                    if (imageData.data[i] > 5 || imageData.data[i + 1] > 5 || imageData.data[i + 2] > 5) {
+                        hasContent = true;
+                        break;
+                    }
+                }
+                
+                if (!hasContent && !isStudyMode()) {
+                    console.warn('⚠️ getSpectrogramViewport returned canvas with no visible content (all black)');
+                }
+
+                console.log('✅ Got new spectrogram viewport - starting crossfade');
                 
                 // 🎨 Crossfade old → new (300ms)
                 const fadeDuration = 300;
@@ -515,8 +548,8 @@ export async function changeFrequencyScale() {
                     ctx.globalAlpha = 1.0;
                     if (State.currentAudioPosition !== null && State.totalAudioDuration > 0) {
                         // Calculate playhead position relative to region
-                        const regionDuration = regionRange.endTime - regionRange.startTime;
-                        const positionInRegion = State.currentAudioPosition - regionRange.startTime;
+                        const regionDuration = endSeconds - startSeconds;
+                        const positionInRegion = State.currentAudioPosition - startSeconds;
                         const playheadX = (positionInRegion / regionDuration) * width;
                         
                         ctx.strokeStyle = '#616161';

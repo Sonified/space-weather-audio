@@ -6,6 +6,7 @@
 
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
+import { isZoomTransitionInProgress, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 
 // Overlay canvas for playhead (separate layer - no conflicts!)
 let playheadOverlayCanvas = null;
@@ -96,15 +97,73 @@ export function drawSpectrogramPlayhead() {
     
     // Calculate playhead position
     if (State.totalAudioDuration > 0 && State.currentAudioPosition >= 0) {
-        // 🏛️ Use zoom-aware conversion
+        // 🏛️ Use zoom-aware conversion with interpolated time range during transitions
         let playheadX;
-        if (zoomState.isInitialized()) {
+        
+        // 🔥 FIX: During transitions, use interpolated time range (like waveform playhead)
+        if (isZoomTransitionInProgress() && zoomState.isInitialized()) {
+            const sample = zoomState.timeToSample(State.currentAudioPosition);
+            const playheadTimestamp = zoomState.sampleToRealTimestamp(sample);
+            if (playheadTimestamp) {
+                const interpolatedRange = getInterpolatedTimeRange();
+                const interpStartMs = interpolatedRange.startTime.getTime();
+                const interpEndMs = interpolatedRange.endTime.getTime();
+                const playheadMs = playheadTimestamp.getTime();
+                const timeDiff = interpEndMs - interpStartMs;
+                
+                // if (!window._playheadTransitionLog || (performance.now() - window._playheadTransitionLog) > 100) {
+                //     console.log('🔍 Spectrogram playhead transition:', {
+                //         currentAudioPos: State.currentAudioPosition.toFixed(2),
+                //         playheadX,
+                //         inTransition: isZoomTransitionInProgress(),
+                //         progress: timeDiff > 0 ? ((playheadMs - interpStartMs) / timeDiff).toFixed(3) : 'N/A'
+                //     });
+                //     window._playheadTransitionLog = performance.now();
+                // }
+                
+                if (timeDiff > 0) {
+                    const progress = (playheadMs - interpStartMs) / timeDiff;
+                    
+                    // 🎯 Only draw if playhead is within visible range (like waveform does)
+                    if (progress >= 0 && progress <= 1.0) {
+                        playheadX = Math.floor(progress * width);
+                    } else {
+                        // Playhead is outside visible viewport - clear it and don't draw
+                        playheadOverlayCtx.clearRect(0, 0, width, height);
+                        lastPlayheadX = -1;
+                        return;
+                    }
+                } else {
+                    // Invalid time range - clear playhead
+                    playheadOverlayCtx.clearRect(0, 0, width, height);
+                    lastPlayheadX = -1;
+                    return;
+                }
+            } else {
+                // Timestamp conversion failed - clear playhead
+                playheadOverlayCtx.clearRect(0, 0, width, height);
+                lastPlayheadX = -1;
+                return;
+            }
+        } else if (zoomState.isInitialized()) {
             const sample = zoomState.timeToSample(State.currentAudioPosition);
             playheadX = Math.floor(zoomState.sampleToPixel(sample, width));
+            
+            // Check if playhead is within bounds
+            if (playheadX < 0 || playheadX > width) {
+                playheadOverlayCtx.clearRect(0, 0, width, height);
+                lastPlayheadX = -1;
+                return;
+            }
         } else {
             // Fallback to old behavior if zoom state not initialized
             const progress = Math.min(State.currentAudioPosition / State.totalAudioDuration, 1.0);
             playheadX = Math.floor(progress * width);
+        }
+        
+        // 🔥 PROTECTION: Ensure playheadX is finite before creating gradient
+        if (!isFinite(playheadX) || playheadX < 0 || playheadX > width) {
+            return; // Skip drawing if position is invalid
         }
         
         lastPlayheadX = playheadX;
@@ -175,15 +234,41 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
     const width = playheadOverlayCanvas.width;
     const height = playheadOverlayCanvas.height;
     
-    // 🏛️ Use zoom-aware conversion
+    // 🏛️ Use zoom-aware conversion with interpolated time range during transitions
     let previewX;
-    if (zoomState.isInitialized()) {
+    
+    // 🔥 FIX: During transitions, use interpolated time range (like waveform playhead)
+    if (isZoomTransitionInProgress() && zoomState.isInitialized()) {
+        const sample = zoomState.timeToSample(targetPosition);
+        const previewTimestamp = zoomState.sampleToRealTimestamp(sample);
+        if (previewTimestamp) {
+            const interpolatedRange = getInterpolatedTimeRange();
+            const interpStartMs = interpolatedRange.startTime.getTime();
+            const interpEndMs = interpolatedRange.endTime.getTime();
+            const previewMs = previewTimestamp.getTime();
+            const timeDiff = interpEndMs - interpStartMs;
+            
+            if (timeDiff > 0) {
+                const progress = (previewMs - interpStartMs) / timeDiff;
+                previewX = Math.floor(progress * width);
+            } else {
+                previewX = 0; // Fallback if time range is invalid
+            }
+        } else {
+            previewX = 0; // Fallback if timestamp conversion fails
+        }
+    } else if (zoomState.isInitialized()) {
         const sample = zoomState.timeToSample(targetPosition);
         previewX = Math.floor(zoomState.sampleToPixel(sample, width));
     } else {
         // Fallback to old behavior if zoom state not initialized
         const progress = Math.min(targetPosition / State.totalAudioDuration, 1.0);
         previewX = Math.floor(progress * width);
+    }
+    
+    // 🔥 PROTECTION: Ensure previewX is finite before drawing
+    if (!isFinite(previewX) || previewX < 0 || previewX > width) {
+        return; // Skip drawing if position is invalid
     }
     
     // 🎉 MUCH SIMPLER: Just clear and draw preview line on overlay!

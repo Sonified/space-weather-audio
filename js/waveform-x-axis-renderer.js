@@ -8,6 +8,7 @@ import { zoomState } from './zoom-state.js';
 import { drawInterpolatedWaveform, drawWaveformWithSelection } from './waveform-renderer.js';
 import { drawInterpolatedSpectrogram } from './spectrogram-complete-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
+import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
 
 // Debug flag for axis drawing logs (set to true to enable detailed logging)
 const DEBUG_AXIS = false;
@@ -15,7 +16,7 @@ const DEBUG_AXIS = false;
 // 🏛️ Zoom transition animation state (for smooth tick interpolation)
 let zoomTransitionInProgress = false;
 let zoomTransitionStartTime = null;
-let zoomTransitionDuration = 500; // 500ms (faster, snappier transitions)
+let zoomTransitionDuration = 500; // 500ms for snappy zoom transitions
 let oldTimeRange = null; // { startTime, endTime }
 let zoomTransitionRAF = null;
 let isZoomingToRegion = false; // Track if we're zooming TO a region (true) or FROM a region (false)
@@ -87,8 +88,10 @@ export function drawWaveformXAxis() {
         const elapsed = performance.now() - zoomTransitionStartTime;
         const progress = Math.min(elapsed / zoomTransitionDuration, 1.0);
         
-        // Ease-out cubic for smooth deceleration (same as y-axis)
-        interpolationFactor = 1 - Math.pow(1 - progress, 3);
+        // Ease-in-out cubic: slow start → fast middle → slow end (gives render time!)
+        interpolationFactor = progress < 0.5 
+            ? 4 * progress * progress * progress 
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
         
         // Interpolate between old and new time ranges
         const oldStartMs = oldTimeRange.startTime.getTime();
@@ -274,6 +277,10 @@ export function drawWaveformXAxis() {
 
                     // 📦 Update feature boxes to move smoothly with the zoom transition!
                     updateAllFeatureBoxPositions();
+                    
+                    // 🎯 Update playheads during transition so they move smoothly!
+                    drawWaveformWithSelection(); // Includes waveform playhead
+                    drawSpectrogramPlayhead(); // Update spectrogram playhead during transition
                     
                     // 🎨 Update canvas feature boxes too (follow elastic horizontal stretch!)
                     import('./spectrogram-renderer.js').then(module => {
@@ -980,8 +987,10 @@ export function getInterpolatedTimeRange() {
     const elapsed = performance.now() - zoomTransitionStartTime;
     const progress = Math.min(elapsed / zoomTransitionDuration, 1.0);
 
-    // Ease-out cubic for smooth deceleration
-    const interpolationFactor = 1 - Math.pow(1 - progress, 3);
+    // Ease-in-out cubic: slow start → fast middle → slow end (gives render time!)
+    const interpolationFactor = progress < 0.5 
+        ? 4 * progress * progress * progress 
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 
     // Interpolate between old and new time ranges
     const oldStartMs = oldTimeRange.startTime.getTime();
@@ -1000,7 +1009,8 @@ export function getInterpolatedTimeRange() {
 
 /**
  * 🏛️ Get interpolation factor for smooth transitions
- * Returns 0.0 (start) to 1.0 (complete) with ease-out cubic easing
+ * Returns 0.0 (start) to 1.0 (complete) with ease-in-out cubic easing
+ * Slow start gives render time, slow end gives final polish time
  * @returns {number} Interpolation factor between 0.0 and 1.0
  */
 export function getZoomTransitionProgress() {

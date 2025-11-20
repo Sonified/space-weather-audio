@@ -7,7 +7,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
-import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
+import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
 import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay } from './region-tracker.js';
 import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
@@ -279,36 +279,39 @@ export function drawWaveformFromMinMax() {
                 const playheadProgress = Math.min(State.currentAudioPosition / State.totalAudioDuration, 1.0);
                 const playheadX = playheadProgress * width;
                 
-            // Cool playhead with glow and gradient
-            const time = performance.now() * 0.001;
-            const pulseIntensity = 0.3 + Math.sin(time * 3) * 0.1;
+                // Cool playhead with glow and gradient
+                const time = performance.now() * 0.001;
+                const pulseIntensity = 0.3 + Math.sin(time * 3) * 0.1;
+                
+                // 🔥 PROTECTION: Ensure playheadX is finite before creating gradient
+                if (isFinite(playheadX) && playheadX >= 0 && playheadX <= width) {
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = 'rgba(255, 0, 0, 0.54)'; // 0.6 * 0.9
+                    ctx.shadowOffsetX = 0;
+                    
+                    const gradient = ctx.createLinearGradient(playheadX, 0, playheadX, height);
+                    gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+                    gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.95 + pulseIntensity) * 0.9})`);
+                    gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+                    
+                    ctx.strokeStyle = gradient;
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(playheadX, 0);
+                    ctx.lineTo(playheadX, height);
+                    ctx.stroke();
+                }
             
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = 'rgba(255, 0, 0, 0.54)'; // 0.6 * 0.9
-            ctx.shadowOffsetX = 0;
-            
-            const gradient = ctx.createLinearGradient(playheadX, 0, playheadX, height);
-            gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
-            gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.95 + pulseIntensity) * 0.9})`);
-            gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
-            
-            ctx.strokeStyle = gradient;
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(playheadX, 0);
-            ctx.lineTo(playheadX, height);
-            ctx.stroke();
-            
-            ctx.shadowBlur = 0;
-            ctx.strokeStyle = `rgba(220, 220, 220, ${(0.25 + pulseIntensity * 0.15) * 0.648})`;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(playheadX, 0);
-            ctx.lineTo(playheadX, height);
-            ctx.stroke();
-            
-            ctx.shadowBlur = 0;
-            ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = `rgba(220, 220, 220, ${(0.25 + pulseIntensity * 0.15) * 0.648})`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(playheadX, 0);
+                ctx.lineTo(playheadX, height);
+                ctx.stroke();
+                
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
             }
             
             // 🔥 Draw regions during crossfade so they stay visible throughout the transition
@@ -333,7 +336,7 @@ export function drawWaveformFromMinMax() {
                 drawWaveformDate();
                 
                 if (!isStudyMode()) {
-                    console.log(`✅ Waveform crossfade complete - pink detrended waveform`);
+                    // console.log(`✅ Waveform crossfade complete - pink detrended waveform`);
                 }
                 
                 if (State.totalAudioDuration > 0) {
@@ -489,8 +492,8 @@ export function drawInterpolatedWaveform() {
             const progress = (playheadMs - interpStartMs) / timeDiff;
             const x = progress * width;
             
-            // Guard against non-finite values (NaN, Infinity)
-            if (!isFinite(x) || !isFinite(height) || height <= 0) {
+            // Guard against non-finite values (NaN, Infinity) and ensure x is within bounds
+            if (!isFinite(x) || !isFinite(height) || height <= 0 || x < 0 || x > width) {
                 return; // Skip playhead drawing if coordinates are invalid
             }
 
@@ -535,11 +538,12 @@ export function drawWaveformWithSelection() {
     const height = canvas.height;
     
     // Throttle logs to once per 500ms (unless forced by user interaction)
-    const now = performance.now();
-    if (forceNextPlayheadLog || (now - lastDrawWaveformLogTime) > 500) {
-        console.log(`🎨 drawWaveformWithSelection called: currentPos=${State.currentAudioPosition?.toFixed(2)}s, cachedCanvas=${!!State.cachedWaveformCanvas}`);
-        lastDrawWaveformLogTime = now;
-    }
+    // Throttled debug logging (disabled to reduce noise)
+    // const now = performance.now();
+    // if (forceNextPlayheadLog || (now - lastDrawWaveformLogTime) > 500) {
+    //     console.log(`🎨 drawWaveformWithSelection called: currentPos=${State.currentAudioPosition?.toFixed(2)}s, cachedCanvas=${!!State.cachedWaveformCanvas}`);
+    //     lastDrawWaveformLogTime = now;
+    // }
 
     if (!State.cachedWaveformCanvas) {
         // No cached canvas - draw playhead only if needed
@@ -559,20 +563,23 @@ export function drawWaveformWithSelection() {
             const time = performance.now() * 0.001;
             const pulseIntensity = 0.3 + Math.sin(time * 3) * 0.1;
             
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = 'rgba(255, 0, 0, 0.54)'; // 0.6 * 0.9
-            
-            const gradient = ctx.createLinearGradient(x, 0, x, height);
-            gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
-            gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.95 + pulseIntensity) * 0.9})`);
-            gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
-            
-            ctx.strokeStyle = gradient;
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, height);
-            ctx.stroke();
+            // 🔥 PROTECTION: Ensure x is finite before creating gradient
+            if (isFinite(x) && x >= 0 && x <= width) {
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = 'rgba(255, 0, 0, 0.54)'; // 0.6 * 0.9
+                
+                const gradient = ctx.createLinearGradient(x, 0, x, height);
+                gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+                gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.95 + pulseIntensity) * 0.9})`);
+                gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.9 + pulseIntensity) * 0.9})`);
+                
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
             
             ctx.shadowBlur = 0;
             ctx.strokeStyle = `rgba(220, 220, 220, ${(0.25 + pulseIntensity * 0.15) * 0.648})`;
@@ -637,29 +644,52 @@ export function drawWaveformWithSelection() {
     
     if (playheadPosition !== null && State.totalAudioDuration > 0 && playheadPosition >= 0) {
         // Throttle logs to once per 500ms (unless forced by user interaction)
-        const now = performance.now();
-        if (forceNextPlayheadLog || (now - lastPlayheadLogTime) > 500) {
-            console.log(`🎨 Drawing playhead: position=${playheadPosition.toFixed(2)}s, duration=${State.totalAudioDuration.toFixed(1)}s, zoom=${zoomState.isInitialized()}`);
-            lastPlayheadLogTime = now;
-            forceNextPlayheadLog = false;
-        }
+        // Throttled debug logging (disabled to reduce noise)
+        // const now = performance.now();
+        // if (forceNextPlayheadLog || (now - lastPlayheadLogTime) > 500) {
+        //     console.log(`🎨 Drawing playhead: position=${playheadPosition.toFixed(2)}s, duration=${State.totalAudioDuration.toFixed(1)}s, zoom=${zoomState.isInitialized()}`);
+        //     lastPlayheadLogTime = now;
+        //     forceNextPlayheadLog = false;
+        // }
         
-        // 🏛️ Use zoom-aware conversion
+        // 🏛️ Use zoom-aware conversion with interpolated time range during transitions
         let x;
-        const shouldLog = forceNextPlayheadLog || ((now - lastPlayheadLogTime) < 100); // Log if we just logged above
-        if (zoomState.isInitialized()) {
+        // Debug logging disabled to reduce noise
+        // const shouldLog = forceNextPlayheadLog || ((now - lastPlayheadLogTime) < 100);
+        
+        // 🔥 FIX: During transitions, use interpolated time range (like drawInterpolatedWaveform)
+        if (isZoomTransitionInProgress && zoomState.isInitialized()) {
+            const sample = zoomState.timeToSample(playheadPosition);
+            const playheadTimestamp = zoomState.sampleToRealTimestamp(sample);
+            if (playheadTimestamp) {
+                const interpolatedRange = getInterpolatedTimeRange();
+                const interpStartMs = interpolatedRange.startTime.getTime();
+                const interpEndMs = interpolatedRange.endTime.getTime();
+                const playheadMs = playheadTimestamp.getTime();
+                const timeDiff = interpEndMs - interpStartMs;
+                
+                if (timeDiff > 0) {
+                    const progress = (playheadMs - interpStartMs) / timeDiff;
+                    x = progress * width;
+                } else {
+                    x = 0; // Fallback if time range is invalid
+                }
+            } else {
+                x = 0; // Fallback if timestamp conversion fails
+            }
+        } else if (zoomState.isInitialized()) {
             const sample = zoomState.timeToSample(playheadPosition);
             x = zoomState.sampleToPixel(sample, width);
-            if (shouldLog) {
-                console.log(`   → sample=${sample.toLocaleString()}, x=${x.toFixed(1)}px, width=${width}px`);
-            }
+            // if (shouldLog) {
+            //     console.log(`   → sample=${sample.toLocaleString()}, x=${x.toFixed(1)}px, width=${width}px`);
+            // }
         } else {
             // Fallback to old behavior if zoom state not initialized
             const progress = Math.min(playheadPosition / State.totalAudioDuration, 1.0);
             x = progress * width;
-            if (shouldLog) {
-                console.log(`   → progress=${(progress*100).toFixed(1)}%, x=${x.toFixed(1)}px (fallback mode)`);
-            }
+            // if (shouldLog) {
+            //     console.log(`   → progress=${(progress*100).toFixed(1)}%, x=${x.toFixed(1)}px (fallback mode)`);
+            // }
         }
         
         // Cool playhead with glow and gradient
@@ -671,19 +701,22 @@ export function drawWaveformWithSelection() {
         ctx.shadowColor = 'rgba(255, 0, 0, 0.6)';
         ctx.shadowOffsetX = 0;
         
-        // Create gradient for playhead
-        const gradient = ctx.createLinearGradient(x, 0, x, height);
-        gradient.addColorStop(0, `rgba(255, 100, 100, ${0.9 + pulseIntensity})`);
-        gradient.addColorStop(0.5, `rgba(255, 0, 0, ${0.95 + pulseIntensity})`);
-        gradient.addColorStop(1, `rgba(255, 100, 100, ${0.9 + pulseIntensity})`);
-        
-        // Draw main line with gradient
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
+        // 🔥 PROTECTION: Ensure x is finite before creating gradient
+        if (isFinite(x) && x >= 0 && x <= width) {
+            // Create gradient for playhead
+            const gradient = ctx.createLinearGradient(x, 0, x, height);
+            gradient.addColorStop(0, `rgba(255, 100, 100, ${0.9 + pulseIntensity})`);
+            gradient.addColorStop(0.5, `rgba(255, 0, 0, ${0.95 + pulseIntensity})`);
+            gradient.addColorStop(1, `rgba(255, 100, 100, ${0.9 + pulseIntensity})`);
+            
+            // Draw main line with gradient
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+        }
         
         // Draw inner bright line
         ctx.shadowBlur = 0;
@@ -717,15 +750,15 @@ export function setupWaveformInteraction() {
             targetPosition = zoomState.timestampToSeconds(timestamp);
 
             // 🔍 DIAGNOSTIC: Show COMPLETE click path
-            console.log('🖱️ CLICK:', {
-                pixel: x.toFixed(1) + 'px',
-                viewport: `${zoomState.currentViewStartTime?.toISOString()} → ${zoomState.currentViewEndTime?.toISOString()}`,
-                clickTimestamp: timestamp.toISOString(),
-                targetSeconds: targetPosition.toFixed(3) + 's',
-                totalDuration: State.totalAudioDuration?.toFixed(1) + 's',
-                sampleRate: zoomState.sampleRate + 'Hz',
-                wouldCalculateSample: Math.floor(targetPosition * zoomState.sampleRate).toLocaleString()
-            });
+            // console.log('🖱️ CLICK:', {
+            //     pixel: x.toFixed(1) + 'px',
+            //     viewport: `${zoomState.currentViewStartTime?.toISOString()} → ${zoomState.currentViewEndTime?.toISOString()}`,
+            //     clickTimestamp: timestamp.toISOString(),
+            //     targetSeconds: targetPosition.toFixed(3) + 's',
+            //     totalDuration: State.totalAudioDuration?.toFixed(1) + 's',
+            //     sampleRate: zoomState.sampleRate + 'Hz',
+            //     wouldCalculateSample: Math.floor(targetPosition * zoomState.sampleRate).toLocaleString()
+            // });
         } else {
             // Fallback to old behavior if zoom state not initialized
             targetPosition = progress * State.totalAudioDuration;
@@ -753,39 +786,43 @@ export function setupWaveformInteraction() {
             drawRegionButtons(); // Draw buttons on overlay canvas
         }
         
-        // Cool scrub preview playhead
-        const time = performance.now() * 0.001;
-        const pulseIntensity = State.isDragging ? 0.1 : 0.2 + Math.sin(time * 3) * 0.1;
-        
-        ctx.shadowBlur = State.isDragging ? 4 : 6;
-        ctx.shadowColor = State.isDragging ? 'rgba(187, 187, 187, 0.36)' : 'rgba(255, 0, 0, 0.45)'; // * 0.9
-        
-        const gradient = ctx.createLinearGradient(canvasX, 0, canvasX, canvasHeight);
-        if (State.isDragging) {
-            gradient.addColorStop(0, `rgba(200, 200, 200, ${(0.5 + pulseIntensity) * 0.9})`);
-            gradient.addColorStop(0.5, `rgba(187, 187, 187, ${(0.6 + pulseIntensity) * 0.9})`);
-            gradient.addColorStop(1, `rgba(200, 200, 200, ${(0.5 + pulseIntensity) * 0.9})`);
-        } else {
-            gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.7 + pulseIntensity) * 0.9})`);
-            gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.8 + pulseIntensity) * 0.9})`);
-            gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.7 + pulseIntensity) * 0.9})`);
+        // 🔥 PROTECTION: Ensure canvasX is finite before creating gradient
+        if (isFinite(canvasX) && canvasX >= 0 && canvasX <= canvas.width) {
+            // Cool scrub preview playhead
+            const time = performance.now() * 0.001;
+            const pulseIntensity = State.isDragging ? 0.1 : 0.2 + Math.sin(time * 3) * 0.1;
+            
+            ctx.shadowBlur = State.isDragging ? 4 : 6;
+            ctx.shadowColor = State.isDragging ? 'rgba(187, 187, 187, 0.36)' : 'rgba(255, 0, 0, 0.45)'; // * 0.9
+            
+            const gradient = ctx.createLinearGradient(canvasX, 0, canvasX, canvasHeight);
+            if (State.isDragging) {
+                gradient.addColorStop(0, `rgba(200, 200, 200, ${(0.5 + pulseIntensity) * 0.9})`);
+                gradient.addColorStop(0.5, `rgba(187, 187, 187, ${(0.6 + pulseIntensity) * 0.9})`);
+                gradient.addColorStop(1, `rgba(200, 200, 200, ${(0.5 + pulseIntensity) * 0.9})`);
+            } else {
+                    gradient.addColorStop(0, `rgba(255, 100, 100, ${(0.7 + pulseIntensity) * 0.9})`);
+                gradient.addColorStop(0.5, `rgba(255, 0, 0, ${(0.8 + pulseIntensity) * 0.9})`);
+                gradient.addColorStop(1, `rgba(255, 100, 100, ${(0.7 + pulseIntensity) * 0.9})`);
+            }
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 2.5;
+            ctx.globalAlpha = 0.9;
+            ctx.beginPath();
+            ctx.moveTo(canvasX, 0);
+            ctx.lineTo(canvasX, canvasHeight);
+            ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${(0.3 + pulseIntensity * 0.2) * 0.9})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(canvasX, 0);
+            ctx.lineTo(canvasX, canvasHeight);
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
         }
-        
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = 2.5;
-        ctx.globalAlpha = 0.9;
-        ctx.beginPath();
-        ctx.moveTo(canvasX, 0);
-        ctx.lineTo(canvasX, canvasHeight);
-        ctx.stroke();
-        
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.3 + pulseIntensity * 0.2) * 0.9})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(canvasX, 0);
-        ctx.lineTo(canvasX, canvasHeight);
-        ctx.stroke();
         
         ctx.globalAlpha = 1.0;
         ctx.shadowColor = 'transparent';

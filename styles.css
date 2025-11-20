@@ -282,6 +282,7 @@ select, input {
     border-radius: 6px;
     font-size: 14px;
     background: rgba(255, 255, 255, 0.9);
+    opacity: 0.9;
 }
 
 select:focus, input:focus {
@@ -1644,10 +1645,10 @@ input[type="checkbox"] {
     margin-top: 10px;
 }
 
-/* Region Card */
+/* Region Card - Slightly darker */
 .region-card {
     position: relative;
-    background: linear-gradient(135deg, rgba(255, 250, 250, 0.95) 0%, rgba(240, 200, 195, 0.95) 100%);
+    background: linear-gradient(135deg, rgba(240, 230, 230, 0.95) 0%, rgba(220, 180, 175, 0.95) 100%);
     border-radius: 6px;
     margin-bottom: 6px;
     box-shadow: 
@@ -1658,7 +1659,11 @@ input[type="checkbox"] {
         inset 0 1px 0 rgba(255, 255, 255, 0.6);
     border: 1px solid rgba(200, 100, 100, 0.2);
     overflow: visible;
-    transition: all 0.3s;
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+                opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.3s ease,
+                margin 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
 }
 
 .region-card:hover {
@@ -1668,29 +1673,92 @@ input[type="checkbox"] {
         0 4px 8px rgba(255, 100, 100, 0.2);
 }
 
-/* Region Header Bar */
+/* Active/Used Region Card - Highlighted */
+.region-card.active {
+    background: linear-gradient(135deg, rgba(255, 240, 240, 0.95) 0%, rgba(250, 210, 205, 0.95) 100%);
+    border: 1px solid rgba(255, 150, 150, 0.5);
+    box-shadow: 
+        0 10px 20px rgba(255, 100, 100, 0.4),
+        0 6px 12px rgba(255, 100, 100, 0.3),
+        0 3px 6px rgba(255, 100, 100, 0.2),
+        0 1px 3px rgba(255, 100, 100, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6),
+        0 0 10px rgba(255, 120, 120, 0.2);
+}
+
+.region-card.active:hover {
+    box-shadow: 
+        0 12px 24px rgba(255, 100, 100, 0.5),
+        0 8px 16px rgba(255, 100, 100, 0.4),
+        0 4px 8px rgba(255, 100, 100, 0.3),
+        0 0 15px rgba(255, 120, 120, 0.3);
+}
+
+/* Region Header Bar - Metallic grey */
 .region-header {
     display: flex;
     align-items: center;
-    padding: 6px 12px;
+    padding: 8px 12px;
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.5);
-    border-top: 1px solid rgba(255, 255, 255, 0.6);
-    border-bottom: 1px solid rgba(200, 100, 100, 0.2);
+    background: linear-gradient(135deg, 
+        rgba(200, 200, 200, 0.7) 0%,
+        rgba(180, 180, 180, 0.7) 50%,
+        rgba(170, 170, 170, 0.7) 100%
+    );
+    border-top: 1px solid rgba(240, 240, 240, 0.8);
+    border-bottom: 1px solid rgba(140, 140, 140, 0.4);
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
-    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.8);
+    box-shadow: 
+        inset 0 1px 2px rgba(255, 255, 255, 0.6),
+        inset 0 -1px 1px rgba(0, 0, 0, 0.1),
+        0 1px 1px rgba(0, 0, 0, 0.1);
     transition: background 0.2s;
-    font-size: 0.9em;
+    font-size: 1em;
 }
 
 .region-header:hover {
-    background: rgba(255, 255, 255, 0.7);
+    background: linear-gradient(135deg, 
+        rgba(210, 210, 210, 0.8) 0%,
+        rgba(190, 190, 190, 0.8) 50%,
+        rgba(180, 180, 180, 0.8) 100%
+    );
 }
 
 .region-header.expanded {
-    background: rgba(255, 240, 240, 0.8);
-    border-bottom-color: rgba(200, 100, 100, 0.4);
+    background: linear-gradient(135deg, 
+        rgba(220, 220, 220, 0.85) 0%,
+        rgba(200, 200, 200, 0.85) 50%,
+        rgba(190, 190, 190, 0.85) 100%
+    );
+    border-bottom-color: rgba(150, 150, 150, 0.5);
+}
+
+/* Active region header - slightly brighter metallic */
+.region-card.active .region-header {
+    background: linear-gradient(135deg, 
+        rgba(230, 230, 230, 0.8) 0%,
+        rgba(210, 210, 210, 0.8) 50%,
+        rgba(200, 200, 200, 0.8) 100%
+    );
+    border-bottom-color: rgba(160, 160, 160, 0.5);
+}
+
+.region-card.active .region-header:hover {
+    background: linear-gradient(135deg, 
+        rgba(240, 240, 240, 0.85) 0%,
+        rgba(220, 220, 220, 0.85) 50%,
+        rgba(210, 210, 210, 0.85) 100%
+    );
+}
+
+.region-card.active .region-header.expanded {
+    background: linear-gradient(135deg, 
+        rgba(235, 235, 235, 0.9) 0%,
+        rgba(215, 215, 215, 0.9) 50%,
+        rgba(205, 205, 205, 0.9) 100%
+    );
+    border-bottom-color: rgba(170, 170, 170, 0.6);
 }
 
 .region-header:not(.expanded) {
@@ -1701,73 +1769,72 @@ input[type="checkbox"] {
 .region-card .zoom-btn {
     width: 32px;
     height: 24px;
-    border-radius: 3px;
-    background: linear-gradient(145deg, #2196F3, #1565C0);
+    border-radius: 4px;
+    background: linear-gradient(135deg, #2196F3 0%, #1565C0 100%);
     border: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
-    border-left: 1px solid rgba(255, 255, 255, 0.15);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.3);
-    border-right: 1px solid rgba(0, 0, 0, 0.2);
+    border-top: 1px solid rgba(255, 255, 255, 0.25);
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+    border-right: 1px solid rgba(0, 0, 0, 0.25);
     color: white;
     font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
     padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     box-shadow: 
-        0 2px 4px rgba(0, 0, 0, 0.3),
-        0 1px 2px rgba(0, 0, 0, 0.2),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+        0 3px 6px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     flex-shrink: 0;
     margin-right: 6px;
+    transition: all 0.2s;
 }
 
 .region-card .zoom-btn:hover {
-    background: linear-gradient(145deg, #42A5F5, #1976D2);
+    background: linear-gradient(135deg, #42A5F5 0%, #1976D2 100%);
     box-shadow: 
-        0 3px 6px rgba(0, 0, 0, 0.4),
-        0 2px 3px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.25),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+        0 4px 8px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
     transform: translateY(-1px);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .region-card .zoom-btn:active {
     transform: translateY(0px);
     box-shadow: 
-        0 1px 2px rgba(0, 0, 0, 0.3),
+        0 2px 4px rgba(0, 0, 0, 0.3),
         inset 0 2px 4px rgba(0, 0, 0, 0.3),
         inset 0 0 2px rgba(0, 0, 0, 0.2);
 }
 
 .region-card .zoom-btn.return-mode {
-    background: linear-gradient(145deg, #ff8c00, #ff6600);
+    background: linear-gradient(135deg, #ff8c00 0%, #ff6600 100%);
 }
 
 .region-card .zoom-btn.return-mode:hover {
-    background: linear-gradient(145deg, #ff9d1a, #ff7700);
+    background: linear-gradient(135deg, #ff9d1a 0%, #ff7700 100%);
     box-shadow: 
-        0 3px 6px rgba(255, 140, 0, 0.4),
-        0 2px 3px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.25),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+        0 4px 8px rgba(255, 140, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
     transform: translateY(-1px);
 }
 
 .region-card .play-btn {
     width: 32px;
     height: 24px;
-    border-radius: 3px;
-    background: linear-gradient(145deg, #d32f3f, #a01d2a);
+    border-radius: 4px;
+    background: linear-gradient(135deg, #d32f3f 0%, #a01d2a 100%);
     border: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
-    border-left: 1px solid rgba(255, 255, 255, 0.15);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.3);
-    border-right: 1px solid rgba(0, 0, 0, 0.2);
+    border-top: 1px solid rgba(255, 255, 255, 0.25);
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+    border-right: 1px solid rgba(0, 0, 0, 0.25);
     color: white;
     font-size: 0.75em;
+    font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1779,27 +1846,24 @@ input[type="checkbox"] {
     min-height: auto;
     line-height: normal;
     box-shadow: 
-        0 2px 4px rgba(0, 0, 0, 0.3),
-        0 1px 2px rgba(0, 0, 0, 0.2),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.2);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        0 3px 6px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .region-card .play-btn:hover {
-    background: linear-gradient(145deg, #e6394a, #b01f2e);
+    background: linear-gradient(135deg, #e6394a 0%, #b01f2e 100%);
     box-shadow: 
-        0 3px 6px rgba(0, 0, 0, 0.4),
-        0 2px 3px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.25),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+        0 4px 8px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
     transform: translateY(-1px);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .region-card .play-btn:active {
     transform: translateY(0px);
     box-shadow: 
-        0 1px 2px rgba(0, 0, 0, 0.3),
+        0 2px 4px rgba(0, 0, 0, 0.3),
         inset 0 2px 4px rgba(0, 0, 0, 0.3),
         inset 0 0 2px rgba(0, 0, 0, 0.2);
 }
@@ -1827,30 +1891,39 @@ input[type="checkbox"] {
 }
 
 .region-label {
-    font-weight: 600;
-    color: #333;
+    font-weight: 700;
+    color: #222;
     margin-right: 20px;
+    font-size: 1em;
+}
+
+.region-card.active .region-label {
+    color: #c82333;
+    font-weight: 700;
+    font-size: 1.05em;
 }
 
 .features-count-text {
     font-weight: 600;
-    color: #333;
+    color: #222;
     margin-right: 30px;
+    font-size: 1em;
 }
 
 .region-time-display {
     display: flex;
     align-items: center;
     gap: 30px;
-    color: #333;
-    font-size: 1.1em;
-    font-weight: 500;
+    color: #222;
+    font-size: 1.15em;
+    font-weight: 600;
 }
 
 .region-description-preview {
-    color: #666;
-    font-size: 0.9em;
+    color: #444;
+    font-size: 1em;
     font-style: italic;
+    font-weight: 500;
     margin-left: 20px;
     max-width: 600px;
     overflow: hidden;
@@ -1859,21 +1932,23 @@ input[type="checkbox"] {
 }
 
 .time-label {
-    font-weight: 500;
-    color: #666;
+    font-weight: 600;
+    color: #444;
     margin-right: 4px;
+    font-size: 1em;
 }
 
 .time-value {
     font-family: 'Monaco', 'Menlo', monospace;
-    color: #333;
+    color: #222;
+    font-size: 1em;
+    font-weight: 600;
 }
 
 .collapse-icon {
     font-size: 1.2em;
     color: #c82333;
     margin-right: 20px;
-    transition: transform 0.3s;
     flex-shrink: 0;
     cursor: pointer;
     display: flex;
@@ -1892,9 +1967,13 @@ input[type="checkbox"] {
 }
 
 .delete-region-btn {
-    background: #ff9ca3;
-    color: #721c24;
+    background: linear-gradient(135deg, #c82333 0%, #a01d2a 100%);
+    color: white;
     border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+    border-right: 1px solid rgba(0, 0, 0, 0.2);
     padding: 4px 8px;
     border-radius: 4px;
     cursor: pointer;
@@ -1906,11 +1985,27 @@ input[type="checkbox"] {
     height: auto;
     line-height: normal;
     min-height: auto;
+    box-shadow: 
+        0 3px 6px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .delete-region-btn:hover {
-    background: #ff7a82;
-    transform: scale(1.05);
+    background: linear-gradient(135deg, #d32f3f 0%, #b01f2e 100%);
+    box-shadow: 
+        0 4px 8px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.delete-region-btn:active {
+    transform: translateY(0px);
+    box-shadow: 
+        0 2px 4px rgba(0, 0, 0, 0.3),
+        inset 0 2px 4px rgba(0, 0, 0, 0.3),
+        inset 0 0 2px rgba(0, 0, 0, 0.2);
 }
 
 /* Delete Feature Button (inline with feature rows) */
@@ -1918,7 +2013,7 @@ input[type="checkbox"] {
     position: absolute;
     left: 8px;
     top: 50%;
-    transform: translateY(-50%);
+    transform: translateY(-50%) !important;
     width: 16px;
     height: 16px;
     border-radius: 50%;
@@ -1931,7 +2026,7 @@ input[type="checkbox"] {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: none !important;
     padding: 0;
     line-height: 1;
     box-shadow: none !important;
@@ -1939,12 +2034,12 @@ input[type="checkbox"] {
 
 .delete-feature-btn-inline:hover {
     background: #c82333 !important;
-    transform: translateY(-50%) scale(1.15) !important;
+    transform: translateY(-50%) !important;
     box-shadow: none !important;
 }
 
 .delete-feature-btn-inline:active {
-    transform: translateY(-50%) scale(0.9) !important;
+    transform: translateY(-50%) !important;
     box-shadow: none !important;
 }
 
@@ -1953,6 +2048,7 @@ input[type="checkbox"] {
     cursor: not-allowed;
     opacity: 0.5;
     box-shadow: none !important;
+    transform: translateY(-50%) !important;
 }
 
 .delete-feature-btn-inline.disabled:hover {
@@ -2048,6 +2144,10 @@ input[type="checkbox"] {
     background: white;
 }
 
+.region-card.active .region-details {
+    background: rgba(255, 250, 250, 0.98);
+}
+
 .region-details.expanded {
     transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     border-bottom-left-radius: 6px;
@@ -2056,20 +2156,21 @@ input[type="checkbox"] {
 
 .details-content {
     padding: 9px 12px 3px 12px;
-    font-size: 0.85em;
+    font-size: 0.95em;
+    color: #222;
 }
 
 /* Features List */
 .features-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3pt;
 }
 
 .features-container {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3pt;
 }
 
 .feature-row {
@@ -2091,18 +2192,30 @@ input[type="checkbox"] {
     top: 50%;
     transform: translateY(-50%);
     font-weight: 700;
-    color: #333;
-    font-size: 0.95em;
+    color: #222;
+    font-size: 1em;
     width: 80px;
     text-align: left;
 }
 
 .feature-row:nth-child(odd) {
-    background: #e8e8e8;
+    background: #f5f5f5;
 }
 
 .feature-row:nth-child(even) {
-    background: #d8d8d8;
+    background: #d5d5d5;
+}
+
+.region-card.active .feature-row {
+    border-left-color: #ff4444;
+}
+
+.region-card.active .feature-row:nth-child(odd) {
+    background: #f8f8f8;
+}
+
+.region-card.active .feature-row:nth-child(even) {
+    background: #e0e0e0;
 }
 
 .feature-row select,
@@ -2118,6 +2231,7 @@ input[type="checkbox"] {
     line-height: 1.2 !important;
     box-shadow: none !important;
     box-sizing: border-box !important;
+    opacity: 0.9 !important;
 }
 
 .feature-row select:focus,
