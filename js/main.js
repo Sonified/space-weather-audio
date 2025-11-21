@@ -588,6 +588,9 @@ export async function startStreaming(event) {
         // This happens when data is actually being fetched, not just when the dropdown changes
         switchVolcanoRegions(volcano);
         
+        // Clear any "(Currently Loaded)" flags from dropdown since we're fetching new data
+        updateVolcanoDropdownLabels(null, volcano);
+        
         // Log what we're fetching
         const stationLabel = `${stationData.network}.${stationData.station}.${stationData.location || '--'}.${stationData.channel}`;
         if (!isStudyMode()) {
@@ -1164,6 +1167,39 @@ async function initializeApp() {
     }
 }
 
+/**
+ * Update volcano dropdown labels to show which volcano has loaded data
+ * @param {string|null} loadedVolcano - Volcano with loaded data (null to clear all flags)
+ * @param {string} selectedVolcano - Currently selected volcano
+ */
+function updateVolcanoDropdownLabels(loadedVolcano, selectedVolcano) {
+    const volcanoSelect = document.getElementById('volcano');
+    if (!volcanoSelect) return;
+    
+    // Define original labels
+    const originalLabels = {
+        'kilauea': 'Kīlauea (HI)',
+        'maunaloa': 'Mauna Loa (HI)',
+        'greatsitkin': 'Great Sitkin (AK)',
+        'shishaldin': 'Shishaldin (AK)',
+        'spurr': 'Mount Spurr (AK)'
+    };
+    
+    // Update all options
+    Array.from(volcanoSelect.options).forEach(option => {
+        const volcanoValue = option.value;
+        const baseLabel = originalLabels[volcanoValue] || option.textContent;
+        
+        if (loadedVolcano && volcanoValue === loadedVolcano && volcanoValue !== selectedVolcano) {
+            // This volcano has loaded data but user selected a different one
+            option.textContent = `${baseLabel} - Currently Loaded`;
+        } else {
+            // Clear any flags
+            option.textContent = baseLabel;
+        }
+    });
+}
+
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', async () => {
     console.log('═══════════════════════════════════════════════════════════');
@@ -1693,8 +1729,17 @@ window.addEventListener('DOMContentLoaded', async () => {
         const selectedVolcano = e.target.value;
         const volcanoWithData = State.volcanoWithData;
         
-        // ✅ Switch to this volcano's regions (loads from localStorage if available)
-        switchVolcanoRegions(selectedVolcano);
+        // 🔧 FIX: Don't switch regions here! The user is still viewing old data.
+        // Regions will switch when "Fetch Data" is clicked (via startStreaming → switchVolcanoRegions)
+        // The dropdown just selects WHICH volcano to fetch next, doesn't change current data/regions
+        
+        // 🎨 Visual reminder: If there's loaded data from a different volcano, mark it as "(Currently Loaded)"
+        if (volcanoWithData && selectedVolcano !== volcanoWithData) {
+            updateVolcanoDropdownLabels(volcanoWithData, selectedVolcano);
+        } else if (volcanoWithData && selectedVolcano === volcanoWithData) {
+            // User switched back to the loaded volcano - clear the flag
+            updateVolcanoDropdownLabels(null, selectedVolcano);
+        }
         
         // 🎯 In STUDY mode: prevent re-fetching same volcano (one volcano per session)
         // 👤 In PERSONAL/DEV modes: allow re-fetching any volcano anytime

@@ -3354,6 +3354,43 @@ export async function attemptSubmission(fromWorkflow = false) {
                 }
             })(),
             
+            // 🎯 THE 9 CORE WORKFLOW FLAGS (from UX doc)
+            // These drive the app's state machine and are critical for understanding user flow
+            workflowFlags: (() => {
+                try {
+                    return {
+                        // 👤 ONBOARDING
+                        study_has_seen_participant_setup: localStorage.getItem('study_has_seen_participant_setup') === 'true',
+                        study_has_seen_welcome: localStorage.getItem('study_has_seen_welcome') === 'true',
+                        study_tutorial_in_progress: localStorage.getItem('study_tutorial_in_progress') === 'true',
+                        study_tutorial_completed: localStorage.getItem('study_tutorial_completed') === 'true',
+                        
+                        // ⚡ CURRENT SESSION
+                        study_has_seen_welcome_back: localStorage.getItem('study_has_seen_welcome_back') === 'true',
+                        study_pre_survey_completion_date: localStorage.getItem('study_pre_survey_completion_date') || null,
+                        study_begin_analysis_clicked_this_session: localStorage.getItem('study_begin_analysis_clicked_this_session') === 'true',
+                        
+                        // 📅 SESSION COMPLETION (already included above in sessionCompletionTracker)
+                        // study_session_completion_tracker: included separately
+                        
+                        // ⏰ SESSION TIMEOUT
+                        study_session_timed_out: localStorage.getItem('study_session_timed_out') === 'true'
+                    };
+                } catch (e) {
+                    console.warn('⚠️ Could not read workflow flags from localStorage:', e);
+                    return {
+                        study_has_seen_participant_setup: false,
+                        study_has_seen_welcome: false,
+                        study_tutorial_in_progress: false,
+                        study_tutorial_completed: false,
+                        study_has_seen_welcome_back: false,
+                        study_pre_survey_completion_date: null,
+                        study_begin_analysis_clicked_this_session: false,
+                        study_session_timed_out: false
+                    };
+                }
+            })(),
+            
             // Event tracking and regions
             tracking: trackingData || null,
             regions: formattedRegions || [],
@@ -3370,6 +3407,53 @@ export async function attemptSubmission(fromWorkflow = false) {
             submissionTimestamp: new Date().toISOString()
         };
         
+        // 📋 JSON_data field: Interface interaction data + survey answers backup
+        // This goes to the JSON_data embedded field in Qualtrics
+        let jsonData = null;
+        try {
+            jsonData = {
+                // Survey answers (backup redundancy)
+                surveyAnswers: {
+                    pre: responses.pre || null,
+                    post: responses.post || null,
+                    awesf: responses.awesf || null,
+                    activityLevel: responses.activityLevel || null
+                },
+                
+                // Workflow state at time of submission
+                workflowState: {
+                    study_has_seen_participant_setup: localStorage.getItem('study_has_seen_participant_setup') === 'true',
+                    study_has_seen_welcome: localStorage.getItem('study_has_seen_welcome') === 'true',
+                    study_tutorial_in_progress: localStorage.getItem('study_tutorial_in_progress') === 'true',
+                    study_tutorial_completed: localStorage.getItem('study_tutorial_completed') === 'true',
+                    study_has_seen_welcome_back: localStorage.getItem('study_has_seen_welcome_back') === 'true',
+                    study_pre_survey_completion_date: localStorage.getItem('study_pre_survey_completion_date') || null,
+                    study_begin_analysis_clicked_this_session: localStorage.getItem('study_begin_analysis_clicked_this_session') === 'true',
+                    study_session_timed_out: localStorage.getItem('study_session_timed_out') === 'true'
+                },
+                
+                // Interface interactions (future expansion)
+                // This is where we'll add playback speed changes, zoom events, etc.
+                interactions: trackingData?.events || [],
+                
+                timestamp: new Date().toISOString()
+            };
+        } catch (e) {
+            console.warn('⚠️ Could not create JSON_data object:', e);
+            jsonData = {
+                surveyAnswers: {
+                    pre: responses.pre || null,
+                    post: responses.post || null,
+                    awesf: responses.awesf || null,
+                    activityLevel: responses.activityLevel || null
+                },
+                workflowState: {},
+                interactions: [],
+                timestamp: new Date().toISOString(),
+                error: 'Failed to read workflow state from localStorage'
+            };
+        }
+        
         const combinedResponses = {
             pre: responses.pre || null,
             post: responses.post || null,
@@ -3378,10 +3462,12 @@ export async function attemptSubmission(fromWorkflow = false) {
             sessionId: responses.sessionId,
             participantId: responses.participantId,
             createdAt: responses.createdAt,
-            jsonDump: jsonDump
+            jsonDump: jsonDump,
+            jsonData: jsonData  // 📋 Interface interaction data + survey backup
         };
         console.log('   Combined Responses:', JSON.stringify(combinedResponses, null, 2));
-        console.log('   JSON Dump:', JSON.stringify(jsonDump, null, 2));
+        console.log('   JSON Dump (SessionTracking):', JSON.stringify(jsonDump, null, 2));
+        console.log('   JSON Data (JSON_data):', JSON.stringify(jsonData, null, 2));
         console.log('   Response Count:', {
             pre: hasPre ? 1 : 0,
             post: hasPost ? 1 : 0,

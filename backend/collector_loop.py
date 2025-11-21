@@ -3600,10 +3600,25 @@ def upload_user_data():
             'participantId': participant_id,
             'lastUpdated': timestamp,
             'studyProgress': {
+                # 🎯 THE 9 CORE WORKFLOW FLAGS (from UX doc)
+                # ONBOARDING
                 'hasSeenParticipantSetup': data.get('hasSeenParticipantSetup', False),
                 'hasSeenWelcome': data.get('hasSeenWelcome', False),
-                'hasSeenTutorial': data.get('hasSeenTutorial', False),
+                'tutorialInProgress': data.get('tutorialInProgress', False),
                 'tutorialCompleted': data.get('tutorialCompleted', False),
+                
+                # CURRENT SESSION
+                'hasSeenWelcomeBack': data.get('hasSeenWelcomeBack', False),
+                'preSurveyCompletionDate': data.get('preSurveyCompletionDate', None),
+                'beginAnalysisClickedThisSession': data.get('beginAnalysisClickedThisSession', False),
+                
+                # SESSION TIMEOUT
+                'sessionTimedOut': data.get('sessionTimedOut', False),
+                
+                # SESSION COMPLETION TRACKER
+                'sessionCompletionTracker': data.get('sessionCompletionTracker', None),
+                
+                # Legacy/additional fields
                 'weeklySessionCount': data.get('weeklySessionCount', 0),
                 'weekStartDate': data.get('weekStartDate', None),
                 'lastAwesfDate': data.get('lastAwesfDate', None)
@@ -3612,12 +3627,15 @@ def upload_user_data():
                 'totalSessionsStarted': data.get('totalSessionsStarted', 0),
                 'totalSessionsCompleted': data.get('totalSessionsCompleted', 0),
                 'totalSessionTime': data.get('totalSessionTime', 0),
-                'totalSessionTimeHours': data.get('totalSessionTimeHours', 0)
+                'totalSessionTimeHours': data.get('totalSessionTimeHours', 0),
+                'sessionHistory': data.get('sessionHistory', []),
+                'currentSessionStart': data.get('currentSessionStart', None)
             },
             'preferences': {
                 'selectedVolcano': data.get('selectedVolcano', None),
                 'selectedMode': data.get('selectedMode', None)
-            }
+            },
+            'responses': data.get('responses', None)  # Full response data backup
         }
         
         status_key = f'{base_path}/user-status/status.json'

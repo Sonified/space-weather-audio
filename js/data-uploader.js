@@ -26,11 +26,20 @@ function gatherUserData(participantId) {
             }
         };
         
-        // Study progress flags
+        // 🎯 THE 9 CORE WORKFLOW FLAGS (from UX doc)
+        // Study progress flags (ONBOARDING)
         const hasSeenParticipantSetup = localStorage.getItem('study_has_seen_participant_setup') === 'true';
         const hasSeenWelcome = localStorage.getItem('study_has_seen_welcome') === 'true';
-        const hasSeenTutorial = localStorage.getItem('study_has_seen_tutorial') === 'true';
+        const tutorialInProgress = localStorage.getItem('study_tutorial_in_progress') === 'true';
         const tutorialCompleted = localStorage.getItem('study_tutorial_completed') === 'true';
+        
+        // Current session flags
+        const hasSeenWelcomeBack = localStorage.getItem('study_has_seen_welcome_back') === 'true';
+        const preSurveyCompletionDate = localStorage.getItem('study_pre_survey_completion_date');
+        const beginAnalysisClickedThisSession = localStorage.getItem('study_begin_analysis_clicked_this_session') === 'true';
+        
+        // Session timeout flag
+        const sessionTimedOut = localStorage.getItem('study_session_timed_out') === 'true';
         
         // Session tracking
         const weeklySessionCount = parseInt(localStorage.getItem('study_weekly_session_count') || '0', 10);
@@ -60,11 +69,20 @@ function gatherUserData(participantId) {
             participantId,
             timestamp: new Date().toISOString(),
             
-            // Study progress flags
+            // 🎯 THE 9 CORE WORKFLOW FLAGS
+            // Study progress flags (ONBOARDING)
             hasSeenParticipantSetup,
             hasSeenWelcome,
-            hasSeenTutorial,
+            tutorialInProgress,
             tutorialCompleted,
+            
+            // Current session flags
+            hasSeenWelcomeBack,
+            preSurveyCompletionDate,
+            beginAnalysisClickedThisSession,
+            
+            // Session timeout flag
+            sessionTimedOut,
             
             // Session tracking
             weeklySessionCount,
