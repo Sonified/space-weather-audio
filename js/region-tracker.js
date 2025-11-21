@@ -32,6 +32,7 @@ let regionsByVolcano = new Map();
 let currentVolcano = null;
 let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
+let regionsDelayedForCrossfade = false; // Flag to track if regions are waiting for crossfade to complete
 
 // 🎨 ANIMATION TOGGLE: Set to true for smooth slide animation, false for instant reordering
 const ANIMATE_REGION_REORDER = true; // Change to true to enable smooth slide animation
@@ -283,8 +284,10 @@ function setCurrentRegions(newRegions) {
  * Switch to a different volcano's regions
  * Called when volcano selection changes
  * Note: This is called AFTER the UI select has already changed to the new volcano
+ * @param {string} newVolcano - The volcano to switch to
+ * @param {boolean} delayRender - If true, don't render regions immediately (wait for crossfade)
  */
-export function switchVolcanoRegions(newVolcano) {
+export function switchVolcanoRegions(newVolcano, delayRender = false) {
     if (!newVolcano) {
         console.warn('⚠️ Cannot switch: no volcano specified');
         return;
@@ -321,17 +324,43 @@ export function switchVolcanoRegions(newVolcano) {
         console.log(`📂 Initialized empty region array for ${newVolcano} (will load after Fetch Data)`);
     }
     
-    // Re-render regions for the new volcano (will be empty until data is fetched)
-    renderRegions();
-    
-    // Clear canvas feature boxes (no regions loaded yet)
-    redrawAllCanvasFeatureBoxes();
-    
-    // Redraw waveform to update region highlights
-    drawWaveformWithSelection();
+    // 🔧 FIX: Delay region rendering until waveform crossfade completes
+    if (delayRender) {
+        // Don't render regions yet - wait for crossfade to complete
+        // Regions will be rendered when waveform crossfade finishes
+        regionsDelayedForCrossfade = true;
+        console.log('⏳ Delaying region rendering until waveform crossfade completes');
+    } else {
+        // Re-render regions for the new volcano (will be empty until data is fetched)
+        renderRegions();
+        
+        // Clear canvas feature boxes (no regions loaded yet)
+        redrawAllCanvasFeatureBoxes();
+        
+        // Redraw waveform to update region highlights
+        drawWaveformWithSelection();
+        
+        // Clear delay flag since we rendered immediately
+        regionsDelayedForCrossfade = false;
+    }
     
     if (!isStudyMode()) {
         console.log(`🌋 Switched to volcano: ${newVolcano} (${regionsByVolcano.get(newVolcano).length} regions)`);
+    }
+}
+
+/**
+ * Render regions after waveform crossfade completes
+ * Called when loading new volcano data to delay region display until crossfade finishes
+ */
+export function renderRegionsAfterCrossfade() {
+    // Only render if regions were actually delayed
+    if (regionsDelayedForCrossfade) {
+        renderRegions();
+        redrawAllCanvasFeatureBoxes();
+        drawWaveformWithSelection();
+        regionsDelayedForCrossfade = false; // Clear flag
+        console.log('✅ Regions rendered after waveform crossfade completed');
     }
 }
 
@@ -424,8 +453,13 @@ export function loadRegionsAfterDataFetch() {
         regionsByVolcano.set(volcano, loadedRegions);
         console.log(`📂 Restored ${loadedRegions.length} region(s) for ${volcano} from localStorage after data fetch`);
         
-        // Re-render regions
-        renderRegions();
+        // 🔧 FIX: Don't render regions here - wait for waveform crossfade to complete
+        // Regions will be rendered by renderRegionsAfterCrossfade() after crossfade finishes
+        // This prevents regions from appearing before the high-pass waveform crossfade completes
+        
+        // 🔥 Set delay flag to prevent drawRegionHighlights/drawRegionButtons from drawing immediately
+        regionsDelayedForCrossfade = true;
+        console.log('⏳ Regions loaded but delayed for waveform crossfade');
         
         // NOTE: Canvas feature boxes are automatically drawn by updatePlaybackSpeed() 
         // (called in data-fetcher.js after data loads). No need to explicitly call here.
@@ -763,7 +797,8 @@ function initializeButtonsRenderer() {
     initButtonsRenderer({
         getCurrentRegions: () => getCurrentRegions(),
         get activeRegionIndex() { return activeRegionIndex; },
-        get activePlayingRegionIndex() { return activePlayingRegionIndex; }
+        get activePlayingRegionIndex() { return activePlayingRegionIndex; },
+        getRegionsDelayedForCrossfade: () => regionsDelayedForCrossfade
     });
     buttonsRendererInitialized = true;
 }
@@ -780,6 +815,11 @@ export { drawRegionButtons, positionWaveformButtonsCanvas, resizeWaveformButtons
 export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
     if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
         return; // No data loaded yet
+    }
+    
+    // 🔥 Don't draw regions if they're delayed for crossfade
+    if (regionsDelayedForCrossfade) {
+        return; // Wait for crossfade to complete
     }
     
     // Use provided dimensions (passed from caller to avoid DOM lookups)

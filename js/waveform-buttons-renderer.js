@@ -11,7 +11,7 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 
 // Import region data access functions
-let getCurrentRegions, activeRegionIndex, activePlayingRegionIndex;
+let getCurrentRegions, activeRegionIndex, activePlayingRegionIndex, getRegionsDelayedForCrossfade;
 
 // Throttle logging to once per second
 let lastLogTime = 0;
@@ -25,6 +25,7 @@ export function initButtonsRenderer(regionTracker) {
     getCurrentRegions = regionTracker.getCurrentRegions;
     activeRegionIndex = regionTracker.activeRegionIndex;
     activePlayingRegionIndex = regionTracker.activePlayingRegionIndex;
+    getRegionsDelayedForCrossfade = regionTracker.getRegionsDelayedForCrossfade;
 }
 
 /**
@@ -98,6 +99,11 @@ export function drawRegionButtons() {
     
     if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
         return;
+    }
+    
+    // 🔥 Don't draw buttons if regions are delayed for crossfade
+    if (getRegionsDelayedForCrossfade && getRegionsDelayedForCrossfade()) {
+        return; // Wait for crossfade to complete
     }
     
     if (!getCurrentRegions) {
