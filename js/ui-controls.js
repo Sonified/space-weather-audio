@@ -2147,6 +2147,12 @@ export function openBeginAnalysisModal() {
     closeAllModals();
     
     const modal = document.getElementById('beginAnalysisModal');
+    const overlay = document.getElementById('permanentOverlay');
+    
+    // Ensure overlay has standard grey blocker background (like other modals)
+    if (overlay) {
+        overlay.style.background = 'rgba(0, 0, 0, 0.8)';
+    }
     
     // Fade in overlay background (standard design pattern)
     fadeInOverlay();

@@ -8,7 +8,7 @@ import { PlaybackState } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
-import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay } from './region-tracker.js';
+import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay, renderRegionsAfterCrossfade } from './region-tracker.js';
 import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
@@ -343,6 +343,10 @@ export function drawWaveformFromMinMax() {
                 if (State.totalAudioDuration > 0) {
                     drawWaveformWithSelection();
                 }
+                
+                // 🔧 Render regions after crossfade completes (if they were delayed)
+                // This ensures regions don't appear before the waveform crossfade finishes
+                renderRegionsAfterCrossfade();
             }
         };
         animate();
@@ -1448,9 +1452,9 @@ export function initWaveformWorker() {
             State.setWaveformMinMaxData(waveformData);
             drawWaveformFromMinMax();
             
-            if (State.totalAudioDuration > 0) {
-                drawWaveformWithSelection();
-            }
+            // 🔧 FIX: Don't call drawWaveformWithSelection() here - it draws regions immediately
+            // Regions will be drawn after crossfade completes (via renderRegionsAfterCrossfade)
+            // drawWaveformWithSelection() is already called at the end of the crossfade animation (line 344)
             
             // 🔥 FIX: Clear waveformData references after use to allow GC of transferred ArrayBuffers
             // The mins/maxs buffers were transferred from worker - clearing helps GC

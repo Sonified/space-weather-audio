@@ -1068,7 +1068,7 @@ export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion 
     return new Promise(async (resolve) => {
         // 🔥 OPTIMIZATION: Cancel any active background renders (but keep transition smooth!)
         // This prevents render conflicts but doesn't interfere with the transition animation
-        cancelActiveRender();
+        // cancelActiveRender(); // COMMENTED OUT: Preventing full spectrogram render from completing
         
         // Cancel any existing transition RAF
         if (zoomTransitionRAF) {

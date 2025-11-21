@@ -586,7 +586,8 @@ export async function startStreaming(event) {
         
         // Switch to this volcano's regions (regions are scoped per volcano)
         // This happens when data is actually being fetched, not just when the dropdown changes
-        switchVolcanoRegions(volcano);
+        // 🔧 Delay region rendering until waveform crossfade completes
+        switchVolcanoRegions(volcano, true);
         
         // Clear any "(Currently Loaded)" flags from dropdown since we're fetching new data
         updateVolcanoDropdownLabels(null, volcano);
