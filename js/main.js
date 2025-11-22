@@ -1488,8 +1488,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] volcano-audio v2.67 - Fix: Blank Screen When Clicking "Not Yet" in Complete Confirmation Modal');
-        console.log('📌 [0ms] Git commit: v2.67 Fix: Blank screen when clicking "Not yet" - immediately hide overlay and restore UI');
+        console.log('🌋 [0ms] volcano-audio v2.68 - Modal UX: Reduced spacing and enabled background visibility');
+        console.log('📌 [0ms] Git commit: v2.68 Modal UX: Reduced spacing and enabled background visibility');
         console.log('🎨 [0ms] v2.67 Fix: Overlay was only fading out (300ms delay) instead of being immediately removed, leaving blank screen');
         console.log('🔧 [0ms] v2.67 Fix: When "Not yet" clicked, immediately set overlay display:none and show UI elements');
         console.log('⚡ [0ms] v2.65 Perf: More efficient frame skipping - only prevents duplicate work, doesn\'t skip legitimate frames');

@@ -9,6 +9,7 @@ class ModalManager {
         this.overlay = document.getElementById('permanentOverlay');
         this.isTransitioning = false;
         this.queue = [];
+        this.scrollPosition = 0; // Store scroll position when modal opens
         
         // Transition timing constants
         this.FADE_DURATION = 300; // Match CSS transition
@@ -49,7 +50,11 @@ class ModalManager {
             } else {
                 console.log(`🔧 openModal: FRESH OPEN (currentModal=${this.currentModal}, keepOverlay=${keepOverlay})`);
                 // Fresh open (with overlay fade-in)
-                await this.closeAllModals();
+                await this.closeAllModals(false); // Don't re-enable scroll, we're about to open a modal
+                
+                // Disable background scrolling
+                this.disableBackgroundScroll();
+                
                 await this.fadeInOverlay();
                 modal.style.display = 'flex';
                 this.currentModal = modalId;
@@ -124,6 +129,8 @@ class ModalManager {
             // Fade out overlay unless keeping it for next modal
             if (!keepOverlay) {
                 await this.fadeOutOverlay();
+                // Re-enable background scrolling when all modals are closed
+                this.enableBackgroundScroll();
             }
             
             this.currentModal = keepOverlay ? targetModal : null;
@@ -228,8 +235,9 @@ class ModalManager {
     
     /**
      * Close all modals at once
+     * @param {boolean} reenableScroll - If true, re-enable background scrolling (default: true)
      */
-    async closeAllModals() {
+    async closeAllModals(reenableScroll = true) {
         const allModalIds = [
             'welcomeModal',
             'participantModal',
@@ -251,6 +259,40 @@ class ModalManager {
         });
         
         this.currentModal = null;
+        // Re-enable scrolling when closing all modals (unless we're about to open a new one)
+        if (reenableScroll) {
+            this.enableBackgroundScroll();
+        }
+    }
+    
+    /**
+     * Disable background scrolling when modal is open
+     */
+    disableBackgroundScroll() {
+        // Store current scroll position
+        this.scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+        
+        // Disable scrolling on both html and body
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${this.scrollPosition}px`;
+        document.body.style.width = '100%';
+    }
+    
+    /**
+     * Re-enable background scrolling when modal closes
+     */
+    enableBackgroundScroll() {
+        // Re-enable scrolling on both html and body
+        document.documentElement.style.overflow = '';
+        document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        
+        // Restore scroll position
+        window.scrollTo(0, this.scrollPosition);
     }
 }
 

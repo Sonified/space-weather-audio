@@ -1184,7 +1184,7 @@ input[type="checkbox"] {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.2);
     z-index: 1000;
     overflow: hidden;
     visibility: hidden;
@@ -1208,24 +1208,24 @@ input[type="checkbox"] {
 .modal-content {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 245, 245, 0.98) 100%);
     border-radius: 12px;
-    padding: 30px;
+    padding: 16px 12px;
     max-width: 800px;
     min-width: 400px;
     width: 90%;
-    max-height: 80vh;
+    max-height: 75vh;
     overflow-y: auto;
     box-shadow: 
-        0 20px 40px rgba(0, 0, 0, 0.2),
-        0 10px 20px rgba(0, 0, 0, 0.15),
-        0 5px 10px rgba(0, 0, 0, 0.1);
-    border: 2px solid rgba(200, 200, 200, 0.3);
+        0 20px 60px rgba(0, 0, 0, 0.5),
+        0 10px 30px rgba(0, 0, 0, 0.4),
+        0 5px 15px rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(200, 200, 200, 0.5);
     position: relative;
 }
 
 @media (max-width: 500px) {
     .modal-content {
         min-width: calc(100vw - 40px);
-        padding: 20px;
+        padding: 16px;
     }
 }
 
@@ -1233,8 +1233,8 @@ input[type="checkbox"] {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
     border-bottom: 2px solid rgba(200, 100, 100, 0.3);
 }
 
@@ -1276,12 +1276,12 @@ input[type="checkbox"] {
 }
 
 .modal-form-group {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 }
 
 .modal-form-group label {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: 5px;
     font-weight: 600;
     color: #550000;
 }
@@ -1307,17 +1307,17 @@ input[type="checkbox"] {
     border-radius: 8px;
     border: 1px solid rgba(150, 150, 150, 0.3);
     overflow: hidden;
-    margin-bottom: 13px;
+    margin-bottom: 8px;
 }
 
 .mood-scale-item {
     display: grid;
     grid-template-columns: 140px 1fr;
     align-items: center;
-    gap: 13px;
+    gap: 8px;
     margin-bottom: 0;
-    padding: 10px;
-    min-height: 38px;
+    padding: 6px 6px;
+    min-height: 32px;
     border-radius: 0;
     border: none;
     border-bottom: 1px solid rgba(150, 150, 150, 0.2);
@@ -1345,7 +1345,7 @@ input[type="checkbox"] {
 .mood-scale-options {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 8px;
+    gap: 4px;
     width: 100%;
 }
 
@@ -1365,7 +1365,7 @@ input[type="checkbox"] {
     cursor: pointer;
     accent-color: #007bff;
     margin: 0;
-    margin-top: 9px;
+    margin-top: 4px;
 }
 
 .mood-scale-option label {
@@ -1386,9 +1386,9 @@ input[type="checkbox"] {
 .survey-scale-labels {
     display: grid;
     grid-template-columns: 140px 1fr;
-    gap: 13px;
-    margin-bottom: 10px;
-    padding: 0 15px;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding: 0 6px;
 }
 
 .survey-scale-labels-grid {
@@ -1418,7 +1418,7 @@ input[type="checkbox"] {
     width: 100%;
     padding: 9px 24px;
     font-size: 18px;
-    margin-top: 6px;
+    margin-top: 4px;
     background: #0056b3 !important; /* Blue to match other modal buttons */
     border-color: #0056b3 !important;
     color: white !important;
@@ -1433,8 +1433,8 @@ input[type="checkbox"] {
     font-size: 24px;
     font-weight: 700;
     color: #550000;
-    margin-top: 13px;
-    margin-bottom: 19px;
+    margin-top: 8px;
+    margin-bottom: 12px;
     text-align: center;
 }
 
@@ -1442,7 +1442,7 @@ input[type="checkbox"] {
 .awesf-modal .modal-content {
     max-width: 1200px;
     min-width: 900px;
-    max-height: 90vh;
+    max-height: 85vh;
 }
 
 .awesf-modal .mood-scale-item {
@@ -1474,7 +1474,7 @@ input[type="checkbox"] {
 .activity-level-modal .modal-content {
     max-width: 800px;
     min-width: 600px;
-    max-height: 90vh;
+    max-height: 75vh;
 }
 
 .activity-level-modal .mood-scale-item {
@@ -1505,8 +1505,8 @@ input[type="checkbox"] {
 
 .activity-level-modal .modal-header {
     border-bottom: none;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
     position: relative;
     justify-content: flex-end;
 }
@@ -1527,8 +1527,8 @@ input[type="checkbox"] {
 
 .awesf-modal .modal-header {
     border-bottom: none;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
     position: relative;
     justify-content: flex-end;
 }

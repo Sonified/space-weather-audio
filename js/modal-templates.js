@@ -378,8 +378,8 @@ function createMoodSurveyModal(surveyType, surveyId, title) {
                 <div class="mood-survey-intro">Right now, I feel:</div>
                 
                 <!-- Quick-fill buttons -->
-                <div class="quick-fill-buttons" style="display: flex; gap: 8px; margin-bottom: 15px; padding: 10px; background: rgba(0, 0, 0, 0.05); border-radius: 6px; justify-content: center; flex-wrap: wrap;">
-                    <span style="font-weight: 600; color: #550000; margin-right: 8px; align-self: center;">Quick fill:</span>
+                <div class="quick-fill-buttons" style="display: flex; gap: 6px; margin-bottom: 8px; padding: 8px 6px; background: rgba(0, 0, 0, 0.05); border-radius: 6px; justify-content: center; flex-wrap: wrap;">
+                    <span style="font-weight: 600; color: #550000; margin-right: 6px; align-self: center;">Quick fill:</span>
                     <button type="button" class="quick-fill-btn" data-value="1" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">1</button>
                     <button type="button" class="quick-fill-btn" data-value="2" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">2</button>
                     <button type="button" class="quick-fill-btn" data-value="3" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">3</button>
@@ -593,7 +593,7 @@ export function createActivityLevelModal() {
             </div>
             <div class="modal-body">
                 <!-- Question -->
-                <div style="font-size: 18px; color: #550000; margin-bottom: 30px; text-align: center; font-weight: normal;">
+                <div style="font-size: 18px; color: #550000; margin-bottom: 15px; text-align: center; font-weight: normal;">
                     Based on your current knowledge and previous interactions with audified seismic data, during the last 24 hours what is the level of activity displayed here?
                 </div>
                 
