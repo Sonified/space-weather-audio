@@ -60,22 +60,32 @@
         <div class="panel panel-selection">
             <div class="controls">
                 <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px;">
-                    <label for="volcano" style="margin-bottom: 0;">Volcano:</label>
-                    <select id="volcano" style="background: rgba(255, 255, 255, 0.85); width: 180px; min-width: 180px; max-width: 180px; overflow: hidden; text-overflow: ellipsis;">
-                        <option value="kilauea">Kīlauea (HI)</option>
-                        <option value="maunaloa">Mauna Loa (HI)</option>
-                        <option value="greatsitkin">Great Sitkin (AK)</option>
-                        <option value="shishaldin">Shishaldin (AK)</option>
-                        <option value="spurr">Mount Spurr (AK)</option>
+                    <label for="spacecraft" style="margin-bottom: 0;">Spacecraft:</label>
+                    <select id="spacecraft" style="background: rgba(255, 255, 255, 0.85); width: 220px; min-width: 220px; max-width: 220px; overflow: hidden; text-overflow: ellipsis;">
+                        <option value="PSP">Parker Solar Probe (PSP)</option>
+                        <option value="Wind">Wind</option>
+                        <option value="MMS">MMS (Magnetospheric Multiscale)</option>
                     </select>
                 </div>
                 
-                <div class="control-group" style="display: none;">
-                    <label for="dataType">Data Type:</label>
-                    <select id="dataType">
-                        <option value="seismic">Seismic (Z-component)</option>
-                        <option value="infrasound">Infrasound</option>
+                <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px;">
+                    <label for="dataType" style="margin-bottom: 0;">Data:</label>
+                    <select id="dataType" style="background: rgba(255, 255, 255, 0.85); width: 220px; min-width: 220px; max-width: 220px; overflow: hidden; text-overflow: ellipsis;">
+                        <option value="PSP_FLD_L2_MAG_RTN">PSP_FLD_L2_MAG_RTN (Full Cadence)</option>
+                        <option value="PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC">PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)</option>
                     </select>
+                </div>
+                
+                <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px; width: 100%; flex-basis: 100%;">
+                    <label for="startDate" style="margin-bottom: 0;">Start:</label>
+                    <input type="date" id="startDate" value="2025-07-31" max="2025-12-31" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85);">
+                    <input type="text" id="startTime" value="22:00:00.000" placeholder="HH:MM:SS.mmm" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); width: 130px;">
+                    <label for="endDate" style="margin-bottom: 0; margin-left: 8px;">End:</label>
+                    <input type="date" id="endDate" value="2025-07-31" max="2025-12-31" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85);">
+                    <input type="text" id="endTime" value="22:10:00.000" placeholder="HH:MM:SS.mmm" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); width: 130px;">
+                    <button type="button" id="startBtn" style="min-width: 150px; padding: 10px 20px; font-size: 16px; margin-left: 15px;">📡 Fetch Data</button>
+                    <div class="status info" id="status" style="margin-top: 0; padding: 10px 15px; flex: 1; min-width: 200px; margin-left: 15px;">
+                    </div>
                 </div>
                 
                 <div class="control-group" id="stationControlGroup" style="display: none;">
@@ -98,18 +108,9 @@
                     </select>
                 </div>
                 
-                <div class="control-group">
-                    <button type="button" id="startBtn" style="min-width: 150px; padding: 10px 20px; font-size: 16px;">📡 Fetch Data</button>
-                </div>
-                
-                <div class="control-group" style="display: flex; flex-direction: row; align-items: center; gap: 8px;">
+                <div class="control-group" style="display: none;">
                     <input type="checkbox" id="autoPlay" checked style="width: 20px; height: 20px; cursor: pointer;">
                     <label for="autoPlay" style="margin-bottom: 0; cursor: pointer; font-weight: 600; font-size: 18px; color: #333;">Auto Play</label>
-                </div>
-                
-                <div class="control-group" style="margin-left: 15px; flex: 1; min-width: 200px;">
-                    <div class="status info" id="status" style="margin-top: 0; padding: 10px 15px; width: 100%;">
-                    </div>
                 </div>
                 
                 <div class="control-group" id="forceIrisControlGroup" style="margin-left: auto; display: none;">

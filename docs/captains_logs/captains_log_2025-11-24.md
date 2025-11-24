@@ -30,3 +30,33 @@
 - `js/region-tracker.js` - Updated `updateCompleteButtonState()` to respect Solar Portal mode
 - `index.html` - Added Solar Portal to dropdown, changed Participant ID to User ID, set simulate panel default hidden
 
+---
+
+## v1.01 - Spacecraft Data Download in Main Interface
+
+### Major UI Update
+**Spacecraft Selection Interface**
+- Replaced volcanic data selectors with spacecraft data selectors:
+  - **Spacecraft dropdown**: Parker Solar Probe (PSP), Wind, MMS
+  - **Data Type dropdown**: Magnetometer datasets (PSP_FLD_L2_MAG_RTN, PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC)
+  - **Start Date** input field
+  - **Start Time** input field (HH:MM:SS.mmm format)
+  - **End Date** input field
+  - **End Time** input field (HH:MM:SS.mmm format)
+  - **Fetch Data** button
+- Hidden Auto Play checkbox to save space
+- Old volcanic controls (station, duration) moved to hidden section
+
+### Code Changes
+- Updated all `getElementById('volcano')` references to `getElementById('spacecraft')` in main.js (7 locations)
+- Updated event listeners and DOM references for spacecraft selector
+- Prepared interface for CDASWS API integration (backend connection pending)
+
+### Files Modified
+- `index.html` - Rebuilt top selection panel with spacecraft controls
+- `js/main.js` - Updated all DOM references from volcano to spacecraft
+
+### Git Info
+- **Version**: v1.01
+- **Commit**: "v1.01 Spacecraft data download in main interface"
+

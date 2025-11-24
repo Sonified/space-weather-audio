@@ -222,15 +222,6 @@
             </div>
             
             <div class="form-group">
-                <label for="component">Component</label>
-                <select id="component" name="component">
-                    <option value="br">br (Radial)</option>
-                    <option value="bt">bt (Tangential)</option>
-                    <option value="bn">bn (Normal)</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
                 <label for="startDate">Start Date & Time</label>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <input 
@@ -386,7 +377,6 @@
         const visualizerCtx = visualizerCanvas.getContext('2d');
         const spacecraftSelect = document.getElementById('spacecraft');
         const dataTypeSelect = document.getElementById('dataType');
-        const componentSelect = document.getElementById('component');
         const componentSelectorContainer = document.getElementById('componentSelectorContainer');
         const componentSelector = document.getElementById('componentSelector');
         
@@ -413,38 +403,6 @@
             // Update components based on first dataset
             updateComponents();
         });
-        
-        // Update component options when data type changes
-        dataTypeSelect.addEventListener('change', () => {
-            updateComponents();
-        });
-        
-        function updateComponents() {
-            const dataset = dataTypeSelect.value;
-            const components = DATASET_COMPONENTS[dataset] || ['br', 'bt', 'bn'];
-            
-            // Clear and repopulate component dropdown
-            componentSelect.innerHTML = '';
-            components.forEach(comp => {
-                const option = document.createElement('option');
-                option.value = comp;
-                
-                // Format labels nicely
-                let label = comp;
-                if (comp === 'br') label = 'br (Radial)';
-                else if (comp === 'bt') label = 'bt (Tangential)';
-                else if (comp === 'bn') label = 'bn (Normal)';
-                else if (comp === 'BF1') label = 'BF1 (Magnitude)';
-                else if (comp === 'BGSM') label = 'BGSM (GSM Vector - 3 files: x, y, z)';
-                else if (comp === 'BGSE') label = 'BGSE (GSE Vector - 3 files: x, y, z)';
-                else if (comp === 'mms1_fgm_b_gse_srvy_l2') label = 'B_GSE (GSE Vector - 4 files: x, y, z, magnitude)';
-                else if (comp === 'mms1_fgm_b_gse_srvy_l2_clean') label = 'B_GSE Clean (GSE Vector - 4 files: x, y, z, magnitude)';
-                else if (comp === 'mms1_fgm_b_gsm_srvy_l2') label = 'B_GSM (GSM Vector - 4 files: x, y, z, magnitude)';
-                
-                option.textContent = label;
-                componentSelect.appendChild(option);
-            });
-        }
         
         // Initialize data types for default spacecraft
         spacecraftSelect.dispatchEvent(new Event('change'));
@@ -927,7 +885,9 @@
                 // Get selected values
                 const spacecraft = document.getElementById('spacecraft').value;
                 const dataset = document.getElementById('dataType').value;
-                const component = document.getElementById('component').value;
+                // Default to first component for the dataset (users can switch using the audio player selector)
+                const components = DATASET_COMPONENTS[dataset] || ['br', 'bt', 'bn'];
+                const component = components[0];
                 
                 const result = await createAudio(startTime, endTime, dataset, component, spacecraft);
                 

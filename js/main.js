@@ -510,8 +510,8 @@ export async function startStreaming(event) {
         // Mark that first fetch has been performed (disables Enter key shortcut)
         hasPerformedFirstFetch = true;
         
-        // Remove pulsing glow from volcano selector when user starts fetching
-        const volcanoSelect = document.getElementById('volcano');
+        // Remove pulsing glow from spacecraft selector when user starts fetching
+        const volcanoSelect = document.getElementById('spacecraft');
         if (volcanoSelect) {
             volcanoSelect.classList.remove('pulse-glow');
         }
@@ -582,7 +582,7 @@ export async function startStreaming(event) {
         const duration = parseFloat(document.getElementById('duration').value);
         const highpassFreq = document.getElementById('highpassFreq').value;
         const enableNormalize = document.getElementById('enableNormalize').checked;
-        const volcano = document.getElementById('volcano').value;
+        const volcano = document.getElementById('spacecraft').value;
         
         // Switch to this volcano's regions (regions are scoped per volcano)
         // This happens when data is actually being fetched, not just when the dropdown changes
@@ -1224,7 +1224,7 @@ async function initializeApp() {
  * @param {string} selectedVolcano - Currently selected volcano
  */
 function updateVolcanoDropdownLabels(loadedVolcano, selectedVolcano) {
-    const volcanoSelect = document.getElementById('volcano');
+    const volcanoSelect = document.getElementById('spacecraft');
     if (!volcanoSelect) return;
     
     // Define original labels
@@ -1309,17 +1309,12 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
         console.log('🔒 Mode selector hidden (production environment)');
     } else if (isLocal && !isPureProductionStudy) {
-        // Local: Show for all modes EXCEPT pure production study
-        // This includes: dev, personal, study_clean, study_w2_s1, study_w2_s2, tutorial_end
+        // Local: Hidden by default (can be revealed with "dvdv" secret sequence)
         if (modeSelectorContainer) {
-            modeSelectorContainer.style.visibility = 'visible';
-            modeSelectorContainer.style.opacity = '1';
+            modeSelectorContainer.style.visibility = 'hidden';
+            modeSelectorContainer.style.opacity = '0';
         }
-        if (isTestMode) {
-            console.log('🧪 Mode selector visible (test mode)');
-        } else {
-            console.log('🔓 Mode selector visible (dev/personal mode)');
-        }
+        console.log('🔒 Mode selector hidden by default (type "dvdv" to reveal)');
     } else if (isPureProductionStudy && isLocal) {
         // Pure production study mode (local): Hidden by default, revealed by "dvdv"
         console.log('🔒 Mode selector hidden (type "dvdv" to reveal)');
@@ -1624,14 +1619,15 @@ window.addEventListener('DOMContentLoaded', async () => {
         await initializeApp();
         
         console.log('═══════════════════════════════════════════════════════════');
-        console.log('✅ App ready');
+        console.log('✅ App ready - v1.01 (2025-11-24)');
+        console.log('📋 Commit: v1.01 Spacecraft data download in main interface');
         console.log('═══════════════════════════════════════════════════════════');
     }, 100);
     
     // Add event listeners
-    document.getElementById('volcano').addEventListener('change', async (e) => {
-        // Remove pulsing glow when user selects a volcano
-        const volcanoSelect = document.getElementById('volcano');
+    document.getElementById('spacecraft').addEventListener('change', async (e) => {
+        // Remove pulsing glow when user selects a spacecraft
+        const volcanoSelect = document.getElementById('spacecraft');
         if (volcanoSelect) {
             volcanoSelect.classList.remove('pulse-glow');
         }
@@ -2042,7 +2038,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('downloadBtn').addEventListener('click', downloadAudio);
     
     // Station Selection
-    document.getElementById('volcano').addEventListener('change', (e) => {
+    document.getElementById('spacecraft').addEventListener('change', (e) => {
         loadStations();
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
@@ -2191,13 +2187,13 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.log('🎯 Showing Add Region button for existing selection');
         }
         
-        // Disable volcano switching after confirmation
-        const volcanoSelect = document.getElementById('volcano');
+        // Disable spacecraft switching after confirmation
+        const volcanoSelect = document.getElementById('spacecraft');
         if (volcanoSelect) {
             volcanoSelect.disabled = true;
             volcanoSelect.style.opacity = '0.6';
             volcanoSelect.style.cursor = 'not-allowed';
-            console.log('🔒 Volcano switching disabled after Begin Analysis confirmation');
+            console.log('🔒 Spacecraft switching disabled after Begin Analysis confirmation');
         }
         
         // Transform Begin Analysis button into Complete button
