@@ -3,11 +3,8 @@
  * Main orchestration: initialization, startStreaming, event handlers
  */
 
-// ===== DEBUG FLAGS =====
-const DEBUG_LOOP_FADES = true; // Enable loop fade logging
-
-// ===== FIRST FETCH TRACKING =====
-let hasPerformedFirstFetch = false; // Track if first fetch has been performed
+// IMMEDIATE LOG - Check if main.js is being parsed at all
+console.log('🚨 MAIN.JS TOP OF FILE - PARSING NOW');
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
@@ -43,6 +40,16 @@ import {
     initializeMasterMode 
 } from './master-modes.js';
 
+console.log('✅ ALL IMPORTS COMPLETE');
+
+// ===== DEBUG FLAGS =====
+const DEBUG_LOOP_FADES = true; // Enable loop fade logging
+
+// ===== FIRST FETCH TRACKING =====
+let hasPerformedFirstFetch = false; // Track if first fetch has been performed
+
+console.log('✅ CONSTANTS DEFINED');
+
 // Helper function to safely check study mode (handles cases where module isn't loaded yet)
 function safeIsStudyMode() {
     try {
@@ -53,16 +60,24 @@ function safeIsStudyMode() {
     }
 }
 
+console.log('🟡 Defined safeIsStudyMode');
+
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 // See data-fetcher.js for centralized flags documentation
 const DEBUG_CHUNKS = false;
+
+console.log('🟡 Set DEBUG_CHUNKS');
 
 // 🧹 MEMORY LEAK FIX: Use event listeners instead of window.* assignments
 // This prevents closure memory leaks by avoiding permanent window references
 // that capture entire module scopes including State with all audio data
 
+console.log('🟡 About to define forceIrisFetch');
+
 // Force IRIS fetch state
 let forceIrisFetch = false;
+
+console.log('🟡 About to define toggleForceIris');
 
 // Toggle Force IRIS fetch mode
 function toggleForceIris() {
@@ -81,6 +96,8 @@ function toggleForceIris() {
     }
 }
 
+console.log('🟢 After toggleForceIris');
+
 // Helper function to calculate slider value for 1.0x speed
 function calculateSliderForSpeed(targetSpeed) {
     if (targetSpeed <= 1.0) {
@@ -92,12 +109,16 @@ function calculateSliderForSpeed(targetSpeed) {
     }
 }
 
+console.log('🟢 After calculateSliderForSpeed');
+
 // Helper functions
 function formatDuration(seconds) {
     const minutes = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${minutes}m ${secs}s`;
 }
+
+console.log('🟢 After formatDuration');
 
 function updateCurrentPositionFromSamples(samplesConsumed, totalSamples) {
     // 🔥 FIX: Check document connection first to prevent detached document leaks
@@ -143,6 +164,8 @@ function stopPositionTracking() {
         State.setPlaybackPositionInterval(null);
     }
 }
+
+console.log('🟢 After stopPositionTracking - LINE 170');
 
 // Oscilloscope data collection state
 let oscilloscopeRAF = null;
@@ -499,6 +522,8 @@ export async function initAudioWorklet() {
     // startVisualization();
 }
 
+console.log('🟢 LINE 523 - After initAudioWorklet function');
+
 // Main streaming function
 export async function startStreaming(event) {
     try {
@@ -511,23 +536,20 @@ export async function startStreaming(event) {
         hasPerformedFirstFetch = true;
         
         // Remove pulsing glow from spacecraft selector when user starts fetching
-        const volcanoSelect = document.getElementById('spacecraft');
-        if (volcanoSelect) {
-            volcanoSelect.classList.remove('pulse-glow');
+        const spacecraftSelect = document.getElementById('spacecraft');
+        if (spacecraftSelect) {
+            spacecraftSelect.classList.remove('pulse-glow');
         }
         
         // Clear complete spectrogram when loading new data
         clearCompleteSpectrogram();
         
         // 🔧 FIX: Reset zoom state to full view when loading new data
-        // Prevents state leakage when switching volcanoes while zoomed into a region
         if (zoomState.isInitialized()) {
             zoomState.mode = 'full';
             zoomState.currentViewStartSample = 0;
             zoomState.activeRegionId = null;
-            if (!isStudyMode()) {
-                console.log('🔄 Reset zoom state to full view for new data');
-            }
+            console.log('🔄 Reset zoom state to full view for new data');
         }
         
         // Reset waveform click tracking when loading new data
@@ -567,468 +589,67 @@ export async function startStreaming(event) {
         window.streamingStartTime = performance.now();
         const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
         
-        // Only log in dev/personal modes, not study mode
-        if (!isStudyMode()) {
-            console.log('🎬 [0ms] startStreaming() called');
-        }
+        console.log('🎬 [0ms] Fetching CDAWeb audio data');
         
-        const stationValue = document.getElementById('station').value;
-        if (!stationValue) {
-            alert('Please select a station');
+        // Get form values for CDAWeb request
+        const spacecraft = document.getElementById('spacecraft').value;
+        const dataset = document.getElementById('dataType').value;
+        const startDate = document.getElementById('startDate').value;
+        const startTime = document.getElementById('startTime').value;
+        const endDate = document.getElementById('endDate').value;
+        const endTime = document.getElementById('endTime').value;
+        
+        // Validate inputs
+        if (!spacecraft || !dataset || !startDate || !startTime || !endDate || !endTime) {
+            alert('Please fill in all fields (spacecraft, dataset, start date/time, end date/time)');
             return;
         }
         
-        const stationData = JSON.parse(stationValue);
-        const duration = parseFloat(document.getElementById('duration').value);
-        const highpassFreq = document.getElementById('highpassFreq').value;
-        const enableNormalize = document.getElementById('enableNormalize').checked;
-        const volcano = document.getElementById('spacecraft').value;
+        // Combine date and time into ISO 8601 format
+        const startTimeISO = `${startDate}T${startTime}Z`;
+        const endTimeISO = `${endDate}T${endTime}Z`;
         
-        // Switch to this volcano's regions (regions are scoped per volcano)
-        // This happens when data is actually being fetched, not just when the dropdown changes
-        // 🔧 Delay region rendering until waveform crossfade completes
-        switchVolcanoRegions(volcano, true);
+        console.log(`🛰️ ${logTime()} Fetching: ${spacecraft} ${dataset} from ${startTimeISO} to ${endTimeISO}`);
         
-        // Clear any "(Currently Loaded)" flags from dropdown since we're fetching new data
-        updateVolcanoDropdownLabels(null, volcano);
-        
-        // Log what we're fetching
-        const stationLabel = `${stationData.network}.${stationData.station}.${stationData.location || '--'}.${stationData.channel}`;
-        if (!isStudyMode()) {
-            console.log(`🌋 Fetching data for ${volcano} from station ${stationLabel}`);
+        // Update status
+        const statusDiv = document.getElementById('status');
+        if (statusDiv) {
+            statusDiv.textContent = 'Fetching audio data from CDAWeb...';
+            statusDiv.className = 'status info';
         }
         
-        // Track fetch data action
-        const participantId = getParticipantId();
-        if (participantId) {
-            trackUserAction(participantId, 'fetch_data', {
-                volcano: volcano,
-                station: `${stationData.network}.${stationData.station}.${stationData.location || '--'}.${stationData.channel}`,
-                duration: duration,
-                highpassFreq: highpassFreq,
-                enableNormalize: enableNormalize
-            });
+        // Fetch and load the CDAWeb audio data
+        const { fetchAndLoadCDAWebData } = await import('./data-fetcher.js');
+        await fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO);
+        
+        // Update status
+        if (statusDiv) {
+            statusDiv.textContent = 'Data loaded successfully!';
+            statusDiv.className = 'status success';
         }
         
-        // Calculate estimated end time
-        const now = new Date();
-        const currentMinute = now.getUTCMinutes();
-        const currentSecond = now.getUTCSeconds();
-        const currentPeriodStart = Math.floor(currentMinute / 10) * 10;
-        const minutesSincePeriodStart = currentMinute - currentPeriodStart;
-        const secondsSincePeriodStart = minutesSincePeriodStart * 60 + currentSecond;
-        
-        let estimatedEndTime;
-        if (secondsSincePeriodStart >= 135) {
-            estimatedEndTime = new Date(now.getTime());
-            estimatedEndTime.setUTCMinutes(currentPeriodStart, 0, 0);
-        } else {
-            estimatedEndTime = new Date(now.getTime());
-            estimatedEndTime.setUTCMinutes(currentPeriodStart - 10, 0, 0);
+        // Reload recent searches dropdown (function is defined in DOMContentLoaded)
+        if (typeof window.loadRecentSearches === 'function') {
+            await window.loadRecentSearches();
         }
         
-        const startTime = new Date(estimatedEndTime.getTime() - duration * 3600 * 1000);
+        console.log(`🎉 ${logTime()} Complete!`);
         
-        // Only log in dev/personal modes, not study mode
-        if (!isStudyMode()) {
-            console.log(`🕐 ${logTime()} Estimated latest chunk ends at: ${estimatedEndTime.toISOString()}`);
-            console.log(`🚀 ${logTime()} Starting parallel: worker + audioContext + station check`);
-        }
-        
-        // 1. Worker creation
-        if (window.audioWorker) {
-            if (!isStudyMode()) {
-                console.log('🧹 Terminating old audio worker...');
-            }
-            window.audioWorker.onmessage = null;  // Break closure chain
-            // 🔥 FIX: Remove all event listeners before terminating
-            // Note: Terminating the worker will clean up listeners, but we do this explicitly
-            // to ensure any pending promises don't hold references
-            window.audioWorker.terminate();
-            window.audioWorker = null; // 🧹 Clear reference before creating new worker
-        }
-        window.audioWorker = new Worker('workers/audio-processor-worker.js');
-        // 🔥 FIX: Store reference to listener so we can clean it up if worker terminates early
-        let readyListener = null;
-        const workerReadyPromise = new Promise(resolve => {
-            readyListener = function onReady(e) {
-                if (e.data === 'ready') {
-                    if (window.audioWorker && readyListener) {
-                        window.audioWorker.removeEventListener('message', readyListener);
-                    }
-                    if (!isStudyMode()) {
-                        console.log(`🏭 ${logTime()} Worker ready!`);
-                    }
-                    resolve();
-                }
-            };
-            window.audioWorker.addEventListener('message', readyListener);
-        });
-        
-        // 2. AudioContext creation
-        const audioContextPromise = (async () => {
-            if (!State.audioContext) {
-                const ctx = new AudioContext({ 
-                    sampleRate: 44100,
-                    latencyHint: 'playback'  // 30ms buffer for stable playback (prevents dropouts)
-                });
-                State.setAudioContext(ctx);
-                await ctx.audioWorklet.addModule('workers/audio-worklet.js');
-                if (!isStudyMode()) {
-                    console.log(`🎵 ${logTime()} AudioContext ready (latency: playback)`);
-                }
-            }
-        })();
-        
-        // 3. Check if station is active
-        const stationCheckPromise = (async () => {
-            const configResponse = await fetch('backend/stations_config.json');
-            const stationsConfig = await configResponse.json();
-            
-            let isActiveStation = false;
-            if (stationsConfig.networks[stationData.network] && 
-                stationsConfig.networks[stationData.network][volcano]) {
-                const volcanoStations = stationsConfig.networks[stationData.network][volcano];
-                const stationConfig = volcanoStations.find(s => 
-                    s.station === stationData.station && 
-                    s.location === (stationData.location || '--') &&
-                    s.channel === stationData.channel
-                );
-                
-                if (stationConfig) {
-                    isActiveStation = stationConfig.active === true;
-                }
-            }
-            
-            if (!isStudyMode()) {
-                console.log(`📋 ${logTime()} Station ${stationData.network}.${stationData.station}: active=${isActiveStation}`);
-            }
-            return isActiveStation;
-        })();
-        
-        await Promise.all([workerReadyPromise, audioContextPromise]);
-        if (!isStudyMode()) {
-            console.log(`✅ ${logTime()} Worker + AudioContext ready!`);
-        }
-        
-        const isActiveStation = await stationCheckPromise;
-        
-        // 4. Build realistic chunk fetch for active stations (skip if forcing IRIS fetch)
-        let realisticChunkPromise = Promise.resolve(null);
-        let firstChunkStart = null;
-        
-        if (forceIrisFetch) {
-            console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Skipping CDN chunk fetches`);
-        } else if (isActiveStation) {
-            const volcanoMap = {
-                'kilauea': 'kilauea',
-                'maunaloa': 'maunaloa',
-                'greatsitkin': 'greatsitkin',
-                'shishaldin': 'shishaldin',
-                'spurr': 'spurr'
-            };
-            const volcanoName = volcanoMap[volcano] || 'kilauea';
-            const CDN_BASE_URL = 'https://cdn.now.audio/data';
-            
-            firstChunkStart = new Date(startTime.getTime());
-            firstChunkStart.setUTCMinutes(Math.floor(firstChunkStart.getUTCMinutes() / 10) * 10, 0, 0);
-            
-            const location = stationData.location || '--';
-            const sampleRate = Math.round(stationData.sample_rate || 100);
-            
-            const bypassCache = document.getElementById('bypassCache').checked;
-            const cacheBuster = bypassCache ? `?t=${Date.now()}` : '';
-            if (bypassCache) {
-                console.log(`🚫 ${logTime()} Cache bypass ENABLED`);
-            }
-            
-            realisticChunkPromise = (async () => {
-                const buildRealisticUrl = (minuteOffset) => {
-                    const attemptTime = new Date(firstChunkStart.getTime());
-                    attemptTime.setUTCMinutes(attemptTime.getUTCMinutes() + minuteOffset);
-                    
-                    const date = attemptTime.toISOString().split('T')[0];
-                    const hour = attemptTime.getUTCHours();
-                    const minute = Math.floor(attemptTime.getUTCMinutes() / 10) * 10;
-                    const startTimeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
-                    
-                    // Calculate NEW format end time (actual end: 03:40:00 for 03:30 start)
-                    const endDateTime = new Date(attemptTime.getTime() + 10 * 60 * 1000); // +10 minutes
-                    const endDate = endDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
-                    const endHour = endDateTime.getUTCHours();
-                    const endMinute = endDateTime.getUTCMinutes();
-                    const endTime = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`;
-                    
-                    // Calculate OLD format end time (last second: 03:39:59 for 03:30 start)
-                    const oldEndDateTime = new Date(attemptTime.getTime() + 10 * 60 * 1000 - 1000); // +10 min - 1 sec
-                    const oldEndDate = oldEndDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
-                    const oldEndHour = oldEndDateTime.getUTCHours();
-                    const oldEndMinute = oldEndDateTime.getUTCMinutes();
-                    const oldEndSecond = oldEndDateTime.getUTCSeconds();
-                    const oldEndTime = `${String(oldEndHour).padStart(2, '0')}:${String(oldEndMinute).padStart(2, '0')}:${String(oldEndSecond).padStart(2, '0')}`;
-                    
-                    const [y, m, d] = date.split('-');
-                    const path = `${y}/${m}/${d}`;
-                    
-                    const newFname = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_10m_${date}-${startTimeStr.replace(/:/g, '-')}_to_${endDate}-${endTime.replace(/:/g, '-')}.bin.zst`;
-                    const oldFname = `${stationData.network}_${stationData.station}_${location}_${stationData.channel}_${sampleRate}Hz_10m_${date}-${startTimeStr.replace(/:/g, '-')}_to_${oldEndDate}-${oldEndTime.replace(/:/g, '-')}.bin.zst`;
-                    
-                    return {
-                        newUrl: `${CDN_BASE_URL}/${path}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/10m/${newFname}${cacheBuster}`,
-                        oldUrl: `${CDN_BASE_URL}/${path}/${stationData.network}/${volcanoName}/${stationData.station}/${location}/${stationData.channel}/10m/${oldFname}${cacheBuster}`,
-                        date: date,
-                        time: startTimeStr
-                    };
-                };
-                
-                const attempts = [
-                    { offset: 0, label: 'chunk 0' },
-                    { offset: 10, label: 'chunk +1' },
-                    { offset: 20, label: 'chunk +2' },
-                    { offset: 30, label: 'chunk +3' },
-                    { offset: 40, label: 'chunk +4' },
-                    { offset: 50, label: 'chunk +5' }
-                ];
-                
-                for (const attempt of attempts) {
-                    const { newUrl, oldUrl, date, time } = buildRealisticUrl(attempt.offset);
-                    
-                    try {
-                        let response = await fetch(newUrl);
-                        
-                        if (!response.ok) {
-                            response = await fetch(oldUrl);
-                        }
-                        
-                        if (response.ok) {
-                            const compressed = await response.arrayBuffer();
-                            if (DEBUG_CHUNKS) console.log(`📥 ${logTime()} Realistic chunk SUCCESS (${attempt.label}): ${date} ${time} - ${(compressed.byteLength / 1024).toFixed(1)} KB`);
-                            return { compressed, date, time };
-                        } else {
-                            console.warn(`⚠️ ${logTime()} Realistic ${attempt.label} not found - trying next...`);
-                        }
-                    } catch (error) {
-                        console.warn(`⚠️ ${logTime()} Realistic ${attempt.label} fetch error - trying next...`);
-                    }
-                }
-                
-                console.warn(`⚠️ ${logTime()} All realistic attempts failed`);
-                return null;
-            })();
-        } else {
-            console.log(`⏭️ ${logTime()} Skipping realistic chunk fetch (inactive station)`);
-        }
-        
-        // Clean up old playback
-        State.setIsFetchingNewData(true);
-        State.setSpectrogramInitialized(false);
-        
-        // Clear encouragement timeout if it exists (user is fetching data)
-        if (window._encouragementTimeout) {
-            clearTimeout(window._encouragementTimeout);
-            window._encouragementTimeout = null;
-        }
-        
-        // 🔥 Cancel any active typing animation FIRST
-        const { cancelTyping } = await import('./tutorial.js');
-        cancelTyping();
-        
-        // Mark initial message as dismissed and ALWAYS clear status text
-        window._initialMessageDismissed = true;
-        const statusEl = document.getElementById('status');
-        if (statusEl) {
-            statusEl.textContent = '';  // Just clear it, period. No checking!
-        }
-        
-        const baseMessage = forceIrisFetch 
-            ? `📡 Fetching data for station ${stationLabel} (${stationData.distance_km}km) from IRIS Server`
-            : (isActiveStation ? `📡 Fetching data for station ${stationLabel} (${stationData.distance_km}km) from R2 Server` : `📡 Fetching data for station ${stationLabel} (${stationData.distance_km}km) from Railway Server`);
-        document.getElementById('status').className = 'status info loading';
-        document.getElementById('status').textContent = baseMessage;
-        
-        if (State.workletNode) {
-            console.log('🧹 Starting AGGRESSIVE memory cleanup...');
-            // 🔥 FIX: Cancel RAF loops FIRST to prevent new detached callbacks
-            cancelAllRAFLoops();
-            
-            // 🔥 FIX: Clear worklet message handlers FIRST before clearing State arrays
-            // This prevents the closures from retaining references to old Float32Arrays
-            State.workletNode.port.onmessage = null;
-            
-            // 🔥 FIX: Remove addEventListener handlers that might retain ArrayBuffer references
-            // These handlers have closures that capture processedChunks and other variables
-            if (State.workletBufferStatusHandler) {
-                State.workletNode.port.removeEventListener('message', State.workletBufferStatusHandler);
-                State.setWorkletBufferStatusHandler(null);
-            }
-            if (State.workletRailwayBufferStatusHandler) {
-                State.workletNode.port.removeEventListener('message', State.workletRailwayBufferStatusHandler);
-                State.setWorkletRailwayBufferStatusHandler(null);
-            }
-            
-            // Worklet handles fades internally now, just disconnect
-            State.workletNode.disconnect();
-            State.setWorkletNode(null);
-            if (State.gainNode) {
-                State.gainNode.disconnect();
-                State.setGainNode(null);
-            }
-            // 🔥 FIX: Disconnect analyser node to prevent memory leak
-            if (State.analyserNode) {
-                State.analyserNode.disconnect();
-                State.setAnalyserNode(null);
-            }
-            
-            // Stop oscilloscope data collection
-            stopOscilloscopeDataCollection();
-            
-            // 🧹 AGGRESSIVE CLEANUP: Explicitly null out large arrays
-            // NOTE: Worklet handler is already cleared above, so these won't be retained
-            const oldDataLength = State.allReceivedData?.length || 0;
-            const oldSamplesLength = State.completeSamplesArray?.length || 0;
-            console.log(`🧹 Clearing old audio data: ${oldDataLength} chunks, ${oldSamplesLength.toLocaleString()} samples`);
-            
-            // 🔥 FIX: Explicitly null out each chunk to break references before clearing array
-            if (State.allReceivedData && State.allReceivedData.length > 0) {
-                for (let i = 0; i < State.allReceivedData.length; i++) {
-                    State.allReceivedData[i] = null;
-                }
-            }
-            State.setAllReceivedData([]);
-            
-            // 🔥 FIX: Explicitly clear completeSamplesArray to break ArrayBuffer references
-            // When completeSamplesArray is sliced, the slices share the same ArrayBuffer
-            // Setting to null breaks the reference, allowing GC to reclaim the 34MB buffer
-            // Note: Must use setter function - direct assignment fails because ES modules are read-only
-            State.setCompleteSamplesArray(null);
-            
-            // Disable Begin Analysis button when data is cleared
-            updateCompleteButtonState();
-            State.setCachedWaveformCanvas(null);
-            State.setWaveformMinMaxData(null);
-            State.setCurrentMetadata(null);
-            State.setTotalAudioDuration(0);
-            State.setCurrentAudioPosition(0);
-            document.getElementById('playbackDuration').textContent = '--';
-            window.playbackDurationSeconds = null;
-            window.rawWaveformData = null; // 🧹 Clear raw waveform data for GC
-            window.displayWaveformData = null; // 🧹 Clear display waveform data for GC
-            stopPositionTracking();
-            document.getElementById('currentPosition').textContent = '0m 0s';
-            document.getElementById('downloadSize').textContent = '0.00 MB';
-            // Waveform worker is now terminated/recreated at start of startStreaming()
-            const waveformCanvas = document.getElementById('waveform');
-            if (waveformCanvas) {
-                const ctx = waveformCanvas.getContext('2d');
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
-            }
-            
-            State.setPlaybackState(PlaybackState.STOPPED);
-            
-            // 🔥 Notify oscilloscope that playback stopped (for flame effect fade)
-            import('./oscilloscope-renderer.js').then(({ setPlayingState }) => {
-                setPlayingState(false);
-            });
-            
-            // 🔥 Hint to browser that GC would be nice (only works with --js-flags="--expose-gc")
-            if (typeof window !== 'undefined' && window.gc) {
-                console.log('🗑️ Requesting manual garbage collection...');
-                window.gc();
-            }
-            
-            console.log('🧹 Memory cleanup complete - old references cleared');
-        }
-        
-        await initAudioWorklet();
-        
-        const startBtn = document.getElementById('startBtn');
-        const playPauseBtn = document.getElementById('playPauseBtn');
-        
-        startBtn.classList.add('streaming');
-        startBtn.disabled = true;
-        
-        playPauseBtn.disabled = true;
-        playPauseBtn.textContent = '⏸️ Pause';
-        playPauseBtn.classList.remove('pause-active', 'play-active', 'loop-active', 'pulse-play', 'pulse-resume');
-        document.getElementById('downloadBtn').disabled = true;
-        
-        // Don't disable loop button - it should remain enabled during data loading
-        
-        State.setPlaybackState(PlaybackState.PLAYING);
-        State.setStreamStartTime(performance.now());
-        
-        // 🔥 Notify oscilloscope that playback started (for flame effect fade)
-        import('./oscilloscope-renderer.js').then(({ setPlayingState }) => {
-            setPlayingState(true);
-        });
-        
-        let dotCount = 0;
-        const interval = setInterval(() => {
-            dotCount++;
-            const statusEl = document.getElementById('status');
-            statusEl.textContent = baseMessage + '.'.repeat(dotCount);
-            if (!statusEl.classList.contains('loading')) {
-                statusEl.classList.add('loading');
-            }
-        }, 500);
-        State.setLoadingInterval(interval);
-        
-        try {
-        if (forceIrisFetch) {
-            console.log(`🌐 ${logTime()} Force IRIS Fetch ENABLED - Railway backend DISABLED`);
-            throw new Error('Railway backend is disabled');
-            // await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
-        } else if (isActiveStation) {
-            if (!isStudyMode()) {
-                console.log(`🌐 ${logTime()} Using CDN direct (active station)`);
-            }
-            await fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart);
-        } else {
-            console.log(`🚂 ${logTime()} Railway backend disabled - inactive stations not supported`);
-            throw new Error('Railway backend is disabled - inactive stations not supported');
-            // await fetchFromRailway(stationData, startTime, duration, highpassFreq, enableNormalize);
-            }
-            
-            // Data fetch completed successfully - mark this volcano as having data
-            State.setVolcanoWithData(volcano);
-            if (!isStudyMode()) {
-                console.log(`✅ Data fetch complete - marked ${volcano} as having data`);
-            }
-        } catch (fetchError) {
-            // Don't set volcanoWithData if fetch failed
-            throw fetchError;
-        }
     } catch (error) {
-        State.setIsFetchingNewData(false);
-        
-        if (State.loadingInterval) {
-            clearInterval(State.loadingInterval);
-            State.setLoadingInterval(null);
+        console.error('❌ Error in startStreaming:', error);
+        const statusDiv = document.getElementById('status');
+        if (statusDiv) {
+            statusDiv.textContent = `Error: ${error.message}`;
+            statusDiv.className = 'status error';
         }
-        
-        console.error('❌ Error:', error);
-        console.error('Stack:', error.stack);
-        document.getElementById('status').className = 'status error';
-        
-        // Check if it's a fetch/network error and provide user-friendly message
-        let errorMessage = error.message;
-        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || 
-            (error.name === 'TypeError' && error.message.includes('fetch'))) {
-            errorMessage = 'Data fetch unsuccessful. Please check your internet connection and try again.';
-        }
-        
-        document.getElementById('status').textContent = errorMessage;
-        
-        const startBtn = document.getElementById('startBtn');
-        startBtn.disabled = false;
-        startBtn.classList.remove('streaming');
-        
-        document.getElementById('playPauseBtn').disabled = true;
-        // Don't disable loop button on error - keep it enabled if it was enabled before
-        document.getElementById('downloadBtn').disabled = true;
+        throw error;
     }
 }
+
+console.log('🟢 LINE 630 - After startStreaming function');
+
+// LEGACY CODE REMOVED - old volcano fetching system replaced with CDAWeb
+// See git history for reference if needed
 
 /**
  * Update the participant ID display in the top panel
@@ -1043,6 +664,8 @@ async function updateParticipantIdDisplay() {
     if (displayElement) displayElement.style.display = 'block';
     if (valueElement) valueElement.textContent = participantId || '--';
 }
+
+console.log('🟢 LINE 650 - After startStreaming function');
 
 // ═══════════════════════════════════════════════════════════
 // 🎯 MODE INITIALIZATION FUNCTIONS
@@ -1251,11 +874,19 @@ function updateVolcanoDropdownLabels(loadedVolcano, selectedVolcano) {
     });
 }
 
-// DOMContentLoaded initialization
-window.addEventListener('DOMContentLoaded', async () => {
+console.log('🟢 REACHED LINE 1289 - About to define initialization');
+
+// Check if main.js is loading
+console.log('🚀 main.js is loading...');
+console.log('📍 Document ready state:', document.readyState);
+
+// Main initialization function
+async function initializeMainApp() {
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('🌋 SOLAR AUDIFICATION STUDY');
+    console.log('🌋 SOLAR AUDIFICATION PORTAL - INITIALIZING!');
     console.log('═══════════════════════════════════════════════════════════');
+    
+    console.log('🟢 Inside initializeMainApp - LINE 1300');
     
     // ═══════════════════════════════════════════════════════════
     // 📏 STATUS AUTO-RESIZE - Shrink font when text overflows
@@ -1538,8 +1169,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] solar-audio 1.0 - Solar Portal Mode & UI Updates');
-        console.log('📌 [0ms] Git commit: 1.0 Solar Portal Mode & UI Updates');
+        console.log('🌋 [0ms] solar-audio 1.02 - Refactor: main.js loading fixes');
+        console.log('📌 [0ms] Git commit: v1.02 Refactor: main.js loading fixes');
     }
     
     // Start memory health monitoring
@@ -1619,10 +1250,17 @@ window.addEventListener('DOMContentLoaded', async () => {
         await initializeApp();
         
         console.log('═══════════════════════════════════════════════════════════');
-        console.log('✅ App ready - v1.01 (2025-11-24)');
-        console.log('📋 Commit: v1.01 Spacecraft data download in main interface');
+        console.log('✅ App ready - v1.02 (2025-11-24)');
+        console.log('📋 Commit: v1.02 Refactor: main.js loading fixes');
         console.log('═══════════════════════════════════════════════════════════');
+        
+        // Load recent searches
+        console.log('🟢 About to call loadRecentSearches()');
+        loadRecentSearches();
+        console.log('🟢 After loadRecentSearches()');
     }, 100);
+    
+    console.log('🟢 LINE 1655 - After setTimeout for loadRecentSearches');
     
     // Add event listeners
     document.getElementById('spacecraft').addEventListener('change', async (e) => {
@@ -2030,6 +1668,94 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     }, 100);
     
+    // 🔍 RECENT SEARCHES SYSTEM (using IndexedDB cache)
+    
+    /**
+     * Load recent searches from IndexedDB cache and populate dropdown
+     */
+    async function loadRecentSearches() {
+        const dropdown = document.getElementById('recentSearches');
+        if (!dropdown) return;
+        
+        // Clear existing options (except placeholder)
+        dropdown.innerHTML = '<option value="">-- Select Recent Search --</option>';
+        
+        try {
+            // Get recent searches from IndexedDB cache
+            const { listRecentSearches, formatCacheEntryForDisplay } = await import('./cdaweb-cache.js');
+            const recentSearches = await listRecentSearches();
+            
+            // Add each search as an option
+            recentSearches.forEach((entry, index) => {
+                const option = document.createElement('option');
+                option.value = entry.id; // Use cache ID as value
+                option.textContent = formatCacheEntryForDisplay(entry);
+                option.dataset.cacheEntry = JSON.stringify({
+                    spacecraft: entry.spacecraft,
+                    dataset: entry.dataset,
+                    startTime: entry.startTime,
+                    endTime: entry.endTime
+                });
+                dropdown.appendChild(option);
+            });
+            
+            console.log(`📋 Loaded ${recentSearches.length} recent searches from cache`);
+        } catch (e) {
+            console.warn('Could not load recent searches:', e);
+        }
+    }
+    
+    // Expose loadRecentSearches globally so startStreaming can call it
+    window.loadRecentSearches = loadRecentSearches;
+    
+    /**
+     * Restore a search from recent searches by loading from cache
+     */
+    async function restoreRecentSearch(selectedOption) {
+        try {
+            if (!selectedOption.dataset.cacheEntry) return;
+            
+            const cacheData = JSON.parse(selectedOption.dataset.cacheEntry);
+            
+            // Parse start/end times to populate form fields
+            const startDate = new Date(cacheData.startTime);
+            const endDate = new Date(cacheData.endTime);
+            
+            // Format for date inputs (YYYY-MM-DD)
+            const startDateStr = startDate.toISOString().split('T')[0];
+            const endDateStr = endDate.toISOString().split('T')[0];
+            
+            // Format for time inputs (HH:MM:SS.mmm)
+            const startTimeStr = startDate.toISOString().split('T')[1].replace('Z', '');
+            const endTimeStr = endDate.toISOString().split('T')[1].replace('Z', '');
+            
+            // Populate form fields
+            document.getElementById('spacecraft').value = cacheData.spacecraft;
+            document.getElementById('dataType').value = cacheData.dataset;
+            document.getElementById('startDate').value = startDateStr;
+            document.getElementById('startTime').value = startTimeStr;
+            document.getElementById('endDate').value = endDateStr;
+            document.getElementById('endTime').value = endTimeStr;
+            
+            console.log(`🔍 Restored recent search: ${selectedOption.textContent}`);
+            
+            // Trigger spacecraft change to update dataset dropdown if needed
+            document.getElementById('spacecraft').dispatchEvent(new Event('change'));
+            
+        } catch (e) {
+            console.warn('Could not restore recent search:', e);
+        }
+    }
+    
+    /**
+     * Save current search - handled automatically by fetchCDAWebAudio caching
+     * This function is kept for backward compatibility but does nothing
+     */
+    function saveRecentSearch() {
+        // Searches are now automatically saved to IndexedDB cache by fetchCDAWebAudio
+        // This function is intentionally empty
+    }
+    
     // 🎯 SETUP EVENT LISTENERS (replaces onclick handlers to prevent memory leaks)
     // All event listeners are properly scoped and don't create permanent closures on window.*
     
@@ -2047,10 +1773,31 @@ window.addEventListener('DOMContentLoaded', async () => {
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
     
-    // Data Fetching
-    document.getElementById('startBtn').addEventListener('click', (e) => {
-        startStreaming(e);
+    // Recent Searches
+    document.getElementById('recentSearches').addEventListener('change', (e) => {
+        const selectedOption = e.target.options[e.target.selectedIndex];
+        if (selectedOption && selectedOption.value) {
+            restoreRecentSearch(selectedOption);
+            // Reset dropdown to placeholder after restoring
+            e.target.value = '';
+        }
     });
+    
+    console.log('🟢 LINE 2180 - About to attach startBtn event listener');
+    
+    // Data Fetching
+    const startBtn = document.getElementById('startBtn');
+    console.log('🟢 startBtn element:', startBtn ? 'FOUND' : 'NOT FOUND');
+    if (startBtn) {
+        startBtn.addEventListener('click', (e) => {
+            console.log('🔵 Fetch Data button clicked!');
+            saveRecentSearch(); // Save search before fetching (no-op now, handled by cache)
+            startStreaming(e);
+        });
+        console.log('🟢 startBtn event listener attached successfully!');
+    } else {
+        console.error('❌ startBtn NOT FOUND - cannot attach event listener!');
+    }
     document.getElementById('forceIrisBtn').addEventListener('click', toggleForceIris);
     
     // Playback Controls
@@ -2373,8 +2120,28 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
                 document.addEventListener('visibilitychange', visibilityChangeHandler);
                 window._solarAudioCleanupHandlers.visibilitychange = visibilityChangeHandler;
-                });
-            });
+        });
+    });
     }
-});
+} // End initializeMainApp
 
+console.log('🔵 REACHED LINE 2525 - About to check document.readyState');
+console.log('🔵 document.readyState =', document.readyState);
+
+// Call initialization when DOM is ready
+if (document.readyState === 'loading') {
+    // DOM is still loading, wait for DOMContentLoaded
+    console.log('⏳ Waiting for DOMContentLoaded...');
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('🔵 DOMContentLoaded FIRED - calling initializeMainApp');
+        initializeMainApp();
+    });
+} else {
+    // DOM is already loaded (interactive or complete), initialize immediately
+    console.log('✅ DOM already loaded, initializing immediately');
+    console.log('🔵 CALLING initializeMainApp() NOW');
+    initializeMainApp();
+    console.log('🔵 initializeMainApp() RETURNED');
+}
+
+console.log('🟢 LINE 2545 - END OF MODULE - All code parsed successfully!');

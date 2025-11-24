@@ -69,9 +69,9 @@ export function drawFrequencyAxis() {
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
     
-    // Get original sample rate from metadata
-    const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
-    const originalNyquist = originalSampleRate / 2;
+    // Get original spacecraft data frequency range
+    // This is the ORIGINAL data frequency (before audification), not the audio frequency
+    const originalNyquist = State.originalDataFrequencyRange?.max || 50; // Default to 50 Hz if not set
     
     // Get playback speed and apply slight smoothing
     const currentPlaybackRate = State.currentPlaybackRate || 1.0;
@@ -79,7 +79,7 @@ export function drawFrequencyAxis() {
     previousPlaybackRate = smoothedRate;
     
     // Effective Nyquist scales with playback speed
-    // Slower playback (0.5x) = lower frequencies = smaller max (25 Hz instead of 50 Hz)
+    // Slower playback (0.5x) = lower frequencies = smaller max (e.g., 25 Hz instead of 50 Hz)
     const effectiveNyquist = originalNyquist * smoothedRate;
     
     // Clear canvas (transparent background)

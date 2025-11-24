@@ -60,3 +60,25 @@
 - **Version**: v1.01
 - **Commit**: "v1.01 Spacecraft data download in main interface"
 
+---
+
+## v1.02 - Refactor: main.js loading fixes
+
+### Code Refactoring
+**main.js Loading Improvements**
+- Refactored main.js to ensure proper loading and initialization
+- Fixed module loading order and import structure
+- Improved error handling during initialization
+
+### Files Modified
+- `js/main.js` - Refactored loading and initialization logic
+- `js/audio-state.js` - Updated state management
+- `js/data-fetcher.js` - Updated data fetching logic
+- `js/spectrogram-axis-renderer.js` - Updated axis rendering
+- `index.html` - Updated HTML structure
+- `js/cdaweb-cache.js` - New file for CDASWS caching
+
+### Git Info
+- **Version**: v1.02
+- **Commit**: "v1.02 Refactor: main.js loading fixes"
+

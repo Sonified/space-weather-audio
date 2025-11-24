@@ -1,5 +1,5 @@
-// ========== PROGRESSIVE CHUNK BATCHING ALGORITHM ==========
-// Validated with 10,000+ test cases in tests/test_progressive_batching_simulation.py
+// ========== CDAWEB AUDIO FETCHER ==========
+// Fetches pre-audified WAV files from NASA CDAWeb and decodes them for visualization
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
@@ -15,6 +15,7 @@ import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, ad
 import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-tracker.js';
 import { isStudyMode } from './master-modes.js';
 import { isTutorialActive } from './tutorial-state.js';
+import { storeAudioData, getAudioData } from './cdaweb-cache.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -28,7 +29,278 @@ import { isTutorialActive } from './tutorial-state.js';
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 const DEBUG_CHUNKS = false;
 
-// Helper: Normalize data to [-1, 1] range
+// CDAWeb API Configuration
+const CDASWS_BASE_URL = 'https://cdaweb.gsfc.nasa.gov/WS/cdasr/1';
+const DATAVIEW = 'sp_phys';  // Space Physics dataview
+const CDAWEB_AUDIO_SAMPLE_RATE = 22000; // CDAWeb produces 22kHz audio
+
+// Dataset to variable mapping
+const DATASET_VARIABLES = {
+    'PSP_FLD_L2_MAG_RTN': 'psp_fld_l2_mag_RTN',
+    'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC': 'psp_fld_l2_mag_RTN_4_Sa_per_Cyc',
+    'WI_H2_MFI': 'BGSE', // Wind uses component names
+    'MMS1_FGM_SRVY_L2': 'mms1_fgm_b_gse_srvy_l2',
+    'MMS1_FGM_BRST_L2': 'mms1_fgm_b_gse_brst_l2'
+};
+
+/**
+ * Fetch audio data from CDAWeb API
+ * @param {string} spacecraft - Spacecraft name (e.g., 'PSP', 'Wind', 'MMS')
+ * @param {string} dataset - Dataset ID
+ * @param {string} startTime - ISO 8601 start time (e.g., '2025-07-31T22:00:00.000Z')
+ * @param {string} endTime - ISO 8601 end time
+ * @returns {Promise<Object>} Object containing decoded audio samples and metadata
+ */
+export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) {
+    console.log(`🛰️ Fetching CDAWeb audio: ${spacecraft} ${dataset} ${startTime} to ${endTime}`);
+    
+    // Check cache first
+    const cached = await getAudioData(spacecraft, dataset, startTime, endTime);
+    if (cached) {
+        console.log('✅ Loading from cache');
+        // Decode cached WAV blob
+        return await decodeWAVBlob(cached.wavBlob, cached);
+    }
+    
+    console.log('🌐 Cache miss - fetching from CDAWeb API');
+    
+    // Convert to basic ISO 8601 format (required by CDASWS)
+    const startTimeBasic = toBasicISO8601(startTime);
+    const endTimeBasic = toBasicISO8601(endTime);
+    
+    // Get variable name for dataset
+    const variable = DATASET_VARIABLES[dataset] || dataset;
+    
+    // Build API URL
+    const apiUrl = `${CDASWS_BASE_URL}/dataviews/${DATAVIEW}/datasets/${dataset}/data/${startTimeBasic},${endTimeBasic}/${variable}?format=audio`;
+    
+    console.log(`📡 CDAWeb API: ${apiUrl}`);
+    
+    const fetchStartTime = performance.now();
+    
+    try {
+        // Fetch from CDAWeb API
+        const response = await fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`CDAWeb API error (HTTP ${response.status}): ${errorText.substring(0, 200)}`);
+        }
+        
+        const result = await response.json();
+        const apiFetchTime = performance.now() - fetchStartTime;
+        
+        // Validate response
+        if (!result || !result.FileDescription || result.FileDescription.length === 0) {
+            throw new Error('No audio file created by CDAWeb API');
+        }
+        
+        // Get first audio file (for multi-component datasets like PSP, we get [br, bt, bn])
+        // For now, just use the first component
+        const fileInfo = result.FileDescription[0];
+        const audioFileUrl = fileInfo.Name;
+        
+        console.log(`📥 Downloading WAV file: ${audioFileUrl}`);
+        
+        // Download WAV file
+        const wavResponse = await fetch(audioFileUrl);
+        if (!wavResponse.ok) {
+            throw new Error(`Failed to download WAV file (HTTP ${wavResponse.status})`);
+        }
+        
+        const wavBlob = await wavResponse.blob();
+        const totalFetchTime = performance.now() - fetchStartTime;
+        
+        console.log(`✅ WAV downloaded: ${(wavBlob.size / 1024).toFixed(2)} KB in ${totalFetchTime.toFixed(0)}ms`);
+        
+        // Prepare metadata for caching
+        const metadata = {
+            fileSize: wavBlob.size,
+            fileInfo: fileInfo,
+            apiFetchTime,
+            totalFetchTime,
+            component: 'first' // TODO: Handle multi-component selection
+        };
+        
+        // Cache for future use
+        await storeAudioData({
+            spacecraft,
+            dataset,
+            startTime,
+            endTime,
+            wavBlob,
+            metadata
+        });
+        
+        // Decode and return
+        return await decodeWAVBlob(wavBlob, { spacecraft, dataset, startTime, endTime, metadata });
+        
+    } catch (error) {
+        console.error('❌ CDAWeb fetch error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Decode WAV blob to audio samples using Web Audio API
+ * @param {Blob} wavBlob - WAV file blob
+ * @param {Object} cacheEntry - Cache entry with metadata
+ * @returns {Promise<Object>} Decoded audio data
+ */
+async function decodeWAVBlob(wavBlob, cacheEntry) {
+    console.log(`🎵 Decoding WAV file (${(wavBlob.size / 1024).toFixed(2)} KB)...`);
+    
+    const decodeStartTime = performance.now();
+    
+    // Read blob as ArrayBuffer
+    const arrayBuffer = await wavBlob.arrayBuffer();
+    
+    // Create AudioContext for decoding (we'll close it after)
+    const offlineContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    try {
+        // Decode WAV file
+        const audioBuffer = await offlineContext.decodeAudioData(arrayBuffer);
+        
+        const decodeTime = performance.now() - decodeStartTime;
+        console.log(`✅ WAV decoded in ${decodeTime.toFixed(0)}ms: ${audioBuffer.numberOfChannels} channel(s), ${audioBuffer.sampleRate} Hz, ${audioBuffer.length} samples`);
+        
+        // Extract samples from first channel (mono audio from CDAWeb)
+        const samples = audioBuffer.getChannelData(0); // Float32Array, already normalized -1 to 1
+        
+        // Calculate original spacecraft data frequency
+        // Time span in seconds
+        const startDate = new Date(cacheEntry.startTime);
+        const endDate = new Date(cacheEntry.endTime);
+        const timeSpanSeconds = (endDate - startDate) / 1000;
+        
+        // Original data frequency = (number of samples / time span) / 2 (Nyquist)
+        // But this is the AUDIO sample rate, not the original data rate
+        // CDAWeb audifies at 22050 Hz, so the original data was sampled at a much lower rate
+        // We need to calculate what the original data frequency range was
+        
+        // For now, we'll use a simplified approach:
+        // The audio represents the full frequency content of the original data
+        // The audio sample rate is 22050 Hz, so Nyquist is 11025 Hz
+        // But the original data was much slower - we need to derive this from the time span
+        
+        // If we have X samples over Y seconds, the original sampling rate was X/Y Hz
+        const originalSamplingRate = audioBuffer.length / timeSpanSeconds;
+        const originalNyquistFrequency = originalSamplingRate / 2;
+        
+        console.log(`📊 Original data: ${originalSamplingRate.toFixed(2)} Hz sampling rate, ${originalNyquistFrequency.toFixed(2)} Hz Nyquist`);
+        
+        // Close the offline context
+        await offlineContext.close();
+        
+        return {
+            samples: samples, // Float32Array, already normalized
+            sampleRate: audioBuffer.sampleRate, // Audio sample rate (22050 Hz)
+            numSamples: audioBuffer.length,
+            duration: audioBuffer.duration, // Audio duration in seconds
+            startTime: startDate,
+            endTime: endDate,
+            originalDataFrequencyRange: {
+                min: 0,
+                max: originalNyquistFrequency
+            },
+            metadata: cacheEntry.metadata || {}
+        };
+        
+    } catch (error) {
+        await offlineContext.close();
+        console.error('❌ WAV decode error:', error);
+        throw new Error(`Failed to decode WAV file: ${error.message}`);
+    }
+}
+
+/**
+ * Convert ISO 8601 extended format to basic format
+ * e.g., "2025-07-31T22:00:00.000Z" -> "20250731T220000Z"
+ */
+function toBasicISO8601(isoString) {
+    // Remove milliseconds if present
+    let cleaned = isoString.replace(/\.\d{3}/g, '');
+    // Remove all dashes and colons, keep T and Z
+    cleaned = cleaned.replace(/-/g, '').replace(/:/g, '');
+    return cleaned;
+}
+
+/**
+ * Fetch and load CDAWeb audio data into application state
+ * This is the main entry point called from startStreaming
+ * @param {string} spacecraft - Spacecraft name
+ * @param {string} dataset - Dataset ID
+ * @param {string} startTimeISO - ISO 8601 start time
+ * @param {string} endTimeISO - ISO 8601 end time
+ */
+export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO) {
+    const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
+    
+    try {
+        console.log(`📡 ${logTime()} Fetching CDAWeb audio data...`);
+        
+        // Fetch and decode audio from CDAWeb (includes caching)
+        const audioData = await fetchCDAWebAudio(spacecraft, dataset, startTimeISO, endTimeISO);
+        
+        console.log(`✅ ${logTime()} Audio decoded: ${audioData.numSamples.toLocaleString()} samples, ${audioData.duration.toFixed(2)}s`);
+        
+        // Set state variables (matching the old pattern)
+        State.setCompleteSamplesArray(audioData.samples); // Float32Array, already normalized
+        State.setDataStartTime(audioData.startTime); // UTC Date object
+        State.setDataEndTime(audioData.endTime); // UTC Date object
+        State.setOriginalDataFrequencyRange(audioData.originalDataFrequencyRange); // { min, max }
+        State.setTotalAudioDuration(audioData.duration); // seconds
+        
+        // Set playback duration (for UI display)
+        State.setPlaybackDurationSeconds(audioData.duration);
+        updatePlaybackDuration(audioData.duration);
+        
+        // Enable Begin Analysis/Complete button after data loads (skip during tutorial)
+        if (!isTutorialActive()) {
+            updateCompleteButtonState();
+        }
+        
+        // Draw waveform
+        console.log(`🎨 ${logTime()} Drawing waveform...`);
+        positionWaveformAxisCanvas();
+        drawWaveformAxis();
+        drawWaveform();
+        
+        // Draw x-axis
+        positionWaveformXAxisCanvas();
+        drawWaveformXAxis();
+        
+        // Draw frequency axis with new frequency range
+        positionAxisCanvas();
+        drawFrequencyAxis();
+        
+        // Start complete visualization (spectrogram)
+        console.log(`📊 ${logTime()} Starting spectrogram visualization...`);
+        await startCompleteVisualization();
+        
+        // Load regions after data fetch (if any)
+        await loadRegionsAfterDataFetch();
+        
+        console.log(`✅ ${logTime()} CDAWeb data loaded and visualized!`);
+        
+        // Update recent searches dropdown (called from startStreaming instead)
+        
+        return audioData;
+        
+    } catch (error) {
+        console.error('❌ Failed to load CDAWeb data:', error);
+        alert(`Failed to load audio data: ${error.message}`);
+        throw error;
+    }
+}
+
+// Helper: Normalize data to [-1, 1] range (LEGACY - not needed for WAV files)
 function normalize(data) {
     let min = data[0];
     let max = data[0];

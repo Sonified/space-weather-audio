@@ -43,6 +43,7 @@ export let totalAudioDuration = 0;
 export let currentAudioPosition = 0;
 export let dataStartTime = null; // UTC Date object for start of data
 export let dataEndTime = null; // UTC Date object for end of data
+export let originalDataFrequencyRange = null; // { min: 0, max: XXX } - Original spacecraft data frequency (Hz)
 
 // Flags
 export let isFetchingNewData = false;
@@ -160,6 +161,7 @@ export function setTotalAudioDuration(value) { totalAudioDuration = value; }
 export function setCurrentAudioPosition(value) { currentAudioPosition = value; }
 export function setDataStartTime(value) { dataStartTime = value; }
 export function setDataEndTime(value) { dataEndTime = value; }
+export function setOriginalDataFrequencyRange(value) { originalDataFrequencyRange = value; }
 export function setIsFetchingNewData(value) { isFetchingNewData = value; }
 export function setLoadingInterval(value) { loadingInterval = value; }
 export function setSpectrogramInitialized(value) { spectrogramInitialized = value; }
