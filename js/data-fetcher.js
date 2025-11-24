@@ -104,12 +104,15 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
             throw new Error('No audio file created by CDAWeb API');
         }
         
+        console.log(`📊 CDAWeb returned ${result.FileDescription.length} file(s):`, result.FileDescription.map(f => f.Name));
+        
         // Get first audio file (for multi-component datasets like PSP, we get [br, bt, bn])
         // For now, just use the first component
         const fileInfo = result.FileDescription[0];
         const audioFileUrl = fileInfo.Name;
         
         console.log(`📥 Downloading WAV file: ${audioFileUrl}`);
+        console.log(`📊 CDAWeb FileInfo:`, fileInfo);
         
         // Download WAV file
         const wavResponse = await fetch(audioFileUrl);
@@ -197,7 +200,24 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
         const originalSamplingRate = audioBuffer.length / timeSpanSeconds;
         const originalNyquistFrequency = originalSamplingRate / 2;
         
-        console.log(`📊 Original data: ${originalSamplingRate.toFixed(2)} Hz sampling rate, ${originalNyquistFrequency.toFixed(2)} Hz Nyquist`);
+        // 🔬 TODO: INVESTIGATE - CDAWeb may encode 2 audio samples per data point
+        // For now, divide Y-axis max by 2 to match expected magnetometer frequencies
+        // This needs further investigation with CDAWeb documentation
+        const yAxisMaxFrequency = originalNyquistFrequency / 2;
+        
+        console.log(`📊 ⭐ SAMPLING RATE CALCULATION:`);
+        console.log(`   Audio file properties:`);
+        console.log(`     - Sample rate: ${audioBuffer.sampleRate} Hz (audio encoding rate)`);
+        console.log(`     - Duration: ${audioBuffer.duration.toFixed(2)} seconds (audio playback time)`);
+        console.log(`     - Samples: ${audioBuffer.length.toLocaleString()} samples`);
+        console.log(`   Real-world data span:`);
+        console.log(`     - Start: ${startDate.toISOString()}`);
+        console.log(`     - End: ${endDate.toISOString()}`);
+        console.log(`     - Duration: ${timeSpanSeconds.toFixed(2)} seconds`);
+        console.log(`   📐 CALCULATION: ${audioBuffer.length.toLocaleString()} samples ÷ ${timeSpanSeconds.toFixed(2)} sec = ${originalSamplingRate.toFixed(2)} Hz`);
+        console.log(`   → Original sampling rate: ${originalSamplingRate.toFixed(2)} Hz`);
+        console.log(`   → Nyquist frequency: ${originalNyquistFrequency.toFixed(2)} Hz`);
+        console.log(`   🔬 Y-axis max (÷2 adjustment): ${yAxisMaxFrequency.toFixed(2)} Hz`);
         
         // Close the offline context
         await offlineContext.close();
@@ -212,7 +232,7 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
             originalSamplingRate: originalSamplingRate, // Original data sampling rate (Hz)
             originalDataFrequencyRange: {
                 min: 0,
-                max: originalNyquistFrequency
+                max: yAxisMaxFrequency  // Using adjusted frequency for Y-axis (Nyquist ÷ 2)
             },
             metadata: cacheEntry.metadata || {}
         };

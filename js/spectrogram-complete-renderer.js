@@ -363,6 +363,15 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
             const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
             const originalNyquist = originalSampleRate / 2;
             
+            // 🎯 LOG: Show what we're using for spectrogram rendering
+            if (!window._spectrogramMaxFreqLogged) {
+                console.log(`📊 ⭐ SPECTROGRAM RENDERING:`);
+                console.log(`   Original sampling rate: ${originalSampleRate.toFixed(2)} Hz`);
+                console.log(`   → Max frequency (Nyquist): ${originalNyquist.toFixed(2)} Hz`);
+                console.log(`   FFT bins will map: 0 Hz to ${originalNyquist.toFixed(2)} Hz`);
+                window._spectrogramMaxFreqLogged = true;
+            }
+            
             const frequency = (binIndex / totalBins) * originalNyquist;
             
             if (State.frequencyScale === 'logarithmic') {

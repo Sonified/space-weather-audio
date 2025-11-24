@@ -73,6 +73,12 @@ export function drawFrequencyAxis() {
     // This is the ORIGINAL data frequency (before audification), not the audio frequency
     const originalNyquist = State.originalDataFrequencyRange?.max || 50; // Default to 50 Hz if not set
     
+    // 🎯 LOG: Show what we're using for Y-axis max
+    if (!window._yAxisMaxLogged) {
+        console.log(`📊 ⭐ Y-AXIS MAX FREQUENCY: ${originalNyquist.toFixed(2)} Hz (Nyquist frequency)`);
+        window._yAxisMaxLogged = true; // Only log once to avoid spam
+    }
+    
     // Get playback speed and apply slight smoothing
     const currentPlaybackRate = State.currentPlaybackRate || 1.0;
     const smoothedRate = previousPlaybackRate + (currentPlaybackRate - previousPlaybackRate) * (1 - SMOOTHING_FACTOR);
