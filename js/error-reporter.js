@@ -171,11 +171,10 @@ async function startErrorFlameEffect() {
         // Create audio context if it doesn't exist
         if (!audioContext) {
             audioContext = new AudioContext({ 
-                sampleRate: 22000,  // Match CDAWeb's actual sample rate
                 latencyHint: 'playback'
             });
             State.setAudioContext(audioContext);
-            console.log('🎵 Created audio context for flame effect');
+            console.log(`🎵 Created audio context for flame effect (sampleRate: ${audioContext.sampleRate} Hz)`);
         }
         
         // Resume audio context if suspended (required for Web Audio API)

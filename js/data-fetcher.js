@@ -32,7 +32,10 @@ const DEBUG_CHUNKS = false;
 // CDAWeb API Configuration
 const CDASWS_BASE_URL = 'https://cdaweb.gsfc.nasa.gov/WS/cdasr/1';
 const DATAVIEW = 'sp_phys';  // Space Physics dataview
-const CDAWEB_AUDIO_SAMPLE_RATE = 22000; // CDAWeb produces 22kHz audio
+const CDAWEB_WAV_SAMPLE_RATE = 22000; // CDAWeb's WAV encoding rate (intermediate, we don't use this for math)
+
+// Debug flag for domain separation logging
+const DEBUG_DOMAINS = true;
 
 // Dataset to variable mapping
 const DATASET_VARIABLES = {
@@ -64,7 +67,7 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         console.log(`   📊 Cache allFileUrls:`, cached.metadata?.allFileUrls);
         // Decode cached WAV blob
         const decoded = await decodeWAVBlob(cached.wavBlob, cached);
-        console.log(`   ✅ Cache load complete: ${decoded.numSamples.toLocaleString()} samples decoded`);
+        console.log(`   ✅ Cache load complete: ${decoded.playback.totalSamples.toLocaleString()} samples decoded`);
         console.log(`   📊 Decoded allFileUrls:`, decoded.allFileUrls);
         return decoded;
     }
@@ -162,95 +165,136 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
 }
 
 /**
- * Decode WAV blob to audio samples using Web Audio API
+ * Decode WAV blob with CLEAN DOMAIN SEPARATION
+ * 
+ * Returns metadata that clearly distinguishes:
+ * - Playback domain (44.1kHz, for all position/coordinate math)
+ * - Instrument domain (original physics, for Y-axis labels only)
+ * 
  * @param {Blob} wavBlob - WAV file blob
  * @param {Object} cacheEntry - Cache entry with metadata
- * @returns {Promise<Object>} Decoded audio data
+ * @returns {Promise<Object>} Decoded audio data with domain separation
  */
 async function decodeWAVBlob(wavBlob, cacheEntry) {
     console.log(`🎵 Decoding WAV file (${(wavBlob.size / 1024).toFixed(2)} KB)...`);
     
     const decodeStartTime = performance.now();
-    
-    // Read blob as ArrayBuffer
     const arrayBuffer = await wavBlob.arrayBuffer();
     
-    // Create AudioContext for decoding (we'll close it after)
+    // Create AudioContext for decoding
     const offlineContext = new (window.AudioContext || window.webkitAudioContext)();
     
     try {
-        // Decode WAV file
+        // AudioContext RESAMPLES to its native rate (44.1kHz)
+        // This is GOOD - we embrace it!
         const audioBuffer = await offlineContext.decodeAudioData(arrayBuffer);
         
         const decodeTime = performance.now() - decodeStartTime;
-        console.log(`✅ WAV decoded in ${decodeTime.toFixed(0)}ms: ${audioBuffer.numberOfChannels} channel(s), ${audioBuffer.sampleRate} Hz, ${audioBuffer.length} samples`);
+        console.log(`✅ WAV decoded in ${decodeTime.toFixed(0)}ms`);
         
-        // Extract samples from first channel (mono audio from CDAWeb)
-        const samples = audioBuffer.getChannelData(0); // Float32Array, already normalized -1 to 1
+        // Extract samples (already at 44.1kHz)
+        const samples = audioBuffer.getChannelData(0);
         
-        // Calculate original spacecraft data frequency
-        // Time span in seconds
+        // ============================================
+        // TIME DOMAIN (real-world, the source of truth)
+        // ============================================
         const startDate = new Date(cacheEntry.startTime);
         const endDate = new Date(cacheEntry.endTime);
-        const timeSpanSeconds = (endDate - startDate) / 1000;
+        const realWorldTimeSpanSeconds = (endDate - startDate) / 1000;
         
-        // Original data frequency = (number of samples / time span) / 2 (Nyquist)
-        // But this is the AUDIO sample rate, not the original data rate
-        // CDAWeb audifies at 22050 Hz, so the original data was sampled at a much lower rate
-        // We need to calculate what the original data frequency range was
+        // ============================================
+        // PLAYBACK DOMAIN (44.1kHz - what we actually use)
+        // ============================================
+        const playbackSampleRate = audioBuffer.sampleRate;  // 44100 Hz
+        const totalPlaybackSamples = audioBuffer.length;    // Sample count at 44.1kHz
+        const audioDurationSeconds = audioBuffer.duration;  // How long the audio plays
         
-        // For now, we'll use a simplified approach:
-        // The audio represents the full frequency content of the original data
-        // The audio sample rate is 22050 Hz, so Nyquist is 11025 Hz
-        // But the original data was much slower - we need to derive this from the time span
+        // THIS IS THE KEY INSIGHT:
+        // How many 44.1kHz samples represent one second of REAL WORLD time?
+        const playbackSamplesPerRealSecond = totalPlaybackSamples / realWorldTimeSpanSeconds;
         
-        // 🔥 CRITICAL FIX: AudioContext resamples WAV files to its own sample rate (typically 44100 Hz)
-        // CDAWeb produces 22000 Hz WAV files, but AudioContext resamples them to 44100 Hz
-        // This doubles the sample count, making audioBuffer.length incorrect for our calculation
-        // Solution: Use audioBuffer.duration × original WAV sample rate to get true sample count
-        const originalSamples = audioBuffer.duration * CDAWEB_AUDIO_SAMPLE_RATE;
-        const originalSamplingRate = originalSamples / timeSpanSeconds;
-        const originalNyquistFrequency = originalSamplingRate / 2;
+        // ============================================
+        // INSTRUMENT DOMAIN (for Y-axis frequency labels only)
+        // ============================================
+        // CDAWeb takes N instrument samples and stretches them to audioDurationSeconds of audio
+        // The WAV has (audioDurationSeconds * 22000) original WAV samples
+        // Those represent realWorldTimeSpanSeconds of real time
+        // So: instrumentSamplesPerSecond = (audioDurationSeconds * 22000) / realWorldTimeSpanSeconds
+        const wavSampleCount = audioDurationSeconds * CDAWEB_WAV_SAMPLE_RATE;
+        const instrumentSamplingRate = wavSampleCount / realWorldTimeSpanSeconds;
+        const instrumentNyquist = instrumentSamplingRate / 2;
         
-        // Y-axis max frequency (no additional ÷2 needed - the resampling issue was the problem)
-        const yAxisMaxFrequency = originalNyquistFrequency;
+        // ============================================
+        // LOGGING - Make the math crystal clear
+        // ============================================
+        if (DEBUG_DOMAINS) {
+            console.log(`\n📊 ═══════════════════════════════════════════════════════`);
+            console.log(`📊 DOMAIN SEPARATION - THE TRUTH`);
+            console.log(`📊 ═══════════════════════════════════════════════════════`);
+            
+            console.log(`\n🌍 TIME DOMAIN (Real World):`);
+            console.log(`   Start: ${startDate.toISOString()}`);
+            console.log(`   End:   ${endDate.toISOString()}`);
+            console.log(`   Span:  ${realWorldTimeSpanSeconds.toLocaleString()} seconds (${(realWorldTimeSpanSeconds/3600).toFixed(2)} hours)`);
+            
+            console.log(`\n🔊 PLAYBACK DOMAIN (What the browser plays):`);
+            console.log(`   AudioContext rate: ${playbackSampleRate.toLocaleString()} Hz`);
+            console.log(`   Total samples:     ${totalPlaybackSamples.toLocaleString()}`);
+            console.log(`   Audio duration:    ${audioDurationSeconds.toFixed(2)} seconds`);
+            console.log(`   ⭐ Samples per real-world second: ${playbackSamplesPerRealSecond.toFixed(2)}`);
+            console.log(`      (This is what the worklet uses for position tracking)`);
+            
+            console.log(`\n🛰️ INSTRUMENT DOMAIN (For Y-axis only):`);
+            console.log(`   WAV sample count:  ${wavSampleCount.toLocaleString()} (at ${CDAWEB_WAV_SAMPLE_RATE} Hz)`);
+            console.log(`   Instrument rate:   ${instrumentSamplingRate.toFixed(4)} Hz`);
+            console.log(`   Nyquist (Y-max):   ${instrumentNyquist.toFixed(4)} Hz`);
+            
+            console.log(`\n📐 VERIFICATION:`);
+            console.log(`   Position at 50% playback:`);
+            console.log(`   - Samples consumed: ${(totalPlaybackSamples/2).toLocaleString()}`);
+            console.log(`   - Real-world time:  ${(totalPlaybackSamples/2 / playbackSamplesPerRealSecond).toFixed(2)}s`);
+            console.log(`   - Expected:         ${(realWorldTimeSpanSeconds/2).toFixed(2)}s ✓`);
+            console.log(`📊 ═══════════════════════════════════════════════════════\n`);
+        }
         
-        console.log(`📊 ⭐ SAMPLING RATE CALCULATION:`);
-        console.log(`   Audio file properties:`);
-        console.log(`     - WAV sample rate: ${CDAWEB_AUDIO_SAMPLE_RATE} Hz (original CDAWeb encoding)`);
-        console.log(`     - AudioContext sample rate: ${audioBuffer.sampleRate} Hz (after resampling)`);
-        console.log(`     - Duration: ${audioBuffer.duration.toFixed(2)} seconds (audio playback time)`);
-        console.log(`     - Resampled samples: ${audioBuffer.length.toLocaleString()} (AudioContext length)`);
-        console.log(`     - Original samples: ${originalSamples.toLocaleString()} (duration × ${CDAWEB_AUDIO_SAMPLE_RATE} Hz)`);
-        console.log(`   Real-world data span:`);
-        console.log(`     - Start: ${startDate.toISOString()}`);
-        console.log(`     - End: ${endDate.toISOString()}`);
-        console.log(`     - Duration: ${timeSpanSeconds.toFixed(2)} seconds`);
-        console.log(`   📐 CALCULATION: ${originalSamples.toLocaleString()} original samples ÷ ${timeSpanSeconds.toFixed(2)} sec = ${originalSamplingRate.toFixed(2)} Hz`);
-        console.log(`   → Original sampling rate: ${originalSamplingRate.toFixed(2)} Hz`);
-        console.log(`   → Nyquist frequency: ${originalNyquistFrequency.toFixed(2)} Hz`);
-        console.log(`   → Y-axis max frequency: ${yAxisMaxFrequency.toFixed(2)} Hz`);
-        
-        // Close the offline context
         await offlineContext.close();
         
         return {
-            samples: samples, // Float32Array, already normalized (resampled to AudioContext rate)
-            sampleRate: audioBuffer.sampleRate, // Audio sample rate (44100 Hz after resampling)
-            numSamples: audioBuffer.length, // Resampled sample count (for playback)
-            originalSamples: originalSamples, // Original WAV sample count (for coordinate calculations)
-            duration: audioBuffer.duration, // Audio duration in seconds
-            startTime: startDate,
-            endTime: endDate,
-            originalSamplingRate: originalSamplingRate, // Original data sampling rate (Hz)
-            originalDataFrequencyRange: {
-                min: 0,
-                max: yAxisMaxFrequency  // Using adjusted frequency for Y-axis (Nyquist ÷ 2)
+            // The actual audio samples (Float32Array at 44.1kHz)
+            samples: samples,
+            
+            // ============================================
+            // PLAYBACK DOMAIN - Use these for all position/coordinate math
+            // ============================================
+            playback: {
+                sampleRate: playbackSampleRate,              // 44100 Hz
+                totalSamples: totalPlaybackSamples,          // Count at 44.1kHz
+                audioDuration: audioDurationSeconds,         // Seconds of audio
+                samplesPerRealSecond: playbackSamplesPerRealSecond,  // ⭐ THE KEY VALUE
             },
+            
+            // ============================================
+            // TIME DOMAIN - Real-world timestamps
+            // ============================================
+            time: {
+                start: startDate,
+                end: endDate,
+                spanSeconds: realWorldTimeSpanSeconds,
+            },
+            
+            // ============================================
+            // INSTRUMENT DOMAIN - Only for Y-axis labels
+            // ============================================
+            instrument: {
+                samplingRate: instrumentSamplingRate,        // ~0.5-10 Hz typically
+                nyquist: instrumentNyquist,                  // Y-axis max frequency
+            },
+            
+            // Metadata passthrough
             metadata: cacheEntry.metadata || {},
-            allFileUrls: cacheEntry.metadata?.allFileUrls || [], // All component URLs from CDAWeb
-            allFileInfo: cacheEntry.metadata?.allFileInfo || [],  // All file info objects
-            originalBlob: wavBlob  // Original WAV blob from CDAWeb (for direct download!)
+            allFileUrls: cacheEntry.metadata?.allFileUrls || [],
+            allFileInfo: cacheEntry.metadata?.allFileInfo || [],
+            originalBlob: wavBlob,
         };
         
     } catch (error) {
@@ -289,42 +333,68 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         // Fetch and decode audio from CDAWeb (includes caching)
         const audioData = await fetchCDAWebAudio(spacecraft, dataset, startTimeISO, endTimeISO);
         
-        console.log(`✅ ${logTime()} Audio decoded: ${audioData.numSamples.toLocaleString()} samples, ${audioData.duration.toFixed(2)}s`);
-        console.log(`🔍 [PIPELINE] Samples array type: ${audioData.samples?.constructor?.name}, length: ${audioData.samples?.length}, originalSamplingRate: ${audioData.originalSamplingRate}`);
+        console.log(`✅ ${logTime()} Audio decoded: ${audioData.playback.totalSamples.toLocaleString()} samples`);
         
-        // Calculate resampling ratio (needed to convert original sample indices to resampled indices)
-        // completeSamplesArray is resampled to AudioContext rate, but coordinate system uses original rate
-        const resamplingRatio = audioData.samples.length / audioData.originalSamples;
-        
-        // Set metadata (needed by waveform renderer)
+        // ============================================
+        // SET METADATA WITH CLEAN DOMAIN SEPARATION
+        // ============================================
         State.setCurrentMetadata({
-            original_sample_rate: audioData.originalSamplingRate,
-            original_sample_count: audioData.originalSamples, // Original WAV sample count
-            resampled_sample_count: audioData.samples.length, // Resampled AudioContext count
-            resampling_ratio: resamplingRatio, // Ratio to convert original → resampled indices
+            // Playback domain (for worklet, position tracking, coordinates)
+            playback_sample_rate: audioData.playback.sampleRate,           // 44100 Hz
+            playback_total_samples: audioData.playback.totalSamples,       // Count at 44.1kHz
+            playback_samples_per_real_second: audioData.playback.samplesPerRealSecond,  // ⭐ KEY
+            
+            // Time domain
+            startTime: startTimeISO,
+            endTime: endTimeISO,
+            real_world_time_span: audioData.time.spanSeconds,
+            
+            // Instrument domain (Y-axis only)
+            instrument_sampling_rate: audioData.instrument.samplingRate,
+            instrument_nyquist: audioData.instrument.nyquist,
+            
+            // Legacy compatibility (some code still uses these)
+            // TODO: Migrate all code to use new domain-specific fields
+            original_sample_rate: audioData.playback.samplesPerRealSecond,  // ⭐ This is what worklet needs!
+            
+            // Additional metadata
             spacecraft: spacecraft,
             dataset: dataset,
-            startTime: startTimeISO,
-            endTime: endTimeISO
         });
-        console.log(`🔍 [PIPELINE] Metadata set: original_sample_rate=${State.currentMetadata?.original_sample_rate}, resampling_ratio=${resamplingRatio.toFixed(4)}`);
         
-        // Set state variables (matching the old pattern)
-        State.setCompleteSamplesArray(audioData.samples); // Float32Array, already normalized
-        console.log(`🔍 [PIPELINE] State.completeSamplesArray set: length=${State.completeSamplesArray?.length}, type=${State.completeSamplesArray?.constructor?.name}`);
-        State.setOriginalAudioBlob(audioData.originalBlob); // Original WAV blob from CDAWeb (for direct download!)
-        State.setDataStartTime(audioData.startTime); // UTC Date object
-        State.setDataEndTime(audioData.endTime); // UTC Date object
-        State.setOriginalDataFrequencyRange(audioData.originalDataFrequencyRange); // { min, max }
-        State.setTotalAudioDuration(audioData.duration); // seconds
+        console.log(`📋 Metadata set:`);
+        console.log(`   playback_samples_per_real_second: ${audioData.playback.samplesPerRealSecond.toFixed(2)}`);
+        console.log(`   instrument_nyquist: ${audioData.instrument.nyquist.toFixed(4)} Hz (for Y-axis)`);
+        
+        // Set state
+        State.setCompleteSamplesArray(audioData.samples);
+        State.setOriginalAudioBlob(audioData.originalBlob);
+        State.setDataStartTime(audioData.time.start);
+        State.setDataEndTime(audioData.time.end);
+        
+        // ============================================
+        // FREQUENCY RANGE FOR Y-AXIS (Instrument domain)
+        // ============================================
+        State.setOriginalDataFrequencyRange({
+            min: 0,
+            max: audioData.instrument.nyquist
+        });
+        
+        // ============================================
+        // TOTAL AUDIO DURATION (Playback domain)
+        // ============================================
+        // This is in REAL-WORLD seconds, calculated from playback samples
+        State.setTotalAudioDuration(audioData.time.spanSeconds);
         
         // 🎯 CDAWeb: Default to logarithmic scale for space physics data
         // (unless user has explicitly changed it before)
         const frequencyScaleSelect = document.getElementById('frequencyScale');
         if (frequencyScaleSelect) {
-            // Only change if currently on default sqrt scale (not if user manually selected linear/log before)
+            // Only change if user hasn't explicitly set a preference, or if it's still on an old default (sqrt/linear)
+            // This ensures logarithmic is the default for CDAWeb space physics data
             const hasUserPreference = localStorage.getItem('frequencyScale') !== null;
-            if (!hasUserPreference || State.frequencyScale === 'sqrt') {
+            const isOldDefault = State.frequencyScale === 'sqrt' || State.frequencyScale === 'linear';
+            if (!hasUserPreference || isOldDefault) {
                 console.log('📊 CDAWeb data: Setting frequency scale to logarithmic (default for space physics)');
                 frequencyScaleSelect.value = 'logarithmic';
                 State.setFrequencyScale('logarithmic');
@@ -353,8 +423,8 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         console.log(`🔍 [PIPELINE] State.totalAudioDuration set: ${State.totalAudioDuration}s`);
         
         // Set playback duration (for UI display)
-        State.setPlaybackDurationSeconds(audioData.duration);
-        updatePlaybackDuration(audioData.duration);
+        State.setPlaybackDurationSeconds(audioData.time.spanSeconds);
+        updatePlaybackDuration(audioData.time.spanSeconds);
         
         // Enable Begin Analysis/Complete button after data loads (skip during tutorial)
         if (!isTutorialActive()) {
@@ -426,20 +496,25 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             
             console.log(`🔍 [PIPELINE] Sent ${State.allReceivedData.length} chunks to AudioWorklet`);
             
-            // Send data-complete message with sample rate
-            const timeSpanSeconds = (audioData.endTime - audioData.startTime) / 1000;
+            // ============================================
+            // DATA-COMPLETE WITH CORRECT SAMPLE RATE
+            // ============================================
+            // ⭐ THIS IS THE FIX: Send playbackSamplesPerRealSecond, not instrument rate
             State.workletNode.port.postMessage({
                 type: 'data-complete',
-                totalSamples: audioData.samples.length,  // Resampled count (44.1kHz)
-                sampleRate: audioData.samples.length / timeSpanSeconds  // Audio samples per real-world second
+                totalSamples: audioData.playback.totalSamples,
+                sampleRate: audioData.playback.samplesPerRealSecond  // ⭐ THE KEY FIX
             });
             
-            console.log(`🔍 [PIPELINE] Sent data-complete: totalSamples=${audioData.samples.length}, sampleRate=${(audioData.samples.length / timeSpanSeconds).toFixed(2)} Hz (calculated from time span)`);
+            console.log(`📤 ${logTime()} data-complete sent:`);
+            console.log(`   totalSamples: ${audioData.playback.totalSamples.toLocaleString()}`);
+            console.log(`   sampleRate: ${audioData.playback.samplesPerRealSecond.toFixed(2)} (playback samples per real second)`);
             
-            // Initialize zoom state with ORIGINAL sample count (not resampled AudioContext count)
-            // This is critical for correct coordinate calculations - zoomState uses original_sample_rate
-            // so it needs the original sample count to match
-            zoomState.initialize(audioData.originalSamples);
+            // ============================================
+            // INITIALIZE ZOOM STATE (Playback domain)
+            // ============================================
+            // Use playback sample count - this is what the coordinate system uses
+            zoomState.initialize(audioData.playback.totalSamples);
             
             // Update playback speed (needed for worklet)
             updatePlaybackSpeed();

@@ -350,18 +350,25 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
     const b = getCurrentPlaybackBoundaries();
     targetPosition = Math.max(b.start, Math.min(targetPosition, b.end));
     
-    console.log(`🎯 SEEK: Target=${targetPosition.toFixed(2)}s, shouldPlay=${shouldStartPlayback}`);
-    console.log(`   AudioContext.sampleRate=${State.audioContext.sampleRate} Hz`);
-    console.log(`   metadata.original_sample_rate=${State.currentMetadata?.original_sample_rate?.toFixed(2)} Hz`);
-    console.log(`   totalAudioDuration=${State.totalAudioDuration.toFixed(2)}s`);
+    // ============================================
+    // THE FIX: Use playback_samples_per_real_second
+    // ============================================
+    // This tells us how many playback samples (44.1kHz) represent one real-world second
+    const samplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second 
+                               || State.currentMetadata?.original_sample_rate  // Legacy fallback
+                               || 1200;  // Reasonable default
+    
+    console.log(`🎯 SEEK: Target=${targetPosition.toFixed(2)}s`);
+    console.log(`   samplesPerRealSecond: ${samplesPerRealSecond.toFixed(2)}`);
+    console.log(`   totalAudioDuration: ${State.totalAudioDuration.toFixed(2)}s`);
+    
+    // Convert real-world seconds to playback sample index
+    const targetSample = Math.floor(targetPosition * samplesPerRealSecond);
+    console.log(`   targetSample: ${targetSample.toLocaleString()} (${targetPosition.toFixed(2)}s × ${samplesPerRealSecond.toFixed(2)})`);
     
     // Set flag to prevent race condition in region finish detection
     State.setJustSeeked(true);
     
-    // 🔥 Use AudioContext's actual sample rate, not hardcoded value!
-    const actualSampleRate = State.audioContext.sampleRate;
-    const targetSample = Math.floor(targetPosition * actualSampleRate);
-    console.log(`   Calculated: ${targetPosition.toFixed(2)}s × ${actualSampleRate} Hz = ${targetSample.toLocaleString()} samples`);
     const wasPlaying = State.playbackState === PlaybackState.PLAYING;
     
     const performSeek = () => {

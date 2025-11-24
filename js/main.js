@@ -323,12 +323,11 @@ export async function initAudioWorklet() {
     
     if (!State.audioContext) {
         const ctx = new AudioContext({ 
-            sampleRate: 22000,  // Match CDAWeb's actual sample rate (no resampling!)
             latencyHint: 'playback'  // 30ms buffer for stable playback (prevents dropouts)
         });
         State.setAudioContext(ctx);
         await ctx.audioWorklet.addModule('workers/audio-worklet.js');
-        console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: 22000 Hz, latency: playback)`);
+        console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: ${ctx.sampleRate} Hz, latency: playback)`);
     }
     
     const worklet = new AudioWorkletNode(State.audioContext, 'seismic-processor');

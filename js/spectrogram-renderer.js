@@ -347,7 +347,7 @@ export function loadFrequencyScale() {
     const select = document.getElementById('frequencyScale');
     if (!select) return;
     
-    // Load saved value from localStorage (default: 'sqrt')
+    // Load saved value from localStorage (default: 'logarithmic' for CDAWeb space physics data)
     const savedValue = localStorage.getItem('frequencyScale');
     if (savedValue !== null) {
         // Validate value is one of the allowed options
@@ -358,8 +358,8 @@ export function loadFrequencyScale() {
             console.log(`📊 Loaded saved frequency scale: ${savedValue}`);
         }
     } else {
-        // No saved value, use default and save it
-        const defaultValue = 'sqrt';
+        // No saved value, use default (logarithmic for space physics) and save it
+        const defaultValue = 'logarithmic';
         select.value = defaultValue;
         State.setFrequencyScale(defaultValue);
         localStorage.setItem('frequencyScale', defaultValue);
@@ -1291,10 +1291,8 @@ function drawSavedBox(ctx, box) {
     const lowFreq = box.lowFreq;
     const highFreq = box.highFreq;
     
-    // Get original sample rate from metadata (same as orange boxes!)
-    // NOT hardcoded - comes from State.currentMetadata.original_sample_rate
-    const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
-    const originalNyquist = originalSampleRate / 2; // Calculated from metadata, not assumed!
+    // Use same source as Y-axis for consistency
+    const originalNyquist = State.originalDataFrequencyRange?.max || 50;
     
     // Get current playback rate (CRITICAL for stretching!)
     const playbackRate = State.currentPlaybackRate || 1.0;

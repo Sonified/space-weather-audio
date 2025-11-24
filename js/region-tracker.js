@@ -1576,9 +1576,8 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
     // Convert Y positions to frequencies (with playbackRate for accurate conversion!)
     const playbackRate = State.currentPlaybackRate || 1.0;
 
-    // Get ACTUAL Nyquist from metadata (NOT hardcoded 50!)
-    const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
-    const originalNyquist = originalSampleRate / 2;
+    // Use same source as Y-axis for consistency
+    const originalNyquist = State.originalDataFrequencyRange?.max || 50;
 
     const lowFreq = getFrequencyFromY(Math.max(startY, endY), originalNyquist, canvasHeight, State.frequencyScale, playbackRate);
     const highFreq = getFrequencyFromY(Math.min(startY, endY), originalNyquist, canvasHeight, State.frequencyScale, playbackRate);

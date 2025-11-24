@@ -28,51 +28,88 @@ class ZoomState {
     }
 
     /**
-     * Get the sample rate from metadata (original data rate, not AudioContext rate)
-     * This is a getter to always use the correct rate from loaded metadata
+     * Get the sample rate for coordinate calculations
+     * 
+     * ⭐ THIS IS THE KEY FIX:
+     * We use playback_samples_per_real_second, which tells us how many
+     * 44.1kHz samples represent one second of real-world time.
+     * 
+     * This is consistent with what the worklet uses for position tracking.
      */
     get sampleRate() {
-        // 🔥 CRITICAL: Use original sample rate (50 Hz), NOT AudioContext rate (44100 Hz)
-        // Timestamps are our only source of truth - sample rate must match original data!
-        return State.currentMetadata?.original_sample_rate || 50;
+        // ⭐ Use playback_samples_per_real_second (the key fix!)
+        // This is: totalPlaybackSamples / realWorldTimeSpanSeconds
+        // e.g., 26,000,000 samples / 21,600 seconds ≈ 1,200 samples per real second
+        const rate = State.currentMetadata?.playback_samples_per_real_second 
+                  || State.currentMetadata?.original_sample_rate  // Legacy fallback
+                  || 1200;  // Reasonable default
+        
+        return rate;
+    }
+    
+    /**
+     * Get the playback sample rate (44.1kHz)
+     * Use this when you need the actual AudioContext rate
+     */
+    get playbackSampleRate() {
+        return State.currentMetadata?.playback_sample_rate || 44100;
+    }
+    
+    /**
+     * Get the instrument sampling rate (for Y-axis labels only)
+     * This is the original spacecraft sensor rate
+     */
+    get instrumentSampleRate() {
+        return State.currentMetadata?.instrument_sampling_rate || 1;
     }
     
     /**
      * Convert original sample index to resampled sample index
-     * completeSamplesArray is resampled to AudioContext rate, but coordinate system uses original rate
+     * 
+     * ⚠️ LEGACY METHOD: With the new domain separation, everything is already in the playback domain.
+     * This method is kept for backward compatibility but now just returns the input.
+     * Regions are recalculated from timestamps when loaded, so they're already in the correct domain.
      */
     originalToResampledSample(originalSample) {
-        const ratio = State.currentMetadata?.resampling_ratio || 1.0;
-        return Math.floor(originalSample * ratio);
+        // Everything is now in playback domain, so this is just an identity function
+        return originalSample;
     }
     
     /**
      * Convert resampled sample index to original sample index
+     * 
+     * ⚠️ LEGACY METHOD: With the new domain separation, everything is already in the playback domain.
+     * This method is kept for backward compatibility but now just returns the input.
      */
     resampledToOriginalSample(resampledSample) {
-        const ratio = State.currentMetadata?.resampling_ratio || 1.0;
-        return Math.floor(resampledSample / ratio);
+        // Everything is now in playback domain, so this is just an identity function
+        return resampledSample;
     }
     
     /**
      * Initialize zoom state when audio data is loaded
-     * 🙏 Timestamps as source of truth: Sets viewport to full data time range
+     * @param {number} totalSamples - Total samples in PLAYBACK domain (44.1kHz)
      */
     initialize(totalSamples) {
         if (totalSamples <= 0) {
             console.warn('⚠️ ZoomState.initialize: Invalid totalSamples:', totalSamples);
             return;
         }
-
         this.totalSamples = totalSamples;
-
-        // 👑 Set viewport timestamps to full data range (eternal truth!)
+        // Set viewport timestamps to full data range
         this.currentViewStartTime = State.dataStartTime ? new Date(State.dataStartTime) : null;
         this.currentViewEndTime = State.dataEndTime ? new Date(State.dataEndTime) : null;
-
-        console.log(`🏛️ ZoomState initialized: ${totalSamples.toLocaleString()} samples (${(totalSamples / this.sampleRate).toFixed(1)}s)`);
+        console.log(`🏛️ ZoomState initialized:`);
+        console.log(`   Total samples: ${totalSamples.toLocaleString()} (playback domain)`);
+        console.log(`   Sample rate: ${this.sampleRate.toFixed(2)} (samples per real second)`);
+        
         if (this.currentViewStartTime && this.currentViewEndTime) {
-            console.log(`   👑 Viewport: ${this.currentViewStartTime.toISOString()} to ${this.currentViewEndTime.toISOString()}`);
+            const spanSeconds = (this.currentViewEndTime - this.currentViewStartTime) / 1000;
+            console.log(`   Time span: ${spanSeconds.toLocaleString()} seconds`);
+            
+            // Verify the math
+            const calculatedRate = totalSamples / spanSeconds;
+            console.log(`   Verification: ${totalSamples} / ${spanSeconds.toFixed(0)} = ${calculatedRate.toFixed(2)} ✓`);
         }
     }
     
@@ -198,24 +235,26 @@ class ZoomState {
     }
     
     /**
-     * Convert absolute sample index to audio time (seconds)
-     * Used for playback positioning
+     * Convert sample index to real-world time (seconds from start)
+     * Sample index is in PLAYBACK domain
      */
     sampleToTime(sampleIndex) {
         if (!this.isInitialized()) {
             return 0;
         }
+        // ⭐ Use sampleRate (playback_samples_per_real_second)
         return this.clampSample(sampleIndex) / this.sampleRate;
     }
     
     /**
-     * Convert audio time (seconds) to absolute sample index
-     * Inverse of sampleToTime
+     * Convert real-world time (seconds) to sample index
+     * Returns sample index in PLAYBACK domain
      */
     timeToSample(timeSeconds) {
         if (!this.isInitialized() || timeSeconds < 0) {
             return 0;
         }
+        // ⭐ Use sampleRate (playback_samples_per_real_second)
         const sample = Math.floor(timeSeconds * this.sampleRate);
         return this.clampSample(sample);
     }
@@ -243,8 +282,11 @@ class ZoomState {
         if (!this.isInitialized()) {
             return false;
         }
-        return endSample >= this.currentViewStartSample && 
-               startSample <= this.currentViewEndSample;
+        
+        const viewStartSample = this.timeToSample(this.timestampToSeconds(this.currentViewStartTime));
+        const viewEndSample = this.timeToSample(this.timestampToSeconds(this.currentViewEndTime));
+        
+        return endSample >= viewStartSample && startSample <= viewEndSample;
     }
     
     /**
