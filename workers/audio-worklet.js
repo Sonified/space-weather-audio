@@ -206,6 +206,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 // 🎚️ Set flag for first play after data load (must happen BEFORE samples arrive!)
                 this.firstPlayAfterDataLoad = true;
                 console.log(`🎚️ WORKLET: First play flag set - next playback will use 250ms fade-in to prevent click`);
+                console.log(`🎚️ WORKLET STATE: hasStarted=${this.hasStarted}, isPlaying=${this.isPlaying}, samplesInBuffer=${this.samplesInBuffer}`);
             } else if (type === 'data-complete') {
                 // 🔥 CRITICAL: Set actual sample rate from metadata!
                 if (event.data.sampleRate) {
@@ -246,15 +247,22 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.hasStarted = true;
         this.isPlaying = true;  // 🔥 CRITICAL: Must set isPlaying=true for audio output!
         this.minBuffer = 0;
-        
+
         // ✅ CRITICAL: Switch to seek threshold for future seeks/loops
         this.minBufferBeforePlay = this.minBufferBeforePlaySeek;
-        
+
+        // 🎚️ Only start a new fade if we're NOT already fading in
+        // This prevents the autoPlay 'start-immediately' from interrupting the initial 250ms fade
+        if (this.fadeState.isFading && this.fadeState.fadeDirection === 1) {
+            console.log(`🎚️ WORKLET: start-immediately called but fade-in already in progress - keeping existing fade`);
+            return;
+        }
+
         // 🎚️ Start fade-in to prevent click at playback start
         // Use LONG fade (250ms) for first play after data load, normal fade (25ms) otherwise
         const fadeTime = this.firstPlayAfterDataLoad ? 250 : this.fadeTimeMs;
         this.startFade(+1, fadeTime);
-        
+
         if (this.firstPlayAfterDataLoad) {
             console.log(`🎚️ WORKLET: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
             this.firstPlayAfterDataLoad = false; // Clear flag after using it
@@ -477,20 +485,21 @@ class SeismicProcessor extends AudioWorkletProcessor {
             const bufferMinutes = bufferSeconds / 60;
             console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
             console.log('🎵 WORKLET addSamples: Threshold reached! samplesInBuffer=' + this.samplesInBuffer + ', minBuffer=' + this.minBufferBeforePlay);
+            console.log(`🎚️ WORKLET INITIAL START: firstPlayAfterDataLoad=${this.firstPlayAfterDataLoad}`);
             this.readIndex = 0;
             this.isPlaying = true;
             this.hasStarted = true;
-            
+
             // 🎚️ CRITICAL: Start fade-in when threshold is reached!
             // Use LONG fade (250ms) for first play after data load, normal fade (25ms) otherwise
             const fadeTime = this.firstPlayAfterDataLoad ? 250 : this.fadeTimeMs;
             this.startFade(+1, fadeTime);
-            
+
             if (this.firstPlayAfterDataLoad) {
                 console.log(`🎚️ WORKLET THRESHOLD: FIRST PLAY after data load - using ${fadeTime}ms fade-in to prevent click`);
                 this.firstPlayAfterDataLoad = false; // Clear flag after using it
             } else {
-                console.log(`🎚️ WORKLET THRESHOLD: Started ${fadeTime}ms fade-in`);
+                console.log(`🎚️ WORKLET THRESHOLD: Started ${fadeTime}ms fade-in (firstPlayAfterDataLoad was false)`);
             }
             
             // After first start, switch to seek threshold for future seeks/loops
