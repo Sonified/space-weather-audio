@@ -204,36 +204,41 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
         // The audio sample rate is 22050 Hz, so Nyquist is 11025 Hz
         // But the original data was much slower - we need to derive this from the time span
         
-        // If we have X samples over Y seconds, the original sampling rate was X/Y Hz
-        const originalSamplingRate = audioBuffer.length / timeSpanSeconds;
+        // 🔥 CRITICAL FIX: AudioContext resamples WAV files to its own sample rate (typically 44100 Hz)
+        // CDAWeb produces 22000 Hz WAV files, but AudioContext resamples them to 44100 Hz
+        // This doubles the sample count, making audioBuffer.length incorrect for our calculation
+        // Solution: Use audioBuffer.duration × original WAV sample rate to get true sample count
+        const originalSamples = audioBuffer.duration * CDAWEB_AUDIO_SAMPLE_RATE;
+        const originalSamplingRate = originalSamples / timeSpanSeconds;
         const originalNyquistFrequency = originalSamplingRate / 2;
         
-        // 🔬 TODO: INVESTIGATE - CDAWeb may encode 2 audio samples per data point
-        // For now, divide Y-axis max by 2 to match expected magnetometer frequencies
-        // This needs further investigation with CDAWeb documentation
-        const yAxisMaxFrequency = originalNyquistFrequency / 2;
+        // Y-axis max frequency (no additional ÷2 needed - the resampling issue was the problem)
+        const yAxisMaxFrequency = originalNyquistFrequency;
         
         console.log(`📊 ⭐ SAMPLING RATE CALCULATION:`);
         console.log(`   Audio file properties:`);
-        console.log(`     - Sample rate: ${audioBuffer.sampleRate} Hz (audio encoding rate)`);
+        console.log(`     - WAV sample rate: ${CDAWEB_AUDIO_SAMPLE_RATE} Hz (original CDAWeb encoding)`);
+        console.log(`     - AudioContext sample rate: ${audioBuffer.sampleRate} Hz (after resampling)`);
         console.log(`     - Duration: ${audioBuffer.duration.toFixed(2)} seconds (audio playback time)`);
-        console.log(`     - Samples: ${audioBuffer.length.toLocaleString()} samples`);
+        console.log(`     - Resampled samples: ${audioBuffer.length.toLocaleString()} (AudioContext length)`);
+        console.log(`     - Original samples: ${originalSamples.toLocaleString()} (duration × ${CDAWEB_AUDIO_SAMPLE_RATE} Hz)`);
         console.log(`   Real-world data span:`);
         console.log(`     - Start: ${startDate.toISOString()}`);
         console.log(`     - End: ${endDate.toISOString()}`);
         console.log(`     - Duration: ${timeSpanSeconds.toFixed(2)} seconds`);
-        console.log(`   📐 CALCULATION: ${audioBuffer.length.toLocaleString()} samples ÷ ${timeSpanSeconds.toFixed(2)} sec = ${originalSamplingRate.toFixed(2)} Hz`);
+        console.log(`   📐 CALCULATION: ${originalSamples.toLocaleString()} original samples ÷ ${timeSpanSeconds.toFixed(2)} sec = ${originalSamplingRate.toFixed(2)} Hz`);
         console.log(`   → Original sampling rate: ${originalSamplingRate.toFixed(2)} Hz`);
         console.log(`   → Nyquist frequency: ${originalNyquistFrequency.toFixed(2)} Hz`);
-        console.log(`   🔬 Y-axis max (÷2 adjustment): ${yAxisMaxFrequency.toFixed(2)} Hz`);
+        console.log(`   → Y-axis max frequency: ${yAxisMaxFrequency.toFixed(2)} Hz`);
         
         // Close the offline context
         await offlineContext.close();
         
         return {
-            samples: samples, // Float32Array, already normalized
-            sampleRate: audioBuffer.sampleRate, // Audio sample rate (22050 Hz)
-            numSamples: audioBuffer.length,
+            samples: samples, // Float32Array, already normalized (resampled to AudioContext rate)
+            sampleRate: audioBuffer.sampleRate, // Audio sample rate (44100 Hz after resampling)
+            numSamples: audioBuffer.length, // Resampled sample count (for playback)
+            originalSamples: originalSamples, // Original WAV sample count (for coordinate calculations)
             duration: audioBuffer.duration, // Audio duration in seconds
             startTime: startDate,
             endTime: endDate,
@@ -287,15 +292,22 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         console.log(`✅ ${logTime()} Audio decoded: ${audioData.numSamples.toLocaleString()} samples, ${audioData.duration.toFixed(2)}s`);
         console.log(`🔍 [PIPELINE] Samples array type: ${audioData.samples?.constructor?.name}, length: ${audioData.samples?.length}, originalSamplingRate: ${audioData.originalSamplingRate}`);
         
+        // Calculate resampling ratio (needed to convert original sample indices to resampled indices)
+        // completeSamplesArray is resampled to AudioContext rate, but coordinate system uses original rate
+        const resamplingRatio = audioData.samples.length / audioData.originalSamples;
+        
         // Set metadata (needed by waveform renderer)
         State.setCurrentMetadata({
             original_sample_rate: audioData.originalSamplingRate,
+            original_sample_count: audioData.originalSamples, // Original WAV sample count
+            resampled_sample_count: audioData.samples.length, // Resampled AudioContext count
+            resampling_ratio: resamplingRatio, // Ratio to convert original → resampled indices
             spacecraft: spacecraft,
             dataset: dataset,
             startTime: startTimeISO,
             endTime: endTimeISO
         });
-        console.log(`🔍 [PIPELINE] Metadata set: original_sample_rate=${State.currentMetadata?.original_sample_rate}`);
+        console.log(`🔍 [PIPELINE] Metadata set: original_sample_rate=${State.currentMetadata?.original_sample_rate}, resampling_ratio=${resamplingRatio.toFixed(4)}`);
         
         // Set state variables (matching the old pattern)
         State.setCompleteSamplesArray(audioData.samples); // Float32Array, already normalized
@@ -423,8 +435,10 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             
             console.log(`🔍 [PIPELINE] Sent data-complete: totalSamples=${audioData.samples.length}, sampleRate=${audioData.originalSamplingRate}`);
             
-            // Initialize zoom state with total sample count
-            zoomState.initialize(audioData.samples.length);
+            // Initialize zoom state with ORIGINAL sample count (not resampled AudioContext count)
+            // This is critical for correct coordinate calculations - zoomState uses original_sample_rate
+            // so it needs the original sample count to match
+            zoomState.initialize(audioData.originalSamples);
             
             // Update playback speed (needed for worklet)
             updatePlaybackSpeed();

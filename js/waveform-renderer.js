@@ -150,10 +150,13 @@ export function drawWaveform() {
     // 🏛️ Check if we're inside a region (within the temple walls)
     if (zoomState.isInRegion()) {
         const regionRange = zoomState.getRegionRange();
-        startSample = regionRange.startSample;
-        endSample = regionRange.endSample;
+        // 🔥 CRITICAL: Convert original sample indices to resampled indices
+        // getRegionRange() returns indices in original coordinate system (292 Hz)
+        // but completeSamplesArray is resampled (44100 Hz), so we need to convert
+        startSample = zoomState.originalToResampledSample(regionRange.startSample);
+        endSample = zoomState.originalToResampledSample(regionRange.endSample);
         const zoomLevel = zoomState.getZoomLevel();
-        zoomInfo = `zoomed ${zoomLevel.toFixed(1)}x (samples ${startSample.toLocaleString()}-${endSample.toLocaleString()})`;
+        zoomInfo = `zoomed ${zoomLevel.toFixed(1)}x (original samples ${regionRange.startSample.toLocaleString()}-${regionRange.endSample.toLocaleString()}, resampled ${startSample.toLocaleString()}-${endSample.toLocaleString()})`;
     }
     
     console.log(`🔍 [PIPELINE] Sending to waveform worker: width=${width}, height=${height}, samples=${State.completeSamplesArray.length}, ${zoomInfo}`);

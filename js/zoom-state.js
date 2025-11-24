@@ -38,6 +38,23 @@ class ZoomState {
     }
     
     /**
+     * Convert original sample index to resampled sample index
+     * completeSamplesArray is resampled to AudioContext rate, but coordinate system uses original rate
+     */
+    originalToResampledSample(originalSample) {
+        const ratio = State.currentMetadata?.resampling_ratio || 1.0;
+        return Math.floor(originalSample * ratio);
+    }
+    
+    /**
+     * Convert resampled sample index to original sample index
+     */
+    resampledToOriginalSample(resampledSample) {
+        const ratio = State.currentMetadata?.resampling_ratio || 1.0;
+        return Math.floor(resampledSample / ratio);
+    }
+    
+    /**
      * Initialize zoom state when audio data is loaded
      * 🙏 Timestamps as source of truth: Sets viewport to full data time range
      */

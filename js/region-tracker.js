@@ -530,13 +530,37 @@ export function showAddRegionButton(selectionStart, selectionEnd) {
     const canvas = document.getElementById('waveform');
     if (!canvas) return;
     
-    // Calculate pixel positions from time values
-    const startProgress = (selectionStart / State.totalAudioDuration);
-    const endProgress = (selectionEnd / State.totalAudioDuration);
-    
     const canvasWidth = canvas.offsetWidth;
-    const startX = startProgress * canvasWidth;
-    const endX = endProgress * canvasWidth;
+    
+    // 🏛️ Use zoom-aware coordinate conversion (same as drawRegionHighlights)
+    // This ensures the button position matches where the region will actually appear
+    let startX, endX;
+    if (zoomState.isInitialized()) {
+        // Convert selection times to timestamps, then to pixels (same logic as region drawing)
+        const dataStartMs = State.dataStartTime.getTime();
+        const selectionStartMs = dataStartMs + (selectionStart * 1000);
+        const selectionEndMs = dataStartMs + (selectionEnd * 1000);
+        const selectionStartTimestamp = new Date(selectionStartMs);
+        const selectionEndTimestamp = new Date(selectionEndMs);
+        
+        // Use interpolated time range for positioning (matches region drawing)
+        const interpolatedRange = getInterpolatedTimeRange();
+        const displayStartMs = interpolatedRange.startTime.getTime();
+        const displayEndMs = interpolatedRange.endTime.getTime();
+        const displaySpanMs = displayEndMs - displayStartMs;
+        
+        const startProgress = (selectionStartMs - displayStartMs) / displaySpanMs;
+        const endProgress = (selectionEndMs - displayStartMs) / displaySpanMs;
+        
+        startX = startProgress * canvasWidth;
+        endX = endProgress * canvasWidth;
+    } else {
+        // Fallback to old behavior if zoom state not initialized
+        const startProgress = (selectionStart / State.totalAudioDuration);
+        const endProgress = (selectionEnd / State.totalAudioDuration);
+        startX = startProgress * canvasWidth;
+        endX = endProgress * canvasWidth;
+    }
     
     // Create or get button - attach to body for free-floating positioning
     if (!addRegionButton) {

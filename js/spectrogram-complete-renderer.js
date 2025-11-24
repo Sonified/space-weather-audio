@@ -1769,7 +1769,11 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             return;
         }
         const startTime = performance.now();
-        const regionSamples = State.completeSamplesArray.slice(startSample, endSample);
+        // 🔥 CRITICAL: Convert original sample indices to resampled indices
+        // startSample/endSample are in original coordinate system, but completeSamplesArray is resampled
+        const resampledStartSample = zoomState.originalToResampledSample(startSample);
+        const resampledEndSample = zoomState.originalToResampledSample(endSample);
+        const regionSamples = State.completeSamplesArray.slice(resampledStartSample, resampledEndSample);
         const totalSamples = regionSamples.length;
         const renderDuration = renderEndSeconds - renderStartSeconds;
         const targetDuration = endSeconds - startSeconds;
