@@ -330,6 +330,12 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             const { hideComponentSelector } = await import('./component-selector.js');
             hideComponentSelector();
         }
+        
+        // Show download button after audio loads
+        const downloadContainer = document.getElementById('downloadAudioContainer');
+        if (downloadContainer) {
+            downloadContainer.style.display = 'block';
+        }
         console.log(`🔍 [PIPELINE] State.totalAudioDuration set: ${State.totalAudioDuration}s`);
         
         // Set playback duration (for UI display)

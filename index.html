@@ -235,14 +235,18 @@
         </div>
         
         <!-- Tracked Regions Panel -->
-        <div class="panel panel-regions" id="trackedRegionsPanel">
+        <div class="panel panel-regions" id="trackedRegionsPanel" style="position: relative;">
             <h2 style="margin-bottom: 12px; font-size: 1.3em;">Selected Regions</h2>
             <div id="regionsListContainer">
                 <div id="regionsList"></div>
             </div>
-            <button type="button" id="downloadAudioBtn" style="width: 100%; margin-top: 15px; padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
-                📥 Download Current Audio File
-            </button>
+            
+            <!-- Download Audio Button (floating below panel in lower right) -->
+            <div id="downloadAudioContainer" style="position: absolute; bottom: -50px; right: 0; display: none; z-index: 100;">
+                <button type="button" id="downloadAudioBtn" style="padding: 10px 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3); white-space: nowrap;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 14px rgba(102, 126, 234, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 10px rgba(102, 126, 234, 0.3)';">
+                    📥 Download Audio
+                </button>
+            </div>
         </div>
         
         <!-- Metrics Panel -->

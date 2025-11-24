@@ -2120,7 +2120,7 @@ async function initializeMainApp() {
     const { setupComponentSelectorListener } = await import('./component-selector.js');
     setupComponentSelectorListener();
     
-    // Set up download audio button
+    // Set up download audio button (current component)
     const downloadAudioBtn = document.getElementById('downloadAudioBtn');
     if (downloadAudioBtn) {
         downloadAudioBtn.addEventListener('click', async () => {
@@ -2133,12 +2133,19 @@ async function initializeMainApp() {
             const metadata = State.currentMetadata;
             const samples = State.completeSamplesArray;
             
-            // Create filename from metadata
+            // Create filename from metadata (include component if known)
             const spacecraft = metadata.spacecraft || 'PSP';
             const dataset = metadata.dataset || 'MAG';
             const startTime = State.dataStartTime?.toISOString().replace(/:/g, '-').replace(/\./g, '-') || 'unknown';
             const endTime = State.dataEndTime?.toISOString().replace(/:/g, '-').replace(/\./g, '-') || 'unknown';
-            const filename = `${spacecraft}_${dataset}_${startTime}_${endTime}.wav`;
+            
+            // Get current component from selector if available
+            const componentSelector = document.getElementById('componentSelector');
+            const componentLabel = componentSelector && componentSelector.selectedIndex >= 0 
+                ? componentSelector.options[componentSelector.selectedIndex].text.split(' ')[0] // Get "br" from "br (Radial)"
+                : 'audio';
+            
+            const filename = `${spacecraft}_${dataset}_${componentLabel}_${startTime}_${endTime}.wav`;
             
             console.log(`📥 Creating WAV file for download: ${filename}`);
             console.log(`   Samples: ${samples.length.toLocaleString()}, Sample rate: ${metadata.original_sample_rate.toFixed(2)} Hz`);
@@ -2160,6 +2167,7 @@ async function initializeMainApp() {
         });
         console.log('✅ Download audio button handler attached');
     }
+    
     
     if (!isStudyMode()) {
         console.log('✅ Event listeners setup complete - memory leak prevention active!');

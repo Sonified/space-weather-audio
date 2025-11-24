@@ -192,3 +192,11 @@ export function setupComponentSelectorListener() {
     console.log('📊 Component selector listener attached');
 }
 
+/**
+ * Get all component URLs (for downloading all components)
+ * @returns {Array<string>} Array of WAV file URLs
+ */
+export function getAllComponentUrls() {
+    return allComponentUrls;
+}
+
