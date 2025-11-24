@@ -162,7 +162,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     // If we're not already fading in, start a fade-in
                     if (!this.fadeState.isFading || this.fadeState.fadeDirection !== 1) {
                         // Use LONG fade (250ms) for first play after data load, normal fade (25ms) otherwise
-                        const fadeTime = this.firstPlayAfterDataLoad ? 250 : this.fadeTimeMs;
+                        const fadeTime = this.firstPlayAfterDataLoad ? 50 : this.fadeTimeMs;
                         this.startFade(+1, fadeTime);
                         
                         if (this.firstPlayAfterDataLoad) {
@@ -250,8 +250,8 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.minBufferBeforePlay = this.minBufferBeforePlaySeek;
         
         // 🎚️ Start fade-in to prevent click at playback start
-        // Use LONG fade (250ms) for first play after data load, normal fade (25ms) otherwise
-        const fadeTime = this.firstPlayAfterDataLoad ? 250 : this.fadeTimeMs;
+        // Use LONG fade (50ms) for first play after data load, normal fade (25ms) otherwise
+        const fadeTime = this.firstPlayAfterDataLoad ? 50 : this.fadeTimeMs;
         this.startFade(+1, fadeTime);
         
         if (this.firstPlayAfterDataLoad) {
@@ -480,6 +480,18 @@ class SeismicProcessor extends AudioWorkletProcessor {
             this.isPlaying = true;
             this.hasStarted = true;
             
+            // 🎚️ CRITICAL: Start fade-in when threshold is reached!
+            // Use LONG fade (50ms) for first play after data load, normal fade (25ms) otherwise
+            const fadeTime = this.firstPlayAfterDataLoad ? 50 : this.fadeTimeMs;
+            this.startFade(+1, fadeTime);
+            
+            if (this.firstPlayAfterDataLoad) {
+                console.log(`🎚️ WORKLET THRESHOLD: FIRST PLAY after data load - using ${fadeTime}ms fade-in to prevent click`);
+                this.firstPlayAfterDataLoad = false; // Clear flag after using it
+            } else {
+                console.log(`🎚️ WORKLET THRESHOLD: Started ${fadeTime}ms fade-in`);
+            }
+            
             // After first start, switch to seek threshold for future seeks/loops
             this.minBufferBeforePlay = this.minBufferBeforePlaySeek;
             
@@ -490,12 +502,12 @@ class SeismicProcessor extends AudioWorkletProcessor {
             if (DEBUG_WORKLET) console.log(`🎵 WORKLET addSamples: Auto-resuming! samplesInBuffer=${this.samplesInBuffer}, minBuffer=${this.minBufferBeforePlay}`);
             this.isPlaying = true;
             // 🎯 Start fade-in for graceful resumption after buffer underrun
-            // Use LONG fade (250ms) for first play after data load, normal fade (25ms) otherwise
-            const fadeTime = this.firstPlayAfterDataLoad ? 250 : this.fadeTimeMs;
+            // Use LONG fade (50ms) for first play after data load, normal fade (25ms) otherwise
+            const fadeTime = this.firstPlayAfterDataLoad ? 50 : this.fadeTimeMs;
             this.startFade(+1, fadeTime);
             
             if (this.firstPlayAfterDataLoad) {
-                console.log(`🎚️ WORKLET AUTO-RESUME: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
+                console.log(`🎚️ WORKLET AUTO-RESUME: FIRST PLAY after data load - using ${fadeTime}ms fade-in to prevent click`);
                 this.firstPlayAfterDataLoad = false; // Clear flag after using it
             } else {
                 if (DEBUG_WORKLET) console.log(`🎚️ WORKLET addSamples: Started fade-in for auto-resume`);
@@ -638,6 +650,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         // Log first time process() is called after starting
         if (this.hasStarted && !this.processStartLogged) {
             console.log('🎵 WORKLET process() FIRST CALL after hasStarted=true');
+            console.log(`🔍 FIRST PROCESS CALL STATE: isPlaying=${this.isPlaying}, isFading=${this.fadeState.isFading}, fadeDirection=${this.fadeState.fadeDirection}, fadeStartGain=${this.fadeState.fadeStartGain}, fadeEndGain=${this.fadeState.fadeEndGain}`);
             this.processStartLogged = true;
         }
         
@@ -795,10 +808,12 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     }
                     
                     // 🎚️ SAMPLE-ACCURATE FADE APPLICATION (interpolate across quantum)
+                    let appliedGain = 1.0; // Track what gain was actually applied
                     if (this.fadeState.isFading) {
                         const t = i / channel.length; // 0.0 to 1.0 across this quantum
                         const currentGain = fadeStartGainThisQuantum + 
                             (fadeEndGainThisQuantum - fadeStartGainThisQuantum) * t;
+                        appliedGain = currentGain;
                         
                         // 🔍 DEBUG: Log fade application (first sample only to avoid spam)
                         if (i === 0 && this.fadeState.fadeSamplesCurrent % 128 === 0) {
@@ -806,6 +821,11 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         }
                         
                         sample *= currentGain;
+                    }
+                    
+                    // 🔍 LOG THE VERY FIRST SAMPLE EVER OUTPUT
+                    if (this.totalSamplesConsumed === 0 && i === 0) {
+                        console.log(`🎵 🔴 VERY FIRST SAMPLE OUTPUT: value=${sample.toFixed(6)}, gain=${appliedGain.toFixed(6)}, isFading=${this.fadeState.isFading}, original=${this.buffer[this.readIndex].toFixed(6)}`);
                     }
                     
                     channel[i] = sample;
