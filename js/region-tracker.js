@@ -38,7 +38,7 @@ let regionsDelayedForCrossfade = false; // Flag to track if regions are waiting 
 const ANIMATE_REGION_REORDER = true; // Change to true to enable smooth slide animation
 
 // localStorage key prefix for feature persistence
-const STORAGE_KEY_PREFIX = 'volcano_audio_regions_';
+const STORAGE_KEY_PREFIX = 'solar_audio_regions_';
 
 // Button positions are recalculated on every click - no caching needed
 // This ensures positions are always fresh and immune to resize timing, DPR changes, etc.
@@ -3696,6 +3696,13 @@ export async function updateCompleteButtonState() {
     const completeBtn = document.getElementById('completeBtn');
     if (!completeBtn) {
         console.warn('⚠️ updateCompleteButtonState: completeBtn not found in DOM');
+        return;
+    }
+    
+    // Check if Solar Portal mode - hide button permanently
+    const { CURRENT_MODE, AppMode } = await import('./master-modes.js');
+    if (CURRENT_MODE === AppMode.SOLAR_PORTAL) {
+        completeBtn.style.display = 'none';
         return;
     }
     

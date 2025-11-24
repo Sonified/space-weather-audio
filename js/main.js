@@ -1089,6 +1089,52 @@ async function initializeDevMode() {
 }
 
 /**
+ * SOLAR PORTAL MODE: Participant setup only, no study workflow
+ */
+async function initializeSolarPortalMode() {
+    console.log('☀️ SOLAR PORTAL MODE: Participant setup only');
+    
+    // Hide Begin Analysis button permanently
+    const completeBtn = document.getElementById('completeBtn');
+    if (completeBtn) {
+        completeBtn.style.display = 'none';
+        console.log('✅ Begin Analysis button hidden');
+    }
+    
+    // Hide simulate panel
+    const simulatePanel = document.querySelector('.panel-simulate');
+    if (simulatePanel) {
+        simulatePanel.style.display = 'none';
+        console.log('✅ Simulate panel hidden');
+    }
+    
+    // Set tutorial flags (skip tutorial, go straight to analysis)
+    localStorage.setItem('study_tutorial_in_progress', 'false');
+    localStorage.setItem('study_tutorial_completed', 'true');
+    localStorage.setItem('study_has_seen_tutorial', 'true');
+    
+    // Enable all features immediately
+    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+    enableAllTutorialRestrictedFeatures();
+    
+    // Check if first visit - show participant setup
+    const { hasSeenParticipantSetup } = await import('./study-workflow.js');
+    const isFirstVisit = !hasSeenParticipantSetup();
+    
+    if (isFirstVisit) {
+        console.log('👤 First visit - opening participant setup');
+        // Wait a bit for modals to initialize, then open participant modal
+        setTimeout(() => {
+            openParticipantModal();
+        }, 500);
+    } else {
+        console.log('✅ Returning visit - participant setup already completed');
+    }
+    
+    console.log('✅ Solar Portal mode ready');
+}
+
+/**
  * STUDY MODE: Full workflow with surveys
  */
 async function initializeStudyMode() {
@@ -1148,6 +1194,10 @@ async function initializeApp() {
             await initializeDevMode();
             break;
             
+        case AppMode.SOLAR_PORTAL:
+            await initializeSolarPortalMode();
+            break;
+            
         case AppMode.PRODUCTION:
         case AppMode.STUDY_CLEAN:
         case AppMode.STUDY_W2_S1:
@@ -1204,7 +1254,7 @@ function updateVolcanoDropdownLabels(loadedVolcano, selectedVolcano) {
 // DOMContentLoaded initialization
 window.addEventListener('DOMContentLoaded', async () => {
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('🌋 VOLCANO AUDIFICATION STUDY');
+    console.log('🌋 SOLAR AUDIFICATION STUDY');
     console.log('═══════════════════════════════════════════════════════════');
     
     // ═══════════════════════════════════════════════════════════
@@ -1422,12 +1472,17 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Hide simulate panel in Study Mode (surveys are controlled by workflow)
+    // Also hide in Solar Portal mode
     // But exclude TUTORIAL_END mode - it behaves differently (no initial modals)
-    if (isStudyMode()) {
+    if (isStudyMode() || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
         const simulatePanel = document.querySelector('.panel-simulate');
         if (simulatePanel) {
             simulatePanel.style.display = 'none';
-            console.log('🎓 Production Mode: Simulate panel hidden (surveys controlled by workflow)');
+            if (CURRENT_MODE === AppMode.SOLAR_PORTAL) {
+                console.log('☀️ Solar Portal Mode: Simulate panel hidden');
+            } else {
+                console.log('🎓 Production Mode: Simulate panel hidden (surveys controlled by workflow)');
+            }
         }
         
         // Permanent overlay in Production Mode (fully controlled by modal system)
@@ -1488,155 +1543,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] volcano-audio v2.68 - Modal UX: Reduced spacing and enabled background visibility');
-        console.log('📌 [0ms] Git commit: v2.68 Modal UX: Reduced spacing and enabled background visibility');
-        console.log('🎨 [0ms] v2.67 Fix: Overlay was only fading out (300ms delay) instead of being immediately removed, leaving blank screen');
-        console.log('🔧 [0ms] v2.67 Fix: When "Not yet" clicked, immediately set overlay display:none and show UI elements');
-        console.log('⚡ [0ms] v2.65 Perf: More efficient frame skipping - only prevents duplicate work, doesn\'t skip legitimate frames');
-        console.log('🌋 [0ms] volcano-audio v2.64 - UI Fix: Delete Feature Button CSS Specificity Issue');
-        console.log('📌 [0ms] Git commit: v2.64 UI Fix: Delete feature button CSS specificity - disabled button centering');
-        console.log('🎨 [0ms] v2.64 Fix: CSS specificity battle where button:disabled override killed translateY(-50%) centering');
-        console.log('🔧 [0ms] v2.64 Fix: Added transform to .delete-feature-btn-inline.disabled rule to maintain vertical alignment');
-        console.log('✅ [0ms] v2.64 Result: Disabled delete button now stays centered and doesn\'t bounce on hover');
-        console.log('🌋 [0ms] volcano-audio v2.63 - Bug Fix: Non-Finite Gradient Values During Zoom');
-        console.log('📌 [0ms] Git commit: v2.63 Bug Fix: Non-finite gradient values during zoom - add safety guards for playhead rendering');
-        console.log('🐛 [0ms] v2.63 Fix: CRITICAL - createLinearGradient crash when interpEndMs === interpStartMs during zoom transitions');
-        console.log('🛡️ [0ms] v2.63 Fix: Added guards in waveform-renderer.js to check time range validity and coordinate finiteness before drawing playhead');
-        console.log('✅ [0ms] v2.63 Result: Playhead gracefully skips invalid frames instead of crashing');
-        console.log('🌋 [0ms] volcano-audio v2.62 - Bug Fix: Waveform Button Click Detection Drift');
-        console.log('📌 [0ms] Git commit: v2.62 Bug Fix: Waveform button click detection drift - use timestamps directly instead of sample conversion');
-        console.log('🎯 [0ms] v2.62 Fix: CRITICAL - Button click detection was using wrong coordinates after v2.60 visual fix');
-        console.log('🔧 [0ms] v2.62 Fix: Updated calculateButtonPositions() in region-tracker.js lines 1060-1061 and 1089-1090');
-        console.log('✅ [0ms] v2.62 Result: All 4 systems (features, regions, button rendering, click detection) now use unified timestamp coordinates');
-        console.log('🌋 [0ms] volcano-audio v2.61 - Session Timeout & Status Message Improvements');
-        console.log('📌 [0ms] Git commit: 45e5cff - v2.61 Session Timeout & Status Message Improvements');
-        console.log('🔐 [0ms] v2.61 Feat: Timeout session ID pairing - ties timeout to participant ID to prevent false timeouts');
-        console.log('🧹 [0ms] v2.61 Refactor: Renamed completeSession() to closeSession() for clarity');
-        console.log('🎓 [0ms] v2.61 Fix: All status messages now respect tutorial mode - no message interference');
-        console.log('🔄 [0ms] v2.61 Fix: Start new session button refreshes activity timestamp and timeout session ID');
-        console.log('👤 [0ms] v2.61 Fix: Personal mode properly clears tutorial flags and enables region creation');
-        console.log('⏱️ [0ms] v2.61 Feat: Pause tutorial "Great!" wait reduced from 2s to 1s for better pacing');
-        console.log('🌋 [0ms] volcano-audio v2.60 - Bug Fix: Waveform Button Positioning Drift');
-        console.log('📌 [0ms] Git commit: v2.60 Bug Fix: Waveform button positioning drift - use timestamps directly instead of sample conversion');
-        console.log('🐛 [0ms] v2.60 Fix: CRITICAL - Hover buttons (zoom 🔍 and play ▶️) were drifting away from regions after reload');
-        console.log('🔧 [0ms] v2.60 Fix: Updated waveform-buttons-renderer.js to use saved timestamps directly (new Date(region.startTime)) instead of converting samples → timestamps');
-        console.log('🎯 [0ms] v2.60 Result: All three rendering systems (features, regions, buttons) now use unified coordinate calculation - no drift on reload!');
-        console.log('🌋 [0ms] volcano-audio v2.59 - Bug Fix: Remove Unused Export Regions Button');
-        console.log('📌 [0ms] Git commit: 5dc33c5 - v2.59 Bug Fix: Remove unused export regions button');
-        console.log('🐛 [0ms] v2.59 Fix: Removed exportRegionsBtn event listener that referenced non-existent exportRegionsData function');
-        console.log('🧹 [0ms] v2.59 Fix: Removed Export Regions button from HTML - feature was accidentally added in commit 8af47a4 without implementation');
-        console.log('✅ [0ms] v2.59 Result: Fixed critical error "exportRegionsData is not defined" on page load');
-        console.log('🌋 [0ms] volcano-audio v2.58 - Data Redundancy: Survey Responses in Embedded Data');
-        console.log('📌 [0ms] Git commit: eee44db - v2.58 Data Redundancy: Survey responses in embedded data');
-        console.log('💾 [0ms] v2.58 Feat: Survey responses now included in SessionTracking embedded data for complete redundancy');
-        console.log('🔒 [0ms] v2.58 Feat: All survey answers (PRE, POST, AWE-SF, ACTIVITY LEVEL) backed up in embedded data alongside standard Qualtrics responses');
-        console.log('🎯 [0ms] v2.58 Benefit: Complete session data in one JSON structure - protects against Qualtrics data loss');
-        console.log('🌋 [0ms] volcano-audio v2.57 - Corrupted State Detection: Pre-Survey Completion Edge Case');
-        console.log('🛡️ [0ms] v2.57 Fix: Added detection for users who completed pre-survey but stopped before tutorial');
-        console.log('🔥 [0ms] v2.57 Feat: Two corrupted state checks - Case 1: Seen participant setup but no tutorial, Case 2: Completed pre-survey but no tutorial');
-        console.log('🧹 [0ms] v2.57 Fix: Both cases trigger full reset to brand new participant state for clean restart');
-        console.log('🌋 [0ms] volcano-audio v2.56 - Canvas Redrawing: Aggressive Destroy/Recreate on Visibility Change');
-        console.log('🎨 [0ms] v2.56 Fix: Canvas feature boxes now redraw after tab switch/sleep - implemented aggressive destroy/recreate strategy for overlay canvas');
-        console.log('🔧 [0ms] v2.56 Feat: When page becomes hidden, cleanupSpectrogramSelection() destroys overlay canvas to save memory');
-        console.log('🔧 [0ms] v2.56 Feat: When page becomes visible, setupSpectrogramSelection() recreates canvas and redrawAllCanvasFeatureBoxes() restores features');
-        console.log('🎵 [0ms] v2.56 Note: Audio playback continues in background (cancelAllRAFLoops only stops visual animations, not audio)');
-        console.log('🌋 [0ms] volcano-audio v2.55 - Critical Bug Fixes: Region Persistence & Button States');
-        console.log('🐛 [0ms] v2.55 Fix: MAJOR - Regions/features now persist after page refresh (were being saved but not loaded)');
-        console.log('🐛 [0ms] v2.55 Fix: CRITICAL - Timestamp filtering now uses absolute times instead of relative samples (prevented regions from loading across different time ranges)');
-        console.log('🐛 [0ms] v2.55 Fix: Complete button click handler now correctly set for returning users (was opening wrong modal)');
-        console.log('🔧 [0ms] v2.55 Refactor: Unified updateCompleteButtonState() to handle both Begin Analysis and Complete modes (eliminated duplicate functions)');
-        console.log('🔍 [0ms] v2.55 Feat: Enhanced error logging - all errors now logged to console with full stack traces before reporting');
-        console.log('🎓 [0ms] v2.55 Feat: Added study_tutorial_in_progress flag to properly track tutorial lifecycle');
-        console.log('🎨 [0ms] v2.55 Feat: Added "This is a spectrogram" intro message to tutorial before time/frequency explanation');
-        console.log('🔒 [0ms] v2.55 Fix: Removed "Skip" option from Tutorial Introduction modal');
-        console.log('🛡️ [0ms] v2.55 Fix: Added emergency overlay canvas recovery for stuck states');
-        console.log('🌋 [0ms] volcano-audio v2.54 - Stuck State Fix & UI Improvements');
-        console.log('🔧 [0ms] v2.54 Fix: Fixed stuck state after sleep mode - added aggressive state reset, overlay context recovery, and safeguard message');
-        console.log('🎨 [0ms] v2.54 Feat: Changed feature selection instructions from "(f) key" to "click and drag"');
-        console.log('🎨 [0ms] v2.54 Feat: Pre-survey modal now shows "Welcome back!" for returning visitors');
-        console.log('🌋 [0ms] volcano-audio v2.53 - Modal UX Improvements');
-        console.log('🔧 [0ms] v2.53 Fix: Disabled click-outside-to-close for all modals - clicks outside modal area are now completely ignored');
-        console.log('🎨 [0ms] v2.53 Feat: Dynamic participant modal text - shows different messages based on context (initial setup vs upper right corner click, Qualtrics transfer vs manual entry)');
-        console.log('🌋 [0ms] volcano-audio v2.52 - Bug Fix: Keyboard Event Handlers');
-        console.log('🔧 [0ms] v2.52 Fix: Added guard clauses to handleSecretKeyListener and handleDebugJumpListener to prevent TypeError when e.key is undefined');
-        console.log('🌋 [0ms] volcano-audio v2.51 - UI Polish & Tutorial Improvements');
-        console.log('🎨 [0ms] v2.51 UI: Fixed waveform-x-axis max-width to match other canvases, unified participant ID text box styling with dark background and reddish hover');
-        console.log('🎓 [0ms] v2.51 UI: Added ↘️ emoji to volume adjustment tutorial message for better visual guidance');
-        console.log('🌋 [0ms] volcano-audio v2.50 - Spectrogram Playhead Overlay & UI Polish');
-        console.log('🎨 [0ms] v2.50 Refactor: Spectrogram playhead now uses dedicated transparent overlay canvas - eliminates complex background restoration, much simpler rendering, better performance');
-        console.log('🎨 [0ms] v2.50 UI: Updated top panel colors - selection panel #9a9a9a, playback panel #a8a8a8 with healthy gradients');
-        console.log('🎨 [0ms] v2.50 UI: Reduced waveform playhead white line opacity for subtler appearance');
-        console.log('✨ [0ms] v2.50 UI: Fetch Data button now pulses brighter on load for better visibility');
-        console.log('🌋 [0ms] volcano-audio v2.49 - Pure Canvas Feature Boxes');
-        console.log('🎨 [0ms] v2.49 Refactor: Replaced DOM-based orange feature boxes with pure canvas rendering - eliminates appendChild() circular event issues, adds smooth interpolation during scale/zoom transitions, auto-syncs with feature array for deletion/renumbering');
-        console.log('🌋 [0ms] volcano-audio v2.47 - Feature Box Positioning and Synchronization');
-        console.log('🎯 [0ms] v2.47 Refactor: Feature box positioning and synchronization - achieved perfect harmony between DOM and canvas');
-        console.log('🌋 [0ms] volcano-audio v2.46 - Spectrogram Feature Selection Bug Fix');
-        console.log('🐛 [0ms] v2.46 Fix: Spectrogram feature selection bug - changed mouseup listener from document to canvas to prevent ghost clicks when browser loses focus');
-        console.log('🌋 [0ms] volcano-audio v2.45 - Study Mode Region Creation Fix');
-        console.log('🎓 [0ms] v2.45 Fix: Enable region creation BEFORE tutorial starts - allows waveform clicks during tutorial in study mode');
-        console.log('🌋 [0ms] volcano-audio v2.44 - Quick-fill Button Toggle');
-        console.log('🎓 [0ms] v2.44 Feat: Quick-fill button toggle function - disable in STUDY mode, enable in STUDY_CLEAN/DEV/PERSONAL modes');
-        console.log('🌋 [0ms] volcano-audio v2.41 - Tutorial Region Button Enable Fix');
-        console.log('🎓 [0ms] v2.41 Fix: Enable all region buttons after zoom out in tutorial - allows full interaction when creating second region');
-        console.log('🌋 [0ms] volcano-audio v2.40 - Tutorial Message Improvements');
-        console.log('🎓 [0ms] v2.40 UI: Added 10-second timeout for feature description submission');
-        console.log('🎓 [0ms] v2.40 UI: Changed feature description detection from Enter key to change event for better reliability');
-        console.log('🎓 [0ms] v2.40 UI: Updated tutorial messages - "The spectrogram now shows more detail", "let\'s explore", "Click and drag"');
-        console.log('🎓 [0ms] v2.40 UI: Adjusted tutorial timing - spectrogram detail message 6s, change mind message 9s');
-        console.log('🌋 [0ms] volcano-audio v2.38 - Tutorial Starts Before Fetch Data Message');
-        console.log('🎓 [0ms] v2.38 Feat: Tutorial now starts immediately on page load, before "Select a volcano and click Fetch Data" message');
-        console.log('🎓 [0ms] v2.38 Feat: Frequency scale dropdown disabled right at the start of tutorial before anything else');
-        console.log('🎓 [0ms] v2.38 Feat: Fetching data is now part of the tutorial flow - tutorial guides user through entire process');
-        console.log('🌋 [0ms] volcano-audio v2.37 - Memory Leak Fixes');
-        console.log('🧹 [0ms] v2.37 Fix: Memory leak fixes - ResizeObserver cleanup, event listener accumulation prevention, setTimeout chain cleanup');
-        console.log('🧹 [0ms] v2.37 Fix: ResizeObserver in tutorial overlay now properly disconnected to prevent memory leaks');
-        console.log('🧹 [0ms] v2.37 Fix: Event listeners in spectrogram-renderer and keyboard-shortcuts now tracked and cleaned up');
-        console.log('🧹 [0ms] v2.37 Fix: setTimeout chains in waitForPlaybackResume now properly tracked and cleaned up');
-        console.log('🧹 [0ms] v2.37 Fix: Window properties cleaned up on tutorial completion');
-        console.log('🌋 [0ms] volcano-audio v2.36 - Tutorial System Refactoring with Async/Await');
-        console.log('🌋 [0ms] volcano-audio v2.43 - Auto-detect Environment & Force Study Mode Online');
-        console.log('🌐 [0ms] v2.43 Feat: Auto-detect local vs production - force STUDY mode online, allow mode switching locally');
-        console.log('🌋 [0ms] volcano-audio v2.42 - Begin Analysis Button with Sparkle Effect');
-        console.log('✨ [0ms] v2.42 Feat: Begin Analysis button with sparkle effect and confirmation modal - enables after data download, disables volcano switching after confirmation');
-        console.log('🎓 [0ms] v2.36 Refactor: Complete tutorial system refactored to use elegant async/await pattern with skippable waits');
-        console.log('🎓 [0ms] v2.36 Feat: Pause button tutorial now uses async/await - cleaner code, skippable waits, better flow');
-        console.log('🎓 [0ms] v2.36 Feat: Speed slider tutorial refactored to async/await - linear flow, skippable waits, dynamic speed updates');
-        console.log('🎓 [0ms] v2.36 Feat: Spectrogram explanation expanded - "This is a spectrogram of the data", time flow, frequency explanation');
-        console.log('🎓 [0ms] v2.36 Fix: Speed message updates dynamically without retyping - only speed value changes');
-        console.log('🎓 [0ms] v2.36 Fix: Emoji rendering fixed - proper Unicode handling prevents bullet rendering');
-        console.log('🎓 [0ms] v2.36 Fix: "Great!" message triggers immediately when crossing 1x speed threshold');
-        console.log('🌋 [0ms] volcano-audio v2.28 - Keyboard Shortcuts & Performance Optimizations');
-        console.log('⌨️ [0ms] v2.28 Feat: Added keyboard shortcuts - number keys (1-9) zoom/play regions, f key for features, r key to confirm region, c/v/b for frequency scales, Escape to zoom out');
-        console.log('⚡ [0ms] v2.28 Perf: Optimized color LUT - computed once and cached for reuse, faster spectrogram rendering');
-        console.log('⚡ [0ms] v2.28 Perf: Faster frequency scale transitions - axis ticks 400ms, spectrogram rendering starts immediately in parallel');
-        console.log('🧹 [0ms] v2.28 Cleanup: Commented out verbose console logs for cleaner console output');
-        console.log('🌋 [0ms] volcano-audio v2.27 - Feature Box Positioning & RAF Loop Fixes');
-        console.log('🔧 [0ms] v2.27 Fix: Feature box positioning - use direct zoom state instead of interpolated time range');
-        console.log('🔧 [0ms] v2.27 Fix: Infinite RAF loop - prevent multiple RAF loops when drawWaveformXAxis called from multiple places');
-        console.log('🌋 [0ms] volcano-audio v2.26 - Feature Persistence Proof of Concept');
-        console.log('📦 [0ms] v2.26 Proof of concept: Feature persistence - persistent DOM boxes on spectrogram using eternal coordinates');
-        console.log('🌋 [0ms] volcano-audio v2.24 - X-Axis Tick Improvements & Cache Fix');
-        console.log('🕐 [0ms] v2.24 Feat: Added 30-minute tick intervals for regions less than 6 hours');
-        console.log('🔧 [0ms] v2.24 Fix: Clear waveform cache immediately on resize to prevent stretching');
-        console.log('📏 [0ms] v2.24 Fix: Initialize maxCanvasWidth baseline (1200px) on page load for proper tick spacing');
-        console.log('🌋 [0ms] volcano-audio v2.22 - Master Pause Region Button Fix');
-        console.log('⏸️ [0ms] v2.22 Fix: Master pause button now toggles all region play buttons to red state');
-        console.log('🌋 [0ms] volcano-audio v2.18 - Zoom State Reset Fix');
-        console.log('🔄 [0ms] v2.18 Fix: Reset zoom state when loading new data - prevents playhead rendering issues when switching volcanoes while zoomed into a region');
-        console.log('🌋 [0ms] volcano-audio v2.17 - Spacebar Play/Pause Fix');
-        console.log('⌨️ [0ms] v2.17 Fix: Spacebar play/pause now mirrors button behavior exactly - removed auto-selection logic that was causing issues');
-        console.log('🌋 [0ms] volcano-audio v2.16 - Spectrogram Regions & Selections');
-        console.log('🎨 [0ms] v2.16 Feat: Spectrogram now shows regions and selections - lightweight blue highlights (15%/8% opacity) and yellow selection boxes (8%/35% opacity), fade out when zooming into regions');
-        console.log('🌋 [0ms] volcano-audio v2.15 - Waveform Zoom-Out & Zoom Button Click Fix');
-        console.log('🔍 [0ms] v2.15 Fix: Waveform zoom-out now uses cached full waveform (like spectrogram) for instant visual feedback');
-        console.log('🖱️ [0ms] v2.15 Fix: Zoom button clicks on canvas no longer trigger scrub preview/playhead');
-        console.log('🌋 [0ms] volcano-audio v2.10 - Hourglass Button Spacebar Fix');
-        console.log('⌨️ [0ms] v2.10 UI: Fixed hourglass button to allow spacebar play/pause after clicking - zoom buttons no longer capture spacebar');
-        console.log('🧹 [0ms] v2.09 Memory: Fixed ArrayBuffer retention by copying slices when storing in allReceivedData, clearing allReceivedData after stitching to break RAF closure chain');
-        console.log('🧹 [0ms] v2.08 Memory: Added page unload/visibility handlers to cancel RAF, improved modal cleanup, added cancelScaleTransitionRAF');
-        console.log('🎨 [0ms] v2.07 UI: Added 0.1Hz ticks at 10x speed, adjusted padding, semi-transparent dropdowns');
-        console.log('🔇 [0ms] Commented out worklet message logging to reduce console noise');
+        console.log('🌋 [0ms] solar-audio 1.0 - Solar Portal Mode & UI Updates');
+        console.log('📌 [0ms] Git commit: 1.0 Solar Portal Mode & UI Updates');
     }
     
     // Start memory health monitoring
@@ -1650,7 +1558,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (overlay) {
             overlay.style.display = 'flex';
             overlay.style.opacity = '1';
-            console.log('🌋 Volcano Audio - LIVE Production');
+            console.log('🌋 Solar Audio - LIVE Production');
         }
     }
     
@@ -2397,8 +2305,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     // 🔥 FIX: Use static imports instead of dynamic imports to prevent Context leaks
     // Dynamic imports create new Context instances each time, causing massive memory leaks
     // Since waveform-x-axis-renderer.js is already imported statically at the top, use it directly
-    if (!window._volcanoAudioCleanupHandlers) {
-        window._volcanoAudioCleanupHandlers = {};
+    if (!window._solarAudioCleanupHandlers) {
+        window._solarAudioCleanupHandlers = {};
         
         // Import only modules that aren't already statically imported
     import('./audio-player.js').then(audioPlayerModule => {
@@ -2417,7 +2325,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                     cleanupSpectrogramSelection();
                     cleanupKeyboardShortcuts();
                 };
-                window._volcanoAudioCleanupHandlers.cleanupOnUnload = cleanupOnUnload;
+                window._solarAudioCleanupHandlers.cleanupOnUnload = cleanupOnUnload;
             
                 // 🔥 FIX: Only set window.stopZoomTransition once to prevent function accumulation
                 // Use statically imported function instead of dynamic import
@@ -2427,18 +2335,18 @@ window.addEventListener('DOMContentLoaded', async () => {
             
                 // 🔥 FIX: Remove old listeners before adding new ones to prevent accumulation
                 // Use stored reference so removeEventListener can match
-                if (window._volcanoAudioCleanupHandlers.beforeunload) {
-                    window.removeEventListener('beforeunload', window._volcanoAudioCleanupHandlers.beforeunload);
+                if (window._solarAudioCleanupHandlers.beforeunload) {
+                    window.removeEventListener('beforeunload', window._solarAudioCleanupHandlers.beforeunload);
                 }
-                if (window._volcanoAudioCleanupHandlers.pagehide) {
-                    window.removeEventListener('pagehide', window._volcanoAudioCleanupHandlers.pagehide);
+                if (window._solarAudioCleanupHandlers.pagehide) {
+                    window.removeEventListener('pagehide', window._solarAudioCleanupHandlers.pagehide);
                 }
                 window.addEventListener('beforeunload', cleanupOnUnload);
-                window._volcanoAudioCleanupHandlers.beforeunload = cleanupOnUnload;
+                window._solarAudioCleanupHandlers.beforeunload = cleanupOnUnload;
                 
                 // Also handle pagehide (more reliable than beforeunload in some browsers)
                 window.addEventListener('pagehide', cleanupOnUnload);
-                window._volcanoAudioCleanupHandlers.pagehide = cleanupOnUnload;
+                window._solarAudioCleanupHandlers.pagehide = cleanupOnUnload;
                 
                 // 🔥 FIX: Store visibility change handler reference for cleanup
                 const visibilityChangeHandler = () => {
@@ -2464,11 +2372,11 @@ window.addEventListener('DOMContentLoaded', async () => {
                         }
                     }
                 };
-                if (window._volcanoAudioCleanupHandlers.visibilitychange) {
-                    document.removeEventListener('visibilitychange', window._volcanoAudioCleanupHandlers.visibilitychange);
+                if (window._solarAudioCleanupHandlers.visibilitychange) {
+                    document.removeEventListener('visibilitychange', window._solarAudioCleanupHandlers.visibilitychange);
                 }
                 document.addEventListener('visibilitychange', visibilityChangeHandler);
-                window._volcanoAudioCleanupHandlers.visibilitychange = visibilityChangeHandler;
+                window._solarAudioCleanupHandlers.visibilitychange = visibilityChangeHandler;
                 });
             });
     }

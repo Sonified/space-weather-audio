@@ -566,7 +566,7 @@ export function downloadAudio() {
     
     // Generate filename from metadata
     const metadata = State.currentMetadata;
-    let filename = 'volcano-audio';
+    let filename = 'solar-audio';
     if (metadata && metadata.network && metadata.station) {
         const startDate = new Date(metadata.starttime);
         const dateStr = startDate.toISOString().split('T')[0];

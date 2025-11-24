@@ -1,6 +1,6 @@
 /**
  * master-modes.js
- * Centralized mode management for volcano-audio
+ * Centralized mode management for solar-audio
  * Controls tutorial flow, surveys, and Qualtrics integration
  */
 
@@ -12,7 +12,7 @@
  *
  * PERSONAL: Skip tutorial, direct access to app
  * DEV: Current development environment with tutorial
- * PRODUCTION: Volcano Audio Study Live Interface - What users get when they show up
+ * PRODUCTION: Solar Audio Study Live Interface - What users get when they show up
  * STUDY_CLEAN: Same as PRODUCTION but resets all flags on each load (for testing first-time users)
  * STUDY_W2_S1: Week 2, Session 1 - Sets flags for returning user (W1 complete, starting W2S1)
  * STUDY_W2_S1_RETURNING: Week 2, Session 1 - Mid-session (already clicked Begin Analysis, simulates page refresh)
@@ -27,7 +27,8 @@ export const AppMode = {
     STUDY_W2_S1: 'study_w2_s1',  // Week 2, Session 1 - starting new session
     STUDY_W2_S1_RETURNING: 'study_w2_s1_returning',  // Week 2, Session 1 - mid-session (page refresh)
     STUDY_W2_S2: 'study_w2_s2',  // Week 2, Session 2
-    TUTORIAL_END: 'tutorial_end'
+    TUTORIAL_END: 'tutorial_end',
+    SOLAR_PORTAL: 'solar_portal'  // Solar Portal mode - participant setup only, no study workflow
 };
 
 /**
@@ -35,7 +36,7 @@ export const AppMode = {
  * 🎯 MODE SELECTION - Can be changed via UI dropdown or here
  * ═══════════════════════════════════════════════════════════
  */
-export const DEFAULT_MODE = AppMode.DEV; // Default if no localStorage selection
+export const DEFAULT_MODE = AppMode.PERSONAL; // Default if no localStorage selection
 
 /**
  * Detect if running locally vs production
@@ -66,13 +67,13 @@ if (storedMode === 'study') {
     }
 }
 
-// Production: Always force PRODUCTION mode (ignore localStorage)
+// Production: Always force PERSONAL mode (changed from PRODUCTION)
 // Local: Allow mode switching via localStorage or DEFAULT_MODE
 export const CURRENT_MODE = isLocalEnvironment()
     ? (storedMode && Object.values(AppMode).includes(storedMode) 
         ? storedMode 
         : DEFAULT_MODE)
-    : AppMode.PRODUCTION; // Force PRODUCTION mode for production
+    : AppMode.PERSONAL; // Force PERSONAL mode for production (was AppMode.PRODUCTION)
 
 /**
  * Mode Configuration
@@ -105,7 +106,7 @@ const MODE_CONFIG = {
     
     [AppMode.PRODUCTION]: {
         name: 'Production Mode',
-        description: 'Volcano Audio Study Live Interface',
+        description: 'Solar Audio Study Live Interface',
         skipTutorial: false,
         showPreSurveys: true,
         showPostSurveys: true,
@@ -236,6 +237,25 @@ const MODE_CONFIG = {
         showProgressIndicator: false,
         enforceSequence: false,
         runDebugJump: true  // Jump to last 2 tutorial messages on load
+    },
+    
+    [AppMode.SOLAR_PORTAL]: {
+        name: 'Solar Portal',
+        description: 'Participant setup only, no study workflow - Begin Analysis hidden, simulate panel hidden',
+        skipTutorial: true,
+        showPreSurveys: false,
+        showPostSurveys: false,
+        requireQualtricsSubmission: false,
+        enableAdminFeatures: true,
+        showSubmitButton: true, // For saving regions/features
+        autoStartPlayback: false,
+        // Solar Portal specific config
+        requireResponseId: false,
+        showProgressIndicator: false,
+        enforceSequence: false,
+        showParticipantSetup: true,  // Show participant setup on first visit
+        hideBeginAnalysisButton: true,  // Permanently hide Begin Analysis button
+        hideSimulatePanel: true  // Hide simulate panel at bottom
     }
 };
 

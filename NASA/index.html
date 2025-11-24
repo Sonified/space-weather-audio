@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PSP FIELDS Magnetometer Audio Player</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☀️</text></svg>">
     <style>
         * {
             margin: 0;
@@ -230,25 +231,45 @@
             </div>
             
             <div class="form-group">
-                <label for="startTime">Start Time (ISO format)</label>
-                <input 
-                    type="text" 
-                    id="startTime" 
-                    name="startTime" 
-                    value="2025-07-31T22:00:00Z"
-                    placeholder="2025-07-31T22:00:00Z"
-                >
+                <label for="startDate">Start Date & Time</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <input 
+                        type="date" 
+                        id="startDate" 
+                        name="startDate" 
+                        value="2025-07-31"
+                        max="2025-12-31"
+                        placeholder="YYYY-MM-DD"
+                    >
+                    <input 
+                        type="text" 
+                        id="startTime" 
+                        name="startTime" 
+                        value="22:00:00.000"
+                        placeholder="HH:MM:SS.mmm"
+                    >
+                </div>
             </div>
             
             <div class="form-group">
-                <label for="duration">Duration (minutes)</label>
-                <input 
-                    type="number" 
-                    id="duration" 
-                    name="duration" 
-                    value="10"
-                    min="1"
-                >
+                <label for="endDate">End Date & Time</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <input 
+                        type="date" 
+                        id="endDate" 
+                        name="endDate" 
+                        value="2025-07-31"
+                        max="2025-12-31"
+                        placeholder="YYYY-MM-DD"
+                    >
+                    <input 
+                        type="text" 
+                        id="endTime" 
+                        name="endTime" 
+                        value="22:10:00.000"
+                        placeholder="HH:MM:SS.mmm"
+                    >
+                </div>
             </div>
             
             <button type="submit" id="createBtn">
@@ -264,6 +285,14 @@
         
         <div class="audio-container" id="audioContainer">
             <h3>🎧 Audio Player</h3>
+            <div id="componentSelectorContainer" style="display: none; margin-bottom: 15px;">
+                <label for="componentSelector" style="display: block; margin-bottom: 8px; color: #333; font-weight: 500; font-size: 14px;">Component:</label>
+                <select id="componentSelector" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; background: white; cursor: pointer;">
+                    <option value="0">br (Radial)</option>
+                    <option value="1">bt (Tangential)</option>
+                    <option value="2">bn (Normal)</option>
+                </select>
+            </div>
             <audio id="audioPlayer" controls crossOrigin="anonymous"></audio>
             <div class="visualizer-container">
                 <div class="visualizer-label">Frequency Spectrum</div>
@@ -292,16 +321,58 @@
             ]
         };
         
-        // Dataset to component mapping
-        // Some datasets use br/bt/bn, others use different variable names
-        // Note: Wind datasets return 3 files per vector variable (x, y, z components)
-        // MMS returns 4 files per vector variable (x, y, z, magnitude)
+        // Dataset to component mapping for form selection
         const DATASET_COMPONENTS = {
             'PSP_FLD_L2_MAG_RTN': ['br', 'bt', 'bn'],
             'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC': ['br', 'bt', 'bn'],
             'WI_H2_MFI': ['BGSE', 'BGSM', 'BF1'], // BGSE/BGSM=3 files each (x,y,z), BF1=magnitude (1 file)
             'MMS1_FGM_SRVY_L2': ['mms1_fgm_b_gse_srvy_l2', 'mms1_fgm_b_gse_srvy_l2_clean', 'mms1_fgm_b_gsm_srvy_l2'],
             'MMS1_FGM_BRST_L2': ['mms1_fgm_b_gse_srvy_l2', 'mms1_fgm_b_gse_srvy_l2_clean', 'mms1_fgm_b_gsm_srvy_l2']
+        };
+        
+        // Dataset/variable to file labels mapping
+        // This maps what each file index represents when multiple files are returned
+        const FILE_LABELS = {
+            // PSP datasets return [br, bt, bn]
+            'PSP_FLD_L2_MAG_RTN': [
+                { code: 'br', label: 'br (Radial)' },
+                { code: 'bt', label: 'bt (Tangential)' },
+                { code: 'bn', label: 'bn (Normal)' }
+            ],
+            'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC': [
+                { code: 'br', label: 'br (Radial)' },
+                { code: 'bt', label: 'bt (Tangential)' },
+                { code: 'bn', label: 'bn (Normal)' }
+            ],
+            // Wind BGSE returns [x, y, z]
+            'WI_H2_MFI:BGSE': [
+                { code: 'x', label: 'X (GSE)' },
+                { code: 'y', label: 'Y (GSE)' },
+                { code: 'z', label: 'Z (GSE)' }
+            ],
+            // Wind BGSM returns [x, y, z]
+            'WI_H2_MFI:BGSM': [
+                { code: 'x', label: 'X (GSM)' },
+                { code: 'y', label: 'Y (GSM)' },
+                { code: 'z', label: 'Z (GSM)' }
+            ],
+            // Wind BF1 returns 1 file (magnitude only)
+            'WI_H2_MFI:BF1': [
+                { code: 'mag', label: 'Magnitude' }
+            ],
+            // MMS datasets return [x, y, z, magnitude]
+            'MMS1_FGM_SRVY_L2': [
+                { code: 'x', label: 'X (GSE)' },
+                { code: 'y', label: 'Y (GSE)' },
+                { code: 'z', label: 'Z (GSE)' },
+                { code: 'mag', label: 'Magnitude' }
+            ],
+            'MMS1_FGM_BRST_L2': [
+                { code: 'x', label: 'X (GSE)' },
+                { code: 'y', label: 'Y (GSE)' },
+                { code: 'z', label: 'Z (GSE)' },
+                { code: 'mag', label: 'Magnitude' }
+            ]
         };
         
         const form = document.getElementById('audioForm');
@@ -315,8 +386,15 @@
         const visualizerCtx = visualizerCanvas.getContext('2d');
         const spacecraftSelect = document.getElementById('spacecraft');
         const dataTypeSelect = document.getElementById('dataType');
-        
         const componentSelect = document.getElementById('component');
+        const componentSelectorContainer = document.getElementById('componentSelectorContainer');
+        const componentSelector = document.getElementById('componentSelector');
+        
+        // Store all audio file information for component switching
+        let allAudioFiles = []; // Array of file URLs
+        let allFileInfo = []; // Array of file info objects
+        let currentDataset = '';
+        let currentResult = null; // Store the full result for diagnostics updates
         
         // Update data type options when spacecraft changes
         spacecraftSelect.addEventListener('change', () => {
@@ -371,6 +449,72 @@
         // Initialize data types for default spacecraft
         spacecraftSelect.dispatchEvent(new Event('change'));
         
+        // Handle component selector change
+        componentSelector.addEventListener('change', (e) => {
+            const fileIndex = parseInt(e.target.value);
+            if (allAudioFiles.length > fileIndex && allFileInfo.length > fileIndex) {
+                const wasPlaying = !audioPlayer.paused;
+                const currentTime = audioPlayer.currentTime;
+                
+                // Update audio source
+                audioPlayer.pause();
+                audioPlayer.src = allAudioFiles[fileIndex];
+                audioPlayer.load();
+                
+                // Resume playback if it was playing
+                if (wasPlaying) {
+                    audioPlayer.currentTime = currentTime;
+                    audioPlayer.play().catch(err => {
+                        console.warn('Could not resume playback:', err);
+                    });
+                }
+                
+                // Update file info to reflect the new component/file
+                const selectedLabel = e.target.options[e.target.selectedIndex].text;
+                const fileInfoObj = allFileInfo[fileIndex];
+                
+                // Update the file info display with the new file's information
+                if (currentResult && fileInfoObj) {
+                    // Rebuild the file info section to avoid URL concatenation issues
+                    const info = fileInfoObj;
+                    const apiTime = ((currentResult.apiResponseTime - currentResult.requestStartTime) / 1000).toFixed(2);
+                    
+                    // Calculate file load time (use current time as approximation since we're switching)
+                    const fileLoadTime = '0.00'; // Approximate since we're switching files
+                    const totalTime = ((performance.now() - currentResult.requestStartTime) / 1000).toFixed(2);
+                    
+                    // Calculate transfer speed
+                    const transferSpeed = info.Length / 1000; // Approximate bytes per second
+                    
+                    let filesInfo = '';
+                    if (currentResult.totalFiles > 1) {
+                        filesInfo = `<br><strong>Note:</strong> ${currentResult.totalFiles} files created. `;
+                    }
+                    
+                    fileInfo.innerHTML = `
+                <strong>File Info:</strong><br>
+                Spacecraft: ${currentResult.spacecraft}<br>
+                Dataset: ${currentResult.dataset}<br>
+                Component: ${selectedLabel}<br>
+                Size: ${formatBytes(info.Length)}<br>
+                Format: ${info.MimeType}<br>
+                Time Range: ${info.StartTime} to ${info.EndTime}<br>
+                Duration: ${currentResult.durationMinutes} minutes${filesInfo}
+                <div class="diagnostics">
+                    <strong>Performance Diagnostics:</strong><br>
+                    API Response Time: ${apiTime} seconds<br>
+                    File Load Time: ${fileLoadTime} seconds<br>
+                    Total Time (Request → Ready): ${totalTime} seconds<br>
+                    Transfer Speed: ${formatSpeedMbps(transferSpeed)}<br>
+                </div>
+                <small style="color: #888; margin-top: 10px; display: block;">
+                    Audio URL: <a href="${allAudioFiles[fileIndex]}" target="_blank">${allAudioFiles[fileIndex]}</a>
+                </small>
+            `;
+                }
+            }
+        });
+        
         // Audio visualization setup
         let audioContext = null;
         let analyser = null;
@@ -400,23 +544,58 @@
             return cleaned;
         }
         
-        function calculateEndTime(startTime, durationMinutes) {
-            const start = new Date(startTime);
-            const end = new Date(start.getTime() + durationMinutes * 60000);
-            return end.toISOString();
+        // Intelligently parse time input - handles various formats:
+        // HH:MM:SS.mmm, HH:MM:SS, HH:MM, HH
+        function parseTimeInput(timeString) {
+            timeString = timeString.trim();
+            
+            // Split by colon
+            const parts = timeString.split(':');
+            
+            let hours = '00', minutes = '00', seconds = '00', milliseconds = '000';
+            
+            if (parts.length >= 1) {
+                hours = parts[0].padStart(2, '0');
+            }
+            if (parts.length >= 2) {
+                minutes = parts[1].padStart(2, '0');
+            }
+            if (parts.length >= 3) {
+                // Check if seconds has milliseconds (e.g., "30.500")
+                const secParts = parts[2].split('.');
+                seconds = secParts[0].padStart(2, '0');
+                if (secParts.length > 1) {
+                    milliseconds = secParts[1].padEnd(3, '0').substring(0, 3);
+                }
+            }
+            
+            return `${hours}:${minutes}:${seconds}.${milliseconds}`;
         }
         
-        async function createAudio(startTime, durationMinutes, dataset, component, spacecraft) {
+        // Combine date and time into ISO 8601 format
+        function combineDateTime(dateString, timeString) {
+            const parsedTime = parseTimeInput(timeString);
+            return `${dateString}T${parsedTime}Z`;
+        }
+        
+        async function createAudio(startTime, endTime, dataset, component, spacecraft) {
             const requestStartTime = performance.now(); // Record start time for diagnostics
-            
-            const endTime = calculateEndTime(startTime, durationMinutes);
             
             // Convert to basic ISO 8601 format (required by CDASWS)
             const startTimeBasic = toBasicISO8601(startTime);
             const endTimeBasic = toBasicISO8601(endTime);
             
-            // Use component directly (br, bt, bn) - tested and works
-            const variable = component;
+            // Determine the variable name based on dataset
+            // PSP datasets need the full vector variable name (returns 3 files: br, bt, bn)
+            // Wind and MMS use their component names directly
+            let variable;
+            if (dataset === 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC') {
+                variable = 'psp_fld_l2_mag_RTN_4_Sa_per_Cyc'; // Returns 3 files (br=0, bt=1, bn=2)
+            } else if (dataset === 'PSP_FLD_L2_MAG_RTN') {
+                variable = 'psp_fld_l2_mag_RTN'; // Returns 3 files (br=0, bt=1, bn=2)
+            } else {
+                variable = component; // Wind, MMS use component names directly
+            }
             
             // CDASWS REST API endpoint format:
             // /dataviews/{dataview}/datasets/{dataset}/data/{start-time},{stop-time}/{variables}?format=audio
@@ -446,12 +625,29 @@
                     throw new Error('No audio file created by CDASWS API');
                 }
                 
-                // Get the first audio file URL (for Wind datasets, there may be 3 files)
-                const audioFileUrl = result.FileDescription[0].Name;
-                const fileInfo = result.FileDescription[0];
+                // For PSP datasets, map component to file index (br=0, bt=1, bn=2)
+                // For Wind/MMS, the component selection determines which files are returned
+                let fileIndex = 0;
+                if (dataset === 'PSP_FLD_L2_MAG_RTN' || dataset === 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC') {
+                    // PSP returns 3 files: [br, bt, bn]
+                    const componentMap = { 'br': 0, 'bt': 1, 'bn': 2 };
+                    fileIndex = componentMap[component] || 0;
+                    if (fileIndex >= result.FileDescription.length) {
+                        fileIndex = 0; // Fallback to first file if index out of range
+                    }
+                }
+                
+                // Get the selected audio file URL
+                const audioFileUrl = result.FileDescription[fileIndex].Name;
+                const fileInfo = result.FileDescription[fileIndex];
                 const totalFiles = result.FileDescription.length;
                 
                 console.log('Audio file created:', audioFileUrl);
+                
+                // Calculate duration in minutes
+                const startDate = new Date(startTime);
+                const endDate = new Date(endTime);
+                const durationMinutes = Math.round((endDate - startDate) / 60000);
                 
                 return {
                     audioUrl: audioFileUrl,
@@ -694,12 +890,27 @@
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const startTime = document.getElementById('startTime').value.trim();
-            const durationMinutes = parseInt(document.getElementById('duration').value);
+            const startDate = document.getElementById('startDate').value.trim();
+            const startTimeInput = document.getElementById('startTime').value.trim();
+            const endDate = document.getElementById('endDate').value.trim();
+            const endTimeInput = document.getElementById('endTime').value.trim();
             
             // Validate inputs
-            if (!startTime || !durationMinutes || durationMinutes < 1) {
-                showError('Please provide valid start time and duration');
+            if (!startDate || !startTimeInput || !endDate || !endTimeInput) {
+                showError('Please provide all date and time fields');
+                return;
+            }
+            
+            // Combine into ISO 8601 format
+            const startTime = combineDateTime(startDate, startTimeInput);
+            const endTime = combineDateTime(endDate, endTimeInput);
+            
+            // Validate that end time is after start time
+            const startDateTime = new Date(startTime);
+            const endDateTime = new Date(endTime);
+            
+            if (endDateTime <= startDateTime) {
+                showError('End time must be after start time');
                 return;
             }
             
@@ -718,7 +929,7 @@
                 const dataset = document.getElementById('dataType').value;
                 const component = document.getElementById('component').value;
                 
-                const result = await createAudio(startTime, durationMinutes, dataset, component, spacecraft);
+                const result = await createAudio(startTime, endTime, dataset, component, spacecraft);
                 
                 // Track when audio file starts loading
                 const fileLoadStartTime = performance.now();
@@ -754,6 +965,55 @@
                 };
                 
                 audioPlayer.addEventListener('ended', handleEnded);
+                
+                // Store all audio files and current dataset for component switching
+                allAudioFiles = result.allFiles.map(file => file.Name);
+                allFileInfo = result.allFiles; // Store full file info objects
+                currentDataset = result.dataset;
+                currentResult = result; // Store full result for diagnostics
+                
+                // Determine file labels based on dataset and component
+                let fileLabels = [];
+                const lookupKey = `${result.dataset}:${result.component}`;
+                
+                // Try dataset-specific lookup with component
+                if (FILE_LABELS[lookupKey]) {
+                    fileLabels = FILE_LABELS[lookupKey];
+                }
+                // Try dataset-only lookup
+                else if (FILE_LABELS[result.dataset]) {
+                    fileLabels = FILE_LABELS[result.dataset];
+                }
+                // Fallback to generic labels
+                else if (result.totalFiles > 1) {
+                    fileLabels = result.allFiles.map((_, idx) => ({
+                        code: `file${idx}`,
+                        label: `File ${idx + 1}`
+                    }));
+                }
+                
+                // Show component selector if we have multiple files
+                if (result.totalFiles > 1 && fileLabels.length > 0) {
+                    // Populate selector with actual file labels
+                    componentSelector.innerHTML = '';
+                    fileLabels.forEach((labelInfo, idx) => {
+                        if (idx < result.totalFiles) { // Only show options for files that exist
+                            const option = document.createElement('option');
+                            option.value = idx;
+                            option.textContent = labelInfo.label;
+                            componentSelector.appendChild(option);
+                        }
+                    });
+                    
+                    // Set the initial selected component based on which file is playing
+                    const componentMap = { 'br': 0, 'bt': 1, 'bn': 2 };
+                    const initialIndex = componentMap[component] !== undefined ? componentMap[component] : 0;
+                    componentSelector.value = Math.min(initialIndex, result.totalFiles - 1);
+                    
+                    componentSelectorContainer.style.display = 'block';
+                } else {
+                    componentSelectorContainer.style.display = 'none';
+                }
                 
                 // Success - set audio player source (this triggers the load)
                 // Reset crossOrigin and src to ensure clean state
@@ -820,21 +1080,23 @@
             // Calculate transfer speed
             const transferSpeed = fileSizeBytes / (fileLoadCompleteTime - fileLoadStartTime) * 1000; // bytes per second
             
+            // Get the current component label from the selector if visible
+            let componentLabel = result.component;
+            if (componentSelectorContainer.style.display !== 'none' && componentSelector.selectedIndex >= 0) {
+                componentLabel = componentSelector.options[componentSelector.selectedIndex].text;
+            }
+            
             // Update the file info with complete diagnostics
             let filesInfo = '';
             if (result.totalFiles > 1) {
-                filesInfo = `<br><strong>Note:</strong> ${result.totalFiles} files created (playing first file). `;
-                filesInfo += `All files:<br>`;
-                result.allFiles.forEach((file, idx) => {
-                    filesInfo += `  ${idx + 1}. <a href="${file.Name}" target="_blank">File ${idx + 1}</a><br>`;
-                });
+                filesInfo = `<br><strong>Note:</strong> ${result.totalFiles} files created. `;
             }
             
             fileInfo.innerHTML = `
                 <strong>File Info:</strong><br>
                 Spacecraft: ${result.spacecraft}<br>
                 Dataset: ${result.dataset}<br>
-                Component: ${result.component}<br>
+                Component: ${componentLabel}<br>
                 Size: ${formatBytes(fileSizeBytes)}<br>
                 Format: ${info.MimeType}<br>
                 Time Range: ${info.StartTime} to ${info.EndTime}<br>

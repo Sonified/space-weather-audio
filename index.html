@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Volcano Audification Study</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌋</text></svg>">
+    <title>Solar Audio Study</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☀️</text></svg>">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
     <style>
@@ -23,8 +23,9 @@
                 <label for="modeSelector" style="font-size: 13px; font-weight: 600; color: #aaa; white-space: nowrap; user-select: none;">Mode:</label>
                 <select id="modeSelector" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer; min-width: 120px;">
                     <option value="production">🎓 Production</option>
-                    <option value="personal">👤 Personal</option>
-                    <option value="dev" selected>🔧 Dev</option>
+                    <option value="personal" selected>👤 Personal</option>
+                    <option value="dev">🔧 Dev</option>
+                    <option value="solar_portal">☀️ Solar Portal</option>
                     <option value="study_clean">🧹 Study Clean</option>
                     <option value="study_w2_s1">🔄 Study W2 S1</option>
                     <option value="study_w2_s1_returning">🔁 Study W2 S1 Returning</option>
@@ -32,11 +33,11 @@
                     <option value="tutorial_end">🎬 Tutorial End</option>
                 </select>
             </div>
-            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.88; color: #fff;">Volcano Audification Study</h1>
+            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.88; color: #fff;">Solar Audification Portal</h1>
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
                 <div id="participantIdDisplay" style="display: none; margin-bottom: 0;">
                     <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(100, 100, 100, 0.6); background: rgba(40, 40, 40, 0.4); transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
-                        Participant ID: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
+                        User ID: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
                     </span>
                 </div>
                 <button id="tutorialHelpBtn" type="button" style="margin-bottom: 0; width: 24px; height: 24px; border-radius: 50%; border: 1px solid #aaa; background: transparent; color: #aaa; cursor: pointer; font-size: 14px; font-weight: 600; padding: 0; display: none; align-items: center; justify-content: center; transition: all 0.2s;" title="Help - Revisit Tutorial">?</button>
@@ -252,7 +253,7 @@
         </div>
         
         <!-- Simulate Row -->
-        <div class="panel panel-simulate" style="padding: 15px 20px;">
+        <div class="panel panel-simulate" style="padding: 15px 20px; display: none;">
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                 <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Simulate:</label>
                 <button type="button" id="participantModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👤 Participant Setup</button>
