@@ -1527,41 +1527,55 @@ export function startFrequencySelection(regionIndex, featureIndex) {
 export async function handleSpectrogramSelection(startY, endY, canvasHeight, startX, endX, canvasWidth) {
     console.log('🟢 [DEBUG] HANDLE_SPECTROGRAM_SELECTION CALLED');
 
-    // 🎯 NEW ARCHITECTURE: Auto-determine which feature to fill in
-    // Find the active region and either use incomplete feature or create new one
-    const activeRegionIndex = getActiveRegionIndex();
-    if (activeRegionIndex === null) {
-        console.warn('⚠️ No active region - cannot create feature');
-        return;
-    }
-
+    let regionIndex;
+    let featureIndex;
     const regions = getCurrentRegions();
-    const region = regions[activeRegionIndex];
-    if (!region) {
-        console.warn('⚠️ Active region not found');
-        return;
-    }
 
-    // Find first incomplete feature, or we'll create a new one
-    let featureIndex = region.features.findIndex(feature =>
-        !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
-    );
+    // 🔥 FIX: Check if user explicitly clicked a button to reselect a specific feature
+    if (currentFrequencySelection) {
+        // User clicked a button - use that specific feature (reselection)
+        regionIndex = currentFrequencySelection.regionIndex;
+        featureIndex = currentFrequencySelection.featureIndex;
+        console.log(`🎯 Using explicit selection: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
 
-    // No incomplete features - create a new one
-    if (featureIndex === -1) {
-        const totalFeatures = getTotalFeatureCount();
-        if (region.featureCount >= MAX_FEATURES_PER_REGION || totalFeatures >= MAX_TOTAL_FEATURES) {
-            console.warn('⚠️ Cannot create feature - limit reached');
+        // Clear it so next draw creates a new feature (one-shot reselection)
+        currentFrequencySelection = null;
+        isSelectingFrequency = false;
+    } else {
+        // Auto-determine which feature to fill in
+        // Find the active region and either use incomplete feature or create new one
+        const activeRegionIndex = getActiveRegionIndex();
+        if (activeRegionIndex === null) {
+            console.warn('⚠️ No active region - cannot create feature');
             return;
         }
 
-        addFeature(activeRegionIndex);
-        featureIndex = region.features.length - 1; // New feature will be at the end (0-indexed)
+        const region = regions[activeRegionIndex];
+        if (!region) {
+            console.warn('⚠️ Active region not found');
+            return;
+        }
+
+        // Find first incomplete feature, or we'll create a new one
+        featureIndex = region.features.findIndex(feature =>
+            !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
+        );
+
+        // No incomplete features - create a new one
+        if (featureIndex === -1) {
+            const totalFeatures = getTotalFeatureCount();
+            if (region.featureCount >= MAX_FEATURES_PER_REGION || totalFeatures >= MAX_TOTAL_FEATURES) {
+                console.warn('⚠️ Cannot create feature - limit reached');
+                return;
+            }
+
+            addFeature(activeRegionIndex);
+            featureIndex = region.features.length - 1; // New feature will be at the end (0-indexed)
+        }
+
+        regionIndex = activeRegionIndex;
+        console.log(`🎯 Auto-selected feature: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
     }
-
-    const regionIndex = activeRegionIndex;
-
-    console.log(`🎯 Auto-selected feature: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
     
     console.log('🎯 ========== MOUSE UP: Feature Selection Complete ==========');
     console.log('📍 Canvas coordinates (pixels):', {
