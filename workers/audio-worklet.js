@@ -235,7 +235,10 @@ class SeismicProcessor extends AudioWorkletProcessor {
         // ✅ CRITICAL: Switch to seek threshold for future seeks/loops
         this.minBufferBeforePlay = this.minBufferBeforePlaySeek;
         
-        console.log(`🚀 WORKLET: Forced immediate start! minBuffer=0, hasStarted=true, isPlaying=true, switched to seek threshold (${this.minBufferBeforePlaySeek} samples)`);
+        // 🎚️ Start fade-in to prevent click at playback start
+        this.startFade(+1, this.fadeTimeMs);
+        
+        console.log(`🚀 WORKLET: Forced immediate start with ${this.fadeTimeMs}ms fade-in! minBuffer=0, hasStarted=true, isPlaying=true, switched to seek threshold (${this.minBufferBeforePlaySeek} samples)`);
     }
     
     markDataComplete(totalSamples) {

@@ -409,17 +409,11 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                 // Update playback state
                 State.setPlaybackState(PlaybackState.PLAYING);
                 
-                // Fade in audio
-                if (State.gainNode && State.audioContext) {
-                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                    State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                    State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
-                    State.gainNode.gain.exponentialRampToValueAtTime(
-                        Math.max(0.01, targetVolume),
-                        State.audioContext.currentTime + 0.05
-                    );
-                    console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
-                }
+                // Notify oscilloscope that playback started
+                const { setPlayingState } = await import('./oscilloscope-renderer.js');
+                setPlayingState(true);
+                
+                // Note: Fade-in is handled by worklet's startFade() in startImmediately()
                 
                 // Reset position tracking
                 State.setCurrentAudioPosition(0);
