@@ -384,6 +384,14 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         // Send samples to AudioWorklet for playback
         if (State.workletNode && State.audioContext) {
             console.log(`🔍 [PIPELINE] Sending samples to AudioWorklet: ${audioData.samples.length} samples`);
+            
+            // 🎚️ CRITICAL: Set first-play flag BEFORE sending samples
+            // This ensures auto-resume uses the long fade when it triggers
+            State.workletNode.port.postMessage({
+                type: 'set-first-play-flag'
+            });
+            console.log(`🎚️ PIPELINE: Set first-play flag BEFORE sending samples (for long fade-in)`);
+            
             const WORKLET_CHUNK_SIZE = 1024;
             State.setAllReceivedData([]);
             

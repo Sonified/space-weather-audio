@@ -101,7 +101,9 @@ class SeismicProcessor extends AudioWorkletProcessor {
         // 🎚️ FADE TIME SETTINGS (hard-coded for optimal performance)
         // All fades use 25ms (prevents clicks on initial playback)
         // Exception: Very short loops (<200ms) use 2ms to avoid fade artifacts
+        // Exception: First playback after data load uses 250ms to prevent massive click
         this.fadeTimeMs = 25;        // Hard-coded 25ms for all fades
+        this.firstPlayAfterDataLoad = false; // Track if this is first play after data load
     }
     
     initializePositionTracking() {
@@ -159,9 +161,17 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     this.isPlaying = true;
                     // If we're not already fading in, start a fade-in
                     if (!this.fadeState.isFading || this.fadeState.fadeDirection !== 1) {
-                        this.startFade(+1, this.fadeTimeMs);
+                        // Use LONG fade (250ms) for first play after data load, normal fade (25ms) otherwise
+                        const fadeTime = this.firstPlayAfterDataLoad ? 250 : this.fadeTimeMs;
+                        this.startFade(+1, fadeTime);
+                        
+                        if (this.firstPlayAfterDataLoad) {
+                            console.log(`🎚️ WORKLET: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
+                            this.firstPlayAfterDataLoad = false; // Clear flag after using it
+                        } else {
+                            if (DEBUG_MESSAGES) console.log(`▶️ WORKLET: Starting playback with ${fadeTime}ms fade-in`);
+                        }
                     }
-                    if (DEBUG_MESSAGES) console.log(`▶️ WORKLET: Starting playback with ${this.fadeTimeMs}ms fade-in`);
                 }
             } else if (type === 'pause') {
                 // 🏎️ AUTONOMOUS: Worklet decides how to pause based on current state
@@ -191,6 +201,10 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 this.setAntiAliasing(enabled);
             } else if (type === 'start-immediately') {
                 this.startImmediately();
+            } else if (type === 'set-first-play-flag') {
+                // 🎚️ Set flag for first play after data load (must happen BEFORE samples arrive!)
+                this.firstPlayAfterDataLoad = true;
+                console.log(`🎚️ WORKLET: First play flag set - next playback will use 250ms fade-in to prevent click`);
             } else if (type === 'data-complete') {
                 // 🔥 CRITICAL: Set actual sample rate from metadata!
                 if (event.data.sampleRate) {
@@ -236,9 +250,16 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.minBufferBeforePlay = this.minBufferBeforePlaySeek;
         
         // 🎚️ Start fade-in to prevent click at playback start
-        this.startFade(+1, this.fadeTimeMs);
+        // Use LONG fade (250ms) for first play after data load, normal fade (25ms) otherwise
+        const fadeTime = this.firstPlayAfterDataLoad ? 250 : this.fadeTimeMs;
+        this.startFade(+1, fadeTime);
         
-        console.log(`🚀 WORKLET: Forced immediate start with ${this.fadeTimeMs}ms fade-in! minBuffer=0, hasStarted=true, isPlaying=true, switched to seek threshold (${this.minBufferBeforePlaySeek} samples)`);
+        if (this.firstPlayAfterDataLoad) {
+            console.log(`🎚️ WORKLET: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
+            this.firstPlayAfterDataLoad = false; // Clear flag after using it
+        } else {
+            console.log(`🚀 WORKLET: Forced immediate start with ${fadeTime}ms fade-in! minBuffer=0, hasStarted=true, isPlaying=true`);
+        }
     }
     
     markDataComplete(totalSamples) {
@@ -469,8 +490,16 @@ class SeismicProcessor extends AudioWorkletProcessor {
             if (DEBUG_WORKLET) console.log(`🎵 WORKLET addSamples: Auto-resuming! samplesInBuffer=${this.samplesInBuffer}, minBuffer=${this.minBufferBeforePlay}`);
             this.isPlaying = true;
             // 🎯 Start fade-in for graceful resumption after buffer underrun
-            this.startFade(+1, this.fadeTimeMs);
-            if (DEBUG_WORKLET) console.log(`🎚️ WORKLET addSamples: Started fade-in for auto-resume`);
+            // Use LONG fade (250ms) for first play after data load, normal fade (25ms) otherwise
+            const fadeTime = this.firstPlayAfterDataLoad ? 250 : this.fadeTimeMs;
+            this.startFade(+1, fadeTime);
+            
+            if (this.firstPlayAfterDataLoad) {
+                console.log(`🎚️ WORKLET AUTO-RESUME: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
+                this.firstPlayAfterDataLoad = false; // Clear flag after using it
+            } else {
+                if (DEBUG_WORKLET) console.log(`🎚️ WORKLET addSamples: Started fade-in for auto-resume`);
+            }
         } else if (autoResume && !this.isPlaying) {
             if (DEBUG_WORKLET) console.log(`⏳ WORKLET addSamples: Buffering for auto-resume... samplesInBuffer=${this.samplesInBuffer}, need ${this.minBufferBeforePlay}`);
         }
