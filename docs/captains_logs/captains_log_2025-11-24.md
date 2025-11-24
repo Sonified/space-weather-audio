@@ -119,3 +119,35 @@
 - **Version**: v1.03
 - **Commit**: "v1.03 Fix: CDAWeb waveform rendering and audio playback"
 
+---
+
+## v1.04 - Fix: Download audio with correct 44.1kHz sample rate
+
+### Critical Audio Download Fix
+**WAV File Sample Rate**
+- Fixed downloaded WAV files using incorrect sample rate
+- Problem: Was using calculated spacecraft data rate (587 Hz) instead of audio sample rate
+- Solution: Hardcoded WAV file creation to use 44100 Hz (standard audio rate)
+- This matches the sample rate that AudioContext decodes CDAWeb files to
+- Affects both download buttons:
+  - `downloadBtn` (volcano/seismic data) - uses `audio-player.js`
+  - `downloadAudioBtn` (CDAWeb spacecraft data) - uses `main.js`
+
+### Code Cleanup
+**Download Function Consolidation**
+- Attempted to store original WAV blob from CDAWeb for direct download
+- Added `originalAudioBlob` to audio state
+- Modified `data-fetcher.js` to pass through original blob
+- Ultimately kept separate download implementations for different data sources
+
+### Files Modified
+- `js/main.js` - Updated CDAWeb download to use 44100 Hz, incremented version to 1.04
+- `js/audio-player.js` - Updated fallback download to use 44100 Hz
+- `js/audio-state.js` - Added `originalAudioBlob` state variable
+- `js/data-fetcher.js` - Added originalBlob to return object
+
+### Git Info
+- **Version**: v1.04
+- **Commit Hash**: f28be4d
+- **Commit**: "v1.04 Fix: Download audio with correct 44.1kHz sample rate"
+
