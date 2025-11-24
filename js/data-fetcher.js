@@ -304,6 +304,20 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         State.setOriginalDataFrequencyRange(audioData.originalDataFrequencyRange); // { min, max }
         State.setTotalAudioDuration(audioData.duration); // seconds
         
+        // 🎯 CDAWeb: Default to logarithmic scale for space physics data
+        // (unless user has explicitly changed it before)
+        const frequencyScaleSelect = document.getElementById('frequencyScale');
+        if (frequencyScaleSelect) {
+            // Only change if currently on default sqrt scale (not if user manually selected linear/log before)
+            const hasUserPreference = localStorage.getItem('frequencyScale') !== null;
+            if (!hasUserPreference || State.frequencyScale === 'sqrt') {
+                console.log('📊 CDAWeb data: Setting frequency scale to logarithmic (default for space physics)');
+                frequencyScaleSelect.value = 'logarithmic';
+                State.setFrequencyScale('logarithmic');
+                localStorage.setItem('frequencyScale', 'logarithmic');
+            }
+        }
+        
         // Initialize component selector if multiple files available
         console.log(`🔍 [COMPONENT SELECTOR] allFileUrls:`, audioData.allFileUrls);
         console.log(`🔍 [COMPONENT SELECTOR] Number of files: ${audioData.allFileUrls?.length || 0}`);

@@ -99,9 +99,9 @@ class SeismicProcessor extends AudioWorkletProcessor {
         };
         
         // 🎚️ FADE TIME SETTINGS (hard-coded for optimal performance)
-        // All fades use 5ms (works beautifully for all conditions!)
+        // All fades use 25ms (prevents clicks on initial playback)
         // Exception: Very short loops (<200ms) use 2ms to avoid fade artifacts
-        this.fadeTimeMs = 5;        // Hard-coded 5ms for all fades
+        this.fadeTimeMs = 25;        // Hard-coded 25ms for all fades
     }
     
     initializePositionTracking() {
@@ -346,9 +346,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.fadeState.fadeStartGain = direction === -1 ? 1.0 : 0.0001;
         this.fadeState.fadeEndGain = direction === -1 ? 0.0001 : 1.0;
         
-        // if (DEBUG_WORKLET) {
-        //     console.log(`🎚️ WORKLET FADE: ${direction === -1 ? 'OUT' : 'IN'} over ${durationMs}ms (${durationSamples} samples)`);
-        // }
+        console.log(`🎚️ WORKLET FADE: ${direction === -1 ? 'OUT' : 'IN'} over ${durationMs}ms (${durationSamples} samples), gain: ${this.fadeState.fadeStartGain} → ${this.fadeState.fadeEndGain}`);
     }
     
     // ===== FILTER MODULES =====
@@ -772,6 +770,12 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         const t = i / channel.length; // 0.0 to 1.0 across this quantum
                         const currentGain = fadeStartGainThisQuantum + 
                             (fadeEndGainThisQuantum - fadeStartGainThisQuantum) * t;
+                        
+                        // 🔍 DEBUG: Log fade application (first sample only to avoid spam)
+                        if (i === 0 && this.fadeState.fadeSamplesCurrent % 128 === 0) {
+                            console.log(`🎚️ FADE APPLYING: sample ${this.fadeState.fadeSamplesCurrent}/${this.fadeState.fadeSamplesTotal}, gain=${currentGain.toFixed(4)}`);
+                        }
+                        
                         sample *= currentGain;
                     }
                     

@@ -375,7 +375,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false) {
             const frequency = (binIndex / totalBins) * originalNyquist;
             
             if (State.frequencyScale === 'logarithmic') {
-                const minFreq = 0.1;
+                const minFreq = 0.5; // CDAWeb: Start at 0.5 Hz
                 const freqSafe = Math.max(frequency, minFreq);
                 const logMin = Math.log10(minFreq);
                 const logMax = Math.log10(originalNyquist);
@@ -1306,7 +1306,7 @@ function calculateStretchFactor(playbackRate, frequencyScale) {
     } else if (frequencyScale === 'logarithmic') {
         const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
         const originalNyquist = originalSampleRate / 2;
-        const minFreq = 0.1;
+        const minFreq = 0.5; // CDAWeb: Start at 0.5 Hz
         
         const logMin = Math.log10(minFreq);
         const logMax = Math.log10(originalNyquist);
@@ -1871,7 +1871,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             const frequency = (binIndex / totalBins) * originalNyquist;
             
             if (State.frequencyScale === 'logarithmic') {
-                const minFreq = 0.1;
+                const minFreq = 0.5; // CDAWeb: Start at 0.5 Hz
                 const freqSafe = Math.max(frequency, minFreq);
                 const logMin = Math.log10(minFreq);
                 const logMax = Math.log10(originalNyquist);

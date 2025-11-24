@@ -1731,7 +1731,7 @@ function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1
         // 🦋 LOGARITHMIC: The axis does NOT scale input freq by playbackRate!
         // It calculates position at 1x, then stretches the POSITION
         // So inverse: unstretched position → original frequency (no playback division!)
-        const minFreq = 0.1;
+        const minFreq = 0.5; // CDAWeb: Start at 0.5 Hz
         const logMin = Math.log10(minFreq);
         const logMax = Math.log10(maxFreq); // FIXED: use original Nyquist
 
