@@ -1812,7 +1812,7 @@ export function openParticipantModal() {
             modalTitle.textContent = "Welcome!";
         }
         if (instructionText) {
-            instructionText.textContent = "Your participant ID is stored.";
+            instructionText.textContent = "Enter your user name below:";
             instructionText.style.fontWeight = 'normal'; // Remove bold styling for confirmation message
         }
     } else if (hasExistingId && idFromQualtrics) {
@@ -2505,7 +2505,7 @@ export function submitParticipantSetup() {
     
     const statusEl = document.getElementById('status');
     statusEl.className = 'status success';
-    statusEl.textContent = `✅ ID recorded`;
+    statusEl.textContent = `✅ User Name Recorded`;
     
     // Update participant ID display in top panel
     // Always show the display (even if no ID set) so users can click to enter their ID

@@ -355,7 +355,6 @@ export function createParticipantModal() {
                     <input type="text" id="participantId" placeholder="Enter participant identifier" style="font-size: 18px;">
                 </div>
                 <button type="button" class="modal-submit" disabled>✓ Confirm</button>
-                <p style="margin-top: 18px; margin-bottom: 0; color: #555; font-size: 18px; text-align: center;">Not look right? Email: leif@uoregon.edu</p>
             </div>
         </div>
     `;
