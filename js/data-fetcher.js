@@ -205,6 +205,7 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
             duration: audioBuffer.duration, // Audio duration in seconds
             startTime: startDate,
             endTime: endDate,
+            originalSamplingRate: originalSamplingRate, // Original data sampling rate (Hz)
             originalDataFrequencyRange: {
                 min: 0,
                 max: originalNyquistFrequency
@@ -249,13 +250,26 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         const audioData = await fetchCDAWebAudio(spacecraft, dataset, startTimeISO, endTimeISO);
         
         console.log(`✅ ${logTime()} Audio decoded: ${audioData.numSamples.toLocaleString()} samples, ${audioData.duration.toFixed(2)}s`);
+        console.log(`🔍 [PIPELINE] Samples array type: ${audioData.samples?.constructor?.name}, length: ${audioData.samples?.length}, originalSamplingRate: ${audioData.originalSamplingRate}`);
+        
+        // Set metadata (needed by waveform renderer)
+        State.setCurrentMetadata({
+            original_sample_rate: audioData.originalSamplingRate,
+            spacecraft: spacecraft,
+            dataset: dataset,
+            startTime: startTimeISO,
+            endTime: endTimeISO
+        });
+        console.log(`🔍 [PIPELINE] Metadata set: original_sample_rate=${State.currentMetadata?.original_sample_rate}`);
         
         // Set state variables (matching the old pattern)
         State.setCompleteSamplesArray(audioData.samples); // Float32Array, already normalized
+        console.log(`🔍 [PIPELINE] State.completeSamplesArray set: length=${State.completeSamplesArray?.length}, type=${State.completeSamplesArray?.constructor?.name}`);
         State.setDataStartTime(audioData.startTime); // UTC Date object
         State.setDataEndTime(audioData.endTime); // UTC Date object
         State.setOriginalDataFrequencyRange(audioData.originalDataFrequencyRange); // { min, max }
         State.setTotalAudioDuration(audioData.duration); // seconds
+        console.log(`🔍 [PIPELINE] State.totalAudioDuration set: ${State.totalAudioDuration}s`);
         
         // Set playback duration (for UI display)
         State.setPlaybackDurationSeconds(audioData.duration);
@@ -264,6 +278,19 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         // Enable Begin Analysis/Complete button after data loads (skip during tutorial)
         if (!isTutorialActive()) {
             updateCompleteButtonState();
+        }
+        
+        // Send samples to waveform worker BEFORE building waveform
+        console.log(`🔍 [PIPELINE] Sending samples to waveform worker: ${audioData.samples.length} samples`);
+        if (State.waveformWorker) {
+            State.waveformWorker.postMessage({
+                type: 'add-samples',
+                samples: audioData.samples,
+                rawSamples: audioData.samples // For CDAWeb, samples are already normalized, use same for raw
+            });
+            console.log(`🔍 [PIPELINE] Samples sent to waveform worker`);
+        } else {
+            console.error(`❌ [PIPELINE] Cannot send samples: State.waveformWorker is null!`);
         }
         
         // Draw waveform
@@ -286,6 +313,47 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         
         // Load regions after data fetch (if any)
         await loadRegionsAfterDataFetch();
+        
+        // Send samples to AudioWorklet for playback
+        if (State.workletNode && State.audioContext) {
+            console.log(`🔍 [PIPELINE] Sending samples to AudioWorklet: ${audioData.samples.length} samples`);
+            const WORKLET_CHUNK_SIZE = 1024;
+            State.setAllReceivedData([]);
+            
+            for (let i = 0; i < audioData.samples.length; i += WORKLET_CHUNK_SIZE) {
+                const chunkSize = Math.min(WORKLET_CHUNK_SIZE, audioData.samples.length - i);
+                // Copy slice to new ArrayBuffer for independent GC
+                const slice = audioData.samples.slice(i, i + chunkSize);
+                const chunk = new Float32Array(slice);
+                
+                State.workletNode.port.postMessage({
+                    type: 'audio-data',
+                    data: chunk,
+                    autoResume: true
+                });
+                
+                State.allReceivedData.push(chunk);
+            }
+            
+            console.log(`🔍 [PIPELINE] Sent ${State.allReceivedData.length} chunks to AudioWorklet`);
+            
+            // Send data-complete message with sample rate
+            State.workletNode.port.postMessage({
+                type: 'data-complete',
+                totalSamples: audioData.samples.length,
+                sampleRate: audioData.originalSamplingRate // Original data sample rate, not audio sample rate
+            });
+            
+            console.log(`🔍 [PIPELINE] Sent data-complete: totalSamples=${audioData.samples.length}, sampleRate=${audioData.originalSamplingRate}`);
+            
+            // Initialize zoom state with total sample count
+            zoomState.initialize(audioData.samples.length);
+            
+            // Update playback speed (needed for worklet)
+            updatePlaybackSpeed();
+        } else {
+            console.warn(`⚠️ [PIPELINE] Cannot send samples to worklet: workletNode=${!!State.workletNode}, audioContext=${!!State.audioContext}`);
+        }
         
         console.log(`✅ ${logTime()} CDAWeb data loaded and visualized!`);
         

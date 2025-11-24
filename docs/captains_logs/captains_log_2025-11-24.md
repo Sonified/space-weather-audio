@@ -82,3 +82,40 @@
 - **Version**: v1.02
 - **Commit**: "v1.02 Refactor: main.js loading fixes"
 
+---
+
+## v1.03 - Fix: CDAWeb waveform rendering and audio playback
+
+### Critical Fixes
+**CDAWeb Data Pipeline**
+- Fixed waveform not rendering for CDAWeb data:
+  - Added sending samples to waveform worker via `add-samples` message
+  - Fixed missing `State.currentMetadata` setting (needed by waveform renderer)
+  - Added dynamic calculation and storage of `originalSamplingRate` from time span and sample count
+- Fixed audio playback not working:
+  - Added `initAudioWorklet()` call before CDAWeb data fetch
+  - Added sending samples to AudioWorklet in 1024-sample chunks
+  - Added `data-complete` message with correct original sample rate
+  - Added zoom state initialization for proper seeking
+- Fixed region tracker looking for old "volcano" element:
+  - Updated all `volcano` references to `spacecraft` in `region-tracker.js`
+  - Renamed `getCurrentVolcano()` to `getCurrentSpacecraft()`
+  - Updated all internal variables: `currentVolcano` → `currentSpacecraft`, `regionsByVolcano` → `regionsBySpacecraft`
+
+### Debugging Improvements
+- Added comprehensive logging throughout data pipeline:
+  - Pipeline logging: `🔍 [PIPELINE]` prefix for main thread operations
+  - Worker logging: `🔍 [WORKER]` prefix for waveform worker operations
+  - Tracks: data loading, state setting, worker communication, rendering
+
+### Files Modified
+- `js/data-fetcher.js` - Added metadata setting, sample sending to workers, audio worklet initialization
+- `js/main.js` - Added `initAudioWorklet()` call for CDAWeb path
+- `js/region-tracker.js` - Updated all volcano references to spacecraft
+- `js/waveform-renderer.js` - Added pipeline logging
+- `workers/waveform-worker.js` - Added worker logging
+
+### Git Info
+- **Version**: v1.03
+- **Commit**: "v1.03 Fix: CDAWeb waveform rendering and audio playback"
+

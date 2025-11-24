@@ -60,24 +60,24 @@ function safeIsStudyMode() {
     }
 }
 
-console.log('🟡 Defined safeIsStudyMode');
+// console.log('🟡 Defined safeIsStudyMode');
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 // See data-fetcher.js for centralized flags documentation
 const DEBUG_CHUNKS = false;
 
-console.log('🟡 Set DEBUG_CHUNKS');
+// console.log('🟡 Set DEBUG_CHUNKS');
 
 // 🧹 MEMORY LEAK FIX: Use event listeners instead of window.* assignments
 // This prevents closure memory leaks by avoiding permanent window references
 // that capture entire module scopes including State with all audio data
 
-console.log('🟡 About to define forceIrisFetch');
+// console.log('🟡 About to define forceIrisFetch');
 
 // Force IRIS fetch state
 let forceIrisFetch = false;
 
-console.log('🟡 About to define toggleForceIris');
+// console.log('🟡 About to define toggleForceIris');
 
 // Toggle Force IRIS fetch mode
 function toggleForceIris() {
@@ -96,7 +96,7 @@ function toggleForceIris() {
     }
 }
 
-console.log('🟢 After toggleForceIris');
+// console.log('🟢 After toggleForceIris');
 
 // Helper function to calculate slider value for 1.0x speed
 function calculateSliderForSpeed(targetSpeed) {
@@ -109,7 +109,7 @@ function calculateSliderForSpeed(targetSpeed) {
     }
 }
 
-console.log('🟢 After calculateSliderForSpeed');
+// console.log('🟢 After calculateSliderForSpeed');
 
 // Helper functions
 function formatDuration(seconds) {
@@ -118,7 +118,7 @@ function formatDuration(seconds) {
     return `${minutes}m ${secs}s`;
 }
 
-console.log('🟢 After formatDuration');
+// console.log('🟢 After formatDuration');
 
 function updateCurrentPositionFromSamples(samplesConsumed, totalSamples) {
     // 🔥 FIX: Check document connection first to prevent detached document leaks
@@ -165,7 +165,7 @@ function stopPositionTracking() {
     }
 }
 
-console.log('🟢 After stopPositionTracking - LINE 170');
+// console.log('🟢 After stopPositionTracking - LINE 170');
 
 // Oscilloscope data collection state
 let oscilloscopeRAF = null;
@@ -522,7 +522,7 @@ export async function initAudioWorklet() {
     // startVisualization();
 }
 
-console.log('🟢 LINE 523 - After initAudioWorklet function');
+// console.log('🟢 LINE 523 - After initAudioWorklet function');
 
 // Main streaming function
 export async function startStreaming(event) {
@@ -586,6 +586,9 @@ export async function startStreaming(event) {
         
         State.setIsShowingFinalWaveform(false);
         
+        // Initialize audio worklet for playback
+        await initAudioWorklet();
+        
         window.streamingStartTime = performance.now();
         const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
         
@@ -646,7 +649,7 @@ export async function startStreaming(event) {
     }
 }
 
-console.log('🟢 LINE 630 - After startStreaming function');
+// console.log('🟢 LINE 630 - After startStreaming function');
 
 // LEGACY CODE REMOVED - old volcano fetching system replaced with CDAWeb
 // See git history for reference if needed
@@ -665,7 +668,7 @@ async function updateParticipantIdDisplay() {
     if (valueElement) valueElement.textContent = participantId || '--';
 }
 
-console.log('🟢 LINE 650 - After startStreaming function');
+// console.log('🟢 LINE 650 - After startStreaming function');
 
 // ═══════════════════════════════════════════════════════════
 // 🎯 MODE INITIALIZATION FUNCTIONS
@@ -721,14 +724,14 @@ async function initializeSolarPortalMode() {
     const completeBtn = document.getElementById('completeBtn');
     if (completeBtn) {
         completeBtn.style.display = 'none';
-        console.log('✅ Begin Analysis button hidden');
+        // console.log('✅ Begin Analysis button hidden');
     }
     
     // Hide simulate panel
     const simulatePanel = document.querySelector('.panel-simulate');
     if (simulatePanel) {
         simulatePanel.style.display = 'none';
-        console.log('✅ Simulate panel hidden');
+        // console.log('✅ Simulate panel hidden');
     }
     
     // Set tutorial flags (skip tutorial, go straight to analysis)
@@ -874,7 +877,7 @@ function updateVolcanoDropdownLabels(loadedVolcano, selectedVolcano) {
     });
 }
 
-console.log('🟢 REACHED LINE 1289 - About to define initialization');
+// console.log('🟢 REACHED LINE 1289 - About to define initialization');
 
 // Check if main.js is loading
 console.log('🚀 main.js is loading...');
@@ -883,7 +886,7 @@ console.log('📍 Document ready state:', document.readyState);
 // Main initialization function
 async function initializeMainApp() {
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('🌋 SOLAR AUDIFICATION PORTAL - INITIALIZING!');
+    console.log('☀️ SOLAR AUDIFICATION PORTAL - INITIALIZING!');
     console.log('═══════════════════════════════════════════════════════════');
     
     console.log('🟢 Inside initializeMainApp - LINE 1300');
@@ -1169,8 +1172,8 @@ async function initializeMainApp() {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] solar-audio 1.02 - Refactor: main.js loading fixes');
-        console.log('📌 [0ms] Git commit: v1.02 Refactor: main.js loading fixes');
+        console.log('🌋 [0ms] solar-audio 1.03 - Fix: CDAWeb waveform rendering and audio playback');
+        console.log('📌 [0ms] Git commit: v1.03 Fix: CDAWeb waveform rendering and audio playback');
     }
     
     // Start memory health monitoring
@@ -1250,8 +1253,8 @@ async function initializeMainApp() {
         await initializeApp();
         
         console.log('═══════════════════════════════════════════════════════════');
-        console.log('✅ App ready - v1.02 (2025-11-24)');
-        console.log('📋 Commit: v1.02 Refactor: main.js loading fixes');
+        console.log('✅ App ready - v1.03 (2025-11-24)');
+        console.log('📋 Commit: v1.03 Fix: CDAWeb waveform rendering and audio playback');
         console.log('═══════════════════════════════════════════════════════════');
         
         // Load recent searches

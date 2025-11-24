@@ -26,10 +26,10 @@ import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
 import { isStudyMode, isTutorialEndMode } from './master-modes.js';
 import { hasSeenTutorial } from './study-workflow.js';
 
-// Region data structure - stored per volcano
-// Map<volcanoName, regions[]>
-let regionsByVolcano = new Map();
-let currentVolcano = null;
+// Region data structure - stored per spacecraft
+// Map<spacecraftName, regions[]>
+let regionsBySpacecraft = new Map();
+let currentSpacecraft = null;
 let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
 let regionsDelayedForCrossfade = false; // Flag to track if regions are waiting for crossfade to complete
@@ -44,11 +44,11 @@ const STORAGE_KEY_PREFIX = 'solar_audio_regions_';
 // This ensures positions are always fresh and immune to resize timing, DPR changes, etc.
 
 /**
- * Get the current volcano from the UI
+ * Get the current spacecraft from the UI
  */
-function getCurrentVolcano() {
-    const volcanoSelect = document.getElementById('volcano');
-    return volcanoSelect ? volcanoSelect.value : null;
+function getCurrentSpacecraft() {
+    const spacecraftSelect = document.getElementById('spacecraft');
+    return spacecraftSelect ? spacecraftSelect.value : null;
 }
 
 /**
@@ -78,31 +78,31 @@ function getCurrentSpeedFactor() {
 }
 
 /**
- * Get regions for the current volcano
- * Uses currentVolcano if set, otherwise reads from UI
+ * Get regions for the current spacecraft
+ * Uses currentSpacecraft if set, otherwise reads from UI
  */
 export function getCurrentRegions() {
-    // Use currentVolcano if available (more reliable during volcano switches)
+    // Use currentSpacecraft if available (more reliable during spacecraft switches)
     // Otherwise fall back to reading from UI
-    const volcano = currentVolcano || getCurrentVolcano();
-    if (!volcano) {
+    const spacecraft = currentSpacecraft || getCurrentSpacecraft();
+    if (!spacecraft) {
         return [];
     }
-    if (!regionsByVolcano.has(volcano)) {
-        regionsByVolcano.set(volcano, []);
+    if (!regionsBySpacecraft.has(spacecraft)) {
+        regionsBySpacecraft.set(spacecraft, []);
     }
-    return regionsByVolcano.get(volcano);
+    return regionsBySpacecraft.get(spacecraft);
 }
 
 /**
  * Save regions to localStorage (persists across page reloads)
  * Merges new regions with existing ones to preserve regions from different time ranges
  */
-function saveRegionsToStorage(volcano, regions) {
-    if (!volcano) return;
+function saveRegionsToStorage(spacecraft, regions) {
+    if (!spacecraft) return;
     
     try {
-        const storageKey = STORAGE_KEY_PREFIX + volcano;
+        const storageKey = STORAGE_KEY_PREFIX + spacecraft;
         
         // Load existing regions from localStorage
         let existingRegions = [];
@@ -148,7 +148,7 @@ function saveRegionsToStorage(volcano, regions) {
         
         // Save merged regions
         const dataToSave = {
-            volcano: volcano,
+            spacecraft: spacecraft,
             regions: mergedRegions,
             savedAt: new Date().toISOString()
         };
@@ -156,7 +156,7 @@ function saveRegionsToStorage(volcano, regions) {
         
         const addedCount = regions.length;
         const totalCount = mergedRegions.length;
-        console.log(`💾 Saved ${addedCount} region(s) for ${volcano} to localStorage (total: ${totalCount} regions preserved)`);
+        console.log(`💾 Saved ${addedCount} region(s) for ${spacecraft} to localStorage (total: ${totalCount} regions preserved)`);
     } catch (error) {
         console.error('❌ Failed to save regions to localStorage:', error);
         // localStorage might be full or disabled - continue without persistence
@@ -167,11 +167,11 @@ function saveRegionsToStorage(volcano, regions) {
  * Load regions from localStorage (restores after page reload)
  * Filters out regions that fall outside the current time range
  */
-function loadRegionsFromStorage(volcano) {
-    if (!volcano) return null;
+function loadRegionsFromStorage(spacecraft) {
+    if (!spacecraft) return null;
     
     try {
-        const storageKey = STORAGE_KEY_PREFIX + volcano;
+        const storageKey = STORAGE_KEY_PREFIX + spacecraft;
         const stored = localStorage.getItem(storageKey);
         
         if (!stored) {
@@ -243,13 +243,13 @@ function loadRegionsFromStorage(volcano) {
                 });
                 
                 if (filteredRegions.length !== data.regions.length) {
-                    console.log(`📂 Loaded ${data.regions.length} regions for ${volcano} from localStorage, filtered to ${filteredRegions.length} within time range`);
+                    console.log(`📂 Loaded ${data.regions.length} regions for ${spacecraft} from localStorage, filtered to ${filteredRegions.length} within time range`);
                 } else {
-                    console.log(`📂 Loaded ${data.regions.length} regions for ${volcano} from localStorage`);
+                    console.log(`📂 Loaded ${data.regions.length} regions for ${spacecraft} from localStorage`);
                 }
             } else {
                 // No time range available yet - don't load regions
-                console.log(`📂 Skipping region load for ${volcano} - time range not available yet`);
+                console.log(`📂 Skipping region load for ${spacecraft} - time range not available yet`);
                 return null;
             }
             
@@ -263,50 +263,50 @@ function loadRegionsFromStorage(volcano) {
 }
 
 /**
- * Set regions for the current volcano
- * Uses currentVolcano if set, otherwise reads from UI
+ * Set regions for the current spacecraft
+ * Uses currentSpacecraft if set, otherwise reads from UI
  * Also saves to localStorage for persistence
  */
 function setCurrentRegions(newRegions) {
-    // Use currentVolcano if available (more reliable during volcano switches)
+    // Use currentSpacecraft if available (more reliable during spacecraft switches)
     // Otherwise fall back to reading from UI
-    const volcano = currentVolcano || getCurrentVolcano();
-    if (!volcano) {
+    const spacecraft = currentSpacecraft || getCurrentSpacecraft();
+    if (!spacecraft) {
         return;
     }
-    regionsByVolcano.set(volcano, newRegions);
+    regionsBySpacecraft.set(spacecraft, newRegions);
     
     // ✅ Save to localStorage for persistence (includes notes!)
-    saveRegionsToStorage(volcano, newRegions);
+    saveRegionsToStorage(spacecraft, newRegions);
 }
 
 /**
- * Switch to a different volcano's regions
- * Called when volcano selection changes
- * Note: This is called AFTER the UI select has already changed to the new volcano
- * @param {string} newVolcano - The volcano to switch to
+ * Switch to a different spacecraft's regions
+ * Called when spacecraft selection changes
+ * Note: This is called AFTER the UI select has already changed to the new spacecraft
+ * @param {string} newSpacecraft - The spacecraft to switch to
  * @param {boolean} delayRender - If true, don't render regions immediately (wait for crossfade)
  */
-export function switchVolcanoRegions(newVolcano, delayRender = false) {
-    if (!newVolcano) {
-        console.warn('⚠️ Cannot switch: no volcano specified');
+export function switchVolcanoRegions(newSpacecraft, delayRender = false) {
+    if (!newSpacecraft) {
+        console.warn('⚠️ Cannot switch: no spacecraft specified');
         return;
     }
     
-    // Save current regions before switching (if we have a current volcano and it's different)
-    // Since getCurrentRegions() now uses currentVolcano when available, we can safely get the old volcano's regions
-    if (currentVolcano && currentVolcano !== newVolcano) {
-        // Get the current regions (for the old volcano) and save them
+    // Save current regions before switching (if we have a current spacecraft and it's different)
+    // Since getCurrentRegions() now uses currentSpacecraft when available, we can safely get the old spacecraft's regions
+    if (currentSpacecraft && currentSpacecraft !== newSpacecraft) {
+        // Get the current regions (for the old spacecraft) and save them
         const oldRegions = getCurrentRegions();
-        regionsByVolcano.set(currentVolcano, oldRegions);
+        regionsBySpacecraft.set(currentSpacecraft, oldRegions);
     }
     
-    // Clear active region indices when switching volcanoes
+    // Clear active region indices when switching spacecraft
     activeRegionIndex = null;
     activePlayingRegionIndex = null;
     
-    // Clear selection state when switching volcanoes (selections should NOT persist)
-    // Only regions are saved per volcano, not selections
+    // Clear selection state when switching spacecraft (selections should NOT persist)
+    // Only regions are saved per spacecraft, not selections
     State.setSelectionStart(null);
     State.setSelectionEnd(null);
     State.setSelectionStartX(null);
@@ -314,14 +314,14 @@ export function switchVolcanoRegions(newVolcano, delayRender = false) {
     hideAddRegionButton();
     updateWorkletSelection(); // Clear selection in worklet
     
-    // Update current volcano
-    currentVolcano = newVolcano;
+    // Update current spacecraft
+    currentSpacecraft = newSpacecraft;
     
-    // Initialize empty array for new volcano (regions will be loaded AFTER Fetch Data is clicked)
+    // Initialize empty array for new spacecraft (regions will be loaded AFTER Fetch Data is clicked)
     // Don't load regions here - they should only load after data fetch completes
-    if (!regionsByVolcano.has(newVolcano)) {
-        regionsByVolcano.set(newVolcano, []);
-        console.log(`📂 Initialized empty region array for ${newVolcano} (will load after Fetch Data)`);
+    if (!regionsBySpacecraft.has(newSpacecraft)) {
+        regionsBySpacecraft.set(newSpacecraft, []);
+        console.log(`📂 Initialized empty region array for ${newSpacecraft} (will load after Fetch Data)`);
     }
     
     // 🔧 FIX: Delay region rendering until waveform crossfade completes
@@ -331,7 +331,7 @@ export function switchVolcanoRegions(newVolcano, delayRender = false) {
         regionsDelayedForCrossfade = true;
         console.log('⏳ Delaying region rendering until waveform crossfade completes');
     } else {
-        // Re-render regions for the new volcano (will be empty until data is fetched)
+        // Re-render regions for the new spacecraft (will be empty until data is fetched)
         renderRegions();
         
         // Clear canvas feature boxes (no regions loaded yet)
@@ -345,13 +345,13 @@ export function switchVolcanoRegions(newVolcano, delayRender = false) {
     }
     
     if (!isStudyMode()) {
-        console.log(`🌋 Switched to volcano: ${newVolcano} (${regionsByVolcano.get(newVolcano).length} regions)`);
+        console.log(`🌋 Switched to spacecraft: ${newSpacecraft} (${regionsBySpacecraft.get(newSpacecraft).length} regions)`);
     }
 }
 
 /**
  * Render regions after waveform crossfade completes
- * Called when loading new volcano data to delay region display until crossfade finishes
+ * Called when loading new spacecraft data to delay region display until crossfade finishes
  */
 export function renderRegionsAfterCrossfade() {
     // Only render if regions were actually delayed
@@ -397,13 +397,13 @@ function getTotalFeatureCount() {
  * Call this after State.dataStartTime and State.dataEndTime are set
  */
 export function loadRegionsAfterDataFetch() {
-    const volcano = getCurrentVolcano();
-    if (!volcano) {
-        console.warn('⚠️ Cannot load regions - no volcano selected');
+    const spacecraft = getCurrentSpacecraft();
+    if (!spacecraft) {
+        console.warn('⚠️ Cannot load regions - no spacecraft selected');
         return;
     }
     
-    const loadedRegions = loadRegionsFromStorage(volcano);
+    const loadedRegions = loadRegionsFromStorage(spacecraft);
     if (loadedRegions && loadedRegions.length > 0) {
         // 🔧 CRITICAL FIX: Recalculate sample indices from timestamps!
         // Sample indices are relative to the current data fetch and MUST be recalculated
@@ -450,8 +450,8 @@ export function loadRegionsAfterDataFetch() {
             }
         });
         
-        regionsByVolcano.set(volcano, loadedRegions);
-        console.log(`📂 Restored ${loadedRegions.length} region(s) for ${volcano} from localStorage after data fetch`);
+        regionsBySpacecraft.set(spacecraft, loadedRegions);
+        console.log(`📂 Restored ${loadedRegions.length} region(s) for ${spacecraft} from localStorage after data fetch`);
         
         // 🔧 FIX: Don't render regions here - wait for waveform crossfade to complete
         // Regions will be rendered by renderRegionsAfterCrossfade() after crossfade finishes
@@ -468,7 +468,7 @@ export function loadRegionsAfterDataFetch() {
         // Update button states
         updateCompleteButtonState();
     } else {
-        console.log(`📂 No saved regions found for ${volcano}`);
+        console.log(`📂 No saved regions found for ${spacecraft}`);
     }
 }
 
@@ -476,7 +476,7 @@ export function loadRegionsAfterDataFetch() {
  * Initialize region tracker
  * Sets up event listeners and prepares UI
  * NOTE: Regions are NOT loaded here - they are only loaded after fetchData is called
- * This ensures we know the volcano and time range before loading regions
+ * This ensures we know the spacecraft and time range before loading regions
  */
 export function initRegionTracker() {
     // Only log in dev/personal modes, not study mode
@@ -487,12 +487,12 @@ export function initRegionTracker() {
     // Initialize buttons renderer (must be after all variables are defined)
     initializeButtonsRenderer();
     
-    // Initialize current volcano
-    currentVolcano = getCurrentVolcano();
-    if (currentVolcano) {
+    // Initialize current spacecraft
+    currentSpacecraft = getCurrentSpacecraft();
+    if (currentSpacecraft) {
         // ✅ Start with empty regions - they will be loaded after fetchData is called
         // This ensures we know the time range before loading (regions outside range are filtered out)
-        regionsByVolcano.set(currentVolcano, []);
+        regionsBySpacecraft.set(currentSpacecraft, []);
     }
     
     // Region cards will appear dynamically in #regionsList
@@ -688,7 +688,7 @@ export function createRegionFromSelectionTimes(selectionStartSeconds, selectionE
     console.log('   Region start time:', startTime);
     console.log('   Region end time:', endTime);
     
-    // Get current volcano's regions
+    // Get current spacecraft's regions
     const regions = getCurrentRegions();
     
     // Collapse all existing regions before adding new one

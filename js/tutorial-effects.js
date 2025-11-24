@@ -858,7 +858,7 @@ export async function enableAllTutorialRestrictedFeatures() {
     if (loopBtn) {
         loopBtn.disabled = false;
         if (!isStudyMode()) {
-            console.log('✅ Loop button enabled');
+            // console.log('✅ Loop button enabled');
         }
     }
 
@@ -866,7 +866,7 @@ export async function enableAllTutorialRestrictedFeatures() {
     const speedSlider = document.getElementById('playbackSpeed');
     if (speedSlider) {
         speedSlider.disabled = false;
-        console.log('🔓 Speed slider ENABLED');
+        // console.log('🔓 Speed slider ENABLED');
     }
     const speedLabel = document.getElementById('speedLabel');
     if (speedLabel) {
@@ -877,7 +877,7 @@ export async function enableAllTutorialRestrictedFeatures() {
     const volumeSlider = document.getElementById('volumeSlider');
     if (volumeSlider) {
         volumeSlider.disabled = false;
-        console.log('🔓 Volume slider ENABLED');
+        // console.log('🔓 Volume slider ENABLED');
     }
     const volumeLabel = document.getElementById('volumeLabel');
     if (volumeLabel) {
@@ -887,19 +887,19 @@ export async function enableAllTutorialRestrictedFeatures() {
     // Enable waveform clicks
     enableWaveformClicks();
     if (!isStudyMode()) {
-        console.log('✅ Waveform clicks enabled');
+        // console.log('✅ Waveform clicks enabled');
     }
 
     // Enable region buttons
     enableRegionButtons();
     if (!isStudyMode()) {
-        console.log('✅ Region buttons enabled');
+        // console.log('✅ Region buttons enabled');
     }
 
     // Enable frequency scale dropdown
     enableFrequencyScaleDropdown();
     if (!isStudyMode()) {
-        console.log('✅ Frequency scale dropdown enabled');
+        // console.log('✅ Frequency scale dropdown enabled');
     }
 
     // Enable region creation (for personal/dev modes, or after tutorial in study mode)
@@ -909,7 +909,7 @@ export async function enableAllTutorialRestrictedFeatures() {
     if (!isStudyMode()) {
         import('./audio-state.js').then(({ setRegionCreationEnabled }) => {
             setRegionCreationEnabled(true);
-            console.log('✅ Region creation enabled');
+            // console.log('✅ Region creation enabled');
         });
     }
 
