@@ -625,6 +625,14 @@ export async function startStreaming(event) {
         const { fetchAndLoadCDAWebData } = await import('./data-fetcher.js');
         await fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO);
         
+        // Check if autoPlay is enabled and start playback indicator
+        const autoPlayEnabled = document.getElementById('autoPlay').checked;
+        if (autoPlayEnabled && State.playbackState === PlaybackState.PLAYING) {
+            const { startPlaybackIndicator } = await import('./waveform-renderer.js');
+            console.log(`⏱️ ${logTime()} Worklet confirmed playback`);
+            startPlaybackIndicator();
+        }
+        
         // Update status
         if (statusDiv) {
             statusDiv.textContent = 'Data loaded successfully!';
@@ -2049,6 +2057,10 @@ async function initializeMainApp() {
     } else {
         console.warn('⚠️ Tutorial help button not found in DOM');
     }
+    
+    // Set up component selector listener
+    const { setupComponentSelectorListener } = await import('./component-selector.js');
+    setupComponentSelectorListener();
     
     if (!isStudyMode()) {
         console.log('✅ Event listeners setup complete - memory leak prevention active!');

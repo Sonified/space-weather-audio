@@ -60,9 +60,12 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
     if (cached) {
         console.log('✅ Loading from cache (local IndexedDB)');
         console.log(`   📊 WAV blob size: ${(cached.wavBlob.size / 1024).toFixed(2)} KB`);
+        console.log(`   📊 Cache metadata:`, cached.metadata);
+        console.log(`   📊 Cache allFileUrls:`, cached.metadata?.allFileUrls);
         // Decode cached WAV blob
         const decoded = await decodeWAVBlob(cached.wavBlob, cached);
         console.log(`   ✅ Cache load complete: ${decoded.numSamples.toLocaleString()} samples decoded`);
+        console.log(`   📊 Decoded allFileUrls:`, decoded.allFileUrls);
         return decoded;
     }
     
@@ -106,8 +109,11 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         
         console.log(`📊 CDAWeb returned ${result.FileDescription.length} file(s):`, result.FileDescription.map(f => f.Name));
         
-        // Get first audio file (for multi-component datasets like PSP, we get [br, bt, bn])
-        // For now, just use the first component
+        // Store all file URLs for component switching (PSP returns [br, bt, bn])
+        const allFileUrls = result.FileDescription.map(f => f.Name);
+        const allFileInfo = result.FileDescription;
+        
+        // Get first audio file for initial playback
         const fileInfo = result.FileDescription[0];
         const audioFileUrl = fileInfo.Name;
         
@@ -131,7 +137,9 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
             fileInfo: fileInfo,
             apiFetchTime,
             totalFetchTime,
-            component: 'first' // TODO: Handle multi-component selection
+            component: 'first', // TODO: Handle multi-component selection
+            allFileUrls: allFileUrls, // All component URLs
+            allFileInfo: allFileInfo  // All file info objects
         };
         
         // Cache for future use
@@ -234,7 +242,9 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
                 min: 0,
                 max: yAxisMaxFrequency  // Using adjusted frequency for Y-axis (Nyquist ÷ 2)
             },
-            metadata: cacheEntry.metadata || {}
+            metadata: cacheEntry.metadata || {},
+            allFileUrls: cacheEntry.metadata?.allFileUrls || [], // All component URLs from CDAWeb
+            allFileInfo: cacheEntry.metadata?.allFileInfo || []  // All file info objects
         };
         
     } catch (error) {
@@ -293,6 +303,19 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         State.setDataEndTime(audioData.endTime); // UTC Date object
         State.setOriginalDataFrequencyRange(audioData.originalDataFrequencyRange); // { min, max }
         State.setTotalAudioDuration(audioData.duration); // seconds
+        
+        // Initialize component selector if multiple files available
+        console.log(`🔍 [COMPONENT SELECTOR] allFileUrls:`, audioData.allFileUrls);
+        console.log(`🔍 [COMPONENT SELECTOR] Number of files: ${audioData.allFileUrls?.length || 0}`);
+        if (audioData.allFileUrls && audioData.allFileUrls.length > 1) {
+            console.log(`🔍 [COMPONENT SELECTOR] Multiple files detected - initializing selector`);
+            const { initializeComponentSelector } = await import('./component-selector.js');
+            initializeComponentSelector(audioData.allFileUrls);
+        } else {
+            console.log(`🔍 [COMPONENT SELECTOR] Single file or no files - hiding selector`);
+            const { hideComponentSelector } = await import('./component-selector.js');
+            hideComponentSelector();
+        }
         console.log(`🔍 [PIPELINE] State.totalAudioDuration set: ${State.totalAudioDuration}s`);
         
         // Set playback duration (for UI display)
@@ -375,6 +398,56 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             
             // Update playback speed (needed for worklet)
             updatePlaybackSpeed();
+            
+            // Check if autoPlay is enabled
+            const autoPlayEnabled = document.getElementById('autoPlay')?.checked || false;
+            if (autoPlayEnabled) {
+                // Start playback immediately
+                State.workletNode.port.postMessage({ type: 'start-immediately' });
+                console.log(`🚀 Sent 'start-immediately' to worklet`);
+                
+                // Update playback state
+                State.setPlaybackState(PlaybackState.PLAYING);
+                
+                // Fade in audio
+                if (State.gainNode && State.audioContext) {
+                    const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                    State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
+                    State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
+                    State.gainNode.gain.exponentialRampToValueAtTime(
+                        Math.max(0.01, targetVolume),
+                        State.audioContext.currentTime + 0.05
+                    );
+                    console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
+                }
+                
+                // Reset position tracking
+                State.setCurrentAudioPosition(0);
+                State.setLastWorkletPosition(0);
+                State.setLastWorkletUpdateTime(State.audioContext.currentTime);
+                State.setLastUpdateTime(State.audioContext.currentTime);
+                
+                // Update play/pause button
+                const playPauseBtn = document.getElementById('playPauseBtn');
+                if (playPauseBtn) {
+                    playPauseBtn.disabled = false;
+                    playPauseBtn.textContent = '⏸️ Pause';
+                    playPauseBtn.classList.remove('play-active', 'secondary');
+                    playPauseBtn.classList.add('pause-active');
+                }
+            } else {
+                console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
+                State.setPlaybackState(PlaybackState.STOPPED);
+                
+                // Enable play button
+                const playPauseBtn = document.getElementById('playPauseBtn');
+                if (playPauseBtn) {
+                    playPauseBtn.disabled = false;
+                    playPauseBtn.textContent = '▶️ Play';
+                    playPauseBtn.classList.remove('pause-active', 'secondary');
+                    playPauseBtn.classList.add('play-active');
+                }
+            }
         } else {
             console.warn(`⚠️ [PIPELINE] Cannot send samples to worklet: workletNode=${!!State.workletNode}, audioContext=${!!State.audioContext}`);
         }
