@@ -356,7 +356,7 @@ async function showInitialFetchTutorial() {
     }
     
     // Show message guiding user to select volcano and fetch data
-    setStatusTextAndTrack('<- Select a volcano and click Fetch Data.', 'status info');
+    // setStatusTextAndTrack('<- Select a volcano and click Fetch Data.', 'status info');
     
     // 🔒 Disable volcano dropdown when fetch data is triggered
     const disableVolcanoDropdown = () => {

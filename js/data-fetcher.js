@@ -427,13 +427,14 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             console.log(`🔍 [PIPELINE] Sent ${State.allReceivedData.length} chunks to AudioWorklet`);
             
             // Send data-complete message with sample rate
+            const timeSpanSeconds = (audioData.endTime - audioData.startTime) / 1000;
             State.workletNode.port.postMessage({
                 type: 'data-complete',
-                totalSamples: audioData.samples.length,
-                sampleRate: audioData.originalSamplingRate // Original data sample rate, not audio sample rate
+                totalSamples: audioData.samples.length,  // Resampled count (44.1kHz)
+                sampleRate: audioData.samples.length / timeSpanSeconds  // Audio samples per real-world second
             });
             
-            console.log(`🔍 [PIPELINE] Sent data-complete: totalSamples=${audioData.samples.length}, sampleRate=${audioData.originalSamplingRate}`);
+            console.log(`🔍 [PIPELINE] Sent data-complete: totalSamples=${audioData.samples.length}, sampleRate=${(audioData.samples.length / timeSpanSeconds).toFixed(2)} Hz (calculated from time span)`);
             
             // Initialize zoom state with ORIGINAL sample count (not resampled AudioContext count)
             // This is critical for correct coordinate calculations - zoomState uses original_sample_rate

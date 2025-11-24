@@ -151,3 +151,40 @@
 - **Commit Hash**: f28be4d
 - **Commit**: "v1.04 Fix: Download audio with correct 44.1kHz sample rate"
 
+---
+
+## v1.05 - Fix: Use AudioContext sample rate (22kHz) everywhere for perfect sync
+
+### Critical Playhead Sync Fix
+**The Problem:**
+- Playhead was moving at 2x speed compared to audio playback
+- AudioContext was set to 22000 Hz (correct for CDAWeb files)
+- But seek function had hardcoded `44100` for sample calculations
+- Result: Seeking to 923s would calculate 923 × 44100 = 40M samples instead of 923 × 22000 = 20M samples (double!)
+
+**The Philosophy:**
+- Two time domains: Real-World Time (spacecraft data at ~587 Hz) vs Audio Time (sonification at 22000 Hz)
+- Playhead should track audio playback time using AudioContext's actual sample rate
+- All calculations must use the same time reference
+
+**The Fix:**
+- Changed seek calculation from hardcoded `44100` to `State.audioContext.sampleRate`
+- Now dynamically uses whatever sample rate AudioContext is running at (22000 Hz)
+- Added comprehensive diagnostic logging to trace time domain conversions
+
+### Files Modified
+- `js/audio-player.js` - Fixed `seekToPosition()` to use AudioContext's actual sample rate, added diagnostic logs
+- `workers/audio-worklet.js` - Added seek diagnostics, commented out verbose fade logs
+- `js/main.js` - Version bump to 1.05
+
+### Result
+- ✅ Playhead perfectly syncs with audio playback
+- ✅ Seeking works correctly at any position
+- ✅ All time calculations use consistent sample rate reference
+- ✅ No more 2x speed discrepancy
+
+### Git Info
+- **Version**: v1.05
+- **Commit Hash**: 255ab9d
+- **Commit**: "v1.05 Fix: Use AudioContext sample rate (22kHz) everywhere for perfect sync"
+

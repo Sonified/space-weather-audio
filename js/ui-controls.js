@@ -2652,10 +2652,10 @@ export async function submitPreSurvey() {
                 const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
                 
                 // Only show fetch instruction if no data loaded yet
-                if (!hasData) {
-                    const { setStatusText } = await import('./tutorial-effects.js');
-                    setStatusText('<- Select a volcano to the left and hit Fetch Data to begin.', 'status info');
-                }
+                // if (!hasData) {
+                //     const { setStatusText } = await import('./tutorial-effects.js');
+                //     setStatusText('<- Select a volcano to the left and hit Fetch Data to begin.', 'status info');
+                // }
                 // If data exists, the data-fetcher already set "Click Begin Analysis" message
             }, 3000);
             

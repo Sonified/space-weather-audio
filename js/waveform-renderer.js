@@ -1245,20 +1245,20 @@ export function setupWaveformInteraction() {
                                     const hasBegunAnalysis = hasBegunAnalysisThisSession();
                                     const newMessage = hasBegunAnalysis 
                                         ? 'Type (R) or click Add Region to create a new region.'
-                                        : 'Explore mode: select a volcano and click Begin Analysis when ready.';
+                                        : ''; // 'Explore mode: select a volcano and click Begin Analysis when ready.';
                                     
                                     // Only update if message has changed (check beginning of text)
-                                    if (!statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
+                                    if (newMessage && !statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
                                         statusEl.className = 'status info';
                                         statusEl.textContent = newMessage;
                                     }
                                 }).catch(() => {
                                     // Fallback if import fails - assume no session started
-                                    const newMessage = 'Explore mode: select a volcano and click Begin Analysis when ready.';
-                                    if (!statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
-                                        statusEl.className = 'status info';
-                                        statusEl.textContent = newMessage;
-                                    }
+                                    // const newMessage = 'Explore mode: select a volcano and click Begin Analysis when ready.';
+                                    // if (!statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
+                                    //     statusEl.className = 'status info';
+                                    //     statusEl.textContent = newMessage;
+                                    // }
                                 });
                         }).catch(() => {
                             // Fallback if import fails
