@@ -38,6 +38,7 @@ export let availableStations = { seismic: [], infrasound: [] };
 // Audio data
 export let allReceivedData = [];
 export let completeSamplesArray = null;
+export let originalAudioBlob = null; // Store original WAV blob from CDAWeb for direct download
 export let currentMetadata = null;
 export let totalAudioDuration = 0;
 export let currentAudioPosition = 0;
@@ -156,6 +157,7 @@ export function setCompleteSamplesArray(value) {
     }
     completeSamplesArray = value; 
 }
+export function setOriginalAudioBlob(value) { originalAudioBlob = value; }
 export function setCurrentMetadata(value) { currentMetadata = value; }
 export function setTotalAudioDuration(value) { totalAudioDuration = value; }
 export function setCurrentAudioPosition(value) { currentAudioPosition = value; }

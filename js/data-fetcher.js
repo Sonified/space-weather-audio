@@ -244,7 +244,8 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
             },
             metadata: cacheEntry.metadata || {},
             allFileUrls: cacheEntry.metadata?.allFileUrls || [], // All component URLs from CDAWeb
-            allFileInfo: cacheEntry.metadata?.allFileInfo || []  // All file info objects
+            allFileInfo: cacheEntry.metadata?.allFileInfo || [],  // All file info objects
+            originalBlob: wavBlob  // Original WAV blob from CDAWeb (for direct download!)
         };
         
     } catch (error) {
@@ -299,6 +300,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         // Set state variables (matching the old pattern)
         State.setCompleteSamplesArray(audioData.samples); // Float32Array, already normalized
         console.log(`🔍 [PIPELINE] State.completeSamplesArray set: length=${State.completeSamplesArray?.length}, type=${State.completeSamplesArray?.constructor?.name}`);
+        State.setOriginalAudioBlob(audioData.originalBlob); // Original WAV blob from CDAWeb (for direct download!)
         State.setDataStartTime(audioData.startTime); // UTC Date object
         State.setDataEndTime(audioData.endTime); // UTC Date object
         State.setOriginalDataFrequencyRange(audioData.originalDataFrequencyRange); // { min, max }

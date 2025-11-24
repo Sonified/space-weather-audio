@@ -1238,8 +1238,8 @@ async function initializeMainApp() {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] solar-audio 1.03 - Fix: CDAWeb waveform rendering and audio playback');
-        console.log('📌 [0ms] Git commit: v1.03 Fix: CDAWeb waveform rendering and audio playback');
+        console.log('🌋 [0ms] solar-audio 1.04 - Fix: Download audio with correct 44.1kHz sample rate');
+        console.log('📌 [0ms] Git commit: v1.04 Fix: Download audio with correct 44.1kHz sample rate');
     }
     
     // Start memory health monitoring
@@ -2120,7 +2120,7 @@ async function initializeMainApp() {
     const { setupComponentSelectorListener } = await import('./component-selector.js');
     setupComponentSelectorListener();
     
-    // Set up download audio button (current component)
+    // Set up download audio button (floating button below Selected Regions)
     const downloadAudioBtn = document.getElementById('downloadAudioBtn');
     if (downloadAudioBtn) {
         downloadAudioBtn.addEventListener('click', async () => {
@@ -2147,11 +2147,11 @@ async function initializeMainApp() {
             
             const filename = `${spacecraft}_${dataset}_${componentLabel}_${startTime}_${endTime}.wav`;
             
-            console.log(`📥 Creating WAV file for download: ${filename}`);
-            console.log(`   Samples: ${samples.length.toLocaleString()}, Sample rate: ${metadata.original_sample_rate.toFixed(2)} Hz`);
+            console.log(`📥 Downloading CDAWeb audio: ${filename}`);
+            console.log(`   Samples: ${samples.length.toLocaleString()}, Sample rate: 44100 Hz`);
             
-            // Create WAV file from samples
-            const wavBlob = createWAVBlob(samples, metadata.original_sample_rate);
+            // Create WAV file - hardcoded to 44100 Hz (standard audio sample rate)
+            const wavBlob = createWAVBlob(samples, 44100);
             
             // Trigger download
             const url = URL.createObjectURL(wavBlob);
@@ -2163,7 +2163,7 @@ async function initializeMainApp() {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
-            console.log(`✅ Download triggered: ${filename} (${(wavBlob.size / 1024 / 1024).toFixed(2)} MB)`);
+            console.log(`✅ Downloaded: ${filename} (${(wavBlob.size / 1024 / 1024).toFixed(2)} MB)`);
         });
         console.log('✅ Download audio button handler attached');
     }

@@ -511,13 +511,46 @@ function updatePlaybackDuration() {
 
 // Download audio as WAV file
 export function downloadAudio() {
+    // 🎯 If we have the original blob from CDAWeb, download it directly!
+    // No need to recreate a WAV file - just use the perfect file CDAWeb gave us
+    if (State.originalAudioBlob) {
+        console.log('📥 Downloading original CDAWeb audio file (no processing needed)...');
+        
+        const blob = State.originalAudioBlob;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // Generate filename from metadata
+        const metadata = State.currentMetadata;
+        let filename = 'solar-audio';
+        if (metadata && metadata.spacecraft && metadata.dataset) {
+            const startDate = new Date(metadata.startTime);
+            const dateStr = startDate.toISOString().split('T')[0];
+            const timeStr = startDate.toISOString().split('T')[1].substring(0, 5).replace(':', '-');
+            filename = `${metadata.spacecraft}_${metadata.dataset}_${dateStr}_${timeStr}`;
+        }
+        a.download = `${filename}.wav`;
+        
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        console.log(`✅ Downloaded ${filename}.wav (${(blob.size / 1024 / 1024).toFixed(1)} MB) - original CDAWeb file`);
+        return;
+    }
+    
+    // Fallback: If no original blob, recreate WAV file from samples
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         console.warn('No audio data to download');
         return;
     }
     
-    console.log('📥 Preparing audio download...');
+    console.log('📥 Preparing audio download (recreating WAV from samples)...');
     
+    // 🔥 HARDCODED: Standard audio sample rate
+    // completeSamplesArray is already decoded from AudioContext
     const sampleRate = 44100;
     const numChannels = 1; // Mono
     const bytesPerSample = 2; // 16-bit
@@ -580,6 +613,7 @@ export function downloadAudio() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    console.log(`✅ Downloaded ${filename}.wav (${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB)`);
+    const durationSeconds = samples.length / sampleRate;
+    console.log(`✅ Downloaded ${filename}.wav (${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB, ${sampleRate} Hz, ${durationSeconds.toFixed(1)}s duration)`);
 }
 
