@@ -460,6 +460,10 @@ export function drawWaveformFromMinMax() {
         positionWaveformDateCanvas();
         drawWaveformDate();
         
+        // 🔧 Render regions after waveform is drawn (same as crossfade completion)
+        // This ensures regions appear whether or not there was a crossfade animation
+        renderRegionsAfterCrossfade();
+        
         console.log(`✅ [PIPELINE] Waveform drawing complete!`);
         if (DEBUG_WAVEFORM) console.log(`✅ Waveform drawn from min/max data (${mins.length} pixels) - progressive`);
     }

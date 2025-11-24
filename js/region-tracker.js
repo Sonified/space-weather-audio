@@ -453,17 +453,12 @@ export function loadRegionsAfterDataFetch() {
         regionsBySpacecraft.set(spacecraft, loadedRegions);
         console.log(`📂 Restored ${loadedRegions.length} region(s) for ${spacecraft} from localStorage after data fetch`);
         
-        // 🔧 FIX: Don't render regions here - wait for waveform crossfade to complete
-        // Regions will be rendered by renderRegionsAfterCrossfade() after crossfade finishes
-        // This prevents regions from appearing before the high-pass waveform crossfade completes
-        
-        // 🔥 Set delay flag to prevent drawRegionHighlights/drawRegionButtons from drawing immediately
-        regionsDelayedForCrossfade = true;
-        console.log('⏳ Regions loaded but delayed for waveform crossfade');
-        
-        // NOTE: Canvas feature boxes are automatically drawn by updatePlaybackSpeed() 
-        // (called in data-fetcher.js after data loads). No need to explicitly call here.
-        // This avoids duplicate work since updatePlaybackSpeed() -> redrawAllCanvasFeatureBoxes()
+        // 🔥 Render regions immediately (don't wait for crossfade)
+        // Regions need to be visible as soon as data loads
+        renderRegions();
+        redrawAllCanvasFeatureBoxes();
+        drawWaveformWithSelection();
+        console.log('✅ Regions rendered immediately after data fetch');
         
         // Update button states
         updateCompleteButtonState();

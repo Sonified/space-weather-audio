@@ -323,12 +323,12 @@ export async function initAudioWorklet() {
     
     if (!State.audioContext) {
         const ctx = new AudioContext({ 
-            sampleRate: 44100,
+            sampleRate: 22000,  // Match CDAWeb's actual sample rate (no resampling!)
             latencyHint: 'playback'  // 30ms buffer for stable playback (prevents dropouts)
         });
         State.setAudioContext(ctx);
         await ctx.audioWorklet.addModule('workers/audio-worklet.js');
-        console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: 44100 Hz, latency: playback)`);
+        console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: 22000 Hz, latency: playback)`);
     }
     
     const worklet = new AudioWorkletNode(State.audioContext, 'seismic-processor');
@@ -1238,8 +1238,8 @@ async function initializeMainApp() {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] solar-audio 1.04 - Fix: Download audio with correct 44.1kHz sample rate');
-        console.log('📌 [0ms] Git commit: v1.04 Fix: Download audio with correct 44.1kHz sample rate');
+        console.log('🌋 [0ms] solar-audio 1.05 - Fix: Use AudioContext sample rate (22kHz) everywhere for perfect sync');
+        console.log('📌 [0ms] Git commit: v1.05 Fix: Use AudioContext sample rate (22kHz) everywhere for perfect sync');
     }
     
     // Start memory health monitoring
@@ -2148,10 +2148,10 @@ async function initializeMainApp() {
             const filename = `${spacecraft}_${dataset}_${componentLabel}_${startTime}_${endTime}.wav`;
             
             console.log(`📥 Downloading CDAWeb audio: ${filename}`);
-            console.log(`   Samples: ${samples.length.toLocaleString()}, Sample rate: 44100 Hz`);
+            console.log(`   Samples: ${samples.length.toLocaleString()}, Sample rate: 22000 Hz`);
             
-            // Create WAV file - hardcoded to 44100 Hz (standard audio sample rate)
-            const wavBlob = createWAVBlob(samples, 44100);
+            // Create WAV file - hardcoded to 22000 Hz (CDAWeb's actual sample rate)
+            const wavBlob = createWAVBlob(samples, 22000);
             
             // Trigger download
             const url = URL.createObjectURL(wavBlob);

@@ -89,7 +89,7 @@ export async function enterOverheatMode() {
         // Initialize audio context for pink noise
         if (!audioContext) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 44100,
+                sampleRate: 22000,  // Match CDAWeb's actual sample rate
                 latencyHint: 'playback'
             });
             console.log('🎵 Created audio context for flame engine');

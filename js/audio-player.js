@@ -350,12 +350,18 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
     const b = getCurrentPlaybackBoundaries();
     targetPosition = Math.max(b.start, Math.min(targetPosition, b.end));
     
-    // if (DEBUG_LOOP_FADES) console.log(`🎯 Seeking to ${targetPosition.toFixed(2)}s (shouldStartPlayback=${shouldStartPlayback})`);
+    console.log(`🎯 SEEK: Target=${targetPosition.toFixed(2)}s, shouldPlay=${shouldStartPlayback}`);
+    console.log(`   AudioContext.sampleRate=${State.audioContext.sampleRate} Hz`);
+    console.log(`   metadata.original_sample_rate=${State.currentMetadata?.original_sample_rate?.toFixed(2)} Hz`);
+    console.log(`   totalAudioDuration=${State.totalAudioDuration.toFixed(2)}s`);
     
     // Set flag to prevent race condition in region finish detection
     State.setJustSeeked(true);
     
-    const targetSample = Math.floor(targetPosition * 44100);
+    // 🔥 Use AudioContext's actual sample rate, not hardcoded value!
+    const actualSampleRate = State.audioContext.sampleRate;
+    const targetSample = Math.floor(targetPosition * actualSampleRate);
+    console.log(`   Calculated: ${targetPosition.toFixed(2)}s × ${actualSampleRate} Hz = ${targetSample.toLocaleString()} samples`);
     const wasPlaying = State.playbackState === PlaybackState.PLAYING;
     
     const performSeek = () => {
@@ -549,9 +555,9 @@ export function downloadAudio() {
     
     console.log('📥 Preparing audio download (recreating WAV from samples)...');
     
-    // 🔥 HARDCODED: Standard audio sample rate
-    // completeSamplesArray is already decoded from AudioContext
-    const sampleRate = 44100;
+    // 🔥 HARDCODED: CDAWeb's actual sample rate (22000 Hz)
+    // completeSamplesArray is already decoded from AudioContext at this rate
+    const sampleRate = 22000;
     const numChannels = 1; // Mono
     const bytesPerSample = 2; // 16-bit
     const samples = State.completeSamplesArray;
