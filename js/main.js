@@ -60,6 +60,64 @@ function safeIsStudyMode() {
     }
 }
 
+/**
+ * Create a WAV file blob from Float32Array samples
+ * @param {Float32Array} samples - Audio samples (normalized -1 to 1)
+ * @param {number} sampleRate - Sample rate in Hz
+ * @returns {Blob} WAV file blob
+ */
+function createWAVBlob(samples, sampleRate) {
+    const numChannels = 1; // Mono
+    const bitsPerSample = 16; // 16-bit PCM
+    const bytesPerSample = bitsPerSample / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = samples.length * bytesPerSample;
+    const fileSize = 44 + dataSize; // 44-byte header + data
+    
+    // Create ArrayBuffer for WAV file
+    const buffer = new ArrayBuffer(fileSize);
+    const view = new DataView(buffer);
+    
+    // Write WAV header
+    let offset = 0;
+    
+    // RIFF chunk descriptor
+    writeString(view, offset, 'RIFF'); offset += 4;
+    view.setUint32(offset, fileSize - 8, true); offset += 4;
+    writeString(view, offset, 'WAVE'); offset += 4;
+    
+    // fmt sub-chunk
+    writeString(view, offset, 'fmt '); offset += 4;
+    view.setUint32(offset, 16, true); offset += 4; // Subchunk size
+    view.setUint16(offset, 1, true); offset += 2; // Audio format (1 = PCM)
+    view.setUint16(offset, numChannels, true); offset += 2;
+    view.setUint32(offset, sampleRate, true); offset += 4;
+    view.setUint32(offset, byteRate, true); offset += 4;
+    view.setUint16(offset, blockAlign, true); offset += 2;
+    view.setUint16(offset, bitsPerSample, true); offset += 2;
+    
+    // data sub-chunk
+    writeString(view, offset, 'data'); offset += 4;
+    view.setUint32(offset, dataSize, true); offset += 4;
+    
+    // Write sample data (convert Float32 to Int16)
+    for (let i = 0; i < samples.length; i++) {
+        const sample = Math.max(-1, Math.min(1, samples[i])); // Clamp to [-1, 1]
+        const int16 = Math.round(sample * 32767); // Convert to 16-bit integer
+        view.setInt16(offset, int16, true);
+        offset += 2;
+    }
+    
+    return new Blob([buffer], { type: 'audio/wav' });
+}
+
+function writeString(view, offset, string) {
+    for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+    }
+}
+
 // console.log('🟡 Defined safeIsStudyMode');
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
@@ -2061,6 +2119,47 @@ async function initializeMainApp() {
     // Set up component selector listener
     const { setupComponentSelectorListener } = await import('./component-selector.js');
     setupComponentSelectorListener();
+    
+    // Set up download audio button
+    const downloadAudioBtn = document.getElementById('downloadAudioBtn');
+    if (downloadAudioBtn) {
+        downloadAudioBtn.addEventListener('click', async () => {
+            // Get current metadata
+            if (!State.currentMetadata || !State.completeSamplesArray) {
+                alert('No audio data loaded. Please fetch data first.');
+                return;
+            }
+            
+            const metadata = State.currentMetadata;
+            const samples = State.completeSamplesArray;
+            
+            // Create filename from metadata
+            const spacecraft = metadata.spacecraft || 'PSP';
+            const dataset = metadata.dataset || 'MAG';
+            const startTime = State.dataStartTime?.toISOString().replace(/:/g, '-').replace(/\./g, '-') || 'unknown';
+            const endTime = State.dataEndTime?.toISOString().replace(/:/g, '-').replace(/\./g, '-') || 'unknown';
+            const filename = `${spacecraft}_${dataset}_${startTime}_${endTime}.wav`;
+            
+            console.log(`📥 Creating WAV file for download: ${filename}`);
+            console.log(`   Samples: ${samples.length.toLocaleString()}, Sample rate: ${metadata.original_sample_rate.toFixed(2)} Hz`);
+            
+            // Create WAV file from samples
+            const wavBlob = createWAVBlob(samples, metadata.original_sample_rate);
+            
+            // Trigger download
+            const url = URL.createObjectURL(wavBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            console.log(`✅ Download triggered: ${filename} (${(wavBlob.size / 1024 / 1024).toFixed(2)} MB)`);
+        });
+        console.log('✅ Download audio button handler attached');
+    }
     
     if (!isStudyMode()) {
         console.log('✅ Event listeners setup complete - memory leak prevention active!');
