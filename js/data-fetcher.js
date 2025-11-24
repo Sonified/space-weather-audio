@@ -55,11 +55,15 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
     console.log(`🛰️ Fetching CDAWeb audio: ${spacecraft} ${dataset} ${startTime} to ${endTime}`);
     
     // Check cache first
+    console.log(`🔍 Checking cache for: ${spacecraft} ${dataset} ${startTime} → ${endTime}`);
     const cached = await getAudioData(spacecraft, dataset, startTime, endTime);
     if (cached) {
-        console.log('✅ Loading from cache');
+        console.log('✅ Loading from cache (local IndexedDB)');
+        console.log(`   📊 WAV blob size: ${(cached.wavBlob.size / 1024).toFixed(2)} KB`);
         // Decode cached WAV blob
-        return await decodeWAVBlob(cached.wavBlob, cached);
+        const decoded = await decodeWAVBlob(cached.wavBlob, cached);
+        console.log(`   ✅ Cache load complete: ${decoded.numSamples.toLocaleString()} samples decoded`);
+        return decoded;
     }
     
     console.log('🌐 Cache miss - fetching from CDAWeb API');

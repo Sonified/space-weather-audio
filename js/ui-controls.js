@@ -155,6 +155,10 @@ export function fadeOutOverlay() {
 
 export function loadStations() {
     const volcanoSelect = document.getElementById('volcano');
+    // Skip if volcano element doesn't exist (we're using spacecraft mode)
+    if (!volcanoSelect) {
+        return;
+    }
     const volcano = volcanoSelect.value;
     const stationSelect = document.getElementById('station');
     

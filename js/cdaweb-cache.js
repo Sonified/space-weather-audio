@@ -128,7 +128,13 @@ export async function getAudioData(spacecraft, dataset, startTime, endTime) {
         
         request.onsuccess = () => {
             if (request.result) {
+                const entry = request.result;
+                const ageMinutes = Math.round((Date.now() - entry.cachedAt) / 60000);
+                const sizeKB = entry.wavBlob ? (entry.wavBlob.size / 1024).toFixed(2) : 'unknown';
                 console.log(`✅ Cache hit: ${id}`);
+                console.log(`   📦 Cache entry: ${sizeKB} KB, cached ${ageMinutes} min ago`);
+                console.log(`   🛰️ Spacecraft: ${entry.spacecraft}, Dataset: ${entry.dataset}`);
+                console.log(`   ⏰ Time range: ${entry.startTime} → ${entry.endTime}`);
                 resolve(request.result);
             } else {
                 console.log(`❌ Cache miss: ${id}`);
@@ -236,6 +242,68 @@ export async function clearAllCache() {
 }
 
 /**
+ * Determine the encounter number based on the provided start date
+ * @param {string|Date} startDate - Start date in ISO format or Date object
+ * @returns {string} Encounter number (e.g., 'E1', 'E2') or 'Unknown_Encounter'
+ */
+function getEncounterNumber(startDate) {
+    // Convert input date to Date object
+    let dateObj;
+    if (typeof startDate === 'string') {
+        dateObj = new Date(startDate);
+        if (isNaN(dateObj.getTime())) {
+            console.warn(`Warning: Could not parse date ${startDate}`);
+            return 'Unknown_Encounter';
+        }
+    } else if (startDate instanceof Date) {
+        dateObj = startDate;
+    } else {
+        console.warn(`Warning: Invalid date type: ${typeof startDate}`);
+        return 'Unknown_Encounter';
+    }
+    
+    // Convert to YYYY-MM-DD format for comparison
+    const formattedDate = dateObj.toISOString().split('T')[0];
+    
+    const encounters = {
+        'E1': ['2018-10-31', '2019-02-13'],
+        'E2': ['2019-02-14', '2019-06-01'],
+        'E3': ['2019-06-02', '2019-10-16'],
+        'E4': ['2019-10-17', '2020-03-10'],
+        'E5': ['2020-03-11', '2020-06-07'],
+        'E6': ['2020-06-08', '2020-10-09'],
+        'E7': ['2020-10-10', '2021-03-13'],
+        'E8': ['2021-03-14', '2021-05-17'],
+        'E9': ['2021-05-18', '2021-10-10'],
+        'E10': ['2021-10-11', '2021-12-19'],
+        'E11': ['2021-12-20', '2022-04-25'],
+        'E12': ['2022-04-26', '2022-07-12'],
+        'E13': ['2022-07-13', '2022-11-09'],
+        'E14': ['2022-11-10', '2022-12-27'],
+        'E15': ['2022-12-28', '2023-05-11'],
+        'E16': ['2023-05-12', '2023-08-16'],
+        'E17': ['2023-08-17', '2023-11-22'],
+        'E18': ['2023-11-23', '2024-02-23'],
+        'E19': ['2024-02-24', '2024-04-29'],
+        'E20': ['2024-04-30', '2024-08-14'],
+        'E21': ['2024-08-15', '2024-10-27'],
+        'E22': ['2024-10-28', '2025-02-07'],
+        'E23': ['2025-02-08', '2025-05-05'],
+        'E24': ['2025-05-06', '2025-08-01'],
+        'E25': ['2025-08-02', '2025-10-28'],
+        'E26': ['2025-10-29', '2026-01-12']
+    };
+    
+    for (const [encounter, [encStart, encStop]] of Object.entries(encounters)) {
+        if (encStart <= formattedDate && formattedDate <= encStop) {
+            return encounter;
+        }
+    }
+    
+    return 'Unknown_Encounter';
+}
+
+/**
  * Format a cache entry for display in the recent searches dropdown
  * @param {Object} entry - Cache entry
  * @returns {string} Formatted display string
@@ -243,6 +311,9 @@ export async function clearAllCache() {
 export function formatCacheEntryForDisplay(entry) {
     const start = new Date(entry.startTime);
     const end = new Date(entry.endTime);
+    
+    // Get encounter number from start date
+    const encounter = getEncounterNumber(start);
     
     // Format date as YYYY-MM-DD
     const dateStr = start.toISOString().split('T')[0];
@@ -266,6 +337,7 @@ export function formatCacheEntryForDisplay(entry) {
         datasetShort = datasetShort.replace('MMS1_FGM_', '').replace('_L2', '');
     }
     
-    return `${entry.spacecraft} ${datasetShort} ${dateStr} ${startTimeStr}-${endTimeStr} (${durationMinutes} min)`;
+    // Format as "E_X: spacecraft dataset date time-time (duration min)"
+    return `${encounter}: ${entry.spacecraft} ${datasetShort} ${dateStr} ${startTimeStr}-${endTimeStr} (${durationMinutes} min)`;
 }
 

@@ -1742,8 +1742,14 @@ async function initializeMainApp() {
             
             console.log(`🔍 Restored recent search: ${selectedOption.textContent}`);
             
-            // Trigger spacecraft change to update dataset dropdown if needed
-            document.getElementById('spacecraft').dispatchEvent(new Event('change'));
+            // Automatically fetch the data from cache
+            const startBtn = document.getElementById('startBtn');
+            if (startBtn && !startBtn.disabled) {
+                console.log(`🚀 Auto-fetching restored search data...`);
+                startBtn.click();
+            } else {
+                console.warn('⚠️ Cannot auto-fetch: startBtn disabled or not found');
+            }
             
         } catch (e) {
             console.warn('Could not restore recent search:', e);
@@ -1766,8 +1772,10 @@ async function initializeMainApp() {
     document.getElementById('purgeCacheBtn').addEventListener('click', purgeCloudflareCache);
     document.getElementById('downloadBtn').addEventListener('click', downloadAudio);
     
-    // Station Selection
+    // Station Selection (only for volcano mode - skip for spacecraft)
     document.getElementById('spacecraft').addEventListener('change', (e) => {
+        // loadStations() is for volcano mode only - skip for spacecraft
+        // (loadStations() will return early if volcano element doesn't exist)
         loadStations();
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
