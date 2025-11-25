@@ -808,18 +808,19 @@ async function initializeSolarPortalMode() {
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
     enableAllTutorialRestrictedFeatures();
     
-    // Check if first visit - show participant setup
-    const { hasSeenParticipantSetup } = await import('./study-workflow.js');
-    const isFirstVisit = !hasSeenParticipantSetup();
-    
-    if (isFirstVisit) {
-        console.log('👤 First visit - opening participant setup');
+    // Check if user has a username set - if not, show participant setup
+    const { getParticipantId } = await import('./qualtrics-api.js');
+    const participantId = getParticipantId();
+    const hasUsername = participantId && participantId.trim() !== '';
+
+    if (!hasUsername) {
+        console.log('👤 No username found - opening participant setup');
         // Wait a bit for modals to initialize, then open participant modal
         setTimeout(() => {
             openParticipantModal();
         }, 500);
     } else {
-        console.log('✅ Returning visit - participant setup already completed');
+        console.log(`✅ Welcome back, ${participantId}`);
         // Show instruction to click Fetch Data
         setTimeout(async () => {
             const { typeText } = await import('./tutorial-effects.js');
