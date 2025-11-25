@@ -522,49 +522,19 @@ function updatePlaybackDuration() {
     }
 }
 
-// Download audio as WAV file
+// Download audio as WAV file at 44.1kHz (our resampled playback version)
 export function downloadAudio() {
-    // 🎯 If we have the original blob from CDAWeb, download it directly!
-    // No need to recreate a WAV file - just use the perfect file CDAWeb gave us
-    if (State.originalAudioBlob) {
-        console.log('📥 Downloading original CDAWeb audio file (no processing needed)...');
-        
-        const blob = State.originalAudioBlob;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        
-        // Generate filename from metadata
-        const metadata = State.currentMetadata;
-        let filename = 'solar-audio';
-        if (metadata && metadata.spacecraft && metadata.dataset) {
-            const startDate = new Date(metadata.startTime);
-            const dateStr = startDate.toISOString().split('T')[0];
-            const timeStr = startDate.toISOString().split('T')[1].substring(0, 5).replace(':', '-');
-            filename = `${metadata.spacecraft}_${metadata.dataset}_${dateStr}_${timeStr}`;
-        }
-        a.download = `${filename}.wav`;
-        
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        console.log(`✅ Downloaded ${filename}.wav (${(blob.size / 1024 / 1024).toFixed(1)} MB) - original CDAWeb file`);
-        return;
-    }
-    
-    // Fallback: If no original blob, recreate WAV file from samples
+    console.log('🔥 downloadAudio() called - VERSION 2 (44.1kHz)');
+
+    // Always use completeSamplesArray which is resampled to 44.1kHz by the AudioContext
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         console.warn('No audio data to download');
         return;
     }
-    
-    console.log('📥 Preparing audio download (recreating WAV from samples)...');
-    
-    // 🔥 HARDCODED: CDAWeb's actual sample rate (22000 Hz)
-    // completeSamplesArray is already decoded from AudioContext at this rate
-    const sampleRate = 22000;
+
+    // completeSamplesArray is at 44100 Hz (AudioContext's native sample rate)
+    const sampleRate = 44100;
+    console.log(`📥 Preparing WAV download: ${State.completeSamplesArray.length} samples @ ${sampleRate} Hz`);
     const numChannels = 1; // Mono
     const bytesPerSample = 2; // 16-bit
     const samples = State.completeSamplesArray;
@@ -613,7 +583,14 @@ export function downloadAudio() {
     // Generate filename from metadata
     const metadata = State.currentMetadata;
     let filename = 'solar-audio';
-    if (metadata && metadata.network && metadata.station) {
+    if (metadata && metadata.spacecraft && metadata.dataset) {
+        // Solar/spacecraft mode
+        const startDate = new Date(metadata.startTime);
+        const dateStr = startDate.toISOString().split('T')[0];
+        const timeStr = startDate.toISOString().split('T')[1].substring(0, 5).replace(':', '-');
+        filename = `${metadata.spacecraft}_${metadata.dataset}_${dateStr}_${timeStr}`;
+    } else if (metadata && metadata.network && metadata.station) {
+        // Volcano mode
         const startDate = new Date(metadata.starttime);
         const dateStr = startDate.toISOString().split('T')[0];
         const timeStr = startDate.toISOString().split('T')[1].substring(0, 5).replace(':', '-');

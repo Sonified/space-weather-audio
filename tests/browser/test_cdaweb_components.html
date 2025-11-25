@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CDAWeb Component Download Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; max-width: 900px; }
+        pre { background: #f5f5f5; padding: 15px; overflow-x: auto; }
+        .success { color: green; }
+        .error { color: red; }
+        .warn { color: orange; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        #status { margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>CDAWeb Component Download Test</h1>
+    <p>This test demonstrates the CDAWeb temporary file expiration issue.</p>
+
+    <div>
+        <h3>Test Parameters</h3>
+        <label>Dataset:
+            <select id="dataset">
+                <option value="PSP_FLD_L2_MAG_RTN">PSP MAG RTN (has 3 components: br, bt, bn)</option>
+                <option value="WI_H2_MFI">Wind MFI</option>
+            </select>
+        </label>
+        <br><br>
+        <label>Time Range (1 hour):
+            <input type="datetime-local" id="startTime" value="2024-01-15T12:00">
+        </label>
+    </div>
+
+    <div style="margin-top: 20px;">
+        <button onclick="testCDAWebAPI()">1. Fetch CDAWeb API (get URLs)</button>
+        <button onclick="testDownloadFirst()">2. Download First Component</button>
+        <button onclick="testDownloadAll()">3. Download ALL Components</button>
+        <button onclick="testDelayedAccess()">4. Test URL After Delay</button>
+    </div>
+
+    <div id="status"></div>
+    <pre id="results"></pre>
+
+    <script>
+        let componentUrls = [];
+        let componentBlobs = {};
+
+        function log(msg, type = '') {
+            const results = document.getElementById('results');
+            const className = type ? `class="${type}"` : '';
+            results.innerHTML += `<span ${className}>${msg}</span>\n`;
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        function setStatus(msg) {
+            document.getElementById('status').innerHTML = `<strong>${msg}</strong>`;
+        }
+
+        // Convert datetime-local to ISO format
+        function getTimeRange() {
+            const startInput = document.getElementById('startTime').value;
+            const start = new Date(startInput);
+            const end = new Date(start.getTime() + 60 * 60 * 1000); // +1 hour
+            return {
+                start: start.toISOString(),
+                end: end.toISOString()
+            };
+        }
+
+        // Format for CDAWeb API (basic ISO format without dashes/colons)
+        function toBasicISO(isoString) {
+            return isoString.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+        }
+
+        async function testCDAWebAPI() {
+            clearLog();
+            setStatus('Fetching CDAWeb API...');
+
+            const dataset = document.getElementById('dataset').value;
+            const { start, end } = getTimeRange();
+
+            log('📡 CDAWeb API Test');
+            log('==================');
+            log(`Dataset: ${dataset}`);
+            log(`Start: ${start}`);
+            log(`End: ${end}`);
+            log('');
+
+            // Map dataset to variable name
+            const DATASET_VARIABLES = {
+                'PSP_FLD_L2_MAG_RTN': 'psp_fld_l2_mag_RTN',
+                'WI_H2_MFI': 'BGSE'
+            };
+
+            const variable = DATASET_VARIABLES[dataset];
+            const startBasic = toBasicISO(start);
+            const endBasic = toBasicISO(end);
+
+            const apiUrl = `https://cdaweb.gsfc.nasa.gov/WS/cdasr/1/dataviews/sp_phys/datasets/${dataset}/data/${startBasic},${endBasic}/${variable}?format=audio`;
+
+            log(`API URL: ${apiUrl}`);
+            log('');
+
+            try {
+                const startTime = performance.now();
+                const response = await fetch(apiUrl, {
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const elapsed = performance.now() - startTime;
+
+                log(`✅ API Response in ${elapsed.toFixed(0)}ms`, 'success');
+                log('');
+
+                // Extract file URLs
+                if (data.FileDescription && data.FileDescription.length > 0) {
+                    componentUrls = data.FileDescription.map(f => f.Name);
+
+                    log(`📁 Found ${componentUrls.length} component file(s):`, 'success');
+                    componentUrls.forEach((url, i) => {
+                        const labels = ['br (Radial)', 'bt (Tangential)', 'bn (Normal)'];
+                        log(`   ${i}: ${labels[i] || `Component ${i}`}`);
+                        log(`      ${url}`);
+                    });
+                    log('');
+                    log('⚠️  These URLs are TEMPORARY and will expire!', 'warn');
+                    log('    Notice they contain /tmp/ in the path.', 'warn');
+
+                    setStatus(`Found ${componentUrls.length} component URLs. Now test downloading.`);
+                } else {
+                    log('❌ No files returned from API', 'error');
+                    componentUrls = [];
+                }
+
+            } catch (error) {
+                log(`❌ API Error: ${error.message}`, 'error');
+                setStatus('API request failed');
+            }
+        }
+
+        async function testDownloadFirst() {
+            if (componentUrls.length === 0) {
+                log('⚠️  No URLs available. Run step 1 first.', 'warn');
+                return;
+            }
+
+            log('');
+            log('📥 Downloading FIRST component only...');
+            log('=====================================');
+
+            const url = componentUrls[0];
+
+            try {
+                const startTime = performance.now();
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const blob = await response.blob();
+                const elapsed = performance.now() - startTime;
+
+                componentBlobs[0] = blob;
+
+                log(`✅ Downloaded component 0 (br)`, 'success');
+                log(`   Size: ${(blob.size / 1024).toFixed(1)} KB`);
+                log(`   Time: ${elapsed.toFixed(0)}ms`);
+                log('');
+                log('⚠️  Other component URLs NOT downloaded yet!', 'warn');
+                log('   If user switches components later, those URLs may have expired.', 'warn');
+
+                setStatus('First component downloaded. Other URLs still pending.');
+
+            } catch (error) {
+                log(`❌ Download Error: ${error.message}`, 'error');
+                log('   This is the 404 error you see when URLs expire!', 'error');
+            }
+        }
+
+        async function testDownloadAll() {
+            if (componentUrls.length === 0) {
+                log('⚠️  No URLs available. Run step 1 first.', 'warn');
+                return;
+            }
+
+            log('');
+            log('📥 Downloading ALL components (background prefetch)...');
+            log('=====================================================');
+
+            const downloadPromises = componentUrls.map(async (url, i) => {
+                const labels = ['br (Radial)', 'bt (Tangential)', 'bn (Normal)'];
+                const label = labels[i] || `Component ${i}`;
+
+                try {
+                    const startTime = performance.now();
+                    const response = await fetch(url);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const blob = await response.blob();
+                    const elapsed = performance.now() - startTime;
+
+                    componentBlobs[i] = blob;
+
+                    log(`✅ Component ${i} (${label}): ${(blob.size / 1024).toFixed(1)} KB in ${elapsed.toFixed(0)}ms`, 'success');
+                    return { index: i, success: true, blob };
+
+                } catch (error) {
+                    log(`❌ Component ${i} (${label}): ${error.message}`, 'error');
+                    return { index: i, success: false, error };
+                }
+            });
+
+            const results = await Promise.all(downloadPromises);
+            const successful = results.filter(r => r.success).length;
+
+            log('');
+            log(`📊 Downloaded ${successful}/${componentUrls.length} components`);
+
+            if (successful === componentUrls.length) {
+                log('✅ All components cached! User can switch without network requests.', 'success');
+                setStatus('All components downloaded and cached!');
+            } else {
+                log('⚠️  Some downloads failed (URLs may have expired)', 'warn');
+                setStatus('Some downloads failed');
+            }
+        }
+
+        async function testDelayedAccess() {
+            if (componentUrls.length < 2) {
+                log('⚠️  Need multiple component URLs. Run step 1 first.', 'warn');
+                return;
+            }
+
+            log('');
+            log('⏰ Testing delayed access to component URL...');
+            log('=============================================');
+            log('   This simulates a user switching components after some time.');
+            log('');
+
+            // Try to access the second component URL (simulating user switching)
+            const url = componentUrls[1];
+
+            try {
+                const response = await fetch(url, { method: 'HEAD' });
+
+                if (response.ok) {
+                    log(`✅ URL still valid (status ${response.status})`, 'success');
+                    log('   But it WILL expire eventually (usually within hours)');
+                } else {
+                    log(`❌ URL returned ${response.status}`, 'error');
+                    log('   This is the 404 you see when switching components!', 'error');
+                }
+            } catch (error) {
+                log(`❌ Request failed: ${error.message}`, 'error');
+            }
+
+            log('');
+            log('💡 SOLUTION: Download all component blobs immediately,');
+            log('   not just store the URLs. Cache blobs in IndexedDB.');
+        }
+    </script>
+</body>
+</html>

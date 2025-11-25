@@ -12,7 +12,7 @@ import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSp
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
-import { loadStations, loadSavedVolcano, updateStationList, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
+import { loadStations, loadSavedVolcano, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { fetchFromR2Worker } from './data-fetcher.js';
@@ -820,8 +820,17 @@ async function initializeSolarPortalMode() {
         }, 500);
     } else {
         console.log('✅ Returning visit - participant setup already completed');
+        // Show instruction to click Fetch Data
+        setTimeout(async () => {
+            const { typeText } = await import('./tutorial-effects.js');
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+                statusEl.className = 'status info';
+                typeText(statusEl, '👈 click Fetch Data to begin', 30, 10);
+            }
+        }, 500);
     }
-    
+
     console.log('✅ Solar Portal mode ready');
 }
 
@@ -988,94 +997,16 @@ async function initializeMainApp() {
                     window.location.protocol === 'file:';
     
     // Mode selector visibility logic:
-    // - Production (not local): Always hidden (study mode enforced)
-    // - Local non-study modes: Always visible (dev, personal, etc.)
-    // - Local test modes: Always visible (study_clean, study_w2_s1, study_w2_s2, tutorial_end)
-    // - Local production study mode only: Hidden by default, revealed by "dvdv"
-    
-    const isPureProductionStudy = CURRENT_MODE === AppMode.PRODUCTION;
-    const isTestMode = CURRENT_MODE === AppMode.STUDY_CLEAN ||
-                       CURRENT_MODE === AppMode.STUDY_W2_S1 ||
-                       CURRENT_MODE === AppMode.STUDY_W2_S1_RETURNING ||
-                       CURRENT_MODE === AppMode.STUDY_W2_S2 ||
-                       CURRENT_MODE === AppMode.TUTORIAL_END;
-    
-    if (!isLocal) {
-        // Production: Hide mode selector (study mode is enforced)
+    // - Production (not local): Always hidden
+    // - Solar Portal mode: Always hidden (clean UI for end users)
+    // - Other local modes: Visible for dev/testing
+
+    if (!isLocal || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
+        // Hide mode selector in production or Solar Portal mode
         if (modeSelectorContainer) {
             modeSelectorContainer.style.visibility = 'hidden';
             modeSelectorContainer.style.opacity = '0';
         }
-        console.log('🔒 Mode selector hidden (production environment)');
-    } else if (isLocal && !isPureProductionStudy) {
-        // Local: Hidden by default (can be revealed with "dvdv" secret sequence)
-        if (modeSelectorContainer) {
-            modeSelectorContainer.style.visibility = 'hidden';
-            modeSelectorContainer.style.opacity = '0';
-        }
-        console.log('🔒 Mode selector hidden by default (type "dvdv" to reveal)');
-    } else if (isPureProductionStudy && isLocal) {
-        // Pure production study mode (local): Hidden by default, revealed by "dvdv"
-        console.log('🔒 Mode selector hidden (type "dvdv" to reveal)');
-    }
-
-    // Secret key sequence to reveal mode selector (hardcoded, no server needed)
-    // Only used for study modes
-    const modeSelectorSecret = 'dvdv';
-    
-    // Track key sequence
-    let keySequence = '';
-    let keySequenceTimeout = null;
-    
-    // Function to show mode selector
-    function showModeSelector() {
-        if (modeSelectorContainer) {
-            modeSelectorContainer.style.visibility = 'visible';
-            modeSelectorContainer.style.opacity = '1';
-            console.log('🔓 Mode selector revealed (secret sequence detected)');
-        }
-    }
-    
-    // Listen for secret key sequence (anytime, anywhere)
-    function handleSecretKeyListener(e) {
-        // Skip if key is undefined (can happen with some special keys)
-        if (!e.key) {
-            return;
-        }
-
-        // Reset sequence if too much time passes (2 seconds)
-        if (keySequenceTimeout) {
-            clearTimeout(keySequenceTimeout);
-        }
-        keySequenceTimeout = setTimeout(() => {
-            keySequence = '';
-        }, 2000);
-
-        // Add current key to sequence
-        keySequence += e.key.toLowerCase();
-
-        // Keep only last N characters (where N is secret length)
-        const secretLength = modeSelectorSecret.length;
-        if (keySequence.length > secretLength) {
-            keySequence = keySequence.slice(-secretLength);
-        }
-
-        // Check if sequence matches secret
-        if (keySequence === modeSelectorSecret.toLowerCase()) {
-            showModeSelector();
-            keySequence = ''; // Reset sequence
-            if (keySequenceTimeout) {
-                clearTimeout(keySequenceTimeout);
-                keySequenceTimeout = null;
-            }
-        }
-    }
-    
-    // Add key listener on page load (only for pure production study mode in local environment)
-    // Production (not local): Disable secret key sequence (study mode is enforced)
-    // Test modes: Don't need secret sequence (mode selector already visible)
-    if (isPureProductionStudy && isLocal) {
-        window.addEventListener('keydown', handleSecretKeyListener);
     }
 
     // 🐛 DEBUG: Secret key sequence to jump to study end walkthrough
@@ -1339,11 +1270,14 @@ async function initializeMainApp() {
         }
         const selectedVolcano = e.target.value;
         const volcanoWithData = State.volcanoWithData;
-        
+
+        // 🛰️ Update the Data dropdown to show datasets for the selected spacecraft
+        updateDatasetOptions();
+
         // 🔧 FIX: Don't switch regions here! The user is still viewing old data.
         // Regions will switch when "Fetch Data" is clicked (via startStreaming → switchVolcanoRegions)
         // The dropdown just selects WHICH volcano to fetch next, doesn't change current data/regions
-        
+
         // 🎨 Visual reminder: If there's loaded data from a different volcano, mark it as "(Currently Loaded)"
         if (volcanoWithData && selectedVolcano !== volcanoWithData) {
             updateVolcanoDropdownLabels(volcanoWithData, selectedVolcano);
@@ -1351,7 +1285,7 @@ async function initializeMainApp() {
             // User switched back to the loaded volcano - clear the flag
             updateVolcanoDropdownLabels(null, selectedVolcano);
         }
-        
+
         // 🎯 In STUDY mode: prevent re-fetching same volcano (one volcano per session)
         // 👤 In PERSONAL/DEV modes: allow re-fetching any volcano anytime
         if (isStudyMode() && volcanoWithData && selectedVolcano === volcanoWithData) {
@@ -1367,7 +1301,7 @@ async function initializeMainApp() {
                 fetchBtn.title = '';
             }
         }
-        
+
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
     document.getElementById('dataType').addEventListener('change', (e) => {
@@ -1782,29 +1716,34 @@ async function initializeMainApp() {
     async function restoreRecentSearch(selectedOption) {
         try {
             if (!selectedOption.dataset.cacheEntry) return;
-            
+
             const cacheData = JSON.parse(selectedOption.dataset.cacheEntry);
-            
+
             // Parse start/end times to populate form fields
             const startDate = new Date(cacheData.startTime);
             const endDate = new Date(cacheData.endTime);
-            
+
             // Format for date inputs (YYYY-MM-DD)
             const startDateStr = startDate.toISOString().split('T')[0];
             const endDateStr = endDate.toISOString().split('T')[0];
-            
+
             // Format for time inputs (HH:MM:SS.mmm)
             const startTimeStr = startDate.toISOString().split('T')[1].replace('Z', '');
             const endTimeStr = endDate.toISOString().split('T')[1].replace('Z', '');
-            
-            // Populate form fields
+
+            // Populate form fields - ORDER MATTERS!
+            // 1. Set spacecraft first
             document.getElementById('spacecraft').value = cacheData.spacecraft;
+            // 2. Update dataset dropdown options for the selected spacecraft
+            updateDatasetOptions();
+            // 3. Now set the dataset (after options are populated)
             document.getElementById('dataType').value = cacheData.dataset;
+            // 4. Set date/time fields
             document.getElementById('startDate').value = startDateStr;
             document.getElementById('startTime').value = startTimeStr;
             document.getElementById('endDate').value = endDateStr;
             document.getElementById('endTime').value = endTimeStr;
-            
+
             console.log(`🔍 Restored recent search: ${selectedOption.textContent}`);
             
             // Automatically fetch the data from cache
@@ -1869,6 +1808,7 @@ async function initializeMainApp() {
             console.log('🔵 Fetch Data button clicked!');
             saveRecentSearch(); // Save search before fetching (no-op now, handled by cache)
             startStreaming(e);
+            e.target.blur(); // Blur so spacebar can toggle play/pause
         });
         console.log('🟢 startBtn event listener attached successfully!');
     } else {
@@ -2146,11 +2086,13 @@ async function initializeMainApp() {
             
             const filename = `${spacecraft}_${dataset}_${componentLabel}_${startTime}_${endTime}.wav`;
             
-            console.log(`📥 Downloading CDAWeb audio: ${filename}`);
-            console.log(`   Samples: ${samples.length.toLocaleString()}, Sample rate: 22000 Hz`);
-            
-            // Create WAV file - hardcoded to 22000 Hz (CDAWeb's actual sample rate)
-            const wavBlob = createWAVBlob(samples, 22000);
+            // completeSamplesArray is at 44100 Hz (AudioContext's native sample rate)
+            const sampleRate = 44100;
+            console.log(`📥 Downloading audio: ${filename}`);
+            console.log(`   Samples: ${samples.length.toLocaleString()}, Sample rate: ${sampleRate} Hz`);
+
+            // Create WAV file at 44.1kHz (our resampled playback version)
+            const wavBlob = createWAVBlob(samples, sampleRate);
             
             // Trigger download
             const url = URL.createObjectURL(wavBlob);
@@ -2166,8 +2108,80 @@ async function initializeMainApp() {
         });
         console.log('✅ Download audio button handler attached');
     }
-    
-    
+
+    // Set up download ALL components button (creates a zip with all 3 WAV files)
+    const downloadAllBtn = document.getElementById('downloadAllComponentsBtn');
+    if (downloadAllBtn) {
+        downloadAllBtn.addEventListener('click', async () => {
+            const { getAllComponentBlobs, getComponentLabels, getCurrentDataIdentifiers, getComponentCount } = await import('./component-selector.js');
+
+            const componentCount = getComponentCount();
+            if (componentCount < 2) {
+                alert('Only one component available. Use "Download Audio" instead.');
+                return;
+            }
+
+            const allBlobs = await getAllComponentBlobs();
+            if (!allBlobs || allBlobs.length === 0) {
+                alert('Component data not yet loaded. Please wait for all components to download.');
+                return;
+            }
+
+            // Show loading state
+            const originalText = downloadAllBtn.textContent;
+            downloadAllBtn.textContent = '⏳ Creating ZIP...';
+            downloadAllBtn.disabled = true;
+
+            try {
+                const labels = getComponentLabels();
+                const ids = getCurrentDataIdentifiers();
+                const startTimeStr = ids.startTime?.replace(/:/g, '-').replace(/\./g, '-') || 'unknown';
+                const endTimeStr = ids.endTime?.replace(/:/g, '-').replace(/\./g, '-') || 'unknown';
+                const baseFilename = `${ids.spacecraft}_${ids.dataset}_${startTimeStr}_${endTimeStr}`;
+
+                console.log(`📦 Creating ZIP with ${allBlobs.length} components...`);
+
+                // Create ZIP file
+                const zip = new JSZip();
+
+                for (let i = 0; i < allBlobs.length; i++) {
+                    const blob = allBlobs[i];
+                    const label = labels[i]?.split(' ')[0] || `component${i}`; // Get "br" from "br (Radial)"
+                    const filename = `${baseFilename}_${label}.wav`;
+                    zip.file(filename, blob);
+                    console.log(`   Added: ${filename} (${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
+                }
+
+                // Generate the ZIP blob
+                const zipBlob = await zip.generateAsync({
+                    type: 'blob',
+                    compression: 'DEFLATE',
+                    compressionOptions: { level: 6 }
+                });
+
+                // Trigger download
+                const url = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${baseFilename}_all_components.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                console.log(`✅ Downloaded: ${baseFilename}_all_components.zip (${(zipBlob.size / 1024 / 1024).toFixed(2)} MB)`);
+            } catch (err) {
+                console.error('❌ Failed to create ZIP:', err);
+                alert('Failed to create ZIP file. See console for details.');
+            } finally {
+                downloadAllBtn.textContent = originalText;
+                downloadAllBtn.disabled = false;
+            }
+        });
+        console.log('✅ Download all components button handler attached');
+    }
+
+
     if (!isStudyMode()) {
         console.log('✅ Event listeners setup complete - memory leak prevention active!');
     }

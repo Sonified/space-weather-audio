@@ -15,7 +15,7 @@ import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, ad
 import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-tracker.js';
 import { isStudyMode } from './master-modes.js';
 import { isTutorialActive } from './tutorial-state.js';
-import { storeAudioData, getAudioData } from './cdaweb-cache.js';
+import { storeAudioData, getAudioData, updateCacheWithAllComponents } from './cdaweb-cache.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -81,9 +81,10 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
     // Get variable name for dataset
     const variable = DATASET_VARIABLES[dataset] || dataset;
     
-    // Build API URL
-    const apiUrl = `${CDASWS_BASE_URL}/dataviews/${DATAVIEW}/datasets/${dataset}/data/${startTimeBasic},${endTimeBasic}/${variable}?format=audio`;
-    
+    // Build API URL with cache buster to force fresh temporary files from CDAWeb
+    const cacheBuster = Date.now();
+    const apiUrl = `${CDASWS_BASE_URL}/dataviews/${DATAVIEW}/datasets/${dataset}/data/${startTimeBasic},${endTimeBasic}/${variable}?format=audio&_=${cacheBuster}`;
+
     console.log(`📡 CDAWeb API: ${apiUrl}`);
     
     const fetchStartTime = performance.now();
@@ -111,56 +112,127 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         }
         
         console.log(`📊 CDAWeb returned ${result.FileDescription.length} file(s):`, result.FileDescription.map(f => f.Name));
-        
+
         // Store all file URLs for component switching (PSP returns [br, bt, bn])
         const allFileUrls = result.FileDescription.map(f => f.Name);
         const allFileInfo = result.FileDescription;
-        
+
         // Get first audio file for initial playback
         const fileInfo = result.FileDescription[0];
         const audioFileUrl = fileInfo.Name;
-        
+
         console.log(`📥 Downloading WAV file: ${audioFileUrl}`);
         console.log(`📊 CDAWeb FileInfo:`, fileInfo);
-        
-        // Download WAV file
+
+        // Download first WAV file immediately (user's requested component)
         const wavResponse = await fetch(audioFileUrl);
         if (!wavResponse.ok) {
             throw new Error(`Failed to download WAV file (HTTP ${wavResponse.status})`);
         }
-        
+
         const wavBlob = await wavResponse.blob();
         const totalFetchTime = performance.now() - fetchStartTime;
-        
+
         console.log(`✅ WAV downloaded: ${(wavBlob.size / 1024).toFixed(2)} KB in ${totalFetchTime.toFixed(0)}ms`);
-        
+
         // Prepare metadata for caching
         const metadata = {
             fileSize: wavBlob.size,
             fileInfo: fileInfo,
             apiFetchTime,
             totalFetchTime,
-            component: 'first', // TODO: Handle multi-component selection
-            allFileUrls: allFileUrls, // All component URLs
-            allFileInfo: allFileInfo  // All file info objects
+            component: 'first',
+            allFileUrls: allFileUrls,
+            allFileInfo: allFileInfo,
+            allComponentsDownloaded: allFileUrls.length === 1 // Only one component = already complete
         };
-        
-        // Cache for future use
+
+        // Cache first component immediately (so user can start listening)
         await storeAudioData({
             spacecraft,
             dataset,
             startTime,
             endTime,
             wavBlob,
+            allComponentBlobs: [wavBlob], // Start with just the first blob
             metadata
         });
-        
-        // Decode and return
+
+        // Background download other components (don't await - let it run in background)
+        if (allFileUrls.length > 1) {
+            downloadRemainingComponentsInBackground(
+                spacecraft, dataset, startTime, endTime,
+                allFileUrls, wavBlob
+            );
+        }
+
+        // Decode and return immediately (user doesn't wait for other components)
         return await decodeWAVBlob(wavBlob, { spacecraft, dataset, startTime, endTime, metadata });
         
     } catch (error) {
         console.error('❌ CDAWeb fetch error:', error);
         throw error;
+    }
+}
+
+/**
+ * Download remaining component WAV files in the background
+ * Called after the first component is loaded so user can start listening immediately
+ * @param {string} spacecraft
+ * @param {string} dataset
+ * @param {string} startTime
+ * @param {string} endTime
+ * @param {Array<string>} allFileUrls - All component URLs from CDAWeb
+ * @param {Blob} firstBlob - Already downloaded first component blob
+ */
+async function downloadRemainingComponentsInBackground(spacecraft, dataset, startTime, endTime, allFileUrls, firstBlob) {
+    console.log(`🔄 Background: Downloading ${allFileUrls.length - 1} remaining component(s)...`);
+
+    // Start with the first blob we already have
+    const allBlobs = [firstBlob];
+
+    // Download remaining components in parallel
+    const remainingUrls = allFileUrls.slice(1);
+    const downloadPromises = remainingUrls.map(async (url, index) => {
+        const componentIndex = index + 1; // 0 is already downloaded
+        const labels = ['br', 'bt', 'bn'];
+        const label = labels[componentIndex] || `component ${componentIndex}`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const blob = await response.blob();
+            console.log(`   ✅ Background: Downloaded ${label} (${(blob.size / 1024).toFixed(1)} KB)`);
+            return { index: componentIndex, blob, success: true };
+        } catch (error) {
+            console.warn(`   ⚠️ Background: Failed to download ${label}: ${error.message}`);
+            return { index: componentIndex, blob: null, success: false };
+        }
+    });
+
+    const results = await Promise.all(downloadPromises);
+
+    // Build complete array of blobs in order
+    for (const result of results) {
+        if (result.success) {
+            allBlobs[result.index] = result.blob;
+        }
+    }
+
+    // Update cache with all component blobs
+    const successCount = results.filter(r => r.success).length + 1; // +1 for first blob
+    if (successCount === allFileUrls.length) {
+        await updateCacheWithAllComponents(spacecraft, dataset, startTime, endTime, allBlobs);
+        console.log(`✅ Background: All ${allBlobs.length} components cached and ready for switching`);
+
+        // Notify component selector that blobs are ready
+        window.dispatchEvent(new CustomEvent('componentsReady', {
+            detail: { allBlobs, spacecraft, dataset, startTime, endTime }
+        }));
+    } else {
+        console.warn(`⚠️ Background: Only ${successCount}/${allFileUrls.length} components downloaded`);
     }
 }
 
@@ -408,7 +480,13 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         if (audioData.allFileUrls && audioData.allFileUrls.length > 1) {
             console.log(`🔍 [COMPONENT SELECTOR] Multiple files detected - initializing selector`);
             const { initializeComponentSelector } = await import('./component-selector.js');
-            initializeComponentSelector(audioData.allFileUrls);
+            // Pass metadata so component selector can look up cached blobs
+            initializeComponentSelector(audioData.allFileUrls, {
+                spacecraft,
+                dataset,
+                startTime: startTimeISO,
+                endTime: endTimeISO
+            });
         } else {
             console.log(`🔍 [COMPONENT SELECTOR] Single file or no files - hiding selector`);
             const { hideComponentSelector } = await import('./component-selector.js');
@@ -418,7 +496,12 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         // Show download button after audio loads
         const downloadContainer = document.getElementById('downloadAudioContainer');
         if (downloadContainer) {
-            downloadContainer.style.display = 'block';
+            downloadContainer.style.display = 'flex';
+        }
+        // Show "Download All Components" button only if multiple components
+        const downloadAllBtn = document.getElementById('downloadAllComponentsBtn');
+        if (downloadAllBtn) {
+            downloadAllBtn.style.display = (audioData.allFileUrls?.length > 1) ? 'block' : 'none';
         }
         console.log(`🔍 [PIPELINE] State.totalAudioDuration set: ${State.totalAudioDuration}s`);
         

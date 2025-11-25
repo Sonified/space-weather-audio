@@ -36,7 +36,7 @@ export const AppMode = {
  * 🎯 MODE SELECTION - Can be changed via UI dropdown or here
  * ═══════════════════════════════════════════════════════════
  */
-export const DEFAULT_MODE = AppMode.PERSONAL; // Default if no localStorage selection
+export const DEFAULT_MODE = AppMode.SOLAR_PORTAL; // Default if no localStorage selection
 
 /**
  * Detect if running locally vs production

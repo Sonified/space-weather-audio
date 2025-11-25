@@ -290,77 +290,40 @@ function render() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     
-    // Draw 4 waves with different buffer sizes: 32, 64, 128, 256 samples
-    // Add timing noise for each wave
-    const timeNoise = Math.sin(scrollOffset * 0.1) * 2; // Slow sine wave for noise
-    
-    const waveConfigs = [
-        { numSamples: 32, color: 'rgba(255, 120, 80, 0.7)', shadowColor: 'rgba(200, 80, 60, 0.5)', outerGlow: 'rgba(200, 80, 60, 0.15)', highlightColor: 'rgba(255, 160, 100, 0.75)', noiseOffset: Math.sin(scrollOffset * 0.15) * 0.2 },
-        { numSamples: 64, color: 'rgba(255, 140, 90, 0.55)', shadowColor: 'rgba(220, 100, 70, 0.45)', outerGlow: 'rgba(220, 100, 70, 0.12)', highlightColor: 'rgba(255, 180, 120, 0.65)', noiseOffset: Math.sin(scrollOffset * 0.12) * 0.25 },
-        { numSamples: 128, color: 'rgba(255, 160, 100, 0.45)', shadowColor: 'rgba(240, 120, 80, 0.35)', outerGlow: 'rgba(240, 120, 80, 0.1)', highlightColor: 'rgba(255, 200, 140, 0.55)', noiseOffset: Math.sin(scrollOffset * 0.08) * 0.3 },
-        { numSamples: 256, color: 'rgba(255, 180, 110, 0.35)', shadowColor: 'rgba(250, 140, 90, 0.3)', outerGlow: 'rgba(250, 140, 90, 0.08)', highlightColor: 'rgba(255, 220, 160, 0.45)', noiseOffset: Math.sin(scrollOffset * 0.06) * 0.35 }
-    ];
-    
-    for (const config of waveConfigs) {
-        const numSamples = config.numSamples;
-        const samplesPerPixel = width / numSamples;
-        
-        ctx.beginPath();
-        
-        for (let i = 0; i < numSamples; i++) {
-            // Read from circular buffer with timing noise offset
-            const noiseOffset = Math.round(config.noiseOffset);
-            const bufferPos = (bufferIndex - scrollOffset - noiseOffset - i + audioBuffer.length * 2) % audioBuffer.length;
-            const sample = audioBuffer[bufferPos];
-            
-            // Map sample index to x position
-            const x = i * samplesPerPixel;
-            
-            // Scale to canvas height with amplification (2x) and y scaling
-            const amplifiedSample = sample * 2; // Amplify signal by 2x
-            const y = centerY - (amplifiedSample * centerY * 1.4); // 140% of height for more y-zoom
-            
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
+    // Draw single clean waveform
+    const numSamples = 1024;
+    const samplesPerPixel = width / numSamples;
+
+    ctx.beginPath();
+
+    for (let i = 0; i < numSamples; i++) {
+        // Read from circular buffer
+        const bufferPos = (bufferIndex - scrollOffset - i + audioBuffer.length * 2) % audioBuffer.length;
+        const sample = audioBuffer[bufferPos];
+
+        // Map sample index to x position (right to left)
+        const x = width - (i * samplesPerPixel);
+
+        // Scale to canvas height with amplification (2x) and y scaling
+        const amplifiedSample = sample * 2; // Amplify signal by 2x
+        const y = centerY - (amplifiedSample * centerY * 1.4); // 140% of height for more y-zoom
+
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
         }
-        
-        // Apply fade multiplier to all colors
-        const fade = fadeMultiplier;
-        
-        // Helper to apply fade to rgba color strings
-        const applyFade = (colorStr) => {
-            const match = colorStr.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
-            if (match) {
-                const [, r, g, b, a] = match;
-                return `rgba(${r}, ${g}, ${b}, ${parseFloat(a) * fade})`;
-            }
-            return colorStr;
-        };
-        
-        // Outer glow
-        ctx.strokeStyle = applyFade(config.outerGlow);
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 3;
-        ctx.shadowColor = applyFade(config.shadowColor);
-        ctx.stroke();
-        
-        // Main waveform
-        ctx.strokeStyle = applyFade(config.color);
-        ctx.lineWidth = 1.5;
-        ctx.shadowBlur = 6;
-        ctx.shadowColor = applyFade(config.shadowColor);
-        ctx.stroke();
-        
-        // Inner highlight
-        ctx.strokeStyle = applyFade(config.highlightColor);
-        ctx.lineWidth = 0.5;
-        ctx.shadowBlur = 4;
-        ctx.shadowColor = applyFade(config.shadowColor);
-        ctx.stroke();
     }
+
+    // Apply fade multiplier
+    const fade = fadeMultiplier;
+
+    // Main waveform with glow
+    ctx.strokeStyle = `rgba(255, 130, 90, ${0.9 * fade})`;
+    ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = `rgba(255, 100, 70, ${0.6 * fade})`;
+    ctx.stroke();
     
     ctx.shadowBlur = 0;
 }

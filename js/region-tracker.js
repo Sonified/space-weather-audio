@@ -40,13 +40,70 @@ const ANIMATE_REGION_REORDER = true; // Change to true to enable smooth slide an
 // localStorage key prefix for feature persistence
 const STORAGE_KEY_PREFIX = 'solar_audio_regions_';
 
+/**
+ * Generate a unique storage key hash for a specific data fetch
+ * Combines spacecraft, data type, start time, and end time
+ * This ensures features are associated with the exact data they were created on
+ */
+function generateStorageKey(spacecraft, dataType, startTime, endTime) {
+    if (!spacecraft || !dataType || !startTime || !endTime) {
+        // Fallback to old format if any component is missing
+        return spacecraft ? `${STORAGE_KEY_PREFIX}${spacecraft}` : null;
+    }
+
+    // Format times as ISO strings for consistent hashing
+    const startISO = startTime instanceof Date ? startTime.toISOString() : startTime;
+    const endISO = endTime instanceof Date ? endTime.toISOString() : endTime;
+
+    // Create a deterministic key from all components
+    // Format: solar_audio_regions_PSP_mag_2021-04-29T07:40:00.000Z_2021-04-29T08:20:00.000Z
+    return `${STORAGE_KEY_PREFIX}${spacecraft}_${dataType}_${startISO}_${endISO}`;
+}
+
+/**
+ * Get current data type/dataset from metadata (not UI)
+ * Uses the actual dataset that was fetched, not what's shown in the dropdown
+ */
+function getCurrentDataType() {
+    // Use the actual dataset from metadata - this is set during data fetch
+    // and reflects the real data being viewed, not just UI state
+    if (State.currentMetadata && State.currentMetadata.dataset) {
+        return State.currentMetadata.dataset;
+    }
+    // Fallback to UI if metadata not available (shouldn't happen after data fetch)
+    const dataTypeSelect = document.getElementById('dataType');
+    return dataTypeSelect ? dataTypeSelect.value : null;
+}
+
+/**
+ * Get the current storage key based on spacecraft, data type, and time range
+ * Always uses metadata values (not cached currentSpacecraft) for accuracy
+ */
+function getCurrentStorageKey() {
+    // Always use getCurrentSpacecraft() which reads from metadata
+    // Don't use the cached currentSpacecraft variable - it may be stale
+    const spacecraft = getCurrentSpacecraft();
+    const dataType = getCurrentDataType();
+    const startTime = State.dataStartTime;
+    const endTime = State.dataEndTime;
+
+    return generateStorageKey(spacecraft, dataType, startTime, endTime);
+}
+
 // Button positions are recalculated on every click - no caching needed
 // This ensures positions are always fresh and immune to resize timing, DPR changes, etc.
 
 /**
- * Get the current spacecraft from the UI
+ * Get the current spacecraft from metadata (not UI)
+ * Uses the actual spacecraft that was fetched, not what's shown in the dropdown
  */
 function getCurrentSpacecraft() {
+    // Use the actual spacecraft from metadata - this is set during data fetch
+    // and reflects the real data being viewed, not just UI state
+    if (State.currentMetadata && State.currentMetadata.spacecraft) {
+        return State.currentMetadata.spacecraft;
+    }
+    // Fallback to UI if metadata not available
     const spacecraftSelect = document.getElementById('spacecraft');
     return spacecraftSelect ? spacecraftSelect.value : null;
 }
@@ -79,12 +136,12 @@ function getCurrentSpeedFactor() {
 
 /**
  * Get regions for the current spacecraft
- * Uses currentSpacecraft if set, otherwise reads from UI
+ * Uses metadata (actual loaded data) as source of truth
  */
 export function getCurrentRegions() {
-    // Use currentSpacecraft if available (more reliable during spacecraft switches)
-    // Otherwise fall back to reading from UI
-    const spacecraft = currentSpacecraft || getCurrentSpacecraft();
+    // Always use getCurrentSpacecraft() which reads from metadata
+    // Don't use the cached currentSpacecraft variable - it may be stale
+    const spacecraft = getCurrentSpacecraft();
     if (!spacecraft) {
         return [];
     }
@@ -96,67 +153,33 @@ export function getCurrentRegions() {
 
 /**
  * Save regions to localStorage (persists across page reloads)
- * Merges new regions with existing ones to preserve regions from different time ranges
+ * Uses hash-based key: spacecraft + dataType + startTime + endTime
+ * This ensures features are associated with the exact data they were created on
  */
 function saveRegionsToStorage(spacecraft, regions) {
     if (!spacecraft) return;
-    
+
     try {
-        const storageKey = STORAGE_KEY_PREFIX + spacecraft;
-        
-        // Load existing regions from localStorage
-        let existingRegions = [];
-        try {
-            const stored = localStorage.getItem(storageKey);
-            if (stored) {
-                const data = JSON.parse(stored);
-                if (data && data.regions && Array.isArray(data.regions)) {
-                    existingRegions = data.regions;
-                }
-            }
-        } catch (e) {
-            // If we can't load existing, start fresh
-            existingRegions = [];
+        // Use hash-based storage key for precise data association
+        const storageKey = getCurrentStorageKey();
+        if (!storageKey) {
+            console.warn('⚠️ Cannot save regions - storage key not available (missing data type or time range)');
+            return;
         }
-        
-        // Create a map of existing regions by ID for quick lookup
-        const existingRegionsMap = new Map();
-        existingRegions.forEach(region => {
-            if (region.id !== undefined) {
-                existingRegionsMap.set(region.id, region);
-            }
-        });
-        
-        // Merge: update existing regions and add new ones
-        const mergedRegions = [...existingRegions]; // Start with all existing
-        
-        regions.forEach(newRegion => {
-            if (newRegion.id !== undefined) {
-                const existingIndex = mergedRegions.findIndex(r => r.id === newRegion.id);
-                if (existingIndex >= 0) {
-                    // Update existing region (replace it)
-                    mergedRegions[existingIndex] = newRegion;
-                } else {
-                    // Add new region
-                    mergedRegions.push(newRegion);
-                }
-            } else {
-                // Region without ID - add it (shouldn't happen, but handle gracefully)
-                mergedRegions.push(newRegion);
-            }
-        });
-        
-        // Save merged regions
+
+        // For hash-based keys, we don't merge - each data fetch has its own storage
+        // Simply save the current regions for this specific data fetch
         const dataToSave = {
             spacecraft: spacecraft,
-            regions: mergedRegions,
+            dataType: getCurrentDataType(),
+            startTime: State.dataStartTime?.toISOString(),
+            endTime: State.dataEndTime?.toISOString(),
+            regions: regions,
             savedAt: new Date().toISOString()
         };
         localStorage.setItem(storageKey, JSON.stringify(dataToSave));
-        
-        const addedCount = regions.length;
-        const totalCount = mergedRegions.length;
-        console.log(`💾 Saved ${addedCount} region(s) for ${spacecraft} to localStorage (total: ${totalCount} regions preserved)`);
+
+        console.log(`💾 Saved ${regions.length} region(s) to localStorage with key: ${storageKey}`);
     } catch (error) {
         console.error('❌ Failed to save regions to localStorage:', error);
         // localStorage might be full or disabled - continue without persistence
@@ -165,100 +188,51 @@ function saveRegionsToStorage(spacecraft, regions) {
 
 /**
  * Load regions from localStorage (restores after page reload)
- * Filters out regions that fall outside the current time range
+ * Uses hash-based key: spacecraft + dataType + startTime + endTime
+ * Since the key is unique per data fetch, no filtering is needed
  */
 function loadRegionsFromStorage(spacecraft) {
     if (!spacecraft) return null;
-    
+
     try {
-        const storageKey = STORAGE_KEY_PREFIX + spacecraft;
-        const stored = localStorage.getItem(storageKey);
-        
-        if (!stored) {
+        // Use hash-based storage key for precise data association
+        const storageKey = getCurrentStorageKey();
+        if (!storageKey) {
+            console.log(`📂 Skipping region load for ${spacecraft} - storage key not available yet`);
             return null;
         }
-        
+
+        const stored = localStorage.getItem(storageKey);
+
+        if (!stored) {
+            console.log(`📂 No saved regions found for key: ${storageKey}`);
+            return null;
+        }
+
         const data = JSON.parse(stored);
         if (data && data.regions && Array.isArray(data.regions)) {
-            // Filter regions by time range if data time range is available
-            let filteredRegions = data.regions;
-            
-            if (State.dataStartTime && State.dataEndTime) {
-                const dataStartMs = State.dataStartTime.getTime();
-                const dataEndMs = State.dataEndTime.getTime();
-                
-                filteredRegions = data.regions.filter(region => {
-                    // Check if region falls within the current time range
-                    let regionStartMs, regionEndMs;
-
-                    // 🔥 FIX: Always use saved timestamps for filtering if available
-                    // Sample indices are relative to data start and change between fetches!
-                    if (region.startTime && region.stopTime) {
-                        // Use absolute timestamps - these don't change between data fetches
-                        regionStartMs = new Date(region.startTime).getTime();
-                        regionEndMs = new Date(region.stopTime).getTime();
-                    } else if (region.startSample !== undefined && region.endSample !== undefined) {
-                        // Fallback: convert from sample indices (old regions without timestamps)
-                        // ⚠️ WARNING: This will be WRONG if data fetch time range has changed!
-                        if (!zoomState.isInitialized()) {
-                            return false; // Don't load if we can't determine time range
-                        }
-                        const regionStartSeconds = zoomState.sampleToTime(region.startSample);
-                        const regionEndSeconds = zoomState.sampleToTime(region.endSample);
-                        regionStartMs = dataStartMs + (regionStartSeconds * 1000);
-                        regionEndMs = dataStartMs + (regionEndSeconds * 1000);
-                    } else {
-                        // Can't determine region time - exclude it
-                        return false;
-                    }
-
-                    // 🔥 STRICT BOUNDS CHECK: Region must be COMPLETELY within data bounds
-                    // Region cannot start before dataStartMs or end after dataEndMs
-                    if (regionStartMs < dataStartMs) {
-                        console.warn(`⚠️ Filtering out region ${region.id}: starts before data (${new Date(regionStartMs).toISOString()} < ${new Date(dataStartMs).toISOString()})`);
-                        return false; // Region starts before data begins
-                    }
-                    
-                    if (regionEndMs > dataEndMs) {
-                        console.warn(`⚠️ Filtering out region ${region.id}: ends after data (${new Date(regionEndMs).toISOString()} > ${new Date(dataEndMs).toISOString()})`);
-                        return false; // Region ends after data ends
-                    }
-                    
-                    // Also check if region is valid (start < end)
+            // With hash-based keys, regions are already specific to this exact data fetch
+            // No filtering needed - just validate that regions have valid time ranges
+            const validRegions = data.regions.filter(region => {
+                // Check if region is valid (start < end)
+                if (region.startTime && region.stopTime) {
+                    const regionStartMs = new Date(region.startTime).getTime();
+                    const regionEndMs = new Date(region.stopTime).getTime();
                     if (regionStartMs >= regionEndMs) {
                         console.warn(`⚠️ Filtering out region ${region.id}: invalid time range (start >= end)`);
-                        return false; // Invalid region
+                        return false;
                     }
-
-                    // Simple rule: filter out regions older than 24 hours from NOW
-                    const nowMs = Date.now();
-                    const twentyFourHoursAgo = nowMs - (24 * 60 * 60 * 1000);
-
-                    if (regionEndMs < twentyFourHoursAgo) {
-                        return false; // Too old, don't load it
-                    }
-
-                    // Region is valid and within bounds
-                    return true;
-                });
-                
-                if (filteredRegions.length !== data.regions.length) {
-                    console.log(`📂 Loaded ${data.regions.length} regions for ${spacecraft} from localStorage, filtered to ${filteredRegions.length} within time range`);
-                } else {
-                    console.log(`📂 Loaded ${data.regions.length} regions for ${spacecraft} from localStorage`);
                 }
-            } else {
-                // No time range available yet - don't load regions
-                console.log(`📂 Skipping region load for ${spacecraft} - time range not available yet`);
-                return null;
-            }
-            
-            return filteredRegions;
+                return true;
+            });
+
+            console.log(`📂 Loaded ${validRegions.length} region(s) from localStorage with key: ${storageKey}`);
+            return validRegions;
         }
     } catch (error) {
         console.error('❌ Failed to load regions from localStorage:', error);
     }
-    
+
     return null;
 }
 
@@ -402,7 +376,11 @@ export function loadRegionsAfterDataFetch() {
         console.warn('⚠️ Cannot load regions - no spacecraft selected');
         return;
     }
-    
+
+    // 🔧 CRITICAL: Always clear in-memory regions first before loading
+    // This ensures old regions from previous data don't persist
+    regionsBySpacecraft.set(spacecraft, []);
+
     const loadedRegions = loadRegionsFromStorage(spacecraft);
     if (loadedRegions && loadedRegions.length > 0) {
         // 🔧 CRITICAL FIX: Recalculate sample indices from timestamps!
@@ -464,6 +442,11 @@ export function loadRegionsAfterDataFetch() {
         updateCompleteButtonState();
     } else {
         console.log(`📂 No saved regions found for ${spacecraft}`);
+        // 🔧 CRITICAL: Still need to re-render to clear any old regions from display
+        renderRegions();
+        redrawAllCanvasFeatureBoxes();
+        drawWaveformWithSelection();
+        updateCompleteButtonState();
     }
 }
 
@@ -2400,6 +2383,32 @@ function renderFeatures(regionId, regionIndex) {
             if (event.key === 'Enter') {
                 event.preventDefault();
                 this.blur();
+            }
+            // Tab to next feature's notes field (wrap to first)
+            if (event.key === 'Tab' && !event.shiftKey) {
+                event.preventDefault();
+                const nextNotesField = document.getElementById(`notes-${regionIndex}-${featureIndex + 1}`);
+                if (nextNotesField) {
+                    nextNotesField.focus();
+                } else {
+                    // Wrap to first feature
+                    const firstNotesField = document.getElementById(`notes-${regionIndex}-0`);
+                    if (firstNotesField) firstNotesField.focus();
+                }
+            }
+            // Shift+Tab to previous feature's notes field (wrap to last)
+            if (event.key === 'Tab' && event.shiftKey) {
+                event.preventDefault();
+                const prevNotesField = document.getElementById(`notes-${regionIndex}-${featureIndex - 1}`);
+                if (prevNotesField) {
+                    prevNotesField.focus();
+                } else {
+                    // Wrap to last feature
+                    let lastIndex = 0;
+                    while (document.getElementById(`notes-${regionIndex}-${lastIndex + 1}`)) lastIndex++;
+                    const lastNotesField = document.getElementById(`notes-${regionIndex}-${lastIndex}`);
+                    if (lastNotesField) lastNotesField.focus();
+                }
             }
         });
         

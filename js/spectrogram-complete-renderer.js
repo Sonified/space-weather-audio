@@ -637,16 +637,19 @@ export function restoreInfiniteCanvasFromCache() {
     // logInfiniteCanvasState('restoreInfiniteCanvasFromCache COMPLETE - full view restored');
 }
 
+/**
+ * Clear complete spectrogram and free memory
+ */
 export function clearCompleteSpectrogram() {
     // Only log in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🧹 [spectrogram-complete-renderer.js] clearCompleteSpectrogram CALLED');
+        console.log(`🧹 [spectrogram-complete-renderer.js] clearCompleteSpectrogram CALLED`);
         console.trace('📍 Call stack:');
         console.log('🧹 Starting aggressive spectrogram cleanup...');
     }
-    
+
     logMemory('Before cleanup');
-    
+
     const canvas = document.getElementById('spectrogram');
     if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -2278,13 +2281,13 @@ function updateSpectrogramOverlay() {
  */
 export async function startCompleteVisualization() {
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         console.log('⚠️ Cannot start complete visualization - no audio data');
         return;
     }
-    
+
     console.log('🎬 Starting complete spectrogram visualization');
-    
+
     await renderCompleteSpectrogram();
 }

@@ -64,15 +64,16 @@ function generateCacheKey(spacecraft, dataset, startTime, endTime) {
  * @param {string} params.dataset - Dataset ID (e.g., 'PSP_FLD_L2_MAG_RTN')
  * @param {string} params.startTime - ISO 8601 start time
  * @param {string} params.endTime - ISO 8601 end time
- * @param {Blob} params.wavBlob - WAV audio file blob
+ * @param {Blob} params.wavBlob - WAV audio file blob (first component)
+ * @param {Array<Blob>} [params.allComponentBlobs] - All component blobs [br, bt, bn]
  * @param {Object} params.metadata - Additional metadata
  * @returns {Promise<string>} Cache key
  */
-export async function storeAudioData({ spacecraft, dataset, startTime, endTime, wavBlob, metadata }) {
+export async function storeAudioData({ spacecraft, dataset, startTime, endTime, wavBlob, allComponentBlobs, metadata }) {
     await initCache();
-    
+
     const id = generateCacheKey(spacecraft, dataset, startTime, endTime);
-    
+
     const entry = {
         id,
         spacecraft,
@@ -80,31 +81,74 @@ export async function storeAudioData({ spacecraft, dataset, startTime, endTime, 
         startTime,
         endTime,
         wavBlob,
+        allComponentBlobs: allComponentBlobs || [wavBlob], // Store all component blobs
         metadata: {
             ...metadata,
             sampleRate: 22000, // CDAWeb audio sample rate (22kHz)
         },
         cachedAt: Date.now()
     };
-    
+
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([STORE_NAME], 'readwrite');
         const objectStore = transaction.objectStore(STORE_NAME);
         const request = objectStore.put(entry);
-        
+
         request.onsuccess = () => {
-            console.log(`💾 Cached audio data: ${id}`);
-            
+            const blobCount = entry.allComponentBlobs?.length || 1;
+            console.log(`💾 Cached audio data: ${id} (${blobCount} component${blobCount > 1 ? 's' : ''})`);
+
             // Clean up old entries if we exceed the limit
             cleanupOldEntries();
-            
+
             resolve(id);
         };
-        
+
         request.onerror = () => {
             console.error('❌ Failed to cache audio data:', request.error);
             reject(request.error);
         };
+    });
+}
+
+/**
+ * Update cache entry with additional component blobs (for background downloads)
+ * @param {string} spacecraft
+ * @param {string} dataset
+ * @param {string} startTime
+ * @param {string} endTime
+ * @param {Array<Blob>} allComponentBlobs - All component blobs
+ * @returns {Promise<void>}
+ */
+export async function updateCacheWithAllComponents(spacecraft, dataset, startTime, endTime, allComponentBlobs) {
+    await initCache();
+
+    const id = generateCacheKey(spacecraft, dataset, startTime, endTime);
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const objectStore = transaction.objectStore(STORE_NAME);
+        const getRequest = objectStore.get(id);
+
+        getRequest.onsuccess = () => {
+            if (getRequest.result) {
+                const entry = getRequest.result;
+                entry.allComponentBlobs = allComponentBlobs;
+                entry.metadata.allComponentsDownloaded = true;
+
+                const putRequest = objectStore.put(entry);
+                putRequest.onsuccess = () => {
+                    console.log(`💾 Updated cache with all ${allComponentBlobs.length} components: ${id}`);
+                    resolve();
+                };
+                putRequest.onerror = () => reject(putRequest.error);
+            } else {
+                console.warn(`⚠️ Cache entry not found for component update: ${id}`);
+                resolve();
+            }
+        };
+
+        getRequest.onerror = () => reject(getRequest.error);
     });
 }
 
@@ -311,20 +355,17 @@ function getEncounterNumber(startDate) {
 export function formatCacheEntryForDisplay(entry) {
     const start = new Date(entry.startTime);
     const end = new Date(entry.endTime);
-    
-    // Get encounter number from start date
-    const encounter = getEncounterNumber(start);
-    
+
     // Format date as YYYY-MM-DD
     const dateStr = start.toISOString().split('T')[0];
-    
+
     // Format times as HH:MM
     const startTimeStr = start.toISOString().split('T')[1].substring(0, 5);
     const endTimeStr = end.toISOString().split('T')[1].substring(0, 5);
-    
+
     // Calculate duration in minutes
     const durationMinutes = Math.round((end - start) / 60000);
-    
+
     // Shorten dataset name for display
     let datasetShort = entry.dataset;
     if (datasetShort.includes('PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC')) {
@@ -336,8 +377,14 @@ export function formatCacheEntryForDisplay(entry) {
     } else if (datasetShort.includes('MMS')) {
         datasetShort = datasetShort.replace('MMS1_FGM_', '').replace('_L2', '');
     }
-    
-    // Format as "E_X: spacecraft dataset date time-time (duration min)"
-    return `${encounter}: ${entry.spacecraft} ${datasetShort} ${dateStr} ${startTimeStr}-${endTimeStr} (${durationMinutes} min)`;
+
+    // Only show encounter prefix for PSP (Parker Solar Probe)
+    if (entry.spacecraft === 'PSP') {
+        const encounter = getEncounterNumber(start);
+        return `${encounter}: ${entry.spacecraft} ${datasetShort} ${dateStr} ${startTimeStr}-${endTimeStr} (${durationMinutes} min)`;
+    }
+
+    // For other spacecraft (Wind, MMS), no encounter prefix
+    return `${entry.spacecraft} ${datasetShort} ${dateStr} ${startTimeStr}-${endTimeStr} (${durationMinutes} min)`;
 }
 

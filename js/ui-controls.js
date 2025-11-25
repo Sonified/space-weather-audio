@@ -240,6 +240,51 @@ export async function loadSavedVolcano() {
     }
 }
 
+// Spacecraft to datasets mapping for the Data dropdown
+const SPACECRAFT_DATASETS = {
+    'PSP': [
+        { value: 'PSP_FLD_L2_MAG_RTN', label: 'PSP_FLD_L2_MAG_RTN (Full Cadence)' },
+        { value: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC', label: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)' }
+    ],
+    'Wind': [
+        { value: 'WI_H2_MFI', label: 'WI_H2_MFI (Magnetic Field)' }
+    ],
+    'MMS': [
+        { value: 'MMS1_FGM_SRVY_L2', label: 'MMS1_FGM_SRVY_L2 (Survey Mode)' },
+        { value: 'MMS1_FGM_BRST_L2', label: 'MMS1_FGM_BRST_L2 (Burst Mode)' }
+    ]
+};
+
+/**
+ * Update the Data (dataType) dropdown based on the selected spacecraft
+ * Called when spacecraft selection changes
+ */
+export function updateDatasetOptions() {
+    const spacecraftSelect = document.getElementById('spacecraft');
+    const dataTypeSelect = document.getElementById('dataType');
+
+    if (!spacecraftSelect || !dataTypeSelect) {
+        console.warn('Spacecraft or dataType select not found');
+        return;
+    }
+
+    const spacecraft = spacecraftSelect.value;
+    const datasets = SPACECRAFT_DATASETS[spacecraft] || [];
+
+    if (datasets.length === 0) {
+        console.warn(`No datasets configured for spacecraft: ${spacecraft}`);
+        dataTypeSelect.innerHTML = '<option value="">No datasets available</option>';
+        return;
+    }
+
+    // Populate the dataType dropdown with datasets for the selected spacecraft
+    dataTypeSelect.innerHTML = datasets.map((ds, index) =>
+        `<option value="${ds.value}"${index === 0 ? ' selected' : ''}>${ds.label}</option>`
+    ).join('');
+
+    console.log(`📊 Updated dataset options for ${spacecraft}: ${datasets.length} datasets available`);
+}
+
 export function updateStationList() {
     const dataType = document.getElementById('dataType').value;
     const volcano = document.getElementById('volcano').value;
@@ -704,16 +749,15 @@ export function setupModalEventListeners() {
         if (participantSubmitBtn) {
             participantSubmitBtn.addEventListener('click', async () => {
                 submitParticipantSetup();  // Save data
-                
+
                 // Mark participant setup as seen when user submits (not before)
-                if (isStudyMode()) {
-                    localStorage.setItem('study_has_seen_participant_setup', 'true');
-                    console.log('✅ Participant setup marked as seen');
-                }
-                
+                // Works for both Study mode and Solar Portal mode
+                localStorage.setItem('study_has_seen_participant_setup', 'true');
+                console.log('✅ Participant setup marked as seen');
+
                 // Close modal (auto-detects next modal and keeps overlay)
                 await closeParticipantModal();
-                
+
                 // In study mode, open welcome modal next
                 if (isStudyMode()) {
                     setTimeout(() => {
@@ -1834,7 +1878,7 @@ export function openParticipantModal() {
             modalTitle.textContent = "Welcome";
         }
         if (instructionText) {
-            instructionText.textContent = "Enter your participant ID number to begin:";
+            instructionText.textContent = "Enter a user name to begin:";
             instructionText.style.fontWeight = 'bold'; // Keep bold styling for instruction
         }
     }
@@ -2510,7 +2554,16 @@ export function submitParticipantSetup() {
     const statusEl = document.getElementById('status');
     statusEl.className = 'status success';
     statusEl.textContent = `✅ User Name Recorded`;
-    
+
+    // In Solar Portal mode, animate follow-up instruction after a brief delay
+    if (CURRENT_MODE === AppMode.SOLAR_PORTAL) {
+        setTimeout(async () => {
+            const { typeText } = await import('./tutorial-effects.js');
+            statusEl.className = 'status info';
+            typeText(statusEl, '👈 click Fetch Data to begin', 30, 10);
+        }, 1200);
+    }
+
     // Update participant ID display in top panel
     // Always show the display (even if no ID set) so users can click to enter their ID
     const displayElement = document.getElementById('participantIdDisplay');

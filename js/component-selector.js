@@ -1,13 +1,22 @@
 /**
  * component-selector.js
  * Handles switching between CDAWeb audio components (br, bt, bn)
+ * Uses cached blobs instead of URLs to avoid CDAWeb temporary file expiration
  */
 
 import * as State from './audio-state.js';
+import { getAudioData } from './cdaweb-cache.js';
 
-// Store all component URLs
-let allComponentUrls = [];
+// Store component count and cached blobs
+let componentCount = 0;
 let currentComponentIndex = 0;
+let cachedComponentBlobs = []; // Blobs from cache or background download
+
+// Current data identifiers (for cache lookup)
+let currentSpacecraft = null;
+let currentDataset = null;
+let currentStartTime = null;
+let currentEndTime = null;
 
 const componentLabels = [
     'br (Radial)',
@@ -17,35 +26,43 @@ const componentLabels = [
 
 /**
  * Initialize component selector with file URLs from CDAWeb
- * @param {Array<string>} fileUrls - Array of WAV file URLs
+ * @param {Array<string>} fileUrls - Array of WAV file URLs (used for count, not fetching)
+ * @param {Object} metadata - Metadata containing spacecraft, dataset, times
  */
-export function initializeComponentSelector(fileUrls) {
-    allComponentUrls = fileUrls || [];
+export function initializeComponentSelector(fileUrls, metadata = {}) {
+    componentCount = fileUrls?.length || 0;
     currentComponentIndex = 0;
-    
+    cachedComponentBlobs = [];
+
+    // Store identifiers for cache lookup
+    currentSpacecraft = metadata.spacecraft || State.currentMetadata?.spacecraft;
+    currentDataset = metadata.dataset || State.currentMetadata?.dataset;
+    currentStartTime = metadata.startTime || State.dataStartTime?.toISOString();
+    currentEndTime = metadata.endTime || State.dataEndTime?.toISOString();
+
     const container = document.getElementById('componentSelectorContainer');
     const selector = document.getElementById('componentSelector');
-    
+
     if (!container || !selector) {
         console.warn('Component selector elements not found');
         return;
     }
-    
+
     // Show selector only if we have multiple components
-    if (allComponentUrls.length > 1) {
+    if (componentCount > 1) {
         // Update selector options based on actual number of files
         selector.innerHTML = '';
-        for (let i = 0; i < allComponentUrls.length; i++) {
+        for (let i = 0; i < componentCount; i++) {
             const option = document.createElement('option');
             option.value = i;
             option.textContent = componentLabels[i] || `Component ${i + 1}`;
             selector.appendChild(option);
         }
-        
+
         selector.value = currentComponentIndex;
         container.style.display = 'flex';
-        
-        console.log(`📊 Component selector initialized with ${allComponentUrls.length} components`);
+
+        console.log(`📊 Component selector initialized with ${componentCount} components`);
     } else {
         container.style.display = 'none';
     }
@@ -59,8 +76,41 @@ export function hideComponentSelector() {
     if (container) {
         container.style.display = 'none';
     }
-    allComponentUrls = [];
+    componentCount = 0;
     currentComponentIndex = 0;
+    cachedComponentBlobs = [];
+}
+
+/**
+ * Get component blob from cache
+ * @param {number} componentIndex
+ * @returns {Promise<Blob|null>}
+ */
+async function getComponentBlob(componentIndex) {
+    // Check if we already have blobs in memory
+    if (cachedComponentBlobs[componentIndex]) {
+        console.log(`   📦 Using in-memory cached blob for component ${componentIndex}`);
+        return cachedComponentBlobs[componentIndex];
+    }
+
+    // Try to get from IndexedDB cache
+    if (currentSpacecraft && currentDataset && currentStartTime && currentEndTime) {
+        const cached = await getAudioData(currentSpacecraft, currentDataset, currentStartTime, currentEndTime);
+        console.log(`   🔍 Cache lookup result:`, {
+            hasCache: !!cached,
+            hasAllComponentBlobs: !!cached?.allComponentBlobs,
+            blobCount: cached?.allComponentBlobs?.length || 0,
+            requestedIndex: componentIndex
+        });
+        if (cached?.allComponentBlobs && cached.allComponentBlobs[componentIndex]) {
+            // Store all blobs in memory for future use
+            cachedComponentBlobs = cached.allComponentBlobs;
+            console.log(`   📦 Loaded ${cachedComponentBlobs.length} component blobs from IndexedDB cache`);
+            return cachedComponentBlobs[componentIndex];
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -68,49 +118,48 @@ export function hideComponentSelector() {
  * @param {number} componentIndex - Index of the component to switch to
  */
 async function switchComponent(componentIndex) {
-    if (componentIndex < 0 || componentIndex >= allComponentUrls.length) {
+    if (componentIndex < 0 || componentIndex >= componentCount) {
         console.warn(`Invalid component index: ${componentIndex}`);
         return;
     }
-    
+
     if (componentIndex === currentComponentIndex) {
         return; // Already on this component
     }
-    
-    const newUrl = allComponentUrls[componentIndex];
+
     console.log(`🔄 Switching to component ${componentIndex}: ${componentLabels[componentIndex]}`);
     console.log(`   📍 Time range and regions will be preserved (same time period, different vector component)`);
-    
+
     try {
-        // Pause playback during switch
+        // Capture current playback state before switching
         const wasPlaying = State.playbackState === 'playing';
         const currentPosition = State.currentAudioPosition;
-        
-        // Fetch and decode the new component's WAV file
-        const response = await fetch(newUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch component ${componentIndex}`);
+        console.log(`   🎵 Current state: wasPlaying=${wasPlaying}, position=${currentPosition?.toFixed(2)}s`);
+
+        // Get blob from cache (NOT from URL - those expire!)
+        const wavBlob = await getComponentBlob(componentIndex);
+
+        if (!wavBlob) {
+            throw new Error(`Component ${componentIndex} not available in cache. The CDAWeb temporary files may have expired. Please reload the data.`);
         }
-        
-        const wavBlob = await response.blob();
-        
+
         // Decode the WAV file
         const offlineContext = new (window.AudioContext || window.webkitAudioContext)();
         const arrayBuffer = await wavBlob.arrayBuffer();
         const audioBuffer = await offlineContext.decodeAudioData(arrayBuffer);
         await offlineContext.close();
-        
+
         // Extract samples
         const samples = audioBuffer.getChannelData(0);
-        
+
         console.log(`   📊 Loaded ${samples.length.toLocaleString()} samples for ${componentLabels[componentIndex]}`);
-        
+
         // Update state with new samples (KEEP time range and regions intact!)
         State.setCompleteSamplesArray(samples);
-        
+
         // NOTE: We do NOT update dataStartTime, dataEndTime, or clear regions
         // Those represent the SAME time period across all components
-        
+
         // Send to waveform worker
         if (State.waveformWorker) {
             State.waveformWorker.postMessage({
@@ -119,55 +168,105 @@ async function switchComponent(componentIndex) {
                 rawSamples: samples
             });
         }
-        
-        // Send to AudioWorklet
+
+        // Send to AudioWorklet - use dual-buffer crossfade for seamless switching
         if (State.workletNode) {
-            // Clear existing buffer first
-            State.workletNode.port.postMessage({ type: 'clear-buffer' });
-            
-            // Send new samples in chunks
-            const CHUNK_SIZE = 1024;
-            for (let i = 0; i < samples.length; i += CHUNK_SIZE) {
-                const chunkSize = Math.min(CHUNK_SIZE, samples.length - i);
-                const chunk = samples.slice(i, i + chunkSize);
-                
-                State.workletNode.port.postMessage({
-                    type: 'audio-data',
-                    data: chunk,
-                    autoResume: false
-                });
-            }
-            
-            // Send data-complete
+            console.log(`   🔊 Sending ${samples.length.toLocaleString()} samples to AudioWorklet for crossfade...`);
+
+            // Use swap-buffer for seamless crossfade (no clicks!)
+            // The worklet will:
+            // 1. Store new samples in pending buffer
+            // 2. Crossfade from current buffer to pending buffer (50ms)
+            // 3. After crossfade, pending becomes primary
             State.workletNode.port.postMessage({
-                type: 'data-complete',
-                totalSamples: samples.length,
+                type: 'swap-buffer',
+                samples: samples,
                 sampleRate: State.currentMetadata?.original_sample_rate || 100
             });
+            console.log(`   🔊 Initiated crossfade swap (50ms equal-power crossfade)`);
+
+            // No need to seek - the worklet maintains position during swap
+        } else {
+            console.warn(`   ⚠️ No workletNode available!`);
         }
-        
+
         // Redraw waveform (new signal, same time axis)
         const { drawWaveform } = await import('./waveform-renderer.js');
         drawWaveform();
-        
-        // Redraw spectrogram (new signal, same time axis)
-        const { renderCompleteSpectrogram } = await import('./spectrogram-complete-renderer.js');
-        await renderCompleteSpectrogram();
-        
-        // Restore playback position
-        if (wasPlaying) {
-            // Resume playback at the same position
-            State.workletNode.port.postMessage({
-                type: 'seek',
-                position: currentPosition
-            });
-            State.workletNode.port.postMessage({ type: 'play' });
+
+        // 🔄 SPECTROGRAM CROSSFADE: Use same pattern as frequency scale change
+        // (capture old, reset state, render new, animate crossfade)
+        const {
+            resetSpectrogramState,
+            renderCompleteSpectrogram,
+            getSpectrogramViewport
+        } = await import('./spectrogram-complete-renderer.js');
+
+        const canvas = document.getElementById('spectrogram');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // Step 1: Capture current spectrogram BEFORE re-rendering
+            const oldSpectrogram = document.createElement('canvas');
+            oldSpectrogram.width = width;
+            oldSpectrogram.height = height;
+            oldSpectrogram.getContext('2d').drawImage(canvas, 0, 0);
+
+            // Step 2: Reset internal state (but NOT the display canvas!)
+            resetSpectrogramState();
+
+            // Step 3: Render new spectrogram in background
+            await renderCompleteSpectrogram();
+
+            // Step 4: Get viewport of new spectrogram for crossfade
+            const playbackRate = State.currentPlaybackRate || 1.0;
+            const newSpectrogram = getSpectrogramViewport(playbackRate);
+
+            if (newSpectrogram) {
+                // Step 5: Animate crossfade (50ms to match audio crossfade)
+                const fadeDuration = 50;
+                const fadeStart = performance.now();
+
+                const fadeStep = () => {
+                    if (!document.body || !document.body.isConnected) {
+                        return;
+                    }
+
+                    const elapsed = performance.now() - fadeStart;
+                    const progress = Math.min(elapsed / fadeDuration, 1.0);
+
+                    // Clear and draw blend
+                    ctx.clearRect(0, 0, width, height);
+
+                    // Old fading OUT
+                    ctx.globalAlpha = 1.0 - progress;
+                    ctx.drawImage(oldSpectrogram, 0, 0);
+
+                    // New fading IN
+                    ctx.globalAlpha = progress;
+                    ctx.drawImage(newSpectrogram, 0, 0);
+
+                    ctx.globalAlpha = 1.0;
+
+                    if (progress < 1.0) {
+                        requestAnimationFrame(fadeStep);
+                    } else {
+                        console.log(`🔄 Spectrogram crossfade complete`);
+                    }
+                };
+
+                fadeStep();
+            } else {
+                console.warn('⚠️ Could not get new spectrogram viewport for crossfade');
+            }
         }
-        
+
         currentComponentIndex = componentIndex;
         console.log(`✅ Component switched to ${componentLabels[componentIndex]}`);
         console.log(`   ✅ Regions and time range preserved`);
-        
+
     } catch (error) {
         console.error(`❌ Failed to switch component:`, error);
     }
@@ -178,25 +277,88 @@ async function switchComponent(componentIndex) {
  */
 export function setupComponentSelectorListener() {
     const selector = document.getElementById('componentSelector');
-    
+
     if (!selector) {
         console.warn('Component selector not found');
         return;
     }
-    
+
     selector.addEventListener('change', (e) => {
         const newIndex = parseInt(e.target.value);
         switchComponent(newIndex);
+        // Blur so spacebar still works for play/pause
+        e.target.blur();
     });
-    
+
+    // Listen for background download completion
+    window.addEventListener('componentsReady', (e) => {
+        const { allBlobs } = e.detail;
+        if (allBlobs && allBlobs.length > 0) {
+            cachedComponentBlobs = allBlobs;
+            console.log(`📊 Component selector received ${allBlobs.length} cached blobs`);
+        }
+    });
+
     console.log('📊 Component selector listener attached');
 }
 
 /**
- * Get all component URLs (for downloading all components)
- * @returns {Array<string>} Array of WAV file URLs
+ * Get current component count
+ * @returns {number}
  */
-export function getAllComponentUrls() {
-    return allComponentUrls;
+export function getComponentCount() {
+    return componentCount;
 }
 
+/**
+ * Get current component index
+ * @returns {number}
+ */
+export function getCurrentComponentIndex() {
+    return currentComponentIndex;
+}
+
+/**
+ * Get all component blobs from cache
+ * @returns {Promise<Array<Blob>|null>}
+ */
+export async function getAllComponentBlobs() {
+    // Check if we have blobs in memory
+    if (cachedComponentBlobs.length > 0) {
+        console.log(`📦 Using ${cachedComponentBlobs.length} in-memory cached blobs`);
+        return cachedComponentBlobs;
+    }
+
+    // Try to get from IndexedDB cache
+    if (currentSpacecraft && currentDataset && currentStartTime && currentEndTime) {
+        const cached = await getAudioData(currentSpacecraft, currentDataset, currentStartTime, currentEndTime);
+        if (cached?.allComponentBlobs && cached.allComponentBlobs.length > 0) {
+            cachedComponentBlobs = cached.allComponentBlobs;
+            console.log(`📦 Loaded ${cachedComponentBlobs.length} component blobs from IndexedDB cache`);
+            return cachedComponentBlobs;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Get current component labels
+ * @returns {Array<string>}
+ */
+export function getComponentLabels() {
+    return componentLabels.slice(0, componentCount);
+}
+
+/**
+ * Get current data identifiers for filename generation
+ * @returns {Object}
+ */
+export function getCurrentDataIdentifiers() {
+    return {
+        spacecraft: currentSpacecraft,
+        dataset: currentDataset,
+        startTime: currentStartTime,
+        endTime: currentEndTime
+    };
+}

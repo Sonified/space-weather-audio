@@ -33,7 +33,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
         // 🔥 CRITICAL: Sample rate will be set when data loads (default to 100 Hz)
         // AudioContext is 44.1kHz, but data comes in at original rate (50 Hz seismic, 100 Hz infrasound, variable for spacecraft)
         this.sampleRate = 100; // Default, will be updated by 'data-complete' message
-        
+
         this.maxBufferSize = 44100 * 300; // 5 minutes max (13.2M samples, ~53MB)
         this.buffer = new Float32Array(this.maxBufferSize);
         this.buffer.fill(0);
@@ -42,6 +42,17 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.samplesInBuffer = 0;
         this.totalSamplesWritten = 0; // Track total samples written (for completion check)
         this.minBufferSeen = Infinity; // Track minimum buffer level for diagnostics
+
+        // 🔄 DUAL-BUFFER CROSSFADE: Secondary buffer for component switching
+        // During crossfade: read from both buffers, mix with crossfade envelope
+        // After crossfade: pendingBuffer becomes primary, old buffer cleared
+        this.pendingBuffer = null; // Float32Array, allocated on swap-buffer
+        this.pendingSamplesInBuffer = 0;
+        this.pendingTotalSamples = 0;
+        this.isSwapping = false; // True during crossfade between buffers
+        this.swapFadeSamples = 0; // Current position in swap crossfade
+        this.swapFadeTotalSamples = 0; // Total samples for swap crossfade (e.g., 50ms @ 44.1kHz = 2205)
+        this.swapFadeTimeMs = 50; // Crossfade duration in ms
     }
     
     initializePlaybackState() {
@@ -99,10 +110,10 @@ class SeismicProcessor extends AudioWorkletProcessor {
         };
         
         // 🎚️ FADE TIME SETTINGS (hard-coded for optimal performance)
-        // All fades use 25ms (prevents clicks on initial playback)
+        // All fades use 50ms (prevents clicks on loops and seeks)
         // Exception: Very short loops (<200ms) use 2ms to avoid fade artifacts
         // Exception: First playback after data load uses 250ms to prevent massive click
-        this.fadeTimeMs = 25;        // Hard-coded 25ms for all fades
+        this.fadeTimeMs = 50;        // Hard-coded 50ms for all fades
         this.firstPlayAfterDataLoad = false; // Track if this is first play after data load
     }
     
@@ -224,6 +235,16 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     samplesInBuffer: this.samplesInBuffer,
                     totalSamplesWritten: this.totalSamplesWritten
                 });
+            } else if (type === 'swap-buffer') {
+                // 🔄 COMPONENT SWITCH: Receive new component's samples and crossfade
+                this.handleSwapBuffer(event.data.samples, event.data.sampleRate);
+            } else if (type === 'clear-buffer') {
+                // Clear current buffer (used before sending new component data)
+                this.buffer.fill(0);
+                this.samplesInBuffer = 0;
+                this.writeIndex = 0;
+                // Don't reset readIndex or totalSamplesConsumed - we want to maintain position
+                console.log(`🗑️ WORKLET: Buffer cleared`);
             }
         };
     }
@@ -298,6 +319,93 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.isLooping = false;
         this.pendingSeekSample = null;
         this.justTeleported = false;
+        // Reset swap state
+        this.pendingBuffer = null;
+        this.pendingSamplesInBuffer = 0;
+        this.isSwapping = false;
+    }
+
+    /**
+     * 🔄 DUAL-BUFFER CROSSFADE: Handle component switch
+     * Receives new component samples, stores in pending buffer, initiates crossfade
+     * @param {Float32Array} samples - New component's audio samples
+     * @param {number} newSampleRate - Sample rate of new component (should match current)
+     */
+    handleSwapBuffer(samples, newSampleRate) {
+        console.log(`🔄 WORKLET SWAP-BUFFER: Received ${samples.length.toLocaleString()} samples for crossfade`);
+
+        // Update sample rate if provided
+        if (newSampleRate && newSampleRate !== this.sampleRate) {
+            console.log(`🔄 WORKLET: Sample rate changing from ${this.sampleRate} to ${newSampleRate} Hz`);
+            this.sampleRate = newSampleRate;
+        }
+
+        // Allocate pending buffer if needed (or resize)
+        if (!this.pendingBuffer || this.pendingBuffer.length < samples.length) {
+            this.pendingBuffer = new Float32Array(Math.max(samples.length, this.maxBufferSize));
+            console.log(`🔄 WORKLET: Allocated pending buffer: ${this.pendingBuffer.length.toLocaleString()} samples`);
+        }
+
+        // Copy samples to pending buffer
+        this.pendingBuffer.set(samples);
+        this.pendingSamplesInBuffer = samples.length;
+        this.pendingTotalSamples = samples.length;
+
+        // Calculate crossfade duration in output samples (44.1kHz)
+        this.swapFadeTotalSamples = Math.floor(this.swapFadeTimeMs * 44.1);
+        this.swapFadeSamples = 0;
+        this.isSwapping = true;
+
+        console.log(`🔄 WORKLET: Starting ${this.swapFadeTimeMs}ms crossfade (${this.swapFadeTotalSamples} output samples)`);
+        console.log(`🔄 WORKLET: Current position: ${this.totalSamplesConsumed.toLocaleString()} / ${this.samplesInBuffer.toLocaleString()} samples`);
+
+        // Notify main thread that swap started
+        this.port.postMessage({
+            type: 'swap-started',
+            fadeDurationMs: this.swapFadeTimeMs
+        });
+    }
+
+    /**
+     * 🔄 Complete the buffer swap after crossfade finishes
+     * Makes pending buffer the primary, clears old buffer for reuse
+     */
+    completeBufferSwap() {
+        console.log(`🔄 WORKLET SWAP COMPLETE: Crossfade finished`);
+
+        // Swap buffers: pending becomes primary
+        const oldBuffer = this.buffer;
+        this.buffer = this.pendingBuffer;
+        this.samplesInBuffer = this.pendingSamplesInBuffer;
+        this.totalSamples = this.pendingTotalSamples;
+
+        // Old buffer becomes available for next swap (cleared)
+        this.pendingBuffer = oldBuffer;
+        this.pendingBuffer.fill(0);
+        this.pendingSamplesInBuffer = 0;
+
+        // Reset swap state
+        this.isSwapping = false;
+        this.swapFadeSamples = 0;
+
+        // Reset write index (buffer is fully loaded)
+        this.writeIndex = this.samplesInBuffer;
+
+        // CRITICAL: Adjust readIndex to match current position in the NEW buffer
+        // totalSamplesConsumed tracks absolute position - use modulo to wrap within buffer
+        this.readIndex = this.totalSamplesConsumed % this.samplesInBuffer;
+
+        // Mark data as complete
+        this.dataLoadingComplete = true;
+
+        console.log(`🔄 WORKLET: New buffer active: ${this.samplesInBuffer.toLocaleString()} samples`);
+        console.log(`🔄 WORKLET: Playback position: ${this.totalSamplesConsumed.toLocaleString()}, readIndex adjusted to ${this.readIndex.toLocaleString()}`);
+
+        // Notify main thread that swap is complete
+        this.port.postMessage({
+            type: 'swap-complete',
+            samplesInBuffer: this.samplesInBuffer
+        });
     }
     
     setSelection(start, end, loop) {
@@ -574,13 +682,14 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 // }
                 
                 if (samplesToEnd <= FADE_SAMPLES_INPUT) {
+                    console.log(`🔄 LOOP FADE-OUT: samplesToEnd=${samplesToEnd}, fadeTime=${fadeTime}ms, isLooping=${this.isLooping}, isFullFileLoop=${isFullFileLoop}`);
                     this.startFade(-1, fadeTime); // Fade out
-                    
+
                     // 🏎️ AUTONOMOUS: Set pending seek for loop (will be handled when fade completes)
                     if (this.isLooping) {
                         const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * this.sampleRate);
                         this.pendingSeekSample = loopTargetSample;
-                        if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Starting fade-out for loop (${fadeTime}ms, ${FADE_SAMPLES_INPUT} input samples @ ${this.speed.toFixed(2)}x), will jump to ${loopTargetSample.toLocaleString()} when fade completes`);
+                        console.log(`🔄 WORKLET: Starting fade-out for loop (${fadeTime}ms, ${FADE_SAMPLES_INPUT} input samples @ ${this.speed.toFixed(2)}x), will jump to ${loopTargetSample.toLocaleString()} when fade completes`);
                     }
                 }
             }
@@ -804,11 +913,28 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 
                 for (let i = 0; i < channel.length; i++) {
                     let sample = this.buffer[this.readIndex];
-                    
+
+                    // 🔄 DUAL-BUFFER CROSSFADE: Mix old and new buffers during swap
+                    if (this.isSwapping && this.pendingBuffer) {
+                        // Read from pending buffer at same position
+                        const pendingReadIndex = this.totalSamplesConsumed % this.pendingSamplesInBuffer;
+                        const pendingSample = this.pendingBuffer[pendingReadIndex];
+
+                        // Calculate crossfade mix (0.0 = all old, 1.0 = all new)
+                        const swapProgress = (this.swapFadeSamples + i) / this.swapFadeTotalSamples;
+                        const mixAmount = Math.min(1.0, Math.max(0.0, swapProgress));
+
+                        // Equal-power crossfade for smooth transition
+                        const oldGain = Math.cos(mixAmount * Math.PI / 2);
+                        const newGain = Math.sin(mixAmount * Math.PI / 2);
+
+                        sample = sample * oldGain + pendingSample * newGain;
+                    }
+
                     // 🔍 DEBUG: Track non-zero samples
                     if (Math.abs(sample) > 0.0001) nonZeroCount++;
                     sampleSum += Math.abs(sample);
-                    
+
                     // Apply high-pass filter if enabled
                     if (this.enableHighPass) {
                         const y = this.highPassAlpha * (this.highPassPrevY + sample - this.highPassPrevX);
@@ -816,41 +942,43 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         this.highPassPrevY = y;
                         sample = y;
                     }
-                    
+
                     // 🎚️ SAMPLE-ACCURATE FADE APPLICATION (interpolate across quantum)
                     let appliedGain = 1.0; // Track what gain was actually applied
                     if (this.fadeState.isFading) {
                         const t = i / channel.length; // 0.0 to 1.0 across this quantum
-                        const currentGain = fadeStartGainThisQuantum + 
+                        const currentGain = fadeStartGainThisQuantum +
                             (fadeEndGainThisQuantum - fadeStartGainThisQuantum) * t;
                         appliedGain = currentGain;
-                        
-                        // 🔍 DEBUG: Log fade application (first sample only to avoid spam)
-                        // if (i === 0 && this.fadeState.fadeSamplesCurrent % 128 === 0) {
-                        //     console.log(`🎚️ FADE APPLYING: sample ${this.fadeState.fadeSamplesCurrent}/${this.fadeState.fadeSamplesTotal}, gain=${currentGain.toFixed(4)}`);
-                        // }
-                        
+
                         sample *= currentGain;
                     }
-                    
+
                     // 🔍 LOG THE VERY FIRST SAMPLE EVER OUTPUT
                     if (this.totalSamplesConsumed === 0 && i === 0) {
                         console.log(`🎵 🔴 VERY FIRST SAMPLE OUTPUT: value=${sample.toFixed(6)}, gain=${appliedGain.toFixed(6)}, isFading=${this.fadeState.isFading}, original=${this.buffer[this.readIndex].toFixed(6)}`);
                     }
-                    
+
                     channel[i] = sample;
                     this.readIndex = (this.readIndex + 1) % this.maxBufferSize;
-                    // this.samplesInBuffer--;  // 🧪 TEST: Don't consume samples (random-access, not FIFO)
                     this.totalSamplesConsumed++; // Track absolute position
-                    
+
                     // 🏎️ RANDOM-ACCESS MODE: Handle end-of-buffer behavior
                     // (Loop handling is now autonomous in handleSelectionBoundaries())
-                    if (this.totalSamplesConsumed >= this.samplesInBuffer && this.samplesInBuffer > 0 && !this.fadeState.isFading) {
+                    if (this.totalSamplesConsumed >= this.samplesInBuffer && this.samplesInBuffer > 0 && !this.fadeState.isFading && !this.isSwapping) {
                         // Reached end of loaded audio - wrap to beginning immediately
-                        // (Only if not fading - otherwise handleSelectionBoundaries() will handle it)
+                        // (Only if not fading and not swapping - otherwise those handlers will manage it)
                         this.readIndex = 0;
                         this.totalSamplesConsumed = 0;
                         this.loopWarningShown = false; // 🔥 RESET for next loop!
+                    }
+                }
+
+                // 🔄 UPDATE SWAP FADE COUNTER AND CHECK FOR COMPLETION
+                if (this.isSwapping) {
+                    this.swapFadeSamples += channel.length;
+                    if (this.swapFadeSamples >= this.swapFadeTotalSamples) {
+                        this.completeBufferSwap();
                     }
                 }
                 
@@ -861,7 +989,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         // 🏎️ AUTONOMOUS: Handle fade completion based on context
                         const wasFadingOut = (this.fadeState.fadeDirection === -1);
                         this.fadeState.isFading = false;
-                        
+
                         if (wasFadingOut) {
                             // Fade-out completed - check what to do next
                             if (this.pendingSeekSample !== null) {
@@ -869,26 +997,27 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                 const targetSample = this.pendingSeekSample;
                                 this.pendingSeekSample = null;
                                 this.justTeleported = true; // 🦋 "I just arrived via teleport!"
-                                // if (DEBUG_WORKLET) console.log(`🎯 WORKLET: Fade-out complete, jumping to ${targetSample.toLocaleString()} and fading in`);
+                                console.log(`🔄 LOOP FADE-OUT COMPLETE (mono): jumping to ${targetSample.toLocaleString()}, will fade in ${this.fadeTimeMs}ms`);
                                 if (this.seekToPositionInstant(targetSample)) {
                                     // Jump successful - fade in if we're playing
                                     if (this.isPlaying) {
                                         this.startFade(+1, this.fadeTimeMs);
+                                        console.log(`🔄 LOOP FADE-IN STARTED (mono): ${this.fadeTimeMs}ms`);
                                     }
                                 }
                             } else {
                                 // No pending seek - check if we're at a boundary
                                 const isFullFileLoop = (this.selectionStart === null || this.selectionEnd === null);
-                                const loopEndSample = isFullFileLoop 
-                                    ? this.samplesInBuffer 
+                                const loopEndSample = isFullFileLoop
+                                    ? this.samplesInBuffer
                                     : Math.floor(this.selectionEnd * this.sampleRate);
-                                
+
                                 if (this.totalSamplesConsumed >= loopEndSample) {
                                     // At boundary - handle loop or stop
                                     if (this.isLooping) {
                                         // Loop: jump to start and fade in
                                         const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * this.sampleRate);
-                                        if (DEBUG_WORKLET) console.log(`🔄 WORKLET: Fade-out complete at boundary, looping to ${loopTargetSample.toLocaleString()}`);
+                                        console.log(`🔄 LOOP AT BOUNDARY (mono): looping to ${loopTargetSample.toLocaleString()}, fade in ${this.fadeTimeMs}ms`);
                                         if (this.seekToPositionInstant(loopTargetSample)) {
                                             this.startFade(+1, this.fadeTimeMs);
                                             this.loopWarningShown = false;
@@ -896,10 +1025,10 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                     } else {
                                         // Not looping: stop at end
                                         this.isPlaying = false;
-                                        const stopPosition = isFullFileLoop 
-                                            ? (this.samplesInBuffer / this.sampleRate) 
+                                        const stopPosition = isFullFileLoop
+                                            ? (this.samplesInBuffer / this.sampleRate)
                                             : this.selectionEnd;
-                                        this.port.postMessage({ 
+                                        this.port.postMessage({
                                             type: 'selection-end-reached',
                                             position: stopPosition
                                         });
@@ -915,12 +1044,12 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         } else {
                             // 🦋 FADE-IN COMPLETION: Clear the teleport flag!
                             this.justTeleported = false;
-                            // if (DEBUG_WORKLET) console.log('✅ WORKLET: Fade-in complete, cleared justTeleported flag');
+                            console.log(`🔄 LOOP FADE-IN COMPLETE (mono)`);
                         }
                         // Fade-in completion: nothing special needed, just continue playing
                     }
                 }
-                
+
                 // 🔍 DEBUG: Log sample content every 100 calls
                 if (DEBUG_SAMPLES && this.processDebugCounter % 100 === 0) {
                     const avgSample = sampleSum / channel.length;
@@ -950,7 +1079,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 for (let i = 0; i < channel.length; i++) {
                     const readPos = Math.floor(sourcePos);
                     let sample;
-                    
+
                     // Linear interpolation
                     if (readPos < samplesToRead - 1) {
                         const frac = sourcePos - readPos;
@@ -960,7 +1089,32 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     } else {
                         sample = this.buffer[(this.readIndex + readPos) % this.maxBufferSize];
                     }
-                    
+
+                    // 🔄 DUAL-BUFFER CROSSFADE: Mix old and new buffers during swap
+                    if (this.isSwapping && this.pendingBuffer) {
+                        // Read from pending buffer at same position (with interpolation)
+                        const pendingBaseIdx = (this.totalSamplesConsumed + readPos) % this.pendingSamplesInBuffer;
+                        let pendingSample;
+                        if (readPos < samplesToRead - 1) {
+                            const frac = sourcePos - readPos;
+                            const pIdx1 = pendingBaseIdx;
+                            const pIdx2 = (pendingBaseIdx + 1) % this.pendingSamplesInBuffer;
+                            pendingSample = this.pendingBuffer[pIdx1] * (1 - frac) + this.pendingBuffer[pIdx2] * frac;
+                        } else {
+                            pendingSample = this.pendingBuffer[pendingBaseIdx];
+                        }
+
+                        // Calculate crossfade mix
+                        const swapProgress = (this.swapFadeSamples + i) / this.swapFadeTotalSamples;
+                        const mixAmount = Math.min(1.0, Math.max(0.0, swapProgress));
+
+                        // Equal-power crossfade
+                        const oldGain = Math.cos(mixAmount * Math.PI / 2);
+                        const newGain = Math.sin(mixAmount * Math.PI / 2);
+
+                        sample = sample * oldGain + pendingSample * newGain;
+                    }
+
                     // Apply high-pass filter FIRST (before anti-aliasing)
                     if (this.enableHighPass) {
                         const y = this.highPassAlpha * (this.highPassPrevY + sample - this.highPassPrevX);
@@ -968,45 +1122,52 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         this.highPassPrevY = y;
                         sample = y;
                     }
-                    
+
                     // Apply anti-aliasing filter if enabled
                     if (this.enableAntiAliasing && this.speed < 1.0) {
                         // Biquad filter: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
-                        const filtered = this.filterB0 * sample + 
-                                        this.filterB1 * this.filterX1 + 
-                                        this.filterB2 * this.filterX2 - 
-                                        this.filterA1 * this.filterY1 - 
+                        const filtered = this.filterB0 * sample +
+                                        this.filterB1 * this.filterX1 +
+                                        this.filterB2 * this.filterX2 -
+                                        this.filterA1 * this.filterY1 -
                                         this.filterA2 * this.filterY2;
-                        
+
                         // Update filter state
                         this.filterX2 = this.filterX1;
                         this.filterX1 = sample;
                         this.filterY2 = this.filterY1;
                         this.filterY1 = filtered;
-                        
+
                         sample = filtered;
                     }
-                    
+
                     // 🎚️ SAMPLE-ACCURATE FADE APPLICATION (interpolate across quantum)
                     if (this.fadeState.isFading) {
                         const t = i / channel.length; // 0.0 to 1.0 across this quantum
-                        const currentGain = fadeStartGainThisQuantum + 
+                        const currentGain = fadeStartGainThisQuantum +
                             (fadeEndGainThisQuantum - fadeStartGainThisQuantum) * t;
                         sample *= currentGain;
                     }
-                    
+
                     channel[i] = sample;
                     sourcePos += this.speed;
                 }
                 this.readIndex = (this.readIndex + samplesToRead) % this.maxBufferSize;
-                // this.samplesInBuffer -= samplesToRead;  // 🧪 TEST: Don't consume samples (random-access, not FIFO)
                 this.totalSamplesConsumed += samplesToRead; // Track absolute position
-                
+
+                // 🔄 UPDATE SWAP FADE COUNTER AND CHECK FOR COMPLETION
+                if (this.isSwapping) {
+                    this.swapFadeSamples += channel.length;
+                    if (this.swapFadeSamples >= this.swapFadeTotalSamples) {
+                        this.completeBufferSwap();
+                    }
+                }
+
                 // 🏎️ RANDOM-ACCESS MODE: Handle end-of-buffer behavior
                 // (Loop handling is now autonomous in handleSelectionBoundaries())
-                if (this.totalSamplesConsumed >= this.samplesInBuffer && this.samplesInBuffer > 0 && !this.fadeState.isFading) {
+                if (this.totalSamplesConsumed >= this.samplesInBuffer && this.samplesInBuffer > 0 && !this.fadeState.isFading && !this.isSwapping) {
                     // Reached end of loaded audio - wrap to beginning immediately
-                    // (Only if not fading - otherwise handleSelectionBoundaries() will handle it)
+                    // (Only if not fading and not swapping - otherwise those handlers will manage it)
                     this.readIndex = 0;
                     this.totalSamplesConsumed = 0;
                     this.loopWarningShown = false; // 🔥 RESET for next loop!
