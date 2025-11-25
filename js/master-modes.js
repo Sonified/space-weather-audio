@@ -67,13 +67,13 @@ if (storedMode === 'study') {
     }
 }
 
-// Production: Always force PERSONAL mode (changed from PRODUCTION)
+// Production: Always force SOLAR_PORTAL mode
 // Local: Allow mode switching via localStorage or DEFAULT_MODE
 export const CURRENT_MODE = isLocalEnvironment()
-    ? (storedMode && Object.values(AppMode).includes(storedMode) 
-        ? storedMode 
+    ? (storedMode && Object.values(AppMode).includes(storedMode)
+        ? storedMode
         : DEFAULT_MODE)
-    : AppMode.PERSONAL; // Force PERSONAL mode for production (was AppMode.PRODUCTION)
+    : AppMode.SOLAR_PORTAL; // Force SOLAR_PORTAL mode for production
 
 /**
  * Mode Configuration
