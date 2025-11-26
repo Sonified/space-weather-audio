@@ -4,6 +4,16 @@
     box-sizing: border-box;
 }
 
+/* Recording button pulse animation */
+@keyframes recording-pulse {
+    0%, 100% {
+        filter: brightness(1.2);
+    }
+    50% {
+        filter: brightness(0.85);
+    }
+}
+
 html {
     overflow-x: hidden;
     overflow-y: auto;

@@ -2114,6 +2114,97 @@ async function initializeMainApp() {
         console.log('✅ Download audio button handler attached');
     }
 
+    // Set up audio recording button (records live audio output as WAV)
+    const recordAudioBtn = document.getElementById('recordAudioBtn');
+    if (recordAudioBtn) {
+        let isRecording = false;
+        let recordedSamples = [];
+        let recordingStartTime = null;
+        let recorderNode = null;
+
+        recordAudioBtn.addEventListener('click', async () => {
+            if (!State.audioContext || !State.gainNode) {
+                alert('No audio context available. Please load audio data first.');
+                return;
+            }
+
+            // Toggle recording state
+            if (isRecording) {
+                // Stop recording
+                isRecording = false;
+
+                // Disconnect and clean up recorder node
+                if (recorderNode) {
+                    State.gainNode.disconnect(recorderNode);
+                    recorderNode.disconnect();
+                    recorderNode = null;
+                }
+
+                recordAudioBtn.textContent = '🔴 Begin Recording';
+                recordAudioBtn.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+                recordAudioBtn.style.animation = 'none';
+                console.log(`⏹️ Recording stopped: ${recordedSamples.length.toLocaleString()} samples captured`);
+
+                // Convert recorded samples to Float32Array
+                const samples = new Float32Array(recordedSamples);
+                recordedSamples = []; // Clear memory
+
+                // Generate filename with volcano and timestamp
+                const volcano = document.getElementById('spacecraft')?.value || 'audio';
+                const timestamp = recordingStartTime.toISOString()
+                    .replace(/:/g, '-')
+                    .replace(/\./g, '-')
+                    .slice(0, 19); // YYYY-MM-DDTHH-MM-SS
+                const filename = `${volcano}_recording_${timestamp}.wav`;
+
+                // Create WAV file at 44.1kHz
+                const wavBlob = createWAVBlob(samples, 44100);
+
+                // Trigger download
+                const url = URL.createObjectURL(wavBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                console.log(`✅ Recording saved: ${filename} (${(wavBlob.size / 1024 / 1024).toFixed(2)} MB)`);
+            } else {
+                // Start recording
+                recordedSamples = [];
+                recordingStartTime = new Date();
+                isRecording = true;
+
+                // Create a ScriptProcessorNode to capture raw audio samples
+                // Note: ScriptProcessorNode is deprecated but widely supported
+                // AudioWorklet would be cleaner but requires more setup
+                const bufferSize = 4096;
+                recorderNode = State.audioContext.createScriptProcessor(bufferSize, 1, 1);
+
+                recorderNode.onaudioprocess = (e) => {
+                    if (!isRecording) return;
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    // Copy samples to our recording buffer
+                    for (let i = 0; i < inputData.length; i++) {
+                        recordedSamples.push(inputData[i]);
+                    }
+                };
+
+                // Connect: gain -> recorder -> destination (pass-through)
+                State.gainNode.connect(recorderNode);
+                recorderNode.connect(State.audioContext.destination);
+
+                recordAudioBtn.textContent = '⏹️ Stop Recording';
+                recordAudioBtn.style.background = 'linear-gradient(135deg, #c0392b 0%, #922b21 100%)';
+                recordAudioBtn.style.animation = 'recording-pulse 1s ease-in-out infinite';
+                console.log('🔴 Recording started (WAV format)');
+            }
+        });
+        console.log('✅ Record audio button handler attached');
+    }
+
     // Set up download ALL components button (creates a zip with all 3 WAV files)
     const downloadAllBtn = document.getElementById('downloadAllComponentsBtn');
     if (downloadAllBtn) {
