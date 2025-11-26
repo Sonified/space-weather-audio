@@ -3027,7 +3027,12 @@ export function deleteRegion(index) {
     if (confirm('Delete this region?')) {
         const regions = getCurrentRegions();
         const deletedRegion = regions[index];
-        
+
+        // If user is currently zoomed into this region, zoom out first
+        if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === deletedRegion.id) {
+            zoomToFull();
+        }
+
         regions.splice(index, 1);
         setCurrentRegions(regions);
         if (activeRegionIndex === index) {
