@@ -1598,7 +1598,7 @@ input[type="checkbox"] {
 
 /* Scrollable container for region cards */
 #regionsListContainer {
-    height: 320px; /* Fixed height for ~4 region cards */
+    height: 213px; /* Fixed height for ~2-3 region cards */
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 5px; /* Space for scrollbar */

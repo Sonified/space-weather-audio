@@ -373,6 +373,10 @@ export async function initAudioWorklet() {
         const { type, bufferSize, samplesConsumed, totalSamples, positionSeconds, samplePosition } = event.data;
         
         if (type === 'position') {
+            // CRITICAL: Ignore stale position messages after a seek to prevent playhead flash-back
+            if (State.justSeeked) {
+                return;
+            }
             // Use worklet's reported position directly - no latency adjustment
             // The playhead should show where the audio actually is, matching the coordinate system used for clicks
             State.setCurrentAudioPosition(positionSeconds);
