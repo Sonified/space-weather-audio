@@ -42,22 +42,25 @@ const STORAGE_KEY_PREFIX = 'solar_audio_regions_';
 
 /**
  * Generate a unique storage key hash for a specific data fetch
- * Combines spacecraft, data type, start time, and end time
- * This ensures features are associated with the exact data they were created on
+ * Combines username, spacecraft, data type, start time, and end time
+ * This ensures features are associated with the exact data AND user they were created by
  */
 function generateStorageKey(spacecraft, dataType, startTime, endTime) {
+    // Get the current username
+    const username = localStorage.getItem('participantId') || 'anonymous';
+
     if (!spacecraft || !dataType || !startTime || !endTime) {
         // Fallback to old format if any component is missing
-        return spacecraft ? `${STORAGE_KEY_PREFIX}${spacecraft}` : null;
+        return spacecraft ? `${STORAGE_KEY_PREFIX}${username}_${spacecraft}` : null;
     }
 
     // Format times as ISO strings for consistent hashing
     const startISO = startTime instanceof Date ? startTime.toISOString() : startTime;
     const endISO = endTime instanceof Date ? endTime.toISOString() : endTime;
 
-    // Create a deterministic key from all components
-    // Format: solar_audio_regions_PSP_mag_2021-04-29T07:40:00.000Z_2021-04-29T08:20:00.000Z
-    return `${STORAGE_KEY_PREFIX}${spacecraft}_${dataType}_${startISO}_${endISO}`;
+    // Create a deterministic key from all components including username
+    // Format: solar_audio_regions_username_spacecraft_dataset_startTime_endTime
+    return `${STORAGE_KEY_PREFIX}${username}_${spacecraft}_${dataType}_${startISO}_${endISO}`;
 }
 
 /**
