@@ -694,12 +694,18 @@ export async function startStreaming(event) {
             startPlaybackIndicator();
         }
         
-        // Update status
+        // Update status and highlight waveform for user guidance
         if (statusDiv) {
-            statusDiv.textContent = 'Data loaded successfully!';
-            statusDiv.className = 'status success';
+            statusDiv.textContent = 'Click the waveform to jump to a new location.';
+            statusDiv.className = 'status info';
         }
-        
+
+        // Add pulse highlight to waveform container to draw attention
+        const waveformEl = document.getElementById('waveform');
+        if (waveformEl) {
+            waveformEl.classList.add('pulse');
+        }
+
         // Reload recent searches dropdown (function is defined in DOMContentLoaded)
         if (typeof window.loadRecentSearches === 'function') {
             await window.loadRecentSearches();

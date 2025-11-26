@@ -219,16 +219,12 @@ function handleKeyboardShortcut(event) {
             event.target.blur();
         }
         
-        // First priority: Exit feature selection mode if active
-        if (isInFrequencySelectionMode()) {
-            console.log('🔍 [ESCAPE DEBUG] Exiting feature selection mode');
-            event.preventDefault();
-            stopFrequencySelection();
-            return;
-        }
-        
-        // Second priority: Zoom out if in a region
+        // First priority: Zoom out if in a region (also exits feature selection mode)
         if (zoomState.isInRegion()) {
+            // Exit feature selection mode if active (before zooming out)
+            if (isInFrequencySelectionMode()) {
+                stopFrequencySelection();
+            }
             // console.log('🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴');
             // console.log('🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴');
             // console.log('🔴🔴 ESCAPE PRESSED - STARTING ZOOM OUT 🔴🔴');
@@ -246,12 +242,12 @@ function handleKeyboardShortcut(event) {
             //     });
             // }
             
-            // console.log('🔍 [ESCAPE DEBUG] In region - preventing default and calling zoomToFull()');
             event.preventDefault();
             zoomToFull();
-            // console.log('🔙 Escape key: Zoomed out to full view');
-        } else {
-            console.log('🔍 [ESCAPE DEBUG] NOT in region and NOT in feature selection - Escape key ignored');
+        } else if (isInFrequencySelectionMode()) {
+            // Not in region but in feature selection mode - just exit feature selection
+            event.preventDefault();
+            stopFrequencySelection();
         }
         return;
     }

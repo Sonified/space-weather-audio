@@ -914,6 +914,22 @@ export function setupWaveformInteraction() {
         // 🔒 SAFETY: Always clear pulse and overlay when canvas is clicked (regardless of flag state)
         // This prevents stuck highlighting if user skipped with Enter key first
         canvas.classList.remove('pulse');
+        // Also remove pulse from waveform container (used for post-fetch guidance)
+        const waveformContainer = document.getElementById('waveform');
+        if (waveformContainer) {
+            waveformContainer.classList.remove('pulse');
+        }
+        // Show next guidance message after first waveform click (2 second delay)
+        if (!State.waveformHasBeenClicked) {
+            setTimeout(async () => {
+                const statusDiv = document.getElementById('status');
+                if (statusDiv) {
+                    statusDiv.className = 'status info';
+                    const { typeText } = await import('./tutorial-effects.js');
+                    typeText(statusDiv, 'Now click and drag to create a new region.', 30, 10);
+                }
+            }, 2000);
+        }
         hideTutorialOverlay();
         
         // Mark waveform as clicked (if not already marked)
