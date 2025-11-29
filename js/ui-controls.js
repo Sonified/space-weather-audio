@@ -3467,9 +3467,12 @@ export async function attemptSubmission(fromWorkflow = false) {
                 activityLevel: responses.activityLevel || null
             },
             
-            submissionTimestamp: new Date().toISOString()
+            submissionTimestamp: new Date().toISOString(),
+
+            // Data provenance flag: marks submissions using corrected logarithmic frequency formula
+            usesCorrectedLogFormula: true
         };
-        
+
         // 📋 JSON_data field: Interface interaction data + survey answers backup
         // This goes to the JSON_data embedded field in Qualtrics
         let jsonData = null;
