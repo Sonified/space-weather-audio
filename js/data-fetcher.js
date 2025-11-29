@@ -61,15 +61,31 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
     console.log(`🔍 Checking cache for: ${spacecraft} ${dataset} ${startTime} → ${endTime}`);
     const cached = await getAudioData(spacecraft, dataset, startTime, endTime);
     if (cached) {
+        const expectedComponents = cached.metadata?.allFileUrls?.length || 1;
+        const cachedBlobsArray = cached.allComponentBlobs || [];
+        // Count actual valid blobs (not null/undefined) - the array might have gaps
+        const validBlobCount = cachedBlobsArray.filter(blob => blob instanceof Blob).length;
+        const hasAllComponents = validBlobCount >= expectedComponents;
+
         console.log('✅ Loading from cache (local IndexedDB)');
         console.log(`   📊 WAV blob size: ${(cached.wavBlob.size / 1024).toFixed(2)} KB`);
         console.log(`   📊 Cache metadata:`, cached.metadata);
         console.log(`   📊 Cache allFileUrls:`, cached.metadata?.allFileUrls);
-        // Decode cached WAV blob
-        const decoded = await decodeWAVBlob(cached.wavBlob, cached);
-        console.log(`   ✅ Cache load complete: ${decoded.playback.totalSamples.toLocaleString()} samples decoded`);
-        console.log(`   📊 Decoded allFileUrls:`, decoded.allFileUrls);
-        return decoded;
+        console.log(`   📊 Components: ${validBlobCount}/${expectedComponents} valid blobs cached`);
+
+        // Check if cache is INCOMPLETE (missing component blobs)
+        // This can happen if background download failed or was interrupted
+        if (!hasAllComponents && expectedComponents > 1) {
+            console.warn(`⚠️ Cache incomplete: only ${validBlobCount}/${expectedComponents} components have valid blobs`);
+            console.log(`🔄 Re-fetching from CDAWeb API to get fresh URLs for all components...`);
+            // Fall through to fetch fresh data - don't use incomplete cache
+        } else {
+            // Cache is complete, use it
+            const decoded = await decodeWAVBlob(cached.wavBlob, cached);
+            console.log(`   ✅ Cache load complete: ${decoded.playback.totalSamples.toLocaleString()} samples decoded`);
+            console.log(`   📊 Decoded allFileUrls:`, decoded.allFileUrls);
+            return decoded;
+        }
     }
     
     console.log('🌐 Cache miss - fetching from CDAWeb API');
