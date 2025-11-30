@@ -294,8 +294,15 @@ export function updateDatasetOptions() {
 
 export function updateStationList() {
     const dataType = document.getElementById('dataType').value;
-    const volcano = document.getElementById('volcano').value;
+    const volcanoEl = document.getElementById('volcano');
     const stationSelect = document.getElementById('station');
+
+    // Skip if volcano/station elements don't exist (solar portal mode)
+    if (!volcanoEl || !stationSelect) {
+        return;
+    }
+
+    const volcano = volcanoEl.value;
     const stations = State.availableStations[dataType] || [];
     
     // Only log in dev/personal modes, not study mode
