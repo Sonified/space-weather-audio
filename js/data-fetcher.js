@@ -43,7 +43,13 @@ const DATASET_VARIABLES = {
     'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC': 'psp_fld_l2_mag_RTN_4_Sa_per_Cyc',
     'WI_H2_MFI': 'BGSE', // Wind uses component names
     'MMS1_FGM_SRVY_L2': 'mms1_fgm_b_gse_srvy_l2',
-    'MMS1_FGM_BRST_L2': 'mms1_fgm_b_gse_brst_l2'
+    'MMS1_FGM_BRST_L2': 'mms1_fgm_b_gse_brst_l2',
+    // THEMIS SCM - fast-survey GSE coordinates (X, Y, Z components)
+    'THA_L2_SCM': 'tha_scf_gse',
+    'THB_L2_SCM': 'thb_scf_gse',
+    'THC_L2_SCM': 'thc_scf_gse',
+    'THD_L2_SCM': 'thd_scf_gse',
+    'THE_L2_SCM': 'the_scf_gse'
 };
 
 /**

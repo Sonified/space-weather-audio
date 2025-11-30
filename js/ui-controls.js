@@ -252,6 +252,13 @@ const SPACECRAFT_DATASETS = {
     'MMS': [
         { value: 'MMS1_FGM_SRVY_L2', label: 'MMS1_FGM_SRVY_L2 (Survey Mode)' },
         { value: 'MMS1_FGM_BRST_L2', label: 'MMS1_FGM_BRST_L2 (Burst Mode)' }
+    ],
+    'THEMIS': [
+        { value: 'THA_L2_SCM', label: 'THA_L2_SCM (THEMIS-A SCM)' },
+        { value: 'THB_L2_SCM', label: 'THB_L2_SCM (THEMIS-B SCM)' },
+        { value: 'THC_L2_SCM', label: 'THC_L2_SCM (THEMIS-C SCM)' },
+        { value: 'THD_L2_SCM', label: 'THD_L2_SCM (THEMIS-D SCM)' },
+        { value: 'THE_L2_SCM', label: 'THE_L2_SCM (THEMIS-E SCM)' }
     ]
 };
 

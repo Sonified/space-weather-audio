@@ -18,11 +18,27 @@ let currentDataset = null;
 let currentStartTime = null;
 let currentEndTime = null;
 
-const componentLabels = [
-    'br (Radial)',
-    'bt (Tangential)',
-    'bn (Normal)'
-];
+// Component labels by spacecraft/dataset type
+const COMPONENT_LABELS = {
+    // PSP - RTN coordinates (Radial, Tangential, Normal)
+    'PSP': ['br (Radial)', 'bt (Tangential)', 'bn (Normal)'],
+    // THEMIS - GSE coordinates (X, Y, Z)
+    'THEMIS': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    // MMS - GSE coordinates
+    'MMS': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    // Wind - GSE coordinates
+    'Wind': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    // Default fallback
+    'default': ['Component 1', 'Component 2', 'Component 3']
+};
+
+/**
+ * Get component labels for current spacecraft
+ * @returns {Array<string>}
+ */
+function getLabelsForSpacecraft() {
+    return COMPONENT_LABELS[currentSpacecraft] || COMPONENT_LABELS['default'];
+}
 
 /**
  * Initialize component selector with file URLs from CDAWeb
@@ -55,7 +71,8 @@ export function initializeComponentSelector(fileUrls, metadata = {}) {
         for (let i = 0; i < componentCount; i++) {
             const option = document.createElement('option');
             option.value = i;
-            option.textContent = componentLabels[i] || `Component ${i + 1}`;
+            const labels = getLabelsForSpacecraft();
+            option.textContent = labels[i] || `Component ${i + 1}`;
             selector.appendChild(option);
         }
 
@@ -127,7 +144,8 @@ async function switchComponent(componentIndex) {
         return; // Already on this component
     }
 
-    console.log(`🔄 Switching to component ${componentIndex}: ${componentLabels[componentIndex]}`);
+    const labels = getLabelsForSpacecraft();
+    console.log(`🔄 Switching to component ${componentIndex}: ${labels[componentIndex]}`);
     console.log(`   📍 Time range and regions will be preserved (same time period, different vector component)`);
 
     try {
@@ -152,7 +170,7 @@ async function switchComponent(componentIndex) {
         // Extract samples
         const samples = audioBuffer.getChannelData(0);
 
-        console.log(`   📊 Loaded ${samples.length.toLocaleString()} samples for ${componentLabels[componentIndex]}`);
+        console.log(`   📊 Loaded ${samples.length.toLocaleString()} samples for ${labels[componentIndex]}`);
 
         // Update state with new samples (KEEP time range and regions intact!)
         State.setCompleteSamplesArray(samples);
@@ -264,7 +282,7 @@ async function switchComponent(componentIndex) {
         }
 
         currentComponentIndex = componentIndex;
-        console.log(`✅ Component switched to ${componentLabels[componentIndex]}`);
+        console.log(`✅ Component switched to ${labels[componentIndex]}`);
         console.log(`   ✅ Regions and time range preserved`);
 
     } catch (error) {
@@ -347,7 +365,8 @@ export async function getAllComponentBlobs() {
  * @returns {Array<string>}
  */
 export function getComponentLabels() {
-    return componentLabels.slice(0, componentCount);
+    const labels = getLabelsForSpacecraft();
+    return labels.slice(0, componentCount);
 }
 
 /**
