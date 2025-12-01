@@ -49,7 +49,10 @@ const DATASET_VARIABLES = {
     'THB_L2_SCM': 'thb_scf_gse',
     'THC_L2_SCM': 'thc_scf_gse',
     'THD_L2_SCM': 'thd_scf_gse',
-    'THE_L2_SCM': 'the_scf_gse'
+    'THE_L2_SCM': 'the_scf_gse',
+    // Solar Orbiter MAG - RTN coordinates (Radial, Tangential, Normal)
+    'SOLO_L2_MAG-RTN-NORMAL': 'B_RTN',
+    'SOLO_L2_MAG-RTN-BURST': 'B_RTN'
 };
 
 /**

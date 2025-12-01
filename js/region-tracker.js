@@ -1797,28 +1797,28 @@ function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1
 
 /**
  * Format time for display (HH:MM format)
- * CONVERTS UTC TO LOCAL TIME for display (matches x-axis behavior)
+ * Displays in UTC for space physics data
  */
 function formatTime(isoString) {
-    const date = new Date(isoString); // This is UTC
-    // Get LOCAL time components (just like x-axis does!)
-    const hours = String(date.getHours()).padStart(2, '0'); // Local!
-    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const date = new Date(isoString);
+    // Get UTC time components
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
     return `${hours}:${minutes}`;
 }
 
 /**
  * Format time for display with seconds (H:MM:SS format, no leading zero on hours if < 10)
- * CONVERTS UTC TO LOCAL TIME for display (matches x-axis behavior)
+ * Displays in UTC for space physics data
  */
 function formatTimeWithSeconds(isoString) {
-    const date = new Date(isoString); // This is UTC
-    
-    // Get LOCAL time components (just like x-axis does!)
-    const hours = date.getHours(); // Local hours (0-23), no padding - single digit for 0-9
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    
+    const date = new Date(isoString);
+
+    // Get UTC time components
+    const hours = date.getUTCHours(); // UTC hours (0-23), no padding - single digit for 0-9
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+
     return `${hours}:${minutes}:${seconds}`;
 }
 

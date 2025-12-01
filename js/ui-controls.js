@@ -259,6 +259,10 @@ const SPACECRAFT_DATASETS = {
         { value: 'THC_L2_SCM', label: 'THC_L2_SCM (THEMIS-C SCM)' },
         { value: 'THD_L2_SCM', label: 'THD_L2_SCM (THEMIS-D SCM)' },
         { value: 'THE_L2_SCM', label: 'THE_L2_SCM (THEMIS-E SCM)' }
+    ],
+    'SolO': [
+        { value: 'SOLO_L2_MAG-RTN-NORMAL', label: 'SOLO_L2_MAG-RTN-NORMAL (Normal Mode)' },
+        { value: 'SOLO_L2_MAG-RTN-BURST', label: 'SOLO_L2_MAG-RTN-BURST (Burst Mode)' }
     ]
 };
 

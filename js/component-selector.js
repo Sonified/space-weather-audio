@@ -28,6 +28,8 @@ const COMPONENT_LABELS = {
     'MMS': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
     // Wind - GSE coordinates
     'Wind': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    // Solar Orbiter - RTN coordinates (Radial, Tangential, Normal)
+    'SolO': ['br (Radial)', 'bt (Tangential)', 'bn (Normal)'],
     // Default fallback
     'default': ['Component 1', 'Component 2', 'Component 3']
 };
