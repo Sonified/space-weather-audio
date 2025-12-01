@@ -7,7 +7,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, startFrequencySelection } from './region-tracker.js';
-import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, getSpectrogramViewport, resetSpectrogramState, getInfiniteCanvasStatus } from './spectrogram-complete-renderer.js';
+import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, getSpectrogramViewport, resetSpectrogramState, getInfiniteCanvasStatus, updateElasticFriendInBackground } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
@@ -495,7 +495,10 @@ export async function changeFrequencyScale() {
                     if (playbackWasActive) {
                         startPlaybackIndicator();
                     }
-                    console.log('✅ Region scale transition complete (no fade)');
+                    if (!isStudyMode()) console.log('✅ Region scale transition complete (no fade)');
+                    // 🏠 PROACTIVE FIX: Re-render full spectrogram in background
+                    if (!isStudyMode()) console.log('🏠 Starting background render of full spectrogram for elastic friend...');
+                    updateElasticFriendInBackground();
                     return;
                 }
 
@@ -577,7 +580,12 @@ export async function changeFrequencyScale() {
                             startPlaybackIndicator();
                         }
 
-                        console.log('✅ Region scale transition complete (with fade)');
+                        if (!isStudyMode()) console.log('✅ Region scale transition complete (with fade)');
+
+                        // 🏠 PROACTIVE FIX: Re-render full spectrogram in background
+                        // So elastic friend is ready with new frequency scale when user zooms out
+                        if (!isStudyMode()) console.log('🏠 Starting background render of full spectrogram for elastic friend...');
+                        updateElasticFriendInBackground();
                     }
                 };
                 
