@@ -253,8 +253,10 @@ export function drawWaveformFromMinMax() {
         for (let x = 0; x < mins.length && x < width; x++) {
             const min = mins[x];
             const max = maxs[x];
-            const yMin = mid + (min * mid * 0.9);
-            const yMax = mid + (max * mid * 0.9);
+            // Canvas Y: 0 at top, increases downward
+            // Data: positive values should go UP (smaller Y), negative DOWN (larger Y)
+            const yMin = mid - (max * mid * 0.9);  // max value → top of bar (smaller Y)
+            const yMax = mid - (min * mid * 0.9);  // min value → bottom of bar (larger Y)
             const lineHeight = Math.max(1, yMax - yMin);
             
             // Use smoothed color index
@@ -419,9 +421,11 @@ export function drawWaveformFromMinMax() {
         for (let x = 0; x < mins.length && x < width; x++) {
             const min = mins[x];
             const max = maxs[x];
-            
-            const yMin = mid + (min * mid * 0.9);
-            const yMax = mid + (max * mid * 0.9);
+
+            // Canvas Y: 0 at top, increases downward
+            // Data: positive values should go UP (smaller Y), negative DOWN (larger Y)
+            const yMin = mid - (max * mid * 0.9);  // max value → top of bar (smaller Y)
+            const yMax = mid - (min * mid * 0.9);  // min value → bottom of bar (larger Y)
             
             const lineHeight = Math.max(1, yMax - yMin);
             
