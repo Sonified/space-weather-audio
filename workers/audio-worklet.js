@@ -169,13 +169,21 @@ class SeismicProcessor extends AudioWorkletProcessor {
             } else if (type === 'play') {
                 // 🏎️ AUTONOMOUS: Worklet decides how to start based on current state
                 if (!this.isPlaying) {
+                    // 🔗 SHARED SESSION FIX: If hasStarted is false (auto-start was skipped),
+                    // we need to initialize playback state properly
+                    if (!this.hasStarted) {
+                        this.hasStarted = true;
+                        this.readIndex = 0;
+                        console.log(`🔗 WORKLET: Manual start (shared session) - hasStarted=true, readIndex=0`);
+                    }
+
                     this.isPlaying = true;
                     // If we're not already fading in, start a fade-in
                     if (!this.fadeState.isFading || this.fadeState.fadeDirection !== 1) {
                         // Use LONG fade (250ms) for first play after data load, normal fade (25ms) otherwise
                         const fadeTime = this.firstPlayAfterDataLoad ? 250 : this.fadeTimeMs;
                         this.startFade(+1, fadeTime);
-                        
+
                         if (this.firstPlayAfterDataLoad) {
                             console.log(`🎚️ WORKLET: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
                             this.firstPlayAfterDataLoad = false; // Clear flag after using it
@@ -586,9 +594,10 @@ class SeismicProcessor extends AudioWorkletProcessor {
         }
         
         this.writeSamples(samples);
-        
+
         // Check if we can start playback (initial load)
-        if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
+        // Only auto-start if autoResume is not explicitly false (for shared sessions, we wait for user click)
+        if (!this.hasStarted && autoResume !== false && this.samplesInBuffer >= this.minBufferBeforePlay) {
             const bufferSeconds = this.samplesInBuffer / this.sampleRate;
             const bufferMinutes = bufferSeconds / 60;
             console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
