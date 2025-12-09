@@ -17,7 +17,20 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramRegionHighlights, drawSpectrogramSelection } from './region-tracker.js';
 import { isStudyMode } from './master-modes.js';
-import { getColorLUT, hslToRgb } from './colormaps.js';
+import { getColorLUT } from './colormaps.js';
+
+/**
+ * Get the background/zero color from the current colormap LUT
+ * @returns {[number, number, number]} RGB values for the bottom of the colormap
+ */
+function getColormapBackgroundColor() {
+    const lut = getColorLUT();
+    if (lut && lut.length >= 3) {
+        return [lut[0], lut[1], lut[2]];
+    }
+    // Fallback to black if LUT not ready
+    return [0, 0, 0];
+}
 
 // Track if we've rendered the complete spectrogram
 let completeSpectrogramRendered = false;
@@ -987,7 +1000,7 @@ export function drawInterpolatedSpectrogram() {
                 );
             } else {
                 // Shrinking down - fill background and draw at bottom
-                const [r, g, b] = hslToRgb(0, 100, 10);
+                const [r, g, b] = getColormapBackgroundColor();
                 ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
                 ctx.fillRect(currentX, 0, currentWidth, height);
                 
@@ -1060,7 +1073,7 @@ export function drawInterpolatedSpectrogram() {
                 );
                 
                 // Fill background
-                const [r, g, b] = hslToRgb(0, 100, 10);
+                const [r, g, b] = getColormapBackgroundColor();
                 ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
                 
                 // LEFT edge
@@ -1132,7 +1145,7 @@ export function drawInterpolatedSpectrogram() {
         );
     } else {
         // Shrinking down - fill top with dark background, draw shrunk portion at bottom
-        const [r, g, b] = hslToRgb(0, 100, 10);
+        const [r, g, b] = getColormapBackgroundColor();
         ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.fillRect(0, 0, width, height);
         
@@ -1396,7 +1409,7 @@ export function getSpectrogramViewport(playbackRate) {
             // Already filled with black above
         }
     } else {
-        const [r, g, b] = hslToRgb(0, 100, 10);
+        const [r, g, b] = getColormapBackgroundColor();
         ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.fillRect(0, 0, width, height);
         
@@ -1533,7 +1546,7 @@ export function updateSpectrogramViewport(playbackRate) {
             width, height
         );
     } else {
-        const [r, g, b] = hslToRgb(0, 100, 10);
+        const [r, g, b] = getColormapBackgroundColor();
         ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.fillRect(0, 0, width, height);
         
