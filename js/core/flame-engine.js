@@ -82,9 +82,9 @@ export async function enterOverheatMode() {
     isOverheated = true;
     
     try {
-        // Warm up background
+        // Warm up background (25% dimmer for subtlety)
         document.body.style.transition = 'background 1s ease-in-out';
-        document.body.style.background = 'linear-gradient(135deg, #3f0a0a 0%, #4d1a1a 50%, #5a2a2a 100%)';
+        document.body.style.background = 'linear-gradient(135deg, #2f0808 0%, #3a1414 50%, #442020 100%)';
         
         // Initialize audio context for pink noise
         if (!audioContext) {

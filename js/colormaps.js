@@ -14,12 +14,54 @@ let colorLUT = null;
  * Each function takes t (0-1) and returns [r, g, b] (0-255)
  */
 const colormaps = {
-    // Solar: Black → Red → Orange → Yellow (current default, space weather themed)
+    // Inferno: Black → Purple → Red → Orange → Yellow (matplotlib classic)
+    inferno: (t) => {
+        if (t < 0.15) {
+            // Black to dark purple (15% black zone)
+            const s = t / 0.15;
+            return [Math.round(s * 80), 0, Math.round(s * 100)];
+        } else if (t < 0.43) {
+            // Dark purple to red-purple
+            const s = (t - 0.15) / 0.28;
+            return [Math.round(80 + s * 140), Math.round(s * 40), Math.round(100 - s * 50)];
+        } else if (t < 0.71) {
+            // Red-purple to orange
+            const s = (t - 0.43) / 0.28;
+            return [Math.round(220 + s * 35), Math.round(40 + s * 100), Math.round(50 - s * 50)];
+        } else {
+            // Orange to yellow
+            const s = (t - 0.71) / 0.29;
+            return [255, Math.round(140 + s * 100), Math.round(s * 80)];
+        }
+    },
+
+    // Solar: Black → Red → Orange → Yellow (space weather themed)
     solar: (t) => {
         const hue = t * 60; // 0-60 degrees (red to yellow)
         const saturation = 100;
         const lightness = 8 + (t * 62); // 8-70% (dark start but preserves detail)
         return hslToRgb(hue, saturation, lightness);
+    },
+
+    // Aurora: Black → Deep Purple → Magenta → Pink → White (aurora borealis vibes)
+    aurora: (t) => {
+        if (t < 0.15) {
+            // Black to deep purple (15% black zone)
+            const s = t / 0.15;
+            return [Math.round(s * 75), 0, Math.round(s * 130)];
+        } else if (t < 0.43) {
+            // Deep purple to magenta
+            const s = (t - 0.15) / 0.28;
+            return [Math.round(75 + s * 180), Math.round(s * 50), Math.round(130 + s * 75)];
+        } else if (t < 0.71) {
+            // Magenta to pink/light magenta
+            const s = (t - 0.43) / 0.28;
+            return [255, Math.round(50 + s * 130), Math.round(205 + s * 50)];
+        } else {
+            // Pink to white
+            const s = (t - 0.71) / 0.29;
+            return [255, Math.round(180 + s * 75), 255];
+        }
     },
 
     // Turbo: Google's perceptually-uniform rainbow (colorblind-friendly)
@@ -84,27 +126,6 @@ const colormaps = {
         return [Math.round(r * darkness), Math.round(g * darkness), Math.round(b * darkness)];
     },
 
-    // Aurora: Black → Deep Purple → Magenta → Pink → White (aurora borealis vibes)
-    aurora: (t) => {
-        if (t < 0.15) {
-            // Black to deep purple (15% black zone)
-            const s = t / 0.15;
-            return [Math.round(s * 75), 0, Math.round(s * 130)];
-        } else if (t < 0.43) {
-            // Deep purple to magenta
-            const s = (t - 0.15) / 0.28;
-            return [Math.round(75 + s * 180), Math.round(s * 50), Math.round(130 + s * 75)];
-        } else if (t < 0.71) {
-            // Magenta to pink/light magenta
-            const s = (t - 0.43) / 0.28;
-            return [255, Math.round(50 + s * 130), Math.round(205 + s * 50)];
-        } else {
-            // Pink to white
-            const s = (t - 0.71) / 0.29;
-            return [255, Math.round(180 + s * 75), 255];
-        }
-    },
-
     // Plasma: Black → Teal → Electric Blue → Cyan → White (plasma/electric vibes)
     plasma: (t) => {
         if (t < 0.15) {
@@ -124,39 +145,18 @@ const colormaps = {
             const s = (t - 0.71) / 0.29;
             return [Math.round(100 + s * 155), 255, 255];
         }
-    },
-
-    // Inferno: Black → Purple → Red → Orange → Yellow (matplotlib classic)
-    inferno: (t) => {
-        if (t < 0.15) {
-            // Black to dark purple (15% black zone)
-            const s = t / 0.15;
-            return [Math.round(s * 80), 0, Math.round(s * 100)];
-        } else if (t < 0.43) {
-            // Dark purple to red-purple
-            const s = (t - 0.15) / 0.28;
-            return [Math.round(80 + s * 140), Math.round(s * 40), Math.round(100 - s * 50)];
-        } else if (t < 0.71) {
-            // Red-purple to orange
-            const s = (t - 0.43) / 0.28;
-            return [Math.round(220 + s * 35), Math.round(40 + s * 100), Math.round(50 - s * 50)];
-        } else {
-            // Orange to yellow
-            const s = (t - 0.71) / 0.29;
-            return [255, Math.round(140 + s * 100), Math.round(s * 80)];
-        }
     }
 };
 
 // Display names for the UI
 export const colormapNames = {
+    inferno: 'Inferno',
     solar: 'Solar',
-    turbo: 'Turbo',
-    viridis: 'Viridis',
-    jet: 'Jet',
     aurora: 'Aurora',
+    jet: 'Jet',
     plasma: 'Plasma',
-    inferno: 'Inferno'
+    turbo: 'Turbo',
+    viridis: 'Viridis'
 };
 
 // Accent colors for each colormap (used for UI borders/glows)

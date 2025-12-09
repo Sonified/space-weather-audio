@@ -310,6 +310,14 @@ export function setupComponentSelectorListener() {
         e.target.blur();
     });
 
+    // Blur on spacebar so it doesn't capture play/pause
+    selector.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            e.preventDefault();
+            e.target.blur();
+        }
+    });
+
     // Listen for background download completion
     window.addEventListener('componentsReady', (e) => {
         const { allBlobs } = e.detail;
