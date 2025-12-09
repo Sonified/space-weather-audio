@@ -730,8 +730,8 @@ export async function startStreaming(event) {
         if (statusDiv) {
             if (isSharedSession) {
                 console.log('🔗 [STATUS] Setting shared session message');
-                statusDiv.textContent = '🎧 Ready! Click Play or press Space Bar to start playback.';
-                statusDiv.className = 'status success';
+                statusDiv.textContent = '🎧 Ready! Click PLAY or press the SPACE BAR to start playback.';
+                statusDiv.className = 'status';
             } else {
                 console.log('🔗 [STATUS] Setting normal message (not shared session)');
                 statusDiv.textContent = 'Click the waveform to jump to a new location.';
