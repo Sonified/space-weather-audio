@@ -594,14 +594,8 @@ async function handleCreateShare() {
         // Show success view
         document.getElementById('shareUrlInput').value = shareResult.share_url;
 
-        // Format expiry date
-        const expiryDate = new Date(shareResult.expires_at);
-        const expiryStr = expiryDate.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-        document.getElementById('shareExpiry').textContent = `This link expires on ${expiryStr}`;
+        // Share links are permanent
+        document.getElementById('shareExpiry').textContent = `This link never expires`;
 
         showView('shareSuccessView');
         console.log('Share created:', shareResult);

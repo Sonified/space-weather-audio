@@ -158,16 +158,18 @@ export default {
 
       // =======================================================================
       // Open Graph Preview for Share Links
-      // Serves HTML with OG meta tags for social media crawlers
+      // Only serve OG HTML to social media crawlers, not regular browsers
       // =======================================================================
       const shareId = url.searchParams.get('share');
       if (shareId && (path === '/' || path === '')) {
-        const shareObj = await env.BUCKET.get(getShareKey(shareId));
-        if (shareObj) {
-          const shareMeta = await shareObj.json();
-          // Check not expired
-          if (new Date() <= new Date(shareMeta.expires_at)) {
-            // Check if thumbnail exists
+        const userAgent = request.headers.get('User-Agent') || '';
+        const isCrawler = /facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|TelegramBot|WhatsApp|Discordbot|Pinterest|Googlebot/i.test(userAgent);
+
+        // Only serve OG HTML to crawlers, let browsers through to frontend
+        if (isCrawler) {
+          const shareObj = await env.BUCKET.get(getShareKey(shareId));
+          if (shareObj) {
+            const shareMeta = await shareObj.json();
             const hasThumbnail = shareMeta.has_thumbnail || false;
             const html = generateOgHtml(shareMeta, frontendUrl, shareId, hasThumbnail);
             return new Response(html, {
@@ -175,8 +177,8 @@ export default {
             });
           }
         }
-        // If share not found or expired, redirect to frontend anyway
-        return Response.redirect(`${frontendUrl}/?share=${shareId}`, 302);
+        // For regular browsers or if share not found, let request pass through
+        // (will be handled by GitHub Pages frontend)
       }
 
       // Health check
@@ -558,8 +560,6 @@ async function createShare(request, env) {
 
   const sourceSession = await sourceObj.json();
   const now = new Date();
-  const expiryDays = parseInt(env.SHARE_EXPIRY_DAYS || '90');
-  const expiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000);
 
   // Save thumbnail if provided (supports both JPEG and PNG)
   let hasThumbnail = false;
@@ -599,7 +599,6 @@ async function createShare(request, env) {
     time_range: sourceSession.time_range,
     region_count: (sourceSession.regions || []).length,
     created_at: now.toISOString(),
-    expires_at: expiresAt.toISOString(),
     view_count: 0,
     has_thumbnail: hasThumbnail,
   };
@@ -616,7 +615,6 @@ async function createShare(request, env) {
     success: true,
     share_id: shareId,
     share_url: shareUrl,
-    expires_at: expiresAt.toISOString(),
     has_thumbnail: hasThumbnail,
   }, 201);
 }
@@ -629,15 +627,6 @@ async function getShare(env, shareId) {
   }
 
   const shareMeta = await shareObj.json();
-
-  // Check expiry
-  if (new Date() > new Date(shareMeta.expires_at)) {
-    return json({
-      success: false,
-      error: 'Share has expired',
-      expired_at: shareMeta.expires_at
-    }, 410);
-  }
 
   // Get source session
   const sessionObj = await env.BUCKET.get(
