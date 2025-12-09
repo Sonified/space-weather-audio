@@ -284,7 +284,11 @@ h2 {
     gap: 15px;
     align-items: center;
     flex-wrap: wrap;
-    justify-content: flex-end;
+}
+
+/* Push component selector to the right */
+#componentSelectorContainer {
+    margin-left: auto;
 }
 
 .control-group {
