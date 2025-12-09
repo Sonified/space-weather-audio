@@ -2376,6 +2376,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         State.setLoadingInterval(null);
     }
     
+    // Check if this is a shared session - don't overwrite the "Ready! Click Play..." status
+    const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+
     // Only update button if it's still disabled (wasn't enabled when playback started)
     const playPauseBtn = document.getElementById('playPauseBtn');
     if (playPauseBtn.disabled) {
@@ -2395,7 +2398,9 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             playPauseBtn.textContent = '▶️ Play';
             playPauseBtn.classList.remove('pause-active', 'secondary');
             playPauseBtn.classList.add('play-active');
-            if (statusEl) {
+            if (statusEl && !isSharedSession) {
+                // Only show default status for non-shared sessions
+                // Shared sessions already have "Ready! Click Play..." status set
                 statusEl.classList.remove('loading');
                 statusEl.className = 'status success';
                 setStatusText('👇 Click on the waveform below to move the playhead.', 'status success');
@@ -2409,7 +2414,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 statusEl.textContent = ''; // Clear status when playing - no "Playing..." message
             }
         } else {
-            if (statusEl) {
+            if (statusEl && !isSharedSession) {
+                // Only show default status for non-shared sessions
                 statusEl.classList.remove('loading');
                 statusEl.className = 'status success';
                 setStatusText('👇 Click on the waveform below to move the playhead.', 'status success');
