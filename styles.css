@@ -286,6 +286,16 @@ h2 {
     flex-wrap: wrap;
 }
 
+/* Recent searches row container - shrink before wrap */
+.controls-row-1 {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 /* Push component selector to the right */
 #componentSelectorContainer {
     margin-left: auto;

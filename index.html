@@ -72,40 +72,42 @@
         
         <div class="panel panel-selection">
             <div class="controls">
-                <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px;">
-                    <label for="spacecraft" style="margin-bottom: 0;">Spacecraft:</label>
-                    <select id="spacecraft" style="background: rgba(255, 255, 255, 0.85); width: 220px; min-width: 220px; max-width: 220px; overflow: hidden; text-overflow: ellipsis;">
-                        <option value="PSP">Parker Solar Probe (PSP)</option>
-                        <option value="Wind">Wind</option>
-                        <option value="MMS">MMS (Magnetospheric Multiscale)</option>
-                        <option value="THEMIS">THEMIS</option>
-                        <option value="SolO">Solar Orbiter (SolO)</option>
-                    </select>
-                </div>
-                
-                <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px;">
-                    <label for="dataType" style="margin-bottom: 0;">Data:</label>
-                    <select id="dataType" style="background: rgba(255, 255, 255, 0.85); width: 220px; min-width: 220px; max-width: 220px; overflow: hidden; text-overflow: ellipsis;">
-                        <option value="PSP_FLD_L2_MAG_RTN">PSP_FLD_L2_MAG_RTN (Full Cadence)</option>
-                        <option value="PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC">PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)</option>
-                    </select>
+                <div class="controls-row-1">
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px;">
+                        <label for="spacecraft" style="margin-bottom: 0;">Spacecraft:</label>
+                        <select id="spacecraft" style="background: rgba(255, 255, 255, 0.85); width: 220px; min-width: 120px; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis;">
+                            <option value="PSP">Parker Solar Probe (PSP)</option>
+                            <option value="Wind">Wind</option>
+                            <option value="MMS">MMS (Magnetospheric Multiscale)</option>
+                            <option value="THEMIS">THEMIS</option>
+                            <option value="SolO">Solar Orbiter (SolO)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px;">
+                        <label for="dataType" style="margin-bottom: 0;">Data:</label>
+                        <select id="dataType" style="background: rgba(255, 255, 255, 0.85); width: 220px; min-width: 120px; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis;">
+                            <option value="PSP_FLD_L2_MAG_RTN">PSP_FLD_L2_MAG_RTN (Full Cadence)</option>
+                            <option value="PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC">PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 6px;">
+                        <label for="removeDCOffset" style="margin-bottom: 0; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox" id="removeDCOffset" checked style="width: 16px; height: 16px; cursor: pointer;">
+                            <span>De-trend</span>
+                        </label>
+                    </div>
+
+                    <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 1; min-width: 0;">
+                        <label for="recentSearches" style="margin-bottom: 0; font-size: 13px; font-weight: 600; color: #666; white-space: nowrap;">Recent:</label>
+                        <select id="recentSearches" style="padding: 8px 12px; font-size: 13px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); cursor: pointer; width: 300px; min-width: 100px; flex-shrink: 1;">
+                            <option value="">-- Select Recent Search --</option>
+                        </select>
+                        <button type="button" id="shareBtn" disabled style="padding: 8px 16px; font-size: 13px; font-weight: 600; color: white; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: opacity 0.2s, transform 0.1s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">Share</button>
+                    </div>
                 </div>
 
-                <div class="control-group" style="flex-direction: row; align-items: center; gap: 6px;">
-                    <label for="removeDCOffset" style="margin-bottom: 0; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                        <input type="checkbox" id="removeDCOffset" checked style="width: 16px; height: 16px; cursor: pointer;">
-                        <span>De-trend</span>
-                    </label>
-                </div>
-
-                <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 1; min-width: 0;">
-                    <label for="recentSearches" style="margin-bottom: 0; font-size: 13px; font-weight: 600; color: #666; white-space: nowrap;">Recent:</label>
-                    <select id="recentSearches" style="padding: 8px 12px; font-size: 13px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); cursor: pointer; flex: 0 1 300px; min-width: 100px;">
-                        <option value="">-- Select Recent Search --</option>
-                    </select>
-                    <button type="button" id="shareBtn" disabled style="padding: 8px 16px; font-size: 13px; font-weight: 600; color: white; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: opacity 0.2s, transform 0.1s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">Share</button>
-                </div>
-                
                 <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px; width: 100%; flex-basis: 100%;">
                     <label for="startDate" style="margin-bottom: 0;">Start:</label>
                     <input type="date" id="startDate" value="2021-04-29" max="2025-12-31" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); height: 34px; box-sizing: border-box;">
