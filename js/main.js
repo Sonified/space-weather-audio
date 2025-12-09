@@ -124,7 +124,7 @@ function writeString(view, offset, string) {
 const DEBUG_CHUNKS = false;
 
 // 🔍 STATUS DEBUG: MutationObserver to catch ALL status changes with stack traces
-const DEBUG_STATUS = true;
+const DEBUG_STATUS = false;
 if (DEBUG_STATUS) {
     // Wait for DOM then attach observer
     const attachStatusObserver = () => {
