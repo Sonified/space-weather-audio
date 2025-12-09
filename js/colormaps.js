@@ -188,7 +188,7 @@ export function updateAccentColors() {
 /**
  * HSL to RGB conversion helper
  */
-function hslToRgb(h, s, l) {
+export function hslToRgb(h, s, l) {
     h = h / 360;
     s = s / 100;
     l = l / 100;

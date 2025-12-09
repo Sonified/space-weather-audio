@@ -17,7 +17,7 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramRegionHighlights, drawSpectrogramSelection } from './region-tracker.js';
 import { isStudyMode } from './master-modes.js';
-import { getColorLUT } from './colormaps.js';
+import { getColorLUT, hslToRgb } from './colormaps.js';
 
 // Track if we've rendered the complete spectrogram
 let completeSpectrogramRendered = false;
