@@ -168,8 +168,11 @@ export function drawWaveformXAxis() {
     } else if (timeSpanHours < 6) {
         // Region is less than 6 hours - use 30-minute ticks
         ticks = calculateThirtyMinuteTicks(startTimeUTC, endTimeUTC);
+    } else if (timeSpanHours > 24) {
+        // Multi-day data - use 6-hour ticks (00:00, 06:00, 12:00, 18:00 UTC)
+        ticks = calculateSixHourTicks(startTimeUTC, endTimeUTC);
     } else {
-        // Region is 6+ hours - use hourly ticks
+        // Region is 6-24 hours - use hourly ticks
         ticks = calculateHourlyTicks(startTimeUTC, endTimeUTC);
     }
     
@@ -450,6 +453,65 @@ function calculateHourlyTicks(startUTC, endUTC) {
 
         // Move to next hour block (add 1 hour in milliseconds)
         currentTickUTC = new Date(currentTickUTC.getTime() + 60 * 60 * 1000);
+    }
+
+    return ticks;
+}
+
+/**
+ * Calculate 6-hour tick positions starting at UTC midnight
+ * Quantizes at 6-hour boundaries (00:00, 06:00, 12:00, 18:00 UTC)
+ * Used for multi-day data (> 24 hours)
+ */
+function calculateSixHourTicks(startUTC, endUTC) {
+    const ticks = [];
+
+    // Get UTC time components from start time
+    const startYear = startUTC.getUTCFullYear();
+    const startMonth = startUTC.getUTCMonth();
+    const startDay = startUTC.getUTCDate();
+    const startHours = startUTC.getUTCHours();
+
+    // Find first 6-hour block starting at UTC midnight (00:00, 06:00, 12:00, 18:00)
+    // Round down to nearest 6-hour boundary
+    const hoursRoundedDown = Math.floor(startHours / 6) * 6;
+    let firstTickUTC = new Date(Date.UTC(startYear, startMonth, startDay, hoursRoundedDown, 0, 0, 0));
+
+    // If we're not starting at a 6-hour boundary, find the first one within the region
+    if (firstTickUTC.getTime() < startUTC.getTime()) {
+        // Move forward to next 6-hour block
+        firstTickUTC = new Date(firstTickUTC.getTime() + 6 * 60 * 60 * 1000);
+    }
+
+    // Generate ticks every 6 hours until we exceed end time
+    let currentTickUTC = new Date(firstTickUTC);
+    let previousTickDateUTC = null;
+
+    while (currentTickUTC.getTime() <= endUTC.getTime()) {
+        // Get UTC date string for day crossing detection
+        const currentTickDateUTC = currentTickUTC.toISOString().split('T')[0];
+        const currentHourUTC = currentTickUTC.getUTCHours();
+        const currentMinutesUTC = currentTickUTC.getUTCMinutes();
+
+        // Mark as day crossing if:
+        // 1. Previous tick was on a different UTC date, OR
+        // 2. This tick is at UTC midnight (00:00)
+        const isDayCrossing = (previousTickDateUTC !== null && previousTickDateUTC !== currentTickDateUTC) ||
+                              (currentHourUTC === 0 && currentMinutesUTC === 0);
+
+        // Check if this UTC time falls within our data range
+        if (currentTickUTC.getTime() >= startUTC.getTime() && currentTickUTC.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: new Date(currentTickUTC),
+                localTime: new Date(currentTickUTC),
+                isDayCrossing: isDayCrossing
+            });
+        }
+
+        previousTickDateUTC = currentTickDateUTC;
+
+        // Move to next 6-hour block
+        currentTickUTC = new Date(currentTickUTC.getTime() + 6 * 60 * 60 * 1000);
     }
 
     return ticks;

@@ -1807,6 +1807,7 @@ async function initializeMainApp() {
             // Reset dropdown to placeholder after restoring
             e.target.value = '';
         }
+        e.target.blur(); // Blur so spacebar can toggle play/pause
     });
     
     console.log('🟢 LINE 2180 - About to attach startBtn event listener');
