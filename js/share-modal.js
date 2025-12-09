@@ -521,7 +521,9 @@ function gatherSessionData() {
             maxFrequency: r.maxFrequency,
             label: r.label,
             color: r.color,
-            featureBoxes: r.featureBoxes || []
+            featureCount: r.featureCount || 1,
+            features: r.features || [],
+            expanded: r.expanded || false
         })),
         view_settings: {
             frequency_scale: State.frequencyScale,
