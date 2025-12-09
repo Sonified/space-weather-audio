@@ -67,6 +67,8 @@ export function cancelAllRAFLoops() {
  * This is THE function for starting/resuming playback
  */
 export async function startPlayback() {
+    console.log(`🔊 [startPlayback] ENTER - AudioContext state: ${State.audioContext?.state}, workletNode: ${State.workletNode ? 'exists' : 'null'}`);
+
     State.setPlaybackState(PlaybackState.PLAYING);
 
     console.log('▶️ Starting playback');
@@ -93,12 +95,15 @@ export async function startPlayback() {
     // 🔗 FIX: Resume AudioContext BEFORE telling worklet to play
     // audioContext.resume() is async - must await it or worklet won't process!
     if (State.audioContext?.state === 'suspended') {
-        console.log('▶️ Resuming suspended AudioContext...');
+        console.log('🔊 [startPlayback] AudioContext is SUSPENDED - awaiting resume...');
         await State.audioContext.resume();
-        console.log('▶️ AudioContext resumed, state:', State.audioContext.state);
+        console.log(`🔊 [startPlayback] AudioContext RESUMED - state: ${State.audioContext.state}`);
+    } else {
+        console.log(`🔊 [startPlayback] AudioContext already running - state: ${State.audioContext?.state}`);
     }
 
     // 🏎️ AUTONOMOUS: Just tell worklet to play - it handles fade-in automatically
+    console.log('🔊 [startPlayback] Sending play message to worklet');
     State.workletNode?.port.postMessage({ type: 'play' });
 
     // Restart playback indicator
@@ -109,6 +114,7 @@ export async function startPlayback() {
 
     // Update active region button
     updateActiveRegionPlayButton(true);
+    console.log('🔊 [startPlayback] EXIT');
 }
 
 /**
@@ -170,12 +176,16 @@ function getRegionStartIfOutside() {
 
 export function togglePlayPause() {
     const currentState = `playbackState=${State.playbackState}, position=${State.currentAudioPosition?.toFixed(2) || 0}s`;
-    if (DEBUG_LOOP_FADES) console.log(`🎵 Master play/pause button clicked - ${currentState}`);
-    
-    if (!State.audioContext) return;
-    
+    console.log(`🎵 [togglePlayPause] ENTER - ${currentState}, AudioContext: ${State.audioContext?.state}`);
+
+    if (!State.audioContext) {
+        console.log('🎵 [togglePlayPause] EXIT - No AudioContext!');
+        return;
+    }
+
     switch (State.playbackState) {
         case PlaybackState.STOPPED:
+            console.log('🎵 [togglePlayPause] Case: STOPPED');
             // Check if zoomed into region and playhead is outside
             const regionStart = getRegionStartIfOutside();
             if (regionStart !== null) {
@@ -183,18 +193,20 @@ export function togglePlayPause() {
                 seekToPosition(regionStart, true);
                 break;
             }
-            
+
             const startPosition = isAtBoundaryEnd() ? getRestartPosition() : State.currentAudioPosition;
             console.log(`▶️ Starting playback from ${startPosition.toFixed(2)}s`);
             seekToPosition(startPosition, true);
             break;
-            
+
         case PlaybackState.PLAYING:
+            console.log('🎵 [togglePlayPause] Case: PLAYING → pause');
             console.log(`⏸️ Pausing playback`);
             pausePlayback();
             break;
-            
+
         case PlaybackState.PAUSED:
+            console.log('🎵 [togglePlayPause] Case: PAUSED → resume');
             // Check if zoomed into region and playhead is outside
             const regionStartPaused = getRegionStartIfOutside();
             if (regionStartPaused !== null) {
@@ -202,7 +214,7 @@ export function togglePlayPause() {
                 seekToPosition(regionStartPaused, true);
                 break;
             }
-            
+
             // Check if at end of current boundaries
             if (isAtBoundaryEnd()) {
                 const restartPos = getRestartPosition();
@@ -210,7 +222,7 @@ export function togglePlayPause() {
                 seekToPosition(restartPos, true);
                 break;
             }
-            
+
             console.log(`▶️ Resuming playback from ${State.currentAudioPosition.toFixed(2)}s`);
             startPlayback();
             break;
