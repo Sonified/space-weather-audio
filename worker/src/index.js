@@ -410,8 +410,8 @@ function validateUsername(username) {
 
   const cleaned = username.trim();
 
-  if (cleaned.length < 2) {
-    return { valid: false, error: 'Username must be at least 2 characters' };
+  if (cleaned.length < 3) {
+    return { valid: false, error: 'Username must be at least 3 characters' };
   }
   if (cleaned.length > 30) {
     return { valid: false, error: 'Username must be 30 characters or less' };

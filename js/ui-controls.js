@@ -749,9 +749,9 @@ export function setupModalEventListeners() {
 
         // Function to check username availability with debounce
         const checkUsername = async (username) => {
-            if (!username || username.length < 2) {
+            if (!username || username.length < 3) {
                 if (usernameStatusEl) {
-                    usernameStatusEl.innerHTML = '<span style="color: #666;">Enter at least 2 characters</span>';
+                    usernameStatusEl.innerHTML = '<span style="color: #666;">Enter at least 3 characters</span>';
                 }
                 isUsernameAvailable = false;
                 updateParticipantSubmitButton();
