@@ -758,6 +758,17 @@ export function setupModalEventListeners() {
                 return;
             }
 
+            // Check if this is the user's current username (case-insensitive)
+            const currentUsername = getParticipantId();
+            if (currentUsername && username.toLowerCase() === currentUsername.toLowerCase()) {
+                if (usernameStatusEl) {
+                    usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Your current username</span>';
+                }
+                isUsernameAvailable = true;
+                updateParticipantSubmitButton();
+                return;
+            }
+
             if (usernameStatusEl) {
                 usernameStatusEl.innerHTML = '<span style="color: #666;">Checking availability...</span>';
             }
