@@ -629,17 +629,8 @@ async function handleCopyUrl() {
  * @returns {Promise<Object|null>} Share data if found, null otherwise
  */
 export async function checkAndLoadSharedSession() {
-    console.log('🔗 checkAndLoadSharedSession() called');
-    console.log('🔗 Current URL:', window.location.href);
-    console.log('🔗 Search params:', window.location.search);
-
     const shareId = ShareAPI.getShareIdFromUrl();
-    console.log('🔗 getShareIdFromUrl() returned:', shareId);
-
-    if (!shareId) {
-        console.log('🔗 No share ID found, returning null');
-        return null;
-    }
+    if (!shareId) return null;
 
     console.log('🔗 Found share ID in URL:', shareId);
 
@@ -700,18 +691,11 @@ export function applySharedSession(shareData) {
     // Store regions to be applied after data loads
     if (session.regions && session.regions.length > 0) {
         console.log('🔗 Storing', session.regions.length, 'regions to sessionStorage');
-        console.log('🔗 Regions data:', session.regions);
         sessionStorage.setItem('pendingSharedRegions', JSON.stringify(session.regions));
-        // Verify storage
-        const stored = sessionStorage.getItem('pendingSharedRegions');
-        console.log('🔗 Verified sessionStorage contains:', stored ? 'data' : 'EMPTY!');
-    } else {
-        console.log('🔗 No regions to store (session.regions:', session.regions, ')');
     }
 
     // Store view settings
     if (session.view_settings) {
-        console.log('🔗 Storing view settings to sessionStorage:', session.view_settings);
         sessionStorage.setItem('pendingSharedViewSettings', JSON.stringify(session.view_settings));
     }
 
