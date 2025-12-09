@@ -1283,8 +1283,8 @@ async function initializeMainApp() {
         await initializeApp();
         
         console.log('═══════════════════════════════════════════════════════════');
-        console.log('✅ App ready - v1.04 (2025-12-09)');
-        console.log('📋 Commit: v1.04 Feature: Shared session no-autoplay fix');
+        console.log('✅ App ready - v1.05 (2025-12-09)');
+        console.log('📋 Commit: v1.05 Fix: Await AudioContext.resume() before play');
         console.log('═══════════════════════════════════════════════════════════');
         
         // Load recent searches
