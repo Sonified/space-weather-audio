@@ -66,14 +66,14 @@ export function cancelAllRAFLoops() {
  * Start playback (or resume if paused)
  * This is THE function for starting/resuming playback
  */
-export function startPlayback() {
+export async function startPlayback() {
     State.setPlaybackState(PlaybackState.PLAYING);
-    
+
     console.log('▶️ Starting playback');
-    
+
     // 🔥 Notify oscilloscope that playback started (for flame effect fade)
     setPlayingState(true);
-    
+
     // 🎓 Tutorial: Resolve promise if waiting for region play or resume
     if (State.waitingForRegionPlayOrResume && State._regionPlayOrResumeResolve) {
         State.setWaitingForRegionPlayOrResume(false);
@@ -83,28 +83,30 @@ export function startPlayback() {
         State.setRegionPlayClickResolve(null);
         resolve();
     }
-    
+
     // Update master button
     const btn = document.getElementById('playPauseBtn');
     btn.textContent = '⏸️ Pause';
     btn.classList.remove('play-active', 'pulse-play', 'pulse-resume', 'pulse-attention');
     btn.classList.add('pause-active');
 
-    // Resume AudioContext if needed
+    // 🔗 FIX: Resume AudioContext BEFORE telling worklet to play
+    // audioContext.resume() is async - must await it or worklet won't process!
     if (State.audioContext?.state === 'suspended') {
-        console.log('▶️ Resuming suspended AudioContext');
-        State.audioContext.resume();
+        console.log('▶️ Resuming suspended AudioContext...');
+        await State.audioContext.resume();
+        console.log('▶️ AudioContext resumed, state:', State.audioContext.state);
     }
-    
+
     // 🏎️ AUTONOMOUS: Just tell worklet to play - it handles fade-in automatically
     State.workletNode?.port.postMessage({ type: 'play' });
-    
+
     // Restart playback indicator
     if (State.audioContext && State.totalAudioDuration > 0) {
         State.setLastUpdateTime(State.audioContext.currentTime);
         startPlaybackIndicator();
     }
-    
+
     // Update active region button
     updateActiveRegionPlayButton(true);
 }
