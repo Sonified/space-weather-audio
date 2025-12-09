@@ -640,8 +640,9 @@ button.pulse-resume {
 }
 
 /* Attention-grabbing glow for shared session "ready to play" state */
+/* Synced with waveformPulse (1.2s) for visual harmony */
 button.pulse-attention {
-    animation: pulseAttentionGlow 1.5s ease-in-out infinite !important;
+    animation: pulseAttentionGlow 1.2s ease-in-out infinite !important;
     filter: drop-shadow(0 0 5px rgba(74, 155, 106, 0.8))
             drop-shadow(0 0 10px rgba(45, 112, 72, 0.6));
 }
