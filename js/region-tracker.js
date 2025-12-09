@@ -18,7 +18,7 @@ import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
 import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender, clearSmartRenderBounds, getInfiniteCanvasStatus, getCachedFullStatus } from './spectrogram-complete-renderer.js';
-import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
+import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange, drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
 import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, changeColormap } from './spectrogram-renderer.js';
@@ -3509,7 +3509,10 @@ export function zoomToRegion(regionIndex) {
         
         // Update feature box positions after zoom transition completes
         updateAllFeatureBoxPositions();
-        
+
+        // 🎯 CRITICAL: Redraw x-axis so tick density updates for the new region!
+        drawWaveformXAxis();
+
         // Rebuild waveform (fast)
         drawWaveform();
         
@@ -3747,7 +3750,10 @@ export function zoomToFull() {
         
         // Update feature box positions after zoom transition completes
         updateAllFeatureBoxPositions();
-        
+
+        // 🎯 Redraw x-axis so tick density updates for full view
+        drawWaveformXAxis();
+
         // Rebuild waveform to ensure it's up to date (if we used cached version)
         if (State.cachedFullWaveformCanvas) {
             drawWaveform();

@@ -755,7 +755,7 @@ export async function startStreaming(event) {
 
         console.log(`🎉 ${logTime()} Complete!`);
         console.log('═══════════════════════════════════════════════════════════');
-        console.log('📌 v1.07 (2025-12-09) Fix: Race condition - set isSharedSession immediately');
+        console.log('📌 v1.08 (2025-12-09) Fix: X-axis tick density for region-to-region zoom');
         console.log('═══════════════════════════════════════════════════════════');
 
     } catch (error) {
@@ -1322,6 +1322,9 @@ async function initializeMainApp() {
     // Small delay to let page settle before starting workflows
     setTimeout(async () => {
         await initializeApp();
+        console.log('═══════════════════════════════════════════════════════════');
+        console.log('📌 v1.08 (2025-12-09) Fix: X-axis tick density for region-to-region zoom');
+        console.log('═══════════════════════════════════════════════════════════');
         console.log('✅ App ready');
         loadRecentSearches();
     }, 100);
