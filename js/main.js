@@ -754,7 +754,8 @@ export async function startStreaming(event) {
         updateShareButtonState();
 
         console.log(`🎉 ${logTime()} Complete!`);
-        
+        console.log('📌 v1.07 (2025-12-09)');
+
     } catch (error) {
         console.error('❌ Error in startStreaming:', error);
         const statusDiv = document.getElementById('status');
@@ -1242,12 +1243,7 @@ async function initializeMainApp() {
 
     // Update participant ID display
     updateParticipantIdDisplay();
-    // Only log version info in dev/personal modes, not study mode
-    if (!isStudyMode()) {
-        console.log('🌋 [0ms] solar-audio 1.07 - Fix: Set isSharedSession BEFORE async work');
-        console.log('📌 [0ms] Git commit: v1.07 Fix: Race condition - set flag immediately');
-    }
-    
+
     // Start memory health monitoring
     startMemoryMonitoring();
     
@@ -1324,13 +1320,7 @@ async function initializeMainApp() {
     // Small delay to let page settle before starting workflows
     setTimeout(async () => {
         await initializeApp();
-        
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('✅ App ready - v1.07 (2025-12-09)');
-        console.log('📋 Commit: v1.07 Fix: Race condition - set isSharedSession immediately');
-        console.log('═══════════════════════════════════════════════════════════');
-        
-        // Load recent searches
+        console.log('✅ App ready');
         loadRecentSearches();
     }, 100);
 

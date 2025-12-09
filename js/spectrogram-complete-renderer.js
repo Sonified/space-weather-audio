@@ -606,7 +606,7 @@ export function clearCompleteSpectrogram() {
     // Only log in dev/personal modes, not study mode
     if (!isStudyMode()) {
         console.log(`🧹 [spectrogram-complete-renderer.js] clearCompleteSpectrogram CALLED`);
-        console.trace('📍 Call stack:');
+        // console.trace('📍 Call stack:');
         console.log('🧹 Starting aggressive spectrogram cleanup...');
     }
 
