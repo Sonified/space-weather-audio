@@ -932,7 +932,9 @@ export function setupWaveformInteraction() {
             waveformContainer.classList.remove('pulse');
         }
         // Show next guidance message after first waveform click (2 second delay)
-        if (!State.waveformHasBeenClicked) {
+        // Skip for shared sessions - they get a different message on play
+        const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+        if (!State.waveformHasBeenClicked && !isSharedSession) {
             setTimeout(async () => {
                 const statusDiv = document.getElementById('status');
                 if (statusDiv) {

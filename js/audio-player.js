@@ -114,6 +114,22 @@ export async function startPlayback() {
 
     // Update active region button
     updateActiveRegionPlayButton(true);
+
+    // 🔗 Shared session: Show zoom hint on first play (only once)
+    const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+    const sharedSessionHintShown = sessionStorage.getItem('sharedSessionHintShown') === 'true';
+    if (isSharedSession && !sharedSessionHintShown) {
+        sessionStorage.setItem('sharedSessionHintShown', 'true');
+        setTimeout(async () => {
+            const statusDiv = document.getElementById('status');
+            if (statusDiv) {
+                statusDiv.className = 'status';
+                const { typeText } = await import('./tutorial-effects.js');
+                typeText(statusDiv, 'Press the region # on your keyboard or click the 🔍 to ZOOM IN', 30, 10);
+            }
+        }, 2000);
+    }
+
     console.log('🔊 [startPlayback] EXIT');
 }
 
