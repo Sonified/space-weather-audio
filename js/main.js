@@ -3,8 +3,6 @@
  * Main orchestration: initialization, startStreaming, event handlers
  */
 
-// IMMEDIATE LOG - Check if main.js is being parsed at all
-console.log('🚨 MAIN.JS TOP OF FILE - PARSING NOW');
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
@@ -1285,18 +1283,14 @@ async function initializeMainApp() {
         await initializeApp();
         
         console.log('═══════════════════════════════════════════════════════════');
-        console.log('✅ App ready - v1.03 (2025-11-24)');
-        console.log('📋 Commit: v1.03 Fix: CDAWeb waveform rendering and audio playback');
+        console.log('✅ App ready - v1.04 (2025-12-09)');
+        console.log('📋 Commit: v1.04 Feature: Shared session no-autoplay fix');
         console.log('═══════════════════════════════════════════════════════════');
         
         // Load recent searches
-        console.log('🟢 About to call loadRecentSearches()');
         loadRecentSearches();
-        console.log('🟢 After loadRecentSearches()');
     }, 100);
-    
-    console.log('🟢 LINE 1655 - After setTimeout for loadRecentSearches');
-    
+
     // Add event listeners
     document.getElementById('spacecraft').addEventListener('change', async (e) => {
         // Remove pulsing glow when user selects a spacecraft

@@ -35,7 +35,7 @@ const DATAVIEW = 'sp_phys';  // Space Physics dataview
 const CDAWEB_WAV_SAMPLE_RATE = 22000; // CDAWeb's WAV encoding rate (intermediate, we don't use this for math)
 
 // Debug flag for domain separation logging
-const DEBUG_DOMAINS = true;
+const DEBUG_DOMAINS = false;
 
 // Dataset to variable mapping
 const DATASET_VARIABLES = {
