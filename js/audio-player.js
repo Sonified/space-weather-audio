@@ -420,17 +420,27 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         // (It will handle fade-in automatically if needed)
         if (shouldStartPlayback) {
             State.setPlaybackState(PlaybackState.PLAYING);
-            
+
             // 🔥 Notify oscilloscope that playback started (for flame effect fade)
             setPlayingState(true);
-            
-            State.workletNode.port.postMessage({ type: 'play' });
-            
+
             // Update play/pause button to show "Pause"
             const btn = document.getElementById('playPauseBtn');
             btn.textContent = '⏸️ Pause';
-            btn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
+            btn.classList.remove('play-active', 'pulse-play', 'pulse-resume', 'pulse-attention');
             btn.classList.add('pause-active');
+
+            // 🔗 FIX: Resume AudioContext BEFORE telling worklet to play!
+            if (State.audioContext?.state === 'suspended') {
+                console.log('🔊 [seekToPosition] AudioContext SUSPENDED - resuming...');
+                State.audioContext.resume().then(() => {
+                    console.log('🔊 [seekToPosition] AudioContext RESUMED, sending play');
+                    State.workletNode.port.postMessage({ type: 'play' });
+                });
+            } else {
+                console.log('🔊 [seekToPosition] AudioContext already running, sending play');
+                State.workletNode.port.postMessage({ type: 'play' });
+            }
         }
         
         // Ensure playback indicator continues if playing
