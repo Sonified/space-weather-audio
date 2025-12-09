@@ -645,6 +645,10 @@ export async function checkAndLoadSharedSession() {
     const shareId = ShareAPI.getShareIdFromUrl();
     if (!shareId) return null;
 
+    // 🔗 SET THIS IMMEDIATELY - before any async work or timeouts can fire!
+    sessionStorage.setItem('isSharedSession', 'true');
+    console.log('🔗🔗🔗 [SHARE-MODAL] SET isSharedSession=true IMMEDIATELY (share ID found)');
+
     console.log('🔗 Found share ID in URL:', shareId);
     console.log('🔗 Current URL:', window.location.href);
 
@@ -702,9 +706,7 @@ export function applySharedSession(shareData) {
         }
     }, 100);
 
-    // Mark this as a shared session - prevents auto-play, shows "ready to play" state
-    sessionStorage.setItem('isSharedSession', 'true');
-    console.log('🔗🔗🔗 [SHARE-MODAL] SET isSharedSession=true in sessionStorage');
+    // Note: isSharedSession was already set in checkAndLoadSharedSession() before any async work
 
     // Store regions to be applied after data loads
     if (session.regions && session.regions.length > 0) {

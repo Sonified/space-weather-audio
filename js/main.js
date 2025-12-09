@@ -1244,8 +1244,8 @@ async function initializeMainApp() {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] solar-audio 1.06 - Debug: Status change observer to trace overwrites');
-        console.log('📌 [0ms] Git commit: v1.06 Debug: Status change observer + isSharedSession checks');
+        console.log('🌋 [0ms] solar-audio 1.07 - Fix: Set isSharedSession BEFORE async work');
+        console.log('📌 [0ms] Git commit: v1.07 Fix: Race condition - set flag immediately');
     }
     
     // Start memory health monitoring
@@ -1326,8 +1326,8 @@ async function initializeMainApp() {
         await initializeApp();
         
         console.log('═══════════════════════════════════════════════════════════');
-        console.log('✅ App ready - v1.06 (2025-12-09)');
-        console.log('📋 Commit: v1.06 Debug: Status change observer to trace overwrites');
+        console.log('✅ App ready - v1.07 (2025-12-09)');
+        console.log('📋 Commit: v1.07 Fix: Race condition - set isSharedSession immediately');
         console.log('═══════════════════════════════════════════════════════════');
         
         // Load recent searches
