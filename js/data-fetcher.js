@@ -665,8 +665,6 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             } else {
                 if (isSharedSession) {
                     console.log(`🔗 Shared session loaded - waiting for user to click Play`);
-                    // Clear the flag now that we've handled it
-                    sessionStorage.removeItem('isSharedSession');
                 } else {
                     console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
                 }
@@ -1357,7 +1355,6 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                         } else {
                             if (isSharedSession) {
                                 console.log(`🔗 Shared session loaded - waiting for user to click Play`);
-                                sessionStorage.removeItem('isSharedSession');
                             } else {
                                 console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
                             }
@@ -2255,7 +2252,6 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
     } else {
         if (isSharedSession) {
             console.log(`🔗 Shared session loaded - waiting for user to click Play`);
-            sessionStorage.removeItem('isSharedSession');
         } else {
             console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
         }

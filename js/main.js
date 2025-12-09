@@ -1182,6 +1182,9 @@ async function initializeMainApp() {
         }, 500);
     }
 
+    // Default isSharedSession to false - will be set true only if share link found
+    sessionStorage.setItem('isSharedSession', 'false');
+
     // Check for shared session in URL (?share=xxx)
     const sharedSessionData = await checkAndLoadSharedSession();
     if (sharedSessionData) {
