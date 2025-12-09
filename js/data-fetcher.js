@@ -675,9 +675,15 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         }
         
         console.log(`✅ ${logTime()} CDAWeb data loaded and visualized!`);
-        
+
+        // Stop the pulsing animation on Fetch Data button after first successful fetch
+        const startBtn = document.getElementById('startBtn');
+        if (startBtn) {
+            startBtn.classList.add('fetched');
+        }
+
         // Update recent searches dropdown (called from startStreaming instead)
-        
+
         return audioData;
         
     } catch (error) {

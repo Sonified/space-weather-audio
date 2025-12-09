@@ -17,6 +17,7 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramRegionHighlights, drawSpectrogramSelection } from './region-tracker.js';
 import { isStudyMode } from './master-modes.js';
+import { getColorLUT } from './colormaps.js';
 
 // Track if we've rendered the complete spectrogram
 let completeSpectrogramRendered = false;
@@ -185,65 +186,7 @@ export function stopMemoryMonitoring() {
     }
 }
 
-/**
- * Convert HSL to RGB
- */
-// Pre-computed color LUT (computed once, reused for all renders)
-// Maps 256 intensity levels to RGB values using HSL color space
-let colorLUT = null;
-
-function initializeColorLUT() {
-    if (colorLUT !== null) return; // Already initialized
-    
-    colorLUT = new Uint8ClampedArray(256 * 3);
-    for (let i = 0; i < 256; i++) {
-        const normalized = i / 255;
-        const hue = normalized * 60;
-        const saturation = 100;
-        const lightness = 10 + (normalized * 60);
-        
-        const rgb = hslToRgb(hue, saturation, lightness);
-        colorLUT[i * 3] = rgb[0];
-        colorLUT[i * 3 + 1] = rgb[1];
-        colorLUT[i * 3 + 2] = rgb[2];
-    }
-    // Only log in dev/personal modes, not study mode
-    if (!isStudyMode()) {
-        console.log(`🎨 Pre-computed color LUT (256 levels) - cached for reuse`);
-    }
-}
-
-// Initialize color LUT on module load
-initializeColorLUT();
-
-function hslToRgb(h, s, l) {
-    h = h / 360;
-    s = s / 100;
-    l = l / 100;
-    
-    let r, g, b;
-    
-    if (s === 0) {
-        r = g = b = l;
-    } else {
-        const hue2rgb = (p, q, t) => {
-            if (t < 0) t += 1;
-            if (t > 1) t -= 1;
-            if (t < 1/6) return p + (q - p) * 6 * t;
-            if (t < 1/2) return q;
-            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-            return p;
-        };
-        
-        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        const p = 2 * l - q;
-        r = hue2rgb(p, q, h + 1/3);
-        g = hue2rgb(p, q, h);
-        b = hue2rgb(p, q, h - 1/3);
-    }
-    
-    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
-}
+// Color LUT is now managed by colormaps.js module
 
 /**
  * Main function to render the complete spectrogram (FULL VIEW)
@@ -419,6 +362,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         
         // Function to draw results from worker
         const drawResults = (results, progress, workerIndex) => {
+            const colorLUT = getColorLUT();
             for (const result of results) {
                 const { sliceIdx, magnitudes } = result;
                 
@@ -2008,6 +1952,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             
             // Draw callback for this zone
             const drawZoneResults = (results, progress, workerIndex) => {
+                const colorLUT = getColorLUT();
                 for (const result of results) {
                     const { sliceIdx, magnitudes } = result;
                     const xStart = Math.floor(sliceIdx * zonePixelsPerSlice);

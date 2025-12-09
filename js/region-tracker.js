@@ -375,6 +375,10 @@ function getTotalFeatureCount() {
  * Prioritizes pending shared regions (from shared links) over localStorage
  */
 export function loadRegionsAfterDataFetch() {
+    console.log('📂 loadRegionsAfterDataFetch() called');
+    console.log('📂 sessionStorage.pendingSharedRegions:', sessionStorage.getItem('pendingSharedRegions'));
+    console.log('📂 sessionStorage.pendingSharedViewSettings:', sessionStorage.getItem('pendingSharedViewSettings'));
+
     const spacecraft = getCurrentSpacecraft();
     if (!spacecraft) {
         console.warn('⚠️ Cannot load regions - no spacecraft selected');
@@ -388,6 +392,7 @@ export function loadRegionsAfterDataFetch() {
     // Check for pending shared regions first (from shared links)
     let loadedRegions = null;
     const pendingSharedRegions = sessionStorage.getItem('pendingSharedRegions');
+    console.log('📂 pendingSharedRegions value:', pendingSharedRegions);
     if (pendingSharedRegions) {
         try {
             loadedRegions = JSON.parse(pendingSharedRegions);

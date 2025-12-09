@@ -294,14 +294,6 @@ function createShareModal() {
                         <div id="slugStatus" style="margin-top: 6px; font-size: 12px; min-height: 18px;"></div>
                     </div>
 
-                    <!-- What will be shared (collapsed) -->
-                    <div style="background: rgba(102, 126, 234, 0.1); padding: 12px 16px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(102, 126, 234, 0.2);">
-                        <div style="display: flex; gap: 16px; color: #aaa; font-size: 13px; flex-wrap: wrap;">
-                            <span id="shareSpacecraft">Spacecraft: --</span>
-                            <span id="shareRegionCount">Regions: 0</span>
-                            <span id="shareTimeRange">Time: --</span>
-                        </div>
-                    </div>
                     <div style="display: flex; gap: 12px; justify-content: flex-end;">
                         <button type="button" id="cancelShareBtn" style="padding: 12px 28px; font-size: 14px; background: rgba(255,255,255,0.1); color: #ccc; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; cursor: pointer; font-weight: 500;">Cancel</button>
                         <button type="button" id="createShareBtn" style="padding: 12px 28px; font-size: 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">Create Share Link</button>
@@ -461,11 +453,7 @@ export function openShareModal() {
     updateThumbnailPreview();
 
     // Pre-populate info
-    const regions = getRegions();
     const spacecraft = State.currentMetadata?.spacecraft || document.getElementById('spacecraft')?.value || 'Unknown';
-
-    document.getElementById('shareRegionCount').textContent = `Regions: ${regions.length}`;
-    document.getElementById('shareSpacecraft').textContent = `Spacecraft: ${spacecraft}`;
 
     // Generate engaging default title
     const defaultTitle = `Listen to these sounds from space!`;
@@ -486,12 +474,6 @@ export function openShareModal() {
     }
     defaultDescription += `. I think you'll find it interesting!`;
     document.getElementById('shareDescription').value = defaultDescription;
-
-    if (State.dataStartTime && State.dataEndTime) {
-        const startDisplay = State.dataStartTime.toISOString().slice(0, 16).replace('T', ' ');
-        const endDisplay = State.dataEndTime.toISOString().slice(0, 16).replace('T', ' ');
-        document.getElementById('shareTimeRange').textContent = `${startDisplay} to ${endDisplay}`;
-    }
 
     // Generate and set default slug
     const defaultSlug = generateDefaultSlug();
@@ -643,10 +625,19 @@ async function handleCopyUrl() {
  * @returns {Promise<Object|null>} Share data if found, null otherwise
  */
 export async function checkAndLoadSharedSession() {
-    const shareId = ShareAPI.getShareIdFromUrl();
-    if (!shareId) return null;
+    console.log('🔗 checkAndLoadSharedSession() called');
+    console.log('🔗 Current URL:', window.location.href);
+    console.log('🔗 Search params:', window.location.search);
 
-    console.log('Found share ID in URL:', shareId);
+    const shareId = ShareAPI.getShareIdFromUrl();
+    console.log('🔗 getShareIdFromUrl() returned:', shareId);
+
+    if (!shareId) {
+        console.log('🔗 No share ID found, returning null');
+        return null;
+    }
+
+    console.log('🔗 Found share ID in URL:', shareId);
 
     try {
         const shareData = await ShareAPI.getShare(shareId);
@@ -704,11 +695,19 @@ export function applySharedSession(shareData) {
 
     // Store regions to be applied after data loads
     if (session.regions && session.regions.length > 0) {
+        console.log('🔗 Storing', session.regions.length, 'regions to sessionStorage');
+        console.log('🔗 Regions data:', session.regions);
         sessionStorage.setItem('pendingSharedRegions', JSON.stringify(session.regions));
+        // Verify storage
+        const stored = sessionStorage.getItem('pendingSharedRegions');
+        console.log('🔗 Verified sessionStorage contains:', stored ? 'data' : 'EMPTY!');
+    } else {
+        console.log('🔗 No regions to store (session.regions:', session.regions, ')');
     }
 
     // Store view settings
     if (session.view_settings) {
+        console.log('🔗 Storing view settings to sessionStorage:', session.view_settings);
         sessionStorage.setItem('pendingSharedViewSettings', JSON.stringify(session.view_settings));
     }
 

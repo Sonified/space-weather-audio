@@ -1,3 +1,13 @@
+/* Colormap-based accent colors (updated via JS when colormap changes) */
+:root {
+    --accent-color: #667eea;
+    --accent-rgb: 102, 126, 234;
+    --accent-glow: rgba(102, 126, 234, 0.25);
+    --accent-border: rgba(102, 126, 234, 0.2);
+    --accent-soft: rgba(102, 126, 234, 0.12);
+    --accent-bg: #1a1d29;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -21,7 +31,7 @@ html {
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: linear-gradient(135deg, #000000 0%, #0a0a1a 40%, #1a0a2e 100%);
+    background: linear-gradient(135deg, #000000 0%, #050510 40%, #0a0515 100%);
     min-height: 100vh;
     padding: 10px 20px 20px 20px;
     overflow-x: hidden;
@@ -36,6 +46,7 @@ body::-webkit-scrollbar {
 .container {
     max-width: 1400px;
     margin: 0 auto;
+    padding-bottom: 20px;
 }
 
 h1 {
@@ -252,11 +263,12 @@ h2 {
 
 /* Panel: Waveform/Spectrogram visualization panel */
 .panel-visualization {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0d0d1a 100%);
-    border: 1px solid rgba(102, 126, 234, 0.3);
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
     padding-top: 12px;
     padding-right: 40px;
     padding-bottom: 15px;
+    transition: border-color 0.3s ease, background-color 0.3s ease;
 }
 
 /* Panel: Metrics panel */
@@ -330,7 +342,7 @@ input[type="range"] {
 
 /* Webkit (Chrome, Safari, Edge) - Track */
 input[type="range"]::-webkit-slider-track {
-    background: rgba(140, 80, 70, 0.5);
+    background: rgba(102, 126, 234, 0.5);
     height: 3px;
     border-radius: 2px;
     border: none;
@@ -340,7 +352,7 @@ input[type="range"]::-webkit-slider-track {
 input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    background: linear-gradient(135deg, #dd4444 0%, #bb2222 100%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     height: 18px;
     width: 18px;
     border-radius: 50%;
@@ -349,12 +361,12 @@ input[type="range"]::-webkit-slider-thumb {
     margin-top: -7.5px;
     position: relative;
     top: 2px;
-    box-shadow: 0 2px 6px rgba(180, 40, 40, 0.45);
+    box-shadow: 0 2px 6px rgba(102, 126, 234, 0.45);
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
-    background: linear-gradient(135deg, #ee5555 0%, #cc3333 100%);
-    box-shadow: 0 3px 8px rgba(180, 40, 40, 0.55);
+    background: linear-gradient(135deg, #7a8ef0 0%, #8a5fb5 100%);
+    box-shadow: 0 3px 8px rgba(102, 126, 234, 0.55);
 }
 
 /* Speed slider glow effect for tutorial - animate FILTER on parent */
@@ -364,11 +376,11 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 /* Make the knob brighter so the glow is more visible */
 #playbackSpeed.speed-slider-glow::-webkit-slider-thumb {
-    background: #ff6666 !important;
+    background: #8a9ff5 !important;
 }
 
 #playbackSpeed.speed-slider-glow::-moz-range-thumb {
-    background: #ff6666 !important;
+    background: #8a9ff5 !important;
 }
 
 /* Volume slider glow effect */
@@ -390,80 +402,80 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 /* Add glow to the track (bar) */
 #volumeSlider.volume-slider-glow::-webkit-slider-track {
-    background: rgba(140, 80, 70, 0.5) !important;
-    box-shadow: 0 0 5px rgba(255, 80, 80, 1), 0 0 10px rgba(255, 60, 60, 0.85) !important;
+    background: rgba(102, 126, 234, 0.5) !important;
+    box-shadow: 0 0 5px rgba(102, 126, 234, 1), 0 0 10px rgba(118, 75, 162, 0.85) !important;
 }
 
 #volumeSlider.volume-slider-glow::-moz-range-track {
-    background: rgba(140, 80, 70, 0.5) !important;
-    box-shadow: 0 0 5px rgba(255, 80, 80, 1), 0 0 10px rgba(255, 60, 60, 0.85) !important;
+    background: rgba(102, 126, 234, 0.5) !important;
+    box-shadow: 0 0 5px rgba(102, 126, 234, 1), 0 0 10px rgba(118, 75, 162, 0.85) !important;
 }
 
 /* Make the knob brighter so the glow is more visible */
 #volumeSlider.volume-slider-glow::-webkit-slider-thumb {
-    background: #ff2222 !important;
-    box-shadow: 0 0 6px rgba(255, 80, 80, 1), 0 0 12px rgba(255, 60, 60, 0.9) !important;
+    background: #8a9ff5 !important;
+    box-shadow: 0 0 6px rgba(102, 126, 234, 1), 0 0 12px rgba(118, 75, 162, 0.9) !important;
 }
 
 #volumeSlider.volume-slider-glow::-moz-range-thumb {
-    background: #ff2222 !important;
-    box-shadow: 0 0 6px rgba(255, 80, 80, 1), 0 0 12px rgba(255, 60, 60, 0.9) !important;
+    background: #8a9ff5 !important;
+    box-shadow: 0 0 6px rgba(102, 126, 234, 1), 0 0 12px rgba(118, 75, 162, 0.9) !important;
 }
 
 #volumeLabel.volume-label-glow {
-    text-shadow: 0 0 15px rgba(255, 120, 120, 1), 0 0 30px rgba(255, 100, 100, 0.9), 0 0 45px rgba(255, 80, 80, 0.7);
+    text-shadow: 0 0 15px rgba(102, 126, 234, 1), 0 0 30px rgba(118, 75, 162, 0.9), 0 0 45px rgba(102, 126, 234, 0.7);
     animation: volumeLabelPulse 0.7s ease-in-out infinite !important;
     transition: text-shadow 0.5s ease-out, opacity 0.5s ease-out;
 }
 
 #volumeLabel.volume-label-glow.fading-in {
     opacity: 0;
-    text-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    text-shadow: 0 0 0px rgba(102, 126, 234, 0);
     animation: none;
 }
 
 #volumeLabel.volume-label-glow.fading-out {
     animation: none;
-    text-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    text-shadow: 0 0 0px rgba(102, 126, 234, 0);
 }
 
 @keyframes speedSliderKnobPulse {
     0%, 100% {
-        filter: drop-shadow(0 0 8px rgba(255, 100, 100, 0.8))
-                drop-shadow(0 0 16px rgba(255, 80, 80, 0.6));
+        filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.8))
+                drop-shadow(0 0 16px rgba(118, 75, 162, 0.6));
     }
     50% {
-        filter: drop-shadow(0 0 16px rgba(255, 120, 120, 1))
-                drop-shadow(0 0 32px rgba(255, 100, 100, 0.9))
-                drop-shadow(0 0 48px rgba(255, 80, 80, 0.7));
+        filter: drop-shadow(0 0 16px rgba(138, 159, 245, 1))
+                drop-shadow(0 0 32px rgba(102, 126, 234, 0.9))
+                drop-shadow(0 0 48px rgba(118, 75, 162, 0.7));
     }
 }
 
 @keyframes volumeSliderKnobPulse {
     0%, 100% {
-        filter: drop-shadow(0 0 4px rgba(255, 100, 100, 0.9))
-                drop-shadow(0 0 8px rgba(255, 80, 80, 0.8));
+        filter: drop-shadow(0 0 4px rgba(102, 126, 234, 0.9))
+                drop-shadow(0 0 8px rgba(118, 75, 162, 0.8));
     }
     50% {
-        filter: drop-shadow(0 0 6px rgba(255, 120, 120, 1))
-                drop-shadow(0 0 12px rgba(255, 100, 100, 0.95))
-                drop-shadow(0 0 18px rgba(255, 80, 80, 0.85));
+        filter: drop-shadow(0 0 6px rgba(138, 159, 245, 1))
+                drop-shadow(0 0 12px rgba(102, 126, 234, 0.95))
+                drop-shadow(0 0 18px rgba(118, 75, 162, 0.85));
     }
 }
 
 @keyframes volumeLabelPulse {
     0%, 100% {
-        text-shadow: 0 0 20px rgba(255, 140, 140, 1), 
-                     0 0 40px rgba(255, 120, 120, 1), 
-                     0 0 60px rgba(255, 100, 100, 0.9),
-                     0 0 80px rgba(255, 80, 80, 0.7);
+        text-shadow: 0 0 20px rgba(138, 159, 245, 1),
+                     0 0 40px rgba(102, 126, 234, 1),
+                     0 0 60px rgba(118, 75, 162, 0.9),
+                     0 0 80px rgba(102, 126, 234, 0.7);
     }
     50% {
-        text-shadow: 0 0 35px rgba(255, 180, 180, 1), 
-                     0 0 70px rgba(255, 160, 160, 1), 
-                     0 0 105px rgba(255, 140, 140, 1),
-                     0 0 140px rgba(255, 120, 120, 0.9),
-                     0 0 175px rgba(255, 100, 100, 0.7);
+        text-shadow: 0 0 35px rgba(170, 185, 255, 1),
+                     0 0 70px rgba(138, 159, 245, 1),
+                     0 0 105px rgba(102, 126, 234, 1),
+                     0 0 140px rgba(118, 75, 162, 0.9),
+                     0 0 175px rgba(102, 126, 234, 0.7);
     }
 }
 
@@ -471,42 +483,42 @@ input[type="range"]::-webkit-slider-thumb:hover {
 #speedValue.speed-value-glow,
 #speedLabel.speed-value-glow {
     animation: speedValuePulse 1s ease-in-out infinite !important;
-    color: #ff6666 !important;
+    color: #8a9ff5 !important;
 }
 
 @keyframes speedValuePulse {
     0%, 100% {
-        text-shadow: 0 0 8px rgba(255, 100, 100, 0.8),
-                      0 0 16px rgba(255, 80, 80, 0.6);
+        text-shadow: 0 0 8px rgba(102, 126, 234, 0.8),
+                      0 0 16px rgba(118, 75, 162, 0.6);
     }
     50% {
-        text-shadow: 0 0 16px rgba(255, 120, 120, 1),
-                      0 0 32px rgba(255, 100, 100, 0.9),
-                      0 0 48px rgba(255, 80, 80, 0.7);
+        text-shadow: 0 0 16px rgba(138, 159, 245, 1),
+                      0 0 32px rgba(102, 126, 234, 0.9),
+                      0 0 48px rgba(118, 75, 162, 0.7);
     }
 }
 
 /* Pause button glow effect for tutorial - more intense but tighter */
 #playPauseBtn.pause-button-glow {
     animation: pauseButtonPulse 1.5s ease-in-out infinite !important;
-    filter: drop-shadow(0 0 5px rgba(255, 120, 120, 0.8))
-            drop-shadow(0 0 10px rgba(255, 100, 100, 0.6));
+    filter: drop-shadow(0 0 5px rgba(102, 126, 234, 0.8))
+            drop-shadow(0 0 10px rgba(118, 75, 162, 0.6));
 }
 
 @keyframes pauseButtonPulse {
     0%, 100% {
-        filter: drop-shadow(0 0 5px rgba(255, 120, 120, 0.8))
-                drop-shadow(0 0 10px rgba(255, 100, 100, 0.6));
+        filter: drop-shadow(0 0 5px rgba(102, 126, 234, 0.8))
+                drop-shadow(0 0 10px rgba(118, 75, 162, 0.6));
     }
     50% {
-        filter: drop-shadow(0 0 12px rgba(255, 150, 150, 1))
-                drop-shadow(0 0 24px rgba(255, 130, 130, 0.9));
+        filter: drop-shadow(0 0 12px rgba(138, 159, 245, 1))
+                drop-shadow(0 0 24px rgba(102, 126, 234, 0.9));
     }
 }
 
 /* Firefox - Track */
 input[type="range"]::-moz-range-track {
-    background: rgba(140, 80, 70, 0.5);
+    background: rgba(102, 126, 234, 0.5);
     height: 3px;
     border-radius: 2px;
     border: none;
@@ -514,7 +526,7 @@ input[type="range"]::-moz-range-track {
 
 /* Firefox - Thumb */
 input[type="range"]::-moz-range-thumb {
-    background: linear-gradient(135deg, #dd4444 0%, #bb2222 100%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     height: 18px;
     width: 18px;
     border-radius: 50%;
@@ -523,7 +535,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 input[type="range"]::-moz-range-thumb:hover {
-    background: linear-gradient(135deg, #ee5555 0%, #cc3333 100%);
+    background: linear-gradient(135deg, #7a8ef0 0%, #8a5fb5 100%);
 }
 
 
@@ -534,7 +546,7 @@ button {
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    background: linear-gradient(135deg, #b85050 0%, #963030 100%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: #ffffff;
     font-weight: 600;
     transition: all 0.2s;
@@ -545,24 +557,24 @@ button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(120, 50, 50, 0.3);
+    border: 1px solid rgba(102, 126, 234, 0.3);
 }
 
 button:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 5px 12px rgba(160, 70, 70, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-    background: linear-gradient(135deg, #c86060 0%, #a64040 100%);
+    box-shadow: 0 5px 12px rgba(102, 126, 234, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    background: linear-gradient(135deg, #7a8ef0 0%, #8a5fb5 100%);
 }
 
-#startBtn:not(:disabled):not(.streaming) {
+#startBtn:not(:disabled):not(.streaming):not(.fetched) {
     animation: pulseBright 1.8s ease-in-out infinite;
     text-shadow: 0 0 4px rgba(255, 255, 255, 0.8), 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 #startBtn.streaming {
-    background: linear-gradient(135deg, #ff5555 0%, #ff0000 100%) !important;
+    background: linear-gradient(135deg, #8a9ff5 0%, #9b6bc9 100%) !important;
     animation: pulseVibrant 1.2s ease-in-out infinite;
-    box-shadow: 0 5px 15px rgba(255, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
     text-shadow: 0 0 8px rgba(255, 255, 255, 1), 0 2px 4px rgba(0, 0, 0, 0.3) !important;
     transform: scale(1.02);
 }
@@ -570,11 +582,11 @@ button:hover:not(:disabled) {
 @keyframes pulseVibrant {
     0%, 100% {
         filter: brightness(1);
-        box-shadow: 0 5px 15px rgba(255, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
     }
     50% {
         filter: brightness(1.2);
-        box-shadow: 0 8px 20px rgba(255, 50, 50, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        box-shadow: 0 8px 20px rgba(138, 159, 245, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
     }
 }
 
@@ -590,31 +602,31 @@ button:hover:not(:disabled) {
 @keyframes pulsePlayButton {
     0%, 100% {
         transform: scale(1);
-        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), 0 0 0 0 rgba(200, 50, 50, 0.4);
+        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), 0 0 0 0 rgba(102, 126, 234, 0.4);
     }
     50% {
         transform: scale(1.02);
-        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), 0 0 0 6px rgba(200, 50, 50, 0);
+        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), 0 0 0 6px rgba(102, 126, 234, 0);
     }
 }
 
 @keyframes pulseResumeDarken {
     0%, 100% {
-        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), inset 0 0 0 0 rgba(100, 0, 0, 0);
+        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), inset 0 0 0 0 rgba(60, 40, 100, 0);
     }
     50% {
-        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), inset 0 0 100px 50px rgba(100, 0, 0, 0.4);
+        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), inset 0 0 100px 50px rgba(60, 40, 100, 0.4);
     }
 }
 
 @keyframes pulseBright {
     0%, 100% {
         filter: brightness(1);
-        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 10px rgba(255, 100, 100, 0.3);
+        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 10px rgba(102, 126, 234, 0.3);
     }
     50% {
         filter: brightness(1.35);
-        box-shadow: 0 5px 12px rgba(160, 70, 70, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 20px rgba(255, 150, 150, 0.6);
+        box-shadow: 0 5px 12px rgba(102, 126, 234, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 20px rgba(138, 159, 245, 0.6);
     }
 }
 
@@ -653,35 +665,35 @@ button:disabled {
 }
 
 button.secondary {
-    background: linear-gradient(135deg, #aa6655 0%, #884433 100%);
+    background: linear-gradient(135deg, #5a6ab8 0%, #4a3a88 100%);
 }
 
 button.secondary:hover:not(:disabled) {
-    background: linear-gradient(135deg, #bb7766 0%, #995544 100%);
+    background: linear-gradient(135deg, #6a7ac8 0%, #5a4a98 100%);
 }
 
 button.pause-active {
-    background: linear-gradient(135deg, #dd3333 0%, #aa0000 100%);
+    background: linear-gradient(135deg, #8a5fb5 0%, #5a3a95 100%);
 }
 
 button.pause-active:hover:not(:disabled) {
-    background: linear-gradient(135deg, #ee4444 0%, #bb1111 100%);
+    background: linear-gradient(135deg, #9a6fc5 0%, #6a4aa5 100%);
 }
 
 button.play-active {
-    background: linear-gradient(135deg, #ff8844 0%, #dd5522 100%);
+    background: linear-gradient(135deg, #7a8ef0 0%, #5a6ad0 100%);
 }
 
 button.play-active:hover:not(:disabled) {
-    background: linear-gradient(135deg, #ff9955 0%, #ee6633 100%);
+    background: linear-gradient(135deg, #8a9ff5 0%, #6a7ae0 100%);
 }
 
 button.loop-active {
-    background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+    background: linear-gradient(135deg, #9b6bc9 0%, #7a4ba9 100%);
 }
 
 button.loop-active:hover:not(:disabled) {
-    background: linear-gradient(135deg, #ff5555 0%, #dd1111 100%);
+    background: linear-gradient(135deg, #ab7bd9 0%, #8a5bb9 100%);
 }
 
 .status {
@@ -710,14 +722,14 @@ button.loop-active:hover:not(:disabled) {
 .status.loading {
     background: linear-gradient(
         90deg,
-        rgba(255, 180, 120, 0.4) 0%,
-        rgba(255, 240, 200, 0.8) 50%,
-        rgba(255, 180, 120, 0.4) 100%
+        rgba(102, 126, 234, 0.4) 0%,
+        rgba(180, 190, 255, 0.8) 50%,
+        rgba(102, 126, 234, 0.4) 100%
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite, pulseBackground 1s ease-in-out infinite;
     border-color: rgba(80, 80, 80, 0.9) !important;
-    color: #331100 !important;
+    color: #1a1a3e !important;
     font-weight: 700 !important;
     position: relative;
     text-shadow: none;
@@ -761,8 +773,8 @@ button.loop-active:hover:not(:disabled) {
         45deg,
         transparent,
         transparent 10px,
-        rgba(255, 140, 90, 0.3) 10px,
-        rgba(255, 140, 90, 0.3) 20px
+        rgba(102, 126, 234, 0.3) 10px,
+        rgba(102, 126, 234, 0.3) 20px
     );
     background-size: 28px 28px;
     animation: stripeMove 1.2s linear infinite;
@@ -814,16 +826,16 @@ button.loop-active:hover:not(:disabled) {
 }
 
 .metric {
-    background: linear-gradient(135deg, rgba(255, 220, 220, 0.6) 0%, rgba(255, 200, 190, 0.6) 100%);
+    background: linear-gradient(135deg, rgba(230, 235, 255, 0.6) 0%, rgba(220, 225, 250, 0.6) 100%);
     padding: 15px;
     border-radius: 6px;
-    border: 1px solid rgba(180, 120, 120, 0.4);
-    box-shadow: 0 2px 4px rgba(80, 20, 20, 0.15);
+    border: 1px solid rgba(102, 126, 234, 0.4);
+    box-shadow: 0 2px 4px rgba(40, 30, 80, 0.15);
 }
 
 .metric-label {
     font-size: 12px;
-    color: #885555;
+    color: #5a5a8a;
     text-transform: uppercase;
     margin-bottom: 5px;
     font-weight: 600;
@@ -832,7 +844,7 @@ button.loop-active:hover:not(:disabled) {
 .metric-value {
     font-size: 24px;
     font-weight: 700;
-    color: #662222;
+    color: #3a3a6a;
 }
 
 canvas {
@@ -840,199 +852,201 @@ canvas {
     display: block;
     border-radius: 6px;
     background: #000;
-    box-shadow: inset 0 0 20px rgba(200, 50, 50, 0.3), 0 0 15px rgba(200, 50, 50, 0.2);
+    box-shadow: inset 0 0 15px var(--accent-soft), 0 0 8px var(--accent-soft);
+    transition: box-shadow 0.3s ease;
 }
 
 #waveform {
     position: relative;
     height: 135px;
     margin-bottom: 10px;
-    border: 2px solid rgba(80, 40, 40, 0.6);
+    border: 2px solid var(--accent-glow);
     box-shadow: none;
+    transition: border-color 0.3s ease;
 }
 
 #spectrogram {
     height: 450px;
     background: transparent;
     margin-top: 40px;
-    border: 2px solid rgba(80, 40, 40, 0.6);
+    border: 2px solid var(--accent-glow);
     box-shadow: none;
-    transition: box-shadow 0.3s ease;
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 
 #spectrogram.spectrogram-glow {
-    box-shadow: 0 0 15px rgba(255, 100, 100, 0.4), 0 0 30px rgba(255, 100, 100, 0.3);
+    box-shadow: 0 0 8px rgba(102, 126, 234, 0.25), 0 0 15px rgba(118, 75, 162, 0.15);
     animation: spectrogramPulse 1.2s ease-in-out infinite;
     transition: box-shadow 0.5s ease-out, opacity 0.5s ease-out;
 }
 
 #spectrogram.spectrogram-glow.fading-in {
     opacity: 0;
-    box-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    box-shadow: 0 0 0px rgba(102, 126, 234, 0);
     animation: none;
 }
 
 #spectrogram.spectrogram-glow.fading-out {
     animation: none;
-    box-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    box-shadow: 0 0 0px rgba(102, 126, 234, 0);
     opacity: 0.8;
 }
 
 /* Regions panel glow effect */
 #trackedRegionsPanel.regions-panel-glow {
-    box-shadow: 0 0 15px rgba(255, 100, 100, 0.4), 0 0 30px rgba(255, 100, 100, 0.3);
+    box-shadow: 0 0 15px rgba(102, 126, 234, 0.4), 0 0 30px rgba(118, 75, 162, 0.3);
     animation: spectrogramPulse 1.2s ease-in-out infinite;
     transition: box-shadow 0.5s ease-out, opacity 0.5s ease-out;
 }
 
 #trackedRegionsPanel.regions-panel-glow.fading-in {
     opacity: 0;
-    box-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    box-shadow: 0 0 0px rgba(102, 126, 234, 0);
     animation: none;
 }
 
 #trackedRegionsPanel.regions-panel-glow.fading-out {
     animation: none;
-    box-shadow: 0 0 0px rgba(255, 100, 100, 0);
+    box-shadow: 0 0 0px rgba(102, 126, 234, 0);
 }
 
 /* Loop button glow effect - gentle pulsing glow */
 #loopBtn.loop-button-glow {
     animation: loopButtonPulse 1.5s ease-in-out infinite !important;
-    filter: drop-shadow(0 0 5px rgba(255, 120, 120, 0.8))
-            drop-shadow(0 0 10px rgba(255, 100, 100, 0.6));
+    filter: drop-shadow(0 0 5px rgba(102, 126, 234, 0.8))
+            drop-shadow(0 0 10px rgba(118, 75, 162, 0.6));
     transition: filter 0.5s ease-out, opacity 0.5s ease-out;
 }
 
 @keyframes loopButtonPulse {
     0%, 100% {
-        filter: drop-shadow(0 0 5px rgba(255, 120, 120, 0.8))
-                drop-shadow(0 0 10px rgba(255, 100, 100, 0.6));
+        filter: drop-shadow(0 0 5px rgba(102, 126, 234, 0.8))
+                drop-shadow(0 0 10px rgba(118, 75, 162, 0.6));
     }
     50% {
-        filter: drop-shadow(0 0 12px rgba(255, 150, 150, 1))
-                drop-shadow(0 0 24px rgba(255, 130, 130, 0.9));
+        filter: drop-shadow(0 0 12px rgba(138, 159, 245, 1))
+                drop-shadow(0 0 24px rgba(102, 126, 234, 0.9));
     }
 }
 
 #loopBtn.loop-button-glow.fading-in {
     opacity: 0;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
     animation: none;
 }
 
 #loopBtn.loop-button-glow.fading-out {
     animation: none;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
 }
 
 /* Frequency scale dropdown glow effect - bigger and brighter pulse */
 #frequencyScale.frequency-scale-glow {
     animation: frequencyScalePulse 1.2s ease-in-out infinite !important;
-    filter: drop-shadow(0 0 8px rgba(255, 130, 130, 0.9))
-            drop-shadow(0 0 16px rgba(255, 110, 110, 0.7));
+    filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.9))
+            drop-shadow(0 0 16px rgba(118, 75, 162, 0.7));
     transition: filter 0.5s ease-out, opacity 0.5s ease-out;
 }
 
 @keyframes frequencyScalePulse {
     0%, 100% {
-        filter: drop-shadow(0 0 8px rgba(255, 130, 130, 0.9))
-                drop-shadow(0 0 16px rgba(255, 110, 110, 0.7));
+        filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.9))
+                drop-shadow(0 0 16px rgba(118, 75, 162, 0.7));
     }
     50% {
-        filter: drop-shadow(0 0 18px rgba(255, 170, 170, 1))
-                drop-shadow(0 0 35px rgba(255, 150, 150, 0.95));
+        filter: drop-shadow(0 0 18px rgba(138, 159, 245, 1))
+                drop-shadow(0 0 35px rgba(102, 126, 234, 0.95));
     }
 }
 
 #frequencyScale.frequency-scale-glow.fading-in {
     opacity: 0;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
     animation: none;
 }
 
 #frequencyScale.frequency-scale-glow.fading-out {
     animation: none;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
 }
 
 /* Repetition dropdown glow effect */
 select.repetition-dropdown-glow,
 .feature-row select.repetition-dropdown-glow {
     animation: dropdownPulse 1.2s ease-in-out infinite !important;
-    filter: drop-shadow(0 0 8px rgba(255, 130, 130, 0.9))
-            drop-shadow(0 0 16px rgba(255, 110, 110, 0.7));
+    filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.9))
+            drop-shadow(0 0 16px rgba(118, 75, 162, 0.7));
     transition: filter 0.5s ease-out, opacity 0.5s ease-out;
-    border-color: #ff8282 !important;
-    box-shadow: 0 0 10px rgba(255, 130, 130, 0.6) !important;
+    border-color: #8a9ff5 !important;
+    box-shadow: 0 0 10px rgba(102, 126, 234, 0.6) !important;
 }
 
 select.repetition-dropdown-glow.fading-in,
 .feature-row select.repetition-dropdown-glow.fading-in {
     opacity: 0;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
     animation: none;
 }
 
 select.repetition-dropdown-glow.fading-out,
 .feature-row select.repetition-dropdown-glow.fading-out {
     animation: none;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
 }
 
 /* Type dropdown glow effect */
 select.type-dropdown-glow,
 .feature-row select.type-dropdown-glow {
     animation: dropdownPulse 1.2s ease-in-out infinite !important;
-    filter: drop-shadow(0 0 8px rgba(255, 130, 130, 0.9))
-            drop-shadow(0 0 16px rgba(255, 110, 110, 0.7));
+    filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.9))
+            drop-shadow(0 0 16px rgba(118, 75, 162, 0.7));
     transition: filter 0.5s ease-out, opacity 0.5s ease-out;
-    border-color: #ff8282 !important;
-    box-shadow: 0 0 10px rgba(255, 130, 130, 0.6) !important;
+    border-color: #8a9ff5 !important;
+    box-shadow: 0 0 10px rgba(102, 126, 234, 0.6) !important;
 }
 
 select.type-dropdown-glow.fading-in,
 .feature-row select.type-dropdown-glow.fading-in {
     opacity: 0;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
     animation: none;
 }
 
 select.type-dropdown-glow.fading-out,
 .feature-row select.type-dropdown-glow.fading-out {
     animation: none;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
 }
 
 @keyframes dropdownPulse {
     0%, 100% {
-        filter: drop-shadow(0 0 8px rgba(255, 130, 130, 0.9))
-                drop-shadow(0 0 16px rgba(255, 110, 110, 0.7));
+        filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.9))
+                drop-shadow(0 0 16px rgba(118, 75, 162, 0.7));
     }
     50% {
-        filter: drop-shadow(0 0 18px rgba(255, 170, 170, 1))
-                drop-shadow(0 0 35px rgba(255, 150, 150, 0.95));
+        filter: drop-shadow(0 0 18px rgba(138, 159, 245, 1))
+                drop-shadow(0 0 35px rgba(102, 126, 234, 0.95));
     }
 }
 
 /* Select feature button glow effect */
 .select-freq-btn.select-feature-button-glow {
     animation: buttonPulse 1.2s ease-in-out infinite !important;
-    filter: drop-shadow(0 0 8px rgba(255, 130, 130, 0.9))
-            drop-shadow(0 0 16px rgba(255, 110, 110, 0.7));
+    filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.9))
+            drop-shadow(0 0 16px rgba(118, 75, 162, 0.7));
     transition: filter 0.5s ease-out, opacity 0.5s ease-out;
-    border-color: #ff8282 !important;
+    border-color: #8a9ff5 !important;
 }
 
 .select-freq-btn.select-feature-button-glow.fading-in {
     opacity: 0;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
     animation: none;
 }
 
 .select-freq-btn.select-feature-button-glow.fading-out {
     animation: none;
-    filter: drop-shadow(0 0 0px rgba(255, 100, 100, 0));
+    filter: drop-shadow(0 0 0px rgba(102, 126, 234, 0));
 }
 
 /* Add feature button glow effect - bigger glow */
@@ -1063,12 +1077,12 @@ button.add-feature-btn.add-feature-button-glow,
 
 @keyframes buttonPulse {
     0%, 100% {
-        filter: drop-shadow(0 0 8px rgba(255, 130, 130, 0.9))
-                drop-shadow(0 0 16px rgba(255, 110, 110, 0.7));
+        filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.9))
+                drop-shadow(0 0 16px rgba(118, 75, 162, 0.7));
     }
     50% {
-        filter: drop-shadow(0 0 18px rgba(255, 170, 170, 1))
-                drop-shadow(0 0 35px rgba(255, 150, 150, 0.95));
+        filter: drop-shadow(0 0 18px rgba(138, 159, 245, 1))
+                drop-shadow(0 0 35px rgba(102, 126, 234, 0.95));
     }
 }
 
@@ -1089,10 +1103,10 @@ button.add-feature-btn.add-feature-button-glow,
 
 @keyframes spectrogramPulse {
     0%, 100% {
-        box-shadow: 0 0 15px rgba(255, 100, 100, 0.4), 0 0 30px rgba(255, 100, 100, 0.3);
+        box-shadow: 0 0 15px rgba(102, 126, 234, 0.4), 0 0 30px rgba(118, 75, 162, 0.3);
     }
     50% {
-        box-shadow: 0 0 20px rgba(255, 100, 100, 0.5), 0 0 40px rgba(255, 100, 100, 0.4);
+        box-shadow: 0 0 20px rgba(102, 126, 234, 0.5), 0 0 40px rgba(118, 75, 162, 0.4);
     }
 }
 
@@ -1595,14 +1609,15 @@ input[type="checkbox"] {
 
 /* Tracked Regions Panel */
 #trackedRegionsPanel {
-    background: linear-gradient(135deg, rgba(10, 2, 2, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
-    border: 1px solid rgba(200, 100, 100, 0.3);
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
     padding-top: 15px;
     padding-bottom: 15px;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 #trackedRegionsPanel h2 {
-    color: #ffe8e8;
+    color: #e8e8ff;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 
@@ -1620,23 +1635,23 @@ input[type="checkbox"] {
 }
 
 #regionsListContainer::-webkit-scrollbar-track {
-    background: rgba(200, 100, 100, 0.1);
+    background: rgba(128, 128, 128, 0.1);
     border-radius: 4px;
 }
 
 #regionsListContainer::-webkit-scrollbar-thumb {
-    background: rgba(200, 100, 100, 0.4);
+    background: rgba(128, 128, 128, 0.4);
     border-radius: 4px;
 }
 
 #regionsListContainer::-webkit-scrollbar-thumb:hover {
-    background: rgba(200, 100, 100, 0.6);
+    background: rgba(128, 128, 128, 0.6);
 }
 
 /* Firefox scrollbar */
 #regionsListContainer {
     scrollbar-width: thin;
-    scrollbar-color: rgba(200, 100, 100, 0.4) rgba(200, 100, 100, 0.1);
+    scrollbar-color: rgba(128, 128, 128, 0.4) rgba(128, 128, 128, 0.1);
 }
 
 /* Region list container */
@@ -1658,18 +1673,18 @@ input[type="checkbox"] {
 /* Region Card - Slightly darker */
 .region-card {
     position: relative;
-    background: linear-gradient(135deg, rgba(240, 230, 230, 0.95) 0%, rgba(220, 180, 175, 0.95) 100%);
+    background: linear-gradient(135deg, rgba(240, 240, 250, 0.95) 0%, rgba(220, 220, 240, 0.95) 100%);
     border-radius: 6px;
     margin-bottom: 6px;
-    box-shadow: 
-        0 10px 20px rgba(80, 20, 20, 0.35),
-        0 6px 12px rgba(80, 20, 20, 0.25),
-        0 3px 6px rgba(255, 100, 100, 0.15),
+    box-shadow:
+        0 10px 20px rgba(40, 30, 80, 0.35),
+        0 6px 12px rgba(40, 30, 80, 0.25),
+        0 3px 6px rgba(102, 126, 234, 0.15),
         0 1px 3px rgba(0, 0, 0, 0.1),
         inset 0 1px 0 rgba(255, 255, 255, 0.6);
-    border: 1px solid rgba(200, 100, 100, 0.2);
+    border: 1px solid rgba(102, 126, 234, 0.2);
     overflow: visible;
-    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
                 opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
                 box-shadow 0.3s ease,
                 margin 0.5s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1677,31 +1692,31 @@ input[type="checkbox"] {
 }
 
 .region-card:hover {
-    box-shadow: 
-        0 12px 24px rgba(80, 20, 20, 0.4),
-        0 8px 16px rgba(80, 20, 20, 0.3),
-        0 4px 8px rgba(255, 100, 100, 0.2);
+    box-shadow:
+        0 12px 24px rgba(40, 30, 80, 0.4),
+        0 8px 16px rgba(40, 30, 80, 0.3),
+        0 4px 8px rgba(102, 126, 234, 0.2);
 }
 
 /* Active/Used Region Card - Highlighted */
 .region-card.active {
-    background: linear-gradient(135deg, rgba(255, 240, 240, 0.95) 0%, rgba(250, 210, 205, 0.95) 100%);
-    border: 1px solid rgba(255, 150, 150, 0.5);
-    box-shadow: 
-        0 10px 20px rgba(255, 100, 100, 0.4),
-        0 6px 12px rgba(255, 100, 100, 0.3),
-        0 3px 6px rgba(255, 100, 100, 0.2),
-        0 1px 3px rgba(255, 100, 100, 0.15),
+    background: linear-gradient(135deg, rgba(245, 245, 255, 0.95) 0%, rgba(235, 235, 250, 0.95) 100%);
+    border: 1px solid rgba(102, 126, 234, 0.5);
+    box-shadow:
+        0 10px 20px rgba(102, 126, 234, 0.4),
+        0 6px 12px rgba(102, 126, 234, 0.3),
+        0 3px 6px rgba(102, 126, 234, 0.2),
+        0 1px 3px rgba(102, 126, 234, 0.15),
         inset 0 1px 0 rgba(255, 255, 255, 0.6),
-        0 0 10px rgba(255, 120, 120, 0.2);
+        0 0 10px rgba(118, 75, 162, 0.2);
 }
 
 .region-card.active:hover {
-    box-shadow: 
-        0 12px 24px rgba(255, 100, 100, 0.5),
-        0 8px 16px rgba(255, 100, 100, 0.4),
-        0 4px 8px rgba(255, 100, 100, 0.3),
-        0 0 15px rgba(255, 120, 120, 0.3);
+    box-shadow:
+        0 12px 24px rgba(102, 126, 234, 0.5),
+        0 8px 16px rgba(102, 126, 234, 0.4),
+        0 4px 8px rgba(102, 126, 234, 0.3),
+        0 0 15px rgba(118, 75, 162, 0.3);
 }
 
 /* Region Header Bar - Metallic grey */

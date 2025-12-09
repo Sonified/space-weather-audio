@@ -17,6 +17,7 @@ import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 import { isStudyMode } from './master-modes.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { restoreViewportState } from './spectrogram-complete-renderer.js';
+import { getColorLUT } from './colormaps.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -26,57 +27,64 @@ let lastPlayheadLogTime = 0;
 let lastDrawWaveformLogTime = 0;
 let forceNextPlayheadLog = false;
 
-// Color LUT (same as spectrogram) - maps intensity to RGB
+// Color LUT for waveform - brighter version of spectrogram colormap
 let waveformColorLUT = null;
 
-function hslToRgb(h, s, l) {
-    h = h / 360;
-    s = s / 100;
-    l = l / 100;
-    
-    let r, g, b;
-    
-    if (s === 0) {
-        r = g = b = l;
-    } else {
-        const hue2rgb = (p, q, t) => {
-            if (t < 0) t += 1;
-            if (t > 1) t -= 1;
-            if (t < 1/6) return p + (q - p) * 6 * t;
-            if (t < 1/2) return q;
-            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-            return p;
-        };
-        
-        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        const p = 2 * l - q;
-        r = hue2rgb(p, q, h + 1/3);
-        g = hue2rgb(p, q, h);
-        b = hue2rgb(p, q, h - 1/3);
-    }
-    
-    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
-}
-
-function initializeWaveformColorLUT() {
-    if (waveformColorLUT !== null) return; // Already initialized
-    
+/**
+ * Build waveform color LUT from the current spectrogram colormap
+ * Applies brightness adjustment to make waveform visible on dark background
+ */
+export function buildWaveformColorLUT() {
+    const spectrogramLUT = getColorLUT();
     waveformColorLUT = new Uint8ClampedArray(256 * 3);
+
     for (let i = 0; i < 256; i++) {
-        const normalized = i / 255;
-        const hue = normalized * 30; // Reduced range: red to orange (0-30 degrees) - less variation
-        const saturation = 40 + (normalized * 20); // Muted: 40-60% saturation (was 100%)
-        const lightness = 60 + (normalized * 35); // Brighter: 60-95% lightness (more white/yellow)
-        
-        const rgb = hslToRgb(hue, saturation, lightness);
-        waveformColorLUT[i * 3] = rgb[0];
-        waveformColorLUT[i * 3 + 1] = rgb[1];
-        waveformColorLUT[i * 3 + 2] = rgb[2];
+        // Get the spectrogram color
+        let r = spectrogramLUT[i * 3];
+        let g = spectrogramLUT[i * 3 + 1];
+        let b = spectrogramLUT[i * 3 + 2];
+
+        // Apply brightness boost for waveform visibility
+        // Blend toward white/brighter version (60% original + 40% boosted)
+        const boost = 0.4;
+        const minBrightness = 150; // Ensure minimum brightness for visibility
+
+        r = Math.min(255, Math.round(r + (255 - r) * boost));
+        g = Math.min(255, Math.round(g + (255 - g) * boost));
+        b = Math.min(255, Math.round(b + (255 - b) * boost));
+
+        // Ensure minimum brightness
+        const brightness = (r + g + b) / 3;
+        if (brightness < minBrightness) {
+            const factor = minBrightness / Math.max(brightness, 1);
+            r = Math.min(255, Math.round(r * factor));
+            g = Math.min(255, Math.round(g * factor));
+            b = Math.min(255, Math.round(b * factor));
+        }
+
+        waveformColorLUT[i * 3] = r;
+        waveformColorLUT[i * 3 + 1] = g;
+        waveformColorLUT[i * 3 + 2] = b;
     }
+
+    console.log('🌊 Built waveform color LUT from current colormap');
 }
 
 // Initialize color LUT on module load
-initializeWaveformColorLUT();
+buildWaveformColorLUT();
+
+/**
+ * Get background color from the current colormap (darkest value at index 0)
+ * Returns a CSS color string
+ */
+function getWaveformBackgroundColor() {
+    const lut = getColorLUT();
+    // Use index 0 (darkest color in the colormap)
+    const r = lut[0];
+    const g = lut[1];
+    const b = lut[2];
+    return `rgb(${r}, ${g}, ${b})`;
+}
 
 // Helper functions
 function removeDCOffset(data, alpha = 0.995) {
@@ -215,8 +223,8 @@ export function drawWaveformFromMinMax() {
         newCanvas.height = height;
         const newCtx = newCanvas.getContext('2d');
         
-        // Dark red background (like spectrogram but red instead of black)
-        newCtx.fillStyle = '#1a0000'; // Deeper dark red
+        // Background from colormap (darkest value)
+        newCtx.fillStyle = getWaveformBackgroundColor();
         newCtx.fillRect(0, 0, width, height);
         
         const mid = height / 2;
@@ -293,8 +301,8 @@ export function drawWaveformFromMinMax() {
             const elapsed = performance.now() - startTime;
             const progress = Math.min(elapsed / duration, 1.0);
             
-            // Dark red background (like spectrogram but red instead of black)
-            ctx.fillStyle = '#1a0000'; // Deeper dark red
+            // Background from colormap (darkest value)
+            ctx.fillStyle = getWaveformBackgroundColor();
             ctx.fillRect(0, 0, width, height);
             
             ctx.globalAlpha = 1.0 - progress;
@@ -382,8 +390,8 @@ export function drawWaveformFromMinMax() {
         
     } else {
         console.log(`🔍 [PIPELINE] Drawing waveform directly (no cached canvas)`);
-        // Dark red background (like spectrogram but red instead of black)
-        ctx.fillStyle = '#1a0000'; // Deeper dark red
+        // Background from colormap (darkest value)
+        ctx.fillStyle = getWaveformBackgroundColor();
         ctx.fillRect(0, 0, width, height);
         
         const mid = height / 2;

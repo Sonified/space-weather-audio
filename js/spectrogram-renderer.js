@@ -13,7 +13,8 @@ import { isStudyMode } from './master-modes.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { animateScaleTransition } from './spectrogram-axis-renderer.js';
-import { startPlaybackIndicator } from './waveform-renderer.js';
+import { startPlaybackIndicator, buildWaveformColorLUT, drawWaveformFromMinMax } from './waveform-renderer.js';
+import { setColormap, getCurrentColormap, updateAccentColors } from './colormaps.js';
 
 // Spectrogram selection state (pure canvas - separate overlay layer!)
 let spectrogramSelectionActive = false;
@@ -363,6 +364,75 @@ export function loadFrequencyScale() {
         select.value = defaultValue;
         State.setFrequencyScale(defaultValue);
         localStorage.setItem('frequencyScale', defaultValue);
+    }
+}
+
+/**
+ * Load saved colormap from localStorage
+ */
+export function loadColormap() {
+    const select = document.getElementById('colormap');
+    if (!select) return;
+
+    const savedValue = localStorage.getItem('colormap');
+    if (savedValue) {
+        const validValues = ['solar', 'turbo', 'viridis', 'inferno', 'aurora', 'plasma', 'jet'];
+        if (validValues.includes(savedValue)) {
+            select.value = savedValue;
+            setColormap(savedValue);
+            updateAccentColors();
+            console.log(`🎨 Loaded saved colormap: ${savedValue}`);
+        }
+    } else {
+        // No saved value, use default (inferno) and save it
+        const defaultValue = 'inferno';
+        select.value = defaultValue;
+        setColormap(defaultValue);
+        updateAccentColors();
+        localStorage.setItem('colormap', defaultValue);
+    }
+}
+
+/**
+ * Change colormap and re-render spectrogram
+ */
+export async function changeColormap() {
+    const select = document.getElementById('colormap');
+    const value = select.value;
+
+    // If already on this colormap, don't process again
+    if (getCurrentColormap() === value) {
+        console.log(`🎨 Already using ${value} colormap - skipping change`);
+        return;
+    }
+
+    // Save to localStorage for persistence
+    localStorage.setItem('colormap', value);
+
+    // Update the colormap (rebuilds spectrogram LUT)
+    setColormap(value);
+
+    // Update UI accent colors to match colormap
+    updateAccentColors();
+
+    // Also rebuild the waveform color LUT (brighter version of colormap)
+    buildWaveformColorLUT();
+
+    // Redraw waveform with new colors
+    drawWaveformFromMinMax();
+
+    // Blur dropdown so spacebar can toggle play/pause
+    select.blur();
+
+    if (!isStudyMode()) {
+        console.log(`🎨 Colormap changed to: ${value}`);
+    }
+
+    // Re-render the spectrogram if one is already rendered
+    if (isCompleteSpectrogramRendered()) {
+        // Clear cached spectrogram and re-render with new colormap
+        clearCompleteSpectrogram();
+        await renderCompleteSpectrogram();
     }
 }
 

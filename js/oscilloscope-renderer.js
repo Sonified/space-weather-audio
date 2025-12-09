@@ -4,6 +4,8 @@
  * Shows the last ~100ms of audio for visual feedback
  */
 
+import { getColorLUT, getCurrentColormap } from './colormaps.js';
+
 let canvas = null;
 let ctx = null;
 let audioBuffer = new Float32Array(2048); // Store last ~46ms at 44.1kHz (fewer samples)
@@ -167,49 +169,54 @@ function updatePanelGlow() {
         ? intensity * 30  // 0-30px spread when error
         : 12 + (intensity * 5); // 12-17px spread normally (reduced for less prominent)
     
-    // Fire-like colors: subtle orange → amber variation
-    const red = 255;
-    const green = 100 + (intensity * 80); // 100-180 (orange to amber)
-    const blue = 40 + (intensity * 40); // 40-80 (warm tones)
-    
-    // ===== AMBIENT GLOW PARAMETERS =====
+    // 🎨 Get colors from current colormap (use appropriate intensity for flames)
+    const colorLUT = getColorLUT();
+    const currentMap = getCurrentColormap();
+    // For Solar/Inferno, use orange/red range (lower indices) instead of yellow
+    // For other colormaps, use the bright end (high indices)
+    let colorIndex;
+    if (currentMap === 'solar') {
+        colorIndex = Math.floor(100 + intensity * 80); // 100-180 range (orange/red, not yellow)
+    } else if (currentMap === 'inferno') {
+        colorIndex = Math.floor(140 + intensity * 60); // 140-200 range (deep orange, not yellow)
+    } else {
+        colorIndex = Math.floor(180 + intensity * 75); // 180-255 range (bright end)
+    }
+    const red = colorLUT[colorIndex * 3];
+    const green = colorLUT[colorIndex * 3 + 1];
+    const blue = colorLUT[colorIndex * 3 + 2];
+
+    // ===== AMBIENT/STATIC GLOW PARAMETERS (close to original) =====
     // Glow LOW (at rest/paused) - ALWAYS VISIBLE
-    const minGlowOpacity = 0.18;   // 18% opacity minimum (always visible ambient glow)
-    const minBlurScale = 0.3;      // 30% blur size (minimal variation - mostly opacity fade)
-    
+    const minGlowOpacity = 0.20;   // 20% opacity minimum (was 18%)
+    const minBlurScale = 0.32;      // 32% blur size (was 30%)
+
     // Glow HIGH (when playing) - FADES UP (not expanding)
-    const maxGlowOpacity = 0.28;    // 28% opacity maximum
-    const maxBlurScale = 0.32;      // 32% blur size (minimal variation - mostly opacity fade)
-    
+    const maxGlowOpacity = 0.30;    // 30% opacity maximum (was 28%)
+    const maxBlurScale = 0.35;      // 35% blur size (was 32%)
+
     // Fade time: Randomized between 400ms-3000ms on each state toggle (separate for fade up/down)
-    
+
     // Calculate actual glow based on fadeMultiplier (0 = paused/minimum, 1 = playing/maximum)
     const glowFactor = minGlowOpacity + (maxGlowOpacity - minGlowOpacity) * fadeMultiplier;
     const blurFactor = minBlurScale + (maxBlurScale - minBlurScale) * fadeMultiplier;
-    
-    // 🔥 STATIC GLOW INTENSITY MULTIPLIER (opacity boost)
-    const staticGlowMultiplier = 2; // 20% of original 10x
-    
-    // 🔥 AMBIENT GLOW: Blur multiplier for ambient glow
-    const ambientBlurMultiplier = 6; // 6x blur radius
-    
-    // Single set of glow values - no instant switching! Fades smoothly with glowFactor
-    // Old 4-layer configuration (commented out):
-    // 0 0 ${66 * blurFactor * ambientBlurMultiplier}px ${11 * blurFactor * ambientBlurMultiplier}px rgba(255, 100, 0, ${Math.min(1, 0.135 * glowFactor * staticGlowMultiplier)}),
-    // 0 0 ${88 * blurFactor * ambientBlurMultiplier}px ${17 * blurFactor * ambientBlurMultiplier}px rgba(255, 120, 20, ${Math.min(1, 0.108 * glowFactor * staticGlowMultiplier)}),
-    // 0 0 ${110 * blurFactor * ambientBlurMultiplier}px ${22 * blurFactor * ambientBlurMultiplier}px rgba(200, 80, 0, ${Math.min(1, 0.09 * glowFactor * staticGlowMultiplier)}),
-    // 0 0 ${44 * blurFactor * ambientBlurMultiplier}px ${6 * blurFactor * ambientBlurMultiplier}px rgba(255, 140, 40, ${Math.min(1, 0.072 * glowFactor * staticGlowMultiplier)})
-    
-    // Single smooth ambient glow (no banding possible!)
+
+    // 🔥 STATIC GLOW INTENSITY MULTIPLIER (close to original)
+    const staticGlowMultiplier = 2.2; // Was 2, slightly up
+
+    // 🔥 AMBIENT GLOW: Blur multiplier for ambient glow (close to original)
+    const ambientBlurMultiplier = 6.5; // Was 6, slightly up
+
+    // Single smooth ambient glow using colormap colors
     const staticGlow = `
-        0 0 ${80 * blurFactor * ambientBlurMultiplier}px ${15 * blurFactor * ambientBlurMultiplier}px rgba(255, 105, 15, ${Math.min(1, 0.35 * glowFactor * staticGlowMultiplier)})
+        0 0 ${80 * blurFactor * ambientBlurMultiplier}px ${15 * blurFactor * ambientBlurMultiplier}px rgba(${red}, ${green}, ${blue}, ${Math.min(1, 0.35 * glowFactor * staticGlowMultiplier)})
     `;
-    
+
     // Combine static glow + animated flame glow + panel styling
     const fullShadow = `
         ${staticGlow},
-        0 0 ${glowBlur}px ${glowSpread}px rgba(${red}, ${green}, ${blue}, ${glowOpacity}),
-        0 0 ${glowBlur * 1.5}px ${glowSpread * 1.5}px rgba(${red}, ${green}, ${blue}, ${glowOpacity * 0.5}),
+        0 0 ${glowBlur * 1.3}px ${glowSpread * 1.3}px rgba(${red}, ${green}, ${blue}, ${glowOpacity * 1.2}),
+        0 0 ${glowBlur * 2}px ${glowSpread * 2}px rgba(${red}, ${green}, ${blue}, ${glowOpacity * 0.6}),
         0 1px 3px rgba(0, 0, 0, ${0.05 + 0.05 * glowFactor}),
         inset 0 1px 0 rgba(255, 255, 255, ${0.3 + 0.3 * glowFactor})
     `;
