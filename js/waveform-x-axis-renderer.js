@@ -305,6 +305,10 @@ export function drawWaveformXAxis() {
             // 🏛️ Draw final frame to keep regions visible while waveform rebuilds
             // This prevents the flash where regions disappear during worker rebuild
             drawWaveformWithSelection();
+
+            // 🎯 CRITICAL: Redraw x-axis at final position so tick density updates!
+            // Without this, region-to-region zoom would keep the interpolated tick density
+            drawWaveformXAxis();
         }
     }
 }
