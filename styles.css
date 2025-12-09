@@ -642,17 +642,17 @@ button.pulse-resume {
 /* Attention-grabbing pulse for shared session "ready to play" state */
 button.pulse-attention {
     animation: pulseAttention 1.5s ease-in-out infinite;
-    box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7);
+    box-shadow: 0 0 0 0 rgba(74, 155, 106, 0.7);
 }
 
 @keyframes pulseAttention {
     0%, 100% {
         transform: scale(1);
-        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), 0 0 0 0 rgba(102, 126, 234, 0.6);
+        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3), 0 0 0 0 rgba(74, 155, 106, 0.6);
     }
     50% {
         transform: scale(1.05);
-        box-shadow: 0 5px 12px rgba(102, 126, 234, 0.5), 0 0 0 10px rgba(102, 126, 234, 0);
+        box-shadow: 0 5px 12px rgba(74, 155, 106, 0.5), 0 0 0 10px rgba(74, 155, 106, 0);
     }
 }
 
@@ -690,27 +690,29 @@ button.secondary:hover:not(:disabled) {
 }
 
 button.pause-active {
-    background: linear-gradient(135deg, #8a5fb5 0%, #5a3a95 100%);
+    background: linear-gradient(135deg, #c75a5a 0%, #8b3a3a 100%);
 }
 
 button.pause-active:hover:not(:disabled) {
-    background: linear-gradient(135deg, #9a6fc5 0%, #6a4aa5 100%);
+    background: linear-gradient(135deg, #d76a6a 0%, #9b4a4a 100%);
 }
 
 button.play-active {
-    background: linear-gradient(135deg, #7a8ef0 0%, #5a6ad0 100%);
+    background: linear-gradient(135deg, #4a9b6a 0%, #2d7048 100%);
 }
 
 button.play-active:hover:not(:disabled) {
-    background: linear-gradient(135deg, #8a9ff5 0%, #6a7ae0 100%);
+    background: linear-gradient(135deg, #5aab7a 0%, #3d8058 100%);
 }
 
 button.loop-active {
-    background: linear-gradient(135deg, #9b6bc9 0%, #7a4ba9 100%);
+    background: linear-gradient(135deg, #4db8c9 0%, #2a8a9a 100%);
+    box-shadow: 0 0 8px rgba(77, 184, 201, 0.4);
 }
 
 button.loop-active:hover:not(:disabled) {
-    background: linear-gradient(135deg, #ab7bd9 0%, #8a5bb9 100%);
+    background: linear-gradient(135deg, #5dc8d9 0%, #3a9aaa 100%);
+    box-shadow: 0 0 12px rgba(77, 184, 201, 0.5);
 }
 
 .status {
