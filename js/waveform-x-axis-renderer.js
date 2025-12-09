@@ -146,7 +146,8 @@ export function drawWaveformXAxis() {
     // Calculate ticks based on region size and canvas width
     // If canvas is <= 1/2 of maximum width, use 4-hour ticks starting at midnight
     // Else if canvas is <= 3/4 of maximum width, use 2-hour ticks starting at midnight
-    // Otherwise, if region is less than 2 hours, use 5-minute intervals
+    // Otherwise, if region is less than 20 minutes, use 1-minute intervals
+    // Else if region is less than 2 hours, use 5-minute intervals
     // Else if region is less than 6 hours, use 30-minute intervals
     // Otherwise use hourly intervals
     const timeSpanHours = actualTimeSpanSeconds / 3600;
@@ -162,6 +163,9 @@ export function drawWaveformXAxis() {
     } else if (isNarrowCanvas) {
         // Canvas is narrow - use 2-hour ticks starting at midnight
         ticks = calculateTwoHourTicks(startTimeUTC, endTimeUTC);
+    } else if (timeSpanHours < 1/3) {
+        // Region is less than 20 minutes - use 1-minute ticks
+        ticks = calculateOneMinuteTicks(startTimeUTC, endTimeUTC);
     } else if (timeSpanHours < 2) {
         // Region is less than 2 hours - use 5-minute ticks
         ticks = calculateFiveMinuteTicks(startTimeUTC, endTimeUTC);
@@ -630,6 +634,63 @@ function calculateTwoHourTicks(startUTC, endUTC) {
 
         // Move to next 2-hour block
         currentTickUTC = new Date(currentTickUTC.getTime() + 2 * 60 * 60 * 1000);
+    }
+
+    return ticks;
+}
+
+/**
+ * Calculate 1-minute tick positions (UTC)
+ * Used when region is less than 20 minutes for finest granularity
+ */
+function calculateOneMinuteTicks(startUTC, endUTC) {
+    const ticks = [];
+
+    // Get UTC time components from start time
+    const startYear = startUTC.getUTCFullYear();
+    const startMonth = startUTC.getUTCMonth();
+    const startDay = startUTC.getUTCDate();
+    const startHours = startUTC.getUTCHours();
+    const startMinutes = startUTC.getUTCMinutes();
+
+    // Start at the current minute boundary
+    let firstTickUTC = new Date(Date.UTC(startYear, startMonth, startDay, startHours, startMinutes, 0, 0));
+
+    // If we're not starting at a minute boundary, find the first one within the region
+    if (firstTickUTC.getTime() < startUTC.getTime()) {
+        // Move forward to next minute
+        firstTickUTC = new Date(firstTickUTC.getTime() + 60 * 1000);
+    }
+
+    // Generate ticks every minute until we exceed end time
+    let currentTickUTC = new Date(firstTickUTC);
+    let previousTickDateUTC = null;
+
+    while (currentTickUTC.getTime() <= endUTC.getTime()) {
+        // Get UTC date string for day crossing detection
+        const currentTickDateUTC = currentTickUTC.toISOString().split('T')[0];
+        const currentHourUTC = currentTickUTC.getUTCHours();
+        const currentMinutesUTC = currentTickUTC.getUTCMinutes();
+
+        // Mark as day crossing if:
+        // 1. Previous tick was on a different UTC date, OR
+        // 2. This tick is at UTC midnight (00:00)
+        const isDayCrossing = (previousTickDateUTC !== null && previousTickDateUTC !== currentTickDateUTC) ||
+                              (currentHourUTC === 0 && currentMinutesUTC === 0);
+
+        // Check if this UTC time falls within our data range
+        if (currentTickUTC.getTime() >= startUTC.getTime() && currentTickUTC.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: new Date(currentTickUTC),
+                localTime: new Date(currentTickUTC),
+                isDayCrossing: isDayCrossing
+            });
+        }
+
+        previousTickDateUTC = currentTickDateUTC;
+
+        // Move to next minute
+        currentTickUTC = new Date(currentTickUTC.getTime() + 60 * 1000);
     }
 
     return ticks;
