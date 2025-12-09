@@ -352,7 +352,8 @@ export function createParticipantModal() {
                 <p style="margin-bottom: 20px; color: #550000; font-size: 16px; font-weight: bold;">Enter a user name to begin:</p>
                 <div class="modal-form-group">
                     <label for="participantId" style="display: none;">User Name:</label>
-                    <input type="text" id="participantId" placeholder="Enter a user name" style="font-size: 18px;">
+                    <input type="text" id="participantId" placeholder="Enter a user name" style="font-size: 18px;" autocomplete="off">
+                    <div id="usernameStatus" style="margin-top: 8px; font-size: 14px; min-height: 20px;"></div>
                 </div>
                 <button type="button" class="modal-submit" disabled>✓ Confirm</button>
             </div>

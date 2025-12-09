@@ -31,14 +31,15 @@ import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown, removeVolumeSliderGlow } from './tutorial.js';
 import { isTutorialActive } from './tutorial-state.js';
-import { 
-    CURRENT_MODE, 
-    AppMode, 
-    isPersonalMode, 
-    isDevMode, 
+import {
+    CURRENT_MODE,
+    AppMode,
+    isPersonalMode,
+    isDevMode,
     isStudyMode,
-    initializeMasterMode 
+    initializeMasterMode
 } from './master-modes.js';
+import { initShareModal, openShareModal, checkAndLoadSharedSession, applySharedSession, updateShareButtonState } from './share-modal.js';
 
 console.log('✅ ALL IMPORTS COMPLETE');
 
@@ -710,7 +711,10 @@ export async function startStreaming(event) {
         if (typeof window.loadRecentSearches === 'function') {
             await window.loadRecentSearches();
         }
-        
+
+        // Enable share button now that data is loaded
+        updateShareButtonState();
+
         console.log(`🎉 ${logTime()} Complete!`);
         
     } catch (error) {
@@ -993,7 +997,10 @@ async function initializeMainApp() {
     
     // Initialize silent error reporter (tracks metadata mismatches quietly)
     initSilentErrorReporter();
-    
+
+    // Initialize share modal (for sharing analysis sessions)
+    initShareModal();
+
     // Don't hide Begin Analysis button initially - let updateCompleteButtonState() handle visibility
     // Tutorial will hide it when needed, returning visits will keep it visible
     
@@ -1174,7 +1181,21 @@ async function initializeMainApp() {
             openParticipantModal();
         }, 500);
     }
-    
+
+    // Check for shared session in URL (?share=xxx)
+    const sharedSessionData = await checkAndLoadSharedSession();
+    if (sharedSessionData) {
+        console.log('🔗 Loading shared session...');
+        const result = applySharedSession(sharedSessionData);
+        if (result.shouldFetch) {
+            // Auto-fetch the shared data after a small delay for UI to update
+            setTimeout(() => {
+                const fetchBtn = document.getElementById('startBtn');
+                if (fetchBtn) fetchBtn.click();
+            }, 500);
+        }
+    }
+
     // Update participant ID display
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
@@ -1783,9 +1804,10 @@ async function initializeMainApp() {
     // 🎯 SETUP EVENT LISTENERS (replaces onclick handlers to prevent memory leaks)
     // All event listeners are properly scoped and don't create permanent closures on window.*
     
-    // Cache & Download
+    // Cache & Download & Share
     document.getElementById('purgeCacheBtn').addEventListener('click', purgeCloudflareCache);
     document.getElementById('downloadBtn').addEventListener('click', downloadAudio);
+    document.getElementById('shareBtn').addEventListener('click', openShareModal);
     
     // Station Selection (only for volcano mode - skip for spacecraft)
     document.getElementById('spacecraft').addEventListener('change', (e) => {

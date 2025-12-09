@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solar Audification Portal</title>
+    <title>Space Weather Audification Portal</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☀️</text></svg>">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
@@ -14,6 +14,18 @@
             --axis-label-font-size: 14px;      /* Size of tick labels */
             --axis-label-color: #bbb;          /* Brightness/color of tick label text */
             --axis-tick-color: #666;           /* Color of tick marks (lines) */
+        }
+        /* Share button states */
+        #shareBtn:disabled {
+            background: linear-gradient(135deg, #999 0%, #777 100%) !important;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        #shareBtn:not(:disabled) {
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.5);
+        }
+        #shareBtn:not(:disabled):hover {
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.7);
         }
     </style>
 </head>
@@ -34,7 +46,7 @@
                     <option value="tutorial_end">🎬 Tutorial End</option>
                 </select>
             </div>
-            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.88; color: #fff;">Solar Audification Portal</h1>
+            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.88; color: #fff;">Space Weather Audification Portal</h1>
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
                 <div id="participantIdDisplay" style="display: block; margin-bottom: 0;">
                     <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(100, 100, 100, 0.6); background: rgba(40, 40, 40, 0.4); transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
@@ -91,15 +103,16 @@
                     <select id="recentSearches" style="padding: 8px 12px; font-size: 13px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); cursor: pointer; width: 300px; min-width: 300px; max-width: 300px;">
                         <option value="">-- Select Recent Search --</option>
                     </select>
+                    <button type="button" id="shareBtn" disabled style="padding: 8px 16px; font-size: 13px; font-weight: 600; color: white; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: opacity 0.2s, transform 0.1s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">Share</button>
                 </div>
                 
                 <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px; width: 100%; flex-basis: 100%;">
                     <label for="startDate" style="margin-bottom: 0;">Start:</label>
-                    <input type="date" id="startDate" value="2021-04-29" max="2025-12-31" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85);">
-                    <input type="text" id="startTime" value="07:40:00.000" placeholder="HH:MM:SS.mmm" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); width: 130px;">
+                    <input type="date" id="startDate" value="2021-04-29" max="2025-12-31" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); height: 34px; box-sizing: border-box;">
+                    <input type="text" id="startTime" value="07:40:00.000" placeholder="HH:MM:SS.mmm" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); width: 110px; height: 38px; box-sizing: border-box;">
                     <label for="endDate" style="margin-bottom: 0; margin-left: 8px;">End:</label>
-                    <input type="date" id="endDate" value="2021-04-29" max="2025-12-31" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85);">
-                    <input type="text" id="endTime" value="08:20:00.000" placeholder="HH:MM:SS.mmm" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); width: 130px;">
+                    <input type="date" id="endDate" value="2021-04-29" max="2025-12-31" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); height: 34px; box-sizing: border-box;">
+                    <input type="text" id="endTime" value="08:20:00.000" placeholder="HH:MM:SS.mmm" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); width: 110px; height: 38px; box-sizing: border-box;">
                     <button type="button" id="startBtn" style="min-width: 150px; padding: 10px 20px; font-size: 16px; margin-left: 15px;">📡 Fetch Data</button>
                     <div class="status info" id="status" style="margin-top: 0; padding: 10px 15px; flex: 1; min-width: 200px; margin-left: 15px;">
                     </div>

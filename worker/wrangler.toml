@@ -1,0 +1,15 @@
+name = "space-weather-audio-api"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# R2 bucket binding
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "space-weather-audio"
+
+# Environment variables (set via `wrangler secret put`)
+# R2 credentials are NOT needed here - Workers have native R2 bindings!
+
+[vars]
+FRONTEND_URL = "https://spaceweather.now.audio"
+SHARE_EXPIRY_DAYS = "90"

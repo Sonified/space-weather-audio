@@ -26,6 +26,7 @@ import { getRegions } from './region-tracker.js';
 import { isStudyMode, isStudyCleanMode, CURRENT_MODE, AppMode, isLocalEnvironment } from './master-modes.js';
 import { modalManager } from './modal-manager.js';
 import { startActivityTimer } from './session-management.js';
+import { checkUsernameAvailable, registerUsername } from './share-api.js';
 
 /**
  * Fade in the permanent overlay background (modal background)
@@ -732,19 +733,88 @@ export function setupModalEventListeners() {
         const participantCloseBtn = participantModal.querySelector('.modal-close');
         const participantSubmitBtn = participantModal.querySelector('.modal-submit');
         const participantIdInput = document.getElementById('participantId');
-        
-        // Function to update button state based on input value
+        const usernameStatusEl = document.getElementById('usernameStatus');
+
+        // Track username availability state
+        let usernameCheckTimeout = null;
+        let isUsernameAvailable = false;
+
+        // Function to update button state based on input value AND availability
         const updateParticipantSubmitButton = () => {
-            const hasValue = participantIdInput && participantIdInput.value.trim().length > 0;
+            const hasValue = participantIdInput && participantIdInput.value.trim().length >= 2;
             if (participantSubmitBtn) {
-                participantSubmitBtn.disabled = !hasValue;
+                participantSubmitBtn.disabled = !(hasValue && isUsernameAvailable);
             }
         };
-        
-        // Listen for input changes to enable/disable submit button
+
+        // Function to check username availability with debounce
+        const checkUsername = async (username) => {
+            if (!username || username.length < 2) {
+                if (usernameStatusEl) {
+                    usernameStatusEl.innerHTML = '<span style="color: #666;">Enter at least 2 characters</span>';
+                }
+                isUsernameAvailable = false;
+                updateParticipantSubmitButton();
+                return;
+            }
+
+            if (usernameStatusEl) {
+                usernameStatusEl.innerHTML = '<span style="color: #666;">Checking availability...</span>';
+            }
+
+            try {
+                const result = await checkUsernameAvailable(username);
+
+                if (result.available) {
+                    if (usernameStatusEl) {
+                        usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Available</span>';
+                    }
+                    isUsernameAvailable = true;
+                } else if (result.error) {
+                    if (usernameStatusEl) {
+                        usernameStatusEl.innerHTML = `<span style="color: #dc3545;">${result.error}</span>`;
+                    }
+                    isUsernameAvailable = false;
+                } else {
+                    if (usernameStatusEl) {
+                        usernameStatusEl.innerHTML = '<span style="color: #dc3545;">✗ Username already taken</span>';
+                    }
+                    isUsernameAvailable = false;
+                }
+            } catch (error) {
+                console.error('Username check error:', error);
+                // On error, allow the username (graceful degradation)
+                if (usernameStatusEl) {
+                    usernameStatusEl.innerHTML = '<span style="color: #999;">Could not verify - proceeding anyway</span>';
+                }
+                isUsernameAvailable = true;
+            }
+
+            updateParticipantSubmitButton();
+        };
+
+        // Handle input changes with debounce
+        const handleUsernameInput = (e) => {
+            const username = e.target.value.trim();
+
+            // Clear previous timeout
+            if (usernameCheckTimeout) {
+                clearTimeout(usernameCheckTimeout);
+            }
+
+            // Reset state while typing
+            isUsernameAvailable = false;
+            updateParticipantSubmitButton();
+
+            // Debounce the availability check (300ms)
+            usernameCheckTimeout = setTimeout(() => {
+                checkUsername(username);
+            }, 300);
+        };
+
+        // Listen for input changes
         if (participantIdInput) {
-            participantIdInput.addEventListener('input', updateParticipantSubmitButton);
-            participantIdInput.addEventListener('keyup', updateParticipantSubmitButton);
+            participantIdInput.addEventListener('input', handleUsernameInput);
         }
         
         // Don't allow closing by clicking outside - prevent overlay clicks
@@ -766,7 +836,20 @@ export function setupModalEventListeners() {
         
         if (participantSubmitBtn) {
             participantSubmitBtn.addEventListener('click', async () => {
-                submitParticipantSetup();  // Save data
+                const username = participantIdInput?.value.trim();
+
+                // Register the username (claim it)
+                if (username && isUsernameAvailable) {
+                    try {
+                        await registerUsername(username);
+                        console.log('✅ Username registered:', username);
+                    } catch (error) {
+                        // If registration fails (e.g., race condition), still proceed
+                        console.warn('Username registration failed (may already be taken):', error);
+                    }
+                }
+
+                submitParticipantSetup();  // Save data locally
 
                 // Mark participant setup as seen when user submits (not before)
                 // Works for both Study mode and Solar Portal mode
