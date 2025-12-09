@@ -8,6 +8,7 @@ import * as State from './audio-state.js';
 import { getRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { getParticipantId } from './qualtrics-api.js';
+import { getCurrentColormap } from './colormaps.js';
 
 let shareModal = null;
 let isSharing = false;
@@ -524,6 +525,7 @@ function gatherSessionData() {
         })),
         view_settings: {
             frequency_scale: State.frequencyScale,
+            colormap: getCurrentColormap(),
             zoom: zoomState.mode === 'region' ? {
                 mode: 'region',
                 region_id: zoomState.activeRegionId,

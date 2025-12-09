@@ -21,7 +21,7 @@ import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpe
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
-import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox } from './spectrogram-renderer.js';
+import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, changeColormap } from './spectrogram-renderer.js';
 import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
 import { isStudyMode, isTutorialEndMode } from './master-modes.js';
 import { hasSeenTutorial } from './study-workflow.js';
@@ -505,6 +505,16 @@ export function loadRegionsAfterDataFetch() {
         try {
             const viewSettings = JSON.parse(pendingViewSettings);
             sessionStorage.removeItem('pendingSharedViewSettings');
+
+            // Apply colormap if specified
+            if (viewSettings.colormap) {
+                console.log(`🔗 Restoring shared colormap: ${viewSettings.colormap}`);
+                const colormapSelect = document.getElementById('colormap');
+                if (colormapSelect) {
+                    colormapSelect.value = viewSettings.colormap;
+                    changeColormap();
+                }
+            }
 
             // Apply zoom after a 1-second delay to let the UI settle
             if (viewSettings.zoom && viewSettings.zoom.mode === 'region') {
