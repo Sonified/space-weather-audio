@@ -754,7 +754,9 @@ export async function startStreaming(event) {
         updateShareButtonState();
 
         console.log(`🎉 ${logTime()} Complete!`);
-        console.log('📌 v1.07 (2025-12-09)');
+        console.log('═══════════════════════════════════════════════════════════');
+        console.log('📌 v1.07 (2025-12-09) Fix: Race condition - set isSharedSession immediately');
+        console.log('═══════════════════════════════════════════════════════════');
 
     } catch (error) {
         console.error('❌ Error in startStreaming:', error);
