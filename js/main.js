@@ -694,9 +694,19 @@ export async function startStreaming(event) {
         }
         
         // Update status and highlight waveform for user guidance
+        // For shared sessions, show "Ready to play" message instead
+        const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+        console.log(`🔗 [STATUS DEBUG] isSharedSession=${isSharedSession}, raw value="${sessionStorage.getItem('isSharedSession')}"`);
         if (statusDiv) {
-            statusDiv.textContent = 'Click the waveform to jump to a new location.';
-            statusDiv.className = 'status info';
+            if (isSharedSession) {
+                console.log('🔗 [STATUS] Setting shared session message');
+                statusDiv.textContent = '🎧 Ready! Click Play or press Space Bar to start playback.';
+                statusDiv.className = 'status success';
+            } else {
+                console.log('🔗 [STATUS] Setting normal message (not shared session)');
+                statusDiv.textContent = 'Click the waveform to jump to a new location.';
+                statusDiv.className = 'status info';
+            }
         }
 
         // Add pulse highlight to waveform container to draw attention
