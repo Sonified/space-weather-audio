@@ -588,19 +588,24 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             
             const WORKLET_CHUNK_SIZE = 1024;
             State.setAllReceivedData([]);
-            
+
+            // Check if this is a shared session BEFORE sending data
+            // For shared sessions, disable auto-resume so worklet doesn't auto-start
+            const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+            const shouldAutoResume = !isSharedSession;
+
             for (let i = 0; i < audioData.samples.length; i += WORKLET_CHUNK_SIZE) {
                 const chunkSize = Math.min(WORKLET_CHUNK_SIZE, audioData.samples.length - i);
                 // Copy slice to new ArrayBuffer for independent GC
                 const slice = audioData.samples.slice(i, i + chunkSize);
                 const chunk = new Float32Array(slice);
-                
+
                 State.workletNode.port.postMessage({
                     type: 'audio-data',
                     data: chunk,
-                    autoResume: true
+                    autoResume: shouldAutoResume
                 });
-                
+
                 State.allReceivedData.push(chunk);
             }
             
@@ -628,11 +633,9 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             
             // Update playback speed (needed for worklet)
             updatePlaybackSpeed();
-            
-            // Check if this is a shared session - don't auto-play, show "ready to play" state
-            const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
 
             // Check if autoPlay is enabled (but NOT for shared sessions)
+            // Note: isSharedSession was already checked above when sending audio data
             const autoPlayEnabled = !isSharedSession && (document.getElementById('autoPlay')?.checked || false);
             if (autoPlayEnabled) {
                 // Start playback immediately
