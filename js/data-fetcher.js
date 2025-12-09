@@ -63,6 +63,7 @@ const DATASET_VARIABLES = {
  * @param {string} endTime - ISO 8601 end time
  * @returns {Promise<Object>} Object containing decoded audio samples and metadata
  */
+// ✅ ACTIVE PATH - This is the primary data fetching function used for CDAWeb audio
 export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) {
     console.log(`🛰️ Fetching CDAWeb audio: ${spacecraft} ${dataset} ${startTime} to ${endTime}`);
     
@@ -421,6 +422,7 @@ function toBasicISO8601(isoString) {
  * @param {string} startTimeISO - ISO 8601 start time
  * @param {string} endTimeISO - ISO 8601 end time
  */
+// ✅ ACTIVE PATH - Main entry point for loading CDAWeb data (called from main.js)
 export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO) {
     const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
     
@@ -627,28 +629,31 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             // Update playback speed (needed for worklet)
             updatePlaybackSpeed();
             
-            // Check if autoPlay is enabled
-            const autoPlayEnabled = document.getElementById('autoPlay')?.checked || false;
+            // Check if this is a shared session - don't auto-play, show "ready to play" state
+            const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+
+            // Check if autoPlay is enabled (but NOT for shared sessions)
+            const autoPlayEnabled = !isSharedSession && (document.getElementById('autoPlay')?.checked || false);
             if (autoPlayEnabled) {
                 // Start playback immediately
                 State.workletNode.port.postMessage({ type: 'start-immediately' });
                 console.log(`🚀 Sent 'start-immediately' to worklet`);
-                
+
                 // Update playback state
                 State.setPlaybackState(PlaybackState.PLAYING);
-                
+
                 // Notify oscilloscope that playback started
                 const { setPlayingState } = await import('./oscilloscope-renderer.js');
                 setPlayingState(true);
-                
+
                 // Note: Fade-in is handled by worklet's startFade() in startImmediately()
-                
+
                 // Reset position tracking
                 State.setCurrentAudioPosition(0);
                 State.setLastWorkletPosition(0);
                 State.setLastWorkletUpdateTime(State.audioContext.currentTime);
                 State.setLastUpdateTime(State.audioContext.currentTime);
-                
+
                 // Update play/pause button
                 const playPauseBtn = document.getElementById('playPauseBtn');
                 if (playPauseBtn) {
@@ -658,16 +663,36 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                     playPauseBtn.classList.add('pause-active');
                 }
             } else {
-                console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
+                if (isSharedSession) {
+                    console.log(`🔗 Shared session loaded - waiting for user to click Play`);
+                    // Clear the flag now that we've handled it
+                    sessionStorage.removeItem('isSharedSession');
+                } else {
+                    console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
+                }
                 State.setPlaybackState(PlaybackState.STOPPED);
-                
-                // Enable play button
+
+                // Enable play button with pulse animation for shared sessions
                 const playPauseBtn = document.getElementById('playPauseBtn');
                 if (playPauseBtn) {
                     playPauseBtn.disabled = false;
                     playPauseBtn.textContent = '▶️ Play';
                     playPauseBtn.classList.remove('pause-active', 'secondary');
                     playPauseBtn.classList.add('play-active');
+
+                    // Add pulse animation for shared sessions
+                    if (isSharedSession) {
+                        playPauseBtn.classList.add('pulse-attention');
+                    }
+                }
+
+                // Show "ready to play" status for shared sessions
+                if (isSharedSession) {
+                    const status = document.getElementById('status');
+                    if (status) {
+                        status.textContent = '🎧 Ready! Click Play or press Space Bar to start playback';
+                        status.className = 'status info';
+                    }
                 }
             }
         } else {
@@ -936,6 +961,12 @@ function createDownloadBatches(chunks) {
     return batches;
 }
 
+// ╔═══════════════════════════════════════════════════════════════════════════════╗
+// ║  🚫🚫🚫 INACTIVE PATH - DO NOT MODIFY 🚫🚫🚫                                   ║
+// ║  This function is NOT used by the current application.                        ║
+// ║  It was for streaming infrasound data from R2/CDN.                            ║
+// ║  The ACTIVE path is fetchAndLoadCDAWebData() and fetchCDAWebAudio() above.    ║
+// ╚═══════════════════════════════════════════════════════════════════════════════╝
 // ===== MODE 1: CDN DIRECT STREAMING (7.8x faster than worker!) =====
 export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime, duration, highpassFreq, realisticChunkPromise, firstChunkStart) {
     const formatTime = (date) => {
@@ -1282,47 +1313,54 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                         ttfaTime = performance.now() - progressiveT0;
                         if (DEBUG_CHUNKS) console.log(`⚡ FIRST CHUNK SENT in ${ttfaTime.toFixed(0)}ms - starting playback!`);
                         
-                        const autoPlayEnabled = document.getElementById('autoPlay').checked;
-                        
+                        // Check if this is a shared session - don't auto-play
+                        const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+                        const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay').checked;
+
                         if (autoPlayEnabled) {
                             // 🎯 FORCE IMMEDIATE PLAYBACK
                             State.workletNode.port.postMessage({
                                 type: 'start-immediately'
                             });
                             console.log(`🚀 Sent 'start-immediately' to worklet`);
-                            
+
                             // Update playback state
                             State.setPlaybackState(PlaybackState.PLAYING);
-                            
+
                             if (State.gainNode && State.audioContext) {
                                 const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
                                 State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
                                 State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
                                 State.gainNode.gain.exponentialRampToValueAtTime(
-                                    Math.max(0.01, targetVolume), 
+                                    Math.max(0.01, targetVolume),
                                     State.audioContext.currentTime + 0.05
                                 );
                                 console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
                             }
-                            
+
                             State.setCurrentAudioPosition(0);
                             State.setLastWorkletPosition(0);
                             State.setLastWorkletUpdateTime(State.audioContext.currentTime);
                             State.setLastUpdateTime(State.audioContext.currentTime);
-                            
+
                             // Enable play button immediately when playback starts
                             const playPauseBtn = document.getElementById('playPauseBtn');
                             playPauseBtn.disabled = false;
                             playPauseBtn.textContent = '⏸️ Pause';
-                            playPauseBtn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
+                            playPauseBtn.classList.remove('play-active', 'pulse-play', 'pulse-resume', 'pulse-attention');
                             playPauseBtn.classList.add('pause-active');
-                            
+
                             // Update status (removed "Playing..." message per user request)
-                            
+
                             // Start playback indicator (will draw when waveform is ready)
                             startPlaybackIndicator();
                         } else {
-                            console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
+                            if (isSharedSession) {
+                                console.log(`🔗 Shared session loaded - waiting for user to click Play`);
+                                sessionStorage.removeItem('isSharedSession');
+                            } else {
+                                console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
+                            }
                             // Don't start playback, but keep state ready
                             State.setPlaybackState(PlaybackState.STOPPED);
                             // Enable play button so user can start playback
@@ -1331,6 +1369,16 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                             playPauseBtn.textContent = '▶️ Play';
                             playPauseBtn.classList.remove('pause-active');
                             playPauseBtn.classList.add('play-active');
+
+                            // Add pulse animation for shared sessions
+                            if (isSharedSession) {
+                                playPauseBtn.classList.add('pulse-attention');
+                                const status = document.getElementById('status');
+                                if (status) {
+                                    status.textContent = '🎧 Ready! Click Play or press Space Bar to start playback';
+                                    status.className = 'status info';
+                                }
+                            }
                         }
                         
                         // 🎯 RESOLVE PROMISE - fetch loop can now continue to chunk 2!
@@ -1988,6 +2036,11 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         
 }
 
+// ╔═══════════════════════════════════════════════════════════════════════════════╗
+// ║  🚫🚫🚫 INACTIVE PATH - COMPLETELY COMMENTED OUT 🚫🚫🚫                        ║
+// ║  This entire function is disabled and not used.                               ║
+// ║  The ACTIVE path is fetchAndLoadCDAWebData() and fetchCDAWebAudio() above.    ║
+// ╚═══════════════════════════════════════════════════════════════════════════════╝
 // ===== MODE 2: RAILWAY BACKEND (ORIGINAL PATH) =====
 // ⚠️ DEPRECATED CODE - DO NOT UPDATE EVER. DO NOT TOUCH THIS CODE.
 // This code path is deprecated and should not be modified.
@@ -2161,44 +2214,51 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
     
     console.log(`✅ Sent ${State.allReceivedData.length} chunks to AudioWorklet`);
     
-    const autoPlayEnabled = document.getElementById('autoPlay').checked;
-    
+    // Check if this is a shared session - don't auto-play
+    const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+    const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay').checked;
+
     if (autoPlayEnabled) {
         // 🎯 FORCE IMMEDIATE PLAYBACK
         State.workletNode.port.postMessage({
             type: 'start-immediately'
         });
         console.log(`🚀 Sent 'start-immediately' to worklet`);
-        
+
         // Fade-in audio
         if (State.gainNode && State.audioContext) {
             const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
             State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
             State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
             State.gainNode.gain.exponentialRampToValueAtTime(
-                Math.max(0.01, targetVolume), 
+                Math.max(0.01, targetVolume),
                 State.audioContext.currentTime + 0.05
             );
             console.log(`🔊 Fade-in scheduled: 0.0001 → ${targetVolume.toFixed(2)} over 50ms`);
         }
-        
+
         // Reset position tracking
         State.setCurrentAudioPosition(0);
         State.setLastWorkletPosition(0);
         State.setLastWorkletUpdateTime(State.audioContext.currentTime);
         State.setLastUpdateTime(State.audioContext.currentTime);
-        
+
         // Enable play button immediately when playback starts
         const playPauseBtn = document.getElementById('playPauseBtn');
         playPauseBtn.disabled = false;
         playPauseBtn.textContent = '⏸️ Pause';
-        playPauseBtn.classList.remove('play-active', 'secondary');
+        playPauseBtn.classList.remove('play-active', 'secondary', 'pulse-attention');
         playPauseBtn.classList.add('pause-active');
-        
+
         // Start playback indicator
         startPlaybackIndicator();
     } else {
-        console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
+        if (isSharedSession) {
+            console.log(`🔗 Shared session loaded - waiting for user to click Play`);
+            sessionStorage.removeItem('isSharedSession');
+        } else {
+            console.log(`⏸️ Auto Play disabled - waiting for user to click Play`);
+        }
         // Don't start playback, but keep state ready
         State.setPlaybackState(PlaybackState.STOPPED);
         // Enable play button so user can start playback
@@ -2207,6 +2267,16 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         playPauseBtn.textContent = '▶️ Play';
         playPauseBtn.classList.remove('pause-active', 'secondary');
         playPauseBtn.classList.add('play-active');
+
+        // Add pulse animation for shared sessions
+        if (isSharedSession) {
+            playPauseBtn.classList.add('pulse-attention');
+            const status = document.getElementById('status');
+            if (status) {
+                status.textContent = '🎧 Ready! Click Play or press Space Bar to start playback';
+                status.className = 'status info';
+            }
+        }
     }
     
     // 🎯 CRITICAL FIX: Wait for worklet to confirm it has buffered all samples (Railway path)

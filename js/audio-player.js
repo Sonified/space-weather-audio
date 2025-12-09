@@ -87,11 +87,9 @@ export function startPlayback() {
     // Update master button
     const btn = document.getElementById('playPauseBtn');
     btn.textContent = '⏸️ Pause';
-    btn.classList.remove('play-active', 'pulse-play', 'pulse-resume');
+    btn.classList.remove('play-active', 'pulse-play', 'pulse-resume', 'pulse-attention');
     btn.classList.add('pause-active');
-    
-    // Update status (selection tutorial message moved to waveform-renderer.js)
-    
+
     // Resume AudioContext if needed
     if (State.audioContext?.state === 'suspended') {
         console.log('▶️ Resuming suspended AudioContext');
