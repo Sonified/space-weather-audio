@@ -705,14 +705,24 @@ button.play-active:hover:not(:disabled) {
     background: linear-gradient(135deg, #5aab7a 0%, #3d8058 100%);
 }
 
+/* Loop button OFF state - muted desaturated purple */
+#loopBtn:not(.loop-active) {
+    background: linear-gradient(135deg, #6b5a7a 0%, #4a3d5a 100%);
+}
+
+#loopBtn:not(.loop-active):hover:not(:disabled) {
+    background: linear-gradient(135deg, #7b6a8a 0%, #5a4d6a 100%);
+}
+
+/* Loop button ON state - vibrant purple (original) */
 button.loop-active {
-    background: linear-gradient(135deg, #4db8c9 0%, #2a8a9a 100%);
-    box-shadow: 0 0 8px rgba(77, 184, 201, 0.4);
+    background: linear-gradient(135deg, #9b6bc9 0%, #7a4ba9 100%);
+    box-shadow: 0 0 8px rgba(155, 107, 201, 0.4);
 }
 
 button.loop-active:hover:not(:disabled) {
-    background: linear-gradient(135deg, #5dc8d9 0%, #3a9aaa 100%);
-    box-shadow: 0 0 12px rgba(77, 184, 201, 0.5);
+    background: linear-gradient(135deg, #ab7bd9 0%, #8a5bb9 100%);
+    box-shadow: 0 0 12px rgba(155, 107, 201, 0.5);
 }
 
 .status {
