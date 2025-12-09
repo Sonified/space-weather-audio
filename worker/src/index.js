@@ -52,9 +52,45 @@ const getShareKey = (shareId) =>
 const getUsernameKey = (username) =>
   `usernames/${sanitizeUsername(username).toLowerCase()}.json`;
 
+const getThumbnailKey = (shareId) =>
+  `thumbnails/${shareId}.jpg`;
+
 // Helper: Generate Open Graph HTML for share links
-function generateOgHtml(shareMeta, frontendUrl, shareId) {
+function generateOgHtml(shareMeta, frontendUrl, shareId, hasThumbnail = false) {
   const title = shareMeta.title || 'Space Weather Analysis';
+  const description = shareMeta.description || buildDefaultDescription(shareMeta);
+  const shareUrl = `${frontendUrl}/?share=${shareId}`;
+  const thumbnailUrl = hasThumbnail
+    ? `${frontendUrl}/api/share/${shareId}/thumbnail.jpg`
+    : `${frontendUrl}/images/og-default.jpg`;  // Fallback image
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)} - Space Weather Audio</title>
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(description)}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${shareUrl}">
+  <meta property="og:site_name" content="Space Weather Audio">
+  <meta property="og:image" content="${thumbnailUrl}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="429">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
+  <meta name="twitter:description" content="${escapeHtml(description)}">
+  <meta name="twitter:image" content="${thumbnailUrl}">
+  <meta http-equiv="refresh" content="0;url=${shareUrl}">
+</head>
+<body>
+  <p>Redirecting to <a href="${shareUrl}">${escapeHtml(title)}</a>...</p>
+</body>
+</html>`;
+}
+
+// Helper: Build default description from share metadata
+function buildDefaultDescription(shareMeta) {
   const spacecraft = shareMeta.spacecraft || 'Unknown';
   const regionCount = shareMeta.region_count || 0;
   const timeRange = shareMeta.time_range;
@@ -68,28 +104,18 @@ function generateOgHtml(shareMeta, frontendUrl, shareId) {
   if (regionCount > 0) {
     description += ` with ${regionCount} identified region${regionCount > 1 ? 's' : ''}`;
   }
+  return description;
+}
 
-  const shareUrl = `${frontendUrl}/?share=${shareId}`;
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${title} - Space Weather Audio</title>
-  <meta property="og:title" content="${title}">
-  <meta property="og:description" content="${description}">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="${shareUrl}">
-  <meta property="og:site_name" content="Space Weather Audio">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="${title}">
-  <meta name="twitter:description" content="${description}">
-  <meta http-equiv="refresh" content="0;url=${shareUrl}">
-</head>
-<body>
-  <p>Redirecting to <a href="${shareUrl}">${title}</a>...</p>
-</body>
-</html>`;
+// Helper: Escape HTML entities for safe embedding
+function escapeHtml(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // =============================================================================
@@ -109,6 +135,28 @@ export default {
 
     try {
       // =======================================================================
+      // Thumbnail Route: /api/share/:shareId/thumbnail.jpg
+      // Serves the captured spectrogram image for OG previews
+      // =======================================================================
+      const thumbnailMatch = path.match(/^\/api\/share\/([^/]+)\/thumbnail\.jpg$/);
+      if (thumbnailMatch && request.method === 'GET') {
+        const thumbShareId = thumbnailMatch[1];
+        const thumbnailObj = await env.BUCKET.get(getThumbnailKey(thumbShareId));
+
+        if (thumbnailObj) {
+          return new Response(thumbnailObj.body, {
+            headers: {
+              'Content-Type': 'image/jpeg',
+              'Cache-Control': 'public, max-age=604800',  // Cache for 7 days (images don't change)
+              ...CORS_HEADERS,
+            },
+          });
+        }
+        // Return 404 if no thumbnail
+        return new Response('Thumbnail not found', { status: 404 });
+      }
+
+      // =======================================================================
       // Open Graph Preview for Share Links
       // Serves HTML with OG meta tags for social media crawlers
       // =======================================================================
@@ -119,7 +167,9 @@ export default {
           const shareMeta = await shareObj.json();
           // Check not expired
           if (new Date() <= new Date(shareMeta.expires_at)) {
-            const html = generateOgHtml(shareMeta, frontendUrl, shareId);
+            // Check if thumbnail exists
+            const hasThumbnail = shareMeta.has_thumbnail || false;
+            const html = generateOgHtml(shareMeta, frontendUrl, shareId, hasThumbnail);
             return new Response(html, {
               headers: { 'Content-Type': 'text/html; charset=utf-8' },
             });
@@ -476,7 +526,7 @@ async function checkShareAvailable(env, shareId) {
 
 async function createShare(request, env) {
   const data = await request.json();
-  const { username, session_id, share_id: customShareId } = data;
+  const { username, session_id, share_id: customShareId, thumbnail } = data;
 
   if (!username || !session_id) {
     return json({ success: false, error: 'username and session_id required' }, 400);
@@ -511,6 +561,33 @@ async function createShare(request, env) {
   const expiryDays = parseInt(env.SHARE_EXPIRY_DAYS || '90');
   const expiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000);
 
+  // Save thumbnail if provided (supports both JPEG and PNG)
+  let hasThumbnail = false;
+  if (thumbnail && thumbnail.startsWith('data:image/')) {
+    try {
+      // Extract base64 data and content type
+      const matches = thumbnail.match(/^data:image\/(jpeg|png);base64,(.+)$/);
+      if (matches) {
+        const imageType = matches[1];
+        const base64Data = matches[2];
+        const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        const contentType = `image/${imageType}`;
+
+        await env.BUCKET.put(
+          getThumbnailKey(shareId),
+          binaryData,
+          { httpMetadata: { contentType } }
+        );
+        hasThumbnail = true;
+        const sizeKB = Math.round(binaryData.length / 1024);
+        console.log(`Thumbnail saved for share ${shareId}: ${sizeKB}KB ${imageType.toUpperCase()}`);
+      }
+    } catch (thumbError) {
+      console.error('Failed to save thumbnail:', thumbError);
+      // Continue without thumbnail - not a fatal error
+    }
+  }
+
   const shareMeta = {
     share_id: shareId,
     source_username: sanitizeUsername(username),
@@ -524,6 +601,7 @@ async function createShare(request, env) {
     created_at: now.toISOString(),
     expires_at: expiresAt.toISOString(),
     view_count: 0,
+    has_thumbnail: hasThumbnail,
   };
 
   await env.BUCKET.put(
@@ -539,6 +617,7 @@ async function createShare(request, env) {
     share_id: shareId,
     share_url: shareUrl,
     expires_at: expiresAt.toISOString(),
+    has_thumbnail: hasThumbnail,
   }, 201);
 }
 

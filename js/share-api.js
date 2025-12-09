@@ -3,11 +3,9 @@
  * Handles sessions and sharing via Cloudflare Worker + R2
  */
 
-// API Configuration - same origin in production, localhost for dev
-const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const API_BASE = isLocalDev
-    ? 'http://localhost:8787'  // wrangler dev
-    : '';  // Same origin - spaceweather.now.audio/api/
+// API Configuration - always use production API
+// (Worker handles CORS, no need for local dev server)
+const API_BASE = 'https://spaceweather.now.audio';
 
 // =============================================================================
 // Session API - Save/load user's own sessions
@@ -108,7 +106,8 @@ export async function createShare(username, sessionId, options = {}) {
             session_id: sessionId,
             share_id: options.share_id,
             title: options.title,
-            description: options.description
+            description: options.description,
+            thumbnail: options.thumbnail  // Base64 PNG data URL
         })
     });
 

@@ -13,6 +13,7 @@ let shareModal = null;
 let isSharing = false;
 let currentSessionId = null;  // Track the current session ID
 let slugCheckTimeout = null;  // Debounce for slug availability check
+let capturedThumbnailDataUrl = null;  // Store captured thumbnail for upload
 
 // Word lists for generating share slugs
 const ADJECTIVES = [
@@ -111,6 +112,100 @@ function pickAdjectiveNoun() {
 }
 
 /**
+ * Capture the spectrogram canvas as an optimized thumbnail image
+ * Combines main spectrogram with axis labels, resizes for efficient transfer
+ * Target: ~50-150KB JPEG instead of multi-MB PNG
+ * @returns {string|null} Data URL of the thumbnail JPEG, or null if capture fails
+ */
+function captureSpectrogramThumbnail() {
+    const spectrogramCanvas = document.getElementById('spectrogram');
+    const axisCanvas = document.getElementById('spectrogram-axis');
+
+    if (!spectrogramCanvas) {
+        console.warn('Spectrogram canvas not found');
+        return null;
+    }
+
+    try {
+        // Calculate source dimensions
+        const axisWidth = axisCanvas ? axisCanvas.width : 0;
+        const sourceWidth = spectrogramCanvas.width + axisWidth;
+        const sourceHeight = spectrogramCanvas.height;
+
+        // Target width for social media previews
+        // 1200px is the recommended OG image width for Twitter/Facebook
+        const targetWidth = 1200;
+        const scale = targetWidth / sourceWidth;
+        const targetHeight = Math.round(sourceHeight * scale);
+
+        // Create combined canvas at reduced size
+        const thumbnailCanvas = document.createElement('canvas');
+        const ctx = thumbnailCanvas.getContext('2d');
+        thumbnailCanvas.width = targetWidth;
+        thumbnailCanvas.height = targetHeight;
+
+        // Enable image smoothing for better downscaling
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        // Fill background (dark theme)
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+        // Draw axis first (on the left), scaled
+        if (axisCanvas) {
+            const scaledAxisWidth = Math.round(axisWidth * scale);
+            ctx.drawImage(axisCanvas, 0, 0, scaledAxisWidth, targetHeight);
+            // Draw main spectrogram after axis
+            ctx.drawImage(spectrogramCanvas, scaledAxisWidth, 0, targetWidth - scaledAxisWidth, targetHeight);
+        } else {
+            ctx.drawImage(spectrogramCanvas, 0, 0, targetWidth, targetHeight);
+        }
+
+        // Convert to JPEG at 70% quality - great for social media, small file size
+        // Spectrograms are gradient-heavy, JPEG handles them well
+        const dataUrl = thumbnailCanvas.toDataURL('image/jpeg', 0.70);
+
+        // Log the approximate size for debugging
+        const approxSizeKB = Math.round((dataUrl.length * 0.75) / 1024);
+        console.log(`Thumbnail captured: ${targetWidth}x${targetHeight}, ~${approxSizeKB}KB`);
+
+        return dataUrl;
+    } catch (error) {
+        console.error('Failed to capture spectrogram thumbnail:', error);
+        return null;
+    }
+}
+
+/**
+ * Display thumbnail preview in the share modal
+ */
+function updateThumbnailPreview() {
+    const thumbnailCanvas = document.getElementById('shareThumbnail');
+    if (!thumbnailCanvas) return;
+
+    capturedThumbnailDataUrl = captureSpectrogramThumbnail();
+
+    if (capturedThumbnailDataUrl) {
+        const img = new Image();
+        img.onload = () => {
+            // Size the canvas to match aspect ratio
+            const aspectRatio = img.width / img.height;
+            const displayWidth = 652;  // Modal content width minus padding
+            const displayHeight = displayWidth / aspectRatio;
+
+            thumbnailCanvas.width = img.width;
+            thumbnailCanvas.height = img.height;
+            thumbnailCanvas.style.height = `${displayHeight}px`;
+
+            const ctx = thumbnailCanvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+        };
+        img.src = capturedThumbnailDataUrl;
+    }
+}
+
+/**
  * Format date as YYYYMMDD-HHMM (URL-safe)
  */
 function formatDateCompact(date) {
@@ -168,20 +263,43 @@ function createShareModal() {
             <div id="shareModalBody" style="padding: 24px;">
                 <!-- Form View -->
                 <div id="shareFormView">
-                    <div style="margin-bottom: 24px;">
-                        <label for="shareSlug" style="display: block; margin-bottom: 10px; font-weight: 600; color: #ccc; font-size: 14px;">Share Link</label>
-                        <div style="display: flex; align-items: center; background: rgba(255,255,255,0.05); border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 10px; overflow: hidden;">
-                            <span style="padding: 14px 16px; color: #888; font-size: 13px; white-space: nowrap; background: rgba(0,0,0,0.2);">spaceweather.now.audio/?share=</span>
-                            <input type="text" id="shareSlug" placeholder="my-share-name" style="flex: 1; padding: 14px 16px; font-size: 14px; border: none; background: transparent; box-sizing: border-box; min-width: 0; color: #fff; outline: none;">
+                    <!-- Thumbnail Preview -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 10px; font-weight: 600; color: #ccc; font-size: 14px;">Preview Thumbnail</label>
+                        <div id="thumbnailPreview" style="background: rgba(0,0,0,0.3); border-radius: 10px; overflow: hidden; border: 1px solid rgba(102, 126, 234, 0.2);">
+                            <canvas id="shareThumbnail" style="width: 100%; display: block;"></canvas>
                         </div>
-                        <div id="slugStatus" style="margin-top: 8px; font-size: 13px; min-height: 20px;"></div>
+                        <div style="margin-top: 6px; font-size: 12px; color: #666;">This image will appear when sharing on social media</div>
                     </div>
-                    <div style="background: rgba(102, 126, 234, 0.1); padding: 16px 20px; border-radius: 10px; margin-bottom: 24px; border: 1px solid rgba(102, 126, 234, 0.2);">
-                        <div style="font-weight: 600; color: #aaa; margin-bottom: 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">What will be shared</div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; color: #ccc; font-size: 14px;">
-                            <div id="shareSpacecraft">Spacecraft: --</div>
-                            <div id="shareRegionCount">Regions: 0</div>
-                            <div id="shareTimeRange" style="grid-column: 1 / -1;">Time: --</div>
+
+                    <!-- Title Input -->
+                    <div style="margin-bottom: 16px;">
+                        <label for="shareTitle" style="display: block; margin-bottom: 8px; font-weight: 600; color: #ccc; font-size: 14px;">Title</label>
+                        <input type="text" id="shareTitle" placeholder="My amazing discovery" style="width: 100%; padding: 12px 14px; font-size: 14px; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 10px; background: rgba(255,255,255,0.05); box-sizing: border-box; color: #fff; outline: none;" maxlength="100">
+                    </div>
+
+                    <!-- Description Input -->
+                    <div style="margin-bottom: 20px;">
+                        <label for="shareDescription" style="display: block; margin-bottom: 8px; font-weight: 600; color: #ccc; font-size: 14px;">Description <span style="color: #666; font-weight: normal;">(optional)</span></label>
+                        <textarea id="shareDescription" placeholder="What makes this interesting?" style="width: 100%; padding: 12px 14px; font-size: 14px; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 10px; background: rgba(255,255,255,0.05); box-sizing: border-box; color: #fff; outline: none; resize: vertical; min-height: 60px;" maxlength="300"></textarea>
+                    </div>
+
+                    <!-- Share Link -->
+                    <div style="margin-bottom: 20px;">
+                        <label for="shareSlug" style="display: block; margin-bottom: 8px; font-weight: 600; color: #ccc; font-size: 14px;">Share Link</label>
+                        <div style="display: flex; align-items: center; background: rgba(255,255,255,0.05); border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 10px; overflow: hidden;">
+                            <span style="padding: 12px 14px; color: #888; font-size: 12px; white-space: nowrap; background: rgba(0,0,0,0.2);">spaceweather.now.audio/?share=</span>
+                            <input type="text" id="shareSlug" placeholder="my-share-name" style="flex: 1; padding: 12px 14px; font-size: 14px; border: none; background: transparent; box-sizing: border-box; min-width: 0; color: #fff; outline: none;">
+                        </div>
+                        <div id="slugStatus" style="margin-top: 6px; font-size: 12px; min-height: 18px;"></div>
+                    </div>
+
+                    <!-- What will be shared (collapsed) -->
+                    <div style="background: rgba(102, 126, 234, 0.1); padding: 12px 16px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(102, 126, 234, 0.2);">
+                        <div style="display: flex; gap: 16px; color: #aaa; font-size: 13px; flex-wrap: wrap;">
+                            <span id="shareSpacecraft">Spacecraft: --</span>
+                            <span id="shareRegionCount">Regions: 0</span>
+                            <span id="shareTimeRange">Time: --</span>
                         </div>
                     </div>
                     <div style="display: flex; gap: 12px; justify-content: flex-end;">
@@ -339,17 +457,40 @@ export function openShareModal() {
     // Reset to form view
     showView('shareFormView');
 
+    // Capture spectrogram thumbnail
+    updateThumbnailPreview();
+
     // Pre-populate info
     const regions = getRegions();
     const spacecraft = State.currentMetadata?.spacecraft || document.getElementById('spacecraft')?.value || 'Unknown';
 
-    document.getElementById('shareRegionCount').textContent = `Identified regions: ${regions.length}`;
+    document.getElementById('shareRegionCount').textContent = `Regions: ${regions.length}`;
     document.getElementById('shareSpacecraft').textContent = `Spacecraft: ${spacecraft}`;
 
+    // Generate engaging default title
+    const defaultTitle = `Listen to these sounds from space!`;
+    document.getElementById('shareTitle').value = defaultTitle;
+
+    // Generate engaging default description
+    const dataType = State.currentMetadata?.dataset || document.getElementById('dataType')?.value || '';
+    const startStr = State.dataStartTime ? State.dataStartTime.toISOString().slice(0, 10) : '';
+    const endStr = State.dataEndTime ? State.dataEndTime.toISOString().slice(0, 10) : '';
+
+    let defaultDescription = `Check out this feature I identified in ${spacecraft}`;
+    if (dataType) {
+        defaultDescription += ` ${dataType}`;
+    }
+    defaultDescription += ` data`;
+    if (startStr && endStr) {
+        defaultDescription += ` from ${startStr} to ${endStr}`;
+    }
+    defaultDescription += `. I think you'll find it interesting!`;
+    document.getElementById('shareDescription').value = defaultDescription;
+
     if (State.dataStartTime && State.dataEndTime) {
-        const startStr = State.dataStartTime.toISOString().slice(0, 19).replace('T', ' ');
-        const endStr = State.dataEndTime.toISOString().slice(0, 19).replace('T', ' ');
-        document.getElementById('shareTimeRange').textContent = `Time: ${startStr} to ${endStr}`;
+        const startDisplay = State.dataStartTime.toISOString().slice(0, 16).replace('T', ' ');
+        const endDisplay = State.dataEndTime.toISOString().slice(0, 16).replace('T', ' ');
+        document.getElementById('shareTimeRange').textContent = `${startDisplay} to ${endDisplay}`;
     }
 
     // Generate and set default slug
@@ -430,11 +571,9 @@ async function handleCreateShare() {
             throw new Error('Please enter a share link name');
         }
 
-        // Auto-generate title from spacecraft and date range
-        const spacecraft = State.currentMetadata?.spacecraft || 'Unknown';
-        const startStr = State.dataStartTime ? State.dataStartTime.toISOString().slice(0, 10) : '';
-        const endStr = State.dataEndTime ? State.dataEndTime.toISOString().slice(0, 10) : '';
-        const title = startStr && endStr ? `${spacecraft} ${startStr} to ${endStr}` : spacecraft;
+        // Get title and description from inputs
+        const title = document.getElementById('shareTitle').value.trim() || 'Space Weather Analysis';
+        const description = document.getElementById('shareDescription').value.trim();
 
         // Step 1: Save session to R2
         loadingText.textContent = 'Saving session...';
@@ -443,11 +582,13 @@ async function handleCreateShare() {
         currentSessionId = saveResult.session_id;
         console.log('Session saved:', saveResult);
 
-        // Step 2: Create share link from saved session with custom slug
+        // Step 2: Create share link with thumbnail
         loadingText.textContent = 'Creating share link...';
         const shareResult = await ShareAPI.createShare(username, currentSessionId, {
             title,
-            share_id: shareSlug
+            description,
+            share_id: shareSlug,
+            thumbnail: capturedThumbnailDataUrl  // Include the captured thumbnail
         });
 
         // Show success view
