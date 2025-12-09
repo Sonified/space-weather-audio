@@ -542,9 +542,11 @@ function gatherSessionData() {
         })),
         view_settings: {
             frequency_scale: State.frequencyScale,
-            zoom: zoomState.isZoomed ? {
-                level: zoomState.zoomLevel,
-                center_sample: zoomState.zoomCenterSample
+            zoom: zoomState.mode === 'region' ? {
+                mode: 'region',
+                region_id: zoomState.activeRegionId,
+                start_time: zoomState.currentViewStartTime?.toISOString(),
+                end_time: zoomState.currentViewEndTime?.toISOString()
             } : null
         }
     };

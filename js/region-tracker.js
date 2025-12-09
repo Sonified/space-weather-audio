@@ -372,6 +372,7 @@ function getTotalFeatureCount() {
 /**
  * Load regions from storage after data fetch completes
  * Call this after State.dataStartTime and State.dataEndTime are set
+ * Prioritizes pending shared regions (from shared links) over localStorage
  */
 export function loadRegionsAfterDataFetch() {
     const spacecraft = getCurrentSpacecraft();
@@ -384,7 +385,25 @@ export function loadRegionsAfterDataFetch() {
     // This ensures old regions from previous data don't persist
     regionsBySpacecraft.set(spacecraft, []);
 
-    const loadedRegions = loadRegionsFromStorage(spacecraft);
+    // Check for pending shared regions first (from shared links)
+    let loadedRegions = null;
+    const pendingSharedRegions = sessionStorage.getItem('pendingSharedRegions');
+    if (pendingSharedRegions) {
+        try {
+            loadedRegions = JSON.parse(pendingSharedRegions);
+            console.log(`🔗 Loading ${loadedRegions.length} shared region(s) from share link`);
+            // Clear the pending regions so they don't load again
+            sessionStorage.removeItem('pendingSharedRegions');
+        } catch (e) {
+            console.error('Failed to parse pending shared regions:', e);
+            sessionStorage.removeItem('pendingSharedRegions');
+        }
+    }
+
+    // Fall back to localStorage if no shared regions
+    if (!loadedRegions) {
+        loadedRegions = loadRegionsFromStorage(spacecraft);
+    }
     if (loadedRegions && loadedRegions.length > 0) {
         // 🔧 CRITICAL FIX: Recalculate sample indices from timestamps!
         // Sample indices are relative to the current data fetch and MUST be recalculated
@@ -450,6 +469,34 @@ export function loadRegionsAfterDataFetch() {
         redrawAllCanvasFeatureBoxes();
         drawWaveformWithSelection();
         updateCompleteButtonState();
+    }
+
+    // Check for pending view settings (from shared links) and apply zoom after a delay
+    const pendingViewSettings = sessionStorage.getItem('pendingSharedViewSettings');
+    if (pendingViewSettings) {
+        try {
+            const viewSettings = JSON.parse(pendingViewSettings);
+            sessionStorage.removeItem('pendingSharedViewSettings');
+
+            // Apply zoom after a 1-second delay to let the UI settle
+            if (viewSettings.zoom && viewSettings.zoom.mode === 'region') {
+                console.log('🔗 Restoring shared view zoom after delay...');
+                setTimeout(() => {
+                    // Find the region by ID and zoom to it
+                    const regions = getCurrentRegions();
+                    const regionIndex = regions.findIndex(r => r.id === viewSettings.zoom.region_id);
+                    if (regionIndex !== -1) {
+                        console.log(`🔗 Zooming to shared region: ${viewSettings.zoom.region_id}`);
+                        zoomToRegion(regionIndex);
+                    } else {
+                        console.log('🔗 Shared region not found, staying at full view');
+                    }
+                }, 1000);
+            }
+        } catch (e) {
+            console.error('Failed to parse pending view settings:', e);
+            sessionStorage.removeItem('pendingSharedViewSettings');
+        }
     }
 }
 
