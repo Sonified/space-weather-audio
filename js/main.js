@@ -123,6 +123,36 @@ function writeString(view, offset, string) {
 // See data-fetcher.js for centralized flags documentation
 const DEBUG_CHUNKS = false;
 
+// 🔍 STATUS DEBUG: MutationObserver to catch ALL status changes with stack traces
+const DEBUG_STATUS = true;
+if (DEBUG_STATUS) {
+    // Wait for DOM then attach observer
+    const attachStatusObserver = () => {
+        const statusEl = document.getElementById('status');
+        if (!statusEl) {
+            setTimeout(attachStatusObserver, 100);
+            return;
+        }
+        console.log('🔍 [STATUS OBSERVER] Attached to status element');
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'childList' || mutation.type === 'characterData') {
+                    const newText = statusEl.textContent?.slice(0, 60);
+                    const isShared = sessionStorage.getItem('isSharedSession');
+                    const stack = new Error().stack.split('\n').slice(2, 6).join('\n');
+                    console.log(`🔍 [STATUS CHANGED] isSharedSession="${isShared}" text="${newText}..."\n${stack}`);
+                }
+            }
+        });
+        observer.observe(statusEl, { childList: true, characterData: true, subtree: true });
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachStatusObserver);
+    } else {
+        attachStatusObserver();
+    }
+}
+
 // console.log('🟡 Set DEBUG_CHUNKS');
 
 // 🧹 MEMORY LEAK FIX: Use event listeners instead of window.* assignments
@@ -843,15 +873,18 @@ async function initializeSolarPortalMode() {
         }, 500);
     } else {
         console.log(`✅ Welcome back, ${participantId}`);
-        // Show instruction to click Fetch Data
-        setTimeout(async () => {
-            const { typeText } = await import('./tutorial-effects.js');
-            const statusEl = document.getElementById('status');
-            if (statusEl) {
-                statusEl.className = 'status info';
-                typeText(statusEl, '👈 click Fetch Data to begin', 30, 10);
-            }
-        }, 500);
+        // Show instruction to click Fetch Data (only if not a shared session)
+        const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+        if (!isSharedSession) {
+            setTimeout(async () => {
+                const { typeText } = await import('./tutorial-effects.js');
+                const statusEl = document.getElementById('status');
+                if (statusEl) {
+                    statusEl.className = 'status info';
+                    typeText(statusEl, '👈 click Fetch Data to begin', 30, 10);
+                }
+            }, 500);
+        }
     }
 
     console.log('✅ Solar Portal mode ready');
@@ -1211,8 +1244,8 @@ async function initializeMainApp() {
     updateParticipantIdDisplay();
     // Only log version info in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('🌋 [0ms] solar-audio 1.05 - Fix: Use AudioContext sample rate (22kHz) everywhere for perfect sync');
-        console.log('📌 [0ms] Git commit: v1.05 Fix: Use AudioContext sample rate (22kHz) everywhere for perfect sync');
+        console.log('🌋 [0ms] solar-audio 1.06 - Debug: Status change observer to trace overwrites');
+        console.log('📌 [0ms] Git commit: v1.06 Debug: Status change observer + isSharedSession checks');
     }
     
     // Start memory health monitoring
@@ -1293,8 +1326,8 @@ async function initializeMainApp() {
         await initializeApp();
         
         console.log('═══════════════════════════════════════════════════════════');
-        console.log('✅ App ready - v1.05 (2025-12-09)');
-        console.log('📋 Commit: v1.05 Fix: Await AudioContext.resume() before play');
+        console.log('✅ App ready - v1.06 (2025-12-09)');
+        console.log('📋 Commit: v1.06 Debug: Status change observer to trace overwrites');
         console.log('═══════════════════════════════════════════════════════════');
         
         // Load recent searches

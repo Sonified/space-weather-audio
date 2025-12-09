@@ -704,6 +704,7 @@ export function applySharedSession(shareData) {
 
     // Mark this as a shared session - prevents auto-play, shows "ready to play" state
     sessionStorage.setItem('isSharedSession', 'true');
+    console.log('🔗🔗🔗 [SHARE-MODAL] SET isSharedSession=true in sessionStorage');
 
     // Store regions to be applied after data loads
     if (session.regions && session.regions.length > 0) {

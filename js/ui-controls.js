@@ -2668,7 +2668,9 @@ export function submitParticipantSetup() {
     statusEl.textContent = `✅ User Name Recorded`;
 
     // In Solar Portal mode, animate follow-up instruction after a brief delay
-    if (CURRENT_MODE === AppMode.SOLAR_PORTAL) {
+    // (Skip for shared sessions - they already have data loaded)
+    const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+    if (CURRENT_MODE === AppMode.SOLAR_PORTAL && !isSharedSession) {
         setTimeout(async () => {
             const { typeText } = await import('./tutorial-effects.js');
             statusEl.className = 'status info';
