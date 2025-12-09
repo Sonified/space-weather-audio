@@ -593,6 +593,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             // For shared sessions, disable auto-resume so worklet doesn't auto-start
             const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
             const shouldAutoResume = !isSharedSession;
+            console.log(`🔗 [SHARED SESSION DEBUG] isSharedSession=${isSharedSession}, shouldAutoResume=${shouldAutoResume}`);
 
             for (let i = 0; i < audioData.samples.length; i += WORKLET_CHUNK_SIZE) {
                 const chunkSize = Math.min(WORKLET_CHUNK_SIZE, audioData.samples.length - i);
