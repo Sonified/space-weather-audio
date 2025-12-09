@@ -505,6 +505,19 @@ function gatherSessionData() {
     const spacecraft = State.currentMetadata?.spacecraft || document.getElementById('spacecraft')?.value;
     const dataType = State.currentMetadata?.dataset || document.getElementById('dataType')?.value;
 
+    // Debug: log what features we're capturing
+    console.log('🔗 Gathering session data...');
+    console.log(`🔗   ${regions.length} region(s) found`);
+    regions.forEach((r, i) => {
+        const featureCount = r.features?.length || 0;
+        console.log(`🔗   Region ${i + 1} (id=${r.id}): ${featureCount} feature(s), featureCount=${r.featureCount}`);
+        if (r.features && r.features.length > 0) {
+            r.features.forEach((f, j) => {
+                console.log(`🔗     Feature ${j + 1}: type=${f.type}, notes="${f.notes?.slice(0, 30) || ''}..."`);
+            });
+        }
+    });
+
     return {
         session_id: currentSessionId,  // Re-use if we have one
         spacecraft,
@@ -633,6 +646,7 @@ export async function checkAndLoadSharedSession() {
     if (!shareId) return null;
 
     console.log('🔗 Found share ID in URL:', shareId);
+    console.log('🔗 Current URL:', window.location.href);
 
     try {
         const shareData = await ShareAPI.getShare(shareId);
@@ -691,6 +705,11 @@ export function applySharedSession(shareData) {
     // Store regions to be applied after data loads
     if (session.regions && session.regions.length > 0) {
         console.log('🔗 Storing', session.regions.length, 'regions to sessionStorage');
+        // Log feature counts for debugging
+        session.regions.forEach((r, i) => {
+            const featureCount = r.features?.length || 0;
+            console.log(`🔗   Region ${i + 1}: ${featureCount} feature(s)`);
+        });
         sessionStorage.setItem('pendingSharedRegions', JSON.stringify(session.regions));
     }
 
