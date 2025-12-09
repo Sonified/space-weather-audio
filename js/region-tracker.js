@@ -453,6 +453,29 @@ export function loadRegionsAfterDataFetch() {
                     console.log(`🔧 Recalculated samples: ${oldEndSample?.toLocaleString()} → ${region.endSample.toLocaleString()} (end)`);
                 }
             }
+
+            // Initialize missing fields for shared regions
+            if (!region.features) {
+                region.features = [{
+                    type: 'Impulsive',
+                    repetition: 'Unique',
+                    lowFreq: '',
+                    highFreq: '',
+                    startTime: '',
+                    endTime: '',
+                    notes: '',
+                    speedFactor: 1
+                }];
+            }
+            if (region.featureCount === undefined) {
+                region.featureCount = region.features.length || 1;
+            }
+            if (region.expanded === undefined) {
+                region.expanded = false;
+            }
+            if (region.playing === undefined) {
+                region.playing = false;
+            }
         });
         
         regionsBySpacecraft.set(spacecraft, loadedRegions);
@@ -2317,10 +2340,23 @@ function createRegionCard(region, index) {
 function renderFeatures(regionId, regionIndex) {
     const container = document.getElementById(`features-${regionId}`);
     if (!container) return;
-    
+
     const regions = getCurrentRegions();
     const region = regions[regionIndex];
-    
+    if (!region) {
+        console.warn(`⚠️ renderFeatures: Region at index ${regionIndex} not found`);
+        return;
+    }
+
+    // Initialize features array if missing (fallback - should be handled in loadRegionsAfterDataFetch)
+    if (!region.features) {
+        console.warn(`⚠️ renderFeatures: Region ${region.id} missing features array - initializing`);
+        region.features = [];
+    }
+    if (region.featureCount === undefined) {
+        region.featureCount = 1;
+    }
+
     // Ensure featureCount matches features array length
     while (region.features.length < region.featureCount) {
         region.features.push({
