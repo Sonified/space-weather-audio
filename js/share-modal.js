@@ -455,9 +455,14 @@ export function initShareModal() {
     // Slug input handler
     document.getElementById('shareSlug').addEventListener('input', handleSlugInput);
 
-    // Close on backdrop click
+    // Close on backdrop click (only if mousedown also started on backdrop)
+    let mouseDownOnBackdrop = false;
+    shareModal.addEventListener('mousedown', (e) => {
+        mouseDownOnBackdrop = (e.target === shareModal);
+    });
     shareModal.addEventListener('click', (e) => {
-        if (e.target === shareModal) closeShareModal();
+        if (e.target === shareModal && mouseDownOnBackdrop) closeShareModal();
+        mouseDownOnBackdrop = false;
     });
 
     // Close on escape
