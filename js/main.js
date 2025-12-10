@@ -1231,6 +1231,13 @@ async function initializeMainApp() {
     if (sharedSessionData) {
         console.log('🔗 Loading shared session...');
         const result = applySharedSession(sharedSessionData);
+
+        // 🔗 CONSUME the share link: Remove ?share= from URL so future refreshes
+        // load from localStorage (user's own work) instead of the shared session.
+        // This is standard UX for share links (Figma, Google Docs, Notion do the same)
+        history.replaceState({}, '', window.location.pathname);
+        console.log('🔗 Share link consumed - URL cleaned for future sessions');
+
         if (result.shouldFetch) {
             // Auto-fetch the shared data after a small delay for UI to update
             setTimeout(() => {
