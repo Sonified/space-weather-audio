@@ -7,10 +7,6 @@
  *   shares/{share_id}.json
  */
 
-// 🔄 APP VERSION - Increment this when deploying frontend changes
-// Format: YYYYMMDD.N (N = deployment number for the day)
-const APP_VERSION = '20251210.1';
-
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -188,11 +184,6 @@ export default {
       // Health check
       if (path === '/health') {
         return json({ status: 'healthy', service: 'space-weather-audio-api' });
-      }
-
-      // Version check - frontend uses this to know when to refresh
-      if (path === '/api/version') {
-        return json({ version: APP_VERSION });
       }
 
       // Status

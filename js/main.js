@@ -1073,7 +1073,8 @@ async function checkAppVersion() {
         }
 
         localStorage.setItem('app_version', serverVersion);
-        console.log(`%c✅ App is up to date: ${serverVersion}`, 'color: #4CAF50; font-weight: bold');
+        const localTime = new Date(serverVersion).toLocaleString();
+        console.log(`%c✅ App is up to date (built ${localTime})`, 'color: #4CAF50; font-weight: bold');
     } catch (e) {
         // Silently fail - version check is non-critical
         console.log('⚠️ Version check skipped (offline or error)', e.message);

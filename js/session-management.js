@@ -515,7 +515,6 @@ async function sendHeartbeatIfActive() {
 
         const { sendHeartbeat } = await import('./share-api.js');
         await sendHeartbeat(username);
-        console.log('💓 Heartbeat sent for', username);
 
         // Reset the activity flag
         userWasActiveSinceLastHeartbeat = false;
