@@ -388,10 +388,12 @@ export function loadRegionsAfterDataFetch() {
 
     // Check for pending shared regions first (from shared links)
     let loadedRegions = null;
+    let loadedFromShareLink = false;
     const pendingSharedRegions = sessionStorage.getItem('pendingSharedRegions');
     if (pendingSharedRegions) {
         try {
             loadedRegions = JSON.parse(pendingSharedRegions);
+            loadedFromShareLink = true;
             console.log(`🔗 Loading ${loadedRegions.length} shared region(s) from share link`);
             // Clear the pending regions so they don't load again
             sessionStorage.removeItem('pendingSharedRegions');
@@ -476,6 +478,13 @@ export function loadRegionsAfterDataFetch() {
         
         regionsBySpacecraft.set(spacecraft, loadedRegions);
         console.log(`📂 Restored ${loadedRegions.length} region(s) for ${spacecraft} from localStorage after data fetch`);
+
+        // 🔗 CRITICAL: If regions came from share link, save them to localStorage
+        // This ensures they persist across page refreshes after the URL is consumed
+        if (loadedFromShareLink) {
+            saveRegionsToStorage(spacecraft, loadedRegions);
+            console.log(`💾 Saved shared regions to localStorage for future sessions`);
+        }
         
         // 🔥 Render regions immediately (don't wait for crossfade)
         // Regions need to be visible as soon as data loads
