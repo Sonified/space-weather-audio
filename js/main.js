@@ -1901,8 +1901,11 @@ async function initializeMainApp() {
     const startBtn = document.getElementById('startBtn');
     console.log('🟢 startBtn element:', startBtn ? 'FOUND' : 'NOT FOUND');
     if (startBtn) {
-        startBtn.addEventListener('click', (e) => {
+        startBtn.addEventListener('click', async (e) => {
             console.log('🔵 Fetch Data button clicked!');
+            // Cancel any typing animation immediately
+            const { cancelTyping } = await import('./tutorial-effects.js');
+            cancelTyping();
             saveRecentSearch(); // Save search before fetching (no-op now, handled by cache)
             startStreaming(e);
             e.target.blur(); // Blur so spacebar can toggle play/pause
