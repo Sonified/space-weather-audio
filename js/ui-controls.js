@@ -212,6 +212,13 @@ export async function loadSavedSpacecraft() {
     const spacecraftSelect = document.getElementById('spacecraft');
     if (!spacecraftSelect) return;
 
+    // Skip localStorage restoration if loading from a share link
+    // The share link handler (applySharedSession) already set the correct values
+    if (sessionStorage.getItem('isSharedSession') === 'true') {
+        console.log('🔗 Skipping localStorage restoration (share link active)');
+        return;
+    }
+
     // Migrate from old 'selectedVolcano' key if it exists
     const legacySelection = localStorage.getItem('selectedVolcano');
     if (legacySelection) {
