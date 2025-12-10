@@ -5,6 +5,9 @@
 
 import * as State from './audio-state.js';
 
+// Minimum frequency for logarithmic scale (Hz) - defines the bottom of the log scale
+const LOG_SCALE_MIN_FREQ = 0.03;
+
 // Track previous playback rate for slight smoothing
 let previousPlaybackRate = 1.0;
 const SMOOTHING_FACTOR = 0.15; // Light smoothing (0 = no smoothing, 1 = full smoothing)
@@ -148,9 +151,9 @@ export function drawFrequencyAxis() {
     
     // Draw each tick - show ALL ticks regardless of playback speed
     tickFrequencies.forEach(originalFreq => {
-        // Skip 0 Hz (and any sub-0.1 Hz for log scale), and max frequency
+        // Skip 0 Hz (and any sub-0.05 Hz for log scale), and max frequency
         // BUT: allow 50 Hz to show when speed < 0.95x (even if it's the Nyquist)
-        if (originalFreq === 0 || (scaleType === 'logarithmic' && originalFreq < 0.1)) return;
+        if (originalFreq === 0 || (scaleType === 'logarithmic' && originalFreq < LOG_SCALE_MIN_FREQ)) return;
         if (originalFreq === originalNyquist && !(originalFreq === 50 && smoothedRate < 0.95)) return;
         
         // For square root scale at slower speeds, remove specific frequencies to reduce clutter
@@ -269,12 +272,11 @@ export function drawFrequencyAxis() {
  */
 function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
     const normalized = freq / maxFreq; // 0 to 1
-    
+
     if (scaleType === 'logarithmic') {
         // Logarithmic scale
-        const minFreq = 0.1; // Start at 0.1 Hz for low-frequency data
-        const freqSafe = Math.max(freq, minFreq);
-        const logMin = Math.log10(minFreq);
+        const freqSafe = Math.max(freq, LOG_SCALE_MIN_FREQ);
+        const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
         const logMax = Math.log10(maxFreq);
         const logFreq = Math.log10(freqSafe);
         const normalizedLog = (logFreq - logMin) / (logMax - logMin);
@@ -294,15 +296,14 @@ function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
  * This is needed because log scale is NOT homogeneous - we must stretch positions, not scale frequencies
  */
 function calculateStretchFactorForLog(playbackRate, originalNyquist) {
-    const minFreq = 0.1; // Start at 0.1 Hz for low-frequency data
-    const logMin = Math.log10(minFreq);
+    const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
     const logMax = Math.log10(originalNyquist);
     const logRange = logMax - logMin;
     
     // Adapted from spectrogram stretch factor: targetMaxFreq = originalNyquist / playbackRate
     // At higher playbackRate, we show a smaller portion (zooming in on lower frequencies)
     const targetMaxFreq = originalNyquist / playbackRate;
-    const logTargetMax = Math.log10(Math.max(targetMaxFreq, minFreq));
+    const logTargetMax = Math.log10(Math.max(targetMaxFreq, LOG_SCALE_MIN_FREQ));
     const targetLogRange = logTargetMax - logMin;
     const fraction = targetLogRange / logRange;
     
@@ -323,9 +324,8 @@ export function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeig
     if (scaleType === 'logarithmic') {
         // 🦋 LOGARITHMIC: Calculate position at 1x (no playback scaling in log space!)
         // Use FIXED denominator (logMax = log10(originalNyquist)) to match spectrogram rendering
-        const minFreq = 0.1; // Start at 0.1 Hz for low-frequency data
-        const freqSafe = Math.max(freq, minFreq);
-        const logMin = Math.log10(minFreq);
+        const freqSafe = Math.max(freq, LOG_SCALE_MIN_FREQ);
+        const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
         const logMax = Math.log10(originalNyquist); // FIXED denominator!
         const logFreq = Math.log10(freqSafe);
         const normalizedLog = (logFreq - logMin) / (logMax - logMin);
@@ -364,21 +364,21 @@ function generateLogTicks(maxFreq) {
     ticks.push(0);
 
     // Logarithmic increments
-    // Start from decade -1 (0.1, 0.2, 0.5) for low-frequency data
+    // Start from decade -2 for low-frequency data
     const decades = Math.ceil(Math.log10(maxFreq));
-    for (let decade = -1; decade <= decades; decade++) {
+    for (let decade = -2; decade <= decades; decade++) {
         const base = Math.pow(10, decade);
         [1, 2, 5].forEach(mult => {
             const freq = base * mult;
-            if (freq >= 0.1 && freq <= maxFreq) {
+            if (freq >= LOG_SCALE_MIN_FREQ && freq <= maxFreq) {
                 ticks.push(freq);
             }
         });
     }
 
     // Add specific frequencies for better granularity
-    [0.1, 0.2, 0.5, 0.7, 1.5, 3, 4, 7, 15, 30, 40].forEach(freq => {
-        if (freq >= 0.1 && freq <= maxFreq) {
+    [0.05, 0.1, 0.2, 0.5, 0.7, 1.5, 3, 4, 7, 15, 30, 40].forEach(freq => {
+        if (freq >= LOG_SCALE_MIN_FREQ && freq <= maxFreq) {
             ticks.push(freq);
         }
     });

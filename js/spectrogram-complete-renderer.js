@@ -333,15 +333,15 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             }
             
             const frequency = (binIndex / totalBins) * originalNyquist;
-            
+
             if (State.frequencyScale === 'logarithmic') {
-                const minFreq = 0.1; // Start at 0.1 Hz for low-frequency data
+                const minFreq = 0.05; // Start at 0.05 Hz for low-frequency data
                 const freqSafe = Math.max(frequency, minFreq);
                 const logMin = Math.log10(minFreq);
                 const logMax = Math.log10(originalNyquist);
                 const logFreq = Math.log10(freqSafe);
                 const normalizedLog = (logFreq - logMin) / (logMax - logMin);
-                
+
                 return canvasHeight - (normalizedLog * canvasHeight);
             } else if (State.frequencyScale === 'sqrt') {
                 const normalized = frequency / originalNyquist;
@@ -352,7 +352,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
                 return canvasHeight - (normalized * canvasHeight);
             }
         };
-        
+
         // Create ImageData for direct pixel manipulation
         const imageData = ctx.createImageData(width, height);
         const pixels = imageData.data;
@@ -1297,8 +1297,8 @@ function calculateStretchFactor(playbackRate, frequencyScale) {
     } else if (frequencyScale === 'logarithmic') {
         const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
         const originalNyquist = originalSampleRate / 2;
-        const minFreq = 0.1; // Start at 0.1 Hz for low-frequency data
-        
+        const minFreq = 0.05; // Start at 0.05 Hz for low-frequency data
+
         const logMin = Math.log10(minFreq);
         const logMax = Math.log10(originalNyquist);
         const logRange = logMax - logMin;
@@ -1883,17 +1883,17 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         const getYPosition = (binIndex, totalBins, canvasHeight) => {
             const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
             const originalNyquist = originalSampleRate / 2;
-            
+
             const frequency = (binIndex / totalBins) * originalNyquist;
-            
+
             if (State.frequencyScale === 'logarithmic') {
-                const minFreq = 0.1; // Start at 0.1 Hz for low-frequency data
+                const minFreq = 0.05; // Start at 0.05 Hz for low-frequency data
                 const freqSafe = Math.max(frequency, minFreq);
                 const logMin = Math.log10(minFreq);
                 const logMax = Math.log10(originalNyquist);
                 const logFreq = Math.log10(freqSafe);
                 const normalizedLog = (logFreq - logMin) / (logMax - logMin);
-                
+
                 return canvasHeight - (normalizedLog * canvasHeight);
             } else if (State.frequencyScale === 'sqrt') {
                 const normalized = frequency / originalNyquist;
