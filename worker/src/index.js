@@ -7,6 +7,10 @@
  *   shares/{share_id}.json
  */
 
+// 🔄 APP VERSION - Increment this when deploying frontend changes
+// Format: YYYYMMDD.N (N = deployment number for the day)
+const APP_VERSION = '20251210.1';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -184,6 +188,11 @@ export default {
       // Health check
       if (path === '/health') {
         return json({ status: 'healthy', service: 'space-weather-audio-api' });
+      }
+
+      // Version check - frontend uses this to know when to refresh
+      if (path === '/api/version') {
+        return json({ version: APP_VERSION });
       }
 
       // Status
@@ -425,27 +434,56 @@ async function listUsernames(env) {
   const prefix = 'usernames/';
   const listed = await env.BUCKET.list({ prefix });
 
+  // Count shares per user
+  const sharePrefix = 'shares/';
+  const shareListed = await env.BUCKET.list({ prefix: sharePrefix });
+  const shareCountByUser = {};
+
+  for (const obj of shareListed.objects) {
+    try {
+      const data = await env.BUCKET.get(obj.key);
+      if (data) {
+        const shareData = await data.json();
+        const sourceUser = shareData.source_username;
+        if (sourceUser) {
+          shareCountByUser[sourceUser.toLowerCase()] = (shareCountByUser[sourceUser.toLowerCase()] || 0) + 1;
+        }
+      }
+    } catch (e) {
+      // Skip malformed shares
+    }
+  }
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const hourAgo = new Date(now - 60 * 60 * 1000);
+
   const usernames = [];
   for (const obj of listed.objects) {
     try {
       const data = await env.BUCKET.get(obj.key);
       if (data) {
         const userData = await data.json();
+        const username = userData.username;
+        const lastActive = new Date(userData.last_active_at);
         usernames.push({
-          username: userData.username,
+          username: username,
           registered_at: userData.registered_at,
           last_active_at: userData.last_active_at,
+          active_today: lastActive >= todayStart,
+          active_last_hour: lastActive >= hourAgo,
+          share_count: shareCountByUser[username.toLowerCase()] || 0,
         });
       }
     } catch (e) {
       // Extract username from key if JSON parse fails
       const username = obj.key.replace(prefix, '').replace('.json', '');
-      usernames.push({ username, last_modified: obj.uploaded });
+      usernames.push({ username, last_modified: obj.uploaded, share_count: 0, active_today: false, active_last_hour: false });
     }
   }
 
-  // Sort by registered_at descending
-  usernames.sort((a, b) => (b.registered_at || '').localeCompare(a.registered_at || ''));
+  // Sort by last_active_at descending
+  usernames.sort((a, b) => (b.last_active_at || '').localeCompare(a.last_active_at || ''));
 
   return json({
     success: true,

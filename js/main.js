@@ -1041,11 +1041,54 @@ function updateSpacecraftDropdownLabels(loadedSpacecraft, selectedSpacecraft) {
 
 // console.log('🟢 REACHED LINE 1289 - About to define initialization');
 
+// =============================================================================
+// 🔄 VERSION CHECK - Auto-refresh when new code is deployed
+// Uses Last-Modified header of version.json - fully automatic, no manual bumping!
+// =============================================================================
+async function checkAppVersion() {
+    console.log('🔍 Checking for app updates...');
+    try {
+        // Fetch version.json with cache-busting to get fresh Last-Modified header
+        const res = await fetch(`/version.json?_=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) {
+            console.log('⚠️ Version check: Could not fetch version.json');
+            return false;
+        }
+
+        // Use Last-Modified header as the version (changes automatically on every deploy)
+        const serverVersion = res.headers.get('last-modified') || res.headers.get('etag');
+        if (!serverVersion) {
+            console.log('⚠️ Version check: No Last-Modified header found');
+            return false;
+        }
+
+        const localVersion = localStorage.getItem('app_version');
+        console.log(`📋 Version check: Local="${localVersion || '(first visit)'}" vs Server="${serverVersion}"`);
+
+        if (localVersion && localVersion !== serverVersion) {
+            console.log('%c🔄 NEW VERSION DETECTED - Refreshing page...', 'color: #FF9800; font-weight: bold; font-size: 14px');
+            localStorage.setItem('app_version', serverVersion);
+            location.reload();
+            return true; // Will reload
+        }
+
+        localStorage.setItem('app_version', serverVersion);
+        console.log(`%c✅ App is up to date: ${serverVersion}`, 'color: #4CAF50; font-weight: bold');
+    } catch (e) {
+        // Silently fail - version check is non-critical
+        console.log('⚠️ Version check skipped (offline or error)', e.message);
+    }
+    return false;
+}
+
 // Main initialization function
 async function initializeMainApp() {
     console.log('════════════════════');
     console.log('☀️ SOLAR AUDIFICATION PORTAL - INITIALIZING!');
     console.log('════════════════════');
+
+    // Check for new version first (will reload page if update available)
+    if (await checkAppVersion()) return;
 
     // Group core system initialization
     console.groupCollapsed('🔧 [INIT] Core Systems');
@@ -1070,7 +1113,11 @@ async function initializeMainApp() {
 
     // Initialize share modal (for sharing analysis sessions)
     initShareModal();
-    
+
+    // Start heartbeat tracking (updates last_active_at for logged-in users)
+    const { startHeartbeatTracking } = await import('./session-management.js');
+    startHeartbeatTracking();
+
     console.groupEnd(); // End Core Systems
     
     // Group UI setup

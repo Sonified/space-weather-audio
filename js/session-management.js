@@ -18,6 +18,11 @@ let countdownInterval = null;
 const INACTIVE_WARNING_MS = 10 * 60 * 1000;  // 10 minutes
 const INACTIVE_TIMEOUT_MS = 20 * 60 * 1000;  // 20 minutes
 
+// ===== HEARTBEAT TRACKING =====
+let heartbeatInterval = null;
+let userWasActiveSinceLastHeartbeat = false;
+const HEARTBEAT_INTERVAL_MS = 60 * 1000;  // 1 minute
+
 /**
  * Set last activity time (for testing purposes)
  * @param {number} timestamp - Timestamp to set as last activity time
@@ -33,6 +38,7 @@ export function setLastActivityTime(timestamp) {
 export function resetActivityTimer() {
     lastActivityTime = Date.now();
     timeoutWarningShown = false;
+    userWasActiveSinceLastHeartbeat = true;  // Mark activity for heartbeat
     hideTimeoutWarning(); // Hide warning if it's showing
 }
 
@@ -483,7 +489,67 @@ export function stopActivityTimer() {
     document.removeEventListener('keydown', resetActivityTimer);
     document.removeEventListener('visibilitychange', checkTimeoutOnVisibilityChange);
     window.removeEventListener('focus', checkTimeoutOnVisibilityChange);
-    
+
     console.log('⏱️ Activity timer stopped');
+}
+
+// =============================================================================
+// HEARTBEAT TRACKING (for personal/logged-in users)
+// =============================================================================
+
+/**
+ * Send heartbeat if user was active since last check
+ */
+async function sendHeartbeatIfActive() {
+    if (!userWasActiveSinceLastHeartbeat) {
+        return; // No activity since last heartbeat, skip
+    }
+
+    try {
+        const { getParticipantId } = await import('./qualtrics-api.js');
+        const username = getParticipantId();
+
+        if (!username) {
+            return; // No user logged in
+        }
+
+        const { sendHeartbeat } = await import('./share-api.js');
+        await sendHeartbeat(username);
+        console.log('💓 Heartbeat sent for', username);
+
+        // Reset the activity flag
+        userWasActiveSinceLastHeartbeat = false;
+    } catch (error) {
+        // Silent fail - don't spam console
+        console.debug('Heartbeat failed:', error.message);
+    }
+}
+
+/**
+ * Start heartbeat tracking (sends heartbeat every minute if user is active)
+ */
+export function startHeartbeatTracking() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+
+    // Send initial heartbeat on page load
+    userWasActiveSinceLastHeartbeat = true;
+    sendHeartbeatIfActive();
+
+    // Then check every minute
+    heartbeatInterval = setInterval(sendHeartbeatIfActive, HEARTBEAT_INTERVAL_MS);
+    console.log('💓 Heartbeat tracking started (1 min interval)');
+}
+
+/**
+ * Stop heartbeat tracking
+ */
+export function stopHeartbeatTracking() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+    console.log('💓 Heartbeat tracking stopped');
 }
 
