@@ -1639,7 +1639,7 @@ export function setupWaveformInteraction() {
                         if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
                             zoomToFull();
                         } else {
-                            zoomToRegion(region);
+                            zoomToRegion(zoomIndex);
                         }
                     }
                 }
