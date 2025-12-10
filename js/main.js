@@ -1626,9 +1626,17 @@ async function initializeMainApp() {
         }
     }, 0);
     
+    // Handle orientation change on mobile - trigger resize logic
+    window.addEventListener('orientationchange', () => {
+        // Small delay to let the browser finish orientation change
+        setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+        }, 100);
+    });
+
     window.addEventListener('resize', () => {
         if (resizeRAF) return; // Already scheduled
-        
+
         resizeRAF = requestAnimationFrame(() => {
             // 🔥 FIX: Check document connection before DOM manipulation
             if (!document.body || !document.body.isConnected) {
