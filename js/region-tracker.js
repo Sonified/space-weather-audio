@@ -2402,7 +2402,7 @@ function renderFeatures(regionId, regionIndex) {
         }
         
         featureRow.innerHTML = `
-            <span class="feature-number">Feature ${featureIndex + 1}</span>
+            <span class="feature-number">Feature ${regionIndex + 1}.${featureIndex + 1}</span>
             <select id="repetition-${regionIndex}-${featureIndex}">
                 <option value="Unique" ${feature.repetition === 'Unique' || !feature.repetition ? 'selected' : ''}>Unique</option>
                 <option value="Repeated" ${feature.repetition === 'Repeated' ? 'selected' : ''}>Repeated</option>

@@ -464,9 +464,29 @@ export async function changeFftSize() {
 
     // Re-render the spectrogram if one is already rendered
     if (isCompleteSpectrogramRendered()) {
-        // Clear cached spectrogram and re-render with new FFT size
-        clearCompleteSpectrogram();
-        await renderCompleteSpectrogram();
+        // Check if we're zoomed into a region
+        if (zoomState.isInitialized() && zoomState.isInRegion()) {
+            // Zoomed in: re-render both the region view AND the elastic friend
+            const regionRange = zoomState.getRegionRange();
+            console.log(`📐 Zoomed into region - re-rendering region view + elastic friend`);
+
+            // Convert Date objects to seconds
+            const dataStartMs = State.dataStartTime ? State.dataStartTime.getTime() : 0;
+            const startSeconds = (regionRange.startTime.getTime() - dataStartMs) / 1000;
+            const endSeconds = (regionRange.endTime.getTime() - dataStartMs) / 1000;
+
+            // Clear and re-render the region view
+            resetSpectrogramState();
+            await renderCompleteSpectrogramForRegion(startSeconds, endSeconds, false);
+
+            // Update the elastic friend in background (for zoom-out)
+            console.log(`🏠 Starting background render of full spectrogram for elastic friend...`);
+            updateElasticFriendInBackground();
+        } else {
+            // Full view: clear and re-render
+            clearCompleteSpectrogram();
+            await renderCompleteSpectrogram();
+        }
     }
 }
 
@@ -1497,7 +1517,8 @@ function drawSavedBox(ctx, box) {
     ctx.fillRect(x, y, width, height);
     
     // Add feature number label in upper left corner (like orange boxes!)
-    const numberText = (box.featureIndex + 1).toString(); // 1-indexed for display
+    // Format: region.feature (e.g., 1.1, 1.2, 2.1)
+    const numberText = `${box.regionIndex + 1}.${box.featureIndex + 1}`;
     ctx.font = '16px Arial, sans-serif'; // Removed bold for flatter look
     ctx.fillStyle = 'rgba(255, 160, 80, 0.9)'; // Slightly more opaque, less 3D
     ctx.textAlign = 'left';

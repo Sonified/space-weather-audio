@@ -35,9 +35,10 @@ export function addFeatureBox(regionIndex, featureIndex, boxElement) {
     boxElement.style.background = 'rgba(255, 140, 0, 0.15)';
 
     // Add feature number label in upper left corner
+    // Format: region.feature (e.g., 1.1, 1.2, 2.1)
     const numberLabel = document.createElement('div');
     numberLabel.className = 'feature-box-number';
-    numberLabel.textContent = featureIndex + 1; // 1-indexed for display
+    numberLabel.textContent = `${regionIndex + 1}.${featureIndex + 1}`;
     numberLabel.style.position = 'absolute';
     numberLabel.style.top = '3px';
     numberLabel.style.left = '6px';
