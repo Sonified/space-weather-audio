@@ -122,6 +122,7 @@ function pickAdjectiveNoun() {
 function captureSpectrogramThumbnail() {
     const spectrogramCanvas = document.getElementById('spectrogram');
     const axisCanvas = document.getElementById('spectrogram-axis');
+    const xAxisCanvas = document.getElementById('waveform-x-axis');
 
     if (!spectrogramCanvas) {
         console.warn('Spectrogram canvas not found');
@@ -131,14 +132,17 @@ function captureSpectrogramThumbnail() {
     try {
         // Calculate source dimensions
         const axisWidth = axisCanvas ? axisCanvas.width : 0;
+        const xAxisHeight = xAxisCanvas ? xAxisCanvas.height : 0;
         const sourceWidth = spectrogramCanvas.width + axisWidth;
-        const sourceHeight = spectrogramCanvas.height;
+        const sourceHeight = spectrogramCanvas.height + xAxisHeight;
 
         // Target width for social media previews
         // 1200px is the recommended OG image width for Twitter/Facebook
         const targetWidth = 1200;
         const scale = targetWidth / sourceWidth;
         const targetHeight = Math.round(sourceHeight * scale);
+        const scaledSpectrogramHeight = Math.round(spectrogramCanvas.height * scale);
+        const scaledXAxisHeight = Math.round(xAxisHeight * scale);
 
         // Create combined canvas at reduced size
         const thumbnailCanvas = document.createElement('canvas');
@@ -154,20 +158,26 @@ function captureSpectrogramThumbnail() {
         ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, targetWidth, targetHeight);
 
-        // Draw main spectrogram on the left
-        const scaledAxisWidth = axisCanvas ? Math.round(axisWidth * scale) : 0;
+        // Draw main spectrogram on the left (top portion)
+        // Make y-axis narrower (60% of scaled width) to avoid dominating the thumbnail
+        const scaledAxisWidth = axisCanvas ? Math.round(axisWidth * scale * 0.6) : 0;
         const spectrogramW = targetWidth - scaledAxisWidth;
-        ctx.drawImage(spectrogramCanvas, 0, 0, spectrogramW, targetHeight);
+        ctx.drawImage(spectrogramCanvas, 0, 0, spectrogramW, scaledSpectrogramHeight);
 
         // Draw feature boxes overlay (if any boxes are drawn)
         const overlayCanvas = document.getElementById('spectrogram-selection-overlay');
         if (overlayCanvas) {
-            ctx.drawImage(overlayCanvas, 0, 0, spectrogramW, targetHeight);
+            ctx.drawImage(overlayCanvas, 0, 0, spectrogramW, scaledSpectrogramHeight);
         }
 
-        // Draw axis on the right side
+        // Draw y-axis on the right side
         if (axisCanvas) {
-            ctx.drawImage(axisCanvas, spectrogramW, 0, scaledAxisWidth, targetHeight);
+            ctx.drawImage(axisCanvas, spectrogramW, 0, scaledAxisWidth, scaledSpectrogramHeight);
+        }
+
+        // Draw x-axis at the bottom (below the spectrogram, spanning full width minus y-axis)
+        if (xAxisCanvas) {
+            ctx.drawImage(xAxisCanvas, 0, scaledSpectrogramHeight, spectrogramW, scaledXAxisHeight);
         }
 
         // Convert to JPEG at 70% quality - great for social media, small file size
