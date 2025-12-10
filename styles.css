@@ -2978,5 +2978,22 @@ input[type="range"]:disabled {
     [type="range"] {
         touch-action: pan-y;
     }
+
+    /* Wrap visualization panel controls (FFT, Color Map, Frequency Scale) */
+    .panel-visualization > div {
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    /* Wrap playback panel controls */
+    .panel-playback > div {
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    .panel-playback button {
+        min-width: 100px !important;
+        width: auto !important;
+    }
 }
 
