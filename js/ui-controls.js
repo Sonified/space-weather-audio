@@ -2783,7 +2783,8 @@ export function submitParticipantSetup() {
         setTimeout(async () => {
             const { typeText } = await import('./tutorial-effects.js');
             statusEl.className = 'status info';
-            typeText(statusEl, '👈 click Fetch Data to begin', 30, 10);
+            const msg = State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin';
+            typeText(statusEl, msg, 30, 10);
         }, 1200);
     }
 
