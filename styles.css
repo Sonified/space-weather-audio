@@ -2916,10 +2916,10 @@ input[type="range"]:disabled {
         padding: 8px 12px;
     }
 
-    /* Ensure waveform is touch-friendly */
+    /* Ensure waveform is touch-friendly - pan-y allows vertical scroll */
     #waveform {
         min-height: 100px;
-        touch-action: none; /* Prevent browser gestures on waveform */
+        touch-action: pan-y; /* Allow vertical scroll, prevent horizontal gestures */
     }
 }
 
