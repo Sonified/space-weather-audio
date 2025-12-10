@@ -1300,6 +1300,11 @@ async function initializeMainApp() {
     loadColormap();
     loadFftSize();
 
+    // Load waveform click state (to skip glow animation for returning users)
+    if (localStorage.getItem('waveformHasBeenClicked') === 'true') {
+        State.setWaveformHasBeenClicked(true);
+    }
+
     initWaveformWorker();
     
     const sliderValueFor1x = calculateSliderForSpeed(1.0);

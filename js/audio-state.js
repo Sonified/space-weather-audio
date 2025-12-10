@@ -202,7 +202,13 @@ export function setSelectionStart(value) { selectionStart = value; }
 export function setSelectionEnd(value) { selectionEnd = value; }
 export function setIsSelecting(value) { isSelecting = value; }
 export function setSelectionStartX(value) { selectionStartX = value; }
-export function setWaveformHasBeenClicked(value) { waveformHasBeenClicked = value; }
+export function setWaveformHasBeenClicked(value) {
+    waveformHasBeenClicked = value;
+    // Persist to localStorage so returning users don't see the glow
+    if (value === true) {
+        localStorage.setItem('waveformHasBeenClicked', 'true');
+    }
+}
 export function setWaitingForSelection(value) { waitingForSelection = value; }
 export function setWaitingForRegionCreation(value) { waitingForRegionCreation = value; }
 export function setWaitingForRegionPlayClick(value) { waitingForRegionPlayClick = value; }
