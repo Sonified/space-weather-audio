@@ -274,6 +274,12 @@ export default {
         return await registerUsername(request, env, decodeURIComponent(usernameRegisterMatch[1]));
       }
 
+      // POST /api/username/:username/heartbeat - Update last active timestamp
+      const heartbeatMatch = path.match(/^\/api\/username\/([^/]+)\/heartbeat$/);
+      if (heartbeatMatch && request.method === 'POST') {
+        return await updateHeartbeat(env, decodeURIComponent(heartbeatMatch[1]));
+      }
+
       // DELETE /api/username/:username - Delete a username from the pool
       const usernameDeleteMatch = path.match(/^\/api\/username\/([^/]+)$/);
       if (usernameDeleteMatch && request.method === 'DELETE') {
@@ -540,6 +546,34 @@ async function deleteUsername(env, username) {
     username: validation.username,
     message: 'Username deleted successfully'
   });
+}
+
+async function updateHeartbeat(env, username) {
+  const validation = validateUsername(username);
+  if (!validation.valid) {
+    return json({ success: false, error: validation.error }, 400);
+  }
+
+  const key = getUsernameKey(validation.username);
+  const now = new Date().toISOString();
+
+  try {
+    const existing = await env.BUCKET.get(key);
+    if (!existing) {
+      return json({ success: false, error: 'Username not found' }, 404);
+    }
+
+    const userData = await existing.json();
+    userData.last_active_at = now;
+
+    await env.BUCKET.put(key, JSON.stringify(userData), {
+      httpMetadata: { contentType: 'application/json' }
+    });
+
+    return json({ success: true, last_active_at: now });
+  } catch (e) {
+    return json({ success: false, error: 'Failed to update heartbeat' }, 500);
+  }
 }
 
 // =============================================================================

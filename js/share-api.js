@@ -218,6 +218,23 @@ export async function deleteUsername(username) {
     return data;
 }
 
+/**
+ * Send heartbeat to update user's last_active_at timestamp
+ * @param {string} username - The username to update
+ * @returns {Promise<Object>} Result {success: boolean, last_active_at: string}
+ */
+export async function sendHeartbeat(username) {
+    const response = await fetch(`${API_BASE}/api/username/${encodeURIComponent(username)}/heartbeat`, {
+        method: 'POST'
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || 'Failed to send heartbeat');
+    }
+    return data;
+}
+
 // =============================================================================
 // Utility Functions
 // =============================================================================

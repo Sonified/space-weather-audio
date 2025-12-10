@@ -1244,6 +1244,20 @@ export function setupSpectrogramSelection() {
     });
     
     canvas.addEventListener('mousemove', (e) => {
+        // 👆 Cursor change: pointer when hovering feature boxes (when zoomed out)
+        const canvasRect = canvas.getBoundingClientRect();
+        const hoverX = e.clientX - canvasRect.left;
+        const hoverY = e.clientY - canvasRect.top;
+        const hoveredBox = getClickedBox(hoverX, hoverY);
+
+        if (hoveredBox && !zoomState.isInRegion() && !spectrogramSelectionActive) {
+            canvas.style.cursor = 'pointer';
+        } else if (zoomState.isInRegion() && !spectrogramSelectionActive) {
+            canvas.style.cursor = 'crosshair';
+        } else if (!spectrogramSelectionActive) {
+            canvas.style.cursor = 'default';
+        }
+
         // 🔥 STUCK STATE DETECTION: If selection is active but overlay context is missing, we're stuck!
         if (spectrogramSelectionActive && !spectrogramOverlayCtx) {
             console.error('⚠️ [STUCK STATE DETECTED] Selection active but overlay context missing in mousemove!');
@@ -1258,8 +1272,8 @@ export function setupSpectrogramSelection() {
         }
         
         if (!spectrogramSelectionActive || !spectrogramOverlayCtx) return;
-        
-        const canvasRect = canvas.getBoundingClientRect();
+
+        // Reuse canvasRect from above (already declared at line 1248)
         const currentX = e.clientX - canvasRect.left;
         const currentY = e.clientY - canvasRect.top;
         
