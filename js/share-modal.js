@@ -9,6 +9,7 @@ import { getRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { getParticipantId } from './qualtrics-api.js';
 import { getCurrentColormap } from './colormaps.js';
+import { updateDatasetOptions } from './ui-controls.js';
 
 let shareModal = null;
 let isSharing = false;
@@ -309,17 +310,17 @@ function createShareModal() {
                 </div>
 
                 <!-- Success View -->
-                <div id="shareSuccessView" style="display: none; text-align: center; padding: 20px 0;">
-                    <div style="font-size: 56px; margin-bottom: 16px;">✅</div>
-                    <h4 style="color: #fff; margin-bottom: 24px; font-size: 20px;">Share Link Created!</h4>
-                    <div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 10px; margin-bottom: 24px; border: 1px solid rgba(102, 126, 234, 0.3);">
-                        <input type="text" id="shareUrlInput" readonly style="width: 100%; padding: 14px; font-size: 13px; border: none; border-radius: 8px; text-align: center; box-sizing: border-box; background: rgba(0,0,0,0.3); color: #fff;">
+                <div id="shareSuccessView" style="display: none; text-align: center; padding: 10px 0;">
+                    <div style="font-size: 32px; margin-bottom: 8px;">✅</div>
+                    <h4 style="color: #fff; margin-bottom: 14px; font-size: 18px;">Share Link Created!</h4>
+                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 14px; border: 1px solid rgba(102, 126, 234, 0.3);">
+                        <input type="text" id="shareUrlInput" readonly style="width: 100%; padding: 10px; font-size: 13px; border: none; border-radius: 8px; text-align: center; box-sizing: border-box; background: rgba(0,0,0,0.3); color: #fff;">
                     </div>
                     <div style="display: flex; gap: 12px; justify-content: center;">
-                        <button type="button" id="copyShareUrlBtn" style="padding: 12px 28px; font-size: 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">📋 Copy Link</button>
-                        <button type="button" id="doneShareBtn" style="padding: 12px 28px; font-size: 14px; background: rgba(255,255,255,0.1); color: #ccc; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; cursor: pointer; font-weight: 500;">Done</button>
+                        <button type="button" id="copyShareUrlBtn" style="padding: 10px 22px; font-size: 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">📋 Copy Link</button>
+                        <button type="button" id="doneShareBtn" style="padding: 10px 22px; font-size: 14px; background: rgba(255,255,255,0.1); color: #ccc; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; cursor: pointer; font-weight: 500;">Done</button>
                     </div>
-                    <p id="shareExpiry" style="margin-top: 20px; color: #888; font-size: 13px;"></p>
+                    <p id="shareExpiry" style="margin-top: 12px; color: #888; font-size: 12px;"></p>
                 </div>
 
                 <!-- Error View -->
@@ -332,19 +333,38 @@ function createShareModal() {
 
                 <!-- Loading View -->
                 <div id="shareLoadingView" style="display: none; text-align: center; padding: 40px 0;">
-                    <div style="font-size: 32px; margin-bottom: 15px; animation: spin 1s linear infinite;">⏳</div>
+                    <div class="share-spinner"></div>
                     <p id="shareLoadingText" style="color: #666;">Creating share link...</p>
                 </div>
             </div>
         </div>
     `;
 
-    // Add spinning animation
+    // Add spinner styles
     const style = document.createElement('style');
     style.textContent = `
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+        .share-spinner {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 20px auto;
+            border: 4px solid rgba(102, 126, 234, 0.2);
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: share-spin 1s ease-in-out infinite, share-glow 2s ease-in-out infinite;
+        }
+        @keyframes share-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes share-glow {
+            0%, 100% {
+                box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
+                border-top-color: #667eea;
+            }
+            50% {
+                box-shadow: 0 0 20px rgba(102, 126, 234, 0.8), 0 0 30px rgba(118, 75, 162, 0.4);
+                border-top-color: #764ba2;
+            }
         }
     `;
     document.head.appendChild(style);
@@ -692,8 +712,8 @@ export function applySharedSession(shareData) {
 
     if (spacecraftSelect && session.spacecraft) {
         spacecraftSelect.value = session.spacecraft;
-        // Trigger change to update data type options
-        spacecraftSelect.dispatchEvent(new Event('change'));
+        // Directly update dataset options (event listener may not be attached yet)
+        updateDatasetOptions();
     }
 
     // Set time range
@@ -707,12 +727,10 @@ export function applySharedSession(shareData) {
         document.getElementById('endTime').value = endDate.toISOString().slice(11, 23);
     }
 
-    // Wait for data type options to populate then set
-    setTimeout(() => {
-        if (dataTypeSelect && session.data_type) {
-            dataTypeSelect.value = session.data_type;
-        }
-    }, 100);
+    // Set data type (options are already populated by updateDatasetOptions above)
+    if (dataTypeSelect && session.data_type) {
+        dataTypeSelect.value = session.data_type;
+    }
 
     // Note: isSharedSession was already set in checkAndLoadSharedSession() before any async work
 
