@@ -53,7 +53,7 @@ export let spectrogramInitialized = false;
 export let visualizationStarted = false;
 export let isShowingFinalWaveform = false;
 export let justSeeked = false;  // Track if we just performed a seek (to avoid race conditions)
-export let volcanoWithData = null;  // Track which volcano currently has data loaded
+export let spacecraftWithData = null;  // Track which spacecraft currently has data loaded
 
 // Visualization state
 export let frequencyScale = 'sqrt'; // 'linear', 'sqrt', or 'logarithmic'
@@ -171,7 +171,7 @@ export function setVisualizationStarted(value) { visualizationStarted = value; }
 export function setIsShowingFinalWaveform(value) { isShowingFinalWaveform = value; }
 export function setJustSeeked(value) { justSeeked = value; }
 export function setFrequencyScale(value) { frequencyScale = value; }
-export function setVolcanoWithData(value) { volcanoWithData = value; }
+export function setSpacecraftWithData(value) { spacecraftWithData = value; }
 export function setPlaybackIndicatorRAF(value) { playbackIndicatorRAF = value; }
 export function setSpectrogramRAF(value) { spectrogramRAF = value; }
 export function setWorkletBufferStatusHandler(value) { workletBufferStatusHandler = value; }

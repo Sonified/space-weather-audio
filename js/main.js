@@ -10,7 +10,7 @@ import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSp
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
-import { loadStations, loadSavedVolcano, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
+import { loadStations, loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { fetchFromR2Worker } from './data-fetcher.js';
@@ -23,7 +23,7 @@ import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxis
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
-import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchVolcanoRegions, updateCompleteButtonState, updateCmpltButtonState, showAddRegionButton } from './region-tracker.js';
+import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchSpacecraftRegions, updateCompleteButtonState, updateCmpltButtonState, showAddRegionButton } from './region-tracker.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
@@ -978,30 +978,25 @@ async function initializeApp() {
 }
 
 /**
- * Update volcano dropdown labels to show which volcano has loaded data
- * @param {string|null} loadedVolcano - Volcano with loaded data (null to clear all flags)
- * @param {string} selectedVolcano - Currently selected volcano
+ * Update spacecraft dropdown labels to show which spacecraft has loaded data
+ * @param {string|null} loadedSpacecraft - Spacecraft with loaded data (null to clear all flags)
+ * @param {string} selectedSpacecraft - Currently selected spacecraft
  */
-function updateVolcanoDropdownLabels(loadedVolcano, selectedVolcano) {
-    const volcanoSelect = document.getElementById('spacecraft');
-    if (!volcanoSelect) return;
-    
-    // Define original labels
-    const originalLabels = {
-        'kilauea': 'Kīlauea (HI)',
-        'maunaloa': 'Mauna Loa (HI)',
-        'greatsitkin': 'Great Sitkin (AK)',
-        'shishaldin': 'Shishaldin (AK)',
-        'spurr': 'Mount Spurr (AK)'
-    };
-    
-    // Update all options
-    Array.from(volcanoSelect.options).forEach(option => {
-        const volcanoValue = option.value;
-        const baseLabel = originalLabels[volcanoValue] || option.textContent;
-        
-        if (loadedVolcano && volcanoValue === loadedVolcano && volcanoValue !== selectedVolcano) {
-            // This volcano has loaded data but user selected a different one
+function updateSpacecraftDropdownLabels(loadedSpacecraft, selectedSpacecraft) {
+    const spacecraftSelect = document.getElementById('spacecraft');
+    if (!spacecraftSelect) return;
+
+    // Update all options - use data attribute or current text as base
+    Array.from(spacecraftSelect.options).forEach(option => {
+        const spacecraftValue = option.value;
+        // Store original label in data attribute if not already stored
+        if (!option.dataset.originalLabel) {
+            option.dataset.originalLabel = option.textContent;
+        }
+        const baseLabel = option.dataset.originalLabel;
+
+        if (loadedSpacecraft && spacecraftValue === loadedSpacecraft && spacecraftValue !== selectedSpacecraft) {
+            // This spacecraft has loaded data but user selected a different one
             option.textContent = `${baseLabel} - Currently Loaded`;
         } else {
             // Clear any flags
@@ -1312,8 +1307,8 @@ async function initializeMainApp() {
         console.log(`Initialized playback speed slider at position ${sliderValueFor1x} for 1.0x speed`);
     }
     
-    // Load saved volcano selection (or use default)
-    await loadSavedVolcano();
+    // Load saved spacecraft selection (or use default)
+    await loadSavedSpacecraft();
     
     // ═══════════════════════════════════════════════════════════
     // 🎯 MODE-AWARE ROUTING
@@ -1332,37 +1327,41 @@ async function initializeMainApp() {
     // Add event listeners
     document.getElementById('spacecraft').addEventListener('change', async (e) => {
         // Remove pulsing glow when user selects a spacecraft
-        const volcanoSelect = document.getElementById('spacecraft');
-        if (volcanoSelect) {
-            volcanoSelect.classList.remove('pulse-glow');
+        const spacecraftSelect = document.getElementById('spacecraft');
+        if (spacecraftSelect) {
+            spacecraftSelect.classList.remove('pulse-glow');
         }
-        const selectedVolcano = e.target.value;
-        const volcanoWithData = State.volcanoWithData;
+        const selectedSpacecraft = e.target.value;
+        const spacecraftWithData = State.spacecraftWithData;
+
+        // 💾 Save spacecraft selection to localStorage for persistence
+        localStorage.setItem('selectedSpacecraft', selectedSpacecraft);
+        console.log('💾 Saved spacecraft selection:', selectedSpacecraft);
 
         // 🛰️ Update the Data dropdown to show datasets for the selected spacecraft
         updateDatasetOptions();
 
         // 🔧 FIX: Don't switch regions here! The user is still viewing old data.
-        // Regions will switch when "Fetch Data" is clicked (via startStreaming → switchVolcanoRegions)
-        // The dropdown just selects WHICH volcano to fetch next, doesn't change current data/regions
+        // Regions will switch when "Fetch Data" is clicked (via startStreaming → switchSpacecraftRegions)
+        // The dropdown just selects WHICH spacecraft to fetch next, doesn't change current data/regions
 
-        // 🎨 Visual reminder: If there's loaded data from a different volcano, mark it as "(Currently Loaded)"
-        if (volcanoWithData && selectedVolcano !== volcanoWithData) {
-            updateVolcanoDropdownLabels(volcanoWithData, selectedVolcano);
-        } else if (volcanoWithData && selectedVolcano === volcanoWithData) {
-            // User switched back to the loaded volcano - clear the flag
-            updateVolcanoDropdownLabels(null, selectedVolcano);
+        // 🎨 Visual reminder: If there's loaded data from a different spacecraft, mark it as "(Currently Loaded)"
+        if (spacecraftWithData && selectedSpacecraft !== spacecraftWithData) {
+            updateSpacecraftDropdownLabels(spacecraftWithData, selectedSpacecraft);
+        } else if (spacecraftWithData && selectedSpacecraft === spacecraftWithData) {
+            // User switched back to the loaded spacecraft - clear the flag
+            updateSpacecraftDropdownLabels(null, selectedSpacecraft);
         }
 
-        // 🎯 In STUDY mode: prevent re-fetching same volcano (one volcano per session)
-        // 👤 In PERSONAL/DEV modes: allow re-fetching any volcano anytime
-        if (isStudyMode() && volcanoWithData && selectedVolcano === volcanoWithData) {
+        // 🎯 In STUDY mode: prevent re-fetching same spacecraft (one spacecraft per session)
+        // 👤 In PERSONAL/DEV modes: allow re-fetching any spacecraft anytime
+        if (isStudyMode() && spacecraftWithData && selectedSpacecraft === spacecraftWithData) {
             const fetchBtn = document.getElementById('startBtn');
             fetchBtn.disabled = true;
-            fetchBtn.title = 'This volcano already has data loaded. Select a different volcano to fetch new data.';
-            console.log(`🚫 Fetch button disabled - ${selectedVolcano} already has data`);
+            fetchBtn.title = 'This spacecraft already has data loaded. Select a different spacecraft to fetch new data.';
+            console.log(`🚫 Fetch button disabled - ${selectedSpacecraft} already has data`);
         } else {
-            // Switching to a different volcano - enable fetch button
+            // Switching to a different spacecraft - enable fetch button
             enableFetchButton();
             const fetchBtn = document.getElementById('startBtn');
             if (fetchBtn) {
@@ -1373,6 +1372,9 @@ async function initializeMainApp() {
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
     document.getElementById('dataType').addEventListener('change', (e) => {
+        // 💾 Save data type selection to localStorage for persistence
+        localStorage.setItem('selectedDataType', e.target.value);
+        console.log('💾 Saved data type selection:', e.target.value);
         enableFetchButton();
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
@@ -1384,6 +1386,23 @@ async function initializeMainApp() {
         enableFetchButton();
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
+
+    // 💾 Save date/time selections to localStorage for persistence
+    ['startDate', 'startTime', 'endDate', 'endTime'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', () => {
+                console.log(`📅 ${id} changed`);
+                saveDateTime();
+                enableFetchButton();
+            });
+            // Also save on input for immediate feedback
+            el.addEventListener('input', () => saveDateTime());
+        } else {
+            console.warn(`⚠️ Could not find element: ${id}`);
+        }
+    });
+    console.log('✅ Date/time persistence listeners attached');
     document.getElementById('highpassFreq').addEventListener('change', (e) => {
         enableFetchButton();
         e.target.blur(); // Blur so spacebar can toggle play/pause
@@ -1812,6 +1831,11 @@ async function initializeMainApp() {
             document.getElementById('startTime').value = startTimeStr;
             document.getElementById('endDate').value = endDateStr;
             document.getElementById('endTime').value = endTimeStr;
+
+            // 5. Save all restored values to localStorage for persistence
+            localStorage.setItem('selectedSpacecraft', cacheData.spacecraft);
+            localStorage.setItem('selectedDataType', cacheData.dataset);
+            saveDateTime();
 
             console.log(`🔍 Restored recent search: ${selectedOption.textContent}`);
             

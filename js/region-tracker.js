@@ -264,7 +264,7 @@ function setCurrentRegions(newRegions) {
  * @param {string} newSpacecraft - The spacecraft to switch to
  * @param {boolean} delayRender - If true, don't render regions immediately (wait for crossfade)
  */
-export function switchVolcanoRegions(newSpacecraft, delayRender = false) {
+export function switchSpacecraftRegions(newSpacecraft, delayRender = false) {
     if (!newSpacecraft) {
         console.warn('⚠️ Cannot switch: no spacecraft specified');
         return;

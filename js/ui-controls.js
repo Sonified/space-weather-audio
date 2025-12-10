@@ -155,33 +155,33 @@ export function fadeOutOverlay() {
 }
 
 export function loadStations() {
-    const volcanoSelect = document.getElementById('volcano');
-    // Skip if volcano element doesn't exist (we're using spacecraft mode)
-    if (!volcanoSelect) {
+    const spacecraftSelect = document.getElementById('spacecraft');
+    // Skip if spacecraft element doesn't exist
+    if (!spacecraftSelect) {
         return;
     }
-    const volcano = volcanoSelect.value;
+    const spacecraft = spacecraftSelect.value;
     const stationSelect = document.getElementById('station');
-    
-    // Save volcano selection to localStorage for persistence across sessions
-    if (volcano) {
-        localStorage.setItem('selectedVolcano', volcano);
-        
-        // Track volcano selection
+
+    // Save spacecraft selection to localStorage for persistence across sessions
+    if (spacecraft) {
+        localStorage.setItem('selectedSpacecraft', spacecraft);
+
+        // Track spacecraft selection
         const participantId = getParticipantId();
         if (participantId) {
-            trackUserAction(participantId, 'volcano_selected', { volcano: volcano });
+            trackUserAction(participantId, 'spacecraft_selected', { spacecraft: spacecraft });
         }
     }
-    
-    if (!EMBEDDED_STATIONS[volcano]) {
-        stationSelect.innerHTML = '<option value="">Volcano not found</option>';
+
+    if (!EMBEDDED_STATIONS[spacecraft]) {
+        stationSelect.innerHTML = '<option value="">Spacecraft not found</option>';
         return;
     }
-    
-    const volcanoData = EMBEDDED_STATIONS[volcano];
+
+    const spacecraftData = EMBEDDED_STATIONS[spacecraft];
     State.setAvailableStations({
-        seismic: volcanoData.seismic.map(s => ({
+        seismic: spacecraftData.seismic.map(s => ({
             network: s.network,
             station: s.station,
             location: s.location,
@@ -190,7 +190,7 @@ export function loadStations() {
             sample_rate: s.sample_rate,
             label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
         })),
-        infrasound: (volcanoData.infrasound || []).map(s => ({
+        infrasound: (spacecraftData.infrasound || []).map(s => ({
             network: s.network,
             station: s.station,
             location: s.location,
@@ -205,40 +205,123 @@ export function loadStations() {
 }
 
 /**
- * Load saved volcano selection from localStorage and apply it
- * Called on page load to restore user's preferred volcano
+ * Load saved spacecraft selection from localStorage and apply it
+ * Called on page load to restore user's preferred spacecraft
  */
-export async function loadSavedVolcano() {
-    const volcanoSelect = document.getElementById('volcano');
-    if (!volcanoSelect) return;
-    
-    // Load saved volcano from localStorage
-    const savedVolcano = localStorage.getItem('selectedVolcano');
-    if (savedVolcano && EMBEDDED_STATIONS[savedVolcano]) {
-        volcanoSelect.value = savedVolcano;
-        if (!isStudyMode()) {
-            console.log('💾 Restored volcano selection:', savedVolcano);
-        }
-        // Load stations for the saved volcano
-        loadStations();
-    } else {
-        // If no saved volcano or invalid, default to Kilauea
-        volcanoSelect.value = 'kilauea';
-        localStorage.setItem('selectedVolcano', 'kilauea');
-        console.log('🌋 Defaulted to Kilauea (first session)');
-        loadStations();
+export async function loadSavedSpacecraft() {
+    const spacecraftSelect = document.getElementById('spacecraft');
+    if (!spacecraftSelect) return;
+
+    // Migrate from old 'selectedVolcano' key if it exists
+    const legacySelection = localStorage.getItem('selectedVolcano');
+    if (legacySelection) {
+        localStorage.setItem('selectedSpacecraft', legacySelection);
+        localStorage.removeItem('selectedVolcano');
+        console.log('🔄 Migrated localStorage: selectedVolcano → selectedSpacecraft');
     }
-    
-    // In study mode: If user has already clicked "Begin Analysis" THIS SESSION, keep volcano selector disabled
+
+    // Load saved spacecraft from localStorage
+    const savedSpacecraft = localStorage.getItem('selectedSpacecraft');
+    // Validate against SPACECRAFT_DATASETS (space weather mode)
+    if (savedSpacecraft && SPACECRAFT_DATASETS[savedSpacecraft]) {
+        spacecraftSelect.value = savedSpacecraft;
+        if (!isStudyMode()) {
+            console.log('💾 Restored spacecraft selection:', savedSpacecraft);
+        }
+        // Update the Data dropdown to match the restored spacecraft
+        updateDatasetOptions();
+    } else {
+        // If no saved spacecraft or invalid, default to first option
+        const firstOption = spacecraftSelect.options[0]?.value || 'PSP';
+        spacecraftSelect.value = firstOption;
+        localStorage.setItem('selectedSpacecraft', firstOption);
+        console.log('🛰️ Defaulted to', firstOption, '(first session)');
+        updateDatasetOptions();
+    }
+
+    // Restore saved data type (after updateDatasetOptions populates the dropdown)
+    const savedDataType = localStorage.getItem('selectedDataType');
+    const dataTypeSelect = document.getElementById('dataType');
+    if (savedDataType && dataTypeSelect) {
+        // Check if the saved data type is valid for the current spacecraft
+        const validOptions = Array.from(dataTypeSelect.options).map(opt => opt.value);
+        if (validOptions.includes(savedDataType)) {
+            dataTypeSelect.value = savedDataType;
+            if (!isStudyMode()) {
+                console.log('💾 Restored data type selection:', savedDataType);
+            }
+        }
+    }
+
+    // Restore saved date/time settings
+    loadSavedDateTime();
+
+    // In study mode: If user has already clicked "Begin Analysis" THIS SESSION, keep spacecraft selector disabled
     if (isStudyMode()) {
         const { hasBegunAnalysisThisSession } = await import('./study-workflow.js');
         if (hasBegunAnalysisThisSession()) {
-            volcanoSelect.disabled = true;
-            volcanoSelect.style.opacity = '0.5';
-            volcanoSelect.style.cursor = 'not-allowed';
-            console.log('🔒 Volcano selector disabled (Begin Analysis clicked this session)');
+            spacecraftSelect.disabled = true;
+            spacecraftSelect.style.opacity = '0.5';
+            spacecraftSelect.style.cursor = 'not-allowed';
+            console.log('🔒 Spacecraft selector disabled (Begin Analysis clicked this session)');
         }
     }
+}
+
+/**
+ * Load saved date/time settings from localStorage
+ */
+function loadSavedDateTime() {
+    const startDate = document.getElementById('startDate');
+    const startTime = document.getElementById('startTime');
+    const endDate = document.getElementById('endDate');
+    const endTime = document.getElementById('endTime');
+
+    console.log('📅 loadSavedDateTime: elements found:', !!startDate, !!startTime, !!endDate, !!endTime);
+
+    const savedStartDate = localStorage.getItem('selectedStartDate');
+    const savedStartTime = localStorage.getItem('selectedStartTime');
+    const savedEndDate = localStorage.getItem('selectedEndDate');
+    const savedEndTime = localStorage.getItem('selectedEndTime');
+
+    console.log('📅 loadSavedDateTime: localStorage has:', { savedStartDate, savedStartTime, savedEndDate, savedEndTime });
+
+    if (savedStartDate && startDate) {
+        startDate.value = savedStartDate;
+    }
+    if (savedStartTime && startTime) {
+        startTime.value = savedStartTime;
+    }
+    if (savedEndDate && endDate) {
+        endDate.value = savedEndDate;
+    }
+    if (savedEndTime && endTime) {
+        endTime.value = savedEndTime;
+    }
+
+    if (savedStartDate || savedEndDate) {
+        console.log('💾 Restored date/time:', savedStartDate, savedStartTime, '→', savedEndDate, savedEndTime);
+    } else {
+        console.log('📅 No saved date/time in localStorage');
+    }
+}
+
+/**
+ * Save current date/time settings to localStorage
+ * Call this when any date/time field changes
+ */
+export function saveDateTime() {
+    const startDate = document.getElementById('startDate');
+    const startTime = document.getElementById('startTime');
+    const endDate = document.getElementById('endDate');
+    const endTime = document.getElementById('endTime');
+
+    if (startDate?.value) localStorage.setItem('selectedStartDate', startDate.value);
+    if (startTime?.value) localStorage.setItem('selectedStartTime', startTime.value);
+    if (endDate?.value) localStorage.setItem('selectedEndDate', endDate.value);
+    if (endTime?.value) localStorage.setItem('selectedEndTime', endTime.value);
+
+    console.log('💾 Saved date/time:', startDate?.value, startTime?.value, '→', endDate?.value, endTime?.value);
 }
 
 // Spacecraft to datasets mapping for the Data dropdown
@@ -264,6 +347,10 @@ const SPACECRAFT_DATASETS = {
     'SolO': [
         { value: 'SOLO_L2_MAG-RTN-NORMAL', label: 'SOLO_L2_MAG-RTN-NORMAL (Normal Mode)' },
         { value: 'SOLO_L2_MAG-RTN-BURST', label: 'SOLO_L2_MAG-RTN-BURST (Burst Mode)' }
+    ],
+    'GOES': [
+        { value: 'DN_MAGN-L2-HIRES_G16', label: 'GOES-16 MAG 10 Hz (Aug 2018 - Apr 2025)' },
+        { value: 'DN_MAGN-L2-HIRES_G19', label: 'GOES-19 MAG 10 Hz (Jun 2025 - present)' }
     ]
 };
 
@@ -299,15 +386,15 @@ export function updateDatasetOptions() {
 
 export function updateStationList() {
     const dataType = document.getElementById('dataType').value;
-    const volcanoEl = document.getElementById('volcano');
+    const spacecraftEl = document.getElementById('spacecraft');
     const stationSelect = document.getElementById('station');
 
-    // Skip if volcano/station elements don't exist (solar portal mode)
-    if (!volcanoEl || !stationSelect) {
+    // Skip if spacecraft/station elements don't exist
+    if (!spacecraftEl || !stationSelect) {
         return;
     }
 
-    const volcano = volcanoEl.value;
+    const spacecraft = spacecraftEl.value;
     const stations = State.availableStations[dataType] || [];
     
     // Only log in dev/personal modes, not study mode
@@ -324,7 +411,7 @@ export function updateStationList() {
         return;
     }
     
-    const defaultIndex = (volcano === 'kilauea') ? 3 : 0;
+    const defaultIndex = (spacecraft === 'kilauea') ? 3 : 0;
     
     stationSelect.innerHTML = stations.map((s, index) => 
         `<option value='${JSON.stringify(s)}' ${index === defaultIndex ? 'selected' : ''}>${s.label}</option>`
@@ -337,20 +424,20 @@ export function updateStationList() {
 
 export function enableFetchButton() {
     const fetchBtn = document.getElementById('startBtn');
-    const volcanoSelect = document.getElementById('volcano');
-    const currentVolcano = volcanoSelect ? volcanoSelect.value : null;
-    const volcanoWithData = State.volcanoWithData;
-    
-    // If we're on the volcano that already has data, keep fetch button disabled
-    if (volcanoWithData && currentVolcano === volcanoWithData) {
+    const spacecraftSelect = document.getElementById('spacecraft');
+    const currentSpacecraft = spacecraftSelect ? spacecraftSelect.value : null;
+    const spacecraftWithData = State.spacecraftWithData;
+
+    // If we're on the spacecraft that already has data, keep fetch button disabled
+    if (spacecraftWithData && currentSpacecraft === spacecraftWithData) {
         fetchBtn.disabled = true;
-        fetchBtn.title = 'This volcano already has data loaded. Select a different volcano to fetch new data.';
-        console.log(`🚫 Fetch button remains disabled - ${currentVolcano} already has data`);
+        fetchBtn.title = 'This spacecraft already has data loaded. Select a different spacecraft to fetch new data.';
+        console.log(`🚫 Fetch button remains disabled - ${currentSpacecraft} already has data`);
     } else {
-    fetchBtn.disabled = false;
-    fetchBtn.classList.remove('streaming');
+        fetchBtn.disabled = false;
+        fetchBtn.classList.remove('streaming');
         fetchBtn.title = '';
-    console.log('✅ Fetch button re-enabled due to parameter change');
+        console.log('✅ Fetch button re-enabled due to parameter change');
     }
 }
 
@@ -769,6 +856,17 @@ export function setupModalEventListeners() {
                 return;
             }
 
+            // Local environment: skip production API check, allow any valid username
+            // Local usernames don't get added to the production pool
+            if (isLocalEnvironment()) {
+                if (usernameStatusEl) {
+                    usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Local mode (not synced)</span>';
+                }
+                isUsernameAvailable = true;
+                updateParticipantSubmitButton();
+                return;
+            }
+
             if (usernameStatusEl) {
                 usernameStatusEl.innerHTML = '<span style="color: #666;">Checking availability...</span>';
             }
@@ -849,8 +947,8 @@ export function setupModalEventListeners() {
             participantSubmitBtn.addEventListener('click', async () => {
                 const username = participantIdInput?.value.trim();
 
-                // Register the username (claim it)
-                if (username && isUsernameAvailable) {
+                // Register the username (claim it) - skip for local environment
+                if (username && isUsernameAvailable && !isLocalEnvironment()) {
                     try {
                         await registerUsername(username);
                         console.log('✅ Username registered:', username);
@@ -858,6 +956,8 @@ export function setupModalEventListeners() {
                         // If registration fails (e.g., race condition), still proceed
                         console.warn('Username registration failed (may already be taken):', error);
                     }
+                } else if (username && isLocalEnvironment()) {
+                    console.log('🏠 Local mode: username stored locally only (not registered to production)');
                 }
 
                 submitParticipantSetup();  // Save data locally
