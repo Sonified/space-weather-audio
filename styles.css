@@ -3000,5 +3000,50 @@ input[type="range"]:disabled {
         min-width: 100px !important;
         width: auto !important;
     }
+
+    /* Share modal - compact for mobile */
+    #shareModal > div {
+        max-height: 90vh !important;
+        overflow-y: auto !important;
+    }
+
+    #shareModalBody {
+        padding: 12px !important;
+    }
+
+    #shareFormView > div {
+        margin-bottom: 10px !important;
+    }
+
+    #shareFormView label {
+        margin-bottom: 4px !important;
+        font-size: 12px !important;
+    }
+
+    #shareFormView input,
+    #shareFormView textarea {
+        padding: 8px 10px !important;
+        font-size: 13px !important;
+    }
+
+    #shareFormView textarea {
+        min-height: 40px !important;
+    }
+
+    #thumbnailPreview {
+        max-height: 150px !important;
+        overflow: hidden !important;
+    }
+
+    #shareThumbnail {
+        max-height: 150px !important;
+        object-fit: contain !important;
+    }
+
+    #emojiPicker button {
+        width: 28px !important;
+        height: 28px !important;
+        font-size: 16px !important;
+    }
 }
 
