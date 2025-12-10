@@ -182,8 +182,11 @@ async function switchComponent(componentIndex) {
         // NOTE: We do NOT update dataStartTime, dataEndTime, or clear regions
         // Those represent the SAME time period across all components
 
-        // Send to waveform worker
+        // Send to waveform worker - RESET first, then add new samples
         if (State.waveformWorker) {
+            // Reset worker to clear old samples (otherwise it appends!)
+            State.waveformWorker.postMessage({ type: 'reset' });
+            // Now add the new component's samples
             State.waveformWorker.postMessage({
                 type: 'add-samples',
                 samples: samples,
