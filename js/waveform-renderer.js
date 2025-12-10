@@ -41,9 +41,15 @@ export function showMobileTapHint() {
         mobileTapOverlay = document.createElement('div');
         mobileTapOverlay.id = 'mobileTapOverlay';
         mobileTapOverlay.innerHTML = '👆 Tap here to play';
+
+        // Get waveform position relative to parent to position overlay correctly
+        const waveformRect = waveformCanvas.getBoundingClientRect();
+        const parentRect = waveformCanvas.parentElement.getBoundingClientRect();
+        const topOffset = (waveformRect.top - parentRect.top) + (waveformRect.height / 2);
+
         mobileTapOverlay.style.cssText = `
             position: absolute;
-            top: 50%;
+            top: ${topOffset}px;
             left: 50%;
             transform: translate(-50%, -50%);
             background: rgba(0, 0, 0, 0.7);

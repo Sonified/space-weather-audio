@@ -13,7 +13,7 @@
  */
 
 import * as State from './audio-state.js';
-import { isTouchDevice } from './audio-state.js';
+import { isTouchDevice, isMobileScreen } from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
@@ -2067,7 +2067,7 @@ function renderRegions() {
                     // Update region number display (preserve original index)
                     const regionLabel = card.querySelector('.region-label');
                     if (regionLabel) {
-                        regionLabel.textContent = `Region ${originalIndex + 1}`;
+                        regionLabel.textContent = `${isMobileScreen() ? 'Reg' : 'Region'} ${originalIndex + 1}`;
                     }
                     // Update data attributes for event handlers
                     updateRegionCardDataAttributes(card, originalIndex);
@@ -2154,7 +2154,7 @@ function renderRegions() {
                     // Update region number display (preserve original index)
                     const regionLabel = card.querySelector('.region-label');
                     if (regionLabel) {
-                        regionLabel.textContent = `Region ${originalIndex + 1}`;
+                        regionLabel.textContent = `${isMobileScreen() ? 'Reg' : 'Region'} ${originalIndex + 1}`;
                     }
                     // Update data attributes for event handlers
                     updateRegionCardDataAttributes(card, originalIndex);
@@ -2182,7 +2182,7 @@ function renderRegions() {
                     }
                     const regionLabel = card.querySelector('.region-label');
                     if (regionLabel) {
-                        regionLabel.textContent = `Region ${originalIndex + 1}`;
+                        regionLabel.textContent = `${isMobileScreen() ? 'Reg' : 'Region'} ${originalIndex + 1}`;
                     }
                     updateRegionCardDataAttributes(card, originalIndex);
                 }
@@ -2251,7 +2251,7 @@ function createRegionCard(region, index) {
                 title="Play region">
             ${region.playing ? '⏸' : '▶'}
         </button>
-        <span class="region-label">Region ${index + 1}</span>
+        <span class="region-label">${isMobileScreen() ? 'Reg' : 'Region'} ${index + 1}</span>
         <div class="region-summary">
             <div class="region-time-display">
                 ${formatTime(region.startTime)} – ${formatTime(region.stopTime)}
