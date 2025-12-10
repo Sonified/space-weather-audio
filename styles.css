@@ -2916,10 +2916,10 @@ input[type="range"]:disabled {
         padding: 8px 12px;
     }
 
-    /* Ensure waveform is touch-friendly - pan-y allows vertical scroll */
+    /* Waveform needs touch-action: none to capture horizontal drags for seeking */
     #waveform {
         min-height: 100px;
-        touch-action: pan-y; /* Allow vertical scroll, prevent horizontal gestures */
+        touch-action: none; /* JS handles all touch - needed for horizontal seek/select */
     }
 
     /* Spectrogram: default to scroll, JS toggles to .touch-draw when zoomed in */
