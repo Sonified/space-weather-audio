@@ -3800,6 +3800,18 @@ export function zoomToFull() {
         
         // 🔍 Diagnostic: Track zoom out complete
         console.log('✅ ZOOM OUT complete');
+
+        // Update status text to guide user
+        if (!isTutorialActive()) {
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+                const regions = getCurrentRegions();
+                if (regions.length > 0) {
+                    statusEl.className = 'status info';
+                    statusEl.textContent = `Click and drag to create a region, type a region # to zoom in, or click 🔍`;
+                }
+            }
+        }
     });
 
     // Update ALL zoom buttons back to 🔍
