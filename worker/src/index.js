@@ -257,6 +257,11 @@ export default {
       // Username Routes: /api/username
       // =======================================================================
 
+      // GET /api/usernames - List all registered usernames
+      if (path === '/api/usernames' && request.method === 'GET') {
+        return await listUsernames(env);
+      }
+
       // GET /api/username/:username/available - Check if username is available
       const usernameAvailableMatch = path.match(/^\/api\/username\/([^/]+)\/available$/);
       if (usernameAvailableMatch && request.method === 'GET') {
@@ -267,6 +272,12 @@ export default {
       const usernameRegisterMatch = path.match(/^\/api\/username\/([^/]+)\/register$/);
       if (usernameRegisterMatch && request.method === 'POST') {
         return await registerUsername(request, env, decodeURIComponent(usernameRegisterMatch[1]));
+      }
+
+      // DELETE /api/username/:username - Delete a username from the pool
+      const usernameDeleteMatch = path.match(/^\/api\/username\/([^/]+)$/);
+      if (usernameDeleteMatch && request.method === 'DELETE') {
+        return await deleteUsername(env, decodeURIComponent(usernameDeleteMatch[1]));
       }
 
       // =======================================================================
@@ -404,6 +415,39 @@ async function deleteSession(env, username, sessionId) {
 // Username Handlers
 // =============================================================================
 
+async function listUsernames(env) {
+  const prefix = 'usernames/';
+  const listed = await env.BUCKET.list({ prefix });
+
+  const usernames = [];
+  for (const obj of listed.objects) {
+    try {
+      const data = await env.BUCKET.get(obj.key);
+      if (data) {
+        const userData = await data.json();
+        usernames.push({
+          username: userData.username,
+          registered_at: userData.registered_at,
+          last_active_at: userData.last_active_at,
+        });
+      }
+    } catch (e) {
+      // Extract username from key if JSON parse fails
+      const username = obj.key.replace(prefix, '').replace('.json', '');
+      usernames.push({ username, last_modified: obj.uploaded });
+    }
+  }
+
+  // Sort by registered_at descending
+  usernames.sort((a, b) => (b.registered_at || '').localeCompare(a.registered_at || ''));
+
+  return json({
+    success: true,
+    usernames,
+    count: usernames.length,
+  });
+}
+
 // Helper: Validate username
 function validateUsername(username) {
   if (!username || typeof username !== 'string') {
@@ -472,6 +516,30 @@ async function registerUsername(request, env, username) {
     username: cleanUsername,
     registered_at: now
   }, 201);
+}
+
+async function deleteUsername(env, username) {
+  const validation = validateUsername(username);
+  if (!validation.valid) {
+    return json({ success: false, error: validation.error }, 400);
+  }
+
+  const key = getUsernameKey(validation.username);
+
+  // Check if username exists
+  const existing = await env.BUCKET.head(key);
+  if (!existing) {
+    return json({ success: false, error: 'Username not found' }, 404);
+  }
+
+  // Delete the username
+  await env.BUCKET.delete(key);
+
+  return json({
+    success: true,
+    username: validation.username,
+    message: 'Username deleted successfully'
+  });
 }
 
 // =============================================================================

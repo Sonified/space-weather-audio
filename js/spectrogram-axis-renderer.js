@@ -148,9 +148,9 @@ export function drawFrequencyAxis() {
     
     // Draw each tick - show ALL ticks regardless of playback speed
     tickFrequencies.forEach(originalFreq => {
-        // Skip 0 Hz (and any sub-0.5 Hz for log scale), and max frequency
+        // Skip 0 Hz (and any sub-0.1 Hz for log scale), and max frequency
         // BUT: allow 50 Hz to show when speed < 0.95x (even if it's the Nyquist)
-        if (originalFreq === 0 || (scaleType === 'logarithmic' && originalFreq < 0.5)) return;
+        if (originalFreq === 0 || (scaleType === 'logarithmic' && originalFreq < 0.1)) return;
         if (originalFreq === originalNyquist && !(originalFreq === 50 && smoothedRate < 0.95)) return;
         
         // For square root scale at slower speeds, remove specific frequencies to reduce clutter
@@ -272,7 +272,7 @@ function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
     
     if (scaleType === 'logarithmic') {
         // Logarithmic scale
-        const minFreq = 0.5; // CDAWeb: Start at 0.5 Hz
+        const minFreq = 0.1; // Start at 0.1 Hz for low-frequency data
         const freqSafe = Math.max(freq, minFreq);
         const logMin = Math.log10(minFreq);
         const logMax = Math.log10(maxFreq);
@@ -294,7 +294,7 @@ function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
  * This is needed because log scale is NOT homogeneous - we must stretch positions, not scale frequencies
  */
 function calculateStretchFactorForLog(playbackRate, originalNyquist) {
-    const minFreq = 0.5; // CDAWeb: Start at 0.5 Hz
+    const minFreq = 0.1; // Start at 0.1 Hz for low-frequency data
     const logMin = Math.log10(minFreq);
     const logMax = Math.log10(originalNyquist);
     const logRange = logMax - logMin;
@@ -323,7 +323,7 @@ export function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeig
     if (scaleType === 'logarithmic') {
         // 🦋 LOGARITHMIC: Calculate position at 1x (no playback scaling in log space!)
         // Use FIXED denominator (logMax = log10(originalNyquist)) to match spectrogram rendering
-        const minFreq = 0.5; // CDAWeb: Start at 0.5 Hz
+        const minFreq = 0.1; // Start at 0.1 Hz for low-frequency data
         const freqSafe = Math.max(freq, minFreq);
         const logMin = Math.log10(minFreq);
         const logMax = Math.log10(originalNyquist); // FIXED denominator!
@@ -359,36 +359,35 @@ export function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeig
  */
 function generateLogTicks(maxFreq) {
     const ticks = [];
-    
+
     // Start with 0 Hz at the bottom
     ticks.push(0);
-    
+
     // Logarithmic increments
-    // Start from decade 0 (skip decade -1 which would give 0.1, 0.2, 0.5)
+    // Start from decade -1 (0.1, 0.2, 0.5) for low-frequency data
     const decades = Math.ceil(Math.log10(maxFreq));
-    for (let decade = 0; decade <= decades; decade++) {
+    for (let decade = -1; decade <= decades; decade++) {
         const base = Math.pow(10, decade);
         [1, 2, 5].forEach(mult => {
             const freq = base * mult;
-            if (freq >= 0.5 && freq <= maxFreq) {
+            if (freq >= 0.1 && freq <= maxFreq) {
                 ticks.push(freq);
             }
         });
     }
-    
+
     // Add specific frequencies for better granularity
-    // Note: Skip values below 0.5 Hz (our minimum for CDAWeb logarithmic scale)
-    [0.5, 0.7, 1.5, 3, 4, 7, 15, 30, 40].forEach(freq => {
-        if (freq >= 0.5 && freq <= maxFreq) {
+    [0.1, 0.2, 0.5, 0.7, 1.5, 3, 4, 7, 15, 30, 40].forEach(freq => {
+        if (freq >= 0.1 && freq <= maxFreq) {
             ticks.push(freq);
         }
     });
-    
+
     // Add max frequency if not already included
     if (!ticks.includes(maxFreq)) {
         ticks.push(maxFreq);
     }
-    
+
     return [...new Set(ticks)].sort((a, b) => a - b);
 }
 

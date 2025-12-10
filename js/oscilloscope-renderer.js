@@ -47,12 +47,17 @@ export function positionOscilloscopePanel() {
  * Initialize the oscilloscope display
  */
 export function initOscilloscope() {
+    // Guard against multiple initializations
+    if (isInitialized) {
+        return true;
+    }
+
     canvas = document.getElementById('oscilloscope');
     if (!canvas) {
         console.warn('⚠️ Oscilloscope canvas not found');
-        return;
+        return false;
     }
-    
+
     ctx = canvas.getContext('2d', { alpha: true });
     isInitialized = true;
     
@@ -61,8 +66,9 @@ export function initOscilloscope() {
     
     // Start rendering loop
     startRendering();
-    
+
     console.log('🎨 Oscilloscope initialized');
+    return true;
 }
 
 /**

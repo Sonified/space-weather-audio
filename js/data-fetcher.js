@@ -52,7 +52,10 @@ const DATASET_VARIABLES = {
     'THE_L2_SCM': 'the_scf_gse',
     // Solar Orbiter MAG - RTN coordinates (Radial, Tangential, Normal)
     'SOLO_L2_MAG-RTN-NORMAL': 'B_RTN',
-    'SOLO_L2_MAG-RTN-BURST': 'B_RTN'
+    'SOLO_L2_MAG-RTN-BURST': 'B_RTN',
+    // GOES-R Series Magnetometer - GSE coordinates (X, Y, Z) at 10 Hz
+    'DN_MAGN-L2-HIRES_G16': 'b_gse',
+    'DN_MAGN-L2-HIRES_G19': 'b_gse'
 };
 
 /**

@@ -201,6 +201,23 @@ export async function registerUsername(username) {
     return data;
 }
 
+/**
+ * Delete a username from the pool
+ * @param {string} username - The username to delete
+ * @returns {Promise<Object>} Deletion result {success: boolean, username: string, message: string}
+ */
+export async function deleteUsername(username) {
+    const response = await fetch(`${API_BASE}/api/username/${encodeURIComponent(username)}`, {
+        method: 'DELETE'
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete username');
+    }
+    return data;
+}
+
 // =============================================================================
 // Utility Functions
 // =============================================================================
@@ -324,6 +341,7 @@ export default {
     // Usernames
     checkUsernameAvailable,
     registerUsername,
+    deleteUsername,
     // Utils
     checkHealth,
     getShareIdFromUrl,

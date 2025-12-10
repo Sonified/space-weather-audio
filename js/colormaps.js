@@ -251,6 +251,10 @@ export function getColorLUT() {
  */
 export function setColormap(name) {
     if (colormaps[name]) {
+        // Skip rebuild if already set to this colormap
+        if (currentColormap === name && colorLUT !== null) {
+            return true;
+        }
         currentColormap = name;
         buildColorLUT();
         return true;
