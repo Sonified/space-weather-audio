@@ -2848,8 +2848,10 @@ input[type="range"]:disabled {
     }
 
     body {
+        padding-top: 4px !important;
         padding-left: 10px;
         padding-right: 10px;
+        padding-bottom: 10px !important;
         /* Safe area insets for notched devices */
         padding-left: max(10px, env(safe-area-inset-left));
         padding-right: max(10px, env(safe-area-inset-right));
