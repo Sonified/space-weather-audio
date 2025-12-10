@@ -2953,14 +2953,20 @@ input[type="range"]:disabled {
     }
 
     /* Make inputs and selects smaller on mobile */
+    /* IMPORTANT: font-size must be 16px+ to prevent iOS Safari auto-zoom on focus */
     .panel-selection select,
     .panel-selection input[type="date"],
     .panel-selection input[type="text"] {
         width: auto !important;
         min-width: 80px !important;
         max-width: 150px !important;
-        font-size: 13px !important;
+        font-size: 16px !important;
         padding: 6px 8px !important;
+    }
+
+    /* All inputs/selects need 16px+ to prevent iOS zoom */
+    input, select, textarea {
+        font-size: 16px !important;
     }
 
     /* Fetch button should be visible */
@@ -3023,7 +3029,7 @@ input[type="range"]:disabled {
     #shareFormView input,
     #shareFormView textarea {
         padding: 8px 10px !important;
-        font-size: 13px !important;
+        /* font-size handled by global 16px rule to prevent iOS zoom */
     }
 
     #shareFormView textarea {
