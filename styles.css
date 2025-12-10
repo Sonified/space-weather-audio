@@ -3018,18 +3018,20 @@ input[type="range"]:disabled {
         justify-content: flex-start !important;
     }
 
-    /* Download buttons - wrap on mobile, keep outside region panel */
+    /* Download buttons - static row below regions on mobile */
     #downloadAudioContainer {
+        position: static !important;
         flex-wrap: wrap !important;
-        left: 0 !important;
-        right: auto !important;
         justify-content: flex-start !important;
+        margin-top: 12px !important;
+        padding-top: 12px !important;
+        border-top: 1px solid rgba(255,255,255,0.1) !important;
     }
 
     #downloadAudioContainer button {
         white-space: normal !important;
-        font-size: 11px !important;
-        padding: 6px 10px !important;
+        font-size: 12px !important;
+        padding: 8px 12px !important;
         height: auto !important;
     }
 
