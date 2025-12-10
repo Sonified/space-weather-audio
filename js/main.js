@@ -739,10 +739,12 @@ export async function startStreaming(event) {
             }
         }
 
-        // Add pulse highlight to waveform container to draw attention
-        const waveformEl = document.getElementById('waveform');
-        if (waveformEl) {
-            waveformEl.classList.add('pulse');
+        // Add pulse highlight to waveform container to draw attention (only for first-time users)
+        if (!State.waveformHasBeenClicked) {
+            const waveformEl = document.getElementById('waveform');
+            if (waveformEl) {
+                waveformEl.classList.add('pulse');
+            }
         }
 
         // Reload recent searches dropdown (function is defined in DOMContentLoaded)
