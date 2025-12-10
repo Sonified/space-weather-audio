@@ -154,21 +154,20 @@ function captureSpectrogramThumbnail() {
         ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, targetWidth, targetHeight);
 
-        // Draw axis first (on the left), scaled
+        // Draw main spectrogram on the left
         const scaledAxisWidth = axisCanvas ? Math.round(axisWidth * scale) : 0;
-        if (axisCanvas) {
-            ctx.drawImage(axisCanvas, 0, 0, scaledAxisWidth, targetHeight);
-        }
-
-        // Draw main spectrogram after axis
-        const spectrogramX = scaledAxisWidth;
         const spectrogramW = targetWidth - scaledAxisWidth;
-        ctx.drawImage(spectrogramCanvas, spectrogramX, 0, spectrogramW, targetHeight);
+        ctx.drawImage(spectrogramCanvas, 0, 0, spectrogramW, targetHeight);
 
         // Draw feature boxes overlay (if any boxes are drawn)
         const overlayCanvas = document.getElementById('spectrogram-selection-overlay');
         if (overlayCanvas) {
-            ctx.drawImage(overlayCanvas, spectrogramX, 0, spectrogramW, targetHeight);
+            ctx.drawImage(overlayCanvas, 0, 0, spectrogramW, targetHeight);
+        }
+
+        // Draw axis on the right side
+        if (axisCanvas) {
+            ctx.drawImage(axisCanvas, spectrogramW, 0, scaledAxisWidth, targetHeight);
         }
 
         // Convert to JPEG at 70% quality - great for social media, small file size
