@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, startFrequencySelection } from './region-tracker.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, startFrequencySelection, zoomToRegion } from './region-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, getSpectrogramViewport, resetSpectrogramState, getInfiniteCanvasStatus, updateElasticFriendInBackground } from './spectrogram-complete-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
@@ -1061,11 +1061,31 @@ export function setupSpectrogramSelection() {
             return; // Don't allow spectrogram selection
         }
         
+        // ✅ Check if clicking on an existing canvas box FIRST (before zoom check)
+        // This allows clicking features to zoom in when zoomed out
+        const canvasRect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - canvasRect.left;
+        const clickY = e.clientY - canvasRect.top;
+
+        const clickedBox = getClickedBox(clickX, clickY);
+        if (clickedBox && !spectrogramSelectionActive) {
+            // Check if we're zoomed out - if so, zoom to the region
+            if (!zoomState.isInRegion()) {
+                console.log(`🔍 Clicked feature box while zoomed out - zooming to region ${clickedBox.regionIndex + 1}`);
+                zoomToRegion(clickedBox.regionIndex);
+                return;
+            }
+            // Zoomed in - start frequency selection to re-draw the feature
+            startFrequencySelection(clickedBox.regionIndex, clickedBox.featureIndex);
+            console.log(`🎯 Clicked canvas box - starting reselection for region ${clickedBox.regionIndex + 1}, feature ${clickedBox.featureIndex + 1}`);
+            return; // Don't start new selection
+        }
+
         // 🎯 NEW ARCHITECTURE: Allow drawing when zoomed into a region (no 'f' key needed!)
         // If not zoomed in, don't handle - user is looking at full view
         if (!zoomState.isInRegion()) {
             console.log('🖱️ [MOUSEDOWN] Not in region - returning early (zoom state says not zoomed in)');
-            
+
             // Show helpful message - user needs to create a region first (only if not in tutorial)
             import('./tutorial-state.js').then(({ isTutorialActive }) => {
                 if (!isTutorialActive()) {
@@ -1074,21 +1094,8 @@ export function setupSpectrogramSelection() {
                     });
                 }
             });
-            
+
             return;
-        }
-        
-        // ✅ Check if clicking on an existing canvas box (click to re-draw feature)
-        const canvasRect = canvas.getBoundingClientRect();
-        const clickX = e.clientX - canvasRect.left;
-        const clickY = e.clientY - canvasRect.top;
-        
-        const clickedBox = getClickedBox(clickX, clickY);
-        if (clickedBox && !spectrogramSelectionActive) {
-            // Clicked on a box - start frequency selection for that feature!
-            startFrequencySelection(clickedBox.regionIndex, clickedBox.featureIndex);
-            console.log(`🎯 Clicked canvas box - starting reselection for region ${clickedBox.regionIndex + 1}, feature ${clickedBox.featureIndex + 1}`);
-            return; // Don't start new selection
         }
 
         // 🔥 FIX: ALWAYS force-reset state before starting new selection
