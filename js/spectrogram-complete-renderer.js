@@ -787,10 +787,21 @@ export async function updateElasticFriendInBackground() {
     }
     const startTime = performance.now();
 
-    // 🔧 FIX: Save the current infinite canvas (region view) before rendering full view
-    // renderCompleteSpectrogram will overwrite it, so we need to restore after
-    const savedInfiniteCanvas = infiniteSpectrogramCanvas;
-    const savedInfiniteContext = { ...infiniteCanvasContext };
+    // 🔧 FIX: Clone the current infinite canvas (region view) before rendering full view
+    // We must CLONE it because renderCompleteSpectrogram will destroy the original canvas
+    let clonedCanvas = null;
+    const savedContext = { ...infiniteCanvasContext };
+
+    if (infiniteSpectrogramCanvas && infiniteSpectrogramCanvas.width > 0) {
+        clonedCanvas = document.createElement('canvas');
+        clonedCanvas.width = infiniteSpectrogramCanvas.width;
+        clonedCanvas.height = infiniteSpectrogramCanvas.height;
+        const cloneCtx = clonedCanvas.getContext('2d');
+        cloneCtx.drawImage(infiniteSpectrogramCanvas, 0, 0);
+        if (!isStudyMode()) {
+            console.log(`🏠 Cloned region canvas: ${clonedCanvas.width}x${clonedCanvas.height}`);
+        }
+    }
 
     try {
         // Use existing render function with forceFullView=true to bypass region check
@@ -805,14 +816,14 @@ export async function updateElasticFriendInBackground() {
     } catch (error) {
         console.error('❌ Error updating elastic friend in background:', error);
     } finally {
-        // 🔧 FIX: Restore the region view infinite canvas
+        // 🔧 FIX: Restore the region view from the clone
         // The elastic friend is now in cachedFullSpectrogramCanvas, but we need
         // infiniteSpectrogramCanvas to remain the REGION view for display
-        if (savedInfiniteCanvas) {
-            infiniteSpectrogramCanvas = savedInfiniteCanvas;
-            infiniteCanvasContext = savedInfiniteContext;
+        if (clonedCanvas && clonedCanvas.width > 0) {
+            infiniteSpectrogramCanvas = clonedCanvas;
+            infiniteCanvasContext = savedContext;
             if (!isStudyMode()) {
-                console.log(`🏠 Restored region view to infinite canvas (context: ${savedInfiniteContext.startSample}-${savedInfiniteContext.endSample})`);
+                console.log(`🏠 Restored region view from clone (context: ${savedContext.startSample}-${savedContext.endSample})`);
             }
         }
     }
