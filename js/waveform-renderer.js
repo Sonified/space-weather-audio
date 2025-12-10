@@ -31,8 +31,7 @@ let mobileTapOverlay = null;
 export function showMobileTapHint() {
     // Only show on touch devices and if user hasn't tapped before
     if (!isTouchDevice) return;
-    // TEMP: Always show for testing (bypass first-time check)
-    // if (localStorage.getItem('userHasTappedWaveformMobile') === 'true') return;
+    if (localStorage.getItem('userHasTappedWaveformMobile') === 'true') return;
 
     const waveformCanvas = document.getElementById('waveform');
     if (!waveformCanvas) return;
@@ -84,8 +83,8 @@ export function hideMobileTapHint() {
     if (mobileTapOverlay) {
         mobileTapOverlay.style.display = 'none';
     }
-    // TEMP: Don't remember tap for testing (shows every time)
-    // localStorage.setItem('userHasTappedWaveformMobile', 'true');
+    // Remember that user has tapped
+    localStorage.setItem('userHasTappedWaveformMobile', 'true');
 }
 
 // Playhead log throttling (log every 500ms unless forced by user interaction)
