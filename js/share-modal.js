@@ -140,7 +140,7 @@ function captureSpectrogramThumbnail() {
         const targetWidth = 1200;
         const scale = targetWidth / sourceWidth;
         const scaledSpectrogramHeight = Math.round(spectrogramCanvas.height * scale);
-        const scaledXAxisHeight = Math.round(xAxisHeight * scale * 1.2);  // 1.5x larger labels (0.8 * 1.5 = 1.2)
+        const scaledXAxisHeight = Math.round(xAxisHeight * scale);  // Keep proportional
         const targetHeight = scaledSpectrogramHeight + scaledXAxisHeight;
 
         // Create combined canvas at reduced size
