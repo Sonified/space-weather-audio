@@ -3007,6 +3007,14 @@ input[type="range"]:disabled {
         width: auto !important;
     }
 
+    /* FFT / Color Map / Frequency Scale controls - wrap on mobile */
+    .viz-controls {
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+        margin-left: 0 !important;
+        justify-content: flex-start !important;
+    }
+
     /* Share modal - compact for mobile */
     #shareModal > div {
         max-height: 90vh !important;
