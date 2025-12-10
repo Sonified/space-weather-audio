@@ -2836,3 +2836,55 @@ input[type="range"]:disabled {
     }
 }
 
+/* ===== MOBILE RESPONSIVE STYLES ===== */
+
+/* Mobile: Wrap top header content */
+@media (max-width: 768px) {
+    .top-header-bar {
+        flex-wrap: wrap !important;
+        gap: 8px;
+        align-items: center !important;
+    }
+
+    /* Title takes full width on mobile, centered */
+    .top-header-bar > h1 {
+        order: -1;
+        flex: 1 0 100% !important;
+        text-align: center;
+        font-size: 1.2em !important;
+        margin-bottom: 4px;
+    }
+
+    /* Mode selector and user info share the row below */
+    .top-header-bar > #modeSelectorContainer {
+        flex: 1 1 auto !important;
+        justify-content: flex-start;
+    }
+
+    .top-header-bar > div:last-child {
+        flex: 1 1 auto !important;
+        justify-content: flex-end !important;
+    }
+
+    /* Make controls panels wrap better */
+    .controls {
+        gap: 10px;
+    }
+
+    .controls-row-1 {
+        flex-wrap: wrap !important;
+    }
+
+    /* Smaller padding on panels */
+    .panel-selection,
+    .panel-playback {
+        padding: 8px 12px;
+    }
+
+    /* Ensure waveform is touch-friendly */
+    #waveform {
+        min-height: 100px;
+        touch-action: none; /* Prevent browser gestures on waveform */
+    }
+}
+

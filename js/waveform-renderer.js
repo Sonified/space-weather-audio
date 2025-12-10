@@ -4,7 +4,7 @@
  */
 
 import * as State from './audio-state.js';
-import { PlaybackState } from './audio-state.js';
+import { PlaybackState, isTouchDevice } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
@@ -1409,6 +1409,217 @@ export function setupWaveformInteraction() {
         if (State.completeSamplesArray && State.totalAudioDuration > 0) {
             canvas.style.cursor = 'pointer';
         }
+    });
+
+    // ===== TOUCH EVENT HANDLERS (for mobile devices) =====
+    // These mirror the mouse handlers but use touch coordinates
+
+    // Helper to convert touch event to mouse-like event object
+    function touchToMouseEvent(touchEvent) {
+        const touch = touchEvent.touches[0] || touchEvent.changedTouches[0];
+        return {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            preventDefault: () => touchEvent.preventDefault(),
+            stopPropagation: () => touchEvent.stopPropagation()
+        };
+    }
+
+    canvas.addEventListener('touchstart', (e) => {
+        if (!State.completeSamplesArray || State.totalAudioDuration === 0) return;
+
+        // Prevent default to avoid scrolling while interacting with waveform
+        e.preventDefault();
+
+        // Hide any existing "Add Region" button when starting a new selection
+        hideAddRegionButton();
+
+        // Resolve tutorial promise if waiting
+        if (State._waveformClickResolve) {
+            console.log('🎯 Waveform touched: Resolving promise');
+            State._waveformClickResolve();
+            State.setWaveformClickResolve(null);
+        }
+
+        // Clear pulse classes
+        canvas.classList.remove('pulse');
+        const waveformContainer = document.getElementById('waveform');
+        if (waveformContainer) {
+            waveformContainer.classList.remove('pulse');
+        }
+        hideTutorialOverlay();
+
+        // Mark waveform as clicked
+        if (!State.waveformHasBeenClicked) {
+            State.setWaveformHasBeenClicked(true);
+        }
+        localStorage.setItem('userHasClickedWaveformOnce', 'true');
+
+        // Check if touch is disabled
+        if (canvas.style.pointerEvents === 'none') {
+            return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        const startX = touch.clientX - rect.left;
+        const startY = touch.clientY - rect.top;
+
+        // Check if touching a button
+        if (!State.isDragging && !State.isSelecting && State.selectionStartX === null) {
+            const clickedZoomRegionIndex = checkCanvasZoomButtonClick(startX, startY);
+            const clickedPlayRegionIndex = checkCanvasPlayButtonClick(startX, startY);
+
+            if (State.regionButtonsDisabled && (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null)) {
+                return;
+            }
+
+            if (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null) {
+                // Store button index for touchend
+                canvas._touchedZoomButton = clickedZoomRegionIndex;
+                canvas._touchedPlayButton = clickedPlayRegionIndex;
+                return;
+            }
+        }
+
+        // Normal waveform interaction - start selection/drag
+        State.setSelectionStartX(startX);
+        State.setIsDragging(true);
+        updateScrubPreview(touchToMouseEvent(e));
+        console.log('📱 Touch start - waiting to detect drag vs tap');
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+        if (!State.isDragging || State.selectionStartX === null) return;
+
+        e.preventDefault(); // Prevent scrolling
+
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        const currentX = touch.clientX - rect.left;
+        const dragDistance = Math.abs(currentX - State.selectionStartX);
+
+        if (dragDistance > 10 && !State.isSelecting) { // Higher threshold for touch (10px vs 3px for mouse)
+            State.setIsSelecting(true);
+            console.log('📱 Selection drag detected');
+
+            if (!zoomState.isInRegion()) {
+                clearActiveRegion();
+            }
+        }
+
+        if (State.isSelecting) {
+            const { targetPosition } = getPositionFromMouse(touchToMouseEvent(e));
+
+            let startPos;
+            if (zoomState.isInitialized()) {
+                const startTimestamp = zoomState.pixelToTimestamp(State.selectionStartX, rect.width);
+                startPos = zoomState.timestampToSeconds(startTimestamp);
+            } else {
+                const startProgress = Math.max(0, Math.min(1, State.selectionStartX / rect.width));
+                startPos = startProgress * State.totalAudioDuration;
+            }
+            const endPos = targetPosition;
+
+            State.setSelectionStart(Math.min(startPos, endPos));
+            State.setSelectionEnd(Math.max(startPos, endPos));
+
+            drawWaveformWithSelection();
+        } else {
+            updateScrubPreview(touchToMouseEvent(e));
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+        // Check if we touched a button
+        if (canvas._touchedZoomButton !== undefined || canvas._touchedPlayButton !== undefined) {
+            const zoomIndex = canvas._touchedZoomButton;
+            const playIndex = canvas._touchedPlayButton;
+            canvas._touchedZoomButton = undefined;
+            canvas._touchedPlayButton = undefined;
+
+            // Handle button tap
+            if (zoomIndex !== null && zoomIndex !== undefined) {
+                if (!State.regionButtonsDisabled || State.isRegionZoomButtonEnabled(zoomIndex)) {
+                    const regions = getRegions();
+                    const region = regions[zoomIndex];
+                    if (region) {
+                        if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
+                            zoomToFull();
+                        } else {
+                            zoomToRegion(region);
+                        }
+                    }
+                }
+                return;
+            }
+            if (playIndex !== null && playIndex !== undefined) {
+                if (!State.regionButtonsDisabled || State.isRegionPlayButtonEnabled(playIndex)) {
+                    toggleRegionPlay(playIndex);
+                }
+                return;
+            }
+        }
+
+        const wasSelecting = State.isSelecting;
+        const wasDragging = State.isDragging;
+
+        State.setIsDragging(false);
+        State.setIsSelecting(false);
+
+        if (State.selectionStartX !== null) {
+            if (wasSelecting && State.selectionStart !== null && State.selectionEnd !== null) {
+                // Finished creating a selection
+                const selectionDuration = Math.abs(State.selectionEnd - State.selectionStart);
+
+                if (selectionDuration >= 1) {
+                    // Show "Add Region" button
+                    const rect = canvas.getBoundingClientRect();
+                    showAddRegionButton(rect);
+                }
+
+                updateWorkletSelection();
+                State.setCurrentAudioPosition(State.selectionStart);
+                if (State.audioContext) {
+                    State.setLastUpdateTime(State.audioContext.currentTime);
+                }
+                drawWaveformWithSelection();
+                clearSpectrogramScrubPreview();
+                drawSpectrogramPlayhead();
+
+                const shouldAutoPlay = document.getElementById('playOnClick').checked;
+                seekToPosition(State.selectionStart, shouldAutoPlay);
+            } else if (wasDragging) {
+                // Single tap - seek to position
+                State.setSelectionStart(null);
+                State.setSelectionEnd(null);
+                updateWorkletSelection();
+
+                if (!zoomState.isInRegion()) {
+                    resetAllRegionPlayButtons();
+                }
+
+                const touch = e.changedTouches[0];
+                const { targetPosition } = getPositionFromMouse({ clientX: touch.clientX, clientY: touch.clientY });
+                clearSpectrogramScrubPreview();
+                State.setScrubTargetPosition(targetPosition);
+                performSeek();
+                drawSpectrogramPlayhead();
+                restoreViewportState();
+            }
+        }
+
+        State.setSelectionStartX(null);
+        console.log('📱 Touch end');
+    });
+
+    canvas.addEventListener('touchcancel', () => {
+        // Clean up on touch cancel (e.g., incoming call)
+        State.setIsDragging(false);
+        State.setIsSelecting(false);
+        State.setSelectionStartX(null);
+        clearSpectrogramScrubPreview();
+        console.log('📱 Touch cancelled');
     });
 }
 

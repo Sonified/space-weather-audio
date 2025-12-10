@@ -46,6 +46,10 @@ export let dataStartTime = null; // UTC Date object for start of data
 export let dataEndTime = null; // UTC Date object for end of data
 export let originalDataFrequencyRange = null; // { min: 0, max: XXX } - Original spacecraft data frequency (Hz)
 
+// Device detection
+export const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+export const isMobileScreen = () => window.innerWidth <= 768;
+
 // Flags
 export let isFetchingNewData = false;
 export let loadingInterval = null;
