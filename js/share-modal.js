@@ -541,6 +541,7 @@ function gatherSessionData() {
         view_settings: {
             frequency_scale: State.frequencyScale,
             colormap: getCurrentColormap(),
+            fft_size: State.fftSize,
             zoom: zoomState.mode === 'region' ? {
                 mode: 'region',
                 region_id: zoomState.activeRegionId,

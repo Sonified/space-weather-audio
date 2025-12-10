@@ -21,7 +21,7 @@ import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpe
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange, drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
-import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, changeColormap } from './spectrogram-renderer.js';
+import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, changeColormap, changeFftSize, changeFrequencyScale } from './spectrogram-renderer.js';
 import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
 import { isStudyMode, isTutorialEndMode } from './master-modes.js';
 import { hasSeenTutorial } from './study-workflow.js';
@@ -508,6 +508,26 @@ export function loadRegionsAfterDataFetch() {
                 if (colormapSelect) {
                     colormapSelect.value = viewSettings.colormap;
                     changeColormap();
+                }
+            }
+
+            // Apply FFT size if specified
+            if (viewSettings.fft_size) {
+                console.log(`🔗 Restoring shared FFT size: ${viewSettings.fft_size}`);
+                const fftSizeSelect = document.getElementById('fftSize');
+                if (fftSizeSelect) {
+                    fftSizeSelect.value = viewSettings.fft_size.toString();
+                    changeFftSize();
+                }
+            }
+
+            // Apply frequency scale if specified
+            if (viewSettings.frequency_scale) {
+                console.log(`🔗 Restoring shared frequency scale: ${viewSettings.frequency_scale}`);
+                const freqScaleSelect = document.getElementById('frequencyScale');
+                if (freqScaleSelect) {
+                    freqScaleSelect.value = viewSettings.frequency_scale;
+                    changeFrequencyScale();
                 }
             }
 
