@@ -597,10 +597,6 @@ class SeismicProcessor extends AudioWorkletProcessor {
 
         // Check if we can start playback (initial load)
         // Only auto-start if autoResume is not explicitly false (for shared sessions, we wait for user click)
-        // 🔗 DEBUG: Log autoResume value on first chunk that hits threshold
-        if (!this.hasStarted && this.samplesInBuffer >= this.minBufferBeforePlay) {
-            console.log(`🔗 WORKLET THRESHOLD DEBUG: autoResume=${autoResume}, typeof=${typeof autoResume}, autoResume!==false=${autoResume !== false}`);
-        }
         if (!this.hasStarted && autoResume !== false && this.samplesInBuffer >= this.minBufferBeforePlay) {
             const bufferSeconds = this.samplesInBuffer / this.sampleRate;
             const bufferMinutes = bufferSeconds / 60;
