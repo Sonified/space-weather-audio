@@ -3018,17 +3018,19 @@ input[type="range"]:disabled {
         justify-content: flex-start !important;
     }
 
-    /* Download buttons - wrap on mobile */
+    /* Download buttons - wrap on mobile, keep outside region panel */
     #downloadAudioContainer {
         flex-wrap: wrap !important;
-        position: static !important;
-        margin-top: 10px;
+        left: 0 !important;
+        right: auto !important;
+        justify-content: flex-start !important;
     }
 
     #downloadAudioContainer button {
         white-space: normal !important;
-        font-size: 12px !important;
-        padding: 8px 12px !important;
+        font-size: 11px !important;
+        padding: 6px 10px !important;
+        height: auto !important;
     }
 
     /* Share modal - compact for mobile */
