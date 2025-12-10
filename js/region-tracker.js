@@ -22,6 +22,7 @@ import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgre
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
 import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, changeColormap, changeFftSize, changeFrequencyScale } from './spectrogram-renderer.js';
+import { LOG_SCALE_MIN_FREQ } from './spectrogram-axis-renderer.js';
 import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
 import { isStudyMode, isTutorialEndMode } from './master-modes.js';
 import { hasSeenTutorial } from './study-workflow.js';
@@ -1847,14 +1848,14 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
 function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1.0) {
     if (scaleType === 'logarithmic') {
         // Must use SAME stretch factor as getYPositionForFrequencyScaled!
-        const minFreq = 0.1; // Must match axis renderer (0.1 Hz for low-frequency data)
-        const logMin = Math.log10(minFreq);
+        // Use LOG_SCALE_MIN_FREQ from axis renderer (0.02 Hz)
+        const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
         const logMax = Math.log10(maxFreq);
         const logRange = logMax - logMin;
 
         // Calculate stretch factor using SAME formula as calculateStretchFactorForLog
         const targetMaxFreq = maxFreq / playbackRate;  // DIVISION, not multiplication!
-        const logTargetMax = Math.log10(Math.max(targetMaxFreq, minFreq));
+        const logTargetMax = Math.log10(Math.max(targetMaxFreq, LOG_SCALE_MIN_FREQ));
         const targetLogRange = logTargetMax - logMin;
         const fraction = targetLogRange / logRange;
         const stretchFactor = 1 / fraction;
@@ -1868,8 +1869,8 @@ function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1
         const logFreq = logMin + (normalizedLog * (logMax - logMin));
         const freq = Math.pow(10, logFreq);
 
-        // CLAMP to valid range [minFreq, maxFreq]
-        return Math.max(minFreq, Math.min(maxFreq, freq));
+        // CLAMP to valid range [LOG_SCALE_MIN_FREQ, maxFreq]
+        return Math.max(LOG_SCALE_MIN_FREQ, Math.min(maxFreq, freq));
     } else {
         // Linear and sqrt: These ARE homogeneous - freq gets scaled by playbackRate
         // Forward: effectiveFreq = freq * playbackRate, then normalize
@@ -1883,7 +1884,7 @@ function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1
             const freq = effectiveFreq / playbackRate;
 
             // CLAMP to valid range
-            return Math.max(0.1, Math.min(maxFreq, freq));
+            return Math.max(LOG_SCALE_MIN_FREQ, Math.min(maxFreq, freq));
         } else {
             // Linear
             const effectiveFreq = normalizedY * maxFreq;
@@ -2422,7 +2423,7 @@ function renderFeatures(regionId, regionIndex) {
         }
         
         featureRow.innerHTML = `
-            <span class="feature-number">Feature ${regionIndex + 1}.${featureIndex + 1}</span>
+            <span class="feature-number">Feature ${featureIndex + 1}</span>
             <select id="repetition-${regionIndex}-${featureIndex}">
                 <option value="Unique" ${feature.repetition === 'Unique' || !feature.repetition ? 'selected' : ''}>Unique</option>
                 <option value="Repeated" ${feature.repetition === 'Repeated' ? 'selected' : ''}>Repeated</option>
