@@ -134,15 +134,14 @@ function captureSpectrogramThumbnail() {
         const axisWidth = axisCanvas ? axisCanvas.width : 0;
         const xAxisHeight = xAxisCanvas ? xAxisCanvas.height : 0;
         const sourceWidth = spectrogramCanvas.width + axisWidth;
-        const sourceHeight = spectrogramCanvas.height + xAxisHeight;
 
         // Target width for social media previews
         // 1200px is the recommended OG image width for Twitter/Facebook
         const targetWidth = 1200;
         const scale = targetWidth / sourceWidth;
-        const targetHeight = Math.round(sourceHeight * scale);
         const scaledSpectrogramHeight = Math.round(spectrogramCanvas.height * scale);
-        const scaledXAxisHeight = Math.round(xAxisHeight * scale);
+        const scaledXAxisHeight = Math.round(xAxisHeight * scale * 0.8);  // 80% height
+        const targetHeight = scaledSpectrogramHeight + scaledXAxisHeight;
 
         // Create combined canvas at reduced size
         const thumbnailCanvas = document.createElement('canvas');
