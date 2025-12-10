@@ -1,0 +1,30 @@
+name: Update Version
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+
+    # Don't run if the commit message indicates this is a version bump
+    if: "!contains(github.event.head_commit.message, '[skip-version]')"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update version.json with timestamp
+        run: |
+          echo "{\"version\":\"$(date -u +%Y%m%d.%H%M%S)\",\"built\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > version.json
+          cat version.json
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git diff --staged --quiet || git commit -m "Update version timestamp [skip-version]"
+          git push

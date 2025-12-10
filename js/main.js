@@ -1043,30 +1043,29 @@ function updateSpacecraftDropdownLabels(loadedSpacecraft, selectedSpacecraft) {
 
 // =============================================================================
 // 🔄 VERSION CHECK - Auto-refresh when new code is deployed
-// Uses Last-Modified header of version.json - fully automatic, no manual bumping!
+// GitHub Action updates version.json on every push - fully automatic!
 // =============================================================================
 async function checkAppVersion() {
     console.log('🔍 Checking for app updates...');
     try {
-        // Fetch version.json with cache-busting to get fresh Last-Modified header
+        // Fetch version.json with cache-busting
         const res = await fetch(`/version.json?_=${Date.now()}`, { cache: 'no-store' });
         if (!res.ok) {
             console.log('⚠️ Version check: Could not fetch version.json');
             return false;
         }
 
-        // Use Last-Modified header as the version (changes automatically on every deploy)
-        const serverVersion = res.headers.get('last-modified') || res.headers.get('etag');
+        // Read version from JSON content (updated automatically by GitHub Action on every push)
+        const data = await res.json();
+        const serverVersion = data.version;
         if (!serverVersion) {
-            console.log('⚠️ Version check: No Last-Modified header found');
+            console.log('⚠️ Version check: No version found in version.json');
             return false;
         }
 
         const localVersion = localStorage.getItem('app_version');
-        const localTime = localVersion ? new Date(localVersion).toLocaleString() : '(first visit)';
-        const serverTime = new Date(serverVersion).toLocaleString();
-        console.log(`📋 Version check: Local="${localTime}" vs Server="${serverTime}"`);
-
+        const serverTime = new Date(data.built).toLocaleString();
+        console.log(`📋 Version check: Local="${localVersion || '(first visit)'}" vs Server="${serverVersion}"`);
 
         if (localVersion && localVersion !== serverVersion) {
             console.log('%c🔄 NEW VERSION DETECTED - Refreshing page...', 'color: #FF9800; font-weight: bold; font-size: 14px');
