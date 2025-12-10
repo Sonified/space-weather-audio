@@ -2986,7 +2986,10 @@ input[type="range"]:disabled {
     .panel,
     .controls,
     .region-card,
-    [type="range"] {
+    [type="range"],
+    #waveform-axis,
+    #waveform-x-axis,
+    #spectrogram-axis {
         touch-action: pan-y;
     }
 
