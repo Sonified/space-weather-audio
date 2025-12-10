@@ -1827,7 +1827,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
 function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1.0) {
     if (scaleType === 'logarithmic') {
         // Must use SAME stretch factor as getYPositionForFrequencyScaled!
-        const minFreq = 0.5; // CDAWeb: Must match axis renderer (0.5, not 0.1)
+        const minFreq = 0.1; // Must match axis renderer (0.1 Hz for low-frequency data)
         const logMin = Math.log10(minFreq);
         const logMax = Math.log10(maxFreq);
         const logRange = logMax - logMin;
