@@ -574,7 +574,11 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         // Start complete visualization (spectrogram)
         console.log(`📊 ${logTime()} Starting spectrogram visualization...`);
         await startCompleteVisualization();
-        
+
+        // 🔧 CRITICAL: Initialize zoomState BEFORE loading regions
+        // Regions need zoomState to recalculate sample indices from timestamps
+        zoomState.initialize(audioData.playback.totalSamples);
+
         // Load regions after data fetch (if any)
         await loadRegionsAfterDataFetch();
         
