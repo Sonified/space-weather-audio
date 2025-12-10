@@ -644,7 +644,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 if (DEBUG_WORKLET) console.log(`🎚️ WORKLET addSamples: Started fade-in for auto-resume`);
             }
         } else if (autoResume && !this.isPlaying) {
-            if (DEBUG_WORKLET) console.log(`⏳ WORKLET addSamples: Buffering for auto-resume... samplesInBuffer=${this.samplesInBuffer}, need ${this.minBufferBeforePlay}`);
+            // if (DEBUG_WORKLET) console.log(`⏳ WORKLET addSamples: Buffering for auto-resume... samplesInBuffer=${this.samplesInBuffer}, need ${this.minBufferBeforePlay}`);
         }
         
         // 🔍 DEBUG: Check if isPlaying got set to false somehow
@@ -1011,12 +1011,12 @@ class SeismicProcessor extends AudioWorkletProcessor {
                                 const targetSample = this.pendingSeekSample;
                                 this.pendingSeekSample = null;
                                 this.justTeleported = true; // 🦋 "I just arrived via teleport!"
-                                console.log(`🔄 LOOP FADE-OUT COMPLETE (mono): jumping to ${targetSample.toLocaleString()}, will fade in ${this.fadeTimeMs}ms`);
+                                // console.log(`🔄 LOOP FADE-OUT COMPLETE (mono): jumping to ${targetSample.toLocaleString()}, will fade in ${this.fadeTimeMs}ms`);
                                 if (this.seekToPositionInstant(targetSample)) {
                                     // Jump successful - fade in if we're playing
                                     if (this.isPlaying) {
                                         this.startFade(+1, this.fadeTimeMs);
-                                        console.log(`🔄 LOOP FADE-IN STARTED (mono): ${this.fadeTimeMs}ms`);
+                                        // console.log(`🔄 LOOP FADE-IN STARTED (mono): ${this.fadeTimeMs}ms`);
                                     }
                                 }
                             } else {
@@ -1058,7 +1058,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                         } else {
                             // 🦋 FADE-IN COMPLETION: Clear the teleport flag!
                             this.justTeleported = false;
-                            console.log(`🔄 LOOP FADE-IN COMPLETE (mono)`);
+                            // console.log(`🔄 LOOP FADE-IN COMPLETE (mono)`);
                         }
                         // Fade-in completion: nothing special needed, just continue playing
                     }

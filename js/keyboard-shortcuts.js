@@ -47,11 +47,11 @@ export function cleanupKeyboardShortcuts() {
  */
 function handleKeyboardShortcut(event) {
     // Debug: Log Escape key presses
-    if (event.key === 'Escape') {
-        console.log('🔍 [ESCAPE DEBUG] handleKeyboardShortcut() called with Escape key');
-        console.log('🔍 [ESCAPE DEBUG] event.target:', event.target);
-        console.log('🔍 [ESCAPE DEBUG] event.target.tagName:', event.target.tagName);
-    }
+    // if (event.key === 'Escape') {
+    //     console.log('🔍 [ESCAPE DEBUG] handleKeyboardShortcut() called with Escape key');
+    //     console.log('🔍 [ESCAPE DEBUG] event.target:', event.target);
+    //     console.log('🔍 [ESCAPE DEBUG] event.target.tagName:', event.target.tagName);
+    // }
     
     // Don't capture shortcuts when user is typing in inputs, textareas, or contenteditable elements
     // EXCEPT for Escape key - Escape should always work to exit modes/zoom out
@@ -203,19 +203,19 @@ function handleKeyboardShortcut(event) {
     
     // Escape key: Exit feature selection mode first, then zoom back out to full view
     if (event.key === 'Escape') {
-        console.log('🔍 [ESCAPE DEBUG] Escape key pressed');
-        console.log('🔍 [ESCAPE DEBUG] isTypingInField:', isTypingInField);
-        console.log('🔍 [ESCAPE DEBUG] isInFrequencySelectionMode():', isInFrequencySelectionMode());
-        console.log('🔍 [ESCAPE DEBUG] zoomState.isInRegion():', zoomState.isInRegion());
-        console.log('🔍 [ESCAPE DEBUG] zoomState:', {
-            mode: zoomState.mode,
-            activeRegionId: zoomState.activeRegionId,
-            initialized: zoomState.isInitialized()
-        });
-        
+        // console.log('🔍 [ESCAPE DEBUG] Escape key pressed');
+        // console.log('🔍 [ESCAPE DEBUG] isTypingInField:', isTypingInField);
+        // console.log('🔍 [ESCAPE DEBUG] isInFrequencySelectionMode():', isInFrequencySelectionMode());
+        // console.log('🔍 [ESCAPE DEBUG] zoomState.isInRegion():', zoomState.isInRegion());
+        // console.log('🔍 [ESCAPE DEBUG] zoomState:', {
+        //     mode: zoomState.mode,
+        //     activeRegionId: zoomState.activeRegionId,
+        //     initialized: zoomState.isInitialized()
+        // });
+
         // If typing in a field, blur it first so Escape works
         if (isTypingInField) {
-            console.log('🔍 [ESCAPE DEBUG] Blurring active input/textarea');
+            // console.log('🔍 [ESCAPE DEBUG] Blurring active input/textarea');
             event.target.blur();
         }
         
