@@ -169,9 +169,15 @@ function captureSpectrogramThumbnail() {
             ctx.drawImage(overlayCanvas, 0, 0, spectrogramW, scaledSpectrogramHeight);
         }
 
-        // Draw y-axis on the right side
+        // Draw y-axis on the right side (clip from left, ticks are on the left side)
         if (axisCanvas) {
-            ctx.drawImage(axisCanvas, spectrogramW, 0, scaledAxisWidth, scaledSpectrogramHeight);
+            // Use 9-arg drawImage to clip: take left 60% of source, draw at full scale
+            const sourceClipWidth = Math.round(axisWidth * 0.6);
+            ctx.drawImage(
+                axisCanvas,
+                0, 0, sourceClipWidth, axisCanvas.height,  // source: left portion only
+                spectrogramW, 0, scaledAxisWidth, scaledSpectrogramHeight  // dest: right side of thumbnail
+            );
         }
 
         // Draw x-axis at the bottom (below the spectrogram, spanning full width minus y-axis)
