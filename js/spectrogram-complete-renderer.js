@@ -8,7 +8,7 @@
 
 import * as State from './audio-state.js';
 
-import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
+import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, LOG_SCALE_MIN_FREQ } from './spectrogram-axis-renderer.js';
 
 import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
 
@@ -335,9 +335,8 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             const frequency = (binIndex / totalBins) * originalNyquist;
 
             if (State.frequencyScale === 'logarithmic') {
-                const minFreq = 0.05; // Start at 0.05 Hz for low-frequency data
-                const freqSafe = Math.max(frequency, minFreq);
-                const logMin = Math.log10(minFreq);
+                const freqSafe = Math.max(frequency, LOG_SCALE_MIN_FREQ);
+                const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
                 const logMax = Math.log10(originalNyquist);
                 const logFreq = Math.log10(freqSafe);
                 const normalizedLog = (logFreq - logMin) / (logMax - logMin);
@@ -1297,14 +1296,13 @@ function calculateStretchFactor(playbackRate, frequencyScale) {
     } else if (frequencyScale === 'logarithmic') {
         const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
         const originalNyquist = originalSampleRate / 2;
-        const minFreq = 0.05; // Start at 0.05 Hz for low-frequency data
 
-        const logMin = Math.log10(minFreq);
+        const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
         const logMax = Math.log10(originalNyquist);
         const logRange = logMax - logMin;
-        
+
         const targetMaxFreq = originalNyquist / playbackRate;
-        const logTargetMax = Math.log10(Math.max(targetMaxFreq, minFreq));
+        const logTargetMax = Math.log10(Math.max(targetMaxFreq, LOG_SCALE_MIN_FREQ));
         const targetLogRange = logTargetMax - logMin;
         const fraction = targetLogRange / logRange;
         
@@ -1887,9 +1885,8 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             const frequency = (binIndex / totalBins) * originalNyquist;
 
             if (State.frequencyScale === 'logarithmic') {
-                const minFreq = 0.05; // Start at 0.05 Hz for low-frequency data
-                const freqSafe = Math.max(frequency, minFreq);
-                const logMin = Math.log10(minFreq);
+                const freqSafe = Math.max(frequency, LOG_SCALE_MIN_FREQ);
+                const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
                 const logMax = Math.log10(originalNyquist);
                 const logFreq = Math.log10(freqSafe);
                 const normalizedLog = (logFreq - logMin) / (logMax - logMin);

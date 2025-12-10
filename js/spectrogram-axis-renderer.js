@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 
 // Minimum frequency for logarithmic scale (Hz) - defines the bottom of the log scale
-const LOG_SCALE_MIN_FREQ = 0.03;
+export const LOG_SCALE_MIN_FREQ = 0.02;
 
 // Track previous playback rate for slight smoothing
 let previousPlaybackRate = 1.0;
@@ -504,9 +504,12 @@ function generateLinearTicks(maxFreq, playbackRate) {
  */
 function formatFrequencyLabel(freq) {
     if (freq === 0) return '0';
-    
-    if (freq < 1) {
-        // Show decimals for sub-Hz
+
+    if (freq < 0.1) {
+        // Two decimals for very low frequencies (0.03, 0.05, etc.)
+        return freq.toFixed(2);
+    } else if (freq < 1) {
+        // One decimal for sub-Hz (0.1, 0.2, 0.5, etc.)
         return freq.toFixed(1);
     } else if (freq < 10) {
         // One decimal for 1-10 Hz
