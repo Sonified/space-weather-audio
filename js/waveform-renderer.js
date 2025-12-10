@@ -1666,8 +1666,7 @@ export function setupWaveformInteraction() {
 
                 if (selectionDuration >= 1) {
                     // Show "Add Region" button
-                    const rect = canvas.getBoundingClientRect();
-                    showAddRegionButton(rect);
+                    showAddRegionButton(State.selectionStart, State.selectionEnd);
                 }
 
                 updateWorkletSelection();
