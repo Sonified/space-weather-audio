@@ -28,7 +28,7 @@ self.addEventListener('message', (e) => {
     if (type === 'add-samples') {
         // Add new samples to our buffer
         const { samples, rawSamples: raw } = e.data;
-        console.log(`🔍 [WORKER] Received add-samples: ${samples?.length || 0} samples, type=${samples?.constructor?.name}`);
+        // console.log(`🔍 [WORKER] Received add-samples: ${samples?.length || 0} samples, type=${samples?.constructor?.name}`);
         
         // 🔥 Clear processed cache when new samples arrive (data changed)
         processedSamples = null;
@@ -46,14 +46,14 @@ self.addEventListener('message', (e) => {
         newRawSamples.set(raw, rawSamples.length);
         rawSamples = newRawSamples;
         
-        console.log(`🔍 [WORKER] Samples added: total=${allSamples.length.toLocaleString()}, raw=${rawSamples.length.toLocaleString()}`);
+        // console.log(`🔍 [WORKER] Samples added: total=${allSamples.length.toLocaleString()}, raw=${rawSamples.length.toLocaleString()}`);
         if (DEBUG_WAVEFORM) console.log(`🎨 Waveform worker: Added ${samples.length.toLocaleString()} samples (total: ${allSamples.length.toLocaleString()})`);
         
     } else if (type === 'build-waveform') {
         // Build optimized waveform for display
         const { canvasWidth, canvasHeight, removeDC, alpha, isComplete, totalExpectedSamples, startSample, endSample } = e.data;
         
-        console.log(`🔍 [WORKER] Received build-waveform: width=${canvasWidth}, height=${canvasHeight}, allSamples.length=${allSamples.length}`);
+        // console.log(`🔍 [WORKER] Received build-waveform: width=${canvasWidth}, height=${canvasHeight}, allSamples.length=${allSamples.length}`);
         
         const t0 = performance.now();
         if (DEBUG_WAVEFORM) console.log(`🎨 Building waveform: ${canvasWidth}px wide, ${allSamples.length.toLocaleString()} samples, removeDC=${removeDC}, alpha=${alpha}`);
@@ -121,11 +121,11 @@ self.addEventListener('message', (e) => {
         const waveformData = buildMinMaxWaveform(displaySamples, effectiveWidth);
         
         const elapsed = performance.now() - t0;
-        console.log(`🔍 [WORKER] Waveform built: ${effectiveWidth} pixels from ${allSamples.length.toLocaleString()} samples in ${elapsed.toFixed(0)}ms`);
+        // console.log(`🔍 [WORKER] Waveform built: ${effectiveWidth} pixels from ${allSamples.length.toLocaleString()} samples in ${elapsed.toFixed(0)}ms`);
         if (DEBUG_WAVEFORM) console.log(`✅ Waveform built in ${elapsed.toFixed(0)}ms (${effectiveWidth} pixels from ${allSamples.length.toLocaleString()} samples)`);
         
         // Send back to main thread
-        console.log(`🔍 [WORKER] Sending waveform-ready message back to main thread`);
+        // console.log(`🔍 [WORKER] Sending waveform-ready message back to main thread`);
         self.postMessage({
             type: 'waveform-ready',
             waveformData: waveformData,

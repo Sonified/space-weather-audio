@@ -119,9 +119,9 @@ function normalize(data) {
 }
 
 export function drawWaveform() {
-    console.log(`🔍 [PIPELINE] drawWaveform() called`);
-    console.log(`🔍 [PIPELINE] State.completeSamplesArray: ${State.completeSamplesArray ? `exists, length=${State.completeSamplesArray.length}` : 'null/undefined'}`);
-    console.log(`🔍 [PIPELINE] State.currentMetadata: ${State.currentMetadata ? `exists, original_sample_rate=${State.currentMetadata.original_sample_rate}` : 'null/undefined'}`);
+    // console.log(`🔍 [PIPELINE] drawWaveform() called`);
+    // console.log(`🔍 [PIPELINE] State.completeSamplesArray: ${State.completeSamplesArray ? `exists, length=${State.completeSamplesArray.length}` : 'null/undefined'}`);
+    // console.log(`🔍 [PIPELINE] State.currentMetadata: ${State.currentMetadata ? `exists, original_sample_rate=${State.currentMetadata.original_sample_rate}` : 'null/undefined'}`);
     
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         console.log(`⚠️ drawWaveform() aborted: no data`);
@@ -133,16 +133,16 @@ export function drawWaveform() {
         console.log(`⚠️ drawWaveform() aborted: canvas not found`);
         return;
     }
-    console.log(`🔍 [PIPELINE] Canvas found: ${canvas.offsetWidth}x${canvas.offsetHeight}`);
-    
+    // console.log(`🔍 [PIPELINE] Canvas found: ${canvas.offsetWidth}x${canvas.offsetHeight}`);
+
     const width = canvas.offsetWidth * window.devicePixelRatio;
     const height = canvas.offsetHeight * window.devicePixelRatio;
-    console.log(`🔍 [PIPELINE] Canvas dimensions: ${width}x${height} (DPR=${window.devicePixelRatio})`);
+    // console.log(`🔍 [PIPELINE] Canvas dimensions: ${width}x${height} (DPR=${window.devicePixelRatio})`);
 
     // 👑 CRITICAL: Use original sample rate from metadata, NOT AudioContext rate!
     // completeSamplesArray is at original rate (50 Hz), not resampled yet
     const sampleRate = State.currentMetadata?.original_sample_rate || 50;
-    console.log(`🔍 [PIPELINE] Using sampleRate: ${sampleRate} Hz`);
+    // console.log(`🔍 [PIPELINE] Using sampleRate: ${sampleRate} Hz`);
     State.setTotalAudioDuration(State.completeSamplesArray.length / sampleRate);
     
     const removeDC = document.getElementById('removeDCOffset').checked;
@@ -167,11 +167,11 @@ export function drawWaveform() {
         zoomInfo = `zoomed ${zoomLevel.toFixed(1)}x (original samples ${regionRange.startSample.toLocaleString()}-${regionRange.endSample.toLocaleString()}, resampled ${startSample.toLocaleString()}-${endSample.toLocaleString()})`;
     }
     
-    console.log(`🔍 [PIPELINE] Sending to waveform worker: width=${width}, height=${height}, samples=${State.completeSamplesArray.length}, ${zoomInfo}`);
-    console.log(`🔍 [PIPELINE] State.waveformWorker exists: ${!!State.waveformWorker}`);
+    // console.log(`🔍 [PIPELINE] Sending to waveform worker: width=${width}, height=${height}, samples=${State.completeSamplesArray.length}, ${zoomInfo}`);
+    // console.log(`🔍 [PIPELINE] State.waveformWorker exists: ${!!State.waveformWorker}`);
     
     if (!State.waveformWorker) {
-        console.error(`❌ [PIPELINE] Cannot send to worker: State.waveformWorker is null!`);
+        // console.error(`❌ [PIPELINE] Cannot send to worker: State.waveformWorker is null!`);
         return;
     }
     
@@ -187,12 +187,12 @@ export function drawWaveform() {
         startSample: startSample,
         endSample: endSample
     });
-    console.log(`🔍 [PIPELINE] Message sent to waveform worker`);
+    // console.log(`🔍 [PIPELINE] Message sent to waveform worker`);
 }
 
 export function drawWaveformFromMinMax() {
-    console.log(`🔍 [PIPELINE] drawWaveformFromMinMax() called`);
-    console.log(`🔍 [PIPELINE] waveformMinMaxData exists: ${!!State.waveformMinMaxData}, isShowingFinalWaveform: ${State.isShowingFinalWaveform}, cachedWaveformCanvas: ${!!State.cachedWaveformCanvas}`);
+    // console.log(`🔍 [PIPELINE] drawWaveformFromMinMax() called`);
+    // console.log(`🔍 [PIPELINE] waveformMinMaxData exists: ${!!State.waveformMinMaxData}, isShowingFinalWaveform: ${State.isShowingFinalWaveform}, cachedWaveformCanvas: ${!!State.cachedWaveformCanvas}`);
     
     if (!State.waveformMinMaxData) {
         console.log(`⚠️ drawWaveformFromMinMax() aborted: no min/max data`);
@@ -204,15 +204,15 @@ export function drawWaveformFromMinMax() {
         console.log(`⚠️ drawWaveformFromMinMax() aborted: canvas not found`);
         return;
     }
-    console.log(`🔍 [PIPELINE] Canvas found: ${canvas.offsetWidth}x${canvas.offsetHeight}`);
-    
+    // console.log(`🔍 [PIPELINE] Canvas found: ${canvas.offsetWidth}x${canvas.offsetHeight}`);
+
     const ctx = canvas.getContext('2d');
     const width = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
     const height = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
-    console.log(`🔍 [PIPELINE] Canvas dimensions set: ${width}x${height}`);
-    
+    // console.log(`🔍 [PIPELINE] Canvas dimensions set: ${width}x${height}`);
+
     if (State.isShowingFinalWaveform && State.cachedWaveformCanvas) {
-        console.log(`🔍 [PIPELINE] Using cached waveform canvas`);
+        // console.log(`🔍 [PIPELINE] Using cached waveform canvas`);
         const oldCanvas = document.createElement('canvas');
         oldCanvas.width = width;
         oldCanvas.height = height;
@@ -389,14 +389,14 @@ export function drawWaveformFromMinMax() {
         animate();
         
     } else {
-        console.log(`🔍 [PIPELINE] Drawing waveform directly (no cached canvas)`);
+        // console.log(`🔍 [PIPELINE] Drawing waveform directly (no cached canvas)`);
         // Background from colormap (darkest value)
         ctx.fillStyle = getWaveformBackgroundColor();
         ctx.fillRect(0, 0, width, height);
         
         const mid = height / 2;
         const { mins, maxs } = State.waveformMinMaxData;
-        console.log(`🔍 [PIPELINE] Drawing ${mins.length} waveform pixels`);
+        // console.log(`🔍 [PIPELINE] Drawing ${mins.length} waveform pixels`);
         
         // Use pre-computed max amplitude (cached when waveformMinMaxData was set)
         const maxAmplitude = State.waveformMaxAmplitude || 0;
@@ -462,7 +462,7 @@ export function drawWaveformFromMinMax() {
         const cacheCtx = cachedCanvas.getContext('2d');
         cacheCtx.drawImage(canvas, 0, 0);
         State.setCachedWaveformCanvas(cachedCanvas);
-        console.log(`🔍 [PIPELINE] Waveform cached, canvas dimensions: ${width}x${height}`);
+        // console.log(`🔍 [PIPELINE] Waveform cached, canvas dimensions: ${width}x${height}`);
         
         // Draw waveform axis after waveform is drawn
         positionWaveformAxisCanvas();
@@ -475,8 +475,8 @@ export function drawWaveformFromMinMax() {
         // 🔧 Render regions after waveform is drawn (same as crossfade completion)
         // This ensures regions appear whether or not there was a crossfade animation
         renderRegionsAfterCrossfade();
-        
-        console.log(`✅ [PIPELINE] Waveform drawing complete!`);
+
+        // console.log(`✅ [PIPELINE] Waveform drawing complete!`);
         if (DEBUG_WAVEFORM) console.log(`✅ Waveform drawn from min/max data (${mins.length} pixels) - progressive`);
     }
 }
@@ -1508,11 +1508,11 @@ export function initWaveformWorker() {
     
     worker.onmessage = (e) => {
         const { type } = e.data;
-        console.log(`🔍 [PIPELINE] Worker message received: type=${type}`);
-        
+        // console.log(`🔍 [PIPELINE] Worker message received: type=${type}`);
+
         if (type === 'waveform-ready') {
             const { waveformData, totalSamples, buildTime, isComplete } = e.data;
-            console.log(`🔍 [PIPELINE] waveform-ready: totalSamples=${totalSamples}, waveformData.mins.length=${waveformData?.mins?.length}, isComplete=${isComplete}`);
+            // console.log(`🔍 [PIPELINE] waveform-ready: totalSamples=${totalSamples}, waveformData.mins.length=${waveformData?.mins?.length}, isComplete=${isComplete}`);
             
             if (isComplete) {
                 State.setIsShowingFinalWaveform(true);
@@ -1521,7 +1521,7 @@ export function initWaveformWorker() {
             if (DEBUG_WAVEFORM) console.log(`🎨 Waveform ready: ${totalSamples.toLocaleString()} samples → ${waveformData.mins.length} pixels in ${buildTime.toFixed(0)}ms`);
             
             State.setWaveformMinMaxData(waveformData);
-            console.log(`🔍 [PIPELINE] Calling drawWaveformFromMinMax()`);
+            // console.log(`🔍 [PIPELINE] Calling drawWaveformFromMinMax()`);
             drawWaveformFromMinMax();
             
             // 🔧 FIX: Don't call drawWaveformWithSelection() here - it draws regions immediately

@@ -1797,25 +1797,25 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         const targetDuration = endSeconds - startSeconds;
 
         // 🔬 DIAGNOSTIC: Sample extraction details
-        const zoomStateSampleRate = zoomState.sampleRate;
-        const playbackSamplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second;
-        console.log(`🔬 [SPECTROGRAM REGION] Sample extraction:`, {
-            originalSampleRate,
-            zoomStateSampleRate,
-            playbackSamplesPerRealSecond,
-            MISMATCH_DETECTED: Math.abs(originalSampleRate - zoomStateSampleRate) > 1,
-            completeSamplesArrayLength: State.completeSamplesArray.length,
-            renderStartSeconds: renderStartSeconds.toFixed(2),
-            renderEndSeconds: renderEndSeconds.toFixed(2),
-            startSample: startSample.toLocaleString(),
-            endSample: endSample.toLocaleString(),
-            resampledStartSample: resampledStartSample.toLocaleString(),
-            resampledEndSample: resampledEndSample.toLocaleString(),
-            regionSamplesLength: regionSamples.length.toLocaleString(),
-            fftSize: State.fftSize || 2048,
-            hasEnoughForFFT: regionSamples.length > (State.fftSize || 2048),
-            expectedSamplesAtZoomRate: Math.floor((renderEndSeconds - renderStartSeconds) * zoomStateSampleRate).toLocaleString()
-        });
+        // const zoomStateSampleRate = zoomState.sampleRate;
+        // const playbackSamplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second;
+        // console.log(`🔬 [SPECTROGRAM REGION] Sample extraction:`, {
+        //     originalSampleRate,
+        //     zoomStateSampleRate,
+        //     playbackSamplesPerRealSecond,
+        //     MISMATCH_DETECTED: Math.abs(originalSampleRate - zoomStateSampleRate) > 1,
+        //     completeSamplesArrayLength: State.completeSamplesArray.length,
+        //     renderStartSeconds: renderStartSeconds.toFixed(2),
+        //     renderEndSeconds: renderEndSeconds.toFixed(2),
+        //     startSample: startSample.toLocaleString(),
+        //     endSample: endSample.toLocaleString(),
+        //     resampledStartSample: resampledStartSample.toLocaleString(),
+        //     resampledEndSample: resampledEndSample.toLocaleString(),
+        //     regionSamplesLength: regionSamples.length.toLocaleString(),
+        //     fftSize: State.fftSize || 2048,
+        //     hasEnoughForFFT: regionSamples.length > (State.fftSize || 2048),
+        //     expectedSamplesAtZoomRate: Math.floor((renderEndSeconds - renderStartSeconds) * zoomStateSampleRate).toLocaleString()
+        // });
 
         // FFT parameters (use State.fftSize from UI dropdown)
         const fftSize = State.fftSize || 2048;
@@ -1951,16 +1951,16 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             const zoneSampleCount = zoneSamples.length;
 
             // 🔬 DIAGNOSTIC: Zone sample calculation
-            console.log(`🔬 [ZONE ${zoneIdx}] "${zone.label}":`, {
-                zoneTimeRange: `${zone.start.toFixed(2)}s - ${zone.end.toFixed(2)}s`,
-                zoneRelativeTime: `${zoneStartRelativeToRender.toFixed(2)}s - ${zoneEndRelativeToRender.toFixed(2)}s`,
-                zoneSampleStart,
-                zoneSampleEnd,
-                regionSamplesLength: regionSamples.length,
-                zoneSampleCount,
-                fftSize,
-                hasEnoughForFFT: zoneSampleCount > fftSize
-            });
+            // console.log(`🔬 [ZONE ${zoneIdx}] "${zone.label}":`, {
+            //     zoneTimeRange: `${zone.start.toFixed(2)}s - ${zone.end.toFixed(2)}s`,
+            //     zoneRelativeTime: `${zoneStartRelativeToRender.toFixed(2)}s - ${zoneEndRelativeToRender.toFixed(2)}s`,
+            //     zoneSampleStart,
+            //     zoneSampleEnd,
+            //     regionSamplesLength: regionSamples.length,
+            //     zoneSampleCount,
+            //     fftSize,
+            //     hasEnoughForFFT: zoneSampleCount > fftSize
+            // });
 
             // Calculate hopSize based on quality
             // Buffer zones: 1/8 quality (8x hopSize) - motion hides the low quality!
@@ -2031,45 +2031,45 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
                     const xEnd = Math.floor((sliceIdx + 1) * zonePixelsPerSlice);
 
                     // 🔬 Log first result
-                    if (!firstResultLogged) {
-                        const maxMag = Math.max(...magnitudes);
-                        const minMag = Math.min(...magnitudes);
+                    // if (!firstResultLogged) {
+                    //     const maxMag = Math.max(...magnitudes);
+                    //     const minMag = Math.min(...magnitudes);
 
-                        // Test one bin's color calculation
-                        const testBin = 512;
-                        const testMag = magnitudes[testBin];
-                        const testDb = 20 * Math.log10(testMag + 1e-10);
-                        const testNormDb = Math.max(0, Math.min(1, (testDb + 100) / 100));
-                        const testColorIdx = Math.floor(testNormDb * 255);
-                        const testR = colorLUT ? colorLUT[testColorIdx * 3] : 'NO_LUT';
-                        const testG = colorLUT ? colorLUT[testColorIdx * 3 + 1] : 'NO_LUT';
-                        const testB = colorLUT ? colorLUT[testColorIdx * 3 + 2] : 'NO_LUT';
+                    //     // Test one bin's color calculation
+                    //     const testBin = 512;
+                    //     const testMag = magnitudes[testBin];
+                    //     const testDb = 20 * Math.log10(testMag + 1e-10);
+                    //     const testNormDb = Math.max(0, Math.min(1, (testDb + 100) / 100));
+                    //     const testColorIdx = Math.floor(testNormDb * 255);
+                    //     const testR = colorLUT ? colorLUT[testColorIdx * 3] : 'NO_LUT';
+                    //     const testG = colorLUT ? colorLUT[testColorIdx * 3 + 1] : 'NO_LUT';
+                    //     const testB = colorLUT ? colorLUT[testColorIdx * 3 + 2] : 'NO_LUT';
 
-                        // Test Y positions for bin 512
-                        const testYStart = Math.floor(getYPosition(testBin + 1, frequencyBinCount, height));
-                        const testYEnd = Math.floor(getYPosition(testBin, frequencyBinCount, height));
+                    //     // Test Y positions for bin 512
+                    //     const testYStart = Math.floor(getYPosition(testBin + 1, frequencyBinCount, height));
+                    //     const testYEnd = Math.floor(getYPosition(testBin, frequencyBinCount, height));
 
-                        console.log(`🔬 [DRAW] First result:`, {
-                            sliceIdx,
-                            xStart, xEnd,
-                            magnitudesLength: magnitudes.length,
-                            maxMagnitude: maxMag,
-                            minMagnitude: minMag,
-                            colorLUTExists: !!colorLUT,
-                            colorLUTLength: colorLUT?.length
-                        });
-                        console.log(`🔬 [DRAW] Color test (bin ${testBin}):`, {
-                            testMag,
-                            testDb,
-                            testNormDb,
-                            testColorIdx,
-                            testRGB: [testR, testG, testB],
-                            testYStart,
-                            testYEnd,
-                            yLoopRuns: testYStart < testYEnd ? testYEnd - testYStart : 0
-                        });
-                        firstResultLogged = true;
-                    }
+                    //     console.log(`🔬 [DRAW] First result:`, {
+                    //         sliceIdx,
+                    //         xStart, xEnd,
+                    //         magnitudesLength: magnitudes.length,
+                    //         maxMagnitude: maxMag,
+                    //         minMagnitude: minMag,
+                    //         colorLUTExists: !!colorLUT,
+                    //         colorLUTLength: colorLUT?.length
+                    //     });
+                    //     console.log(`🔬 [DRAW] Color test (bin ${testBin}):`, {
+                    //         testMag,
+                    //         testDb,
+                    //         testNormDb,
+                    //         testColorIdx,
+                    //         testRGB: [testR, testG, testB],
+                    //         testYStart,
+                    //         testYEnd,
+                    //         yLoopRuns: testYStart < testYEnd ? testYEnd - testYStart : 0
+                    //     });
+                    //     firstResultLogged = true;
+                    // }
 
                     for (let binIdx = 0; binIdx < frequencyBinCount; binIdx++) {
                         const magnitude = magnitudes[binIdx];
@@ -2085,9 +2085,9 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
                         const yEnd = Math.floor(getYPosition(binIdx, frequencyBinCount, height));
 
                         // 🔬 Log Y position issue on first bin
-                        if (!firstResultLogged && binIdx === 0) {
-                            console.log(`🔬 [DRAW] Y positions:`, { binIdx, yStart, yEnd, loopWillRun: yStart < yEnd });
-                        }
+                        // if (!firstResultLogged && binIdx === 0) {
+                        //     console.log(`🔬 [DRAW] Y positions:`, { binIdx, yStart, yEnd, loopWillRun: yStart < yEnd });
+                        // }
 
                         for (let x = xStart; x < xEnd; x++) {
                             for (let y = yStart; y < yEnd; y++) {
@@ -2125,13 +2125,13 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             );
 
             // 🔬 DIAGNOSTIC: Check if FFT processing worked
-            console.log(`🔬 [ZONE ${zoneIdx}] FFT processing complete:`, {
-                callbackCalls: callbackCallCount,
-                totalResults: totalResultsProcessed,
-                expectedBatches: zoneBatches.length,
-                zoneNumTimeSlices,
-                pixelsWritten
-            });
+            // console.log(`🔬 [ZONE ${zoneIdx}] FFT processing complete:`, {
+            //     callbackCalls: callbackCallCount,
+            //     totalResults: totalResultsProcessed,
+            //     expectedBatches: zoneBatches.length,
+            //     zoneNumTimeSlices,
+            //     pixelsWritten
+            // });
 
             // 🔥 PROTECTION: Check for cancellation after each zone
             if (signal.aborted) {
@@ -2161,13 +2161,13 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
                     break;
                 }
             }
-            console.log(`🔬 [ZONE ${zoneIdx}] ImageData check:`, {
-                hasNonBlackPixels,
-                imageDataWidth: zoneImageData.width,
-                imageDataHeight: zoneImageData.height,
-                dataLength: zonePixelData.length,
-                checkedFromBottom: startFromBottom
-            });
+            // console.log(`🔬 [ZONE ${zoneIdx}] ImageData check:`, {
+            //     hasNonBlackPixels,
+            //     imageDataWidth: zoneImageData.width,
+            //     imageDataHeight: zoneImageData.height,
+            //     dataLength: zonePixelData.length,
+            //     checkedFromBottom: startFromBottom
+            // });
 
             // Composite this zone onto the final canvas
             tempCtx.putImageData(zoneImageData, currentXOffset, 0);
@@ -2233,13 +2233,13 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         }
         
         // 🔬 DIAGNOSTIC: Always log what we found
-        console.log(`🔬 [FINAL CANVAS] Content check:`, {
-            finalCanvasHasContent,
-            checkY,
-            checkHeight,
-            canvasSize: `${finalCanvas.width}x${finalCanvas.height}`,
-            checkedRegion: `y=${checkY} to y=${checkY + checkHeight}`
-        });
+        // console.log(`🔬 [FINAL CANVAS] Content check:`, {
+        //     finalCanvasHasContent,
+        //     checkY,
+        //     checkHeight,
+        //     canvasSize: `${finalCanvas.width}x${finalCanvas.height}`,
+        //     checkedRegion: `y=${checkY} to y=${checkY + checkHeight}`
+        // });
 
         if (!finalCanvasHasContent && !isStudyMode()) {
             console.warn('⚠️ renderCompleteSpectrogramForRegion: finalCanvas has no visible content before creating infinite canvas!', {

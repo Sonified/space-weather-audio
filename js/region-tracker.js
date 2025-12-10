@@ -3057,10 +3057,8 @@ export function addFeature(regionIndex) {
             });
         });
         
-        // Auto-enter selection mode for the newly added feature
-        setTimeout(() => {
-            startFrequencySelection(regionIndex, newCount - 1);
-        }, 100);
+        // Note: We don't auto-start selection here - it caused bugs when drawing rapidly
+        // zoomToRegion handles auto-selecting incomplete features when entering a region
     } else {
         // Just update instantly (when collapsed)
         renderFeatures(region.id, regionIndex);

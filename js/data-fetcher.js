@@ -533,7 +533,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         if (downloadAllBtn) {
             downloadAllBtn.style.display = (audioData.allFileUrls?.length > 1) ? 'block' : 'none';
         }
-        console.log(`🔍 [PIPELINE] State.totalAudioDuration set: ${State.totalAudioDuration}s`);
+        // console.log(`🔍 [PIPELINE] State.totalAudioDuration set: ${State.totalAudioDuration}s`);
         
         // Set playback duration (for UI display)
         State.setPlaybackDurationSeconds(audioData.time.spanSeconds);
@@ -545,16 +545,16 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         }
         
         // Send samples to waveform worker BEFORE building waveform
-        console.log(`🔍 [PIPELINE] Sending samples to waveform worker: ${audioData.samples.length} samples`);
+        // console.log(`🔍 [PIPELINE] Sending samples to waveform worker: ${audioData.samples.length} samples`);
         if (State.waveformWorker) {
             State.waveformWorker.postMessage({
                 type: 'add-samples',
                 samples: audioData.samples,
                 rawSamples: audioData.samples // For CDAWeb, samples are already normalized, use same for raw
             });
-            console.log(`🔍 [PIPELINE] Samples sent to waveform worker`);
+            // console.log(`🔍 [PIPELINE] Samples sent to waveform worker`);
         } else {
-            console.error(`❌ [PIPELINE] Cannot send samples: State.waveformWorker is null!`);
+            // console.error(`❌ [PIPELINE] Cannot send samples: State.waveformWorker is null!`);
         }
         
         // Draw waveform
@@ -580,7 +580,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         
         // Send samples to AudioWorklet for playback
         if (State.workletNode && State.audioContext) {
-            console.log(`🔍 [PIPELINE] Sending samples to AudioWorklet: ${audioData.samples.length} samples`);
+            // console.log(`🔍 [PIPELINE] Sending samples to AudioWorklet: ${audioData.samples.length} samples`);
             
             // 🎚️ CRITICAL: Set first-play flag BEFORE sending samples
             // This ensures auto-resume uses the long fade when it triggers
@@ -613,7 +613,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                 State.allReceivedData.push(chunk);
             }
             
-            console.log(`🔍 [PIPELINE] Sent ${State.allReceivedData.length} chunks to AudioWorklet`);
+            // console.log(`🔍 [PIPELINE] Sent ${State.allReceivedData.length} chunks to AudioWorklet`);
             
             // ============================================
             // DATA-COMPLETE WITH CORRECT SAMPLE RATE
@@ -701,7 +701,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                 }
             }
         } else {
-            console.warn(`⚠️ [PIPELINE] Cannot send samples to worklet: workletNode=${!!State.workletNode}, audioContext=${!!State.audioContext}`);
+            // console.warn(`⚠️ [PIPELINE] Cannot send samples to worklet: workletNode=${!!State.workletNode}, audioContext=${!!State.audioContext}`);
         }
         
         console.log(`✅ ${logTime()} CDAWeb data loaded and visualized!`);
