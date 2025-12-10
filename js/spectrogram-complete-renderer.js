@@ -787,6 +787,11 @@ export async function updateElasticFriendInBackground() {
     }
     const startTime = performance.now();
 
+    // 🔧 FIX: Save the current infinite canvas (region view) before rendering full view
+    // renderCompleteSpectrogram will overwrite it, so we need to restore after
+    const savedInfiniteCanvas = infiniteSpectrogramCanvas;
+    const savedInfiniteContext = { ...infiniteCanvasContext };
+
     try {
         // Use existing render function with forceFullView=true to bypass region check
         // skipViewportUpdate=true so we don't touch the display
@@ -799,6 +804,17 @@ export async function updateElasticFriendInBackground() {
 
     } catch (error) {
         console.error('❌ Error updating elastic friend in background:', error);
+    } finally {
+        // 🔧 FIX: Restore the region view infinite canvas
+        // The elastic friend is now in cachedFullSpectrogramCanvas, but we need
+        // infiniteSpectrogramCanvas to remain the REGION view for display
+        if (savedInfiniteCanvas) {
+            infiniteSpectrogramCanvas = savedInfiniteCanvas;
+            infiniteCanvasContext = savedInfiniteContext;
+            if (!isStudyMode()) {
+                console.log(`🏠 Restored region view to infinite canvas (context: ${savedInfiniteContext.startSample}-${savedInfiniteContext.endSample})`);
+            }
+        }
     }
 }
 
