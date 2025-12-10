@@ -1426,7 +1426,12 @@ export function setupWaveformInteraction() {
     }
 
     canvas.addEventListener('touchstart', (e) => {
-        if (!State.completeSamplesArray || State.totalAudioDuration === 0) return;
+        console.log('📱 TOUCH EVENT RECEIVED on waveform canvas');
+
+        if (!State.completeSamplesArray || State.totalAudioDuration === 0) {
+            console.log('📱 No audio data loaded yet, ignoring touch');
+            return;
+        }
 
         // Prevent default to avoid scrolling while interacting with waveform
         e.preventDefault();
