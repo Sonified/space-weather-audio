@@ -725,23 +725,21 @@ export async function startStreaming(event) {
         
         // Update status and highlight waveform for user guidance
         // For shared sessions, show "Ready to play" message instead
+        // Uses separate localStorage variable from tutorial State to persist across sessions
+        const userHasClickedWaveformOnce = localStorage.getItem('userHasClickedWaveformOnce') === 'true';
         const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-        console.log(`🔗 [STATUS DEBUG] isSharedSession=${isSharedSession}, raw value="${sessionStorage.getItem('isSharedSession')}"`);
         if (statusDiv) {
             if (isSharedSession) {
-                console.log('🔗 [STATUS] Setting shared session message');
                 statusDiv.textContent = '🎧 Ready! Click PLAY or press the SPACE BAR to start playback.';
                 statusDiv.className = 'status';
+            } else if (userHasClickedWaveformOnce) {
+                statusDiv.textContent = 'Click and drag to create a region, type a region # to zoom in, or click 🔍';
+                statusDiv.className = 'status info';
             } else {
-                console.log('🔗 [STATUS] Setting normal message (not shared session)');
                 statusDiv.textContent = 'Click the waveform to jump to a new location.';
                 statusDiv.className = 'status info';
             }
         }
-
-        // Add pulse highlight to waveform container to draw attention (only for first-time users)
-        // Uses separate localStorage variable from tutorial State to persist across sessions
-        const userHasClickedWaveformOnce = localStorage.getItem('userHasClickedWaveformOnce') === 'true';
         if (!userHasClickedWaveformOnce) {
             const waveformEl = document.getElementById('waveform');
             if (waveformEl) {
