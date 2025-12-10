@@ -794,26 +794,17 @@ export function createRegionFromSelectionTimes(selectionStartSeconds, selectionE
         return;
     }
     
-    console.log('🎯 Creating region from selection:', selectionStartSeconds, '-', selectionEndSeconds, 'seconds');
-    console.log('   Data start:', State.dataStartTime);
-    console.log('   Total audio duration:', State.totalAudioDuration);
-    
     // 🏛️ Convert selection times to absolute sample indices (the eternal truth)
     const startSample = zoomState.timeToSample(selectionStartSeconds);
     const endSample = zoomState.timeToSample(selectionEndSeconds);
-    
+
     // Convert to real-world timestamps (for display/export)
     const startTimestamp = zoomState.sampleToRealTimestamp(startSample);
     const endTimestamp = zoomState.sampleToRealTimestamp(endSample);
-    
+
     const startTime = startTimestamp ? startTimestamp.toISOString() : null;
     const endTime = endTimestamp ? endTimestamp.toISOString() : null;
-    
-    console.log('   Region start sample:', startSample.toLocaleString());
-    console.log('   Region end sample:', endSample.toLocaleString());
-    console.log('   Region start time:', startTime);
-    console.log('   Region end time:', endTime);
-    
+
     // Get current spacecraft's regions
     const regions = getCurrentRegions();
     
@@ -3278,8 +3269,6 @@ export function zoomToRegion(regionIndex) {
     const dataEndMs = State.dataEndTime.getTime();
     const regionStartMs = new Date(region.startTime).getTime();
     const regionEndMs = new Date(region.stopTime).getTime();
-
-    // console.log(`🔍 Zooming into region ${regionIndex + 1} (samples ${region.startSample.toLocaleString()}-${region.endSample.toLocaleString()})`);
     
     // console.log('🔍 ========== ZOOM IN: Starting Region Zoom ==========');
     // console.log('🏛️ Region data:', {
@@ -3355,10 +3344,9 @@ export function zoomToRegion(regionIndex) {
     }
     
     // 🙏 Timestamps as a source of truth: Calculate seconds from timestamps
-    // (regionStartMs, regionEndMs, dataStartMs already calculated above at lines 2808-2811)
     const regionStartSeconds = (regionStartMs - dataStartMs) / 1000;
     const regionEndSeconds = (regionEndMs - dataStartMs) / 1000;
-    
+
     // 🎯 MAGIC TRICK: Predictive rendering with smart quality zones!
     // Detect zoom direction and calculate expanded render window
     // 🔥 FIX: Get current visual position (where we are NOW, even mid-transition)
@@ -3404,16 +3392,7 @@ export function zoomToRegion(regionIndex) {
     const dataEndSeconds = (State.dataEndTime.getTime() - dataStartMs) / 1000;
     expandedStartSeconds = Math.max(dataStartSeconds, expandedStartSeconds);
     expandedEndSeconds = Math.min(dataEndSeconds, expandedEndSeconds);
-    
-    // console.log('🎯 Smart render window:', {
-    //     direction: zoomDirection,
-    //     target: `${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`,
-    //     expanded: `${expandedStartSeconds.toFixed(2)}s - ${expandedEndSeconds.toFixed(2)}s`,
-    //     targetDuration: regionDuration.toFixed(2),
-    //     expandedDuration: (expandedEndSeconds - expandedStartSeconds).toFixed(2),
-    //     multiplier: ((expandedEndSeconds - expandedStartSeconds) / regionDuration).toFixed(1) + 'x'
-    // });
-    
+
     // Set viewport to region timestamps directly
     // No sample calculations - just store the eternal timestamps
     zoomState.setViewportToRegion(region.startTime, region.stopTime, region.id);

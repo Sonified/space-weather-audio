@@ -1882,15 +1882,20 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
                 // console.log('🎯 Quality zones (RIGHT entry): Left=1/8 quality (8x faster), Target=full (1x)');
             } else {
                 // CENTER: Left buffer (1/8) + Target (full) + Right buffer (1/8)
-                const bufferDuration = (totalDuration - targetDuration) / 2;
-                const bufferPixelsEach = Math.max(1, Math.floor((width - targetPixels) / 2));
-                const remainingPixels = Math.max(1, width - targetPixels - bufferPixelsEach);
-                const leftMidSeconds = renderStartSeconds + bufferDuration;
-                const rightMidSeconds = leftMidSeconds + targetDuration;
+                // 🔥 FIX: Use actual target bounds, not calculated centered position!
+                // When expanded range is clamped to dataset bounds, target is NOT centered
+                const leftBufferDuration = startSeconds - renderStartSeconds;
+                const rightBufferDuration = renderEndSeconds - endSeconds;
+                const leftBufferRatio = leftBufferDuration / totalDuration;
+                const rightBufferRatio = rightBufferDuration / totalDuration;
+                const bufferPixelsLeft = Math.max(1, Math.floor(width * leftBufferRatio));
+                const bufferPixelsRight = Math.max(1, Math.floor(width * rightBufferRatio));
+                const actualTargetPixels = Math.max(1, width - bufferPixelsLeft - bufferPixelsRight);
+
                 renderPlan = [
-                    { start: renderStartSeconds, end: leftMidSeconds, endSample: targetStartSample, pixels: bufferPixelsEach, quality: 'half', label: 'Left Buffer' },
-                    { start: leftMidSeconds, end: rightMidSeconds, endSample: targetEndSample, pixels: targetPixels, quality: 'full', label: 'Target' },
-                    { start: rightMidSeconds, end: renderEndSeconds, endSample: endSample, pixels: remainingPixels, quality: 'half', label: 'Right Buffer' }
+                    { start: renderStartSeconds, end: startSeconds, endSample: targetStartSample, pixels: bufferPixelsLeft, quality: 'half', label: 'Left Buffer' },
+                    { start: startSeconds, end: endSeconds, endSample: targetEndSample, pixels: actualTargetPixels, quality: 'full', label: 'Target' },
+                    { start: endSeconds, end: renderEndSeconds, endSample: endSample, pixels: bufferPixelsRight, quality: 'half', label: 'Right Buffer' }
                 ];
                 // console.log('🎯 Quality zones (CENTER): Left=1/8, Target=full, Right=1/8');
             }
