@@ -2921,5 +2921,49 @@ input[type="range"]:disabled {
         min-height: 100px;
         touch-action: pan-y; /* Allow vertical scroll, prevent horizontal gestures */
     }
+
+    /* Spectrogram: default to scroll, JS toggles to .touch-draw when zoomed in */
+    #spectrogram {
+        touch-action: pan-y;
+    }
+    #spectrogram.touch-draw {
+        touch-action: none; /* Allow box drawing when zoomed into region */
+    }
+
+    /* Fix controls row - force ALL children to wrap */
+    .panel-selection .controls,
+    .panel-selection .controls > * {
+        flex-wrap: wrap !important;
+    }
+
+    /* Date/time row needs to wrap too */
+    .panel-selection .control-group[style*="width: 100%"] {
+        flex-wrap: wrap !important;
+    }
+
+    /* All control groups in selection panel */
+    .panel-selection .control-group {
+        min-width: 0 !important;
+        flex-wrap: wrap !important;
+    }
+
+    /* Make inputs and selects smaller on mobile */
+    .panel-selection select,
+    .panel-selection input[type="date"],
+    .panel-selection input[type="text"] {
+        width: auto !important;
+        min-width: 80px !important;
+        max-width: 150px !important;
+        font-size: 13px !important;
+        padding: 6px 8px !important;
+    }
+
+    /* Fetch button should be visible */
+    #startBtn {
+        min-width: 100px !important;
+        width: auto !important;
+        margin-left: 0 !important;
+        margin-top: 8px;
+    }
 }
 

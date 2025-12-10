@@ -13,6 +13,7 @@
  */
 
 import * as State from './audio-state.js';
+import { isTouchDevice } from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
@@ -35,6 +36,24 @@ let currentSpacecraft = null;
 let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
 let regionsDelayedForCrossfade = false; // Flag to track if regions are waiting for crossfade to complete
+
+/**
+ * Update spectrogram touch-action for mobile devices
+ * When zoomed into a region, allow drawing (touch-action: none)
+ * When zoomed out, allow scrolling (touch-action: pan-y via CSS default)
+ */
+function updateSpectrogramTouchMode(isZoomedIn) {
+    if (!isTouchDevice) return; // Only needed for touch devices
+
+    const spectrogram = document.getElementById('spectrogram');
+    if (!spectrogram) return;
+
+    if (isZoomedIn) {
+        spectrogram.classList.add('touch-draw');
+    } else {
+        spectrogram.classList.remove('touch-draw');
+    }
+}
 
 // 🎨 ANIMATION TOGGLE: Set to true for smooth slide animation, false for instant reordering
 const ANIMATE_REGION_REORDER = true; // Change to true to enable smooth slide animation
@@ -3264,6 +3283,9 @@ export function zoomToRegion(regionIndex) {
         return;
     }
 
+    // 📱 Mobile: Enable touch drawing on spectrogram when zoomed in
+    updateSpectrogramTouchMode(true);
+
     // Timestamps calculated from region.startTime/stopTime (our only source of truth!)
     const dataStartMs = State.dataStartTime.getTime();
     const dataEndMs = State.dataEndTime.getTime();
@@ -3615,8 +3637,11 @@ export function zoomToFull() {
         return;
     }
 
+    // 📱 Mobile: Disable touch drawing, allow scrolling when zoomed out
+    updateSpectrogramTouchMode(false);
+
     // console.log('🔍 [ZOOM_TO_FULL DEBUG] Continuing with zoom out...');
-    
+
     // console.log('🌍 Zooming to full view');
     // console.log('🔙 ZOOMING OUT TO FULL VIEW starting');
     
