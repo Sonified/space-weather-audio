@@ -6,7 +6,13 @@
 import * as State from './audio-state.js';
 
 // Minimum frequency for logarithmic scale (Hz) - defines the bottom of the log scale
-export const LOG_SCALE_MIN_FREQ = 0.02;
+// Per-spacecraft values: GOES has lower frequency data, others use 0.5 Hz
+export function getLogScaleMinFreq() {
+    const spacecraft = document.getElementById('spacecraft')?.value;
+    return spacecraft === 'GOES' ? 0.02 : 0.5;
+}
+// Keep constant for backward compatibility (uses current spacecraft)
+export const LOG_SCALE_MIN_FREQ = 0.02; // Default, but use getLogScaleMinFreq() for dynamic value
 
 // Track previous playback rate for slight smoothing
 let previousPlaybackRate = 1.0;
@@ -151,9 +157,10 @@ export function drawFrequencyAxis() {
     
     // Draw each tick - show ALL ticks regardless of playback speed
     tickFrequencies.forEach(originalFreq => {
-        // Skip 0 Hz (and any sub-0.05 Hz for log scale), and max frequency
+        // Skip 0 Hz (and any sub-min Hz for log scale), and max frequency
         // BUT: allow 50 Hz to show when speed < 0.95x (even if it's the Nyquist)
-        if (originalFreq === 0 || (scaleType === 'logarithmic' && originalFreq < LOG_SCALE_MIN_FREQ)) return;
+        const logMinFreq = getLogScaleMinFreq();
+        if (originalFreq === 0 || (scaleType === 'logarithmic' && originalFreq < logMinFreq)) return;
         if (originalFreq === originalNyquist && !(originalFreq === 50 && smoothedRate < 0.95)) return;
         
         // For square root scale at slower speeds, remove specific frequencies to reduce clutter
@@ -275,8 +282,9 @@ function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
 
     if (scaleType === 'logarithmic') {
         // Logarithmic scale
-        const freqSafe = Math.max(freq, LOG_SCALE_MIN_FREQ);
-        const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
+        const minFreq = getLogScaleMinFreq();
+        const freqSafe = Math.max(freq, minFreq);
+        const logMin = Math.log10(minFreq);
         const logMax = Math.log10(maxFreq);
         const logFreq = Math.log10(freqSafe);
         const normalizedLog = (logFreq - logMin) / (logMax - logMin);
@@ -296,17 +304,18 @@ function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
  * This is needed because log scale is NOT homogeneous - we must stretch positions, not scale frequencies
  */
 function calculateStretchFactorForLog(playbackRate, originalNyquist) {
-    const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
+    const minFreq = getLogScaleMinFreq();
+    const logMin = Math.log10(minFreq);
     const logMax = Math.log10(originalNyquist);
     const logRange = logMax - logMin;
-    
+
     // Adapted from spectrogram stretch factor: targetMaxFreq = originalNyquist / playbackRate
     // At higher playbackRate, we show a smaller portion (zooming in on lower frequencies)
     const targetMaxFreq = originalNyquist / playbackRate;
-    const logTargetMax = Math.log10(Math.max(targetMaxFreq, LOG_SCALE_MIN_FREQ));
+    const logTargetMax = Math.log10(Math.max(targetMaxFreq, minFreq));
     const targetLogRange = logTargetMax - logMin;
     const fraction = targetLogRange / logRange;
-    
+
     // Stretch to fill viewport: if showing fraction of log space, stretch by 1/fraction
     return 1 / fraction;
 }
@@ -324,17 +333,18 @@ export function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeig
     if (scaleType === 'logarithmic') {
         // 🦋 LOGARITHMIC: Calculate position at 1x (no playback scaling in log space!)
         // Use FIXED denominator (logMax = log10(originalNyquist)) to match spectrogram rendering
-        const freqSafe = Math.max(freq, LOG_SCALE_MIN_FREQ);
-        const logMin = Math.log10(LOG_SCALE_MIN_FREQ);
+        const minFreq = getLogScaleMinFreq();
+        const freqSafe = Math.max(freq, minFreq);
+        const logMin = Math.log10(minFreq);
         const logMax = Math.log10(originalNyquist); // FIXED denominator!
         const logFreq = Math.log10(freqSafe);
         const normalizedLog = (logFreq - logMin) / (logMax - logMin);
         const heightFromBottom_1x = normalizedLog * canvasHeight;
-        
+
         // Apply stretch factor (matches spectrogram GPU stretching!)
         const stretchFactor = calculateStretchFactorForLog(playbackRate, originalNyquist);
         const heightFromBottom_scaled = heightFromBottom_1x * stretchFactor;
-        
+
         return canvasHeight - heightFromBottom_scaled;
     } else {
         // Linear and sqrt: Scale the frequency by playback rate FIRST (in frequency space)
@@ -359,6 +369,7 @@ export function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeig
  */
 function generateLogTicks(maxFreq) {
     const ticks = [];
+    const minFreq = getLogScaleMinFreq();
 
     // Start with 0 Hz at the bottom
     ticks.push(0);
@@ -370,15 +381,15 @@ function generateLogTicks(maxFreq) {
         const base = Math.pow(10, decade);
         [1, 2, 5].forEach(mult => {
             const freq = base * mult;
-            if (freq >= LOG_SCALE_MIN_FREQ && freq <= maxFreq) {
+            if (freq >= minFreq && freq <= maxFreq) {
                 ticks.push(freq);
             }
         });
     }
 
     // Add specific frequencies for better granularity
-    [0.05, 0.1, 0.2, 0.5, 0.7, 1.5, 3, 4, 7, 15, 30, 40].forEach(freq => {
-        if (freq >= LOG_SCALE_MIN_FREQ && freq <= maxFreq) {
+    [0.02, 0.05, 0.1, 0.2, 0.5, 0.7, 1.5, 3, 4, 7, 15, 30, 40].forEach(freq => {
+        if (freq >= minFreq && freq <= maxFreq) {
             ticks.push(freq);
         }
     });
