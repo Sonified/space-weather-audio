@@ -113,8 +113,8 @@ function getClickedBox(x, y) {
     // Check each box
     for (const box of completedSelectionBoxes) {
         // Convert box coordinates to device pixels (same logic as drawSavedBox)
-        const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
-        const originalNyquist = originalSampleRate / 2;
+        // 🔥 FIX: Use same source as drawSavedBox for consistent Y calculation
+        const originalNyquist = State.originalDataFrequencyRange?.max || 50;
         const playbackRate = State.currentPlaybackRate || 1.0;
         
         // Get Y positions
