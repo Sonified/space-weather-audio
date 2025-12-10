@@ -740,11 +740,15 @@ export async function startStreaming(event) {
         }
 
         // Add pulse highlight to waveform container to draw attention (only for first-time users)
+        console.log(`🔍 [FETCH COMPLETE] State.waveformHasBeenClicked = ${State.waveformHasBeenClicked}`);
         if (!State.waveformHasBeenClicked) {
+            console.log(`🔍 [FETCH COMPLETE] Adding pulse to waveform (first-time user)`);
             const waveformEl = document.getElementById('waveform');
             if (waveformEl) {
                 waveformEl.classList.add('pulse');
             }
+        } else {
+            console.log(`🔍 [FETCH COMPLETE] Skipping pulse (returning user)`);
         }
 
         // Reload recent searches dropdown (function is defined in DOMContentLoaded)
@@ -1303,8 +1307,11 @@ async function initializeMainApp() {
     loadFftSize();
 
     // Load waveform click state (to skip glow animation for returning users)
-    if (localStorage.getItem('waveformHasBeenClicked') === 'true') {
+    const savedWaveformClicked = localStorage.getItem('waveformHasBeenClicked');
+    console.log(`🔍 [INIT] localStorage waveformHasBeenClicked = "${savedWaveformClicked}"`);
+    if (savedWaveformClicked === 'true') {
         State.setWaveformHasBeenClicked(true);
+        console.log(`🔍 [INIT] Set State.waveformHasBeenClicked = true`);
     }
 
     initWaveformWorker();
