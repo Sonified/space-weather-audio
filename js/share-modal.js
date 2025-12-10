@@ -266,10 +266,11 @@ function captureSpectrogramThumbnail() {
 
         // Render x-axis with 1.5x larger labels for thumbnail readability
         const xAxisFontScale = 1.5;
-        const xAxisHeight = Math.round(40 * xAxisFontScale);  // Base height 40px scaled up
-        const thumbnailXAxis = renderXAxisForThumbnail(spectrogramW, xAxisHeight, xAxisFontScale);
+        const xAxisRenderHeight = Math.round(40 * xAxisFontScale);  // Full render height
+        const xAxisDisplayHeight = Math.round(xAxisRenderHeight * 0.8);  // Clip bottom 20%
+        const thumbnailXAxis = renderXAxisForThumbnail(spectrogramW, xAxisRenderHeight, xAxisFontScale);
 
-        const targetHeight = scaledSpectrogramHeight + xAxisHeight;
+        const targetHeight = scaledSpectrogramHeight + xAxisDisplayHeight;
 
         // Create combined canvas at reduced size
         const thumbnailCanvas = document.createElement('canvas');
@@ -305,8 +306,12 @@ function captureSpectrogramThumbnail() {
             );
         }
 
-        // Draw x-axis at the bottom (rendered with larger labels)
-        ctx.drawImage(thumbnailXAxis, 0, scaledSpectrogramHeight);
+        // Draw x-axis at the bottom (rendered with larger labels, clipped to top 80%)
+        ctx.drawImage(
+            thumbnailXAxis,
+            0, 0, spectrogramW, xAxisDisplayHeight,  // source: top portion only
+            0, scaledSpectrogramHeight, spectrogramW, xAxisDisplayHeight  // dest: bottom of thumbnail
+        );
 
         // Convert to JPEG at 70% quality - great for social media, small file size
         // Spectrograms are gradient-heavy, JPEG handles them well
