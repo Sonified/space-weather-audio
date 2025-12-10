@@ -2839,7 +2839,8 @@ input[type="range"]:disabled {
 /* ===== MOBILE RESPONSIVE STYLES ===== */
 
 /* Mobile: Wrap top header content */
-@media (max-width: 768px) {
+/* Portrait phones + Landscape phones (detected by short height) */
+@media (max-width: 768px), (max-height: 500px) {
     /* Fix white bars in landscape - reduce padding and ensure full width */
     html, body {
         overflow-x: hidden;
