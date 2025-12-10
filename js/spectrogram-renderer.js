@@ -498,7 +498,7 @@ export function loadFftSize() {
     if (saved) {
         const value = parseInt(saved, 10);
         // Validate the saved value is a valid option
-        const validSizes = [256, 512, 1024, 2048, 4096, 8192];
+        const validSizes = [512, 1024, 2048, 4096, 8192];
         if (validSizes.includes(value)) {
             State.setFftSize(value);
             const select = document.getElementById('fftSize');
