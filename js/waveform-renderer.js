@@ -1507,7 +1507,38 @@ export function setupWaveformInteraction() {
             return;
         }
 
-        // Prevent default to avoid scrolling while interacting with waveform
+        // Check if touch is disabled
+        if (canvas.style.pointerEvents === 'none') {
+            return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        const startX = touch.clientX - rect.left;
+        const startY = touch.clientY - rect.top;
+
+        // Check if touching a button FIRST (before preventDefault to allow button handling)
+        if (!State.isDragging && !State.isSelecting && State.selectionStartX === null) {
+            const clickedZoomRegionIndex = checkCanvasZoomButtonClick(startX, startY);
+            const clickedPlayRegionIndex = checkCanvasPlayButtonClick(startX, startY);
+            console.log(`📱 Button check: zoom=${clickedZoomRegionIndex}, play=${clickedPlayRegionIndex}, coords=(${startX.toFixed(0)}, ${startY.toFixed(0)})`);
+
+            if (State.regionButtonsDisabled && (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null)) {
+                console.log('📱 Buttons disabled, ignoring');
+                return;
+            }
+
+            if (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null) {
+                // Store button index for touchend - DON'T preventDefault for buttons
+                canvas._touchedZoomButton = clickedZoomRegionIndex;
+                canvas._touchedPlayButton = clickedPlayRegionIndex;
+                e.preventDefault(); // Prevent scrolling but allow button handling
+                console.log('📱 Button tap detected, waiting for touchend');
+                return;
+            }
+        }
+
+        // For drag/selection interactions, prevent default to avoid scrolling
         e.preventDefault();
 
         // Hide mobile tap hint on first tap
@@ -1536,33 +1567,6 @@ export function setupWaveformInteraction() {
             State.setWaveformHasBeenClicked(true);
         }
         localStorage.setItem('userHasClickedWaveformOnce', 'true');
-
-        // Check if touch is disabled
-        if (canvas.style.pointerEvents === 'none') {
-            return;
-        }
-
-        const rect = canvas.getBoundingClientRect();
-        const touch = e.touches[0];
-        const startX = touch.clientX - rect.left;
-        const startY = touch.clientY - rect.top;
-
-        // Check if touching a button
-        if (!State.isDragging && !State.isSelecting && State.selectionStartX === null) {
-            const clickedZoomRegionIndex = checkCanvasZoomButtonClick(startX, startY);
-            const clickedPlayRegionIndex = checkCanvasPlayButtonClick(startX, startY);
-
-            if (State.regionButtonsDisabled && (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null)) {
-                return;
-            }
-
-            if (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null) {
-                // Store button index for touchend
-                canvas._touchedZoomButton = clickedZoomRegionIndex;
-                canvas._touchedPlayButton = clickedPlayRegionIndex;
-                return;
-            }
-        }
 
         // Normal waveform interaction - start selection/drag
         State.setSelectionStartX(startX);
