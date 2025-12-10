@@ -3083,3 +3083,15 @@ input[type="range"]:disabled {
     }
 }
 
+/* Mobile tap hint animation */
+@keyframes pulse-hint {
+    0%, 100% {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+}
+

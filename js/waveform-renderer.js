@@ -22,6 +22,65 @@ import { getColorLUT } from './colormaps.js';
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
 
+// Mobile tap hint overlay
+let mobileTapOverlay = null;
+
+/**
+ * Show "Tap here" overlay on waveform for mobile users who haven't tapped yet
+ */
+export function showMobileTapHint() {
+    // Only show on touch devices and if user hasn't tapped before
+    if (!isTouchDevice) return;
+    if (localStorage.getItem('userHasTappedWaveformMobile') === 'true') return;
+
+    const waveformCanvas = document.getElementById('waveform');
+    if (!waveformCanvas) return;
+
+    // Create overlay if it doesn't exist
+    if (!mobileTapOverlay) {
+        mobileTapOverlay = document.createElement('div');
+        mobileTapOverlay.id = 'mobileTapOverlay';
+        mobileTapOverlay.innerHTML = '👆 Tap here to play';
+        mobileTapOverlay.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            pointer-events: none;
+            z-index: 100;
+            animation: pulse-hint 2s ease-in-out infinite;
+            border: 2px solid rgba(102, 126, 234, 0.5);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        `;
+
+        // Add to waveform's parent (panel-visualization)
+        const parent = waveformCanvas.parentElement;
+        if (parent) {
+            parent.style.position = 'relative';
+            parent.appendChild(mobileTapOverlay);
+        }
+    }
+
+    mobileTapOverlay.style.display = 'block';
+}
+
+/**
+ * Hide the mobile tap hint overlay
+ */
+export function hideMobileTapHint() {
+    if (mobileTapOverlay) {
+        mobileTapOverlay.style.display = 'none';
+    }
+    // Remember that user has tapped
+    localStorage.setItem('userHasTappedWaveformMobile', 'true');
+}
+
 // Playhead log throttling (log every 500ms unless forced by user interaction)
 let lastPlayheadLogTime = 0;
 let lastDrawWaveformLogTime = 0;
@@ -384,6 +443,9 @@ export function drawWaveformFromMinMax() {
                 // 🔧 Render regions after crossfade completes (if they were delayed)
                 // This ensures regions don't appear before the waveform crossfade finishes
                 renderRegionsAfterCrossfade();
+
+                // 📱 Show mobile tap hint after waveform is ready
+                showMobileTapHint();
             }
         };
         animate();
@@ -475,6 +537,9 @@ export function drawWaveformFromMinMax() {
         // 🔧 Render regions after waveform is drawn (same as crossfade completion)
         // This ensures regions appear whether or not there was a crossfade animation
         renderRegionsAfterCrossfade();
+
+        // 📱 Show mobile tap hint after waveform is ready
+        showMobileTapHint();
 
         // console.log(`✅ [PIPELINE] Waveform drawing complete!`);
         if (DEBUG_WAVEFORM) console.log(`✅ Waveform drawn from min/max data (${mins.length} pixels) - progressive`);
@@ -1435,6 +1500,9 @@ export function setupWaveformInteraction() {
 
         // Prevent default to avoid scrolling while interacting with waveform
         e.preventDefault();
+
+        // Hide mobile tap hint on first tap
+        hideMobileTapHint();
 
         // Hide any existing "Add Region" button when starting a new selection
         hideAddRegionButton();
