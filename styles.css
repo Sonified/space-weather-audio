@@ -2840,6 +2840,19 @@ input[type="range"]:disabled {
 
 /* Mobile: Wrap top header content */
 @media (max-width: 768px) {
+    /* Fix white bars in landscape - reduce padding and ensure full width */
+    body {
+        padding-left: 10px;
+        padding-right: 10px;
+        /* Safe area insets for notched devices */
+        padding-left: max(10px, env(safe-area-inset-left));
+        padding-right: max(10px, env(safe-area-inset-right));
+    }
+
+    .container {
+        max-width: 100%;
+    }
+
     .top-header-bar {
         flex-wrap: wrap !important;
         gap: 8px;
