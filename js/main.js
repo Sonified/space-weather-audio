@@ -1063,7 +1063,10 @@ async function checkAppVersion() {
         }
 
         const localVersion = localStorage.getItem('app_version');
-        console.log(`📋 Version check: Local="${localVersion || '(first visit)'}" vs Server="${serverVersion}"`);
+        const localTime = localVersion ? new Date(localVersion).toLocaleString() : '(first visit)';
+        const serverTime = new Date(serverVersion).toLocaleString();
+        console.log(`📋 Version check: Local="${localTime}" vs Server="${serverTime}"`);
+
 
         if (localVersion && localVersion !== serverVersion) {
             console.log('%c🔄 NEW VERSION DETECTED - Refreshing page...', 'color: #FF9800; font-weight: bold; font-size: 14px');
@@ -1073,8 +1076,7 @@ async function checkAppVersion() {
         }
 
         localStorage.setItem('app_version', serverVersion);
-        const localTime = new Date(serverVersion).toLocaleString();
-        console.log(`%c✅ App is up to date (built ${localTime})`, 'color: #4CAF50; font-weight: bold');
+        console.log(`%c✅ App is up to date (built ${serverTime})`, 'color: #4CAF50; font-weight: bold');
     } catch (e) {
         // Silently fail - version check is non-critical
         console.log('⚠️ Version check skipped (offline or error)', e.message);
