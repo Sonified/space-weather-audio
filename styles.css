@@ -2873,18 +2873,22 @@ input[type="range"]:disabled {
         flex: 1 0 100% !important;
         text-align: center;
         font-size: 1.2em !important;
+        margin-bottom: 2px;
+    }
+
+    /* User info goes under title, centered */
+    .top-header-bar > div:last-child {
+        order: 0;
+        flex: 1 0 100% !important;
+        justify-content: center !important;
         margin-bottom: 4px;
     }
 
-    /* Mode selector and user info share the row below */
+    /* Mode selector at the bottom */
     .top-header-bar > #modeSelectorContainer {
+        order: 1;
         flex: 1 1 auto !important;
-        justify-content: flex-start;
-    }
-
-    .top-header-bar > div:last-child {
-        flex: 1 1 auto !important;
-        justify-content: flex-end !important;
+        justify-content: center;
     }
 
     /* Make controls panels wrap better */
