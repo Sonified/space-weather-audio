@@ -642,7 +642,7 @@ export async function startStreaming(event) {
             console.log('🔄 Reset zoom state to full view for new data');
         }
         
-        // Reset waveform click tracking when loading new data
+        // Reset waveform click tracking for tutorial flow when loading new data
         State.setWaveformHasBeenClicked(false);
         const waveformCanvas = document.getElementById('waveform');
         if (waveformCanvas) {
@@ -740,15 +740,13 @@ export async function startStreaming(event) {
         }
 
         // Add pulse highlight to waveform container to draw attention (only for first-time users)
-        console.log(`🔍 [FETCH COMPLETE] State.waveformHasBeenClicked = ${State.waveformHasBeenClicked}`);
-        if (!State.waveformHasBeenClicked) {
-            console.log(`🔍 [FETCH COMPLETE] Adding pulse to waveform (first-time user)`);
+        // Uses separate localStorage variable from tutorial State to persist across sessions
+        const userHasClickedWaveformOnce = localStorage.getItem('userHasClickedWaveformOnce') === 'true';
+        if (!userHasClickedWaveformOnce) {
             const waveformEl = document.getElementById('waveform');
             if (waveformEl) {
                 waveformEl.classList.add('pulse');
             }
-        } else {
-            console.log(`🔍 [FETCH COMPLETE] Skipping pulse (returning user)`);
         }
 
         // Reload recent searches dropdown (function is defined in DOMContentLoaded)
@@ -1305,14 +1303,6 @@ async function initializeMainApp() {
     loadFrequencyScale();
     loadColormap();
     loadFftSize();
-
-    // Load waveform click state (to skip glow animation for returning users)
-    const savedWaveformClicked = localStorage.getItem('waveformHasBeenClicked');
-    console.log(`🔍 [INIT] localStorage waveformHasBeenClicked = "${savedWaveformClicked}"`);
-    if (savedWaveformClicked === 'true') {
-        State.setWaveformHasBeenClicked(true);
-        console.log(`🔍 [INIT] Set State.waveformHasBeenClicked = true`);
-    }
 
     initWaveformWorker();
     

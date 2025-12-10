@@ -950,6 +950,8 @@ export function setupWaveformInteraction() {
         if (!State.waveformHasBeenClicked) {
             State.setWaveformHasBeenClicked(true);
         }
+        // Persist for returning users (separate from tutorial State variable)
+        localStorage.setItem('userHasClickedWaveformOnce', 'true');
         
         // Check if waveform clicks are disabled (during tutorial flow)
         // After resolving promise, we can return early for actual seek behavior
@@ -1263,6 +1265,7 @@ export function setupWaveformInteraction() {
                                     statusEl.className = 'status success';
                                     statusEl.textContent = 'Nice! You just created a selection! Click Add Region or type (R) to create a new region.';
                                     State.setWaveformHasBeenClicked(true);
+                                    localStorage.setItem('userHasClickedWaveformOnce', 'true');
                                     State.setWaitingForRegionCreation(true);
                                 }
                                 // Otherwise tutorial is controlling, do nothing
