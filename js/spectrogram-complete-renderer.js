@@ -295,11 +295,11 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         if (!isStudyMode()) {
             console.log(`📊 Rendering spectrogram for ${totalSamples.toLocaleString()} samples (${(totalSamples / sampleRate).toFixed(2)}s)`);
         }
-        
-        // FFT parameters
-        const fftSize = 2048;
+
+        // FFT parameters (use State.fftSize from UI dropdown)
+        const fftSize = State.fftSize || 2048;
         const frequencyBinCount = fftSize / 2;
-        
+
         const maxTimeSlices = width;
         const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
         const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
@@ -1787,15 +1787,15 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             resampledStartSample: resampledStartSample.toLocaleString(),
             resampledEndSample: resampledEndSample.toLocaleString(),
             regionSamplesLength: regionSamples.length.toLocaleString(),
-            fftSize: 2048,
-            hasEnoughForFFT: regionSamples.length > 2048,
+            fftSize: State.fftSize || 2048,
+            hasEnoughForFFT: regionSamples.length > (State.fftSize || 2048),
             expectedSamplesAtZoomRate: Math.floor((renderEndSeconds - renderStartSeconds) * zoomStateSampleRate).toLocaleString()
         });
-        
-        // FFT parameters
-        const fftSize = 2048;
+
+        // FFT parameters (use State.fftSize from UI dropdown)
+        const fftSize = State.fftSize || 2048;
         const frequencyBinCount = fftSize / 2;
-        
+
         // 🎯 SMART QUALITY ZONES: Calculate hopSize per section
         // Target region: full quality (normal hopSize)
         // Buffer regions: half quality (2x hopSize = half the time slices)
@@ -1934,8 +1934,8 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
                 zoneSampleEnd,
                 regionSamplesLength: regionSamples.length,
                 zoneSampleCount,
-                fftSize: 2048,
-                hasEnoughForFFT: zoneSampleCount > 2048
+                fftSize,
+                hasEnoughForFFT: zoneSampleCount > fftSize
             });
 
             // Calculate hopSize based on quality

@@ -436,6 +436,60 @@ export async function changeColormap() {
     }
 }
 
+/**
+ * Change FFT size for spectrogram rendering
+ * Lower values = better time resolution, worse frequency resolution
+ * Higher values = better frequency resolution, worse time resolution
+ */
+export async function changeFftSize() {
+    const select = document.getElementById('fftSize');
+    const value = parseInt(select.value, 10);
+
+    // If already using this FFT size, don't process again
+    if (State.fftSize === value) {
+        console.log(`📐 Already using FFT size ${value} - skipping change`);
+        return;
+    }
+
+    // Save to localStorage for persistence
+    localStorage.setItem('fftSize', value.toString());
+
+    // Update state
+    State.setFftSize(value);
+
+    // Blur dropdown so spacebar can toggle play/pause
+    select.blur();
+
+    console.log(`📐 FFT size changed to: ${value}`);
+
+    // Re-render the spectrogram if one is already rendered
+    if (isCompleteSpectrogramRendered()) {
+        // Clear cached spectrogram and re-render with new FFT size
+        clearCompleteSpectrogram();
+        await renderCompleteSpectrogram();
+    }
+}
+
+/**
+ * Load saved FFT size from localStorage on page load
+ */
+export function loadFftSize() {
+    const saved = localStorage.getItem('fftSize');
+    if (saved) {
+        const value = parseInt(saved, 10);
+        // Validate the saved value is a valid option
+        const validSizes = [256, 512, 1024, 2048, 4096, 8192];
+        if (validSizes.includes(value)) {
+            State.setFftSize(value);
+            const select = document.getElementById('fftSize');
+            if (select) {
+                select.value = value.toString();
+            }
+            console.log(`📐 Loaded saved FFT size: ${value}`);
+        }
+    }
+}
+
 export async function changeFrequencyScale() {
     const select = document.getElementById('frequencyScale');
     const value = select.value; // 'linear', 'sqrt', or 'logarithmic'

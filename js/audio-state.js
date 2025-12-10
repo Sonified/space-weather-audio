@@ -57,6 +57,7 @@ export let spacecraftWithData = null;  // Track which spacecraft currently has d
 
 // Visualization state
 export let frequencyScale = 'sqrt'; // 'linear', 'sqrt', or 'logarithmic'
+export let fftSize = 2048; // FFT size for spectrogram (256, 512, 1024, 2048, 4096, 8192)
 
 // Animation frame IDs (for cleanup to prevent memory leaks)
 export let playbackIndicatorRAF = null;
@@ -171,6 +172,7 @@ export function setVisualizationStarted(value) { visualizationStarted = value; }
 export function setIsShowingFinalWaveform(value) { isShowingFinalWaveform = value; }
 export function setJustSeeked(value) { justSeeked = value; }
 export function setFrequencyScale(value) { frequencyScale = value; }
+export function setFftSize(value) { fftSize = value; }
 export function setSpacecraftWithData(value) { spacecraftWithData = value; }
 export function setPlaybackIndicatorRAF(value) { playbackIndicatorRAF = value; }
 export function setSpectrogramRAF(value) { spectrogramRAF = value; }
