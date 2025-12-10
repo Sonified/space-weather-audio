@@ -99,18 +99,18 @@ class ZoomState {
         // Set viewport timestamps to full data range
         this.currentViewStartTime = State.dataStartTime ? new Date(State.dataStartTime) : null;
         this.currentViewEndTime = State.dataEndTime ? new Date(State.dataEndTime) : null;
-        console.log(`🏛️ ZoomState initialized:`);
-        console.log(`   Total samples: ${totalSamples.toLocaleString()} (playback domain)`);
-        console.log(`   Sample rate: ${this.sampleRate.toFixed(2)} (samples per real second)`);
-        
-        if (this.currentViewStartTime && this.currentViewEndTime) {
-            const spanSeconds = (this.currentViewEndTime - this.currentViewStartTime) / 1000;
-            console.log(`   Time span: ${spanSeconds.toLocaleString()} seconds`);
-            
-            // Verify the math
-            const calculatedRate = totalSamples / spanSeconds;
-            console.log(`   Verification: ${totalSamples} / ${spanSeconds.toFixed(0)} = ${calculatedRate.toFixed(2)} ✓`);
-        }
+        // console.log(`🏛️ ZoomState initialized:`);
+        // console.log(`   Total samples: ${totalSamples.toLocaleString()} (playback domain)`);
+        // console.log(`   Sample rate: ${this.sampleRate.toFixed(2)} (samples per real second)`);
+
+        // if (this.currentViewStartTime && this.currentViewEndTime) {
+        //     const spanSeconds = (this.currentViewEndTime - this.currentViewStartTime) / 1000;
+        //     console.log(`   Time span: ${spanSeconds.toLocaleString()} seconds`);
+        //
+        //     // Verify the math
+        //     const calculatedRate = totalSamples / spanSeconds;
+        //     console.log(`   Verification: ${totalSamples} / ${spanSeconds.toFixed(0)} = ${calculatedRate.toFixed(2)} ✓`);
+        // }
     }
     
     /**

@@ -807,7 +807,7 @@ export function updateShareButtonState() {
 
     // Enable if we have loaded data
     const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
-    console.log('🔗 Share button state:', { hasData, length: State.completeSamplesArray?.length, disabled: !hasData });
+    // console.log('🔗 Share button state:', { hasData, length: State.completeSamplesArray?.length, disabled: !hasData });
     shareBtn.disabled = !hasData;
 }
 

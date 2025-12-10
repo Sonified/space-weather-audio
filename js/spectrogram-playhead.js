@@ -67,7 +67,7 @@ function initPlayheadOverlay() {
     });
     resizeObserver.observe(canvas);
     
-    console.log('✅ Created spectrogram playhead overlay canvas');
+    // console.log('✅ Created spectrogram playhead overlay canvas');
 }
 
 /**

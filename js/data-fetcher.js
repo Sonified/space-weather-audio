@@ -98,9 +98,11 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
             // Fall through to fetch fresh data - don't use incomplete cache
         } else {
             // Cache is complete, use it
+            console.groupCollapsed(`🎵 [DECODE] WAV from cache`);
             const decoded = await decodeWAVBlob(cached.wavBlob, cached);
-            console.log(`   ✅ Cache load complete: ${decoded.playback.totalSamples.toLocaleString()} samples decoded`);
-            console.log(`   📊 Decoded allFileUrls:`, decoded.allFileUrls);
+            console.log(`✅ Cache load complete: ${decoded.playback.totalSamples.toLocaleString()} samples decoded`);
+            console.log(`📊 Decoded allFileUrls:`, decoded.allFileUrls);
+            console.groupEnd();
             return decoded;
         }
     }
@@ -401,7 +403,7 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
             allFileInfo: cacheEntry.metadata?.allFileInfo || [],
             originalBlob: wavBlob,
         };
-        
+
     } catch (error) {
         await offlineContext.close();
         console.error('❌ WAV decode error:', error);
@@ -432,6 +434,8 @@ function toBasicISO8601(isoString) {
 // ✅ ACTIVE PATH - Main entry point for loading CDAWeb data (called from main.js)
 export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO) {
     const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
+
+    console.log(`📡 [DATA] Fetching & Loading: ${spacecraft} ${dataset}`);
     
     try {
         console.log(`📡 ${logTime()} Fetching CDAWeb audio data...`);
@@ -509,10 +513,10 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         }
         
         // Initialize component selector if multiple files available
-        console.log(`🔍 [COMPONENT SELECTOR] allFileUrls:`, audioData.allFileUrls);
-        console.log(`🔍 [COMPONENT SELECTOR] Number of files: ${audioData.allFileUrls?.length || 0}`);
+        console.groupCollapsed(`🔍 [COMPONENT SELECTOR] ${audioData.allFileUrls?.length || 0} files`);
+        console.log(`allFileUrls:`, audioData.allFileUrls);
         if (audioData.allFileUrls && audioData.allFileUrls.length > 1) {
-            console.log(`🔍 [COMPONENT SELECTOR] Multiple files detected - initializing selector`);
+            console.log(`Multiple files detected - initializing selector`);
             const { initializeComponentSelector } = await import('./component-selector.js');
             // Pass metadata so component selector can look up cached blobs
             initializeComponentSelector(audioData.allFileUrls, {
@@ -522,10 +526,11 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                 endTime: endTimeISO
             });
         } else {
-            console.log(`🔍 [COMPONENT SELECTOR] Single file or no files - hiding selector`);
+            console.log(`Single file - hiding selector`);
             const { hideComponentSelector } = await import('./component-selector.js');
             hideComponentSelector();
         }
+        console.groupEnd();
         
         // Show download button after audio loads
         const downloadContainer = document.getElementById('downloadAudioContainer');
@@ -604,7 +609,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             // For shared sessions, disable auto-resume so worklet doesn't auto-start
             const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
             const shouldAutoResume = !isSharedSession;
-            console.log(`🔗 [SHARED SESSION DEBUG] isSharedSession=${isSharedSession}, shouldAutoResume=${shouldAutoResume}`);
+            // console.log(`🔗 [SHARED SESSION DEBUG] isSharedSession=${isSharedSession}, shouldAutoResume=${shouldAutoResume}`);
 
             for (let i = 0; i < audioData.samples.length; i += WORKLET_CHUNK_SIZE) {
                 const chunkSize = Math.min(WORKLET_CHUNK_SIZE, audioData.samples.length - i);
@@ -633,9 +638,10 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                 sampleRate: audioData.playback.samplesPerRealSecond  // ⭐ THE KEY FIX
             });
             
-            console.log(`📤 ${logTime()} data-complete sent:`);
-            console.log(`   totalSamples: ${audioData.playback.totalSamples.toLocaleString()}`);
-            console.log(`   sampleRate: ${audioData.playback.samplesPerRealSecond.toFixed(2)} (playback samples per real second)`);
+            console.groupCollapsed(`📤 ${logTime()} data-complete sent`);
+            console.log(`totalSamples: ${audioData.playback.totalSamples.toLocaleString()}`);
+            console.log(`sampleRate: ${audioData.playback.samplesPerRealSecond.toFixed(2)} (playback samples per real second)`);
+            console.groupEnd();
             
             // ============================================
             // INITIALIZE ZOOM STATE (Playback domain)
@@ -652,7 +658,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             if (autoPlayEnabled) {
                 // Start playback immediately
                 State.workletNode.port.postMessage({ type: 'start-immediately' });
-                console.log(`🚀 Sent 'start-immediately' to worklet`);
+                // console.log(`🚀 Sent 'start-immediately' to worklet`);
 
                 // Update playback state
                 State.setPlaybackState(PlaybackState.PLAYING);
@@ -723,7 +729,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         // Update recent searches dropdown (called from startStreaming instead)
 
         return audioData;
-        
+
     } catch (error) {
         console.error('❌ Failed to load CDAWeb data:', error);
         alert(`Failed to load audio data: ${error.message}`);
@@ -1335,7 +1341,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                             State.workletNode.port.postMessage({
                                 type: 'start-immediately'
                             });
-                            console.log(`🚀 Sent 'start-immediately' to worklet`);
+                            // console.log(`🚀 Sent 'start-immediately' to worklet`);
 
                             // Update playback state
                             State.setPlaybackState(PlaybackState.PLAYING);

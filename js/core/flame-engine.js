@@ -202,7 +202,6 @@ function tryInitOscilloscope() {
         const success = initOscilloscope();
         if (success) {
             oscilloscopeReady = true;
-            console.log('🎨 Oscilloscope connected to flame engine (CORE)');
             return true;
         }
     } catch (e) {
@@ -216,9 +215,12 @@ function tryInitOscilloscope() {
  */
 export function initFlameEngine() {
     console.log('🔥 Flame engine initialized (ready for overheat)');
-    
+
     // Try to initialize oscilloscope immediately
     tryInitOscilloscope();
+    if (oscilloscopeReady) {
+        console.log('🎨 Oscilloscope connected to flame engine (CORE)');
+    }
     
     // If not ready, retry when DOM is loaded
     if (!oscilloscopeReady) {

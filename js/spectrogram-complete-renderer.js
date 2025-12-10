@@ -210,6 +210,7 @@ export function stopMemoryMonitoring() {
 export async function renderCompleteSpectrogram(skipViewportUpdate = false, forceFullView = false) {
     // Only log in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.groupCollapsed('🎨 [RENDER] Spectrogram Rendering');
         console.log(`🎨 [spectrogram-complete-renderer.js] renderCompleteSpectrogram CALLED: skipViewportUpdate=${skipViewportUpdate}`);
     }
     // console.trace('📍 Call stack:');
@@ -217,6 +218,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
     if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
         if (!isStudyMode()) {
             console.log('⚠️ Cannot render complete spectrogram - no audio data available');
+            console.groupEnd();
         }
         return;
     }
@@ -224,6 +226,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
     if (renderingInProgress) {
         if (!isStudyMode()) {
             console.log('⚠️ Spectrogram rendering already in progress');
+            console.groupEnd();
         }
         return;
     }
@@ -233,6 +236,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         const regionRange = zoomState.getRegionRange();
         if (!isStudyMode()) {
             console.log(`🔍 Inside temple - rendering region instead`);
+            console.groupEnd();
         }
         // 🔥 FIX: Convert Date objects to seconds (renderCompleteSpectrogramForRegion expects seconds!)
         const dataStartMs = State.dataStartTime ? State.dataStartTime.getTime() : 0;
@@ -245,6 +249,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
     if (!forceFullView && completeSpectrogramRendered) {
         if (!isStudyMode()) {
             console.log('✅ Complete spectrogram already rendered');
+            console.groupEnd();
         }
         return;
     }
@@ -486,8 +491,14 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         
     } catch (error) {
         console.error('❌ Error rendering complete spectrogram:', error);
+        if (!isStudyMode()) {
+            console.groupEnd(); // End Spectrogram Rendering (on error)
+        }
     } finally {
         renderingInProgress = false;
+        if (!isStudyMode()) {
+            console.groupEnd(); // End Spectrogram Rendering
+        }
     }
 }
 
@@ -605,6 +616,7 @@ export function restoreInfiniteCanvasFromCache() {
 export function clearCompleteSpectrogram() {
     // Only log in dev/personal modes, not study mode
     if (!isStudyMode()) {
+        console.groupCollapsed('🧹 [CLEANUP] Spectrogram & Resources');
         console.log(`🧹 [spectrogram-complete-renderer.js] clearCompleteSpectrogram CALLED`);
         // console.trace('📍 Call stack:');
         console.log('🧹 Starting aggressive spectrogram cleanup...');
@@ -681,6 +693,7 @@ export function clearCompleteSpectrogram() {
     // Only log in dev/personal modes, not study mode
     if (!isStudyMode()) {
         console.log('✅ Spectrogram cleanup complete');
+        console.groupEnd(); // End Cleanup
     }
 }
 

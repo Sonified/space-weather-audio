@@ -26,6 +26,7 @@ import { getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
 import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
 import { isStudyMode, isTutorialEndMode } from './master-modes.js';
 import { hasSeenTutorial } from './study-workflow.js';
+import { log, logGroup, logGroupEnd } from './logger.js';
 
 // Region data structure - stored per spacecraft
 // Map<spacecraftName, regions[]>
@@ -390,11 +391,15 @@ export function loadRegionsAfterDataFetch() {
     let loadedRegions = null;
     let loadedFromShareLink = false;
     const pendingSharedRegions = sessionStorage.getItem('pendingSharedRegions');
+
+    // Start region loading group (will be closed after all loading logs)
+    const regionGroupOpen = logGroup('regions', `Loading regions for ${spacecraft}`);
+
     if (pendingSharedRegions) {
         try {
             loadedRegions = JSON.parse(pendingSharedRegions);
             loadedFromShareLink = true;
-            console.log(`🔗 Loading ${loadedRegions.length} shared region(s) from share link`);
+            console.log(`🔗 From share link: ${loadedRegions.length} region(s)`);
             // Clear the pending regions so they don't load again
             sessionStorage.removeItem('pendingSharedRegions');
         } catch (e) {
@@ -477,26 +482,28 @@ export function loadRegionsAfterDataFetch() {
         });
         
         regionsBySpacecraft.set(spacecraft, loadedRegions);
-        console.log(`📂 Restored ${loadedRegions.length} region(s) for ${spacecraft} from localStorage after data fetch`);
+        console.log(`📂 Restored ${loadedRegions.length} region(s) from ${loadedFromShareLink ? 'share link' : 'localStorage'}`);
 
         // 🔗 CRITICAL: If regions came from share link, save them to localStorage
         // This ensures they persist across page refreshes after the URL is consumed
         if (loadedFromShareLink) {
             saveRegionsToStorage(spacecraft, loadedRegions);
-            console.log(`💾 Saved shared regions to localStorage for future sessions`);
+            console.log(`💾 Saved to localStorage for future sessions`);
         }
-        
+
         // 🔥 Render regions immediately (don't wait for crossfade)
         // Regions need to be visible as soon as data loads
         renderRegions();
         redrawAllCanvasFeatureBoxes();
         drawWaveformWithSelection();
-        console.log('✅ Regions rendered immediately after data fetch');
-        
+        console.log('✅ Rendered');
+        if (regionGroupOpen) logGroupEnd();
+
         // Update button states
         updateCompleteButtonState();
     } else {
-        console.log(`📂 No saved regions found for ${spacecraft}`);
+        console.log(`📂 No saved regions found`);
+        if (regionGroupOpen) logGroupEnd();
         // 🔧 CRITICAL: Still need to re-render to clear any old regions from display
         renderRegions();
         redrawAllCanvasFeatureBoxes();
@@ -511,9 +518,11 @@ export function loadRegionsAfterDataFetch() {
             const viewSettings = JSON.parse(pendingViewSettings);
             sessionStorage.removeItem('pendingSharedViewSettings');
 
+            const viewGroupOpen = logGroup('share', 'Restoring shared view settings');
+
             // Apply colormap if specified
             if (viewSettings.colormap) {
-                console.log(`🔗 Restoring shared colormap: ${viewSettings.colormap}`);
+                console.log(`Colormap: ${viewSettings.colormap}`);
                 const colormapSelect = document.getElementById('colormap');
                 if (colormapSelect) {
                     colormapSelect.value = viewSettings.colormap;
@@ -523,7 +532,7 @@ export function loadRegionsAfterDataFetch() {
 
             // Apply FFT size if specified
             if (viewSettings.fft_size) {
-                console.log(`🔗 Restoring shared FFT size: ${viewSettings.fft_size}`);
+                console.log(`FFT size: ${viewSettings.fft_size}`);
                 const fftSizeSelect = document.getElementById('fftSize');
                 if (fftSizeSelect) {
                     fftSizeSelect.value = viewSettings.fft_size.toString();
@@ -533,7 +542,7 @@ export function loadRegionsAfterDataFetch() {
 
             // Apply frequency scale if specified
             if (viewSettings.frequency_scale) {
-                console.log(`🔗 Restoring shared frequency scale: ${viewSettings.frequency_scale}`);
+                console.log(`Frequency scale: ${viewSettings.frequency_scale}`);
                 const freqScaleSelect = document.getElementById('frequencyScale');
                 if (freqScaleSelect) {
                     freqScaleSelect.value = viewSettings.frequency_scale;
@@ -543,19 +552,21 @@ export function loadRegionsAfterDataFetch() {
 
             // Apply zoom after a 1-second delay to let the UI settle
             if (viewSettings.zoom && viewSettings.zoom.mode === 'region') {
-                console.log('🔗 Restoring shared view zoom after delay...');
+                console.log(`Zoom: region ${viewSettings.zoom.region_id} (delayed 1s)`);
                 setTimeout(() => {
                     // Find the region by ID and zoom to it
                     const regions = getCurrentRegions();
                     const regionIndex = regions.findIndex(r => r.id === viewSettings.zoom.region_id);
                     if (regionIndex !== -1) {
-                        console.log(`🔗 Zooming to shared region: ${viewSettings.zoom.region_id}`);
+                        log('share', `Zoomed to region: ${viewSettings.zoom.region_id}`);
                         zoomToRegion(regionIndex);
                     } else {
-                        console.log('🔗 Shared region not found, staying at full view');
+                        log('share', 'Shared region not found, staying at full view');
                     }
                 }, 1000);
             }
+
+            if (viewGroupOpen) logGroupEnd();
         } catch (e) {
             console.error('Failed to parse pending view settings:', e);
             sessionStorage.removeItem('pendingSharedViewSettings');
@@ -3607,25 +3618,25 @@ export function zoomToRegion(regionIndex) {
  * Zoom back out to full view
  */
 export function zoomToFull() {
-    console.log('🔍 [ZOOM_TO_FULL DEBUG] zoomToFull() called');
-    console.log('🔍 [ZOOM_TO_FULL DEBUG] State.waitingForZoomOut:', State.waitingForZoomOut);
-    console.log('🔍 [ZOOM_TO_FULL DEBUG] State._zoomOutResolve exists:', !!State._zoomOutResolve);
-    
+    // console.log('🔍 [ZOOM_TO_FULL DEBUG] zoomToFull() called');
+    // console.log('🔍 [ZOOM_TO_FULL DEBUG] State.waitingForZoomOut:', State.waitingForZoomOut);
+    // console.log('🔍 [ZOOM_TO_FULL DEBUG] State._zoomOutResolve exists:', !!State._zoomOutResolve);
+
     // 🎓 Tutorial: Resolve promise if waiting for zoom out
     if (State.waitingForZoomOut && State._zoomOutResolve) {
-        console.log('🔍 [ZOOM_TO_FULL DEBUG] Resolving tutorial zoom out promise');
+        // console.log('🔍 [ZOOM_TO_FULL DEBUG] Resolving tutorial zoom out promise');
         State.setWaitingForZoomOut(false);
         const resolve = State._zoomOutResolve;
         State.setZoomOutResolve(null);
         resolve();
     }
-    
+
     if (!zoomState.isInitialized()) {
-        console.log('🔍 [ZOOM_TO_FULL DEBUG] zoomState not initialized - returning early');
+        // console.log('🔍 [ZOOM_TO_FULL DEBUG] zoomState not initialized - returning early');
         return;
     }
-    
-    console.log('🔍 [ZOOM_TO_FULL DEBUG] Continuing with zoom out...');
+
+    // console.log('🔍 [ZOOM_TO_FULL DEBUG] Continuing with zoom out...');
     
     // console.log('🌍 Zooming to full view');
     // console.log('🔙 ZOOMING OUT TO FULL VIEW starting');

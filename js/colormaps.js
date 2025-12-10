@@ -232,7 +232,7 @@ export function buildColorLUT() {
         colorLUT[i * 3 + 2] = rgb[2];
     }
 
-    console.log(`🎨 Built color LUT for colormap: ${currentColormap}`);
+    // console.log(`🎨 Built color LUT for colormap: ${currentColormap}`);
     return colorLUT;
 }
 

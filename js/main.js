@@ -38,8 +38,10 @@ import {
     initializeMasterMode
 } from './master-modes.js';
 import { initShareModal, openShareModal, checkAndLoadSharedSession, applySharedSession, updateShareButtonState } from './share-modal.js';
+import { log, logGroup, logGroupEnd } from './logger.js';
 
-console.log('✅ ALL IMPORTS COMPLETE');
+// console.groupCollapsed('📦 [MODULE] Loading');
+// console.log('✅ ALL IMPORTS COMPLETE');
 
 // ===== DEBUG FLAGS =====
 const DEBUG_LOOP_FADES = true; // Enable loop fade logging
@@ -48,6 +50,7 @@ const DEBUG_LOOP_FADES = true; // Enable loop fade logging
 let hasPerformedFirstFetch = false; // Track if first fetch has been performed
 
 console.log('✅ CONSTANTS DEFINED');
+console.groupEnd();
 
 // Helper function to safely check study mode (handles cases where module isn't loaded yet)
 function safeIsStudyMode() {
@@ -295,7 +298,7 @@ function startOscilloscopeDataCollection(analyserNode) {
     
     // Start collection loop
     oscilloscopeRAF = requestAnimationFrame(collectOscilloscopeData);
-    console.log('🎨 Started oscilloscope data collection from analyser node (post-volume)');
+    // console.log('🎨 Started oscilloscope data collection from analyser node (post-volume)');
 }
 
 /**
@@ -356,7 +359,15 @@ export async function initAudioWorklet() {
         });
         State.setAudioContext(ctx);
         await ctx.audioWorklet.addModule('workers/audio-worklet.js');
-        console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: ${ctx.sampleRate} Hz, latency: playback)`);
+        
+        if (!isStudyMode()) {
+            console.groupCollapsed('🎵 [AUDIO] Audio Context Setup');
+            console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: ${ctx.sampleRate} Hz, latency: playback)`);
+        }
+    } else {
+        if (!isStudyMode()) {
+            console.groupCollapsed('🎵 [AUDIO] Audio Context Setup');
+        }
     }
     
     const worklet = new AudioWorkletNode(State.audioContext, 'seismic-processor');
@@ -381,7 +392,9 @@ export async function initAudioWorklet() {
     // Initialize oscilloscope visualization
     import('./oscilloscope-renderer.js').then(({ initOscilloscope }) => {
         initOscilloscope();
-        console.log('🎨 Oscilloscope visualization initialized');
+        if (!isStudyMode()) {
+            // console.log('🎨 Oscilloscope visualization initialized');
+        }
         
         // Start reading post-volume audio from analyser node
         startOscilloscopeDataCollection(analyser);
@@ -396,6 +409,7 @@ export async function initAudioWorklet() {
         // The real latency is often the render quantum (128 samples) plus base latency
         const estimatedLatency = State.audioContext.baseLatency || (128 / 44100);
         console.log(`🔊 Estimated total latency: ${(estimatedLatency * 1000).toFixed(1)}ms`);
+        console.groupEnd(); // End Audio Context Setup
     }
     
     worklet.port.onmessage = (event) => {
@@ -453,7 +467,7 @@ export async function initAudioWorklet() {
         } else if (type === 'started') {
             const ttfa = performance.now() - window.streamingStartTime;
             document.getElementById('ttfa').textContent = `${ttfa.toFixed(0)}ms`;
-            console.log(`⏱️ [${ttfa.toFixed(0)}ms] Worklet confirmed playback`);
+            // console.log(`⏱️ [${ttfa.toFixed(0)}ms] Worklet confirmed playback`);
         } else if (type === 'seek-ready') {
             // Worklet has cleared its buffer and is ready for samples at seek position
             const { targetSample, wasPlaying, forceResume } = event.data;
@@ -631,6 +645,11 @@ export async function startStreaming(event) {
             spacecraftSelect.classList.remove('pulse-glow');
         }
         
+        // Group cleanup operations
+        if (!safeIsStudyMode()) {
+            console.groupCollapsed('🧹 [CLEANUP] Preparing for New Data');
+        }
+        
         // Clear complete spectrogram when loading new data
         clearCompleteSpectrogram();
         
@@ -639,7 +658,9 @@ export async function startStreaming(event) {
             zoomState.mode = 'full';
             zoomState.currentViewStartSample = 0;
             zoomState.activeRegionId = null;
-            console.log('🔄 Reset zoom state to full view for new data');
+            if (!safeIsStudyMode()) {
+                console.log('🔄 Reset zoom state to full view for new data');
+            }
         }
         
         // Reset waveform click tracking for tutorial flow when loading new data
@@ -673,6 +694,10 @@ export async function startStreaming(event) {
             }
         }
         initWaveformWorker();
+        
+        if (!safeIsStudyMode()) {
+            console.groupEnd(); // End Cleanup
+        }
         
         State.setIsShowingFinalWaveform(false);
         
@@ -719,7 +744,7 @@ export async function startStreaming(event) {
         const autoPlayEnabled = document.getElementById('autoPlay').checked;
         if (autoPlayEnabled && State.playbackState === PlaybackState.PLAYING) {
             const { startPlaybackIndicator } = await import('./waveform-renderer.js');
-            console.log(`⏱️ ${logTime()} Worklet confirmed playback`);
+            // console.log(`⏱️ ${logTime()} Worklet confirmed playback`);
             startPlaybackIndicator();
         }
         
@@ -756,9 +781,9 @@ export async function startStreaming(event) {
         updateShareButtonState();
 
         console.log(`🎉 ${logTime()} Complete!`);
-        console.log('═══════════════════════════════════════════════════════════');
+        console.log('════════════════════');
         console.log('📌 v1.08 (2025-12-09) Fix: X-axis tick density for region-to-region zoom');
-        console.log('═══════════════════════════════════════════════════════════');
+        console.log('════════════════════');
 
     } catch (error) {
         console.error('❌ Error in startStreaming:', error);
@@ -840,7 +865,6 @@ async function initializeDevMode() {
  * SOLAR PORTAL MODE: Participant setup only, no study workflow
  */
 async function initializeSolarPortalMode() {
-    console.log('☀️ SOLAR PORTAL MODE: Participant setup only');
     
     // Hide Begin Analysis button permanently
     const completeBtn = document.getElementById('completeBtn');
@@ -944,6 +968,9 @@ async function initializeStudyMode() {
 async function initializeApp() {
     const { CURRENT_MODE, AppMode } = await import('./master-modes.js');
     
+    if (!isStudyMode()) {
+        console.groupCollapsed(`🎯 [MODE] ${CURRENT_MODE} Initialization`);
+    }
     console.log(`🚀 Initializing app in ${CURRENT_MODE} mode`);
     
     switch (CURRENT_MODE) {
@@ -977,6 +1004,10 @@ async function initializeApp() {
             console.error(`❌ Unknown mode: ${CURRENT_MODE}`);
             await initializeDevMode(); // Fallback to dev
     }
+    
+    if (!isStudyMode()) {
+        console.groupEnd(); // End Mode Initialization
+    }
 }
 
 /**
@@ -1009,17 +1040,14 @@ function updateSpacecraftDropdownLabels(loadedSpacecraft, selectedSpacecraft) {
 
 // console.log('🟢 REACHED LINE 1289 - About to define initialization');
 
-// Check if main.js is loading
-console.log('🚀 main.js is loading...');
-console.log('📍 Document ready state:', document.readyState);
-
 // Main initialization function
 async function initializeMainApp() {
-    console.log('═══════════════════════════════════════════════════════════');
+    console.log('════════════════════');
     console.log('☀️ SOLAR AUDIFICATION PORTAL - INITIALIZING!');
-    console.log('═══════════════════════════════════════════════════════════');
-    
-    console.log('🟢 Inside initializeMainApp - LINE 1300');
+    console.log('════════════════════');
+
+    // Group core system initialization
+    console.groupCollapsed('🔧 [INIT] Core Systems');
     
     // ═══════════════════════════════════════════════════════════
     // 📏 STATUS AUTO-RESIZE - Shrink font when text overflows
@@ -1041,6 +1069,11 @@ async function initializeMainApp() {
 
     // Initialize share modal (for sharing analysis sessions)
     initShareModal();
+    
+    console.groupEnd(); // End Core Systems
+    
+    // Group UI setup
+    console.groupCollapsed('🎨 [INIT] UI Setup');
 
     // Don't hide Begin Analysis button initially - let updateCompleteButtonState() handle visibility
     // Tutorial will hide it when needed, returning visits will keep it visible
@@ -1320,6 +1353,8 @@ async function initializeMainApp() {
     // Load saved spacecraft selection (or use default)
     await loadSavedSpacecraft();
     
+    console.groupEnd(); // End UI Setup
+    
     // ═══════════════════════════════════════════════════════════
     // 🎯 MODE-AWARE ROUTING
     // ═══════════════════════════════════════════════════════════
@@ -1327,13 +1362,17 @@ async function initializeMainApp() {
     // Small delay to let page settle before starting workflows
     setTimeout(async () => {
         await initializeApp();
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('📌 v1.08 (2025-12-09) Fix: X-axis tick density for region-to-region zoom');
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('✅ App ready');
+        if (logGroup('init', 'v1.08 App Ready')) {
+            console.log('📌 v1.08 (2025-12-09) Fix: X-axis tick density for region-to-region zoom');
+            console.log('✅ App ready');
+            logGroupEnd();
+        }
         loadRecentSearches();
     }, 100);
 
+    // Group event listeners setup
+    console.groupCollapsed('⌨️ [INIT] Event Listeners');
+    
     // Add event listeners
     document.getElementById('spacecraft').addEventListener('change', async (e) => {
         // Remove pulsing glow when user selects a spacecraft
@@ -1916,7 +1955,7 @@ async function initializeMainApp() {
             const { cancelTyping } = await import('./tutorial-effects.js');
             cancelTyping();
             saveRecentSearch(); // Save search before fetching (no-op now, handled by cache)
-            startStreaming(e);
+            await startStreaming(e);
             e.target.blur(); // Blur so spacebar can toggle play/pause
         });
         console.log('🟢 startBtn event listener attached successfully!');
@@ -2110,7 +2149,10 @@ async function initializeMainApp() {
     });
     
     document.getElementById('adminModeBtn').addEventListener('click', toggleAdminMode);
-    
+
+    // Start event listeners setup group
+    const listenersGroupOpen = logGroup('ui', 'Setting up UI event listeners');
+
     // Participant ID display click handler
     const participantIdText = document.getElementById('participantIdText');
     if (participantIdText) {
@@ -2127,9 +2169,6 @@ async function initializeMainApp() {
         participantIdText.addEventListener('mouseleave', function() {
             this.style.backgroundColor = 'rgba(40, 40, 40, 0.4)';
         });
-        console.log('✅ Participant ID display click handler attached');
-    } else {
-        console.warn('⚠️ Participant ID display element not found when attaching click handler');
     }
     
     // Tutorial help button click handler (only show in study mode)
@@ -2159,9 +2198,6 @@ async function initializeMainApp() {
             this.style.borderColor = '#aaa';
             this.style.color = '#aaa';
         });
-        console.log('✅ Tutorial help button click handler attached');
-    } else {
-        console.warn('⚠️ Tutorial help button not found in DOM');
     }
     
     // Set up component selector listener
@@ -2215,7 +2251,6 @@ async function initializeMainApp() {
             
             console.log(`✅ Downloaded: ${filename} (${(wavBlob.size / 1024 / 1024).toFixed(2)} MB)`);
         });
-        console.log('✅ Download audio button handler attached');
     }
 
     // Set up audio recording button (records live audio output as WAV)
@@ -2306,7 +2341,6 @@ async function initializeMainApp() {
                 console.log('🔴 Recording started (WAV format)');
             }
         });
-        console.log('✅ Record audio button handler attached');
     }
 
     // Set up download ALL components button (creates a zip with all 3 WAV files)
@@ -2378,13 +2412,10 @@ async function initializeMainApp() {
                 downloadAllBtn.disabled = false;
             }
         });
-        console.log('✅ Download all components button handler attached');
     }
 
-
-    if (!isStudyMode()) {
-        console.log('✅ Event listeners setup complete - memory leak prevention active!');
-    }
+    // Close the event listeners group
+    if (listenersGroupOpen) logGroupEnd();
     
     // 🔥 FIX: Cancel all RAF callbacks on page unload to prevent detached document leaks
     // This ensures RAF callbacks scheduled before page unload are cancelled
@@ -2465,11 +2496,10 @@ async function initializeMainApp() {
                 window._solarAudioCleanupHandlers.visibilitychange = visibilityChangeHandler;
         });
     });
-    }
+    } // End if (!window._solarAudioCleanupHandlers)
+    
+    console.groupEnd(); // End Event Listeners
 } // End initializeMainApp
-
-console.log('🔵 REACHED LINE 2525 - About to check document.readyState');
-console.log('🔵 document.readyState =', document.readyState);
 
 // Call initialization when DOM is ready
 if (document.readyState === 'loading') {
@@ -2481,10 +2511,8 @@ if (document.readyState === 'loading') {
     });
 } else {
     // DOM is already loaded (interactive or complete), initialize immediately
-    console.log('✅ DOM already loaded, initializing immediately');
-    console.log('🔵 CALLING initializeMainApp() NOW');
+    // console.log('✅ DOM already loaded, initializing immediately');
     initializeMainApp();
-    console.log('🔵 initializeMainApp() RETURNED');
 }
 
 console.log('🟢 LINE 2545 - END OF MODULE - All code parsed successfully!');

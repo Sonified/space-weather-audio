@@ -11,7 +11,7 @@
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
 
-console.log('🎨 Waveform Worker initialized');
+// console.log('🎨 Waveform Worker initialized');
 
 // Store accumulated samples
 let allSamples = new Float32Array(0);

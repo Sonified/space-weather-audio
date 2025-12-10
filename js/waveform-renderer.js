@@ -67,7 +67,7 @@ export function buildWaveformColorLUT() {
         waveformColorLUT[i * 3 + 2] = b;
     }
 
-    console.log('🌊 Built waveform color LUT from current colormap');
+    // console.log('🌊 Built waveform color LUT from current colormap');
 }
 
 // Initialize color LUT on module load

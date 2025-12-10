@@ -27,6 +27,7 @@ import { isStudyMode, isStudyCleanMode, CURRENT_MODE, AppMode, isLocalEnvironmen
 import { modalManager } from './modal-manager.js';
 import { startActivityTimer } from './session-management.js';
 import { checkUsernameAvailable, registerUsername } from './share-api.js';
+import { log, logGroup, logGroupEnd } from './logger.js';
 
 /**
  * Fade in the permanent overlay background (modal background)
@@ -215,16 +216,19 @@ export async function loadSavedSpacecraft() {
     // Skip localStorage restoration if loading from a share link
     // The share link handler (applySharedSession) already set the correct values
     if (sessionStorage.getItem('isSharedSession') === 'true') {
-        console.log('🔗 Skipping localStorage restoration (share link active)');
+        log('share', 'Skipping localStorage restoration (share link active)');
         return;
     }
+
+    // Start preference restoration group
+    const prefGroupOpen = logGroup('data', 'Restoring saved preferences');
 
     // Migrate from old 'selectedVolcano' key if it exists
     const legacySelection = localStorage.getItem('selectedVolcano');
     if (legacySelection) {
         localStorage.setItem('selectedSpacecraft', legacySelection);
         localStorage.removeItem('selectedVolcano');
-        console.log('🔄 Migrated localStorage: selectedVolcano → selectedSpacecraft');
+        console.log('Migrated: selectedVolcano → selectedSpacecraft');
     }
 
     // Load saved spacecraft from localStorage
@@ -233,7 +237,7 @@ export async function loadSavedSpacecraft() {
     if (savedSpacecraft && SPACECRAFT_DATASETS[savedSpacecraft]) {
         spacecraftSelect.value = savedSpacecraft;
         if (!isStudyMode()) {
-            console.log('💾 Restored spacecraft selection:', savedSpacecraft);
+            console.log(`Spacecraft: ${savedSpacecraft}`);
         }
         // Update the Data dropdown to match the restored spacecraft
         updateDatasetOptions();
@@ -242,7 +246,7 @@ export async function loadSavedSpacecraft() {
         const firstOption = spacecraftSelect.options[0]?.value || 'PSP';
         spacecraftSelect.value = firstOption;
         localStorage.setItem('selectedSpacecraft', firstOption);
-        console.log('🛰️ Defaulted to', firstOption, '(first session)');
+        console.log(`Spacecraft: ${firstOption} (default)`);
         updateDatasetOptions();
     }
 
@@ -255,13 +259,13 @@ export async function loadSavedSpacecraft() {
         if (validOptions.includes(savedDataType)) {
             dataTypeSelect.value = savedDataType;
             if (!isStudyMode()) {
-                console.log('💾 Restored data type selection:', savedDataType);
+                console.log(`Data type: ${savedDataType}`);
             }
         }
     }
 
     // Restore saved date/time settings
-    loadSavedDateTime();
+    loadSavedDateTime(prefGroupOpen);
 
     // In study mode: If user has already clicked "Begin Analysis" THIS SESSION, keep spacecraft selector disabled
     if (isStudyMode()) {
@@ -277,21 +281,18 @@ export async function loadSavedSpacecraft() {
 
 /**
  * Load saved date/time settings from localStorage
+ * @param {boolean} groupOpen - Whether a log group is open (to close it at the end)
  */
-function loadSavedDateTime() {
+function loadSavedDateTime(groupOpen) {
     const startDate = document.getElementById('startDate');
     const startTime = document.getElementById('startTime');
     const endDate = document.getElementById('endDate');
     const endTime = document.getElementById('endTime');
 
-    console.log('📅 loadSavedDateTime: elements found:', !!startDate, !!startTime, !!endDate, !!endTime);
-
     const savedStartDate = localStorage.getItem('selectedStartDate');
     const savedStartTime = localStorage.getItem('selectedStartTime');
     const savedEndDate = localStorage.getItem('selectedEndDate');
     const savedEndTime = localStorage.getItem('selectedEndTime');
-
-    console.log('📅 loadSavedDateTime: localStorage has:', { savedStartDate, savedStartTime, savedEndDate, savedEndTime });
 
     if (savedStartDate && startDate) {
         startDate.value = savedStartDate;
@@ -307,10 +308,11 @@ function loadSavedDateTime() {
     }
 
     if (savedStartDate || savedEndDate) {
-        console.log('💾 Restored date/time:', savedStartDate, savedStartTime, '→', savedEndDate, savedEndTime);
-    } else {
-        console.log('📅 No saved date/time in localStorage');
+        console.log(`Date/time: ${savedStartDate} ${savedStartTime} → ${savedEndDate} ${savedEndTime}`);
     }
+
+    // Close the preference restoration group
+    if (groupOpen) logGroupEnd();
 }
 
 /**

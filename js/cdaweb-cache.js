@@ -30,7 +30,7 @@ export async function initCache() {
         
         request.onsuccess = () => {
             db = request.result;
-            console.log('✅ IndexedDB cache initialized');
+            // console.log('✅ IndexedDB cache initialized');
             resolve(db);
         };
         

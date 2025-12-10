@@ -83,7 +83,7 @@ export function initializeComponentSelector(fileUrls, metadata = {}) {
         selector.value = currentComponentIndex;
         container.style.display = 'flex';
 
-        console.log(`📊 Component selector initialized with ${componentCount} components`);
+        // console.log(`📊 Component selector initialized with ${componentCount} components`);
     } else {
         container.style.display = 'none';
     }

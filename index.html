@@ -352,6 +352,7 @@
     <!-- CORE SYSTEM: Loads first, always works, never breaks -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <script type="module">
+        console.groupCollapsed('🔥 [CORE] Core Systems Initialization');
         import { initFlameEngine } from './js/core/flame-engine.js';
         import { initErrorSystem } from './js/core/error-system.js';
         
@@ -369,6 +370,7 @@
         };
         
         console.log('🔥 Core systems initialized (flame engine + error system)');
+        console.groupEnd();
     </script>
     
     <!-- ═══════════════════════════════════════════════════════════ -->

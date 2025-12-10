@@ -224,13 +224,13 @@ class SeismicProcessor extends AudioWorkletProcessor {
             } else if (type === 'set-first-play-flag') {
                 // 🎚️ Set flag for first play after data load (must happen BEFORE samples arrive!)
                 this.firstPlayAfterDataLoad = true;
-                console.log(`🎚️ WORKLET: First play flag set - next playback will use 250ms fade-in to prevent click`);
-                console.log(`🎚️ WORKLET STATE: hasStarted=${this.hasStarted}, isPlaying=${this.isPlaying}, samplesInBuffer=${this.samplesInBuffer}`);
+                // console.log(`🎚️ WORKLET: First play flag set - next playback will use 250ms fade-in to prevent click`);
+                // console.log(`🎚️ WORKLET STATE: hasStarted=${this.hasStarted}, isPlaying=${this.isPlaying}, samplesInBuffer=${this.samplesInBuffer}`);
             } else if (type === 'data-complete') {
                 // 🔥 CRITICAL: Set actual sample rate from metadata!
                 if (event.data.sampleRate) {
                     this.sampleRate = event.data.sampleRate;
-                    console.log(`🎵 WORKLET: Sample rate set to ${this.sampleRate} Hz (from metadata)`);
+                    // console.log(`🎵 WORKLET: Sample rate set to ${this.sampleRate} Hz (from metadata)`);
                 }
                 this.markDataComplete(event.data.totalSamples);
             } else if (type === 'reset') {
@@ -305,8 +305,8 @@ class SeismicProcessor extends AudioWorkletProcessor {
         this.totalSamples = totalSamples || this.samplesInBuffer;
         const bufferSeconds = this.samplesInBuffer / this.sampleRate;
         const bufferMinutes = bufferSeconds / 60;
-        console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
-        console.log('🎵 WORKLET: Data complete. Total samples set to ' + this.totalSamples + ' (samplesInBuffer=' + this.samplesInBuffer + ')');
+        // console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
+        // console.log('🎵 WORKLET: Data complete. Total samples set to ' + this.totalSamples + ' (samplesInBuffer=' + this.samplesInBuffer + ')');
     }
     
     resetState() {
@@ -600,9 +600,9 @@ class SeismicProcessor extends AudioWorkletProcessor {
         if (!this.hasStarted && autoResume !== false && this.samplesInBuffer >= this.minBufferBeforePlay) {
             const bufferSeconds = this.samplesInBuffer / this.sampleRate;
             const bufferMinutes = bufferSeconds / 60;
-            console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
-            console.log('🎵 WORKLET addSamples: Threshold reached! samplesInBuffer=' + this.samplesInBuffer + ', minBuffer=' + this.minBufferBeforePlay);
-            console.log(`🎚️ WORKLET INITIAL START: firstPlayAfterDataLoad=${this.firstPlayAfterDataLoad}`);
+            // console.log(`📊 Buffer Status: ${this.samplesInBuffer.toLocaleString()} samples in buffer (${bufferMinutes.toFixed(2)} minutes)`);
+            // console.log('🎵 WORKLET addSamples: Threshold reached! samplesInBuffer=' + this.samplesInBuffer + ', minBuffer=' + this.minBufferBeforePlay);
+            // console.log(`🎚️ WORKLET INITIAL START: firstPlayAfterDataLoad=${this.firstPlayAfterDataLoad}`);
             this.readIndex = 0;
             this.isPlaying = true;
             this.hasStarted = true;
@@ -616,7 +616,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
                 console.log(`🎚️ WORKLET THRESHOLD: FIRST PLAY after data load - using ${fadeTime}ms fade-in to prevent click`);
                 this.firstPlayAfterDataLoad = false; // Clear flag after using it
             } else {
-                console.log(`🎚️ WORKLET THRESHOLD: Started ${fadeTime}ms fade-in (firstPlayAfterDataLoad was false)`);
+                // console.log(`🎚️ WORKLET THRESHOLD: Started ${fadeTime}ms fade-in (firstPlayAfterDataLoad was false)`);
             }
             
             // After first start, switch to seek threshold for future seeks/loops
@@ -634,7 +634,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
             this.startFade(+1, fadeTime);
             
             if (this.firstPlayAfterDataLoad) {
-                console.log(`🎚️ WORKLET AUTO-RESUME: FIRST PLAY after data load - using ${fadeTime}ms fade-in to prevent click`);
+                // console.log(`🎚️ WORKLET AUTO-RESUME: FIRST PLAY after data load - using ${fadeTime}ms fade-in to prevent click`);
                 this.firstPlayAfterDataLoad = false; // Clear flag after using it
             } else {
                 if (DEBUG_WORKLET) console.log(`🎚️ WORKLET addSamples: Started fade-in for auto-resume`);
@@ -778,8 +778,8 @@ class SeismicProcessor extends AudioWorkletProcessor {
         
         // Log first time process() is called after starting
         if (this.hasStarted && !this.processStartLogged) {
-            console.log('🎵 WORKLET process() FIRST CALL after hasStarted=true');
-            console.log(`🔍 FIRST PROCESS CALL STATE: isPlaying=${this.isPlaying}, isFading=${this.fadeState.isFading}, fadeDirection=${this.fadeState.fadeDirection}, fadeStartGain=${this.fadeState.fadeStartGain}, fadeEndGain=${this.fadeState.fadeEndGain}`);
+            // console.log('🎵 WORKLET process() FIRST CALL after hasStarted=true');
+            // console.log(`🔍 FIRST PROCESS CALL STATE: isPlaying=${this.isPlaying}, isFading=${this.fadeState.isFading}, fadeDirection=${this.fadeState.fadeDirection}, fadeStartGain=${this.fadeState.fadeStartGain}, fadeEndGain=${this.fadeState.fadeEndGain}`);
             this.processStartLogged = true;
         }
         
@@ -966,7 +966,7 @@ class SeismicProcessor extends AudioWorkletProcessor {
 
                     // 🔍 LOG THE VERY FIRST SAMPLE EVER OUTPUT
                     if (this.totalSamplesConsumed === 0 && i === 0) {
-                        console.log(`🎵 🔴 VERY FIRST SAMPLE OUTPUT: value=${sample.toFixed(6)}, gain=${appliedGain.toFixed(6)}, isFading=${this.fadeState.isFading}, original=${this.buffer[this.readIndex].toFixed(6)}`);
+                        // console.log(`🎵 🔴 VERY FIRST SAMPLE OUTPUT: value=${sample.toFixed(6)}, gain=${appliedGain.toFixed(6)}, isFading=${this.fadeState.isFading}, original=${this.buffer[this.readIndex].toFixed(6)}`);
                     }
 
                     channel[i] = sample;
