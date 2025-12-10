@@ -4,6 +4,8 @@
  * Stores WAV files and metadata for recent searches
  */
 
+import { log, logGroup, logGroupEnd } from './logger.js';
+
 const DB_NAME = 'solarAudioCache';
 const DB_VERSION = 1;
 const STORE_NAME = 'audioData';
@@ -175,13 +177,17 @@ export async function getAudioData(spacecraft, dataset, startTime, endTime) {
                 const entry = request.result;
                 const ageMinutes = Math.round((Date.now() - entry.cachedAt) / 60000);
                 const sizeKB = entry.wavBlob ? (entry.wavBlob.size / 1024).toFixed(2) : 'unknown';
-                console.log(`✅ Cache hit: ${id}`);
-                console.log(`   📦 Cache entry: ${sizeKB} KB, cached ${ageMinutes} min ago`);
-                console.log(`   🛰️ Spacecraft: ${entry.spacecraft}, Dataset: ${entry.dataset}`);
-                console.log(`   ⏰ Time range: ${entry.startTime} → ${entry.endTime}`);
+
+                // Group cache hit details (collapsed by default)
+                if (logGroup('cache', `Cache hit: ${sizeKB} KB, ${ageMinutes} min old`)) {
+                    console.log(`Key: ${id}`);
+                    console.log(`Spacecraft: ${entry.spacecraft}, Dataset: ${entry.dataset}`);
+                    console.log(`Time range: ${entry.startTime} → ${entry.endTime}`);
+                    logGroupEnd();
+                }
                 resolve(request.result);
             } else {
-                console.log(`❌ Cache miss: ${id}`);
+                log('cache', `Cache miss: ${id}`);
                 resolve(null);
             }
         };

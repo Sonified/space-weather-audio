@@ -16,6 +16,7 @@ import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-t
 import { isStudyMode } from './master-modes.js';
 import { isTutorialActive } from './tutorial-state.js';
 import { storeAudioData, getAudioData, updateCacheWithAllComponents } from './cdaweb-cache.js';
+import { log, logGroup, logGroupEnd } from './logger.js';
 
 // ========== CONSOLE DEBUG FLAGS ==========
 // Centralized reference for all debug flags across the codebase
@@ -80,11 +81,14 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         const validBlobCount = cachedBlobsArray.filter(blob => blob instanceof Blob).length;
         const hasAllComponents = validBlobCount >= expectedComponents;
 
-        console.log('✅ Loading from cache (local IndexedDB)');
-        console.log(`   📊 WAV blob size: ${(cached.wavBlob.size / 1024).toFixed(2)} KB`);
-        console.log(`   📊 Cache metadata:`, cached.metadata);
-        console.log(`   📊 Cache allFileUrls:`, cached.metadata?.allFileUrls);
-        console.log(`   📊 Components: ${validBlobCount}/${expectedComponents} valid blobs cached`);
+        // Group cache load details (collapsed by default)
+        const sizeKB = (cached.wavBlob.size / 1024).toFixed(2);
+        if (logGroup('cache', `Loading from cache: ${sizeKB} KB, ${validBlobCount}/${expectedComponents} components`)) {
+            console.log(`WAV blob size: ${sizeKB} KB`);
+            console.log(`Metadata:`, cached.metadata);
+            console.log(`File URLs:`, cached.metadata?.allFileUrls);
+            logGroupEnd();
+        }
 
         // Check if cache is INCOMPLETE (missing component blobs)
         // This can happen if background download failed or was interrupted
