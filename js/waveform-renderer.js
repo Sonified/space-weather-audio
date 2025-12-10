@@ -1497,6 +1497,9 @@ export function setupWaveformInteraction() {
     }
 
     canvas.addEventListener('touchstart', (e) => {
+        // Only handle touch events on actual touch devices (not desktop trackpads)
+        if (!isTouchDevice) return;
+
         console.log('📱 TOUCH EVENT RECEIVED on waveform canvas');
 
         if (!State.completeSamplesArray || State.totalAudioDuration === 0) {
@@ -1569,6 +1572,8 @@ export function setupWaveformInteraction() {
     }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
+        // Only handle touch events on actual touch devices
+        if (!isTouchDevice) return;
         if (!State.isDragging || State.selectionStartX === null) return;
 
         e.preventDefault(); // Prevent scrolling
@@ -1610,6 +1615,9 @@ export function setupWaveformInteraction() {
     }, { passive: false });
 
     canvas.addEventListener('touchend', (e) => {
+        // Only handle touch events on actual touch devices
+        if (!isTouchDevice) return;
+
         // Check if we touched a button
         if (canvas._touchedZoomButton !== undefined || canvas._touchedPlayButton !== undefined) {
             const zoomIndex = canvas._touchedZoomButton;
@@ -1693,6 +1701,9 @@ export function setupWaveformInteraction() {
     });
 
     canvas.addEventListener('touchcancel', () => {
+        // Only handle touch events on actual touch devices
+        if (!isTouchDevice) return;
+
         // Clean up on touch cancel (e.g., incoming call)
         State.setIsDragging(false);
         State.setIsSelecting(false);
