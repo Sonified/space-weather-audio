@@ -138,6 +138,17 @@ let currentSessionId = null;  // Track the current session ID
 let slugCheckTimeout = null;  // Debounce for slug availability check
 let capturedThumbnailDataUrl = null;  // Store captured thumbnail for upload
 
+// Emoji overlay state - supports multiple emojis
+let emojiOverlays = [];  // Array of {emoji, x, y, scale, rotation}
+let selectedEmojiIndex = -1;  // Which emoji is selected (-1 = none)
+let emojiDragState = {
+    dragging: false,
+    resizing: false,
+    rotating: false,
+    dragStart: null,     // {mouseX, mouseY, emojiX, emojiY, scale, rotation, cx, cy}
+};
+let thumbnailImage = null;  // Store the base thumbnail image
+
 // Word lists for generating share slugs
 const ADJECTIVES = [
     'awesome', 'amazing', 'incredible', 'remarkable', 'astounding',
@@ -349,11 +360,470 @@ function updateThumbnailPreview() {
             thumbnailCanvas.height = img.height;
             thumbnailCanvas.style.height = `${displayHeight}px`;
 
+            // Store the base image for re-rendering with emoji
+            thumbnailImage = img;
+
             const ctx = thumbnailCanvas.getContext('2d');
             ctx.drawImage(img, 0, 0);
         };
         img.src = capturedThumbnailDataUrl;
     }
+}
+
+/**
+ * Draw a thick red arrow (custom shape, not an emoji)
+ * Arrow points to the right by default, rotation is applied by caller
+ */
+function drawRedArrow(ctx, size) {
+    const w = size * 0.9;  // Arrow width
+    const h = size * 0.5;  // Arrow body height
+    const headW = size * 0.4;  // Arrow head extra width
+
+    ctx.beginPath();
+    // Start at left middle, go clockwise
+    ctx.moveTo(-w/2, -h/4);           // Left top of body
+    ctx.lineTo(w/2 - headW, -h/4);    // Right top of body (before head)
+    ctx.lineTo(w/2 - headW, -h/2);    // Top of arrow head
+    ctx.lineTo(w/2, 0);               // Arrow tip
+    ctx.lineTo(w/2 - headW, h/2);     // Bottom of arrow head
+    ctx.lineTo(w/2 - headW, h/4);     // Right bottom of body
+    ctx.lineTo(-w/2, h/4);            // Left bottom of body
+    ctx.closePath();
+
+    // Red fill with dark outline
+    ctx.fillStyle = '#e53935';
+    ctx.fill();
+    ctx.strokeStyle = '#b71c1c';
+    ctx.lineWidth = size * 0.03;
+    ctx.stroke();
+}
+
+/**
+ * Get emoji bounding box in canvas coordinates
+ */
+function getEmojiBounds(canvas, emojiObj) {
+    const baseSize = Math.min(canvas.width, canvas.height) * 0.15;
+    const size = baseSize * emojiObj.scale;
+    const cx = emojiObj.x * canvas.width;
+    const cy = emojiObj.y * canvas.height;
+    return { cx, cy, size, halfSize: size / 2 };
+}
+
+/**
+ * Get handle positions for the emoji (corners + rotation)
+ */
+function getHandlePositions(canvas, emojiObj) {
+    const { cx, cy, halfSize } = getEmojiBounds(canvas, emojiObj);
+    const handleSize = 12;
+    const cos = Math.cos(emojiObj.rotation);
+    const sin = Math.sin(emojiObj.rotation);
+
+    // Rotate corner offsets
+    const corners = [
+        { dx: -halfSize, dy: -halfSize, cursor: 'nw-resize', corner: 'tl' },
+        { dx: halfSize, dy: -halfSize, cursor: 'ne-resize', corner: 'tr' },
+        { dx: halfSize, dy: halfSize, cursor: 'se-resize', corner: 'br' },
+        { dx: -halfSize, dy: halfSize, cursor: 'sw-resize', corner: 'bl' },
+    ].map(c => ({
+        x: cx + c.dx * cos - c.dy * sin,
+        y: cy + c.dx * sin + c.dy * cos,
+        cursor: c.cursor,
+        corner: c.corner,
+        size: handleSize
+    }));
+
+    // Rotation handle (above the emoji)
+    const rotateOffset = halfSize + 30;
+    const rotateHandle = {
+        x: cx + rotateOffset * sin,
+        y: cy - rotateOffset * cos,
+        cursor: 'grab',
+        type: 'rotate',
+        size: 16
+    };
+
+    return { corners, rotateHandle };
+}
+
+/**
+ * Render the thumbnail with emoji overlay
+ */
+function renderThumbnailWithEmoji() {
+    const canvas = document.getElementById('shareThumbnail');
+    if (!canvas || !thumbnailImage) return;
+
+    const ctx = canvas.getContext('2d');
+
+    // Draw base image
+    ctx.drawImage(thumbnailImage, 0, 0);
+
+    // If no emojis, we're done
+    if (emojiOverlays.length === 0) {
+        capturedThumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.70);
+        return;
+    }
+
+    // Draw all emojis
+    emojiOverlays.forEach((emojiObj, index) => {
+        const { cx, cy, size } = getEmojiBounds(canvas, emojiObj);
+
+        // Draw emoji or custom shape
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(emojiObj.rotation);
+        if (emojiObj.emoji === '__arrow__') {
+            drawRedArrow(ctx, size);
+        } else {
+            ctx.font = `${size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emojiObj.emoji, 0, 0);
+        }
+        ctx.restore();
+
+        // Draw selection UI only for selected emoji
+        if (index === selectedEmojiIndex) {
+            const handles = getHandlePositions(canvas, emojiObj);
+            const halfSize = size / 2;
+
+            // Bounding box
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(emojiObj.rotation);
+            ctx.strokeStyle = 'rgba(102, 126, 234, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(-halfSize, -halfSize, size, size);
+            ctx.setLineDash([]);
+            ctx.restore();
+
+            // Corner handles
+            handles.corners.forEach(h => {
+                ctx.fillStyle = 'rgba(102, 126, 234, 0.9)';
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.fillRect(h.x - h.size/2, h.y - h.size/2, h.size, h.size);
+                ctx.strokeRect(h.x - h.size/2, h.y - h.size/2, h.size, h.size);
+            });
+
+            // Rotation handle
+            const rh = handles.rotateHandle;
+            ctx.beginPath();
+            ctx.arc(rh.x, rh.y, rh.size/2, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(118, 75, 162, 0.9)';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Rotation icon
+            ctx.save();
+            ctx.translate(rh.x, rh.y);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 5, -Math.PI * 0.7, Math.PI * 0.5);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(3, 4);
+            ctx.lineTo(5, 7);
+            ctx.lineTo(7, 3);
+            ctx.stroke();
+            ctx.restore();
+
+            // Line to rotation handle
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(102, 126, 234, 0.5)';
+            ctx.lineWidth = 1;
+            const topCx = cx + halfSize * Math.sin(emojiObj.rotation);
+            const topCy = cy - halfSize * Math.cos(emojiObj.rotation);
+            ctx.moveTo(topCx, topCy);
+            ctx.lineTo(rh.x, rh.y);
+            ctx.stroke();
+        }
+    });
+
+    // Update captured data URL for sharing (render without handles)
+    updateCapturedThumbnail();
+}
+
+/**
+ * Update the captured thumbnail data URL (without handles, for sharing)
+ */
+function updateCapturedThumbnail() {
+    if (!thumbnailImage || emojiOverlays.length === 0) {
+        return;
+    }
+
+    // Create a temporary canvas to render without handles
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = thumbnailImage.width;
+    tempCanvas.height = thumbnailImage.height;
+    const ctx = tempCanvas.getContext('2d');
+
+    // Draw base image
+    ctx.drawImage(thumbnailImage, 0, 0);
+
+    // Draw all emojis (without handles)
+    emojiOverlays.forEach(emojiObj => {
+        const { cx, cy, size } = getEmojiBounds(tempCanvas, emojiObj);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(emojiObj.rotation);
+        if (emojiObj.emoji === '__arrow__') {
+            drawRedArrow(ctx, size);
+        } else {
+            ctx.font = `${size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emojiObj.emoji, 0, 0);
+        }
+        ctx.restore();
+    });
+
+    capturedThumbnailDataUrl = tempCanvas.toDataURL('image/jpeg', 0.70);
+}
+
+/**
+ * Hit test: what did the user click on?
+ * Returns { type, index } or null
+ */
+function hitTest(canvas, mouseX, mouseY) {
+    // First check handles of selected emoji (if any)
+    if (selectedEmojiIndex >= 0 && selectedEmojiIndex < emojiOverlays.length) {
+        const emojiObj = emojiOverlays[selectedEmojiIndex];
+        const handles = getHandlePositions(canvas, emojiObj);
+
+        // Check rotation handle
+        const rh = handles.rotateHandle;
+        const rdist = Math.hypot(mouseX - rh.x, mouseY - rh.y);
+        if (rdist <= rh.size) {
+            return { type: 'rotate', index: selectedEmojiIndex };
+        }
+
+        // Check corner handles
+        for (const h of handles.corners) {
+            if (mouseX >= h.x - h.size/2 && mouseX <= h.x + h.size/2 &&
+                mouseY >= h.y - h.size/2 && mouseY <= h.y + h.size/2) {
+                return { type: 'resize', corner: h.corner, index: selectedEmojiIndex };
+            }
+        }
+    }
+
+    // Check all emoji bodies (in reverse order so topmost is checked first)
+    for (let i = emojiOverlays.length - 1; i >= 0; i--) {
+        const emojiObj = emojiOverlays[i];
+        const { cx, cy, halfSize } = getEmojiBounds(canvas, emojiObj);
+
+        // Transform mouse to emoji-local coordinates
+        const dx = mouseX - cx;
+        const dy = mouseY - cy;
+        const cos = Math.cos(-emojiObj.rotation);
+        const sin = Math.sin(-emojiObj.rotation);
+        const localX = dx * cos - dy * sin;
+        const localY = dx * sin + dy * cos;
+
+        if (Math.abs(localX) <= halfSize && Math.abs(localY) <= halfSize) {
+            return { type: 'move', index: i };
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Get mouse position relative to canvas (in canvas coordinates)
+ */
+function getCanvasMousePos(canvas, event) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+    };
+}
+
+/**
+ * Handle emoji picker selection - adds a new emoji
+ */
+function handleEmojiSelect(emoji) {
+    // Add new emoji at center (with slight offset if there are already emojis)
+    const offset = emojiOverlays.length * 0.05;
+    const newEmoji = {
+        emoji: emoji,
+        x: 0.5 + offset,
+        y: 0.5 + offset,
+        scale: 1,
+        rotation: 0
+    };
+
+    emojiOverlays.push(newEmoji);
+    selectedEmojiIndex = emojiOverlays.length - 1;
+
+    // Show hint
+    const hint = document.getElementById('emojiHint');
+    if (hint) hint.style.display = 'block';
+
+    // Update canvas cursor
+    const canvas = document.getElementById('shareThumbnail');
+    if (canvas) canvas.style.cursor = 'move';
+
+    renderThumbnailWithEmoji();
+}
+
+/**
+ * Delete the currently selected emoji
+ */
+function deleteSelectedEmoji() {
+    if (selectedEmojiIndex >= 0 && selectedEmojiIndex < emojiOverlays.length) {
+        emojiOverlays.splice(selectedEmojiIndex, 1);
+        selectedEmojiIndex = -1;
+
+        // Hide hint if no emojis left
+        const hint = document.getElementById('emojiHint');
+        if (hint && emojiOverlays.length === 0) hint.style.display = 'none';
+
+        renderThumbnailWithEmoji();
+    }
+}
+
+/**
+ * Setup canvas interaction handlers
+ */
+function setupCanvasInteraction() {
+    const canvas = document.getElementById('shareThumbnail');
+    if (!canvas) return;
+
+    canvas.addEventListener('mousedown', (e) => {
+        const pos = getCanvasMousePos(canvas, e);
+        const hit = hitTest(canvas, pos.x, pos.y);
+
+        if (!hit) {
+            // Clicked outside all emojis - deselect
+            if (selectedEmojiIndex >= 0) {
+                selectedEmojiIndex = -1;
+                renderThumbnailWithEmoji();
+            }
+            return;
+        }
+
+        e.preventDefault();
+
+        // Select the emoji that was hit
+        selectedEmojiIndex = hit.index;
+        const emojiObj = emojiOverlays[selectedEmojiIndex];
+        const { cx, cy } = getEmojiBounds(canvas, emojiObj);
+
+        emojiDragState.dragStart = {
+            mouseX: pos.x,
+            mouseY: pos.y,
+            emojiX: emojiObj.x,
+            emojiY: emojiObj.y,
+            scale: emojiObj.scale,
+            rotation: emojiObj.rotation,
+            cx, cy
+        };
+
+        if (hit.type === 'move') {
+            emojiDragState.dragging = true;
+            canvas.style.cursor = 'grabbing';
+        } else if (hit.type === 'resize') {
+            emojiDragState.resizing = true;
+        } else if (hit.type === 'rotate') {
+            emojiDragState.rotating = true;
+            canvas.style.cursor = 'grabbing';
+        }
+
+        renderThumbnailWithEmoji();
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        const pos = getCanvasMousePos(canvas, e);
+
+        if (selectedEmojiIndex < 0 || selectedEmojiIndex >= emojiOverlays.length) {
+            // Update cursor based on what's under mouse
+            const hit = hitTest(canvas, pos.x, pos.y);
+            canvas.style.cursor = hit ? 'pointer' : 'default';
+            return;
+        }
+
+        const emojiObj = emojiOverlays[selectedEmojiIndex];
+
+        if (emojiDragState.dragging && emojiDragState.dragStart) {
+            // Move emoji
+            const dx = pos.x - emojiDragState.dragStart.mouseX;
+            const dy = pos.y - emojiDragState.dragStart.mouseY;
+            emojiObj.x = emojiDragState.dragStart.emojiX + dx / canvas.width;
+            emojiObj.y = emojiDragState.dragStart.emojiY + dy / canvas.height;
+
+            // Clamp to canvas bounds
+            emojiObj.x = Math.max(0.1, Math.min(0.9, emojiObj.x));
+            emojiObj.y = Math.max(0.1, Math.min(0.9, emojiObj.y));
+
+            renderThumbnailWithEmoji();
+        } else if (emojiDragState.resizing && emojiDragState.dragStart) {
+            // Resize emoji based on distance from center
+            const { cx, cy } = emojiDragState.dragStart;
+            const startDist = Math.hypot(
+                emojiDragState.dragStart.mouseX - cx,
+                emojiDragState.dragStart.mouseY - cy
+            );
+            const currentDist = Math.hypot(pos.x - cx, pos.y - cy);
+
+            if (startDist > 0) {
+                const scaleFactor = currentDist / startDist;
+                emojiObj.scale = Math.max(0.2, Math.min(6, emojiDragState.dragStart.scale * scaleFactor));
+                renderThumbnailWithEmoji();
+            }
+        } else if (emojiDragState.rotating && emojiDragState.dragStart) {
+            // Rotate emoji based on angle from center
+            const { cx, cy } = emojiDragState.dragStart;
+            const startAngle = Math.atan2(
+                emojiDragState.dragStart.mouseY - cy,
+                emojiDragState.dragStart.mouseX - cx
+            );
+            const currentAngle = Math.atan2(pos.y - cy, pos.x - cx);
+
+            emojiObj.rotation = emojiDragState.dragStart.rotation + (currentAngle - startAngle);
+            renderThumbnailWithEmoji();
+        } else {
+            // Update cursor based on what's under mouse
+            const hit = hitTest(canvas, pos.x, pos.y);
+            if (hit) {
+                if (hit.type === 'rotate') canvas.style.cursor = 'grab';
+                else if (hit.type === 'resize') canvas.style.cursor = 'nwse-resize';
+                else canvas.style.cursor = 'move';
+            } else {
+                canvas.style.cursor = 'default';
+            }
+        }
+    });
+
+    const handleMouseUp = () => {
+        emojiDragState.dragging = false;
+        emojiDragState.resizing = false;
+        emojiDragState.rotating = false;
+        emojiDragState.dragStart = null;
+
+        if (selectedEmojiIndex >= 0) {
+            canvas.style.cursor = 'move';
+        }
+    };
+
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('mouseleave', handleMouseUp);
+
+    // Delete key removes selected emoji
+    document.addEventListener('keydown', (e) => {
+        if ((e.key === 'Delete' || e.key === 'Backspace') &&
+            selectedEmojiIndex >= 0 &&
+            shareModal?.style.display !== 'none' &&
+            !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+            e.preventDefault();
+            deleteSelectedEmoji();
+        }
+    });
 }
 
 /**
@@ -421,6 +891,19 @@ function createShareModal() {
                             <canvas id="shareThumbnail" style="width: 100%; display: block;"></canvas>
                         </div>
                         <div style="margin-top: 6px; font-size: 12px; color: #666;">This image will appear when sharing on social media</div>
+                        <!-- Emoji Picker -->
+                        <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-size: 12px; color: #888;">Add emoji:</span>
+                            <div id="emojiPicker" style="display: flex; gap: 4px;">
+                                <button type="button" class="emoji-btn" data-emoji="😱" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">😱</button>
+                                <button type="button" class="emoji-btn" data-emoji="🤯" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">🤯</button>
+                                <button type="button" class="emoji-btn" data-emoji="🙀" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">🙀</button>
+                                <button type="button" class="emoji-btn" data-emoji="🤩" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">🤩</button>
+                                <button type="button" class="emoji-btn" data-emoji="👉" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">👉</button>
+                                <button type="button" class="emoji-btn" data-emoji="__arrow__" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 12px; color: #e53935; font-weight: bold;">➤</button>
+                            </div>
+                            <span id="emojiHint" style="font-size: 11px; color: #666; display: none; margin-left: auto;">(DELETE key to remove)</span>
+                        </div>
                     </div>
 
                     <!-- Title Input -->
@@ -597,6 +1080,16 @@ export function initShareModal() {
     // Slug input handler
     document.getElementById('shareSlug').addEventListener('input', handleSlugInput);
 
+    // Emoji picker handlers
+    document.querySelectorAll('.emoji-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            handleEmojiSelect(btn.dataset.emoji);
+        });
+    });
+
+    // Setup canvas interaction for emoji drag/resize/rotate
+    setupCanvasInteraction();
+
     // Close on backdrop click (only if mousedown also started on backdrop)
     let mouseDownOnBackdrop = false;
     shareModal.addEventListener('mousedown', (e) => {
@@ -623,6 +1116,16 @@ export function openShareModal() {
 
     // Reset to form view
     showView('shareFormView');
+
+    // Reset emoji overlays
+    emojiOverlays = [];
+    selectedEmojiIndex = -1;
+    emojiDragState.dragging = false;
+    emojiDragState.resizing = false;
+    emojiDragState.rotating = false;
+    emojiDragState.dragStart = null;
+    const hint = document.getElementById('emojiHint');
+    if (hint) hint.style.display = 'none';
 
     // Capture spectrogram thumbnail
     updateThumbnailPreview();
