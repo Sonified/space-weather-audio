@@ -2841,16 +2841,24 @@ input[type="range"]:disabled {
 /* Mobile: Wrap top header content */
 @media (max-width: 768px) {
     /* Fix white bars in landscape - reduce padding and ensure full width */
+    html, body {
+        overflow-x: hidden;
+        overflow-y: auto !important; /* Allow vertical scrolling */
+    }
+
     body {
         padding-left: 10px;
         padding-right: 10px;
         /* Safe area insets for notched devices */
         padding-left: max(10px, env(safe-area-inset-left));
         padding-right: max(10px, env(safe-area-inset-right));
+        min-height: 100vh;
+        height: auto !important;
     }
 
     .container {
         max-width: 100%;
+        overflow: visible;
     }
 
     .top-header-bar {
@@ -2886,6 +2894,20 @@ input[type="range"]:disabled {
 
     .controls-row-1 {
         flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    /* Override inline min-width on control groups to allow wrapping */
+    .controls-row-1 > .control-group {
+        min-width: 0 !important;
+        flex: 1 1 auto !important;
+    }
+
+    /* Make dropdowns fit mobile width */
+    .controls-row-1 select {
+        width: auto !important;
+        min-width: 100px !important;
+        max-width: 100%;
     }
 
     /* Smaller padding on panels */
