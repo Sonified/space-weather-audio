@@ -11,6 +11,127 @@ import { getParticipantId } from './qualtrics-api.js';
 import { getCurrentColormap } from './colormaps.js';
 import { updateDatasetOptions } from './ui-controls.js';
 
+/**
+ * Render x-axis with larger labels for thumbnail
+ * @param {number} width - Canvas width
+ * @param {number} height - Canvas height
+ * @param {number} fontScale - Font scale multiplier (e.g., 1.5 for 50% larger)
+ * @returns {HTMLCanvasElement} Canvas with rendered x-axis
+ */
+function renderXAxisForThumbnail(width, height, fontScale = 1.5) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+
+    // Get time range
+    let displayStartTime, displayEndTime;
+    if (zoomState.isInRegion()) {
+        const regionRange = zoomState.getRegionRange();
+        displayStartTime = regionRange.startTime;
+        displayEndTime = regionRange.endTime;
+    } else {
+        displayStartTime = State.dataStartTime;
+        displayEndTime = State.dataEndTime;
+    }
+
+    if (!displayStartTime || !displayEndTime) return canvas;
+
+    const startTimeUTC = new Date(displayStartTime);
+    const endTimeUTC = new Date(displayEndTime);
+    const actualTimeSpanSeconds = (endTimeUTC.getTime() - startTimeUTC.getTime()) / 1000;
+
+    if (!isFinite(actualTimeSpanSeconds) || actualTimeSpanSeconds <= 0) return canvas;
+
+    // Styling - larger font for thumbnail
+    const baseFontSize = 16;
+    const fontSize = Math.round(baseFontSize * fontScale);
+    ctx.font = `${fontSize}px Arial, sans-serif`;
+    ctx.fillStyle = '#ddd';
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    // Calculate ticks based on time span
+    const timeSpanHours = actualTimeSpanSeconds / 3600;
+    const ticks = calculateTicksForThumbnail(startTimeUTC, endTimeUTC, timeSpanHours);
+
+    // Draw ticks
+    ticks.forEach(tick => {
+        const timeOffsetSeconds = (tick.utcTime.getTime() - startTimeUTC.getTime()) / 1000;
+        const x = (timeOffsetSeconds / actualTimeSpanSeconds) * width;
+
+        if (x < -10 || x > width + 10) return;
+
+        // Draw tick line
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, Math.round(8 * fontScale));
+        ctx.stroke();
+
+        // Format label
+        let label;
+        if (tick.isDayCrossing) {
+            const utcMonth = tick.utcTime.getUTCMonth() + 1;
+            const utcDay = tick.utcTime.getUTCDate();
+            label = `${utcMonth}/${utcDay}`;
+            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+        } else {
+            const utcHours = tick.utcTime.getUTCHours();
+            const utcMinutes = tick.utcTime.getUTCMinutes();
+            label = utcHours === 0 && utcMinutes === 0 ? '0:00' :
+                    `${utcHours}:${String(utcMinutes).padStart(2, '0')}`;
+            ctx.font = `${fontSize}px Arial, sans-serif`;
+        }
+
+        ctx.fillText(label, x, Math.round(10 * fontScale));
+    });
+
+    return canvas;
+}
+
+/**
+ * Calculate ticks for thumbnail (simplified version)
+ */
+function calculateTicksForThumbnail(startUTC, endUTC, timeSpanHours) {
+    const ticks = [];
+    let intervalMs;
+
+    // Choose interval based on time span
+    if (timeSpanHours < 1/3) intervalMs = 60 * 1000;           // 1 minute
+    else if (timeSpanHours < 2) intervalMs = 5 * 60 * 1000;    // 5 minutes
+    else if (timeSpanHours < 6) intervalMs = 30 * 60 * 1000;   // 30 minutes
+    else if (timeSpanHours > 24) intervalMs = 6 * 60 * 60 * 1000; // 6 hours
+    else intervalMs = 60 * 60 * 1000;                          // 1 hour
+
+    // Find first tick boundary
+    const startMs = startUTC.getTime();
+    const firstTickMs = Math.ceil(startMs / intervalMs) * intervalMs;
+
+    let currentMs = firstTickMs;
+    let previousDate = null;
+
+    while (currentMs <= endUTC.getTime()) {
+        const tickTime = new Date(currentMs);
+        const currentDate = tickTime.toISOString().split('T')[0];
+        const utcHours = tickTime.getUTCHours();
+        const utcMinutes = tickTime.getUTCMinutes();
+
+        const isDayCrossing = (previousDate !== null && previousDate !== currentDate) ||
+                              (utcHours === 0 && utcMinutes === 0);
+
+        if (currentMs >= startMs) {
+            ticks.push({ utcTime: tickTime, isDayCrossing });
+        }
+
+        previousDate = currentDate;
+        currentMs += intervalMs;
+    }
+
+    return ticks;
+}
+
 let shareModal = null;
 let isSharing = false;
 let currentSessionId = null;  // Track the current session ID
@@ -122,7 +243,6 @@ function pickAdjectiveNoun() {
 function captureSpectrogramThumbnail() {
     const spectrogramCanvas = document.getElementById('spectrogram');
     const axisCanvas = document.getElementById('spectrogram-axis');
-    const xAxisCanvas = document.getElementById('waveform-x-axis');
 
     if (!spectrogramCanvas) {
         console.warn('Spectrogram canvas not found');
@@ -132,7 +252,6 @@ function captureSpectrogramThumbnail() {
     try {
         // Calculate source dimensions
         const axisWidth = axisCanvas ? axisCanvas.width : 0;
-        const xAxisHeight = xAxisCanvas ? xAxisCanvas.height : 0;
         const sourceWidth = spectrogramCanvas.width + axisWidth;
 
         // Target width for social media previews
@@ -140,8 +259,17 @@ function captureSpectrogramThumbnail() {
         const targetWidth = 1200;
         const scale = targetWidth / sourceWidth;
         const scaledSpectrogramHeight = Math.round(spectrogramCanvas.height * scale);
-        const scaledXAxisHeight = Math.round(xAxisHeight * scale);  // Keep proportional
-        const targetHeight = scaledSpectrogramHeight + scaledXAxisHeight;
+
+        // Make y-axis narrower (60% of scaled width) to avoid dominating the thumbnail
+        const scaledAxisWidth = axisCanvas ? Math.round(axisWidth * scale * 0.6) : 0;
+        const spectrogramW = targetWidth - scaledAxisWidth;
+
+        // Render x-axis with 1.5x larger labels for thumbnail readability
+        const xAxisFontScale = 1.5;
+        const xAxisHeight = Math.round(40 * xAxisFontScale);  // Base height 40px scaled up
+        const thumbnailXAxis = renderXAxisForThumbnail(spectrogramW, xAxisHeight, xAxisFontScale);
+
+        const targetHeight = scaledSpectrogramHeight + xAxisHeight;
 
         // Create combined canvas at reduced size
         const thumbnailCanvas = document.createElement('canvas');
@@ -158,9 +286,6 @@ function captureSpectrogramThumbnail() {
         ctx.fillRect(0, 0, targetWidth, targetHeight);
 
         // Draw main spectrogram on the left (top portion)
-        // Make y-axis narrower (60% of scaled width) to avoid dominating the thumbnail
-        const scaledAxisWidth = axisCanvas ? Math.round(axisWidth * scale * 0.6) : 0;
-        const spectrogramW = targetWidth - scaledAxisWidth;
         ctx.drawImage(spectrogramCanvas, 0, 0, spectrogramW, scaledSpectrogramHeight);
 
         // Draw feature boxes overlay (if any boxes are drawn)
@@ -180,10 +305,8 @@ function captureSpectrogramThumbnail() {
             );
         }
 
-        // Draw x-axis at the bottom (below the spectrogram, spanning full width minus y-axis)
-        if (xAxisCanvas) {
-            ctx.drawImage(xAxisCanvas, 0, scaledSpectrogramHeight, spectrogramW, scaledXAxisHeight);
-        }
+        // Draw x-axis at the bottom (rendered with larger labels)
+        ctx.drawImage(thumbnailXAxis, 0, scaledSpectrogramHeight);
 
         // Convert to JPEG at 70% quality - great for social media, small file size
         // Spectrograms are gradient-heavy, JPEG handles them well
