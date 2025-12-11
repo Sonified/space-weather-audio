@@ -1876,12 +1876,10 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
  * This MUST produce frequencies in the ORIGINAL scale (not stretched by playback)
  */
 function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1.0) {
-    // Use a very low minFreq for region drawing to allow selecting any frequency
-    // This is independent of the axis display minFreq
-    const minFreq = 0.001;
+    const minFreq = getLogScaleMinFreq();
 
     if (scaleType === 'logarithmic') {
-        // Use low minFreq for full frequency range selection
+        // Must use SAME stretch factor as getYPositionForFrequencyScaled!
         const logMin = Math.log10(minFreq);
         const logMax = Math.log10(maxFreq);
         const logRange = logMax - logMin;
@@ -1902,7 +1900,7 @@ function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1
         const logFreq = logMin + (normalizedLog * (logMax - logMin));
         const freq = Math.pow(10, logFreq);
 
-        // CLAMP to valid range [0, maxFreq] - allow full frequency range
+        // Don't clamp to minFreq - allow the natural log scale result
         return Math.max(0, Math.min(maxFreq, freq));
     } else {
         // Linear and sqrt: These ARE homogeneous - freq gets scaled by playbackRate
@@ -1923,7 +1921,7 @@ function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1
             const effectiveFreq = normalizedY * maxFreq;
             const freq = effectiveFreq / playbackRate;
 
-            // CLAMP to valid range
+            // CLAMP to valid range [0, maxFreq]
             return Math.max(0, Math.min(maxFreq, freq));
         }
     }
