@@ -6,10 +6,9 @@
 import * as State from './audio-state.js';
 
 // Minimum frequency for logarithmic scale (Hz) - defines the bottom of the log scale
-// Per-spacecraft values: GOES has lower frequency data, others use 0.5 Hz
+// Use 0.01 Hz for all satellites to allow full frequency range selection
 export function getLogScaleMinFreq() {
-    const spacecraft = document.getElementById('spacecraft')?.value;
-    return spacecraft === 'GOES' ? 0.02 : 0.5;
+    return 0.01;
 }
 // Keep constant for backward compatibility (uses current spacecraft)
 export const LOG_SCALE_MIN_FREQ = 0.02; // Default, but use getLogScaleMinFreq() for dynamic value
