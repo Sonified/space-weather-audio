@@ -438,21 +438,17 @@ function generateSqrtTicks(maxFreq, playbackRate = 1.0) {
 
     // Very low frequency data (Nyquist < 5 Hz)
     if (maxFreq < 5) {
-        // Add sub-Hz ticks: 0.1, 0.2, 0.5
-        [0.1, 0.2, 0.5].forEach(f => {
+        // Add very low frequency ticks (below 0.1 Hz)
+        [0.02, 0.03, 0.05, 0.07].forEach(f => {
             if (f <= maxFreq) ticks.push(f);
         });
-        // Add 0.25 Hz steps from 0.25 to 1
-        for (let f = 0.25; f <= Math.min(1, maxFreq); f += 0.25) {
-            if (!ticks.includes(f)) ticks.push(f);
-        }
-        // Add 0.5 Hz steps above 1
-        for (let f = 1.5; f <= maxFreq; f += 0.5) {
+        // Add sub-Hz ticks: 0.1, 0.2, 0.3, 0.5, 0.7
+        [0.1, 0.2, 0.3, 0.5, 0.7].forEach(f => {
+            if (f <= maxFreq) ticks.push(f);
+        });
+        // Add whole numbers and halves above 1
+        for (let f = 1; f <= maxFreq; f += 0.5) {
             ticks.push(f);
-        }
-        // Add whole numbers
-        for (let i = 1; i <= maxFreq; i++) {
-            if (!ticks.includes(i)) ticks.push(i);
         }
     }
     // Low frequency data (Nyquist 5-10 Hz)
