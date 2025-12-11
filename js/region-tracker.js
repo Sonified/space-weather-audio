@@ -1876,10 +1876,12 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
  * This MUST produce frequencies in the ORIGINAL scale (not stretched by playback)
  */
 function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1.0) {
-    const minFreq = getLogScaleMinFreq();
+    // Use a very low minFreq for region drawing to allow selecting any frequency
+    // This is independent of the axis display minFreq
+    const minFreq = 0.001;
 
     if (scaleType === 'logarithmic') {
-        // Must use SAME stretch factor as getYPositionForFrequencyScaled!
+        // Use low minFreq for full frequency range selection
         const logMin = Math.log10(minFreq);
         const logMax = Math.log10(maxFreq);
         const logRange = logMax - logMin;
