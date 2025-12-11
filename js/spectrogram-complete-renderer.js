@@ -349,11 +349,18 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
 
                 return canvasHeight - (normalizedLog * canvasHeight);
             } else if (State.frequencyScale === 'sqrt') {
-                const normalized = frequency / originalNyquist;
+                const minFreq = getLogScaleMinFreq();
+                const freqSafe = Math.max(frequency, minFreq);
+                // Normalize from minFreq to Nyquist
+                const normalized = (freqSafe - minFreq) / (originalNyquist - minFreq);
                 const sqrtNormalized = Math.sqrt(normalized);
                 return canvasHeight - (sqrtNormalized * canvasHeight);
             } else {
-                const normalized = frequency / originalNyquist;
+                // Linear scale
+                const minFreq = getLogScaleMinFreq();
+                const freqSafe = Math.max(frequency, minFreq);
+                // Normalize from minFreq to Nyquist
+                const normalized = (freqSafe - minFreq) / (originalNyquist - minFreq);
                 return canvasHeight - (normalized * canvasHeight);
             }
         };
@@ -1941,11 +1948,18 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
 
                 return canvasHeight - (normalizedLog * canvasHeight);
             } else if (State.frequencyScale === 'sqrt') {
-                const normalized = frequency / originalNyquist;
+                const minFreq = getLogScaleMinFreq();
+                const freqSafe = Math.max(frequency, minFreq);
+                // Normalize from minFreq to Nyquist
+                const normalized = (freqSafe - minFreq) / (originalNyquist - minFreq);
                 const sqrtNormalized = Math.sqrt(normalized);
                 return canvasHeight - (sqrtNormalized * canvasHeight);
             } else {
-                const normalized = frequency / originalNyquist;
+                // Linear scale
+                const minFreq = getLogScaleMinFreq();
+                const freqSafe = Math.max(frequency, minFreq);
+                // Normalize from minFreq to Nyquist
+                const normalized = (freqSafe - minFreq) / (originalNyquist - minFreq);
                 return canvasHeight - (normalized * canvasHeight);
             }
         };

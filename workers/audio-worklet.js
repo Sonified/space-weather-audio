@@ -173,8 +173,10 @@ class SeismicProcessor extends AudioWorkletProcessor {
                     // we need to initialize playback state properly
                     if (!this.hasStarted) {
                         this.hasStarted = true;
-                        this.readIndex = 0;
-                        console.log(`🔗 WORKLET: Manual start (shared session) - hasStarted=true, readIndex=0`);
+                        // 🐛 FIX: Don't reset readIndex here - it may have been set by a seek!
+                        // If user clicked on waveform, seekToPositionInstant already set readIndex.
+                        // Only log the state change.
+                        console.log(`🔗 WORKLET: Manual start (shared session) - hasStarted=true, readIndex=${this.readIndex}`);
                     }
 
                     this.isPlaying = true;

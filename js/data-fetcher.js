@@ -500,14 +500,11 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         State.setTotalAudioDuration(audioData.time.spanSeconds);
         
         // 🎯 CDAWeb: Default to logarithmic scale for space physics data
-        // (unless user has explicitly changed it before)
+        // Only if user has NO saved preference - respect their choice if they've set one
         const frequencyScaleSelect = document.getElementById('frequencyScale');
         if (frequencyScaleSelect) {
-            // Only change if user hasn't explicitly set a preference, or if it's still on an old default (sqrt/linear)
-            // This ensures logarithmic is the default for CDAWeb space physics data
             const hasUserPreference = localStorage.getItem('frequencyScale') !== null;
-            const isOldDefault = State.frequencyScale === 'sqrt' || State.frequencyScale === 'linear';
-            if (!hasUserPreference || isOldDefault) {
+            if (!hasUserPreference) {
                 console.log('📊 CDAWeb data: Setting frequency scale to logarithmic (default for space physics)');
                 frequencyScaleSelect.value = 'logarithmic';
                 State.setFrequencyScale('logarithmic');

@@ -7,10 +7,23 @@ import * as State from './audio-state.js';
 
 // Minimum displayable frequency (Hz) - defines the bottom of the frequency scale
 // Dynamically calculated based on instrument sampling rate and FFT size
-// Formula: minFreq = (samplingRate / fftSize) * 3
+// Formula: minFreq = (samplingRate / fftSize) * multiplier
 // This applies to all scale types (linear, sqrt, logarithmic)
 // Track last logged minFreq to avoid spam
 let lastLoggedMinFreq = null;
+
+// Configurable multiplier for min frequency calculation
+let minFreqMultiplier = 3.8;
+
+export function setMinFreqMultiplier(value) {
+    minFreqMultiplier = value;
+    lastLoggedMinFreq = null; // Force re-log on next call
+    console.log(`📊 Min frequency multiplier set to: ${value}`);
+}
+
+export function getMinFreqMultiplier() {
+    return minFreqMultiplier;
+}
 
 export function getMinDisplayFrequency() {
     // Get instrument sampling rate from Nyquist (Nyquist = samplingRate / 2)
@@ -19,11 +32,11 @@ export function getMinDisplayFrequency() {
 
     if (nyquist) {
         const samplingRate = nyquist * 2;
-        const minFreq = (samplingRate / fftSize) * 3;
+        const minFreq = (samplingRate / fftSize) * minFreqMultiplier;
 
         // Log when value changes (avoid spam)
         if (minFreq !== lastLoggedMinFreq) {
-            console.log(`📊 Y-axis min frequency: ${minFreq.toFixed(4)} Hz (samplingRate=${samplingRate.toFixed(2)}, fftSize=${fftSize})`);
+            console.log(`📊 Y-axis min frequency: ${minFreq.toFixed(4)} Hz (samplingRate=${samplingRate.toFixed(2)}, fftSize=${fftSize}, multiplier=${minFreqMultiplier})`);
             lastLoggedMinFreq = minFreq;
         }
 
@@ -306,11 +319,10 @@ export function drawFrequencyAxis() {
  * Calculate Y position for a frequency, matching spectrogram's scale calculation
  */
 function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
-    const normalized = freq / maxFreq; // 0 to 1
+    const minFreq = getLogScaleMinFreq();
 
     if (scaleType === 'logarithmic') {
         // Logarithmic scale
-        const minFreq = getLogScaleMinFreq();
         const freqSafe = Math.max(freq, minFreq);
         const logMin = Math.log10(minFreq);
         const logMax = Math.log10(maxFreq);
@@ -318,11 +330,15 @@ function getYPositionForFrequency(freq, maxFreq, canvasHeight, scaleType) {
         const normalizedLog = (logFreq - logMin) / (logMax - logMin);
         return canvasHeight - (normalizedLog * canvasHeight);
     } else if (scaleType === 'sqrt') {
-        // Square root scale
+        // Square root scale - normalize from minFreq to maxFreq
+        const freqSafe = Math.max(freq, minFreq);
+        const normalized = (freqSafe - minFreq) / (maxFreq - minFreq);
         const sqrtNormalized = Math.sqrt(normalized);
         return canvasHeight - (sqrtNormalized * canvasHeight);
     } else {
-        // Linear scale
+        // Linear scale - normalize from minFreq to maxFreq
+        const freqSafe = Math.max(freq, minFreq);
+        const normalized = (freqSafe - minFreq) / (maxFreq - minFreq);
         return canvasHeight - (normalized * canvasHeight);
     }
 }
@@ -378,16 +394,19 @@ export function getYPositionForFrequencyScaled(freq, originalNyquist, canvasHeig
         // Linear and sqrt: Scale the frequency by playback rate FIRST (in frequency space)
         // Slower playback = lower effective frequency = moves down
         const effectiveFreq = freq * playbackRate;
-        
+        const minFreq = getLogScaleMinFreq();
+
         if (scaleType === 'sqrt') {
-        // Square root scale: normalize the SCALED frequency, then apply sqrt
-        const normalized = effectiveFreq / originalNyquist;
-        const sqrtNormalized = Math.sqrt(normalized);
-        return canvasHeight - (sqrtNormalized * canvasHeight);
-    } else {
-        // Linear scale: normalize the SCALED frequency
-        const normalized = effectiveFreq / originalNyquist;
-        return canvasHeight - (normalized * canvasHeight);
+            // Square root scale: normalize from minFreq to Nyquist
+            const freqSafe = Math.max(effectiveFreq, minFreq);
+            const normalized = (freqSafe - minFreq) / (originalNyquist - minFreq);
+            const sqrtNormalized = Math.sqrt(normalized);
+            return canvasHeight - (sqrtNormalized * canvasHeight);
+        } else {
+            // Linear scale: normalize from minFreq to Nyquist
+            const freqSafe = Math.max(effectiveFreq, minFreq);
+            const normalized = (freqSafe - minFreq) / (originalNyquist - minFreq);
+            return canvasHeight - (normalized * canvasHeight);
         }
     }
 }
@@ -439,7 +458,7 @@ function generateSqrtTicks(maxFreq, playbackRate = 1.0) {
     // Very low frequency data (Nyquist < 5 Hz)
     if (maxFreq < 5) {
         // Add very low frequency ticks (below 0.1 Hz)
-        [0.02, 0.03, 0.05, 0.07].forEach(f => {
+        [0.01, 0.02, 0.03, 0.05, 0.07].forEach(f => {
             if (f <= maxFreq) ticks.push(f);
         });
         // Add sub-Hz ticks: 0.1, 0.2, 0.3, 0.5, 0.7

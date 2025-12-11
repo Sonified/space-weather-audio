@@ -19,7 +19,7 @@ import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
 import { initErrorReporter } from './error-reporter.js';
 import { initSilentErrorReporter } from './silent-error-reporter.js';
-import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
+import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate, setMinFreqMultiplier, getMinFreqMultiplier } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
@@ -1527,6 +1527,34 @@ async function initializeMainApp() {
     document.getElementById('frequencyScale').addEventListener('change', changeFrequencyScale);
     document.getElementById('colormap').addEventListener('change', changeColormap);
     document.getElementById('fftSize').addEventListener('change', changeFftSize);
+
+    // Min frequency multiplier control
+    const minFreqInput = document.getElementById('minFreqMultiplier');
+    if (minFreqInput) {
+        // Restore saved value
+        const savedMultiplier = localStorage.getItem('minFreqMultiplier');
+        if (savedMultiplier) {
+            const value = parseFloat(savedMultiplier);
+            minFreqInput.value = value;
+            setMinFreqMultiplier(value);
+        }
+
+        // Handle changes
+        minFreqInput.addEventListener('change', () => {
+            const value = parseFloat(minFreqInput.value);
+            if (!isNaN(value) && value > 0) {
+                setMinFreqMultiplier(value);
+                localStorage.setItem('minFreqMultiplier', value);
+                // Redraw spectrogram and axis
+                drawFrequencyAxis();
+                import('./spectrogram-complete-renderer.js').then(module => {
+                    // Clear cached spectrogram to force re-render with new minFreq
+                    module.resetSpectrogramState();
+                    module.renderCompleteSpectrogram();
+                });
+            }
+        });
+    }
 
     document.getElementById('waveformFilterLabel').addEventListener('click', resetWaveformFilterToDefault);
     
