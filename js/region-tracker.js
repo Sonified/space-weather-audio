@@ -1900,8 +1900,8 @@ function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1
         const logFreq = logMin + (normalizedLog * (logMax - logMin));
         const freq = Math.pow(10, logFreq);
 
-        // CLAMP to valid range [minFreq, maxFreq]
-        return Math.max(minFreq, Math.min(maxFreq, freq));
+        // CLAMP to valid range [0, maxFreq] - allow full frequency range
+        return Math.max(0, Math.min(maxFreq, freq));
     } else {
         // Linear and sqrt: These ARE homogeneous - freq gets scaled by playbackRate
         // Forward: effectiveFreq = freq * playbackRate, then normalize
@@ -1914,8 +1914,8 @@ function getFrequencyFromY(y, maxFreq, canvasHeight, scaleType, playbackRate = 1
             const effectiveFreq = normalized * maxFreq;
             const freq = effectiveFreq / playbackRate;
 
-            // CLAMP to valid range
-            return Math.max(minFreq, Math.min(maxFreq, freq));
+            // CLAMP to valid range [0, maxFreq] - allow full frequency range
+            return Math.max(0, Math.min(maxFreq, freq));
         } else {
             // Linear
             const effectiveFreq = normalizedY * maxFreq;
