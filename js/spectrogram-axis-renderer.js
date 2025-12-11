@@ -435,10 +435,33 @@ function generateLogTicks(maxFreq) {
  */
 function generateSqrtTicks(maxFreq, playbackRate = 1.0) {
     const ticks = [0];
-    
-    // Denser at lower frequencies
-    if (maxFreq <= 10) {
-        // Very low frequency data (e.g., 20 Hz sample rate)
+
+    // Very low frequency data (Nyquist < 5 Hz)
+    if (maxFreq < 5) {
+        // Add sub-Hz ticks: 0.1, 0.2, 0.5
+        [0.1, 0.2, 0.5].forEach(f => {
+            if (f <= maxFreq) ticks.push(f);
+        });
+        // Add 0.25 Hz steps from 0.25 to 1
+        for (let f = 0.25; f <= Math.min(1, maxFreq); f += 0.25) {
+            if (!ticks.includes(f)) ticks.push(f);
+        }
+        // Add 0.5 Hz steps above 1
+        for (let f = 1.5; f <= maxFreq; f += 0.5) {
+            ticks.push(f);
+        }
+        // Add whole numbers
+        for (let i = 1; i <= maxFreq; i++) {
+            if (!ticks.includes(i)) ticks.push(i);
+        }
+    }
+    // Low frequency data (Nyquist 5-10 Hz)
+    else if (maxFreq <= 10) {
+        // Add sub-Hz ticks
+        [0.5].forEach(f => {
+            if (f <= maxFreq) ticks.push(f);
+        });
+        // Add integers
         for (let i = 1; i <= maxFreq; i++) {
             ticks.push(i);
         }
@@ -482,9 +505,35 @@ function generateSqrtTicks(maxFreq, playbackRate = 1.0) {
  */
 function generateLinearTicks(maxFreq, playbackRate) {
     const ticks = [0];
-    
+
+    // Very low frequency data (Nyquist < 5 Hz) - takes priority over playback rate
+    if (maxFreq < 5) {
+        // Add sub-Hz ticks
+        [0.1, 0.2, 0.5].forEach(f => {
+            if (f <= maxFreq) ticks.push(f);
+        });
+        // Add 0.25 Hz steps from 0.25 to 1
+        for (let f = 0.25; f <= Math.min(1, maxFreq); f += 0.25) {
+            if (!ticks.includes(f)) ticks.push(f);
+        }
+        // Add 0.5 Hz steps above 1
+        for (let f = 1.5; f <= maxFreq; f += 0.5) {
+            ticks.push(f);
+        }
+        // Add whole numbers
+        for (let i = 1; i <= maxFreq; i++) {
+            if (!ticks.includes(i)) ticks.push(i);
+        }
+    }
+    // Low frequency data (Nyquist 5-10 Hz)
+    else if (maxFreq < 10) {
+        // Add 0.5 Hz steps
+        for (let f = 0.5; f <= maxFreq; f += 0.5) {
+            ticks.push(f);
+        }
+    }
     // Very high speed mode (10x and above): 0.1 Hz increments
-    if (playbackRate >= 10.0) {
+    else if (playbackRate >= 10.0) {
         // Add 0.1 Hz increments
         for (let freq = 0.1; freq <= maxFreq; freq += 0.1) {
             if (freq <= maxFreq) ticks.push(freq);
