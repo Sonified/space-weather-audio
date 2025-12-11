@@ -473,6 +473,8 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         });
         
         console.log(`📋 Metadata set:`);
+        console.log(`   spacecraft: ${spacecraft}`);
+        console.log(`   dataset: ${dataset}`);
         console.log(`   playback_samples_per_real_second: ${audioData.playback.samplesPerRealSecond.toFixed(2)}`);
         console.log(`   instrument_sampling_rate: ${(audioData.instrument.nyquist * 2).toFixed(4)} Hz`);
         console.log(`   instrument_nyquist: ${audioData.instrument.nyquist.toFixed(4)} Hz (for Y-axis)`);

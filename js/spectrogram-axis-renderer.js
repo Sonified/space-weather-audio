@@ -5,13 +5,42 @@
 
 import * as State from './audio-state.js';
 
-// Minimum frequency for logarithmic scale (Hz) - defines the bottom of the log scale
-// Use 0.01 Hz for all satellites to allow full frequency range selection
-export function getLogScaleMinFreq() {
+// Minimum displayable frequency (Hz) - defines the bottom of the frequency scale
+// Dynamically calculated based on instrument sampling rate and FFT size
+// Formula: minFreq = (samplingRate / fftSize) * 3
+// This applies to all scale types (linear, sqrt, logarithmic)
+// Track last logged minFreq to avoid spam
+let lastLoggedMinFreq = null;
+
+export function getMinDisplayFrequency() {
+    // Get instrument sampling rate from Nyquist (Nyquist = samplingRate / 2)
+    const nyquist = State.originalDataFrequencyRange?.max;
+    const fftSize = State.fftSize || 2048;
+
+    if (nyquist) {
+        const samplingRate = nyquist * 2;
+        const minFreq = (samplingRate / fftSize) * 3;
+
+        // Log when value changes (avoid spam)
+        if (minFreq !== lastLoggedMinFreq) {
+            console.log(`📊 Y-axis min frequency: ${minFreq.toFixed(4)} Hz (samplingRate=${samplingRate.toFixed(2)}, fftSize=${fftSize})`);
+            lastLoggedMinFreq = minFreq;
+        }
+
+        return minFreq;
+    }
+
+    // Fallback if data not loaded yet
     return 0.01;
 }
-// Keep constant for backward compatibility (uses current spacecraft)
-export const LOG_SCALE_MIN_FREQ = 0.02; // Default, but use getLogScaleMinFreq() for dynamic value
+
+// Alias for backward compatibility
+export function getLogScaleMinFreq() {
+    return getMinDisplayFrequency();
+}
+
+// Keep constant for backward compatibility (deprecated)
+export const LOG_SCALE_MIN_FREQ = 0.02;
 
 // Track previous playback rate for slight smoothing
 let previousPlaybackRate = 1.0;
