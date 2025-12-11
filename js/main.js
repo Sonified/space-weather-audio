@@ -1064,7 +1064,11 @@ async function checkAppVersion() {
         }
 
         const localVersion = localStorage.getItem('app_version');
-        const serverTime = new Date(data.built).toLocaleString();
+        // Parse version string (YYYYMMDD.HHMMSS) into a readable date
+        const versionParts = serverVersion.match(/(\d{4})(\d{2})(\d{2})\.(\d{2})(\d{2})(\d{2})/);
+        const serverTime = versionParts
+            ? new Date(Date.UTC(versionParts[1], versionParts[2]-1, versionParts[3], versionParts[4], versionParts[5], versionParts[6])).toLocaleString()
+            : serverVersion;
         console.log(`📋 Version check: Local="${localVersion || '(first visit)'}" vs Server="${serverVersion}"`);
 
         if (localVersion && localVersion !== serverVersion) {
