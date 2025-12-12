@@ -649,12 +649,11 @@ function getCanvasMousePos(canvas, event) {
  * Handle emoji picker selection - adds a new emoji
  */
 function handleEmojiSelect(emoji) {
-    // Add new emoji at center (with slight offset if there are already emojis)
-    const offset = emojiOverlays.length * 0.05;
+    // Add new emoji at center
     const newEmoji = {
         emoji: emoji,
-        x: 0.5 + offset,
-        y: 0.5 + offset,
+        x: 0.5,
+        y: 0.5,
         scale: 1,
         rotation: 0
     };
@@ -759,8 +758,8 @@ function setupCanvasInteraction() {
             emojiObj.y = emojiDragState.dragStart.emojiY + dy / canvas.height;
 
             // Clamp to canvas bounds
-            emojiObj.x = Math.max(0.1, Math.min(0.9, emojiObj.x));
-            emojiObj.y = Math.max(0.1, Math.min(0.9, emojiObj.y));
+            emojiObj.x = Math.max(0, Math.min(1, emojiObj.x));
+            emojiObj.y = Math.max(0, Math.min(1, emojiObj.y));
 
             renderThumbnailWithEmoji();
         } else if (emojiDragState.resizing && emojiDragState.dragStart) {
@@ -900,8 +899,15 @@ function createShareModal() {
                                 <button type="button" class="emoji-btn" data-emoji="🤯" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">🤯</button>
                                 <button type="button" class="emoji-btn" data-emoji="🙀" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">🙀</button>
                                 <button type="button" class="emoji-btn" data-emoji="🤩" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">🤩</button>
+                                <button type="button" class="emoji-btn" data-emoji="👀" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">👀</button>
+                                <button type="button" class="emoji-btn" data-emoji="✨" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">✨</button>
                                 <button type="button" class="emoji-btn" data-emoji="👉" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">👉</button>
                                 <button type="button" class="emoji-btn" data-emoji="__arrow__" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 12px; color: #e53935; font-weight: bold;">➤</button>
+                                <button type="button" class="emoji-btn" data-emoji="🔥" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">🔥</button>
+                                <button type="button" class="emoji-btn" data-emoji="💥" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">💥</button>
+                                <button type="button" class="emoji-btn" data-emoji="⚡" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">⚡</button>
+                                <button type="button" class="emoji-btn" data-emoji="☀️" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">☀️</button>
+                                <button type="button" class="emoji-btn" data-emoji="‼️" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px;">‼️</button>
                             </div>
                             <span id="emojiHint" style="font-size: 11px; color: #666; display: none; margin-left: auto;">(DELETE key to remove)</span>
                         </div>
