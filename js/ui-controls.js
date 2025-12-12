@@ -2078,7 +2078,7 @@ export function openParticipantModal() {
     if (hasExistingId && !idFromQualtrics) {
         // User clicked from upper right corner - ID exists in localStorage
         if (modalTitle) {
-            modalTitle.textContent = "Welcome!";
+            modalTitle.textContent = "☀️ Welcome!";
         }
         if (instructionText) {
             instructionText.textContent = "Enter your user name below:";
@@ -2087,7 +2087,7 @@ export function openParticipantModal() {
     } else if (hasExistingId && idFromQualtrics) {
         // Initial setup - ID came from Qualtrics URL
         if (modalTitle) {
-            modalTitle.textContent = "Welcome";
+            modalTitle.textContent = "☀️ Welcome";
         }
         if (instructionText) {
             instructionText.textContent = "Your participant ID has successfully been transferred from Qualtrics:";
@@ -2096,7 +2096,7 @@ export function openParticipantModal() {
     } else {
         // Initial setup - no ID exists
         if (modalTitle) {
-            modalTitle.textContent = "Welcome";
+            modalTitle.textContent = "☀️ Welcome";
         }
         if (instructionText) {
             instructionText.textContent = "Enter a user name to begin:";

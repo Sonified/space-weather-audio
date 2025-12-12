@@ -349,7 +349,8 @@ export function createParticipantModal() {
                 <button class="modal-close" style="display: none;">&times;</button>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 20px; color: #550000; font-size: 16px; font-weight: bold;">Enter a user name to begin:</p>
+                <p style="margin-bottom: 10px; color: #550000; font-size: 16px; font-weight: bold;">Enter a user name to begin:</p>
+                <p style="margin-bottom: 20px; color: #666; font-size: 14px; line-height: 1.5;">This name will be used for saving and loading features you identify, and will be automatically included in any new share links you create.</p>
                 <div class="modal-form-group">
                     <label for="participantId" style="display: none;">User Name:</label>
                     <input type="text" id="participantId" placeholder="Enter a user name" style="font-size: 18px;" autocomplete="off">
