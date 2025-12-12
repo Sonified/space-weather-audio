@@ -93,17 +93,18 @@ function renderXAxisForThumbnail(width, height, fontScale = 1.5) {
 
 /**
  * Calculate ticks for thumbnail (simplified version)
+ * Aims for ~6-12 ticks for clean thumbnail appearance
  */
 function calculateTicksForThumbnail(startUTC, endUTC, timeSpanHours) {
     const ticks = [];
     let intervalMs;
 
-    // Choose interval based on time span
-    if (timeSpanHours < 1/3) intervalMs = 60 * 1000;           // 1 minute
-    else if (timeSpanHours < 2) intervalMs = 5 * 60 * 1000;    // 5 minutes
-    else if (timeSpanHours < 6) intervalMs = 30 * 60 * 1000;   // 30 minutes
-    else if (timeSpanHours > 24) intervalMs = 6 * 60 * 60 * 1000; // 6 hours
-    else intervalMs = 60 * 60 * 1000;                          // 1 hour
+    // Choose interval based on time span (aim for ~6-12 ticks on thumbnail)
+    if (timeSpanHours <= 1/3) intervalMs = 60 * 1000;            // 1 minute
+    else if (timeSpanHours <= 2) intervalMs = 15 * 60 * 1000;    // 15 minutes (~8 ticks max)
+    else if (timeSpanHours <= 6) intervalMs = 60 * 60 * 1000;    // 1 hour (~6 ticks max)
+    else if (timeSpanHours <= 24) intervalMs = 2 * 60 * 60 * 1000; // 2 hours (~12 ticks max)
+    else intervalMs = 6 * 60 * 60 * 1000;                        // 6 hours for >24h
 
     // Find first tick boundary
     const startMs = startUTC.getTime();
