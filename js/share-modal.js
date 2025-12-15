@@ -10,6 +10,7 @@ import { zoomState } from './zoom-state.js';
 import { getParticipantId } from './qualtrics-api.js';
 import { getCurrentColormap } from './colormaps.js';
 import { updateDatasetOptions } from './ui-controls.js';
+import { getCurrentComponentIndex } from './component-selector.js';
 
 /**
  * Render x-axis with larger labels for thumbnail
@@ -1226,6 +1227,7 @@ function gatherSessionData() {
             frequency_scale: State.frequencyScale,
             colormap: getCurrentColormap(),
             fft_size: State.fftSize,
+            component_index: getCurrentComponentIndex(),
             zoom: zoomState.mode === 'region' ? {
                 mode: 'region',
                 region_id: zoomState.activeRegionId,

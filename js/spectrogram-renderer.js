@@ -32,6 +32,50 @@ let spectrogramOverlayCtx = null;
 // NOTE: We rebuild this from actual feature data, so it stays in sync!
 let completedSelectionBoxes = [];
 
+// Annotation fade timing (matches DOM approach)
+const ANNOTATION_FADE_IN_MS = 400;
+const ANNOTATION_FADE_OUT_MS = 600;
+const ANNOTATION_MIN_DISPLAY_MS = 3000;
+const ANNOTATION_LEAD_TIME_MS = 1500; // 1.5 seconds before feature box
+const ANNOTATION_SLIDE_DISTANCE = 15; // pixels to slide up during fade-in
+
+// Track annotation timing state: Map<"regionIndex-featureIndex", {showTime, hideTime, state}>
+const annotationTimingState = new Map();
+
+// Frame counter for debug logging
+let debugFrameCounter = 0;
+
+/**
+ * Wrap text to fit within a maximum width
+ * @param {CanvasRenderingContext2D} ctx - Canvas context with font already set
+ * @param {string} text - Text to wrap
+ * @param {number} maxWidth - Maximum width in pixels
+ * @returns {string[]} Array of wrapped lines
+ */
+function wrapText(ctx, text, maxWidth) {
+    const words = text.split(' ');
+    const lines = [];
+    let currentLine = '';
+
+    for (let i = 0; i < words.length; i++) {
+        const testLine = currentLine ? currentLine + ' ' + words[i] : words[i];
+        const metrics = ctx.measureText(testLine);
+
+        if (metrics.width > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = words[i];
+        } else {
+            currentLine = testLine;
+        }
+    }
+
+    if (currentLine) {
+        lines.push(currentLine);
+    }
+
+    return lines.length > 0 ? lines : [text];
+}
+
 /**
  * Add a feature box to the canvas overlay
  * NOTE: Actually rebuilds from source - ensures sync with feature array!
@@ -190,7 +234,8 @@ function rebuildCanvasBoxesFromFeatures() {
                     startTime: feature.startTime,
                     endTime: feature.endTime,
                     lowFreq: parseFloat(feature.lowFreq),
-                    highFreq: parseFloat(feature.highFreq)
+                    highFreq: parseFloat(feature.highFreq),
+                    notes: feature.notes
                 });
             }
         });
@@ -218,6 +263,60 @@ function redrawCanvasBoxes() {
  */
 export function redrawAllCanvasFeatureBoxes() {
     rebuildCanvasBoxesFromFeatures();
+}
+
+/**
+ * Update canvas annotations every frame (handles timing/fade animations)
+ * Called from animation loop - does NOT rebuild boxes, just redraws with current timing
+ */
+export function updateCanvasAnnotations() {
+    debugFrameCounter++;
+
+    // DEBUG: Print once to verify function is running
+    if (debugFrameCounter === 1) {
+        console.log(`🎬 updateCanvasAnnotations() IS RUNNING! First call.`);
+    }
+
+
+    if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
+        spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+
+        // PASS 1: Draw all boxes (without annotations)
+        for (const savedBox of completedSelectionBoxes) {
+            drawSavedBox(spectrogramOverlayCtx, savedBox, false); // false = don't draw annotations yet
+        }
+
+        // PASS 2: Draw all annotations on top (with collision detection)
+        const placedAnnotations = []; // Track placed annotations for collision detection
+        for (const savedBox of completedSelectionBoxes) {
+            drawSavedBox(spectrogramOverlayCtx, savedBox, true, placedAnnotations); // true = only draw annotations
+        }
+
+        // DEBUG: Show timing numbers on canvas
+        if (completedSelectionBoxes.length > 0 && State.currentAudioPosition !== undefined && zoomState.isInitialized()) {
+            const currentAudioSec = State.currentAudioPosition;
+
+            // Find first feature box
+            const firstBox = completedSelectionBoxes[0];
+            if (firstBox && firstBox.startTime && State.dataStartTime && State.dataEndTime) {
+                // Convert timestamp to sample index (progress through dataset)
+                const timestampMs = new Date(firstBox.startTime).getTime();
+                const dataStartMs = State.dataStartTime.getTime();
+                const dataEndMs = State.dataEndTime.getTime();
+                const progress = (timestampMs - dataStartMs) / (dataEndMs - dataStartMs);
+                const totalSamples = zoomState.totalSamples;
+                const featureStartSample = progress * totalSamples;
+
+                // Convert current audio position to sample
+                const currentSample = zoomState.timeToSample(currentAudioSec);
+
+                // Simple subtraction
+                const samplesToFeature = featureStartSample - currentSample;
+                const playbackRate = State.currentPlaybackRate || 1.0;
+                const timeUntilFeature = (samplesToFeature / (44.1 * playbackRate)) / 1000; // Wall-clock seconds
+            }
+        }
+    }
 }
 
 // 🔥 FIX: Track event listeners for cleanup to prevent memory leaks
@@ -1450,8 +1549,10 @@ export function cancelSpectrogramSelection() {
 /**
  * Draw a saved box from eternal coordinates (time/frequency)
  * EXACT COPY of orange box coordinate conversion logic!
+ * @param {boolean} drawAnnotationsOnly - If true, only draw annotations; if false, only draw box
+ * @param {Array} placedAnnotations - Array of already-placed annotations for collision detection
  */
-function drawSavedBox(ctx, box) {
+function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations = []) {
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return;
     
@@ -1529,30 +1630,250 @@ function drawSavedBox(ctx, box) {
     const width = Math.abs(endX_device - startX_device);
     const height = Math.abs(lowFreqY_device - highFreqY_device);
     
-    // Draw the box (red, like old temp boxes)
-    ctx.strokeStyle = '#ff4444';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, width, height);
-    
-    ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
-    ctx.fillRect(x, y, width, height);
-    
-    // Add feature number label in upper left corner (like orange boxes!)
-    // Format: region.feature (e.g., 1.1, 1.2, 2.1)
-    const numberText = `${box.regionIndex + 1}.${box.featureIndex + 1}`;
-    ctx.font = '16px Arial, sans-serif'; // Removed bold for flatter look
-    ctx.fillStyle = 'rgba(255, 160, 80, 0.9)'; // Slightly more opaque, less 3D
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    
-    // No shadow - completely flat text
-    ctx.shadowBlur = 0;
+    // PASS 1: Draw the box (if not in annotations-only mode)
+    if (!drawAnnotationsOnly) {
+        ctx.strokeStyle = '#ff4444';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, width, height);
+
+        ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
+        ctx.fillRect(x, y, width, height);
+
+        // Add feature number label in upper left corner (like orange boxes!)
+        // Format: region.feature (e.g., 1.1, 1.2, 2.1)
+        const numberText = `${box.regionIndex + 1}.${box.featureIndex + 1}`;
+        ctx.font = '16px Arial, sans-serif'; // Removed bold for flatter look
+        ctx.fillStyle = 'rgba(255, 160, 80, 0.9)'; // Slightly more opaque, less 3D
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        // No shadow - completely flat text
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+
+        // Position: 6px from left, 7px from top (moved down more)
+        ctx.fillText(numberText, x + 6, y + 7);
+    }
+
+    // PASS 2: Draw annotation text above the box (if in annotations-only mode)
+    if (drawAnnotationsOnly && box.notes && box.startTime && box.endTime) {
+        // Check if live annotations are enabled
+        const checkbox = document.getElementById('liveAnnotation');
+        if (!checkbox || !checkbox.checked) {
+            // Clear any existing timing state for this box
+            const key = `${box.regionIndex}-${box.featureIndex}`;
+            annotationTimingState.delete(key);
+            return;
+        }
+
+        const key = `${box.regionIndex}-${box.featureIndex}`;
+        const now = performance.now();
+
+        // Calculate time until feature IN AUDIO TIME, not real-world time!
+        if (State.totalAudioDuration && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
+            // Convert timestamps to sample indices (progress through dataset)
+            const dataStartMs = State.dataStartTime.getTime();
+            const dataEndMs = State.dataEndTime.getTime();
+            const totalSamples = zoomState.totalSamples;
+
+            const startTimestampMs = new Date(box.startTime).getTime();
+            const endTimestampMs = new Date(box.endTime).getTime();
+
+            const startProgress = (startTimestampMs - dataStartMs) / (dataEndMs - dataStartMs);
+            const endProgress = (endTimestampMs - dataStartMs) / (dataEndMs - dataStartMs);
+
+            const featureStartSample = startProgress * totalSamples;
+            const featureEndSample = endProgress * totalSamples;
+
+            // Convert current audio position to sample
+            const currentSample = zoomState.timeToSample(State.currentAudioPosition);
+
+            // WORKLET-STYLE LOGIC: Calculate samples until feature
+            const samplesToFeature = featureStartSample - currentSample;
+            const featureDurationSamples = featureEndSample - featureStartSample;
+
+            // WORKLET-STYLE: Calculate lead time in SAMPLES (1 WALL-CLOCK second before feature)
+            const playbackRate = State.currentPlaybackRate || 1.0;
+            // EXACT worklet formula: fadeTime * 44.1 * speed
+            const LEAD_SAMPLES_OUTPUT = Math.floor(ANNOTATION_LEAD_TIME_MS * 44.1);
+            const leadTimeSamples = Math.floor(LEAD_SAMPLES_OUTPUT * playbackRate);
+
+            // WORKLET-STYLE: Trigger when samplesToFeature <= leadTimeSamples
+            const shouldShow = samplesToFeature <= leadTimeSamples && samplesToFeature > -featureDurationSamples;
+
+            let timing = annotationTimingState.get(key);
+
+            if (shouldShow && !timing) {
+                // Start showing
+                timing = { showTime: now, hideTime: null, state: 'fading-in' };
+                annotationTimingState.set(key, timing);
+            } else if (!shouldShow && timing && timing.state !== 'fading-out' && timing.state !== 'hidden') {
+                // Start hiding (if past min display time)
+                const timeSinceShow = now - timing.showTime;
+                if (timeSinceShow > ANNOTATION_MIN_DISPLAY_MS) {
+                    timing.state = 'fading-out';
+                    timing.hideTime = now;
+                }
+            }
+
+            if (timing) {
+                let opacity = 0;
+
+                if (timing.state === 'fading-in') {
+                    const elapsed = now - timing.showTime;
+                    const progress = Math.min(1, elapsed / ANNOTATION_FADE_IN_MS);
+                    opacity = progress;
+
+                    if (progress >= 1) timing.state = 'visible';
+                } else if (timing.state === 'visible') {
+                    opacity = 1;
+                } else if (timing.state === 'fading-out') {
+                    const elapsed = now - timing.hideTime;
+                    const progress = Math.min(1, elapsed / ANNOTATION_FADE_OUT_MS);
+                    opacity = 1 - progress;
+
+                    if (progress >= 1) {
+                        timing.state = 'hidden';
+                        annotationTimingState.delete(key);
+                    }
+                }
+
+                if (opacity > 0) {
+                    const scaleX = canvas.offsetWidth / canvas.width;
+                    const scaleY = canvas.offsetHeight / canvas.height;
+                    const xStretchFactor = scaleX / scaleY;
+
+                    ctx.save();
+
+                    // Set font first for measurement
+                    ctx.font = '600 13px Arial, sans-serif';
+
+                    // Check if text has changed - only re-wrap if needed
+                    const lineHeight = 16; // Define BEFORE if/else
+                    let lines, textWidth, halfWidth, totalHeight;
+                    if (timing.cachedText !== box.notes) {
+                        // Text changed! Re-wrap and recalculate dimensions
+                        const maxWidth = 325;
+                        lines = wrapText(ctx, box.notes, maxWidth);
+                        textWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
+                        halfWidth = textWidth / 2;
+                        totalHeight = lines.length * lineHeight;
+
+                        // Cache for next frame
+                        timing.cachedText = box.notes;
+                        timing.cachedLines = lines;
+                        timing.cachedHalfWidth = halfWidth;
+                        timing.cachedTotalHeight = totalHeight;
+                    } else {
+                        // Text unchanged - reuse cached values
+                        lines = timing.cachedLines;
+                        halfWidth = timing.cachedHalfWidth;
+                        totalHeight = timing.cachedTotalHeight;
+                    }
+
+                    // Calculate text position (centered above box)
+                    let textX = x + width / 2;
+                    let textY = y - 20 - totalHeight;
+
+                    // Check left edge
+                    if (textX - halfWidth < 10) {
+                        textX = 10 + halfWidth;
+                    }
+                    // Check right edge
+                    if (textX + halfWidth > canvas.width - 10) {
+                        textX = canvas.width - 10 - halfWidth;
+                    }
+
+                    // Collision detection: check against already-placed annotations
+                    // ONLY run on first frame - then lock Y position to prevent dropping when others fade out
+                    const padding = 10;
+                    let finalTextY;
+
+                    if (timing.lockedY !== undefined) {
+                        // Use stored Y position (annotation stays at its height)
+                        finalTextY = timing.lockedY;
+                    } else {
+                        // First frame: calculate collision-free Y position
+                        finalTextY = textY;
+                        let collisionDetected = true;
+
+                        while (collisionDetected && placedAnnotations.length > 0) {
+                            collisionDetected = false;
+
+                            for (const placed of placedAnnotations) {
+                                // Check X overlap (horizontal collision) - 25% wider bounding area
+                                const xOverlap = Math.abs(textX - placed.x) < ((halfWidth + placed.halfWidth) * 1.25 + padding);
+
+                                // Check Y overlap (vertical collision)
+                                const yOverlap = Math.abs(finalTextY - placed.y) < (totalHeight / 2 + placed.height / 2 + padding);
+
+                                if (xOverlap && yOverlap) {
+                                    // Collision! Move up
+                                    finalTextY = placed.y - (placed.height / 2 + totalHeight / 2 + padding);
+                                    collisionDetected = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Lock this Y position for all future frames
+                        timing.lockedY = finalTextY;
+                    }
+
+                    // Record this annotation's position
+                    placedAnnotations.push({
+                        x: textX,
+                        y: finalTextY,
+                        halfWidth: halfWidth,
+                        height: totalHeight
+                    });
+
+                    // Draw connecting line from text to box
+                    ctx.save();
+                    ctx.globalAlpha = opacity;
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([3, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(textX, finalTextY + totalHeight); // Bottom of text
+                    ctx.lineTo(x + width / 2, y); // Top of box
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.restore();
+
+                    // Now draw the text at finalTextY
+                    textY = finalTextY;
+
+                    ctx.translate(textX, textY);
+                    ctx.scale(1 / xStretchFactor, 1);
+                    ctx.translate(-textX, -textY);
+
+                    ctx.globalAlpha = opacity;
+                    ctx.fillStyle = '#fff';
+                    ctx.textAlign = 'center';
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                    ctx.shadowBlur = 6;
+                    ctx.shadowOffsetX = 1;
+                    ctx.shadowOffsetY = 1;
+
+                    // Draw each line
+                    lines.forEach((line, i) => {
+                        ctx.fillText(line, textX, textY + (i * lineHeight));
+                    });
+
+                    ctx.restore();
+                }
+            }
+        }
+    }
+
+    // Reset shadow
     ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
-    
-    // Position: 6px from left, 7px from top (moved down more)
-    ctx.fillText(numberText, x + 6, y + 7);
 }
 
 /**

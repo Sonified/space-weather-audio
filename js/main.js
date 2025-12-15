@@ -1945,6 +1945,10 @@ async function initializeMainApp() {
         try {
             if (!selectedOption.dataset.cacheEntry) return;
 
+            // Bump this search to the top of the recent list
+            const { touchCacheEntry } = await import('./cdaweb-cache.js');
+            await touchCacheEntry(selectedOption.value);
+
             const cacheData = JSON.parse(selectedOption.dataset.cacheEntry);
 
             // Parse start/end times to populate form fields

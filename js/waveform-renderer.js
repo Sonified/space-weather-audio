@@ -18,6 +18,8 @@ import { isStudyMode } from './master-modes.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { restoreViewportState } from './spectrogram-complete-renderer.js';
 import { getColorLUT } from './colormaps.js';
+import { updateLiveAnnotations } from './spectrogram-live-annotations.js';
+import { updateCanvasAnnotations } from './spectrogram-renderer.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -1788,6 +1790,13 @@ export function updatePlaybackIndicator() {
 
         // Update feature box positions every frame (glued to pixels like axis ticks!)
         updateAllFeatureBoxPositions();
+
+        // Update live annotations (shows feature text when playhead reaches them)
+        // DISABLED: Old DOM-based annotations - now using canvas annotations
+        // updateLiveAnnotations();
+
+        // Update canvas annotations every frame (timing/fade animations)
+        updateCanvasAnnotations();
     }
     
     // 🔥 FIX: Store RAF ID for proper cleanup

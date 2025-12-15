@@ -23,6 +23,7 @@ import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgre
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
 import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, changeColormap, changeFftSize, changeFrequencyScale } from './spectrogram-renderer.js';
+import { switchComponent } from './component-selector.js';
 import { getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
 import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
 import { isStudyMode, isTutorialEndMode } from './master-modes.js';
@@ -566,6 +567,17 @@ export function loadRegionsAfterDataFetch() {
                 if (freqScaleSelect) {
                     freqScaleSelect.value = viewSettings.frequency_scale;
                     changeFrequencyScale();
+                }
+            }
+
+            // Apply component selection if specified
+            if (viewSettings.component_index !== undefined && viewSettings.component_index !== null) {
+                console.log(`Component index: ${viewSettings.component_index}`);
+                const componentSelector = document.getElementById('componentSelector');
+                if (componentSelector && componentSelector.options.length > viewSettings.component_index) {
+                    componentSelector.value = viewSettings.component_index.toString();
+                    // Trigger component switch
+                    switchComponent(viewSettings.component_index);
                 }
             }
 

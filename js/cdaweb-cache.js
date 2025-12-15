@@ -354,6 +354,39 @@ function getEncounterNumber(startDate) {
 }
 
 /**
+ * Update the cachedAt timestamp for a cache entry (bumps it to top of recent list)
+ * @param {string} cacheId - The cache entry ID
+ * @returns {Promise<void>}
+ */
+export async function touchCacheEntry(cacheId) {
+    await initCache();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const objectStore = transaction.objectStore(STORE_NAME);
+        const getRequest = objectStore.get(cacheId);
+
+        getRequest.onsuccess = () => {
+            if (getRequest.result) {
+                const entry = getRequest.result;
+                entry.cachedAt = Date.now(); // Update timestamp to bump to top
+
+                const putRequest = objectStore.put(entry);
+                putRequest.onsuccess = () => {
+                    console.log(`📌 Bumped recent search to top: ${cacheId}`);
+                    resolve();
+                };
+                putRequest.onerror = () => reject(putRequest.error);
+            } else {
+                resolve(); // Entry not found, just resolve
+            }
+        };
+
+        getRequest.onerror = () => reject(getRequest.error);
+    });
+}
+
+/**
  * Format a cache entry for display in the recent searches dropdown
  * @param {Object} entry - Cache entry
  * @returns {string} Formatted display string

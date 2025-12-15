@@ -329,6 +329,14 @@ export function updateAllFeatureBoxPositions() {
 }
 
 /**
+ * Get a feature box element by region and feature index
+ */
+export function getFeatureBox(regionIndex, featureIndex) {
+    const key = `${regionIndex}-${featureIndex}`;
+    return featureBoxes.get(key) || null;
+}
+
+/**
  * Clear all feature boxes (called when switching volcanoes or loading new data)
  */
 export function clearAllFeatureBoxes() {

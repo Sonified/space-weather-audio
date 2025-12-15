@@ -138,7 +138,7 @@ async function getComponentBlob(componentIndex) {
  * Switch to a different component
  * @param {number} componentIndex - Index of the component to switch to
  */
-async function switchComponent(componentIndex) {
+export async function switchComponent(componentIndex) {
     if (componentIndex < 0 || componentIndex >= componentCount) {
         console.warn(`Invalid component index: ${componentIndex}`);
         return;
