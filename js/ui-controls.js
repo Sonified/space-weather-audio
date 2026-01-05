@@ -4,7 +4,6 @@
  */
 
 import * as State from './audio-state.js';
-import { EMBEDDED_STATIONS } from './station-config.js';
 import { drawWaveform, changeWaveformFilter } from './waveform-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
 import { submitCombinedSurveyResponse, getSurveyResponse, getParticipantId, storeParticipantId, getParticipantIdFromURL } from './qualtrics-api.js';
@@ -155,54 +154,10 @@ export function fadeOutOverlay() {
     }, 300);
 }
 
+// Deprecated: loadStations() was for volcano mode with IRIS seismic stations
+// Now a no-op to maintain backward compatibility
 export function loadStations() {
-    const spacecraftSelect = document.getElementById('spacecraft');
-    // Skip if spacecraft element doesn't exist
-    if (!spacecraftSelect) {
-        return;
-    }
-    const spacecraft = spacecraftSelect.value;
-    const stationSelect = document.getElementById('station');
-
-    // Save spacecraft selection to localStorage for persistence across sessions
-    if (spacecraft) {
-        localStorage.setItem('selectedSpacecraft', spacecraft);
-
-        // Track spacecraft selection
-        const participantId = getParticipantId();
-        if (participantId) {
-            trackUserAction(participantId, 'spacecraft_selected', { spacecraft: spacecraft });
-        }
-    }
-
-    if (!EMBEDDED_STATIONS[spacecraft]) {
-        stationSelect.innerHTML = '<option value="">Spacecraft not found</option>';
-        return;
-    }
-
-    const spacecraftData = EMBEDDED_STATIONS[spacecraft];
-    State.setAvailableStations({
-        seismic: spacecraftData.seismic.map(s => ({
-            network: s.network,
-            station: s.station,
-            location: s.location,
-            channel: s.channel,
-            distance_km: s.distance_km,
-            sample_rate: s.sample_rate,
-            label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
-        })),
-        infrasound: (spacecraftData.infrasound || []).map(s => ({
-            network: s.network,
-            station: s.station,
-            location: s.location,
-            channel: s.channel,
-            distance_km: s.distance_km,
-            sample_rate: s.sample_rate,
-            label: `${s.network}.${s.station}.${s.location || '--'}.${s.channel} (${s.distance_km}km, ${s.sample_rate}Hz)`
-        }))
-    });
-    
-    updateStationList();
+    // No-op: spacecraft selection is handled by updateDatasetOptions()
 }
 
 /**
