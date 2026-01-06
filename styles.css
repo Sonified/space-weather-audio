@@ -1651,6 +1651,28 @@ input[type="checkbox"] {
     }
 }
 
+@media (max-width: 500px) {
+    #participantModal .modal-content {
+        min-width: calc(100vw - 40px);
+        max-width: calc(100vw - 40px);
+    }
+
+    #beginAnalysisModal .modal-content {
+        min-width: calc(100vw - 40px);
+        max-width: calc(100vw - 40px);
+    }
+
+    #welcomeBackModal .modal-content {
+        min-width: calc(100vw - 40px);
+        max-width: calc(100vw - 40px);
+    }
+
+    .activity-level-modal .modal-content {
+        min-width: calc(100vw - 40px);
+        max-width: calc(100vw - 40px);
+    }
+}
+
 /* ===== REGION TRACKER STYLES ===== */
 
 /* Tracked Regions Panel */
