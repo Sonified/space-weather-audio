@@ -520,7 +520,7 @@ async function checkUsernameAvailable(env, username) {
       available: true,
       username: validation.username,
       exists: true,
-      message: 'Username exists, logging you back in'
+      message: 'Welcome back!'
     });
   }
 
