@@ -513,9 +513,21 @@ async function checkUsernameAvailable(env, username) {
   }
 
   const existing = await env.BUCKET.head(getUsernameKey(validation.username));
+
+  // Always allow login (duplicates OK)
+  if (existing) {
+    return json({
+      available: true,
+      username: validation.username,
+      exists: true,
+      message: 'Username exists, logging you back in'
+    });
+  }
+
   return json({
-    available: !existing,
-    username: validation.username
+    available: true,
+    username: validation.username,
+    exists: false
   });
 }
 
@@ -528,18 +540,49 @@ async function registerUsername(request, env, username) {
   const cleanUsername = validation.username;
   const key = getUsernameKey(cleanUsername);
 
-  // Check if already taken
-  const existing = await env.BUCKET.head(key);
+  // Check if already taken (TEMPORARILY DISABLED - allows duplicate logins)
+  const existing = await env.BUCKET.get(key);
+  const now = new Date().toISOString();
+
   if (existing) {
-    return json({ success: false, error: 'Username is already taken' }, 409);
+    // Username exists - update last_active_at and append to login history
+    const existingData = await existing.json();
+    const loginHistory = existingData.login_history || [existingData.registered_at];
+
+    // Add current login to history (keep last 100 to prevent infinite growth)
+    loginHistory.push(now);
+    if (loginHistory.length > 100) {
+      loginHistory.shift(); // Remove oldest if over 100
+    }
+
+    const userData = {
+      username: cleanUsername,
+      registered_at: existingData.registered_at || now, // Preserve original registration date
+      last_active_at: now,
+      login_history: loginHistory,
+      login_count: loginHistory.length
+    };
+
+    await env.BUCKET.put(key, JSON.stringify(userData), {
+      httpMetadata: { contentType: 'application/json' }
+    });
+
+    return json({
+      success: true,
+      username: cleanUsername,
+      registered_at: existingData.registered_at,
+      login_count: loginHistory.length,
+      message: 'Username already registered, activity updated'
+    }, 200);
   }
 
-  // Register the username
-  const now = new Date().toISOString();
+  // Register the username (first time)
   const userData = {
     username: cleanUsername,
     registered_at: now,
-    last_active_at: now
+    last_active_at: now,
+    login_history: [now],
+    login_count: 1
   };
 
   await env.BUCKET.put(key, JSON.stringify(userData), {

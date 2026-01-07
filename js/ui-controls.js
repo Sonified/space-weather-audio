@@ -840,7 +840,12 @@ export function setupModalEventListeners() {
 
                 if (result.available) {
                     if (usernameStatusEl) {
-                        usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Available</span>';
+                        // Check if username exists (logging back in) or is new
+                        if (result.message) {
+                            usernameStatusEl.innerHTML = `<span style="color: #28a745; font-weight: 600;">✓ ${result.message}</span>`;
+                        } else {
+                            usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Available</span>';
+                        }
                     }
                     isUsernameAvailable = true;
                 } else if (result.error) {
