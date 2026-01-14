@@ -464,6 +464,8 @@ async function listUsernames(env) {
           active_today: lastActive >= todayStart,
           active_last_hour: lastActive >= hourAgo,
           share_count: shareCountByUser[username.toLowerCase()] || 0,
+          login_count: userData.login_count || 1,
+          login_history: userData.login_history || [userData.registered_at],
         });
       }
     } catch (e) {
