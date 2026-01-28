@@ -213,6 +213,11 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
                     this.pendingSeekPosition = null;
                     this.resetBuffers();
                     this.fadeInRemaining = this.fadeInLength;
+                    // Fill rest with silence and break - next frame will have fresh grains
+                    for (let j = i; j < channel.length; j++) {
+                        channel[j] = 0;
+                    }
+                    return true;
                 }
             }
             // Apply fade-in
