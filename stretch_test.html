@@ -333,7 +333,7 @@
         let sourceBuffer = null;
         let isPlaying = false;
         let isLooping = false;
-        let currentAlgorithm = 'spectral';
+        let currentAlgorithm = 'paul';
 
         // Crossfade settings
         const CROSSFADE_DURATION = 0.15; // 150ms crossfade
@@ -345,6 +345,9 @@
 
         // For resuming after algorithm switch
         let pendingResume = null; // { position, shouldPlay }
+
+        // Saved overlap value for granular (since Paul uses fixed 50%)
+        let savedGranularOverlap = 90;
 
         // ===== DOM ELEMENTS =====
         const fileDrop = document.getElementById('fileDrop');
@@ -788,6 +791,10 @@
         overlapSlider.addEventListener('input', (e) => {
             const value = parseFloat(e.target.value);
             overlapValue.textContent = value.toFixed(1);
+            // Save value for granular (only if granular is active)
+            if (currentAlgorithm === 'granular') {
+                savedGranularOverlap = value;
+            }
             if (stretchNode) {
                 stretchNode.port.postMessage({ type: 'set-overlap', data: { overlap: value / 100 } });
             }
@@ -795,19 +802,39 @@
 
         // Algorithm switch
         algorithmSelect.addEventListener('change', (e) => {
+            // Save granular overlap before switching away
+            if (currentAlgorithm === 'granular') {
+                savedGranularOverlap = parseFloat(overlapSlider.value);
+            }
+
             // Update label text based on algorithm
             if (e.target.value === 'resample') {
                 windowLabel.textContent = 'Window Size';
                 windowSelect.parentElement.style.opacity = '0.5';
+                windowSelect.disabled = true;
+                windowValue.textContent = 'N/A';
                 overlapSlider.parentElement.style.opacity = '0.5';
+                overlapSlider.disabled = true;
+                overlapSlider.value = 0;
+                overlapValue.textContent = '0.0';
             } else if (e.target.value === 'paul') {
                 windowLabel.textContent = 'Window Size';
                 windowSelect.parentElement.style.opacity = '1';
-                overlapSlider.parentElement.style.opacity = '0.5'; // Paul uses fixed 50% overlap
+                windowSelect.disabled = false;
+                windowValue.textContent = windowSelect.value;
+                overlapSlider.parentElement.style.opacity = '0.5';
+                overlapSlider.disabled = true;
+                overlapSlider.value = 50;
+                overlapValue.textContent = '50.0'; // Paul uses fixed 50% overlap
             } else {
                 windowLabel.textContent = e.target.value === 'spectral' ? 'Window Size' : 'Grain Size';
                 windowSelect.parentElement.style.opacity = '1';
+                windowSelect.disabled = false;
+                windowValue.textContent = windowSelect.value;
                 overlapSlider.parentElement.style.opacity = '1';
+                overlapSlider.disabled = false;
+                overlapSlider.value = savedGranularOverlap;
+                overlapValue.textContent = savedGranularOverlap.toFixed(1);
             }
 
             if (audioContext) {
@@ -853,6 +880,9 @@
                 const algoNames = { resample: 'Resample', spectral: 'FFT (Spectral)', paul: 'Paul Stretch (STFT)', granular: 'Granular' };
                 setStatus(`Switched to ${algoNames[e.target.value]} algorithm`, 'active');
             }
+
+            // Update current algorithm tracking
+            currentAlgorithm = e.target.value;
         });
 
         // ===== LOAD TEST TRACKS LIST =====
@@ -885,6 +915,12 @@
             });
             trackList.appendChild(item);
         });
+
+        // Set initial UI state for default algorithm (Paul Stretch)
+        overlapSlider.parentElement.style.opacity = '0.5';
+        overlapSlider.disabled = true;
+        overlapSlider.value = 50;
+        overlapValue.textContent = '50.0'; // Paul uses fixed 50%
 
         // Handle window resize
         window.addEventListener('resize', () => {
