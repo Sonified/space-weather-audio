@@ -1,6 +1,7 @@
 *.mov
 *.mseed
 *.wav
+!stretch_test_audio/*.wav
 *.bin
 *.gz
 *.zst
