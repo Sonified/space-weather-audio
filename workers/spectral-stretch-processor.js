@@ -73,15 +73,15 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         // Pre-roll: number of blocks to process before outputting after seek
         // This "warms up" the overlap-add so it sounds smooth immediately
         // Need enough blocks so we can skip to a position with full overlap
-        this.preRollBlocks = 12; // Process 12 windows before outputting
+        this.preRollBlocks = 20; // Process 20 windows before outputting
         this.preRollRemaining = 0;
         this.fadeInRemaining = 0;
         this.fadeOutRemaining = 0;
         this.pendingSeekPosition = null; // Deferred seek while fading out
 
         // Output normalization - more overlap = more windows summing = need lower gain
-        // Use sqrt for gentler scaling (matches granular processor approach)
-        this.outputGain = Math.sqrt((1 - this.overlap) * 2); // ~0.45 at 90% overlap
+        // Proper Hann² overlap-add gain compensation
+        this.outputGain = (1 - this.overlap) * 2; // = 0.2 at 90% overlap
 
         this.setupMessageHandler();
     }
@@ -163,7 +163,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     this.overlap = data.overlap;
                     this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap)));
                     this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
-                    this.outputGain = Math.sqrt((1 - this.overlap) * 2);
+                    this.outputGain = (1 - this.overlap) * 2;
                     console.log(`🔀 Overlap: ${this.overlap}, outputHop: ${this.outputHop}, gain: ${this.outputGain.toFixed(3)}`);
                     break;
             }
