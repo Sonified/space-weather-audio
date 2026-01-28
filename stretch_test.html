@@ -884,6 +884,16 @@
 
         // Make waveform cursor indicate clickability
         waveformCanvas.style.cursor = 'pointer';
+
+        // Spacebar to toggle play/pause
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !e.target.matches('input, textarea, select')) {
+                e.preventDefault();
+                if (sourceBuffer) {
+                    togglePlay();
+                }
+            }
+        });
     </script>
 </body>
 </html>
