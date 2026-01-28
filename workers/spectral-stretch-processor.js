@@ -66,9 +66,12 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         this.sourcePosition = 0;
         this.isPlaying = false;
 
-        // Fade-in to avoid hard edge artifacts at start/seek
-        this.fadeInLength = 4410; // ~100ms at 44.1kHz
+        // Fade-in/out to avoid hard edge artifacts at start/seek
+        this.fadeInLength = 441; // ~10ms at 44.1kHz
+        this.fadeOutLength = 441; // ~10ms quick fade-out
         this.fadeInRemaining = 0;
+        this.fadeOutRemaining = 0;
+        this.pendingSeekPosition = null; // Deferred seek while fading out
 
         // Output normalization - more overlap = more windows summing = need lower gain
         // Use sqrt for gentler scaling (matches granular processor approach)
@@ -107,14 +110,16 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     break;
 
                 case 'seek':
-                    this.sourcePosition = Math.floor(data.position * sampleRate);
-                    // Clamp to valid range
+                    // Calculate target position
+                    let targetPos = Math.floor(data.position * sampleRate);
                     if (this.sourceBuffer) {
-                        this.sourcePosition = Math.max(0, Math.min(this.sourcePosition, this.sourceBuffer.length - 1));
+                        targetPos = Math.max(0, Math.min(targetPos, this.sourceBuffer.length - 1));
                     }
+                    // Apply seek immediately (small click is acceptable)
+                    this.sourcePosition = targetPos;
                     this.resetBuffers();
-                    this.inputWritePos = 0; // Force refill of input buffer
-                    this.fadeInRemaining = this.fadeInLength; // Restart fade-in after seek
+                    this.inputWritePos = 0;
+                    this.fadeInRemaining = this.fadeInLength;
                     console.log(`⏩ Seek to position: ${this.sourcePosition}`);
                     break;
 
@@ -381,8 +386,24 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
             const outputLen = this.outputBuffer.length;
             let sample = this.outputBuffer[this.outputReadPos];
 
+            // Apply fade-out envelope (when seeking while playing)
+            if (this.fadeOutRemaining > 0) {
+                const fadeProgress = this.fadeOutRemaining / this.fadeOutLength;
+                sample *= fadeProgress * fadeProgress; // Quadratic fade-out
+                this.fadeOutRemaining--;
+
+                // When fade-out completes, apply the pending seek
+                if (this.fadeOutRemaining === 0 && this.pendingSeekPosition !== null) {
+                    this.sourcePosition = this.pendingSeekPosition;
+                    this.pendingSeekPosition = null;
+                    this.resetBuffers();
+                    this.inputWritePos = 0;
+                    this.fadeInRemaining = this.fadeInLength;
+                    console.log(`⏩ Fade-out complete, seeking to: ${this.sourcePosition}`);
+                }
+            }
             // Apply fade-in envelope to avoid hard edge artifacts
-            if (this.fadeInRemaining > 0) {
+            else if (this.fadeInRemaining > 0) {
                 const fadeProgress = 1 - (this.fadeInRemaining / this.fadeInLength);
                 sample *= fadeProgress * fadeProgress; // Quadratic ease-in for smoother fade
                 this.fadeInRemaining--;

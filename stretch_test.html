@@ -113,6 +113,25 @@
             animation: pulse-glow 1.5s ease-in-out infinite;
         }
 
+        #playBtn {
+            min-width: 100px;
+        }
+
+        .loop-btn {
+            background: #333;
+            color: #888;
+        }
+
+        .loop-btn:hover {
+            background: #444;
+            color: #aaa;
+        }
+
+        .loop-btn.active {
+            background: #00d4ff;
+            color: #1a1a2e;
+        }
+
         .slider-group {
             flex: 1;
             min-width: 200px;
@@ -278,8 +297,8 @@
             </div>
             <div class="controls">
                 <div class="slider-group" style="flex: 1;">
-                    <label>Stretch: <span id="stretchValue">8.0</span>x</label>
-                    <input type="range" id="stretchSlider" min="0" max="100" step="1" value="53">
+                    <label>Stretch: <span id="stretchValue">2.0</span>x</label>
+                    <input type="range" id="stretchSlider" min="0" max="100" step="1" value="30">
                 </div>
 
                 <div class="slider-group" style="flex: 1;">
@@ -295,6 +314,7 @@
             <div class="controls" style="margin-bottom: 15px;">
                 <button id="playBtn" disabled>▶ Play</button>
                 <button id="stopBtn" disabled>■ Stop</button>
+                <button id="loopBtn" class="loop-btn">⟳ Loop</button>
                 <div class="status" id="status" style="flex: 1; margin: 0; min-height: auto; padding: 10px;">Ready. Load an audio file to begin.</div>
             </div>
             <div class="waveform-container">
@@ -310,6 +330,7 @@
         let stretchNode = null;
         let sourceBuffer = null;
         let isPlaying = false;
+        let isLooping = false;
         let currentAlgorithm = 'spectral';
 
         // Playhead tracking
@@ -326,6 +347,7 @@
         const trackList = document.getElementById('trackList');
         const playBtn = document.getElementById('playBtn');
         const stopBtn = document.getElementById('stopBtn');
+        const loopBtn = document.getElementById('loopBtn');
         const stretchSlider = document.getElementById('stretchSlider');
         const stretchValue = document.getElementById('stretchValue');
         const windowSelect = document.getElementById('windowSelect');
@@ -341,9 +363,9 @@
         // ===== UTILITY FUNCTIONS =====
 
         // Exponential mapping for stretch slider: more resolution at low values
-        // slider 0-100 → stretch 1-50 exponentially
+        // slider 0-100 → stretch 1-10 exponentially
         function sliderToStretch(sliderValue) {
-            return Math.pow(50, sliderValue / 100);
+            return Math.pow(10, sliderValue / 100);
         }
 
         // ===== INITIALIZATION =====
@@ -431,11 +453,22 @@
                         pendingResume = null;
                     }
                 } else if (type === 'ended') {
-                    setStatus('Playback ended.', 'active');
-                    isPlaying = false;
-                    playBtn.textContent = '▶ Play';
-                    stopPlayheadAnimation();
-                    playhead.style.left = '100%';
+                    // Reset to beginning
+                    stretchNode.port.postMessage({ type: 'seek', data: { position: 0 } });
+                    playhead.style.left = '0%';
+                    playStartPosition = 0;
+
+                    if (isLooping) {
+                        // Restart playback
+                        stretchNode.port.postMessage({ type: 'play' });
+                        playStartTime = audioContext.currentTime;
+                        setStatus('Looping...', 'active');
+                    } else {
+                        setStatus('Playback ended.', 'active');
+                        isPlaying = false;
+                        playBtn.textContent = '▶ Play';
+                        stopPlayheadAnimation();
+                    }
                 }
             };
 
@@ -686,6 +719,10 @@
         // Playback controls
         playBtn.addEventListener('click', togglePlay);
         stopBtn.addEventListener('click', stop);
+        loopBtn.addEventListener('click', () => {
+            isLooping = !isLooping;
+            loopBtn.classList.toggle('active', isLooping);
+        });
 
         // Stretch slider
         // Track last stretch value for playhead calculation
