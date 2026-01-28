@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spectral Stretch Test</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        h1 {
+            color: #00d4ff;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: #252540;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .panel h2 {
+            margin-top: 0;
+            color: #00d4ff;
+            font-size: 1.1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .file-drop {
+            border: 2px dashed #444;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-drop:hover, .file-drop.dragover {
+            border-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.05);
+        }
+
+        .file-drop input {
+            display: none;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #00b8e6;
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .slider-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .slider-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #aaa;
+        }
+
+        .slider-group label span {
+            color: #00d4ff;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00d4ff;
+            cursor: pointer;
+        }
+
+        select {
+            background: #333;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .status {
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            color: #888;
+            min-height: 60px;
+        }
+
+        .status.active {
+            color: #00ff88;
+        }
+
+        .status.error {
+            color: #ff4444;
+        }
+
+        .track-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .track-item {
+            background: #1a1a2e;
+            padding: 12px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .track-item:hover {
+            background: #2a2a4e;
+        }
+
+        .track-item.active {
+            border-left: 3px solid #00d4ff;
+        }
+
+        .track-name {
+            font-weight: 500;
+        }
+
+        .track-size {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .waveform-container {
+            height: 100px;
+            background: #1a1a2e;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #ff4444;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Spectral Stretch Test</h1>
+        <p class="subtitle">FFT-based time stretching with phase randomization</p>
+
+        <!-- File Selection -->
+        <div class="panel">
+            <h2>Load Audio</h2>
+            <div class="file-drop" id="fileDrop">
+                <p>Drop a WAV file here or click to browse</p>
+                <input type="file" id="fileInput" accept=".wav,audio/*">
+            </div>
+
+            <div class="track-list" id="trackList" style="margin-top: 15px;">
+                <!-- Test tracks will be listed here -->
+            </div>
+        </div>
+
+        <!-- Stretch Controls -->
+        <div class="panel">
+            <h2>Stretch Controls</h2>
+            <div class="controls">
+                <button id="playBtn" disabled>▶ Play</button>
+                <button id="stopBtn" disabled>■ Stop</button>
+
+                <div class="slider-group" style="flex: 1;">
+                    <label>Stretch Factor: <span id="stretchValue">8.0</span>x</label>
+                    <input type="range" id="stretchSlider" min="1" max="50" step="0.5" value="8">
+                </div>
+
+                <div class="slider-group" style="flex: 1;">
+                    <label>Overlap: <span id="overlapValue">87.5</span>%</label>
+                    <input type="range" id="overlapSlider" min="50" max="95" step="2.5" value="87.5">
+                </div>
+
+                <div class="slider-group">
+                    <label>Window Size: <span id="windowValue">4096</span></label>
+                    <select id="windowSelect">
+                        <option value="1024">1024 (crisp)</option>
+                        <option value="2048">2048</option>
+                        <option value="4096" selected>4096 (balanced)</option>
+                        <option value="8192">8192</option>
+                        <option value="16384">16384 (smooth)</option>
+                    </select>
+                </div>
+
+                <div class="slider-group">
+                    <label>Algorithm</label>
+                    <select id="algorithmSelect">
+                        <option value="spectral" selected>FFT (Spectral)</option>
+                        <option value="granular">Granular</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualization -->
+        <div class="panel">
+            <h2>Waveform</h2>
+            <div class="waveform-container">
+                <canvas id="waveformCanvas"></canvas>
+                <div class="playhead" id="playhead" style="left: 0"></div>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div class="panel">
+            <h2>Status</h2>
+            <div class="status" id="status">Ready. Load an audio file to begin.</div>
+        </div>
+    </div>
+
+    <script>
+        // ===== GLOBAL STATE =====
+        let audioContext = null;
+        let stretchNode = null;
+        let sourceBuffer = null;
+        let isPlaying = false;
+        let currentAlgorithm = 'spectral';
+
+        // ===== DOM ELEMENTS =====
+        const fileDrop = document.getElementById('fileDrop');
+        const fileInput = document.getElementById('fileInput');
+        const trackList = document.getElementById('trackList');
+        const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const stretchSlider = document.getElementById('stretchSlider');
+        const stretchValue = document.getElementById('stretchValue');
+        const windowSelect = document.getElementById('windowSelect');
+        const windowValue = document.getElementById('windowValue');
+        const overlapSlider = document.getElementById('overlapSlider');
+        const overlapValue = document.getElementById('overlapValue');
+        const algorithmSelect = document.getElementById('algorithmSelect');
+        const waveformCanvas = document.getElementById('waveformCanvas');
+        const playhead = document.getElementById('playhead');
+        const status = document.getElementById('status');
+
+        // ===== INITIALIZATION =====
+
+        async function initAudio() {
+            if (audioContext) return;
+
+            audioContext = new AudioContext({ sampleRate: 44100 });
+
+            // Load both worklet modules
+            await audioContext.audioWorklet.addModule('workers/spectral-stretch-processor.js');
+            await audioContext.audioWorklet.addModule('workers/granular-stretch-processor.js');
+
+            createStretchNode();
+        }
+
+        function createStretchNode() {
+            // Disconnect old node if exists
+            if (stretchNode) {
+                stretchNode.disconnect();
+            }
+
+            currentAlgorithm = algorithmSelect.value;
+
+            if (currentAlgorithm === 'spectral') {
+                stretchNode = new AudioWorkletNode(audioContext, 'spectral-stretch-processor', {
+                    processorOptions: {
+                        windowSize: parseInt(windowSelect.value),
+                        stretchFactor: parseFloat(stretchSlider.value),
+                        overlap: parseFloat(overlapSlider.value) / 100
+                    }
+                });
+            } else {
+                stretchNode = new AudioWorkletNode(audioContext, 'granular-stretch-processor', {
+                    processorOptions: {
+                        stretchFactor: parseFloat(stretchSlider.value),
+                        grainSize: parseInt(windowSelect.value),
+                        overlap: parseFloat(overlapSlider.value) / 100,
+                        scatter: 0.1
+                    }
+                });
+            }
+
+            stretchNode.connect(audioContext.destination);
+            setupWorkletListeners();
+
+            // Re-send audio if we had some loaded
+            if (sourceBuffer) {
+                stretchNode.port.postMessage({
+                    type: 'load-audio',
+                    data: { samples: Array.from(sourceBuffer) }
+                });
+            }
+        }
+
+        function setupWorkletListeners() {
+            // Listen for messages from worklet
+            stretchNode.port.onmessage = (event) => {
+                const { type } = event.data;
+                if (type === 'loaded') {
+                    setStatus('Audio loaded. Ready to play.', 'active');
+                    playBtn.disabled = false;
+                    stopBtn.disabled = false;
+                } else if (type === 'ended') {
+                    setStatus('Playback ended.', 'active');
+                    isPlaying = false;
+                    playBtn.textContent = '▶ Play';
+                }
+            };
+
+            setStatus('Audio engine initialized.', 'active');
+        }
+
+        // ===== FILE LOADING =====
+
+        async function loadAudioFile(file) {
+            try {
+                setStatus(`Loading ${file.name}...`);
+                await initAudio();
+
+                const arrayBuffer = await file.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                // Get mono samples (mix down if stereo)
+                let samples;
+                if (audioBuffer.numberOfChannels === 1) {
+                    samples = audioBuffer.getChannelData(0);
+                } else {
+                    // Mix to mono
+                    const left = audioBuffer.getChannelData(0);
+                    const right = audioBuffer.getChannelData(1);
+                    samples = new Float32Array(left.length);
+                    for (let i = 0; i < left.length; i++) {
+                        samples[i] = (left[i] + right[i]) / 2;
+                    }
+                }
+
+                sourceBuffer = samples;
+
+                console.log(`📤 Sending ${samples.length} samples to worklet`);
+                console.log(`📤 First 10 samples:`, Array.from(samples.slice(0, 10)));
+                console.log(`📤 Max sample value:`, Math.max(...Array.from(samples.slice(0, 10000)).map(Math.abs)));
+
+                // Send to worklet
+                stretchNode.port.postMessage({
+                    type: 'load-audio',
+                    data: { samples: Array.from(samples) } // Convert to regular array for transfer
+                });
+
+                // Draw waveform
+                drawWaveform(samples);
+
+                setStatus(`Loaded: ${file.name} (${(samples.length / audioBuffer.sampleRate).toFixed(1)}s)`, 'active');
+
+            } catch (err) {
+                setStatus(`Error loading file: ${err.message}`, 'error');
+                console.error(err);
+            }
+        }
+
+        async function loadTestTrack(filename) {
+            try {
+                setStatus(`Fetching ${filename}...`);
+                const response = await fetch(`stretch_test_tracks/${filename}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const blob = await response.blob();
+                const file = new File([blob], filename, { type: 'audio/wav' });
+                await loadAudioFile(file);
+
+            } catch (err) {
+                setStatus(`Error loading track: ${err.message}`, 'error');
+                console.error(err);
+            }
+        }
+
+        // ===== PLAYBACK CONTROLS =====
+
+        function togglePlay() {
+            console.log(`🎮 togglePlay called, stretchNode=${!!stretchNode}, isPlaying=${isPlaying}`);
+            if (!stretchNode) return;
+
+            if (audioContext.state === 'suspended') {
+                console.log('🎮 Resuming suspended AudioContext');
+                audioContext.resume();
+            }
+            console.log(`🎮 AudioContext state: ${audioContext.state}`);
+
+            if (isPlaying) {
+                console.log('🎮 Sending PAUSE');
+                stretchNode.port.postMessage({ type: 'pause' });
+                playBtn.textContent = '▶ Play';
+                setStatus('Paused.', 'active');
+            } else {
+                console.log('🎮 Sending PLAY');
+                stretchNode.port.postMessage({ type: 'play' });
+                playBtn.textContent = '⏸ Pause';
+                setStatus('Playing...', 'active');
+            }
+
+            isPlaying = !isPlaying;
+        }
+
+        function stop() {
+            if (!stretchNode) return;
+
+            stretchNode.port.postMessage({ type: 'pause' });
+            stretchNode.port.postMessage({ type: 'seek', data: { position: 0 } });
+            playBtn.textContent = '▶ Play';
+            isPlaying = false;
+            setStatus('Stopped.', 'active');
+        }
+
+        // ===== VISUALIZATION =====
+
+        function drawWaveform(samples) {
+            const canvas = waveformCanvas;
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+
+            // Set canvas size
+            canvas.width = canvas.offsetWidth * dpr;
+            canvas.height = canvas.offsetHeight * dpr;
+            ctx.scale(dpr, dpr);
+
+            const width = canvas.offsetWidth;
+            const height = canvas.offsetHeight;
+
+            // Clear
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw waveform
+            ctx.strokeStyle = '#00d4ff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+
+            const samplesPerPixel = Math.floor(samples.length / width);
+            for (let x = 0; x < width; x++) {
+                const start = x * samplesPerPixel;
+                const end = start + samplesPerPixel;
+
+                let min = 1;
+                let max = -1;
+                for (let i = start; i < end && i < samples.length; i++) {
+                    if (samples[i] < min) min = samples[i];
+                    if (samples[i] > max) max = samples[i];
+                }
+
+                const yMin = (1 - max) * height / 2;
+                const yMax = (1 - min) * height / 2;
+
+                if (x === 0) {
+                    ctx.moveTo(x, yMin);
+                }
+                ctx.lineTo(x, yMin);
+                ctx.lineTo(x, yMax);
+            }
+
+            ctx.stroke();
+
+            // Center line
+            ctx.strokeStyle = '#333';
+            ctx.beginPath();
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+        }
+
+        // ===== UTILITY =====
+
+        function setStatus(message, type = '') {
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // ===== EVENT LISTENERS =====
+
+        // File drop zone
+        fileDrop.addEventListener('click', () => fileInput.click());
+        fileDrop.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileDrop.classList.add('dragover');
+        });
+        fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('dragover'));
+        fileDrop.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileDrop.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                loadAudioFile(e.dataTransfer.files[0]);
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                loadAudioFile(e.target.files[0]);
+            }
+        });
+
+        // Playback controls
+        playBtn.addEventListener('click', togglePlay);
+        stopBtn.addEventListener('click', stop);
+
+        // Stretch slider
+        stretchSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            stretchValue.textContent = value.toFixed(1);
+            if (stretchNode) {
+                stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: value } });
+            }
+        });
+
+        // Window size / Grain size
+        windowSelect.addEventListener('change', (e) => {
+            const value = parseInt(e.target.value);
+            windowValue.textContent = value;
+            if (stretchNode) {
+                if (currentAlgorithm === 'spectral') {
+                    stretchNode.port.postMessage({ type: 'set-window-size', data: { size: value } });
+                } else {
+                    stretchNode.port.postMessage({ type: 'set-grain-size', data: { size: value } });
+                }
+            }
+        });
+
+        // Overlap
+        overlapSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            overlapValue.textContent = value.toFixed(1);
+            if (stretchNode) {
+                stretchNode.port.postMessage({ type: 'set-overlap', data: { overlap: value / 100 } });
+            }
+        });
+
+        // Algorithm switch
+        algorithmSelect.addEventListener('change', (e) => {
+            if (audioContext) {
+                const wasPlaying = isPlaying;
+                if (isPlaying) {
+                    stretchNode.port.postMessage({ type: 'pause' });
+                    isPlaying = false;
+                    playBtn.textContent = '▶ Play';
+                }
+                createStretchNode();
+                setStatus(`Switched to ${e.target.value === 'spectral' ? 'FFT (Spectral)' : 'Granular'} algorithm`, 'active');
+            }
+        });
+
+        // ===== LOAD TEST TRACKS LIST =====
+
+        const testTracks = [
+            '1. Lullaby for the Heart.wav',
+            '4230385_Ilium_(Original Mix).wav',
+            'Fearofdark - The Coffee Zone - 01 Lovesickness.wav',
+            'GOLDEN HOUR Sun & Stars Remix MASTER.wav',
+            'Robert Alexander - Mist (Mastered).wav'
+        ];
+
+        testTracks.forEach(track => {
+            const item = document.createElement('div');
+            item.className = 'track-item';
+            item.innerHTML = `
+                <span class="track-name">${track}</span>
+            `;
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.track-item').forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+                loadTestTrack(track);
+            });
+            trackList.appendChild(item);
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (sourceBuffer) {
+                drawWaveform(sourceBuffer);
+            }
+        });
+
+        // Click waveform to seek
+        waveformCanvas.addEventListener('click', (e) => {
+            if (!sourceBuffer || !stretchNode) return;
+
+            const rect = waveformCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const ratio = x / rect.width;
+            const positionInSeconds = (sourceBuffer.length / audioContext.sampleRate) * ratio;
+
+            console.log(`🎯 Seek click: x=${x}, ratio=${ratio.toFixed(3)}, position=${positionInSeconds.toFixed(2)}s`);
+
+            stretchNode.port.postMessage({ type: 'seek', data: { position: positionInSeconds } });
+
+            // Update playhead
+            playhead.style.left = `${ratio * 100}%`;
+        });
+
+        // Make waveform cursor indicate clickability
+        waveformCanvas.style.cursor = 'pointer';
+    </script>
+</body>
+</html>

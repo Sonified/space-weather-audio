@@ -1,0 +1,407 @@
+/**
+ * SpectralStretchProcessor - FFT-based time stretching with phase randomization
+ *
+ * Algorithm (from first principles):
+ * 1. Window the input with a Hann window
+ * 2. FFT to frequency domain
+ * 3. Keep magnitudes, randomize phases
+ * 4. IFFT back to time domain
+ * 5. Overlap-add with stretched hop size
+ *
+ * This creates smooth, ambient time-stretching without pitch change.
+ */
+
+class SpectralStretchProcessor extends AudioWorkletProcessor {
+    constructor(options) {
+        super();
+
+        console.log('🎛️ SpectralStretchProcessor constructor called');
+        console.log('🎛️ Options:', JSON.stringify(options));
+
+        // Default parameters
+        this.windowSize = options.processorOptions?.windowSize || 4096;
+        this.stretchFactor = options.processorOptions?.stretchFactor || 8.0;
+        this.overlap = options.processorOptions?.overlap || 0.875; // 87.5% overlap for smooth output
+
+        console.log(`🎛️ Window size: ${this.windowSize}, Stretch factor: ${this.stretchFactor}, Overlap: ${this.overlap}`);
+
+        // Derived values
+        // For time-stretching: read input SLOWLY, write output at normal rate
+        // Higher overlap = smoother output (less pulsing from random phases)
+        this.halfWindow = this.windowSize / 2;
+        this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap))); // e.g., 87.5% overlap = hop of windowSize/8
+        this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor)); // Read input even slower
+
+        console.log(`🎛️ inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
+
+        // Buffers
+        this.inputBuffer = new Float32Array(this.windowSize);
+        this.outputBuffer = new Float32Array(this.windowSize * 4); // Extra space for overlap-add
+        this.inputWritePos = 0;
+        this.outputReadPos = 0;
+        this.outputWritePos = 0;
+
+        // Precompute Hann window
+        this.hannWindow = new Float32Array(this.windowSize);
+        for (let i = 0; i < this.windowSize; i++) {
+            this.hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / this.windowSize));
+        }
+
+        // FFT working arrays
+        this.fftReal = new Float32Array(this.windowSize);
+        this.fftImag = new Float32Array(this.windowSize);
+
+        // Precompute bit-reversal table and twiddle factors for FFT
+        this.bitReversal = this.computeBitReversal(this.windowSize);
+        this.twiddleReal = new Float32Array(this.halfWindow);
+        this.twiddleImag = new Float32Array(this.halfWindow);
+        for (let i = 0; i < this.halfWindow; i++) {
+            const angle = -2 * Math.PI * i / this.windowSize;
+            this.twiddleReal[i] = Math.cos(angle);
+            this.twiddleImag[i] = Math.sin(angle);
+        }
+
+        // Audio source buffer (loaded via message)
+        this.sourceBuffer = null;
+        this.sourcePosition = 0;
+        this.isPlaying = false;
+
+        // Output normalization - more overlap = more windows summing = need lower gain
+        // Gain ~= (1 - overlap) for Hann window overlap-add
+        this.outputGain = (1 - this.overlap) * 2; // Compensate for overlap-add gain
+
+        this.setupMessageHandler();
+    }
+
+    setupMessageHandler() {
+        console.log('🎛️ Setting up message handler');
+        this.port.onmessage = (event) => {
+            const { type, data } = event.data;
+            console.log(`📨 Worklet received message: ${type}`, data ? JSON.stringify(data).slice(0, 100) : '');
+
+            switch (type) {
+                case 'load-audio':
+                    console.log(`📨 Loading audio: ${data.samples.length} samples`);
+                    this.sourceBuffer = new Float32Array(data.samples);
+                    this.sourcePosition = 0;
+                    this.resetBuffers();
+                    console.log(`📨 Source buffer created. First 5 samples: ${Array.from(this.sourceBuffer.slice(0, 5))}`);
+                    console.log(`📨 Sample rate: ${sampleRate}`);
+                    this.port.postMessage({ type: 'loaded', duration: data.samples.length / sampleRate });
+                    break;
+
+                case 'play':
+                    console.log('▶️ PLAY command received');
+                    this.isPlaying = true;
+                    console.log(`▶️ isPlaying = ${this.isPlaying}, sourceBuffer exists = ${!!this.sourceBuffer}, sourcePosition = ${this.sourcePosition}`);
+                    break;
+
+                case 'pause':
+                    console.log('⏸️ PAUSE command received');
+                    this.isPlaying = false;
+                    break;
+
+                case 'seek':
+                    this.sourcePosition = Math.floor(data.position * sampleRate);
+                    // Clamp to valid range
+                    if (this.sourceBuffer) {
+                        this.sourcePosition = Math.max(0, Math.min(this.sourcePosition, this.sourceBuffer.length - 1));
+                    }
+                    this.resetBuffers();
+                    this.inputWritePos = 0; // Force refill of input buffer
+                    console.log(`⏩ Seek to position: ${this.sourcePosition}`);
+                    break;
+
+                case 'set-stretch':
+                    this.stretchFactor = data.factor;
+                    this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
+                    console.log(`🔄 Stretch factor: ${this.stretchFactor}, inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
+                    break;
+
+                case 'set-window-size':
+                    // Reinitialize with new window size
+                    this.windowSize = data.size;
+                    this.halfWindow = this.windowSize / 2;
+                    this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap)));
+                    this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
+                    this.reinitializeBuffers();
+                    console.log(`📐 Window size: ${this.windowSize}, inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
+                    break;
+
+                case 'set-overlap':
+                    this.overlap = data.overlap;
+                    this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap)));
+                    this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
+                    this.outputGain = (1 - this.overlap) * 2;
+                    console.log(`🔀 Overlap: ${this.overlap}, outputHop: ${this.outputHop}, gain: ${this.outputGain.toFixed(3)}`);
+                    break;
+            }
+        };
+    }
+
+    resetBuffers() {
+        this.inputBuffer.fill(0);
+        this.outputBuffer.fill(0);
+        this.inputWritePos = 0;
+        this.outputReadPos = 0;
+        this.outputWritePos = 0;
+    }
+
+    reinitializeBuffers() {
+        this.inputBuffer = new Float32Array(this.windowSize);
+        this.outputBuffer = new Float32Array(this.windowSize * 4);
+
+        this.hannWindow = new Float32Array(this.windowSize);
+        for (let i = 0; i < this.windowSize; i++) {
+            this.hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / this.windowSize));
+        }
+
+        this.fftReal = new Float32Array(this.windowSize);
+        this.fftImag = new Float32Array(this.windowSize);
+        this.bitReversal = this.computeBitReversal(this.windowSize);
+
+        this.twiddleReal = new Float32Array(this.halfWindow);
+        this.twiddleImag = new Float32Array(this.halfWindow);
+        for (let i = 0; i < this.halfWindow; i++) {
+            const angle = -2 * Math.PI * i / this.windowSize;
+            this.twiddleReal[i] = Math.cos(angle);
+            this.twiddleImag[i] = Math.sin(angle);
+        }
+
+        this.resetBuffers();
+    }
+
+    // ===== FFT IMPLEMENTATION (Cooley-Tukey radix-2) =====
+
+    computeBitReversal(n) {
+        const bits = Math.log2(n);
+        const reversal = new Uint32Array(n);
+        for (let i = 0; i < n; i++) {
+            let reversed = 0;
+            let x = i;
+            for (let j = 0; j < bits; j++) {
+                reversed = (reversed << 1) | (x & 1);
+                x >>= 1;
+            }
+            reversal[i] = reversed;
+        }
+        return reversal;
+    }
+
+    fft(real, imag) {
+        const n = this.windowSize;
+
+        // Bit-reversal permutation
+        for (let i = 0; i < n; i++) {
+            const j = this.bitReversal[i];
+            if (i < j) {
+                [real[i], real[j]] = [real[j], real[i]];
+                [imag[i], imag[j]] = [imag[j], imag[i]];
+            }
+        }
+
+        // Cooley-Tukey iterative FFT
+        for (let size = 2; size <= n; size *= 2) {
+            const halfSize = size / 2;
+            const step = n / size;
+
+            for (let i = 0; i < n; i += size) {
+                for (let j = 0; j < halfSize; j++) {
+                    const twiddleIdx = j * step;
+                    const wr = this.twiddleReal[twiddleIdx];
+                    const wi = this.twiddleImag[twiddleIdx];
+
+                    const idx1 = i + j;
+                    const idx2 = i + j + halfSize;
+
+                    const tr = wr * real[idx2] - wi * imag[idx2];
+                    const ti = wr * imag[idx2] + wi * real[idx2];
+
+                    real[idx2] = real[idx1] - tr;
+                    imag[idx2] = imag[idx1] - ti;
+                    real[idx1] = real[idx1] + tr;
+                    imag[idx1] = imag[idx1] + ti;
+                }
+            }
+        }
+    }
+
+    ifft(real, imag) {
+        const n = this.windowSize;
+
+        // Conjugate
+        for (let i = 0; i < n; i++) {
+            imag[i] = -imag[i];
+        }
+
+        // Forward FFT
+        this.fft(real, imag);
+
+        // Conjugate and scale
+        for (let i = 0; i < n; i++) {
+            real[i] /= n;
+            imag[i] = -imag[i] / n;
+        }
+    }
+
+    // ===== SPECTRAL STRETCH CORE =====
+
+    processStretchBlock() {
+        this.blockCount = (this.blockCount || 0) + 1;
+        const n = this.windowSize;
+
+        // Apply Hann window and copy to FFT buffers
+        let inputMax = 0;
+        for (let i = 0; i < n; i++) {
+            this.fftReal[i] = this.inputBuffer[i] * this.hannWindow[i];
+            this.fftImag[i] = 0;
+            inputMax = Math.max(inputMax, Math.abs(this.fftReal[i]));
+        }
+
+        // Forward FFT
+        this.fft(this.fftReal, this.fftImag);
+
+        // Log FFT result occasionally
+        if (this.blockCount <= 3 || this.blockCount % 100 === 0) {
+            const fftMax = Math.max(...Array.from(this.fftReal.slice(0, 100)).map(Math.abs));
+            console.log(`🔬 Block ${this.blockCount}: inputMax=${inputMax.toFixed(4)}, fftMax=${fftMax.toFixed(4)}`);
+        }
+
+        // Randomize phases while preserving magnitudes
+        // This is the key to smooth time-stretching!
+        for (let i = 0; i < n; i++) {
+            const mag = Math.sqrt(this.fftReal[i] * this.fftReal[i] + this.fftImag[i] * this.fftImag[i]);
+            const randomPhase = Math.random() * 2 * Math.PI;
+            this.fftReal[i] = mag * Math.cos(randomPhase);
+            this.fftImag[i] = mag * Math.sin(randomPhase);
+        }
+
+        // Inverse FFT
+        this.ifft(this.fftReal, this.fftImag);
+
+        // Log IFFT result occasionally
+        if (this.blockCount <= 3 || this.blockCount % 100 === 0) {
+            const ifftMax = Math.max(...Array.from(this.fftReal.slice(0, 100)).map(Math.abs));
+            console.log(`🔬 Block ${this.blockCount}: ifftMax=${ifftMax.toFixed(4)}, outputWritePos=${this.outputWritePos}`);
+        }
+
+        // Apply Hann window again (synthesis window) and overlap-add to output
+        const outputLen = this.outputBuffer.length;
+        for (let i = 0; i < n; i++) {
+            const outIdx = (this.outputWritePos + i) % outputLen;
+            this.outputBuffer[outIdx] += this.fftReal[i] * this.hannWindow[i] * this.outputGain;
+        }
+
+        // Advance output write position by output hop
+        this.outputWritePos = (this.outputWritePos + this.outputHop) % outputLen;
+    }
+
+    // ===== AUDIO PROCESSING =====
+
+    process(inputs, outputs, parameters) {
+        this.processCount = (this.processCount || 0) + 1;
+
+        const output = outputs[0];
+        if (!output || output.length === 0) {
+            if (this.processCount % 1000 === 0) console.log('🔇 No output array');
+            return true;
+        }
+
+        const channel = output[0];
+        if (!channel) {
+            if (this.processCount % 1000 === 0) console.log('🔇 No channel');
+            return true;
+        }
+
+        // If no source loaded or not playing, output silence
+        if (!this.sourceBuffer || !this.isPlaying) {
+            if (this.processCount % 1000 === 0) {
+                console.log(`🔇 Silent: sourceBuffer=${!!this.sourceBuffer}, isPlaying=${this.isPlaying}`);
+            }
+            channel.fill(0);
+            return true;
+        }
+
+        // Log every 100 process calls when playing
+        if (this.processCount % 100 === 0) {
+            console.log(`🎵 process() #${this.processCount}: sourcePos=${this.sourcePosition}/${this.sourceBuffer.length}, outputRead=${this.outputReadPos}, outputWrite=${this.outputWritePos}`);
+        }
+
+        let blocksProcessed = 0;
+
+        // Fill output buffer by processing source audio
+        for (let i = 0; i < channel.length; i++) {
+            // Check if we need to process more input
+            while (this.needsMoreOutput()) {
+                // Read input samples
+                if (this.sourcePosition < this.sourceBuffer.length) {
+                    // Fill input buffer
+                    for (let j = 0; j < this.inputHop && this.sourcePosition < this.sourceBuffer.length; j++) {
+                        // Shift input buffer left by inputHop
+                        if (this.inputWritePos === 0) {
+                            // First fill - fill entire buffer
+                            console.log(`📥 First fill: windowSize=${this.windowSize}, sourcePos=${this.sourcePosition}`);
+                            for (let k = 0; k < this.windowSize && this.sourcePosition + k < this.sourceBuffer.length; k++) {
+                                this.inputBuffer[k] = this.sourceBuffer[this.sourcePosition + k];
+                            }
+                            this.sourcePosition += this.inputHop;
+                            this.inputWritePos = this.windowSize;
+                            break;
+                        } else {
+                            // Shift and add new samples
+                            for (let k = 0; k < this.windowSize - this.inputHop; k++) {
+                                this.inputBuffer[k] = this.inputBuffer[k + this.inputHop];
+                            }
+                            for (let k = 0; k < this.inputHop && this.sourcePosition < this.sourceBuffer.length; k++) {
+                                this.inputBuffer[this.windowSize - this.inputHop + k] = this.sourceBuffer[this.sourcePosition++];
+                            }
+                            break;
+                        }
+                    }
+
+                    // Process this block
+                    this.processStretchBlock();
+                    blocksProcessed++;
+                } else {
+                    // End of source - stop
+                    console.log(`🛑 END OF SOURCE: sourcePosition=${this.sourcePosition}, sourceBuffer.length=${this.sourceBuffer.length}`);
+                    this.isPlaying = false;
+                    this.port.postMessage({ type: 'ended' });
+                    break;
+                }
+            }
+
+            // Read from output buffer
+            const outputLen = this.outputBuffer.length;
+            channel[i] = this.outputBuffer[this.outputReadPos];
+            this.outputBuffer[this.outputReadPos] = 0; // Clear after reading
+            this.outputReadPos = (this.outputReadPos + 1) % outputLen;
+        }
+
+        // Log output sample stats
+        if (this.processCount % 100 === 0) {
+            const maxSample = Math.max(...Array.from(channel).map(Math.abs));
+            console.log(`🔊 Output: blocks=${blocksProcessed}, maxSample=${maxSample.toFixed(4)}`);
+        }
+
+        return true;
+    }
+
+    needsMoreOutput() {
+        // Calculate how many samples are available in output buffer
+        const outputLen = this.outputBuffer.length;
+        let available = this.outputWritePos - this.outputReadPos;
+        if (available < 0) available += outputLen;
+
+        const needMore = available < 256;
+
+        // Log occasionally
+        if (this.processCount % 500 === 0) {
+            console.log(`📊 needsMoreOutput: available=${available}, outputLen=${outputLen}, readPos=${this.outputReadPos}, writePos=${this.outputWritePos}, need=${needMore}`);
+        }
+
+        return needMore;
+    }
+}
+
+registerProcessor('spectral-stretch-processor', SpectralStretchProcessor);
