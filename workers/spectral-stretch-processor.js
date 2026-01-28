@@ -37,6 +37,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         // Buffers
         this.inputBuffer = new Float32Array(this.windowSize);
         this.outputBuffer = new Float32Array(this.windowSize * 4); // Extra space for overlap-add
+        this.normBuffer = new Float32Array(this.windowSize * 4); // Track accumulated window power for normalization
         this.inputWritePos = 0;
         this.outputReadPos = 0;
         this.outputWritePos = 0;
@@ -77,9 +78,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         this.fadeOutRemaining = 0;
         this.pendingSeekPosition = null; // Deferred seek while fading out
 
-        // Output normalization - more overlap = more windows summing = need lower gain
-        // Proper Hann² overlap-add gain compensation
-        this.outputGain = (1 - this.overlap) * 2; // = 0.2 at 90% overlap
+        // No fixed outputGain - we use normBuffer for proper COLA normalization at any overlap
 
         this.setupMessageHandler();
     }
@@ -161,8 +160,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     this.overlap = data.overlap;
                     this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap)));
                     this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
-                    this.outputGain = (1 - this.overlap) * 2;
-                    console.log(`🔀 Overlap: ${this.overlap}, outputHop: ${this.outputHop}, gain: ${this.outputGain.toFixed(3)}`);
+                    console.log(`🔀 Overlap: ${this.overlap}, outputHop: ${this.outputHop}`);
                     break;
             }
         };
@@ -171,6 +169,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
     resetBuffers() {
         this.inputBuffer.fill(0);
         this.outputBuffer.fill(0);
+        this.normBuffer.fill(0);
         this.inputWritePos = 0;
         this.outputReadPos = 0;
         this.outputWritePos = 0;
@@ -191,6 +190,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
     reinitializeBuffers() {
         this.inputBuffer = new Float32Array(this.windowSize);
         this.outputBuffer = new Float32Array(this.windowSize * 4);
+        this.normBuffer = new Float32Array(this.windowSize * 4);
 
         this.hannWindow = new Float32Array(this.windowSize);
         for (let i = 0; i < this.windowSize; i++) {
@@ -312,13 +312,12 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         // For real-valued output, we must maintain: bin[k] = conjugate(bin[N-k])
         const halfN = n / 2;
 
-        // DC bin (0) - keep phase at 0, just preserve magnitude
-        // (it's already real-only from a real input)
-
-        // Nyquist bin (N/2) - keep phase at 0
-        // (also real-only for real input)
+        // DC bin (0) and Nyquist bin (N/2) - keep real-only (imaginary = 0)
+        this.fftImag[0] = 0;
+        this.fftImag[halfN] = 0;
 
         // Bins 1 to N/2-1: randomize phase, then set conjugate mirror
+        // Use same mag for both bin and mirror (fixes subtle symmetry bug)
         for (let i = 1; i < halfN; i++) {
             const mag = Math.sqrt(this.fftReal[i] * this.fftReal[i] + this.fftImag[i] * this.fftImag[i]);
             const randomPhase = Math.random() * 2 * Math.PI;
@@ -327,11 +326,10 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
             this.fftReal[i] = mag * Math.cos(randomPhase);
             this.fftImag[i] = mag * Math.sin(randomPhase);
 
-            // Set conjugate mirror bin (N-i) - same magnitude, negated imaginary
+            // Set conjugate mirror bin (N-i) - use SAME mag, conjugate phase
             const mirrorIdx = n - i;
-            const mirrorMag = Math.sqrt(this.fftReal[mirrorIdx] * this.fftReal[mirrorIdx] + this.fftImag[mirrorIdx] * this.fftImag[mirrorIdx]);
-            this.fftReal[mirrorIdx] = mirrorMag * Math.cos(randomPhase);
-            this.fftImag[mirrorIdx] = -mirrorMag * Math.sin(randomPhase); // Conjugate = negate imaginary
+            this.fftReal[mirrorIdx] = mag * Math.cos(randomPhase);
+            this.fftImag[mirrorIdx] = -mag * Math.sin(randomPhase); // Conjugate = negate imaginary
         }
 
         // Inverse FFT
@@ -344,10 +342,14 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         }
 
         // Apply Hann window again (synthesis window) and overlap-add to output
+        // Use normBuffer to track accumulated window power for proper COLA normalization
         const outputLen = this.outputBuffer.length;
         for (let i = 0; i < n; i++) {
             const outIdx = (this.outputWritePos + i) % outputLen;
-            this.outputBuffer[outIdx] += this.fftReal[i] * this.hannWindow[i] * this.outputGain;
+            const w = this.hannWindow[i];
+            const w2 = w * w; // Hann² (analysis * synthesis window)
+            this.outputBuffer[outIdx] += this.fftReal[i] * w2;
+            this.normBuffer[outIdx] += w2;
         }
 
         // Advance output write position by output hop
@@ -417,10 +419,10 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
             const numOverlapWindows = Math.ceil(this.windowSize / this.outputHop);
             const skipSamples = (numOverlapWindows - 1) * this.outputHop;
 
-            // CRITICAL: Clear the positions we're skipping, otherwise when outputWritePos
-            // wraps around, the overlap-add will ADD to old values instead of fresh zeros
+            // CRITICAL: Clear the positions we're skipping in both buffers
             for (let k = 0; k < skipSamples; k++) {
                 this.outputBuffer[k] = 0;
+                this.normBuffer[k] = 0;
             }
 
             this.outputReadPos = skipSamples % this.outputBuffer.length;
@@ -469,9 +471,14 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                 }
             }
 
-            // Read from output buffer
+            // Read from output buffer with normalization
             const outputLen = this.outputBuffer.length;
             let sample = this.outputBuffer[this.outputReadPos];
+            const norm = this.normBuffer[this.outputReadPos];
+            // Normalize by accumulated window power (proper COLA for any overlap)
+            if (norm > 1e-8) {
+                sample /= norm;
+            }
 
             // Apply fade-out envelope (when seeking while playing)
             if (this.fadeOutRemaining > 0) {
@@ -503,7 +510,9 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
             }
 
             channel[i] = sample;
-            this.outputBuffer[this.outputReadPos] = 0; // Clear after reading
+            // Clear both buffers after reading
+            this.outputBuffer[this.outputReadPos] = 0;
+            this.normBuffer[this.outputReadPos] = 0;
             this.outputReadPos = (this.outputReadPos + 1) % outputLen;
         }
 
