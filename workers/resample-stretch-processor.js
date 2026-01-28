@@ -21,6 +21,13 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
         this.sourcePosition = 0; // Fractional position for interpolation
         this.isPlaying = false;
 
+        // Fade-in/out to avoid clicks
+        this.fadeInLength = 1102; // ~25ms at 44.1kHz
+        this.fadeOutLength = 1102; // ~25ms
+        this.fadeInRemaining = 0;
+        this.fadeOutRemaining = 0;
+        this.pendingSeekPosition = null;
+
         this.setupMessageHandler();
     }
 
@@ -38,6 +45,7 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
 
                 case 'play':
                     this.isPlaying = true;
+                    this.fadeInRemaining = this.fadeInLength;
                     break;
 
                 case 'pause':
@@ -45,9 +53,20 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
                     break;
 
                 case 'seek':
-                    this.sourcePosition = Math.floor(data.position * sampleRate);
-                    if (this.sourceBuffer) {
-                        this.sourcePosition = Math.max(0, Math.min(this.sourcePosition, this.sourceBuffer.length - 1));
+                    if (this.isPlaying) {
+                        // Fade out first, then seek
+                        this.fadeOutRemaining = this.fadeOutLength;
+                        this.pendingSeekPosition = Math.floor(data.position * sampleRate);
+                        if (this.sourceBuffer) {
+                            this.pendingSeekPosition = Math.max(0, Math.min(this.pendingSeekPosition, this.sourceBuffer.length - 1));
+                        }
+                    } else {
+                        // Not playing, seek immediately
+                        this.sourcePosition = Math.floor(data.position * sampleRate);
+                        if (this.sourceBuffer) {
+                            this.sourcePosition = Math.max(0, Math.min(this.sourcePosition, this.sourceBuffer.length - 1));
+                        }
+                        this.fadeInRemaining = this.fadeInLength;
                     }
                     break;
 
@@ -84,9 +103,10 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
             const pos = this.sourcePosition;
             const intPos = Math.floor(pos);
 
+            let sample = 0;
+
             if (intPos >= this.sourceBuffer.length - 1) {
                 // End of source
-                channel[i] = 0;
                 if (intPos >= this.sourceBuffer.length) {
                     this.isPlaying = false;
                     this.port.postMessage({ type: 'ended' });
@@ -101,9 +121,33 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
                 const frac = pos - intPos;
                 const sample0 = this.sourceBuffer[intPos];
                 const sample1 = this.sourceBuffer[intPos + 1];
-                channel[i] = sample0 + frac * (sample1 - sample0);
+                sample = sample0 + frac * (sample1 - sample0);
             }
 
+            // Apply fade-out
+            if (this.fadeOutRemaining > 0) {
+                const fadeProgress = this.fadeOutRemaining / this.fadeOutLength;
+                sample *= fadeProgress * fadeProgress;
+                this.fadeOutRemaining--;
+
+                // When fade-out completes, apply pending seek
+                if (this.fadeOutRemaining === 0 && this.pendingSeekPosition !== null) {
+                    this.sourcePosition = this.pendingSeekPosition;
+                    this.pendingSeekPosition = null;
+                    this.fadeInRemaining = this.fadeInLength;
+                    // Don't advance position this frame
+                    channel[i] = 0;
+                    continue;
+                }
+            }
+            // Apply fade-in
+            else if (this.fadeInRemaining > 0) {
+                const fadeProgress = 1 - (this.fadeInRemaining / this.fadeInLength);
+                sample *= fadeProgress * fadeProgress;
+                this.fadeInRemaining--;
+            }
+
+            channel[i] = sample;
             this.sourcePosition += readRate;
         }
 

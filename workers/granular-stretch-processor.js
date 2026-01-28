@@ -41,6 +41,13 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
         // Use square root for gentler scaling that doesn't get too quiet
         this.grainGain = Math.sqrt((1 - this.overlap) * 2);
 
+        // Fade-in/out to avoid clicks
+        this.fadeInLength = 1102; // ~25ms at 44.1kHz
+        this.fadeOutLength = 1102; // ~25ms
+        this.fadeInRemaining = 0;
+        this.fadeOutRemaining = 0;
+        this.pendingSeekPosition = null;
+
         // Precompute grain window (Hann)
         this.grainWindow = new Float32Array(this.grainSize);
         this.updateGrainWindow();
@@ -69,6 +76,7 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
 
                 case 'play':
                     this.isPlaying = true;
+                    this.fadeInRemaining = this.fadeInLength;
                     break;
 
                 case 'pause':
@@ -76,11 +84,20 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
                     break;
 
                 case 'seek':
-                    this.sourcePosition = Math.floor(data.position * sampleRate);
-                    if (this.sourceBuffer) {
-                        this.sourcePosition = Math.max(0, Math.min(this.sourcePosition, this.sourceBuffer.length - 1));
+                    if (this.isPlaying) {
+                        this.fadeOutRemaining = this.fadeOutLength;
+                        this.pendingSeekPosition = Math.floor(data.position * sampleRate);
+                        if (this.sourceBuffer) {
+                            this.pendingSeekPosition = Math.max(0, Math.min(this.pendingSeekPosition, this.sourceBuffer.length - 1));
+                        }
+                    } else {
+                        this.sourcePosition = Math.floor(data.position * sampleRate);
+                        if (this.sourceBuffer) {
+                            this.sourcePosition = Math.max(0, Math.min(this.sourcePosition, this.sourceBuffer.length - 1));
+                        }
+                        this.resetBuffers();
+                        this.fadeInRemaining = this.fadeInLength;
                     }
-                    this.resetBuffers();
                     break;
 
                 case 'set-stretch':
@@ -178,12 +195,34 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
             }
         }
 
-        // Read from output buffer
+        // Read from output buffer with fade handling
         const outputLen = this.outputBuffer.length;
         for (let i = 0; i < channel.length; i++) {
-            channel[i] = this.outputBuffer[this.outputReadPos];
+            let sample = this.outputBuffer[this.outputReadPos];
             this.outputBuffer[this.outputReadPos] = 0; // Clear after reading
             this.outputReadPos = (this.outputReadPos + 1) % outputLen;
+
+            // Apply fade-out
+            if (this.fadeOutRemaining > 0) {
+                const fadeProgress = this.fadeOutRemaining / this.fadeOutLength;
+                sample *= fadeProgress * fadeProgress;
+                this.fadeOutRemaining--;
+
+                if (this.fadeOutRemaining === 0 && this.pendingSeekPosition !== null) {
+                    this.sourcePosition = this.pendingSeekPosition;
+                    this.pendingSeekPosition = null;
+                    this.resetBuffers();
+                    this.fadeInRemaining = this.fadeInLength;
+                }
+            }
+            // Apply fade-in
+            else if (this.fadeInRemaining > 0) {
+                const fadeProgress = 1 - (this.fadeInRemaining / this.fadeInLength);
+                sample *= fadeProgress * fadeProgress;
+                this.fadeInRemaining--;
+            }
+
+            channel[i] = sample;
         }
 
         return true;
