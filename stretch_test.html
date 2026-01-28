@@ -328,10 +328,14 @@
         // ===== GLOBAL STATE =====
         let audioContext = null;
         let stretchNode = null;
+        let stretchGain = null; // GainNode for crossfade
         let sourceBuffer = null;
         let isPlaying = false;
         let isLooping = false;
         let currentAlgorithm = 'spectral';
+
+        // Crossfade settings
+        const CROSSFADE_DURATION = 0.15; // 150ms crossfade
 
         // Playhead tracking
         let playStartTime = 0;
@@ -383,10 +387,13 @@
             createStretchNode();
         }
 
-        function createStretchNode() {
+        function createStretchNode(startGain = 1) {
             // Disconnect old node if exists
             if (stretchNode) {
                 stretchNode.disconnect();
+            }
+            if (stretchGain) {
+                stretchGain.disconnect();
             }
 
             currentAlgorithm = algorithmSelect.value;
@@ -416,7 +423,11 @@
                 });
             }
 
-            stretchNode.connect(audioContext.destination);
+            // Create gain node for crossfade control
+            stretchGain = audioContext.createGain();
+            stretchGain.gain.value = startGain;
+            stretchNode.connect(stretchGain);
+            stretchGain.connect(audioContext.destination);
             setupWorkletListeners();
 
             // Re-send audio if we had some loaded
@@ -792,18 +803,35 @@
                     currentPosition = playStartPosition + elapsed / stretchFactor;
                 }
 
-                // Set up pending resume
+                // Store old node/gain for crossfade
+                const oldNode = stretchNode;
+                const oldGain = stretchGain;
+
+                // Create new node with gain starting at 0
+                createStretchNode(0);
+
+                // Crossfade: fade out old, fade in new
+                const now = audioContext.currentTime;
+                if (oldGain) {
+                    oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+                    oldGain.gain.linearRampToValueAtTime(0, now + CROSSFADE_DURATION);
+                    // Disconnect old nodes after fade completes
+                    setTimeout(() => {
+                        oldNode.port.postMessage({ type: 'pause' });
+                        oldNode.disconnect();
+                        oldGain.disconnect();
+                    }, CROSSFADE_DURATION * 1000 + 50);
+                }
+
+                // Fade in new node
+                stretchGain.gain.setValueAtTime(0, now);
+                stretchGain.gain.linearRampToValueAtTime(1, now + CROSSFADE_DURATION);
+
+                // Set up pending resume (will fire when new node reports 'loaded')
                 if (sourceBuffer) {
                     pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
                 }
 
-                if (isPlaying) {
-                    stretchNode.port.postMessage({ type: 'pause' });
-                    stopPlayheadAnimation();
-                    isPlaying = false;
-                }
-
-                createStretchNode();
                 const algoNames = { resample: 'Resample', spectral: 'FFT (Spectral)', granular: 'Granular' };
                 setStatus(`Switched to ${algoNames[e.target.value]} algorithm`, 'active');
             }
