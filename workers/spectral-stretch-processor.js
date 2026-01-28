@@ -67,8 +67,8 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         this.isPlaying = false;
 
         // Fade-in/out to avoid hard edge artifacts at start/seek
-        this.fadeInLength = 882; // ~20ms at 44.1kHz
-        this.fadeOutLength = 441; // ~10ms quick fade-out
+        this.fadeInLength = 2205; // ~50ms at 44.1kHz
+        this.fadeOutLength = 1102; // ~25ms fade-out
 
         // Pre-roll: number of blocks to process before outputting after seek
         // This "warms up" the overlap-add so it sounds smooth immediately
