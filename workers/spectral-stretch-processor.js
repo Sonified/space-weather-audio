@@ -67,8 +67,13 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         this.isPlaying = false;
 
         // Fade-in/out to avoid hard edge artifacts at start/seek
-        this.fadeInLength = 441; // ~10ms at 44.1kHz
+        this.fadeInLength = 882; // ~20ms at 44.1kHz
         this.fadeOutLength = 441; // ~10ms quick fade-out
+
+        // Pre-roll: number of blocks to process before outputting after seek
+        // This "warms up" the overlap-add so it sounds smooth immediately
+        this.preRollBlocks = 8; // Process 8 windows before outputting
+        this.preRollRemaining = 0;
         this.fadeInRemaining = 0;
         this.fadeOutRemaining = 0;
         this.pendingSeekPosition = null; // Deferred seek while fading out
@@ -100,8 +105,12 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                 case 'play':
                     console.log('▶️ PLAY command received');
                     this.isPlaying = true;
-                    this.fadeInRemaining = this.fadeInLength; // Start fade-in
-                    console.log(`▶️ isPlaying = ${this.isPlaying}, sourceBuffer exists = ${!!this.sourceBuffer}, sourcePosition = ${this.sourcePosition}`);
+                    // Pre-roll if starting fresh (buffers are empty)
+                    if (this.outputWritePos === this.outputReadPos) {
+                        this.preRollRemaining = this.preRollBlocks;
+                    }
+                    this.fadeInRemaining = this.fadeInLength;
+                    console.log(`▶️ isPlaying = ${this.isPlaying}, preRoll: ${this.preRollRemaining}`);
                     break;
 
                 case 'pause':
@@ -115,12 +124,13 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     if (this.sourceBuffer) {
                         targetPos = Math.max(0, Math.min(targetPos, this.sourceBuffer.length - 1));
                     }
-                    // Apply seek immediately (small click is acceptable)
                     this.sourcePosition = targetPos;
                     this.resetBuffers();
                     this.inputWritePos = 0;
+                    // Pre-roll to warm up overlap-add before outputting
+                    this.preRollRemaining = this.preRollBlocks;
                     this.fadeInRemaining = this.fadeInLength;
-                    console.log(`⏩ Seek to position: ${this.sourcePosition}`);
+                    console.log(`⏩ Seek to position: ${this.sourcePosition}, preRoll: ${this.preRollRemaining}`);
                     break;
 
                 case 'set-stretch':
@@ -278,13 +288,30 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
             console.log(`🔬 Block ${this.blockCount}: inputMax=${inputMax.toFixed(4)}, fftMax=${fftMax.toFixed(4)}`);
         }
 
-        // Randomize phases while preserving magnitudes
-        // This is the key to smooth time-stretching!
-        for (let i = 0; i < n; i++) {
+        // Randomize phases while preserving magnitudes AND conjugate symmetry
+        // For real-valued output, we must maintain: bin[k] = conjugate(bin[N-k])
+        const halfN = n / 2;
+
+        // DC bin (0) - keep phase at 0, just preserve magnitude
+        // (it's already real-only from a real input)
+
+        // Nyquist bin (N/2) - keep phase at 0
+        // (also real-only for real input)
+
+        // Bins 1 to N/2-1: randomize phase, then set conjugate mirror
+        for (let i = 1; i < halfN; i++) {
             const mag = Math.sqrt(this.fftReal[i] * this.fftReal[i] + this.fftImag[i] * this.fftImag[i]);
             const randomPhase = Math.random() * 2 * Math.PI;
+
+            // Set bin i with random phase
             this.fftReal[i] = mag * Math.cos(randomPhase);
             this.fftImag[i] = mag * Math.sin(randomPhase);
+
+            // Set conjugate mirror bin (N-i) - same magnitude, negated imaginary
+            const mirrorIdx = n - i;
+            const mirrorMag = Math.sqrt(this.fftReal[mirrorIdx] * this.fftReal[mirrorIdx] + this.fftImag[mirrorIdx] * this.fftImag[mirrorIdx]);
+            this.fftReal[mirrorIdx] = mirrorMag * Math.cos(randomPhase);
+            this.fftImag[mirrorIdx] = -mirrorMag * Math.sin(randomPhase); // Conjugate = negate imaginary
         }
 
         // Inverse FFT
@@ -339,6 +366,28 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         }
 
         let blocksProcessed = 0;
+
+        // Handle pre-roll: process blocks without outputting to warm up overlap-add
+        while (this.preRollRemaining > 0 && this.sourcePosition < this.sourceBuffer.length) {
+            // Fill input buffer (same logic as main loop)
+            if (this.inputWritePos === 0) {
+                for (let k = 0; k < this.windowSize && this.sourcePosition + k < this.sourceBuffer.length; k++) {
+                    this.inputBuffer[k] = this.sourceBuffer[this.sourcePosition + k];
+                }
+                this.sourcePosition += this.inputHop;
+                this.inputWritePos = this.windowSize;
+            } else {
+                for (let k = 0; k < this.windowSize - this.inputHop; k++) {
+                    this.inputBuffer[k] = this.inputBuffer[k + this.inputHop];
+                }
+                for (let k = 0; k < this.inputHop && this.sourcePosition < this.sourceBuffer.length; k++) {
+                    this.inputBuffer[this.windowSize - this.inputHop + k] = this.sourceBuffer[this.sourcePosition++];
+                }
+            }
+            this.processStretchBlock();
+            this.preRollRemaining--;
+            blocksProcessed++;
+        }
 
         // Fill output buffer by processing source audio
         for (let i = 0; i < channel.length; i++) {
