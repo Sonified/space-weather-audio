@@ -72,7 +72,8 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
 
         // Pre-roll: number of blocks to process before outputting after seek
         // This "warms up" the overlap-add so it sounds smooth immediately
-        this.preRollBlocks = 8; // Process 8 windows before outputting
+        // Need enough blocks so we can skip to a position with full overlap
+        this.preRollBlocks = 12; // Process 12 windows before outputting
         this.preRollRemaining = 0;
         this.fadeInRemaining = 0;
         this.fadeOutRemaining = 0;
@@ -375,6 +376,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         }
 
         let blocksProcessed = 0;
+        const wasInPreRoll = this.preRollRemaining > 0;
 
         // Handle pre-roll: process blocks without outputting to warm up overlap-add
         while (this.preRollRemaining > 0 && this.sourcePosition < this.sourceBuffer.length) {
@@ -396,6 +398,16 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
             this.processStretchBlock();
             this.preRollRemaining--;
             blocksProcessed++;
+        }
+
+        // After pre-roll completes, skip to where we have full overlap coverage
+        // With ~10 windows overlap at 90%, skip forward by (preRollBlocks - 10) * outputHop
+        if (wasInPreRoll && this.preRollRemaining === 0) {
+            const numOverlapWindows = Math.ceil(this.windowSize / this.outputHop);
+            const skipBlocks = Math.max(0, this.preRollBlocks - numOverlapWindows);
+            const skipSamples = skipBlocks * this.outputHop;
+            this.outputReadPos = skipSamples % this.outputBuffer.length;
+            console.log(`🎯 Pre-roll complete. Skipping ${skipSamples} samples (${skipBlocks} blocks) to full overlap position`);
         }
 
         // Fill output buffer by processing source audio
