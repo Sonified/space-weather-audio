@@ -501,7 +501,7 @@
 
         async function loadAudioFile(file) {
             try {
-                setStatus(`Loading ${file.name}...`);
+                setStatus('Loading...');
                 await initAudio();
 
                 const arrayBuffer = await file.arrayBuffer();
@@ -523,9 +523,12 @@
 
                 sourceBuffer = samples;
 
-                // Reset playhead
+                // Reset playhead and clear any pending resume from algorithm switch
                 playStartPosition = 0;
+                playStartTime = audioContext ? audioContext.currentTime : 0;
                 playhead.style.left = '0%';
+                pendingResume = null;
+
 
                 console.log(`📤 Sending ${samples.length} samples to worklet`);
                 console.log(`📤 First 10 samples:`, Array.from(samples.slice(0, 10)));
@@ -540,7 +543,7 @@
                 // Draw waveform
                 drawWaveform(samples);
 
-                setStatus(`Loaded: ${file.name} (${(samples.length / audioBuffer.sampleRate).toFixed(1)}s)`, 'active');
+                setStatus(`Loaded (${(samples.length / audioBuffer.sampleRate).toFixed(1)}s). Ready to play.`, 'active');
 
             } catch (err) {
                 setStatus(`Error loading file: ${err.message}`, 'error');
@@ -550,7 +553,7 @@
 
         async function loadTestTrack(filename) {
             try {
-                setStatus(`Fetching ${filename}...`);
+                setStatus('Loading...');
                 const response = await fetch(`stretch_test_audio/${filename}`);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
