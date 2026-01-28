@@ -401,13 +401,13 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         }
 
         // After pre-roll completes, skip to where we have full overlap coverage
-        // With ~10 windows overlap at 90%, skip forward by (preRollBlocks - 10) * outputHop
+        // Position P has floor(P/outputHop)+1 windows covering it
+        // For numOverlapWindows coverage, need P >= (numOverlapWindows - 1) * outputHop
         if (wasInPreRoll && this.preRollRemaining === 0) {
             const numOverlapWindows = Math.ceil(this.windowSize / this.outputHop);
-            const skipBlocks = Math.max(0, this.preRollBlocks - numOverlapWindows);
-            const skipSamples = skipBlocks * this.outputHop;
+            const skipSamples = (numOverlapWindows - 1) * this.outputHop;
             this.outputReadPos = skipSamples % this.outputBuffer.length;
-            console.log(`🎯 Pre-roll complete. Skipping ${skipSamples} samples (${skipBlocks} blocks) to full overlap position`);
+            console.log(`🎯 Pre-roll complete. Skipping ${skipSamples} samples to position with ${numOverlapWindows} windows overlap`);
         }
 
         // Fill output buffer by processing source audio
