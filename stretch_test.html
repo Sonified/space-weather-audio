@@ -279,7 +279,8 @@
                     <label>Algorithm</label>
                     <select id="algorithmSelect">
                         <option value="resample">Resample (pitch shift)</option>
-                        <option value="spectral" selected>FFT (Spectral)</option>
+                        <!-- <option value="spectral">FFT (Spectral)</option> -->
+                        <option value="paul" selected>Paul Stretch (STFT)</option>
                         <option value="granular">Granular</option>
                     </select>
                 </div>
@@ -382,18 +383,21 @@
             // Load all worklet modules
             await audioContext.audioWorklet.addModule('workers/resample-stretch-processor.js');
             await audioContext.audioWorklet.addModule('workers/spectral-stretch-processor.js');
+            await audioContext.audioWorklet.addModule('workers/paul-stretch-processor.js');
             await audioContext.audioWorklet.addModule('workers/granular-stretch-processor.js');
 
             createStretchNode();
         }
 
-        function createStretchNode(startGain = 1) {
-            // Disconnect old node if exists
-            if (stretchNode) {
-                stretchNode.disconnect();
-            }
-            if (stretchGain) {
-                stretchGain.disconnect();
+        function createStretchNode(startGain = 1, skipDisconnect = false) {
+            // Disconnect old node if exists (skip when doing crossfade)
+            if (!skipDisconnect) {
+                if (stretchNode) {
+                    stretchNode.disconnect();
+                }
+                if (stretchGain) {
+                    stretchGain.disconnect();
+                }
             }
 
             currentAlgorithm = algorithmSelect.value;
@@ -410,6 +414,13 @@
                         windowSize: parseInt(windowSelect.value),
                         stretchFactor: sliderToStretch(parseFloat(stretchSlider.value)),
                         overlap: parseFloat(overlapSlider.value) / 100
+                    }
+                });
+            } else if (currentAlgorithm === 'paul') {
+                stretchNode = new AudioWorkletNode(audioContext, 'paul-stretch-processor', {
+                    processorOptions: {
+                        windowSize: parseInt(windowSelect.value),
+                        stretchFactor: sliderToStretch(parseFloat(stretchSlider.value))
                     }
                 });
             } else {
@@ -762,7 +773,7 @@
             const value = parseInt(e.target.value);
             windowValue.textContent = value;
             if (stretchNode) {
-                if (currentAlgorithm === 'spectral') {
+                if (currentAlgorithm === 'spectral' || currentAlgorithm === 'paul') {
                     stretchNode.port.postMessage({ type: 'set-window-size', data: { size: value } });
                 } else {
                     stretchNode.port.postMessage({ type: 'set-grain-size', data: { size: value } });
@@ -786,6 +797,10 @@
                 windowLabel.textContent = 'Window Size';
                 windowSelect.parentElement.style.opacity = '0.5';
                 overlapSlider.parentElement.style.opacity = '0.5';
+            } else if (e.target.value === 'paul') {
+                windowLabel.textContent = 'Window Size';
+                windowSelect.parentElement.style.opacity = '1';
+                overlapSlider.parentElement.style.opacity = '0.5'; // Paul uses fixed 50% overlap
             } else {
                 windowLabel.textContent = e.target.value === 'spectral' ? 'Window Size' : 'Grain Size';
                 windowSelect.parentElement.style.opacity = '1';
@@ -807,8 +822,8 @@
                 const oldNode = stretchNode;
                 const oldGain = stretchGain;
 
-                // Create new node with gain starting at 0
-                createStretchNode(0);
+                // Create new node with gain starting at 0, skip disconnect for crossfade
+                createStretchNode(0, true);
 
                 // Crossfade: fade out old, fade in new
                 const now = audioContext.currentTime;
@@ -832,7 +847,7 @@
                     pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
                 }
 
-                const algoNames = { resample: 'Resample', spectral: 'FFT (Spectral)', granular: 'Granular' };
+                const algoNames = { resample: 'Resample', spectral: 'FFT (Spectral)', paul: 'Paul Stretch (STFT)', granular: 'Granular' };
                 setStatus(`Switched to ${algoNames[e.target.value]} algorithm`, 'active');
             }
         });
@@ -841,7 +856,8 @@
 
         const testTracks = [
             { file: 'FF_AS_bird_chirp_run_it_back_1.wav', name: 'Bird Chirp' },
-            { file: 'Julia_Run_8.wav', name: 'Julia Run' },
+            { file: 'Julia_Run_8.wav', name: 'Vocal Run' },
+            { file: 'FF_CA_60_foley_ticking_clock_slight_variation.wav', name: 'Clock Tick' },
             { file: '5_goesr_V_befilteredV_norm_20260119_20260119_paulstretch1_pre-arrival-boost_30kHz_Master.wav', name: 'GOES CME Shock' }
         ];
 
