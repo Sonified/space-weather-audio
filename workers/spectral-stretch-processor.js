@@ -124,13 +124,22 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     if (this.sourceBuffer) {
                         targetPos = Math.max(0, Math.min(targetPos, this.sourceBuffer.length - 1));
                     }
-                    this.sourcePosition = targetPos;
-                    this.resetBuffers();
-                    this.inputWritePos = 0;
-                    // Pre-roll to warm up overlap-add before outputting
-                    this.preRollRemaining = this.preRollBlocks;
-                    this.fadeInRemaining = this.fadeInLength;
-                    console.log(`⏩ Seek to position: ${this.sourcePosition}, preRoll: ${this.preRollRemaining}`);
+
+                    if (this.isPlaying) {
+                        // Fade out first, then seek when fade completes
+                        this.fadeOutRemaining = this.fadeOutLength;
+                        this.pendingSeekPosition = targetPos;
+                        console.log(`⏩ Seek requested while playing, fading out first. Target: ${targetPos}`);
+                    } else {
+                        // Not playing, seek immediately
+                        this.sourcePosition = targetPos;
+                        this.resetBuffers();
+                        this.inputWritePos = 0;
+                        // Pre-roll to warm up overlap-add before outputting
+                        this.preRollRemaining = this.preRollBlocks;
+                        this.fadeInRemaining = this.fadeInLength;
+                        console.log(`⏩ Seek to position: ${this.sourcePosition}, preRoll: ${this.preRollRemaining}`);
+                    }
                     break;
 
                 case 'set-stretch':
@@ -447,8 +456,9 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     this.pendingSeekPosition = null;
                     this.resetBuffers();
                     this.inputWritePos = 0;
+                    this.preRollRemaining = this.preRollBlocks; // Warm up overlap-add
                     this.fadeInRemaining = this.fadeInLength;
-                    console.log(`⏩ Fade-out complete, seeking to: ${this.sourcePosition}`);
+                    console.log(`⏩ Fade-out complete, seeking to: ${this.sourcePosition}, preRoll: ${this.preRollRemaining}`);
                 }
             }
             // Apply fade-in envelope to avoid hard edge artifacts
