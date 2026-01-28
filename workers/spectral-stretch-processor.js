@@ -21,7 +21,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         // Default parameters
         this.windowSize = options.processorOptions?.windowSize || 4096;
         this.stretchFactor = options.processorOptions?.stretchFactor || 8.0;
-        this.overlap = options.processorOptions?.overlap || 0.875; // 87.5% overlap for smooth output
+        this.overlap = options.processorOptions?.overlap || 0.9; // 90% overlap for smooth output
 
         console.log(`🎛️ Window size: ${this.windowSize}, Stretch factor: ${this.stretchFactor}, Overlap: ${this.overlap}`);
 
@@ -66,9 +66,13 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         this.sourcePosition = 0;
         this.isPlaying = false;
 
+        // Fade-in to avoid hard edge artifacts at start/seek
+        this.fadeInLength = 4410; // ~100ms at 44.1kHz
+        this.fadeInRemaining = 0;
+
         // Output normalization - more overlap = more windows summing = need lower gain
-        // Gain ~= (1 - overlap) for Hann window overlap-add
-        this.outputGain = (1 - this.overlap) * 2; // Compensate for overlap-add gain
+        // Use sqrt for gentler scaling (matches granular processor approach)
+        this.outputGain = Math.sqrt((1 - this.overlap) * 2); // ~0.45 at 90% overlap
 
         this.setupMessageHandler();
     }
@@ -93,6 +97,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                 case 'play':
                     console.log('▶️ PLAY command received');
                     this.isPlaying = true;
+                    this.fadeInRemaining = this.fadeInLength; // Start fade-in
                     console.log(`▶️ isPlaying = ${this.isPlaying}, sourceBuffer exists = ${!!this.sourceBuffer}, sourcePosition = ${this.sourcePosition}`);
                     break;
 
@@ -109,6 +114,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     }
                     this.resetBuffers();
                     this.inputWritePos = 0; // Force refill of input buffer
+                    this.fadeInRemaining = this.fadeInLength; // Restart fade-in after seek
                     console.log(`⏩ Seek to position: ${this.sourcePosition}`);
                     break;
 
@@ -132,7 +138,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     this.overlap = data.overlap;
                     this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap)));
                     this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
-                    this.outputGain = (1 - this.overlap) * 2;
+                    this.outputGain = Math.sqrt((1 - this.overlap) * 2);
                     console.log(`🔀 Overlap: ${this.overlap}, outputHop: ${this.outputHop}, gain: ${this.outputGain.toFixed(3)}`);
                     break;
             }
@@ -373,7 +379,16 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
 
             // Read from output buffer
             const outputLen = this.outputBuffer.length;
-            channel[i] = this.outputBuffer[this.outputReadPos];
+            let sample = this.outputBuffer[this.outputReadPos];
+
+            // Apply fade-in envelope to avoid hard edge artifacts
+            if (this.fadeInRemaining > 0) {
+                const fadeProgress = 1 - (this.fadeInRemaining / this.fadeInLength);
+                sample *= fadeProgress * fadeProgress; // Quadratic ease-in for smoother fade
+                this.fadeInRemaining--;
+            }
+
+            channel[i] = sample;
             this.outputBuffer[this.outputReadPos] = 0; // Clear after reading
             this.outputReadPos = (this.outputReadPos + 1) % outputLen;
         }

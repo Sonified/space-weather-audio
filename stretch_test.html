@@ -279,12 +279,12 @@
             <div class="controls">
                 <div class="slider-group" style="flex: 1;">
                     <label>Stretch: <span id="stretchValue">8.0</span>x</label>
-                    <input type="range" id="stretchSlider" min="1" max="50" step="0.5" value="8">
+                    <input type="range" id="stretchSlider" min="0" max="100" step="1" value="53">
                 </div>
 
                 <div class="slider-group" style="flex: 1;">
-                    <label>Overlap: <span id="overlapValue">87.5</span>%</label>
-                    <input type="range" id="overlapSlider" min="50" max="95" step="2.5" value="87.5">
+                    <label>Overlap: <span id="overlapValue">90</span>%</label>
+                    <input type="range" id="overlapSlider" min="50" max="95" step="2.5" value="90">
                 </div>
             </div>
         </div>
@@ -338,6 +338,14 @@
         const playhead = document.getElementById('playhead');
         const status = document.getElementById('status');
 
+        // ===== UTILITY FUNCTIONS =====
+
+        // Exponential mapping for stretch slider: more resolution at low values
+        // slider 0-100 → stretch 1-50 exponentially
+        function sliderToStretch(sliderValue) {
+            return Math.pow(50, sliderValue / 100);
+        }
+
         // ===== INITIALIZATION =====
 
         async function initAudio() {
@@ -364,21 +372,21 @@
             if (currentAlgorithm === 'resample') {
                 stretchNode = new AudioWorkletNode(audioContext, 'resample-stretch-processor', {
                     processorOptions: {
-                        stretchFactor: parseFloat(stretchSlider.value)
+                        stretchFactor: sliderToStretch(parseFloat(stretchSlider.value))
                     }
                 });
             } else if (currentAlgorithm === 'spectral') {
                 stretchNode = new AudioWorkletNode(audioContext, 'spectral-stretch-processor', {
                     processorOptions: {
                         windowSize: parseInt(windowSelect.value),
-                        stretchFactor: parseFloat(stretchSlider.value),
+                        stretchFactor: sliderToStretch(parseFloat(stretchSlider.value)),
                         overlap: parseFloat(overlapSlider.value) / 100
                     }
                 });
             } else {
                 stretchNode = new AudioWorkletNode(audioContext, 'granular-stretch-processor', {
                     processorOptions: {
-                        stretchFactor: parseFloat(stretchSlider.value),
+                        stretchFactor: sliderToStretch(parseFloat(stretchSlider.value)),
                         grainSize: parseInt(windowSelect.value),
                         overlap: parseFloat(overlapSlider.value) / 100,
                         scatter: 0.1
@@ -522,7 +530,7 @@
                 playBtn.textContent = '▶ Play';
                 stopPlayheadAnimation();
                 // Save current position for resume
-                const stretchFactor = parseFloat(stretchSlider.value);
+                const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
                 const elapsed = audioContext.currentTime - playStartTime;
                 playStartPosition += elapsed / stretchFactor;
                 setStatus('Paused.', 'active');
@@ -567,7 +575,7 @@
         function updatePlayhead() {
             if (!isPlaying || !sourceBuffer || !audioContext) return;
 
-            const stretchFactor = parseFloat(stretchSlider.value);
+            const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
             const elapsed = audioContext.currentTime - playStartTime;
 
             // In stretched time, we advance through source at 1/stretchFactor rate
@@ -681,11 +689,12 @@
 
         // Stretch slider
         // Track last stretch value for playhead calculation
-        let lastStretchFactor = parseFloat(stretchSlider.value);
+        let lastStretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
 
         stretchSlider.addEventListener('input', (e) => {
-            const value = parseFloat(e.target.value);
-            stretchValue.textContent = value.toFixed(1);
+            const sliderValue = parseFloat(e.target.value);
+            const stretch = sliderToStretch(sliderValue);
+            stretchValue.textContent = stretch.toFixed(1);
 
             // Lock in current position before changing stretch factor
             if (isPlaying && audioContext) {
@@ -693,10 +702,10 @@
                 playStartPosition += elapsed / lastStretchFactor;
                 playStartTime = audioContext.currentTime;
             }
-            lastStretchFactor = value;
+            lastStretchFactor = stretch;
 
             if (stretchNode) {
-                stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: value } });
+                stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: stretch } });
             }
         });
 
@@ -741,7 +750,7 @@
                 // Calculate current position before switching
                 let currentPosition = playStartPosition;
                 if (wasPlaying) {
-                    const stretchFactor = parseFloat(stretchSlider.value);
+                    const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
                     const elapsed = audioContext.currentTime - playStartTime;
                     currentPosition = playStartPosition + elapsed / stretchFactor;
                 }
@@ -800,7 +809,7 @@
             }
         });
 
-        // Click waveform to seek
+        // Click waveform to seek (and start playing if not already)
         waveformCanvas.addEventListener('click', (e) => {
             if (!sourceBuffer || !stretchNode) return;
 
@@ -811,16 +820,29 @@
 
             console.log(`🎯 Seek click: x=${x}, ratio=${ratio.toFixed(3)}, position=${positionInSeconds.toFixed(2)}s`);
 
+            // Resume AudioContext if suspended
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
             stretchNode.port.postMessage({ type: 'seek', data: { position: positionInSeconds } });
 
             // Update playhead position tracking
             playStartPosition = positionInSeconds;
-            if (isPlaying) {
-                playStartTime = audioContext.currentTime;
-            }
+            playStartTime = audioContext.currentTime;
 
             // Update playhead
             playhead.style.left = `${ratio * 100}%`;
+
+            // Start playing if not already
+            if (!isPlaying) {
+                stretchNode.port.postMessage({ type: 'play' });
+                isPlaying = true;
+                playBtn.textContent = '⏸ Pause';
+                playBtn.classList.remove('pulse');
+                startPlayheadAnimation();
+                setStatus('Playing...', 'active');
+            }
         });
 
         // Make waveform cursor indicate clickability
