@@ -471,6 +471,11 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     this.preRollRemaining = this.preRollBlocks; // Warm up overlap-add
                     this.fadeInRemaining = this.fadeInLength;
                     console.log(`⏩ Fade-out complete, seeking to: ${this.sourcePosition}, preRoll: ${this.preRollRemaining}`);
+                    // Fill rest with silence and return - next frame will have pre-roll
+                    for (let j = i; j < channel.length; j++) {
+                        channel[j] = 0;
+                    }
+                    return true;
                 }
             }
             // Apply fade-in envelope to avoid hard edge artifacts
