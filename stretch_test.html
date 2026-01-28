@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spectral Stretch Test</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
+    <title>Stretch Algorithm Comparison</title>
     <style>
         * {
             box-sizing: border-box;
@@ -97,6 +98,21 @@
             transform: none;
         }
 
+        @keyframes pulse-glow {
+            0%, 100% {
+                box-shadow: 0 0 5px #00d4ff, 0 0 10px #00d4ff;
+                background: #00d4ff;
+            }
+            50% {
+                box-shadow: 0 0 20px #00d4ff, 0 0 35px #00d4ff;
+                background: #40e0ff;
+            }
+        }
+
+        button.pulse {
+            animation: pulse-glow 1.5s ease-in-out infinite;
+        }
+
         .slider-group {
             flex: 1;
             min-width: 200px;
@@ -159,27 +175,33 @@
         }
 
         .track-list {
-            display: grid;
+            display: flex;
+            flex-wrap: wrap;
             gap: 10px;
         }
 
         .track-item {
-            background: #1a1a2e;
-            padding: 12px 15px;
+            background: #333355;
+            padding: 12px 20px;
             border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            display: inline-block;
+            border: 1px solid #444;
+            margin-right: 10px;
+            margin-bottom: 5px;
         }
 
         .track-item:hover {
-            background: #2a2a4e;
+            background: #00d4ff;
+            color: #1a1a2e;
+            border-color: #00d4ff;
         }
 
         .track-item.active {
-            border-left: 3px solid #00d4ff;
+            background: #00d4ff;
+            color: #1a1a2e;
+            border-color: #00d4ff;
         }
 
         .track-name {
@@ -216,41 +238,35 @@
 </head>
 <body>
     <div class="container">
-        <h1>Spectral Stretch Test</h1>
-        <p class="subtitle">FFT-based time stretching with phase randomization</p>
+        <h1>Stretch Algorithm Comparison</h1>
 
-        <!-- File Selection -->
+        <!-- 1. Load Audio -->
         <div class="panel">
-            <h2>Load Audio</h2>
-            <div class="file-drop" id="fileDrop">
-                <p>Drop a WAV file here or click to browse</p>
-                <input type="file" id="fileInput" accept=".wav,audio/*">
-            </div>
-
-            <div class="track-list" id="trackList" style="margin-top: 15px;">
+            <h2>1. Load Audio</h2>
+            <div class="track-list" id="trackList">
                 <!-- Test tracks will be listed here -->
+            </div>
+            <div class="file-drop" id="fileDrop" style="margin-top: 15px; padding: 15px;">
+                <p style="margin: 0; font-size: 14px;">Or drop/browse for a file</p>
+                <input type="file" id="fileInput" accept=".wav,audio/*">
             </div>
         </div>
 
-        <!-- Stretch Controls -->
+        <!-- 2. Stretch -->
         <div class="panel">
-            <h2>Stretch Controls</h2>
-            <div class="controls">
-                <button id="playBtn" disabled>▶ Play</button>
-                <button id="stopBtn" disabled>■ Stop</button>
-
-                <div class="slider-group" style="flex: 1;">
-                    <label>Stretch Factor: <span id="stretchValue">8.0</span>x</label>
-                    <input type="range" id="stretchSlider" min="1" max="50" step="0.5" value="8">
-                </div>
-
-                <div class="slider-group" style="flex: 1;">
-                    <label>Overlap: <span id="overlapValue">87.5</span>%</label>
-                    <input type="range" id="overlapSlider" min="50" max="95" step="2.5" value="87.5">
+            <h2>2. Stretch Settings</h2>
+            <div class="controls" style="margin-bottom: 15px;">
+                <div class="slider-group">
+                    <label>Algorithm</label>
+                    <select id="algorithmSelect">
+                        <option value="resample">Resample (pitch shift)</option>
+                        <option value="spectral" selected>FFT (Spectral)</option>
+                        <option value="granular">Granular</option>
+                    </select>
                 </div>
 
                 <div class="slider-group">
-                    <label>Window Size: <span id="windowValue">4096</span></label>
+                    <label><span id="windowLabel">Window Size</span>: <span id="windowValue">4096</span></label>
                     <select id="windowSelect">
                         <option value="1024">1024 (crisp)</option>
                         <option value="2048">2048</option>
@@ -259,30 +275,32 @@
                         <option value="16384">16384 (smooth)</option>
                     </select>
                 </div>
+            </div>
+            <div class="controls">
+                <div class="slider-group" style="flex: 1;">
+                    <label>Stretch: <span id="stretchValue">8.0</span>x</label>
+                    <input type="range" id="stretchSlider" min="1" max="50" step="0.5" value="8">
+                </div>
 
-                <div class="slider-group">
-                    <label>Algorithm</label>
-                    <select id="algorithmSelect">
-                        <option value="spectral" selected>FFT (Spectral)</option>
-                        <option value="granular">Granular</option>
-                    </select>
+                <div class="slider-group" style="flex: 1;">
+                    <label>Overlap: <span id="overlapValue">87.5</span>%</label>
+                    <input type="range" id="overlapSlider" min="50" max="95" step="2.5" value="87.5">
                 </div>
             </div>
         </div>
 
-        <!-- Visualization -->
+        <!-- 3. Playback -->
         <div class="panel">
-            <h2>Waveform</h2>
+            <h2>3. Playback</h2>
+            <div class="controls" style="margin-bottom: 15px;">
+                <button id="playBtn" disabled>▶ Play</button>
+                <button id="stopBtn" disabled>■ Stop</button>
+                <div class="status" id="status" style="flex: 1; margin: 0; min-height: auto; padding: 10px;">Ready. Load an audio file to begin.</div>
+            </div>
             <div class="waveform-container">
                 <canvas id="waveformCanvas"></canvas>
                 <div class="playhead" id="playhead" style="left: 0"></div>
             </div>
-        </div>
-
-        <!-- Status -->
-        <div class="panel">
-            <h2>Status</h2>
-            <div class="status" id="status">Ready. Load an audio file to begin.</div>
         </div>
     </div>
 
@@ -294,6 +312,14 @@
         let isPlaying = false;
         let currentAlgorithm = 'spectral';
 
+        // Playhead tracking
+        let playStartTime = 0;
+        let playStartPosition = 0; // Position in source (seconds)
+        let animationFrameId = null;
+
+        // For resuming after algorithm switch
+        let pendingResume = null; // { position, shouldPlay }
+
         // ===== DOM ELEMENTS =====
         const fileDrop = document.getElementById('fileDrop');
         const fileInput = document.getElementById('fileInput');
@@ -304,6 +330,7 @@
         const stretchValue = document.getElementById('stretchValue');
         const windowSelect = document.getElementById('windowSelect');
         const windowValue = document.getElementById('windowValue');
+        const windowLabel = document.getElementById('windowLabel');
         const overlapSlider = document.getElementById('overlapSlider');
         const overlapValue = document.getElementById('overlapValue');
         const algorithmSelect = document.getElementById('algorithmSelect');
@@ -318,7 +345,8 @@
 
             audioContext = new AudioContext({ sampleRate: 44100 });
 
-            // Load both worklet modules
+            // Load all worklet modules
+            await audioContext.audioWorklet.addModule('workers/resample-stretch-processor.js');
             await audioContext.audioWorklet.addModule('workers/spectral-stretch-processor.js');
             await audioContext.audioWorklet.addModule('workers/granular-stretch-processor.js');
 
@@ -333,7 +361,13 @@
 
             currentAlgorithm = algorithmSelect.value;
 
-            if (currentAlgorithm === 'spectral') {
+            if (currentAlgorithm === 'resample') {
+                stretchNode = new AudioWorkletNode(audioContext, 'resample-stretch-processor', {
+                    processorOptions: {
+                        stretchFactor: parseFloat(stretchSlider.value)
+                    }
+                });
+            } else if (currentAlgorithm === 'spectral') {
                 stretchNode = new AudioWorkletNode(audioContext, 'spectral-stretch-processor', {
                     processorOptions: {
                         windowSize: parseInt(windowSelect.value),
@@ -372,10 +406,28 @@
                     setStatus('Audio loaded. Ready to play.', 'active');
                     playBtn.disabled = false;
                     stopBtn.disabled = false;
+                    playBtn.classList.add('pulse');
+
+                    // Check for pending resume after algorithm switch
+                    if (pendingResume) {
+                        stretchNode.port.postMessage({ type: 'seek', data: { position: pendingResume.position } });
+                        playStartPosition = pendingResume.position;
+                        if (pendingResume.shouldPlay) {
+                            stretchNode.port.postMessage({ type: 'play' });
+                            isPlaying = true;
+                            playBtn.textContent = '⏸ Pause';
+                            playBtn.classList.remove('pulse');
+                            startPlayheadAnimation();
+                            setStatus('Playing...', 'active');
+                        }
+                        pendingResume = null;
+                    }
                 } else if (type === 'ended') {
                     setStatus('Playback ended.', 'active');
                     isPlaying = false;
                     playBtn.textContent = '▶ Play';
+                    stopPlayheadAnimation();
+                    playhead.style.left = '100%';
                 }
             };
 
@@ -408,6 +460,10 @@
 
                 sourceBuffer = samples;
 
+                // Reset playhead
+                playStartPosition = 0;
+                playhead.style.left = '0%';
+
                 console.log(`📤 Sending ${samples.length} samples to worklet`);
                 console.log(`📤 First 10 samples:`, Array.from(samples.slice(0, 10)));
                 console.log(`📤 Max sample value:`, Math.max(...Array.from(samples.slice(0, 10000)).map(Math.abs)));
@@ -432,7 +488,7 @@
         async function loadTestTrack(filename) {
             try {
                 setStatus(`Fetching ${filename}...`);
-                const response = await fetch(`stretch_test_tracks/${filename}`);
+                const response = await fetch(`stretch_test_audio/${filename}`);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const blob = await response.blob();
@@ -451,6 +507,9 @@
             console.log(`🎮 togglePlay called, stretchNode=${!!stretchNode}, isPlaying=${isPlaying}`);
             if (!stretchNode) return;
 
+            // Stop the pulsing animation once user interacts
+            playBtn.classList.remove('pulse');
+
             if (audioContext.state === 'suspended') {
                 console.log('🎮 Resuming suspended AudioContext');
                 audioContext.resume();
@@ -461,11 +520,17 @@
                 console.log('🎮 Sending PAUSE');
                 stretchNode.port.postMessage({ type: 'pause' });
                 playBtn.textContent = '▶ Play';
+                stopPlayheadAnimation();
+                // Save current position for resume
+                const stretchFactor = parseFloat(stretchSlider.value);
+                const elapsed = audioContext.currentTime - playStartTime;
+                playStartPosition += elapsed / stretchFactor;
                 setStatus('Paused.', 'active');
             } else {
                 console.log('🎮 Sending PLAY');
                 stretchNode.port.postMessage({ type: 'play' });
                 playBtn.textContent = '⏸ Pause';
+                startPlayheadAnimation();
                 setStatus('Playing...', 'active');
             }
 
@@ -479,7 +544,44 @@
             stretchNode.port.postMessage({ type: 'seek', data: { position: 0 } });
             playBtn.textContent = '▶ Play';
             isPlaying = false;
+            stopPlayheadAnimation();
+            playhead.style.left = '0%';
+            playStartPosition = 0;
             setStatus('Stopped.', 'active');
+        }
+
+        // ===== PLAYHEAD ANIMATION =====
+
+        function startPlayheadAnimation() {
+            playStartTime = audioContext.currentTime;
+            animationFrameId = requestAnimationFrame(updatePlayhead);
+        }
+
+        function stopPlayheadAnimation() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        }
+
+        function updatePlayhead() {
+            if (!isPlaying || !sourceBuffer || !audioContext) return;
+
+            const stretchFactor = parseFloat(stretchSlider.value);
+            const elapsed = audioContext.currentTime - playStartTime;
+
+            // In stretched time, we advance through source at 1/stretchFactor rate
+            const sourceElapsed = elapsed / stretchFactor;
+            const currentSourcePosition = playStartPosition + sourceElapsed;
+
+            const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
+            const ratio = Math.min(currentSourcePosition / sourceDuration, 1);
+
+            playhead.style.left = `${ratio * 100}%`;
+
+            if (ratio < 1) {
+                animationFrameId = requestAnimationFrame(updatePlayhead);
+            }
         }
 
         // ===== VISUALIZATION =====
@@ -578,9 +680,21 @@
         stopBtn.addEventListener('click', stop);
 
         // Stretch slider
+        // Track last stretch value for playhead calculation
+        let lastStretchFactor = parseFloat(stretchSlider.value);
+
         stretchSlider.addEventListener('input', (e) => {
             const value = parseFloat(e.target.value);
             stretchValue.textContent = value.toFixed(1);
+
+            // Lock in current position before changing stretch factor
+            if (isPlaying && audioContext) {
+                const elapsed = audioContext.currentTime - playStartTime;
+                playStartPosition += elapsed / lastStretchFactor;
+                playStartTime = audioContext.currentTime;
+            }
+            lastStretchFactor = value;
+
             if (stretchNode) {
                 stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: value } });
             }
@@ -610,20 +724,54 @@
 
         // Algorithm switch
         algorithmSelect.addEventListener('change', (e) => {
+            // Update label text based on algorithm
+            if (e.target.value === 'resample') {
+                windowLabel.textContent = 'Window Size';
+                windowSelect.parentElement.style.opacity = '0.5';
+                overlapSlider.parentElement.style.opacity = '0.5';
+            } else {
+                windowLabel.textContent = e.target.value === 'spectral' ? 'Window Size' : 'Grain Size';
+                windowSelect.parentElement.style.opacity = '1';
+                overlapSlider.parentElement.style.opacity = '1';
+            }
+
             if (audioContext) {
                 const wasPlaying = isPlaying;
+
+                // Calculate current position before switching
+                let currentPosition = playStartPosition;
+                if (wasPlaying) {
+                    const stretchFactor = parseFloat(stretchSlider.value);
+                    const elapsed = audioContext.currentTime - playStartTime;
+                    currentPosition = playStartPosition + elapsed / stretchFactor;
+                }
+
+                // Set up pending resume
+                if (sourceBuffer) {
+                    pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
+                }
+
                 if (isPlaying) {
                     stretchNode.port.postMessage({ type: 'pause' });
+                    stopPlayheadAnimation();
                     isPlaying = false;
-                    playBtn.textContent = '▶ Play';
                 }
+
                 createStretchNode();
-                setStatus(`Switched to ${e.target.value === 'spectral' ? 'FFT (Spectral)' : 'Granular'} algorithm`, 'active');
+                const algoNames = { resample: 'Resample', spectral: 'FFT (Spectral)', granular: 'Granular' };
+                setStatus(`Switched to ${algoNames[e.target.value]} algorithm`, 'active');
             }
         });
 
         // ===== LOAD TEST TRACKS LIST =====
 
+        const testTracks = [
+            { file: 'FF_AS_bird_chirp_run_it_back_1.wav', name: 'Bird Chirp' },
+            { file: 'Julia_Run_8.wav', name: 'Julia Run' },
+            { file: '5_goesr_V_befilteredV_norm_20260119_20260119_paulstretch1_pre-arrival-boost_30kHz_Master.wav', name: 'GOES CME Shock' }
+        ];
+
+        /* OLD LOCAL TEST TRACKS (commented out for later)
         const testTracks = [
             '1. Lullaby for the Heart.wav',
             '4230385_Ilium_(Original Mix).wav',
@@ -631,17 +779,16 @@
             'GOLDEN HOUR Sun & Stars Remix MASTER.wav',
             'Robert Alexander - Mist (Mastered).wav'
         ];
+        */
 
         testTracks.forEach(track => {
             const item = document.createElement('div');
             item.className = 'track-item';
-            item.innerHTML = `
-                <span class="track-name">${track}</span>
-            `;
+            item.innerHTML = `<span class="track-name">${track.name}</span>`;
             item.addEventListener('click', () => {
                 document.querySelectorAll('.track-item').forEach(el => el.classList.remove('active'));
                 item.classList.add('active');
-                loadTestTrack(track);
+                loadTestTrack(track.file);
             });
             trackList.appendChild(item);
         });
@@ -665,6 +812,12 @@
             console.log(`🎯 Seek click: x=${x}, ratio=${ratio.toFixed(3)}, position=${positionInSeconds.toFixed(2)}s`);
 
             stretchNode.port.postMessage({ type: 'seek', data: { position: positionInSeconds } });
+
+            // Update playhead position tracking
+            playStartPosition = positionInSeconds;
+            if (isPlaying) {
+                playStartTime = audioContext.currentTime;
+            }
 
             // Update playhead
             playhead.style.left = `${ratio * 100}%`;
