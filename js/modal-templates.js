@@ -846,6 +846,41 @@ export function createAwesfModal() {
     return modal;
 }
 
+export function createAboutModal() {
+    const modal = document.createElement('div');
+    modal.id = 'aboutModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3 class="modal-title">About</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: left;">
+                <p style="margin-bottom: 16px; color: #333; font-size: 15px; line-height: 1.6;">
+                    This portal provides interactive access to audified spacecraft data. The audification is performed using code incorporated into NASA's Coordinated Data Analysis Web (CDAWeb) service.
+                </p>
+                <p style="margin-bottom: 16px; color: #333; font-size: 15px; line-height: 1.6;">
+                    <a href="https://cdaweb.gsfc.nasa.gov/audification_readme.html" target="_blank" rel="noopener noreferrer" style="color: #0056b3; text-decoration: none; font-weight: 600;">About the audification algorithm</a>
+                </p>
+                <p style="margin-bottom: 16px; color: #333; font-size: 15px; line-height: 1.6;">
+                    <a href="https://cdaweb.gsfc.nasa.gov/" target="_blank" rel="noopener noreferrer" style="color: #0056b3; text-decoration: none; font-weight: 600;">NASA CDAWeb</a>
+                </p>
+                <p style="margin-bottom: 16px; color: #333; font-size: 15px; line-height: 1.6;">
+                    <a href="https://cdaweb.gsfc.nasa.gov/WebServices/REST/" target="_blank" rel="noopener noreferrer" style="color: #0056b3; text-decoration: none; font-weight: 600;">CDASWS REST API</a>
+                </p>
+                <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+                <p style="margin-bottom: 0; color: #555; font-size: 14px; line-height: 1.6;">
+                    For questions, comments, feedback and requests, reach out to Robert Alexander at
+                    <a href="mailto:robert@auralab.io" target="_blank" rel="noopener noreferrer" style="color: #0056b3; text-decoration: none; font-weight: 600;">robert@auralab.io</a>
+                </p>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
 // Initialize and inject modals into the page
 export async function initializeModals() {
     // 🔥 FIX: NEVER reinitialize while modals are already initialized!
@@ -868,7 +903,8 @@ export async function initializeModals() {
     const tutorialIntroModal = createTutorialIntroModal();
     const tutorialRevisitModal = createTutorialRevisitModal();
     const welcomeBackModal = createWelcomeBackModal();
-    
+    const aboutModal = createAboutModal();
+
     // Append modals to the permanent overlay instead of body
     const overlay = document.getElementById('permanentOverlay');
     overlay.appendChild(welcomeModal);
@@ -884,7 +920,8 @@ export async function initializeModals() {
     overlay.appendChild(tutorialIntroModal);
     overlay.appendChild(tutorialRevisitModal);
     overlay.appendChild(welcomeBackModal);
-    
+    overlay.appendChild(aboutModal);
+
     // Pre-populate participant ID from URL (Qualtrics) or localStorage
     // BUT NOT in STUDY_CLEAN mode (always start fresh)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;

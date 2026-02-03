@@ -248,7 +248,8 @@ class ModalManager {
             'endModal',
             'beginAnalysisModal',
             'missingStudyIdModal',
-            'completeConfirmationModal'
+            'completeConfirmationModal',
+            'aboutModal'
         ];
         
         allModalIds.forEach(modalId => {

@@ -15,6 +15,7 @@ import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from '.
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
+import { modalManager } from './modal-manager.js';
 import { initErrorReporter } from './error-reporter.js';
 import { initSilentErrorReporter } from './silent-error-reporter.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate, setMinFreqMultiplier, getMinFreqMultiplier } from './spectrogram-axis-renderer.js';
@@ -2289,6 +2290,27 @@ async function initializeMainApp() {
         });
     }
     
+    // About info button click handler
+    const aboutInfoBtn = document.getElementById('aboutInfoBtn');
+    if (aboutInfoBtn) {
+        aboutInfoBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            await modalManager.openModal('aboutModal');
+        });
+
+        // Wire up close button inside the about modal
+        const aboutModal = document.getElementById('aboutModal');
+        if (aboutModal) {
+            const aboutCloseBtn = aboutModal.querySelector('.modal-close');
+            if (aboutCloseBtn) {
+                aboutCloseBtn.addEventListener('click', () => {
+                    modalManager.closeModal('aboutModal');
+                });
+            }
+        }
+    }
+
     // Set up component selector listener
     const { setupComponentSelectorListener } = await import('./component-selector.js');
     setupComponentSelectorListener();
