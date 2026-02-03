@@ -29,6 +29,42 @@
     </style>
 </head>
 <body>
+    <!-- Mobile warning overlay - checked once on load -->
+    <div id="mobileOverlay" class="mobile-overlay">
+        <div class="mobile-overlay-particles">
+            <div class="particle p1"></div>
+            <div class="particle p2"></div>
+            <div class="particle p3"></div>
+            <div class="particle p4"></div>
+            <div class="particle p5"></div>
+            <div class="particle p6"></div>
+            <div class="particle p7"></div>
+            <div class="particle p8"></div>
+            <div class="particle p9"></div>
+            <div class="particle p10"></div>
+            <div class="particle p11"></div>
+            <div class="particle p12"></div>
+            <div class="particle p13"></div>
+            <div class="particle p14"></div>
+        </div>
+        <h1 class="mobile-overlay-title">Space Weather Audification Portal</h1>
+        <div class="mobile-overlay-content">
+            <h2>Best experienced on desktop</h2>
+            <button id="mobileOverlayContinue" type="button" class="mobile-overlay-btn">Preview on mobile &#8594;</button>
+        </div>
+    </div>
+    <script>
+        // Check once on load - show overlay only on small screens
+        (function() {
+            var overlay = document.getElementById('mobileOverlay');
+            if (window.innerWidth <= 768) {
+                overlay.style.display = 'flex';
+            }
+            document.getElementById('mobileOverlayContinue').addEventListener('click', function() {
+                overlay.style.display = 'none';
+            });
+        })();
+    </script>
     <div class="container">
         <div class="top-header-bar" style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001;">
             <div id="modeSelectorContainer" style="flex: 1; display: flex; align-items: center; gap: 8px; visibility: hidden; opacity: 0; transition: opacity 0.3s;">

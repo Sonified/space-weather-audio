@@ -30,6 +30,128 @@ html {
     background: #000000;
 }
 
+/* Mobile warning overlay - JS controls visibility on load */
+.mobile-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(ellipse at 20% 80%, rgba(80, 15, 10, 0.35) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(70, 15, 10, 0.25) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(40, 8, 5, 0.4) 0%, transparent 70%),
+                linear-gradient(135deg, #000000 0%, #0a0205 30%, #050205 60%, #000000 100%);
+    z-index: 10000;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px;
+    overflow: hidden;
+}
+
+/* Floating particles */
+.mobile-overlay-particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+.particle {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0;
+    animation: particleDrift linear infinite;
+}
+
+.p1 { width: 5px; height: 5px; background: rgba(255, 120, 80, 0.7); top: 15%; left: 10%; animation-duration: 18s; animation-delay: 0s; }
+.p2 { width: 3px; height: 3px; background: rgba(200, 80, 120, 0.6); top: 70%; left: 85%; animation-duration: 22s; animation-delay: -4s; }
+.p3 { width: 6px; height: 6px; background: rgba(255, 90, 60, 0.5); top: 40%; left: 50%; animation-duration: 25s; animation-delay: -8s; }
+.p4 { width: 3px; height: 3px; background: rgba(180, 100, 160, 0.6); top: 85%; left: 30%; animation-duration: 20s; animation-delay: -2s; }
+.p5 { width: 5px; height: 5px; background: rgba(255, 150, 100, 0.5); top: 25%; left: 75%; animation-duration: 24s; animation-delay: -10s; }
+.p6 { width: 3px; height: 3px; background: rgba(220, 70, 90, 0.6); top: 55%; left: 15%; animation-duration: 19s; animation-delay: -6s; }
+.p7 { width: 5px; height: 5px; background: rgba(160, 80, 140, 0.5); top: 10%; left: 60%; animation-duration: 23s; animation-delay: -14s; }
+.p8 { width: 3px; height: 3px; background: rgba(255, 100, 70, 0.7); top: 65%; left: 45%; animation-duration: 21s; animation-delay: -12s; }
+.p9 { width: 4px; height: 4px; background: rgba(240, 90, 80, 0.6); top: 30%; left: 90%; animation-duration: 20s; animation-delay: -3s; }
+.p10 { width: 5px; height: 5px; background: rgba(180, 60, 100, 0.5); top: 90%; left: 60%; animation-duration: 26s; animation-delay: -7s; }
+.p11 { width: 3px; height: 3px; background: rgba(255, 130, 90, 0.6); top: 50%; left: 5%; animation-duration: 17s; animation-delay: -11s; }
+.p12 { width: 5px; height: 5px; background: rgba(200, 70, 110, 0.5); top: 5%; left: 40%; animation-duration: 23s; animation-delay: -16s; }
+.p13 { width: 3px; height: 3px; background: rgba(255, 110, 60, 0.7); top: 75%; left: 70%; animation-duration: 19s; animation-delay: -5s; }
+.p14 { width: 5px; height: 5px; background: rgba(170, 90, 130, 0.5); top: 45%; left: 25%; animation-duration: 22s; animation-delay: -9s; }
+
+@keyframes particleDrift {
+    0% { transform: translate(0, 0); opacity: 0; }
+    10% { opacity: 1; }
+    50% { opacity: 0.6; }
+    90% { opacity: 1; }
+    100% { transform: translate(calc(40vw * var(--dx, 1)), calc(30vh * var(--dy, -1))); opacity: 0; }
+}
+
+.p1 { --dx: 1; --dy: -1; }
+.p2 { --dx: -1; --dy: 1; }
+.p3 { --dx: -0.5; --dy: -0.8; }
+.p4 { --dx: 1; --dy: -0.6; }
+.p5 { --dx: -0.8; --dy: 1; }
+.p6 { --dx: 0.7; --dy: 0.9; }
+.p7 { --dx: -1; --dy: -0.5; }
+.p8 { --dx: 0.6; --dy: -1; }
+.p9 { --dx: -0.9; --dy: -0.7; }
+.p10 { --dx: 0.4; --dy: -1; }
+.p11 { --dx: 1; --dy: 0.5; }
+.p12 { --dx: -0.6; --dy: 1; }
+.p13 { --dx: -0.8; --dy: -0.4; }
+.p14 { --dx: 0.9; --dy: 0.7; }
+
+.mobile-overlay-title {
+    color: #fff;
+    font-size: 1.5em;
+    font-weight: bold;
+    margin: 0 0 30px 0;
+    opacity: 0.88;
+    text-align: center;
+    padding: 0 20px;
+    position: relative;
+    z-index: 1;
+}
+
+.mobile-overlay-content {
+    text-align: center;
+    max-width: 360px;
+    position: relative;
+    z-index: 1;
+}
+
+.mobile-overlay-content h2 {
+    color: #ccc;
+    font-size: 16px;
+    font-weight: 500;
+    margin: 0 0 14px 0;
+}
+
+.mobile-overlay-btn {
+    margin-top: 28px;
+    padding: 14px 36px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #aaa;
+    background: transparent;
+    border: 1px solid #666;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 0.1s, border-color 0.1s;
+}
+
+.mobile-overlay-btn:hover:not(:disabled) {
+    color: #ddd;
+    border-color: #999;
+    background: linear-gradient(135deg, rgba(120, 30, 20, 0.6) 0%, rgba(80, 15, 10, 0.6) 100%);
+    transform: none;
+    box-shadow: none;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background: linear-gradient(135deg, #000000 0%, #050510 40%, #0a0515 100%);
