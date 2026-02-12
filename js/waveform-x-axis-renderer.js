@@ -21,6 +21,7 @@ let zoomTransitionDuration = 500; // 500ms for snappy zoom transitions
 let oldTimeRange = null; // { startTime, endTime }
 let zoomTransitionRAF = null;
 let isZoomingToRegion = false; // Track if we're zooming TO a region (true) or FROM a region (false)
+let zoomTransitionCleanupTimeout = null; // Safety timeout — must be cancelled on new transition
 
 // Track maximum canvas width for responsive tick spacing
 let maxCanvasWidth = null;
@@ -1087,10 +1088,14 @@ export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion 
         // This prevents render conflicts but doesn't interfere with the transition animation
         // cancelActiveRender(); // COMMENTED OUT: Preventing full spectrogram render from completing
         
-        // Cancel any existing transition RAF
+        // Cancel any existing transition RAF and safety timeout
         if (zoomTransitionRAF) {
             cancelAnimationFrame(zoomTransitionRAF);
             zoomTransitionRAF = null;
+        }
+        if (zoomTransitionCleanupTimeout) {
+            clearTimeout(zoomTransitionCleanupTimeout);
+            zoomTransitionCleanupTimeout = null;
         }
 
         // Store old time range - we'll interpolate between old and new positions
@@ -1108,7 +1113,9 @@ export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion 
 
         // 🔥 SAFETY: Set a timeout to force cleanup if RAF loop doesn't complete
         // This prevents infinite loops if something goes wrong
-        const cleanupTimeout = setTimeout(() => {
+        // MUST be tracked so it can be cancelled when a new transition starts mid-flight
+        zoomTransitionCleanupTimeout = setTimeout(() => {
+            zoomTransitionCleanupTimeout = null;
             // Only force cleanup if transition is still in progress
             if (zoomTransitionInProgress) {
                 console.warn(`⚠️ Zoom transition timeout: forcing cleanup after ${zoomTransitionDuration}ms`);
@@ -1121,10 +1128,6 @@ export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion 
             }
             resolve();
         }, zoomTransitionDuration + 100); // Add small buffer beyond expected duration
-        
-        // 🔥 Store timeout ID so we can cancel it if transition completes early
-        // (The RAF loop will complete the transition, so this is just a safety net)
-        // Note: We don't need to track this timeout ID since it's just a safety net
     });
 }
 
