@@ -1044,7 +1044,7 @@ export function clearCachedZoomedSpectrogram() {
     if (regionMagnitudeTexture) {
         regionMagnitudeTexture.dispose();
         regionMagnitudeTexture = null;
-        console.log('Cleared region magnitude texture');
+        // Region magnitude texture cleared
     }
 }
 
@@ -1258,6 +1258,13 @@ function updateSpectrogramOverlay(progress) {
         createSpectrogramOverlay();
     }
     if (!spectrogramOverlay) return;
+
+    // If zooming TO a region (including region-to-region), overlay should stay transparent.
+    // The overlay only dims when zooming OUT from a region to full view.
+    if (getZoomDirection() && isZoomTransitionInProgress()) {
+        spectrogramOverlay.style.opacity = '0';
+        return;
+    }
 
     const opacityProgress = typeof progress === 'number' ? progress : getRegionOpacityProgress();
     const overlayOpacity = 1.0 - opacityProgress;

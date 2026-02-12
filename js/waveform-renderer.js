@@ -287,8 +287,13 @@ function createWaveformOverlay(waveformCanvas) {
 /**
  * Upload audio samples to GPU texture
  */
+let wfLastUploadedSamples = null; // Track last uploaded array to skip redundant uploads
+
 export function uploadWaveformSamples(samples) {
     if (!samples || samples.length === 0) return;
+
+    // Skip re-upload if the same sample array is already on the GPU
+    if (samples === wfLastUploadedSamples && wfSampleTexture) return;
 
     initWaveformThreeScene();
     if (!wfMaterial) return;
@@ -316,6 +321,7 @@ export function uploadWaveformSamples(samples) {
     wfMaterial.uniforms.uTextureWidth.value = parseFloat(wfTextureWidth);
     wfMaterial.uniforms.uTextureHeight.value = parseFloat(wfTextureHeight);
 
+    wfLastUploadedSamples = samples;
     console.log(`Waveform samples uploaded to GPU: ${wfTotalSamples.toLocaleString()} samples (${wfTextureWidth}x${wfTextureHeight} texture)`);
 }
 
@@ -417,6 +423,7 @@ export function clearWaveformRenderer() {
     wfTextureHeight = 0;
     wfCachedWidth = 0;
     wfCachedHeight = 0;
+    wfLastUploadedSamples = null;
     // Null renderer so initWaveformThreeScene can re-create on next load
     wfRenderer = null;
 }

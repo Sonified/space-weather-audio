@@ -14,11 +14,11 @@
 
 import * as State from './audio-state.js';
 import { isTouchDevice, isMobileScreen } from './audio-state.js';
-import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from './waveform-renderer.js';
+import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveformFromMinMax } from './waveform-renderer.js';
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
-import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender, clearSmartRenderBounds, getInfiniteCanvasStatus, getCachedFullStatus, activateRegionTexture } from './spectrogram-three-renderer.js';
+import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender, clearSmartRenderBounds, activateRegionTexture } from './spectrogram-three-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange, drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
@@ -1499,17 +1499,7 @@ export function handleWaveformClick(event, canvas) {
  * Stop frequency selection mode
  */
 export function stopFrequencySelection() {
-    // 🔍 DEBUG: Log state before stopping selection
-    console.log('🔴 [DEBUG] STOP_FREQUENCY_SELECTION CALLED:', {
-        wasSelectingFrequency: isSelectingFrequency,
-        hadCurrentSelection: !!currentFrequencySelection,
-        currentSelection: currentFrequencySelection,
-        documentHasFocus: document.hasFocus(),
-        windowHasFocus: document.visibilityState === 'visible'
-    });
-    
     if (!isSelectingFrequency) {
-        console.log('🔴 [DEBUG] Not in frequency selection mode - nothing to stop');
         return;
     }
     
@@ -1600,17 +1590,6 @@ function collapseAllRegions() {
  * Start frequency selection mode for a specific feature
  */
 export function startFrequencySelection(regionIndex, featureIndex) {
-    // 🔍 DEBUG: Log state before starting selection
-    console.log('🟠 [DEBUG] START_FREQUENCY_SELECTION CALLED:', {
-        regionIndex,
-        featureIndex,
-        wasSelectingFrequency: isSelectingFrequency,
-        hadCurrentSelection: !!currentFrequencySelection,
-        documentHasFocus: document.hasFocus(),
-        windowHasFocus: document.visibilityState === 'visible',
-        isInRegion: zoomState.isInRegion()
-    });
-    
     // Prevent feature selection when zoomed out
     if (!zoomState.isInRegion()) {
         console.warn('⚠️ Cannot start feature selection: must be zoomed into a region');
@@ -1628,11 +1607,6 @@ export function startFrequencySelection(regionIndex, featureIndex) {
     
     isSelectingFrequency = true;
     currentFrequencySelection = { regionIndex, featureIndex };
-    
-    console.log('🟠 [DEBUG] Frequency selection started:', {
-        isSelectingFrequency,
-        currentFrequencySelection
-    });
     
     // Update button state
     const button = document.getElementById(`select-btn-${regionIndex}-${featureIndex}`);
@@ -3568,8 +3542,8 @@ export function zoomToRegion(regionIndex) {
         // 🎯 CRITICAL: Redraw x-axis so tick density updates for the new region!
         drawWaveformXAxis();
 
-        // Rebuild waveform (fast)
-        drawWaveform();
+        // Rebuild waveform viewport (GPU data already uploaded — just re-render)
+        drawWaveformFromMinMax();
         
         // Wait for high-res spectrogram if needed, then crossfade
         // 🔥 PROTECTION: Only update viewport if we're still in the same region (not cancelled)
@@ -3714,12 +3688,6 @@ export function zoomToFull() {
     // 💾 Cache the zoomed spectrogram BEFORE resetting (so we can crossfade it)
     cacheZoomedSpectrogram();
 
-    // 🔍 DIAGNOSTIC: Log canvas states BEFORE zoom-out starts
-    console.log(`🔍 ZOOM OUT START - Canvas states:`, {
-        infiniteCanvas: getInfiniteCanvasStatus ? getInfiniteCanvasStatus() : 'NO STATUS FUNCTION',
-        cachedFull: getCachedFullStatus ? getCachedFullStatus() : 'NO STATUS FUNCTION'
-    });
-
     // 🙏 Timestamps as source of truth: Return viewport to full data range
     // No sample calculations - just restore the eternal timestamp boundaries
     zoomState.setViewportToFull();
@@ -3757,7 +3725,6 @@ export function zoomToFull() {
     // We already read the current position above, so we're good to start the new transition
     if (shouldCancelActiveRender(null)) {
         // Cancel any active render when zooming to full (regionId is null for full view)
-        console.log('🛑 Cancelling active render when zooming to full view...');
         cancelActiveRender();
     }
     
@@ -3823,8 +3790,7 @@ export function zoomToFull() {
         // Clear cached full waveform after transition (no longer needed)
         State.setCachedFullWaveformCanvas(null);
         
-        // 🔍 Diagnostic: Track zoom out complete
-        console.log('✅ ZOOM OUT complete');
+        // Zoom out complete
 
         // Update status text to guide user
         if (!isTutorialActive()) {

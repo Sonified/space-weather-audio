@@ -29,6 +29,13 @@ let lastFadeUpdateTime = 0; // Track last fade update for delta-time calculation
 let glowFadeUpDuration = 500; // Fade in duration (randomized on state toggle)
 let glowFadeDownDuration = 500; // Fade out duration (randomized on state toggle)
 
+// 🔥 GLOW THROTTLE: DOM box-shadow writes are expensive — throttle to ~10fps
+let lastGlowRenderTime = 0;
+const GLOW_RENDER_INTERVAL = 100; // ms between DOM updates (~10fps)
+let cachedVisualizationPanel = null; // Cache querySelector result
+let glowIsSettled = false; // True when fadeMultiplier is 0 and stable — skip all glow work
+let loopRunning = false; // True when RAF loop is active — stopped when fully idle
+
 /**
  * Show the oscilloscope panel (positioned in the bar below spectrogram)
  */
@@ -107,128 +114,100 @@ function analyzeLowFrequency(samples) {
  * Uses multiple sine waves to create variable, flame-like intensity
  */
 function updatePanelGlow() {
-    // Get visualization panel (main panel only)
-    const visualizationPanel = document.querySelector('.panel-visualization');
-    
-    if (!visualizationPanel) return;
-    
-    // Get current time for sinusoidal variations
+    // Cache panel element (avoid querySelector every frame)
+    if (!cachedVisualizationPanel) {
+        cachedVisualizationPanel = document.querySelector('.panel-visualization');
+    }
+    if (!cachedVisualizationPanel) return;
+
     const now = performance.now();
-    
-    // Check if audio has stopped (no samples for 200ms)
+
+    // ── Fade multiplier update (cheap math, runs every frame) ──
     const timeSinceAudio = lastAudioTime === 0 ? Infinity : now - lastAudioTime;
-    
-    // Frame-rate independent fade: uses randomized fade durations
+
     if (lastFadeUpdateTime === 0) {
-        lastFadeUpdateTime = now; // Initialize on first frame
+        lastFadeUpdateTime = now;
     }
     const deltaTime = now - lastFadeUpdateTime;
     lastFadeUpdateTime = now;
-    
+
+    const prevFade = fadeMultiplier;
     if (timeSinceAudio > 200) {
-        // Fade out gradually (frame-rate independent) - uses randomized fade down duration
-        const fadeRate = deltaTime / glowFadeDownDuration; // Fraction to change per millisecond
+        const fadeRate = deltaTime / glowFadeDownDuration;
         fadeMultiplier = Math.max(0, fadeMultiplier - fadeRate);
     } else {
-        // Fade in gradually (frame-rate independent) - uses randomized fade up duration
-        const fadeRate = deltaTime / glowFadeUpDuration; // Fraction to change per millisecond
+        const fadeRate = deltaTime / glowFadeUpDuration;
         fadeMultiplier = Math.min(1, fadeMultiplier + fadeRate);
     }
-    
-    // Base intensity from audio amplitude - reduced for less prominent flames
-    let baseIntensity = Math.min(1, lowFreqAmplitude * 3.5) * fadeMultiplier;
-    
-    // 🔥 ERROR MODE: Dial flame effect way up!
+
     if (errorModeActive) {
-        baseIntensity = Math.min(1, lowFreqAmplitude * 8); // Much stronger amplification
-        fadeMultiplier = 1.0; // Keep it at full intensity
+        fadeMultiplier = 1.0;
     }
-    
-    // Create variable flame-like intensity using multiple sine waves as multipliers
-    // Different frequencies and phases create organic, heat-like variations
-    const time = now / 1000; // Time in seconds
-    
-    // Multiple sine waves at different frequencies (heat waves - further reduced amplitudes for smoother flames)
-    // These will multiply the base intensity to create variation
-    const wave1 = Math.sin(time * 4.2) * 0.12;      // Primary wave (~4.2 Hz) - further reduced amplitude
-    const wave2 = Math.sin(time * 6.8 + Math.PI / 3) * 0.1;  // Medium wave (~6.8 Hz) - further reduced amplitude
-    const wave3 = Math.sin(time * 10.2 + Math.PI / 2) * 0.08;  // Faster wave (~10.2 Hz) - further reduced amplitude
-    const wave4 = Math.sin(time * 15.5 + Math.PI) * 0.06;      // Fast wave (~15.5 Hz) - further reduced amplitude
-    
-    // Combine waves to create a multiplier (centered around 1.0, varying above/below)
-    // Sum ranges from ~-0.6 to ~0.6, so we add 1.0 to center it around 1.0
-    const waveMultiplier = 1.0 + (wave1 + wave2 + wave3 + wave4); // Ranges from ~0.4 to ~1.6
-    
-    // Apply multiplier to base intensity (this creates rising and falling like heat)
-    // Clamp the multiplier to even tighter bounds (0.92 to 1.15) - smoother, less jumpy variation
+
+    // ── Settled check: if fadeMultiplier is 0 and hasn't changed, skip DOM work ──
+    if (fadeMultiplier === 0 && prevFade === 0 && !errorModeActive) {
+        if (glowIsSettled) return; // Already wrote the settled shadow, nothing to do
+        glowIsSettled = true; // Will write one final shadow below, then stop
+    } else {
+        glowIsSettled = false;
+    }
+
+    // ── Throttle: only update DOM at ~10fps (unless settling) ──
+    if (!glowIsSettled && (now - lastGlowRenderTime) < GLOW_RENDER_INTERVAL) {
+        return;
+    }
+    lastGlowRenderTime = now;
+
+    // ── Compute glow intensity ──
+    let baseIntensity = Math.min(1, lowFreqAmplitude * 3.5) * fadeMultiplier;
+    if (errorModeActive) {
+        baseIntensity = Math.min(1, lowFreqAmplitude * 8);
+    }
+
+    // Sine wave flame variation
+    const time = now / 1000;
+    const wave1 = Math.sin(time * 4.2) * 0.12;
+    const wave2 = Math.sin(time * 6.8 + Math.PI / 3) * 0.1;
+    const wave3 = Math.sin(time * 10.2 + Math.PI / 2) * 0.08;
+    const wave4 = Math.sin(time * 15.5 + Math.PI) * 0.06;
+    const waveMultiplier = 1.0 + wave1 + wave2 + wave3 + wave4;
     const clampedMultiplier = Math.max(0.92, Math.min(1.15, waveMultiplier));
-    let intensity = baseIntensity * clampedMultiplier;
-    intensity = Math.max(0, Math.min(1, intensity)); // Clamp final intensity to 0-1
-    
-    const glowOpacity = errorModeActive 
-        ? intensity * 0.18  // Max 18% opacity when error (reduced 10%)
-        : intensity * 0.15; // Max 15% opacity normally (reduced for less prominent)
-    const glowBlur = errorModeActive
-        ? 30 + (intensity * 60)  // 30-90px blur when error
-        : 20 + (intensity * 50);  // 20-70px blur normally (reduced for less prominent)
-    const glowSpread = errorModeActive
-        ? intensity * 30  // 0-30px spread when error
-        : 12 + (intensity * 5); // 12-17px spread normally (reduced for less prominent)
-    
-    // 🎨 Get colors from current colormap (use appropriate intensity for flames)
+    let intensity = Math.max(0, Math.min(1, baseIntensity * clampedMultiplier));
+
+    const glowOpacity = errorModeActive ? intensity * 0.18 : intensity * 0.15;
+    const glowBlur = errorModeActive ? 30 + intensity * 60 : 20 + intensity * 50;
+    const glowSpread = errorModeActive ? intensity * 30 : 12 + intensity * 5;
+
+    // 🎨 Colormap colors
     const colorLUT = getColorLUT();
     const currentMap = getCurrentColormap();
-    // For Solar/Inferno, use orange/red range (lower indices) instead of yellow
-    // For other colormaps, use the bright end (high indices)
     let colorIndex;
     if (currentMap === 'solar') {
-        colorIndex = Math.floor(100 + intensity * 80); // 100-180 range (orange/red, not yellow)
+        colorIndex = Math.floor(100 + intensity * 80);
     } else if (currentMap === 'inferno') {
-        colorIndex = Math.floor(140 + intensity * 60); // 140-200 range (deep orange, not yellow)
+        colorIndex = Math.floor(140 + intensity * 60);
     } else {
-        colorIndex = Math.floor(180 + intensity * 75); // 180-255 range (bright end)
+        colorIndex = Math.floor(180 + intensity * 75);
     }
     const red = colorLUT[colorIndex * 3];
     const green = colorLUT[colorIndex * 3 + 1];
     const blue = colorLUT[colorIndex * 3 + 2];
 
-    // ===== AMBIENT/STATIC GLOW PARAMETERS (close to original) =====
-    // Glow LOW (at rest/paused) - ALWAYS VISIBLE
-    const minGlowOpacity = 0.20;   // 20% opacity minimum (was 18%)
-    const minBlurScale = 0.32;      // 32% blur size (was 30%)
+    // Ambient/static glow parameters
+    const minGlowOpacity = 0.20;
+    const minBlurScale = 0.32;
+    const maxGlowOpacity = 0.30;
+    const maxBlurScale = 0.35;
 
-    // Glow HIGH (when playing) - FADES UP (not expanding)
-    const maxGlowOpacity = 0.30;    // 30% opacity maximum (was 28%)
-    const maxBlurScale = 0.35;      // 35% blur size (was 32%)
-
-    // Fade time: Randomized between 400ms-3000ms on each state toggle (separate for fade up/down)
-
-    // Calculate actual glow based on fadeMultiplier (0 = paused/minimum, 1 = playing/maximum)
     const glowFactor = minGlowOpacity + (maxGlowOpacity - minGlowOpacity) * fadeMultiplier;
     const blurFactor = minBlurScale + (maxBlurScale - minBlurScale) * fadeMultiplier;
+    const staticGlowMultiplier = 2.2;
+    const ambientBlurMultiplier = 6.5;
 
-    // 🔥 STATIC GLOW INTENSITY MULTIPLIER (close to original)
-    const staticGlowMultiplier = 2.2; // Was 2, slightly up
+    // Build shadow string and write to DOM (the expensive part — now throttled to ~10fps)
+    const fullShadow = `0 0 ${(80 * blurFactor * ambientBlurMultiplier).toFixed(0)}px ${(15 * blurFactor * ambientBlurMultiplier).toFixed(0)}px rgba(${red},${green},${blue},${Math.min(1, 0.35 * glowFactor * staticGlowMultiplier).toFixed(3)}),0 0 ${(glowBlur * 1.3).toFixed(0)}px ${(glowSpread * 1.3).toFixed(0)}px rgba(${red},${green},${blue},${(glowOpacity * 1.2).toFixed(3)}),0 0 ${(glowBlur * 2).toFixed(0)}px ${(glowSpread * 2).toFixed(0)}px rgba(${red},${green},${blue},${(glowOpacity * 0.6).toFixed(3)}),0 1px 3px rgba(0,0,0,${(0.05 + 0.05 * glowFactor).toFixed(3)}),inset 0 1px 0 rgba(255,255,255,${(0.3 + 0.3 * glowFactor).toFixed(3)})`;
 
-    // 🔥 AMBIENT GLOW: Blur multiplier for ambient glow (close to original)
-    const ambientBlurMultiplier = 6.5; // Was 6, slightly up
-
-    // Single smooth ambient glow using colormap colors
-    const staticGlow = `
-        0 0 ${80 * blurFactor * ambientBlurMultiplier}px ${15 * blurFactor * ambientBlurMultiplier}px rgba(${red}, ${green}, ${blue}, ${Math.min(1, 0.35 * glowFactor * staticGlowMultiplier)})
-    `;
-
-    // Combine static glow + animated flame glow + panel styling
-    const fullShadow = `
-        ${staticGlow},
-        0 0 ${glowBlur * 1.3}px ${glowSpread * 1.3}px rgba(${red}, ${green}, ${blue}, ${glowOpacity * 1.2}),
-        0 0 ${glowBlur * 2}px ${glowSpread * 2}px rgba(${red}, ${green}, ${blue}, ${glowOpacity * 0.6}),
-        0 1px 3px rgba(0, 0, 0, ${0.05 + 0.05 * glowFactor}),
-        inset 0 1px 0 rgba(255, 255, 255, ${0.3 + 0.3 * glowFactor})
-    `;
-    
-    // Apply complete shadow directly (bypassing CSS)
-    visualizationPanel.style.boxShadow = fullShadow;
+    cachedVisualizationPanel.style.boxShadow = fullShadow;
 }
 
 /**
@@ -252,10 +231,12 @@ export function setPlayingState(isPlaying) {
  */
 export function addOscilloscopeData(samples) {
     if (!isInitialized || !samples || samples.length === 0) return;
-    
+
     // Only update lastAudioTime when actually playing (not when paused/outputting silence)
     if (isCurrentlyPlaying) {
         lastAudioTime = performance.now();
+        // Wake the render loop if it stopped itself during idle
+        if (!loopRunning) startRendering();
     }
     
     // Analyze low frequency amplitude
@@ -275,19 +256,22 @@ export function addOscilloscopeData(samples) {
  */
 function render() {
     if (!ctx || !canvas) return;
-    
-    // 🔥 Update panel glow every frame (sine waves need to run continuously)
-    // Note: updatePanelGlow() also handles fadeMultiplier updates
+
+    // Update glow (throttled internally to ~10fps for DOM writes)
     updatePanelGlow();
-    
+
+    // Skip oscilloscope canvas drawing when fully faded — waveform is invisible
+    if (fadeMultiplier === 0 && !errorModeActive) {
+        return;
+    }
+
     const width = canvas.width;
     const height = canvas.height;
     const centerY = height / 2;
-    
-    // Clear canvas
+
     ctx.clearRect(0, 0, width, height);
-    
-    // Draw center line (subtle, glowing) - fade with multiplier
+
+    // Center line
     ctx.strokeStyle = `rgba(255, 150, 120, ${0.15 * fadeMultiplier})`;
     ctx.lineWidth = 0.5;
     ctx.shadowBlur = 3;
@@ -297,29 +281,23 @@ function render() {
     ctx.lineTo(width, centerY);
     ctx.stroke();
     ctx.shadowBlur = 0;
-    
-    scrollOffset = (scrollOffset + 2) % audioBuffer.length; // Fast scroll
-    
+
+    scrollOffset = (scrollOffset + 2) % audioBuffer.length;
+
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    
-    // Draw single clean waveform
+
     const numSamples = 1024;
     const samplesPerPixel = width / numSamples;
 
     ctx.beginPath();
 
     for (let i = 0; i < numSamples; i++) {
-        // Read from circular buffer
         const bufferPos = (bufferIndex - scrollOffset - i + audioBuffer.length * 2) % audioBuffer.length;
         const sample = audioBuffer[bufferPos];
-
-        // Map sample index to x position (right to left)
         const x = width - (i * samplesPerPixel);
-
-        // Scale to canvas height with amplification (2x) and y scaling
-        const amplifiedSample = sample * 2; // Amplify signal by 2x
-        const y = centerY - (amplifiedSample * centerY * 1.4); // 140% of height for more y-zoom
+        const amplifiedSample = sample * 2;
+        const y = centerY - (amplifiedSample * centerY * 1.4);
 
         if (i === 0) {
             ctx.moveTo(x, y);
@@ -328,29 +306,35 @@ function render() {
         }
     }
 
-    // Apply fade multiplier
     const fade = fadeMultiplier;
-
-    // Main waveform with glow
     ctx.strokeStyle = `rgba(255, 130, 90, ${0.9 * fade})`;
     ctx.lineWidth = 1.5;
     ctx.shadowBlur = 6;
     ctx.shadowColor = `rgba(255, 100, 70, ${0.6 * fade})`;
     ctx.stroke();
-    
     ctx.shadowBlur = 0;
 }
 
 /**
- * Start the rendering loop
+ * Start the rendering loop (idempotent — safe to call when already running)
  */
 function startRendering() {
+    if (loopRunning) return;
+    loopRunning = true;
+
     function loop() {
         render();
+
+        // Stop the loop entirely when glow is settled and canvas is idle
+        if (glowIsSettled && fadeMultiplier === 0 && !errorModeActive) {
+            loopRunning = false;
+            animationFrameId = null;
+            return;
+        }
         animationFrameId = requestAnimationFrame(loop);
     }
-    
-    loop();
+
+    animationFrameId = requestAnimationFrame(loop);
 }
 
 /**
@@ -395,7 +379,8 @@ export function clearOscilloscope() {
 export function setErrorMode(enabled) {
     errorModeActive = enabled;
     if (enabled) {
-        fadeMultiplier = 1.0; // Keep at full intensity
+        fadeMultiplier = 1.0;
+        if (!loopRunning) startRendering();
         console.log('🔥 Error mode enabled - flame effect dialed way up!');
     }
 }

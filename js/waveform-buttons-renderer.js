@@ -56,7 +56,7 @@ export function positionWaveformButtonsCanvas() {
         opacity: 1;
         visibility: visible;
         background: transparent !important;
-        z-index: 1;
+        z-index: 6;
     `;
 }
 

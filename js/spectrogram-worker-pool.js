@@ -141,7 +141,13 @@ export class SpectrogramWorkerPool {
                 
                 // Resolve promise
                 taskData.resolve(e.data.results);
-                
+
+                // Break closure chain — release references to large audioData buffer
+                taskData.audioData = null;
+                taskData.resolve = null;
+                taskData.onBatchComplete = null;
+                taskData.window = null;
+
                 // Process next queued task if any
                 if (this.taskQueue.length > 0) {
                     const nextTask = this.taskQueue.shift();
