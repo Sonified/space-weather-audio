@@ -11,7 +11,7 @@ import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCan
 import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay, renderRegionsAfterCrossfade } from './region-tracker.js';
 import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
-import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview } from './spectrogram-playhead.js';
+import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview, cleanupPlayheadOverlay } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
 import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 import { isStudyMode } from './master-modes.js';
@@ -41,6 +41,10 @@ let wfOverlayCanvas = null;
 let wfOverlayCtx = null;
 let wfCachedWidth = 0;   // Cached device-pixel dimensions (avoid offsetWidth in render path)
 let wfCachedHeight = 0;
+let wfResizeObserver = null;
+let wfOverlayResizeObserver = null;
+let wfOnContextLost = null;
+let wfOnContextRestored = null;
 
 const wfVertexShader = /* glsl */ `
 varying vec2 vUv;
@@ -174,7 +178,8 @@ function initWaveformThreeScene() {
     createWaveformOverlay(canvas);
 
     // Cache dimensions on resize (avoid offsetWidth reads in render path)
-    const wfResizeObserver = new ResizeObserver(() => {
+    if (wfResizeObserver) wfResizeObserver.disconnect();
+    wfResizeObserver = new ResizeObserver(() => {
         const w = Math.round(canvas.offsetWidth * window.devicePixelRatio);
         const h = Math.round(canvas.offsetHeight * window.devicePixelRatio);
         if (w > 0 && h > 0) {
@@ -185,22 +190,25 @@ function initWaveformThreeScene() {
     wfResizeObserver.observe(canvas);
 
     // WebGL context loss/restore handlers (Chromium can drop contexts under GPU pressure)
-    canvas.addEventListener('webglcontextlost', (e) => {
+    if (wfOnContextLost) canvas.removeEventListener('webglcontextlost', wfOnContextLost);
+    if (wfOnContextRestored) canvas.removeEventListener('webglcontextrestored', wfOnContextRestored);
+
+    wfOnContextLost = (e) => {
         e.preventDefault();
         console.warn('Waveform WebGL context lost — will restore on next render');
-    });
-    canvas.addEventListener('webglcontextrestored', () => {
+    };
+    wfOnContextRestored = () => {
         console.log('Waveform WebGL context restored — re-uploading textures');
-        // Re-upload colormap
         if (wfColormapTexture) wfColormapTexture.dispose();
         wfColormapTexture = buildWaveformColormapTexture();
         if (wfMaterial) wfMaterial.uniforms.uColormap.value = wfColormapTexture;
-        // Re-upload sample data
         if (wfSampleTexture && wfMaterial) {
             wfSampleTexture.needsUpdate = true;
             wfMaterial.uniforms.uSamples.value = wfSampleTexture;
         }
-    });
+    };
+    canvas.addEventListener('webglcontextlost', wfOnContextLost);
+    canvas.addEventListener('webglcontextrestored', wfOnContextRestored);
 
     console.log(`Three.js waveform renderer initialized (${wfCachedWidth}x${wfCachedHeight})`);
 }
@@ -252,7 +260,8 @@ function createWaveformOverlay(waveformCanvas) {
         parent.appendChild(wfOverlayCanvas);
 
         // Keep overlay positioned on resize
-        const resizeObserver = new ResizeObserver(() => {
+        if (wfOverlayResizeObserver) wfOverlayResizeObserver.disconnect();
+        wfOverlayResizeObserver = new ResizeObserver(() => {
             if (wfOverlayCanvas && waveformCanvas) {
                 const cr = waveformCanvas.getBoundingClientRect();
                 const pr = parent.getBoundingClientRect();
@@ -260,11 +269,17 @@ function createWaveformOverlay(waveformCanvas) {
                 wfOverlayCanvas.style.left = (cr.left - pr.left) + 'px';
                 wfOverlayCanvas.style.width = cr.width + 'px';
                 wfOverlayCanvas.style.height = cr.height + 'px';
-                wfOverlayCanvas.width = Math.round(cr.width * window.devicePixelRatio);
-                wfOverlayCanvas.height = Math.round(cr.height * window.devicePixelRatio);
+                const newW = Math.round(cr.width * window.devicePixelRatio);
+                const newH = Math.round(cr.height * window.devicePixelRatio);
+                if (wfOverlayCanvas.width !== newW || wfOverlayCanvas.height !== newH) {
+                    wfOverlayCanvas.width = newW;
+                    wfOverlayCanvas.height = newH;
+                    // Resizing clears the canvas — repaint regions/selection immediately
+                    drawWaveformOverlays();
+                }
             }
         });
-        resizeObserver.observe(waveformCanvas);
+        wfOverlayResizeObserver.observe(waveformCanvas);
     }
     wfOverlayCtx = wfOverlayCanvas.getContext('2d');
 }
@@ -347,6 +362,63 @@ export function rebuildWaveformColormapTexture() {
     if (wfMaterial) {
         wfMaterial.uniforms.uColormap.value = wfColormapTexture;
     }
+}
+
+/**
+ * Dispose all waveform Three.js resources (textures, material, geometry, observers)
+ * Called during dataset switch to prevent memory leaks.
+ */
+export function clearWaveformRenderer() {
+    // Dispose textures
+    if (wfSampleTexture) { wfSampleTexture.dispose(); wfSampleTexture = null; }
+    if (wfColormapTexture) { wfColormapTexture.dispose(); wfColormapTexture = null; }
+
+    // Dispose scene objects
+    if (wfMesh) {
+        wfMesh.geometry.dispose();
+        if (wfScene) wfScene.remove(wfMesh);
+        wfMesh = null;
+    }
+    if (wfMaterial) { wfMaterial.dispose(); wfMaterial = null; }
+
+    // Disconnect observers
+    if (wfResizeObserver) { wfResizeObserver.disconnect(); wfResizeObserver = null; }
+    if (wfOverlayResizeObserver) { wfOverlayResizeObserver.disconnect(); wfOverlayResizeObserver = null; }
+
+    // Remove WebGL context handlers
+    if (wfRenderer && wfOnContextLost) {
+        wfRenderer.domElement.removeEventListener('webglcontextlost', wfOnContextLost);
+        wfRenderer.domElement.removeEventListener('webglcontextrestored', wfOnContextRestored);
+        wfOnContextLost = null;
+        wfOnContextRestored = null;
+    }
+
+    // Remove overlay canvas from DOM
+    if (wfOverlayCanvas) {
+        wfOverlayCanvas.remove();
+        wfOverlayCanvas = null;
+        wfOverlayCtx = null;
+    }
+
+    // Clean up spectrogram playhead overlay (owned by this render cycle)
+    cleanupPlayheadOverlay();
+
+    // Free raw/display waveform data copies (retained on window for de-trend filter)
+    window.rawWaveformData = null;
+    window.displayWaveformData = null;
+
+    // Clear renderer but keep it (shares DOM canvas)
+    if (wfRenderer) wfRenderer.clear();
+
+    wfScene = null;
+    wfCamera = null;
+    wfTotalSamples = 0;
+    wfTextureWidth = 0;
+    wfTextureHeight = 0;
+    wfCachedWidth = 0;
+    wfCachedHeight = 0;
+    // Null renderer so initWaveformThreeScene can re-create on next load
+    wfRenderer = null;
 }
 
 /**

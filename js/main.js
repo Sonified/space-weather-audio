@@ -7,7 +7,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef } from './audio-player.js';
-import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
+import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-three-renderer.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
@@ -649,8 +649,19 @@ export async function startStreaming(event) {
             console.groupCollapsed('🧹 [CLEANUP] Preparing for New Data');
         }
         
-        // Clear complete spectrogram when loading new data
+        // Clear complete spectrogram and waveform renderers when loading new data
         clearCompleteSpectrogram();
+        clearWaveformRenderer();
+
+        // Close old AudioContext to release OS audio threads and internal buffers (~10-50MB)
+        if (State.audioContext) {
+            try { State.audioContext.close(); } catch (e) { /* already closed */ }
+            State.setAudioContext(null);
+        }
+
+        // Clear stale window globals
+        window.playbackDurationSeconds = null;
+        window.streamingStartTime = null;
         
         // 🔧 FIX: Reset zoom state to full view when loading new data
         if (zoomState.isInitialized()) {

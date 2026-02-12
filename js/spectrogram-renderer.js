@@ -116,11 +116,12 @@ export function removeCanvasFeatureBox(regionIndex, featureIndex) {
  */
 export function clearAllCanvasFeatureBoxes() {
     completedSelectionBoxes = [];
-    
+    annotationTimingState.clear();
+
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
     }
-    
+
     console.log('🧹 Cleared all canvas feature boxes');
 }
 
