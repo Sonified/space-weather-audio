@@ -1756,6 +1756,11 @@ export function changeWaveformFilter() {
     
     document.getElementById('waveformFilterValue').textContent = `${alpha.toFixed(4)}`;
     
+    // Ensure raw data backup exists (some loading paths don't set it)
+    if (!window.rawWaveformData && State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+        window.rawWaveformData = new Float32Array(State.completeSamplesArray);
+    }
+
     if (window.rawWaveformData && window.rawWaveformData.length > 0) {
         const removeDC = document.getElementById('removeDCOffset').checked;
         
