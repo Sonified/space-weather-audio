@@ -7,14 +7,31 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, startFrequencySelection, zoomToRegion } from './region-tracker.js';
-import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, getSpectrogramViewport, resetSpectrogramState, getInfiniteCanvasStatus, updateElasticFriendInBackground } from './spectrogram-complete-renderer.js';
+import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { animateScaleTransition } from './spectrogram-axis-renderer.js';
-import { startPlaybackIndicator, buildWaveformColorLUT, drawWaveformFromMinMax } from './waveform-renderer.js';
+import { startPlaybackIndicator, buildWaveformColorLUT, drawWaveformFromMinMax, rebuildWaveformColormapTexture } from './waveform-renderer.js';
 import { setColormap, getCurrentColormap, updateAccentColors } from './colormaps.js';
+
+// RAF loop to keep feature boxes in sync with the axis scale transition animation
+let scaleTransitionBoxRAF = null;
+function animateFeatureBoxesDuringScaleTransition() {
+    if (scaleTransitionBoxRAF) cancelAnimationFrame(scaleTransitionBoxRAF);
+    const tick = () => {
+        const { inProgress } = getScaleTransitionState();
+        updateAllFeatureBoxPositions();
+        redrawAllCanvasFeatureBoxes();
+        if (inProgress) {
+            scaleTransitionBoxRAF = requestAnimationFrame(tick);
+        } else {
+            scaleTransitionBoxRAF = null;
+        }
+    };
+    scaleTransitionBoxRAF = requestAnimationFrame(tick);
+}
 
 // Spectrogram selection state (pure canvas - separate overlay layer!)
 let spectrogramSelectionActive = false;
@@ -373,6 +390,10 @@ export function drawSpectrogram() {
     
     const canvas = document.getElementById('spectrogram');
     const ctx = canvas.getContext('2d');
+
+    // If ctx is null, the canvas is owned by Three.js (WebGL) — skip real-time drawing
+    if (!ctx) return;
+
     const width = canvas.width;
     const height = canvas.height;
     
@@ -511,13 +532,17 @@ export async function changeColormap() {
     // Update the colormap (rebuilds spectrogram LUT)
     setColormap(value);
 
+    // Rebuild the GPU colormap texture for Three.js renderer
+    onColormapChanged();
+
     // Update UI accent colors to match colormap
     updateAccentColors();
 
     // Also rebuild the waveform color LUT (brighter version of colormap)
     buildWaveformColorLUT();
 
-    // Redraw waveform with new colors
+    // Rebuild waveform GPU colormap texture and re-render
+    rebuildWaveformColormapTexture();
     drawWaveformFromMinMax();
 
     // Blur dropdown so spacebar can toggle play/pause
@@ -578,6 +603,10 @@ export async function changeFftSize() {
             resetSpectrogramState();
             await renderCompleteSpectrogramForRegion(startSeconds, endSeconds, false);
 
+            // Update feature box positions after re-render
+            updateAllFeatureBoxPositions();
+            redrawAllCanvasFeatureBoxes();
+
             // Update the elastic friend in background (for zoom-out)
             console.log(`🏠 Starting background render of full spectrogram for elastic friend...`);
             updateElasticFriendInBackground();
@@ -585,6 +614,10 @@ export async function changeFftSize() {
             // Full view: clear and re-render
             clearCompleteSpectrogram();
             await renderCompleteSpectrogram();
+
+            // Update feature box positions after re-render
+            updateAllFeatureBoxPositions();
+            redrawAllCanvasFeatureBoxes();
         }
     }
 }
@@ -680,274 +713,52 @@ export async function changeFrequencyScale() {
         
         const canvas = document.getElementById('spectrogram');
         if (canvas) {
-            if (!isStudyMode()) {
-                console.log(`🎨 [spectrogram-renderer.js] changeFrequencyScale: Starting fade animation`);
-            }
-            console.trace('📍 Call stack:');
-            
-            const ctx = canvas.getContext('2d');
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            // 🔧 FIX: Check if we're zoomed into a region - handle with fade animation!
+            // Check if we're zoomed into a region
             if (zoomState.isInitialized() && zoomState.isInRegion()) {
                 const regionRange = zoomState.getRegionRange();
-                console.log(`🔍 Inside region - animating scale transition`);
-                
-                // 🔥 FIX: Convert Date objects to seconds (renderCompleteSpectrogramForRegion expects seconds!)
+
                 const dataStartMs = State.dataStartTime ? State.dataStartTime.getTime() : 0;
                 const startSeconds = (regionRange.startTime.getTime() - dataStartMs) / 1000;
                 const endSeconds = (regionRange.endTime.getTime() - dataStartMs) / 1000;
-                
-                // 🔥 Capture old spectrogram BEFORE re-rendering
-                const oldSpectrogram = document.createElement('canvas');
-                oldSpectrogram.width = width;
-                oldSpectrogram.height = height;
-                oldSpectrogram.getContext('2d').drawImage(canvas, 0, 0);
-                
-                // Re-render region with new frequency scale (in "background") - start immediately!
-                resetSpectrogramState(); // Clear state so it will re-render
-                
-                // Start rendering immediately (don't await - let it run in parallel with axis animation)
-                const spectrogramRenderPromise = renderCompleteSpectrogramForRegion(
-                    startSeconds, 
-                    endSeconds, 
-                    true  // Skip viewport update - we'll fade manually
-                );
-                
-                // Wait for spectrogram to finish rendering (may complete before or after axis animation)
-                await spectrogramRenderPromise;
 
-                console.log('🎨 Spectrogram render complete - getting viewport for crossfade');
+                // Re-render region with new frequency scale (Three.js GPU render)
+                resetSpectrogramState();
+                await renderCompleteSpectrogramForRegion(startSeconds, endSeconds);
 
-                // Get the new spectrogram (without displaying it yet)
                 const playbackRate = State.currentPlaybackRate || 1.0;
-                
-                // 🔥 DIAGNOSTIC: Check infinite canvas status before getting viewport
-                const infiniteCanvasStatus = getInfiniteCanvasStatus();
-                if (!isStudyMode()) {
-                    console.log(`🔍 Infinite canvas status: ${infiniteCanvasStatus}`);
-                }
-                
-                const newSpectrogram = getSpectrogramViewport(playbackRate);
-
-                if (!newSpectrogram) {
-                    console.warn('⚠️ getSpectrogramViewport returned null - falling back to direct viewport update');
-                    // Fallback: just update normally
-                    updateSpectrogramViewport(playbackRate);
-                    if (playbackWasActive) {
-                        startPlaybackIndicator();
-                    }
-                    if (!isStudyMode()) console.log('✅ Region scale transition complete (no fade)');
-                    // 🏠 PROACTIVE FIX: Re-render full spectrogram in background
-                    if (!isStudyMode()) console.log('🏠 Starting background render of full spectrogram for elastic friend...');
-                    updateElasticFriendInBackground();
-                    return;
-                }
-
-                // 🔥 DIAGNOSTIC: Verify the viewport canvas has content (not all black)
-                const testCtx = newSpectrogram.getContext('2d');
-                const imageData = testCtx.getImageData(0, 0, Math.min(100, newSpectrogram.width), Math.min(100, newSpectrogram.height));
-                let hasContent = false;
-                for (let i = 0; i < imageData.data.length; i += 4) {
-                    // Check if pixel is not pure black (allow some tolerance)
-                    if (imageData.data[i] > 5 || imageData.data[i + 1] > 5 || imageData.data[i + 2] > 5) {
-                        hasContent = true;
-                        break;
-                    }
-                }
-                
-                if (!hasContent && !isStudyMode()) {
-                    console.warn('⚠️ getSpectrogramViewport returned canvas with no visible content (all black)');
-                }
-
-                console.log('✅ Got new spectrogram viewport - starting crossfade');
-                
-                // 🎨 Crossfade old → new (300ms)
-                const fadeDuration = 300;
-                const fadeStart = performance.now();
-                
-                const fadeStep = () => {
-                    if (!document.body || !document.body.isConnected) {
-                        return;
-                    }
-                    
-                    const elapsed = performance.now() - fadeStart;
-                    const progress = Math.min(elapsed / fadeDuration, 1.0);
-                    const alpha = 1 - Math.pow(1 - progress, 2); // Ease-out
-                    
-                    // Clear and draw blend
-                    ctx.clearRect(0, 0, width, height);
-                    
-                    // Old fading OUT
-                    ctx.globalAlpha = 1.0 - alpha;
-                    ctx.drawImage(oldSpectrogram, 0, 0);
-                    
-                    // New fading IN
-                    ctx.globalAlpha = alpha;
-                    ctx.drawImage(newSpectrogram, 0, 0);
-                    
-                    // Playhead on top
-                    ctx.globalAlpha = 1.0;
-                    if (State.currentAudioPosition !== null && State.totalAudioDuration > 0) {
-                        // Calculate playhead position relative to region
-                        const regionDuration = endSeconds - startSeconds;
-                        const positionInRegion = State.currentAudioPosition - startSeconds;
-                        const playheadX = (positionInRegion / regionDuration) * width;
-                        
-                        ctx.strokeStyle = '#616161';
-                        ctx.lineWidth = 2;
-                        ctx.beginPath();
-                        ctx.moveTo(playheadX, 0);
-                        ctx.lineTo(playheadX, height);
-                        ctx.stroke();
-                    }
-                    
-                    ctx.globalAlpha = 1.0;
-                    
-                    // Redraw canvas feature boxes during transition (smooth interpolation!)
-                    redrawAllCanvasFeatureBoxes();
-                    
-                    if (progress < 1.0) {
-                        requestAnimationFrame(fadeStep);
-                    } else {
-                        // Fade complete - lock in new spectrogram
-                        updateSpectrogramViewport(playbackRate);
-
-                        // Update feature box positions for new frequency scale
-                        updateAllFeatureBoxPositions();
-                        redrawAllCanvasFeatureBoxes(); // Update canvas boxes too!
-
-                        // Resume playhead
-                        if (playbackWasActive) {
-                            startPlaybackIndicator();
-                        }
-
-                        if (!isStudyMode()) console.log('✅ Region scale transition complete (with fade)');
-
-                        // 🏠 PROACTIVE FIX: Re-render full spectrogram in background
-                        // So elastic friend is ready with new frequency scale when user zooms out
-                        if (!isStudyMode()) console.log('🏠 Starting background render of full spectrogram for elastic friend...');
-                        updateElasticFriendInBackground();
-                    }
-                };
-                
-                fadeStep();
-                return;
-            }
-            
-            // OLD SPECTROGRAM IS ALREADY ON SCREEN - DON'T TOUCH IT!
-            // Reset state flag so we can re-render (but don't clear the canvas!)
-            resetSpectrogramState();
-            
-            // Just render new spectrogram in background (skip viewport update) - start immediately!
-            // This runs in parallel with the axis animation
-            const spectrogramRenderPromise = renderCompleteSpectrogram(true); // Skip viewport update - old stays visible!
-            
-            // Wait for spectrogram to finish rendering (may complete before or after axis animation)
-            await spectrogramRenderPromise;
-            
-            // Get the new spectrogram viewport without updating display canvas
-            // Use statically imported function
-            const playbackRate = State.currentPlaybackRate || 1.0;
-            const newSpectrogram = getSpectrogramViewport(playbackRate);
-            
-            if (!newSpectrogram) {
-                // Fallback: just update normally
                 updateSpectrogramViewport(playbackRate);
-                // Resume playhead if it was active
+                updateAllFeatureBoxPositions();
+                redrawAllCanvasFeatureBoxes();
+
+                // Animate feature boxes in sync with the axis scale transition
+                animateFeatureBoxesDuringScaleTransition();
+
                 if (playbackWasActive) {
                     startPlaybackIndicator();
                 }
+
+                if (!isStudyMode()) console.log('Region scale transition complete');
+                updateElasticFriendInBackground();
                 return;
             }
             
-            // 🔥 Capture old spectrogram for crossfade (BEFORE we start fading)
-            const oldSpectrogram = document.createElement('canvas');
-            oldSpectrogram.width = width;
-            oldSpectrogram.height = height;
-            oldSpectrogram.getContext('2d').drawImage(canvas, 0, 0);
-            
-            // Old spectrogram is STILL visible on display canvas
-            // Now fade in the new one on top (300ms)
-            const fadeDuration = 300;
-            const fadeStart = performance.now();
-            
-            const fadeStep = () => {
-                // console.log(`🎬 [spectrogram-renderer.js] changeFrequencyScale fadeStep: Drawing frame`);
-                // 🔥 FIX: Check document connection before executing RAF callback
-                // This prevents RAF callbacks from retaining references to detached documents
-                if (!document.body || !document.body.isConnected) {
-                    return; // Document is detached, stop the fade animation
-                }
-                
-                const elapsed = performance.now() - fadeStart;
-                const progress = Math.min(elapsed / fadeDuration, 1.0);
-                
-                // Ease-out for smooth fade
-                const alpha = 1 - Math.pow(1 - progress, 2);
-                
-                // 🔥 CLEAR CANVAS - start fresh each frame!
-                ctx.clearRect(0, 0, width, height);
-                
-                // Draw old spectrogram fading OUT
-                ctx.globalAlpha = 1.0 - alpha;
-                ctx.drawImage(oldSpectrogram, 0, 0);
-                
-                // Draw new spectrogram fading IN
-                ctx.globalAlpha = alpha;
-                ctx.drawImage(newSpectrogram, 0, 0);
-                
-                // Draw playhead on top with full opacity
-                ctx.globalAlpha = 1.0;
-                
-                // 🔥 Draw playhead as medium grey during transition (WE control it during fade)
-                if (State.currentAudioPosition !== null && State.totalAudioDuration > 0) {
-                    const playheadX = (State.currentAudioPosition / State.totalAudioDuration) * width;
-                    
-                    ctx.strokeStyle = '#616161'; // A little darker grey
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(playheadX, 0);
-                    ctx.lineTo(playheadX, height);
-                    ctx.stroke();
-                }
-                
-                // Reset alpha after drawing playhead
-                ctx.globalAlpha = 1.0;
-                
-                // Redraw canvas feature boxes during transition (smooth interpolation!)
-                redrawAllCanvasFeatureBoxes();
-                
-                if (progress < 1.0) {
-                    requestAnimationFrame(fadeStep);
-                } else {
-                    // 🔥 FADE COMPLETE - LOCK IN THE NEW SPECTROGRAM!
-                    // This updates cachedSpectrogramCanvas with the new frequency scale
-                    updateSpectrogramViewport(playbackRate);
-
-                    // Update feature box positions for new frequency scale
-                    updateAllFeatureBoxPositions();
-                        redrawAllCanvasFeatureBoxes(); // Update canvas boxes too!
-
-                    // 🔥 RESUME playhead updates!
-                    if (playbackWasActive) {
-                        startPlaybackIndicator();
-                    }
-
-                    console.log('✅ Scale transition complete, cache updated, playhead resumed');
-                }
-            };
-            
-            fadeStep();
-        } else {
-            // Fallback: just re-render without fade
-            clearCompleteSpectrogram();
+            // Re-render full view with new frequency scale (Three.js GPU render)
+            resetSpectrogramState();
             await renderCompleteSpectrogram();
 
-            // Update feature box positions for new frequency scale
+            const playbackRate = State.currentPlaybackRate || 1.0;
+            updateSpectrogramViewport(playbackRate);
             updateAllFeatureBoxPositions();
-            redrawAllCanvasFeatureBoxes(); // Update canvas boxes too!
+            redrawAllCanvasFeatureBoxes();
+
+            // Animate feature boxes in sync with the axis scale transition
+            animateFeatureBoxesDuringScaleTransition();
+
+            if (playbackWasActive) {
+                startPlaybackIndicator();
+            }
+
+            if (!isStudyMode()) console.log('Scale transition complete');
         }
     } else {
         console.log('⚠️ No animation - no rendered spectrogram');

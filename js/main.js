@@ -9,7 +9,7 @@ import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js?v=20251210g';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-complete-renderer.js';
+import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-three-renderer.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
@@ -1550,7 +1550,7 @@ async function initializeMainApp() {
                 localStorage.setItem('minFreqMultiplier', value);
                 // Redraw spectrogram and axis
                 drawFrequencyAxis();
-                import('./spectrogram-complete-renderer.js').then(module => {
+                import('./spectrogram-three-renderer.js').then(module => {
                     // Clear cached spectrogram to force re-render with new minFreq
                     module.resetSpectrogramState();
                     module.renderCompleteSpectrogram();
@@ -1845,12 +1845,10 @@ async function initializeMainApp() {
                             return;
                         }
                         
-                        // Regenerate cache at correct size
+                        // Re-render waveform at correct size
                         if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
-                            if (State.waveformMinMaxData) {
-                                drawWaveformFromMinMax();  // Regenerates cache at correct size
-                                drawWaveformWithSelection();
-                            }
+                            drawWaveformFromMinMax();
+                            drawWaveformWithSelection();
                         }
                         
                         waveformResizeTimer = null;

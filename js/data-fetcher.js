@@ -9,7 +9,7 @@ import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
-import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-complete-renderer.js';
+import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks } from './tutorial.js';
 import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-tracker.js';

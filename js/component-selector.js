@@ -225,68 +225,11 @@ export async function switchComponent(componentIndex) {
             resetSpectrogramState,
             renderCompleteSpectrogram,
             getSpectrogramViewport
-        } = await import('./spectrogram-complete-renderer.js');
+        } = await import('./spectrogram-three-renderer.js');
 
-        const canvas = document.getElementById('spectrogram');
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            const width = canvas.width;
-            const height = canvas.height;
-
-            // Step 1: Capture current spectrogram BEFORE re-rendering
-            const oldSpectrogram = document.createElement('canvas');
-            oldSpectrogram.width = width;
-            oldSpectrogram.height = height;
-            oldSpectrogram.getContext('2d').drawImage(canvas, 0, 0);
-
-            // Step 2: Reset internal state (but NOT the display canvas!)
-            resetSpectrogramState();
-
-            // Step 3: Render new spectrogram in background
-            await renderCompleteSpectrogram();
-
-            // Step 4: Get viewport of new spectrogram for crossfade
-            const playbackRate = State.currentPlaybackRate || 1.0;
-            const newSpectrogram = getSpectrogramViewport(playbackRate);
-
-            if (newSpectrogram) {
-                // Step 5: Animate crossfade (50ms to match audio crossfade)
-                const fadeDuration = 50;
-                const fadeStart = performance.now();
-
-                const fadeStep = () => {
-                    if (!document.body || !document.body.isConnected) {
-                        return;
-                    }
-
-                    const elapsed = performance.now() - fadeStart;
-                    const progress = Math.min(elapsed / fadeDuration, 1.0);
-
-                    // Clear and draw blend
-                    ctx.clearRect(0, 0, width, height);
-
-                    // Old fading OUT
-                    ctx.globalAlpha = 1.0 - progress;
-                    ctx.drawImage(oldSpectrogram, 0, 0);
-
-                    // New fading IN
-                    ctx.globalAlpha = progress;
-                    ctx.drawImage(newSpectrogram, 0, 0);
-
-                    ctx.globalAlpha = 1.0;
-
-                    if (progress < 1.0) {
-                        requestAnimationFrame(fadeStep);
-                    } else {
-                        console.log(`🔄 Spectrogram crossfade complete`);
-                    }
-                };
-
-                fadeStep();
-            } else {
-                console.warn('⚠️ Could not get new spectrogram viewport for crossfade');
-            }
-        }
+        // Reset and re-render with Three.js (GPU render is instant, no crossfade needed)
+        resetSpectrogramState();
+        await renderCompleteSpectrogram();
 
         currentComponentIndex = componentIndex;
         console.log(`✅ Component switched to ${labels[componentIndex]}`);

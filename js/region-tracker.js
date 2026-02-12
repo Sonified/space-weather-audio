@@ -18,7 +18,7 @@ import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveform } from
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
-import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender, clearSmartRenderBounds, getInfiniteCanvasStatus, getCachedFullStatus } from './spectrogram-complete-renderer.js';
+import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender, clearSmartRenderBounds, getInfiniteCanvasStatus, getCachedFullStatus, activateRegionTexture } from './spectrogram-three-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange, drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
@@ -3463,8 +3463,9 @@ export function zoomToRegion(regionIndex) {
         setTimeout(() => resolve(), 50);
     }
     
-    // Immediately redraw regions at new positions
-    drawWaveformWithSelection();
+    // NOTE: Don't draw overlays here — the animation loop (waveform-x-axis-renderer.js)
+    // calls drawWaveformWithSelection() on every frame during the transition.
+    // Drawing here would flash regions at the TARGET position before the animation starts.
 
     State.setSelectionStart(null);
     State.setSelectionEnd(null);
@@ -3535,10 +3536,9 @@ export function zoomToRegion(regionIndex) {
     // console.log('🎬 ⏱️ ZOOM ANIMATION START:', performance.now().toFixed(0) + 'ms');
     animateZoomTransition(oldStartTime, oldEndTime, true).then(() => {
         // console.log('🎬 ⏱️ ZOOM ANIMATION COMPLETE:', performance.now().toFixed(0) + 'ms');
-        
-        // Clear smart render flag when animation completes
-        clearSmartRenderBounds();
-        // console.log('🎯 Cleared smart render bounds after zoom complete');
+
+        // NOTE: Don't clear smart render bounds yet — activateRegionTexture needs them
+        // to calculate the correct viewport within the expanded texture.
         
         // console.log('🔍 ========== ZOOM IN: Animation Complete ==========');
         // console.log('🏛️ Now inside region:', {
@@ -3576,17 +3576,16 @@ export function zoomToRegion(regionIndex) {
         renderPromise.then(() => {
             // Check if we're still zoomed into the same region (render wasn't cancelled)
             if (zoomState.isInRegion() && zoomState.activeRegionId === region.id) {
-                // console.log('🔬 High-res ready - updating viewport');
+                // Switch from full texture to high-res region texture
                 const playbackRate = State.currentPlaybackRate || 1.0;
-                updateSpectrogramViewport(playbackRate);
-                
+                activateRegionTexture(playbackRate);
+                clearSmartRenderBounds();
+
                 // Update feature box positions again after viewport update
                 updateAllFeatureBoxPositions();
-                
-                // 🔍 Diagnostic: Track region zoom complete
-                // console.log('✅ REGION ZOOM IN complete');
             } else {
                 console.log('🛑 Render completed but region changed - skipping viewport update');
+                clearSmartRenderBounds();
             }
         }).catch(err => {
             // Suppress errors from cancelled renders
@@ -3749,18 +3748,9 @@ export function zoomToFull() {
     // We'll clear it AFTER the fade-in completes (in animation completion handler)
     // resetSpectrogramState(); // <-- Moved to after animation
 
-    // 💾 Restore cached full waveform immediately (like spectrogram's elastic friend)
-    // This allows drawInterpolatedWaveform() to stretch it during the transition
-    if (State.cachedFullWaveformCanvas) {
-        // Restore cached full waveform to State.cachedWaveformCanvas
-        // drawInterpolatedWaveform() will use this and stretch it during animation
-        State.setCachedWaveformCanvas(State.cachedFullWaveformCanvas);
-        // console.log('💾 Restored cached full waveform - ready for interpolation');
-    } else {
-        // No cached full waveform - rebuild it (fallback)
-        console.log('⚠️ No cached full waveform - rebuilding');
-        drawWaveform();
-    }
+    // GPU waveform renderer handles zoom-out via viewport uniforms —
+    // no cached canvas restore needed. The animation loop calls
+    // drawInterpolatedWaveform() which sets viewport uniforms and renders each frame.
 
     // 🔥 PROTECTION: Cancel render if needed
     // NOTE: Don't call stopZoomTransition() here - animateZoomTransition() will handle cancelling the RAF
@@ -3812,10 +3802,7 @@ export function zoomToFull() {
         // 🎯 Redraw x-axis so tick density updates for full view
         drawWaveformXAxis();
 
-        // Rebuild waveform to ensure it's up to date (if we used cached version)
-        if (State.cachedFullWaveformCanvas) {
-            drawWaveform();
-        }
+        // GPU waveform renderer is always up to date — no cached canvas rebuild needed
         
         // 🔧 FIX: Restore infinite canvas from elastic friend WITHOUT re-rendering spectrogram!
         // The elastic friend already has the full-view spectrogram at neutral resolution

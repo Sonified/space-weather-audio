@@ -15,7 +15,7 @@ import { updateActiveRegionPlayButton, getActivePlayingRegionIndex, getCurrentRe
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries, isAtBoundaryEnd, getRestartPosition, formatBoundaries } from './playback-boundaries.js';
 import { setPlayingState } from './oscilloscope-renderer.js';
-import { updateSpectrogramViewport } from './spectrogram-complete-renderer.js';
+import { updateSpectrogramViewport } from './spectrogram-three-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 
 // ===== RAF CLEANUP HELPER =====
