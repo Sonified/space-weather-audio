@@ -11,6 +11,7 @@ import { isZoomTransitionInProgress, getInterpolatedTimeRange } from './waveform
 // Overlay canvas for playhead (separate layer - no conflicts!)
 let playheadOverlayCanvas = null;
 let playheadOverlayCtx = null;
+let playheadResizeObserver = null;
 
 // Track last playhead position to avoid unnecessary redraws
 let lastPlayheadX = -1;
@@ -53,13 +54,13 @@ function initPlayheadOverlay() {
     container.appendChild(playheadOverlayCanvas);
     
     // Update overlay size when canvas resizes
-    const resizeObserver = new ResizeObserver(() => {
+    if (playheadResizeObserver) playheadResizeObserver.disconnect();
+    playheadResizeObserver = new ResizeObserver(() => {
         if (playheadOverlayCanvas && canvas) {
             const canvasRect = canvas.getBoundingClientRect();
             const containerRect = container.getBoundingClientRect();
             playheadOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
             playheadOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
-            // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
             if (playheadOverlayCanvas.width !== canvas.width || playheadOverlayCanvas.height !== canvas.height) {
                 playheadOverlayCanvas.width = canvas.width;
                 playheadOverlayCanvas.height = canvas.height;
@@ -68,9 +69,26 @@ function initPlayheadOverlay() {
             playheadOverlayCanvas.style.height = canvas.offsetHeight + 'px';
         }
     });
-    resizeObserver.observe(canvas);
+    playheadResizeObserver.observe(canvas);
     
     // console.log('✅ Created spectrogram playhead overlay canvas');
+}
+
+/**
+ * Clean up playhead overlay resources (observer, canvas, refs)
+ */
+export function cleanupPlayheadOverlay() {
+    if (playheadResizeObserver) {
+        playheadResizeObserver.disconnect();
+        playheadResizeObserver = null;
+    }
+    if (playheadOverlayCanvas) {
+        playheadOverlayCanvas.remove();
+        playheadOverlayCanvas = null;
+        playheadOverlayCtx = null;
+    }
+    lastPlayheadX = -1;
+    lastPreviewX = -1;
 }
 
 /**

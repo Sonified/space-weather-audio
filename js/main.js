@@ -792,7 +792,7 @@ export async function startStreaming(event) {
 
         console.log(`🎉 ${logTime()} Complete!`);
         console.log('════════════════════');
-        console.log('📌 v1.08 (2025-12-09) Fix: X-axis tick density for region-to-region zoom');
+        console.log('📌 v2.0 (2026-02-12) Three.js GPU-accelerated rendering');
         console.log('════════════════════');
 
     } catch (error) {
@@ -1426,8 +1426,8 @@ async function initializeMainApp() {
     // Small delay to let page settle before starting workflows
     setTimeout(async () => {
         await initializeApp();
-        if (logGroup('init', 'v1.08 App Ready')) {
-            console.log('📌 v1.08 (2025-12-09) Fix: X-axis tick density for region-to-region zoom');
+        if (logGroup('init', 'v2.0 App Ready')) {
+            console.log('📌 v2.0 (2026-02-12) Three.js GPU-accelerated rendering');
             console.log('✅ App ready');
             logGroupEnd();
         }
