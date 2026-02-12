@@ -2433,8 +2433,9 @@ function createSpectrogramOverlay() {
         pointer-events: none;
         z-index: 10;
         transition: none;
+        will-change: opacity;
     `;
-    
+
     // Position overlay to match canvas exactly
     // The parent (.panel-visualization) has position: relative
     const parent = canvas.parentElement;

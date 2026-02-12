@@ -67,7 +67,12 @@ let smartRenderBounds = {
 
 // Grey overlay for zoomed-out mode
 let spectrogramOverlay = null;
+let spectrogramOverlayResizeObserver = null;
 const MAX_PLAYBACK_RATE = 15.0;
+
+// WebGL context event handler refs (for removal)
+let onContextLost = null;
+let onContextRestored = null;
 
 // Track frequency scale for zoomed cache validation
 let cachedZoomedFrequencyScale = null;
@@ -153,7 +158,7 @@ void main() {
 // ─── Three.js initialization ────────────────────────────────────────────────
 
 function initThreeScene() {
-    if (threeRenderer) return; // Already initialized
+    if (material) return; // Already initialized (renderer may persist across cleanup cycles)
 
     const canvas = document.getElementById('spectrogram');
     if (!canvas) {
@@ -164,9 +169,10 @@ function initThreeScene() {
     const width = canvas.width;
     const height = canvas.height;
 
-    // Use the EXISTING canvas element — preserves all event listeners (selection, playhead, etc.)
-    // preserveDrawingBuffer: allows drawImage/toDataURL on the canvas (needed by share-modal)
-    threeRenderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    // Reuse existing renderer if available, otherwise create new one
+    if (!threeRenderer) {
+        threeRenderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    }
     threeRenderer.setSize(width, height, false);
 
     // Orthographic camera: maps [-1,1] to canvas
@@ -203,18 +209,22 @@ function initThreeScene() {
     scene.add(mesh);
 
     // WebGL context loss/restore handlers (Chromium can drop contexts under GPU pressure)
-    canvas.addEventListener('webglcontextlost', (e) => {
+    // Remove previous handlers if any (defensive against double-init)
+    if (onContextLost) canvas.removeEventListener('webglcontextlost', onContextLost);
+    if (onContextRestored) canvas.removeEventListener('webglcontextrestored', onContextRestored);
+
+    onContextLost = (e) => {
         e.preventDefault();
         console.warn('Spectrogram WebGL context lost — will restore on next render');
-    });
-    canvas.addEventListener('webglcontextrestored', () => {
+    };
+    onContextRestored = () => {
         console.log('Spectrogram WebGL context restored — re-uploading textures');
-        // Re-upload colormap
         rebuildColormapTexture();
-        // Mark magnitude textures for re-upload
         if (fullMagnitudeTexture) fullMagnitudeTexture.needsUpdate = true;
         if (regionMagnitudeTexture) regionMagnitudeTexture.needsUpdate = true;
-    });
+    };
+    canvas.addEventListener('webglcontextlost', onContextLost);
+    canvas.addEventListener('webglcontextrestored', onContextRestored);
 
     console.log(`Three.js spectrogram renderer initialized (${width}x${height})`);
 }
@@ -385,9 +395,9 @@ function memoryHealthCheck() {
 export function startMemoryMonitoring() {
     if (memoryMonitorInterval) return;
     if (!isStudyMode()) {
-        console.log('Starting memory health monitoring (every 30 seconds)');
+        console.log('Starting memory health monitoring (every 10 seconds)');
     }
-    memoryMonitorInterval = setInterval(memoryHealthCheck, 30000);
+    memoryMonitorInterval = setInterval(memoryHealthCheck, 10000);
     memoryHealthCheck();
 }
 
@@ -399,6 +409,8 @@ export function stopMemoryMonitoring() {
             console.log('Stopped memory health monitoring');
         }
     }
+    memoryBaseline = null;
+    memoryHistory = [];
 }
 
 // ─── Core FFT → texture pipeline ────────────────────────────────────────────
@@ -597,6 +609,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
 
         completeSpectrogramRendered = true;
         State.setSpectrogramInitialized(true);
+
+        // Restart memory monitoring (stopped during cleanup)
+        startMemoryMonitoring();
 
         // Draw frequency axis
         positionAxisCanvas();
@@ -942,11 +957,47 @@ export function clearCompleteSpectrogram() {
         regionMagnitudeTexture = null;
         regionMagnitudeData = null;
     }
+    if (colormapTexture) {
+        colormapTexture.dispose();
+        colormapTexture = null;
+    }
 
-    // Clear the renderer
+    // Dispose Three.js scene objects (geometry, material)
+    if (mesh) {
+        mesh.geometry.dispose();
+        scene.remove(mesh);
+        mesh = null;
+    }
+    if (material) {
+        material.dispose();
+        material = null;
+    }
+
+    // Clear the renderer (keep it alive — reused across loads)
     if (threeRenderer) {
         threeRenderer.clear();
     }
+
+    // Disconnect overlay ResizeObserver and remove overlay DOM element
+    if (spectrogramOverlayResizeObserver) {
+        spectrogramOverlayResizeObserver.disconnect();
+        spectrogramOverlayResizeObserver = null;
+    }
+    if (spectrogramOverlay) {
+        spectrogramOverlay.remove();
+        spectrogramOverlay = null;
+    }
+
+    // Remove WebGL context handlers from canvas
+    if (threeRenderer && onContextLost) {
+        threeRenderer.domElement.removeEventListener('webglcontextlost', onContextLost);
+        threeRenderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
+        onContextLost = null;
+        onContextRestored = null;
+    }
+
+    // Stop memory monitoring
+    stopMemoryMonitoring();
 
     completeSpectrogramRendered = false;
     renderingInProgress = false;
@@ -1181,6 +1232,7 @@ function createSpectrogramOverlay() {
         pointer-events: none;
         z-index: 10;
         transition: none;
+        will-change: opacity;
     `;
 
     const parent = canvas.parentElement;
@@ -1196,7 +1248,8 @@ function createSpectrogramOverlay() {
 
         parent.appendChild(spectrogramOverlay);
 
-        const resizeObserver = new ResizeObserver(() => {
+        if (spectrogramOverlayResizeObserver) spectrogramOverlayResizeObserver.disconnect();
+        spectrogramOverlayResizeObserver = new ResizeObserver(() => {
             if (spectrogramOverlay && canvas) {
                 const canvasRect = canvas.getBoundingClientRect();
                 const parentRect = parent.getBoundingClientRect();
@@ -1206,7 +1259,7 @@ function createSpectrogramOverlay() {
                 spectrogramOverlay.style.height = canvasRect.height + 'px';
             }
         });
-        resizeObserver.observe(canvas);
+        spectrogramOverlayResizeObserver.observe(canvas);
     }
 }
 
