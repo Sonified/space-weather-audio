@@ -76,6 +76,8 @@ const MAX_PLAYBACK_RATE = 15.0;
 // Reusable temporary canvases
 let tempStretchCanvas = null;
 let tempShrinkCanvas = null;
+let tempInterpCanvas = null;  // Reusable temp for drawInterpolatedSpectrogram per-frame work
+let tempHQCanvas = null;      // Reusable temp for HQ fade-in per-frame work
 
 // Memory monitoring
 let memoryMonitorInterval = null;
@@ -568,6 +570,16 @@ export function resetSpectrogramState() {
         tempShrinkCanvas.height = 0;
         tempShrinkCanvas = null;
     }
+    if (tempInterpCanvas) {
+        tempInterpCanvas.width = 0;
+        tempInterpCanvas.height = 0;
+        tempInterpCanvas = null;
+    }
+    if (tempHQCanvas) {
+        tempHQCanvas.width = 0;
+        tempHQCanvas.height = 0;
+        tempHQCanvas = null;
+    }
 }
 
 /**
@@ -676,6 +688,16 @@ export function clearCompleteSpectrogram() {
         tempShrinkCanvas.width = 0;
         tempShrinkCanvas.height = 0;
         tempShrinkCanvas = null;
+    }
+    if (tempInterpCanvas) {
+        tempInterpCanvas.width = 0;
+        tempInterpCanvas.height = 0;
+        tempInterpCanvas = null;
+    }
+    if (tempHQCanvas) {
+        tempHQCanvas.width = 0;
+        tempHQCanvas.height = 0;
+        tempHQCanvas = null;
     }
     
     completeSpectrogramRendered = false;
@@ -1024,11 +1046,12 @@ export function drawInterpolatedSpectrogram() {
             // The cached canvas has the infiniteCanvas structure (6750px tall with content at bottom)
             // We need to extract the right portion based on CURRENT stretchedHeight
             
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = stretchedHeight;
-            const tempCtx = tempCanvas.getContext('2d');
-            
+            // Reuse canvas — just resize (which clears it). Only createElement once.
+            if (!tempInterpCanvas) tempInterpCanvas = document.createElement('canvas');
+            tempInterpCanvas.width = width;
+            tempInterpCanvas.height = stretchedHeight;
+            const tempCtx = tempInterpCanvas.getContext('2d');
+
             // Extract the correct portion from cached canvas based on CURRENT stretch
             // The cached canvas is structured like infiniteCanvas (content at bottom)
             tempCtx.drawImage(
@@ -1041,7 +1064,7 @@ export function drawInterpolatedSpectrogram() {
             if (stretchedHeight >= height) {
                 // Stretching up - draw bottom portion
                 ctx.drawImage(
-                    tempCanvas,
+                    tempInterpCanvas,
                     0, stretchedHeight - height, width, height,
                     currentX, 0, currentWidth, height
                 );
@@ -1050,9 +1073,9 @@ export function drawInterpolatedSpectrogram() {
                 const [r, g, b] = getColormapBackgroundColor();
                 ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
                 ctx.fillRect(currentX, 0, currentWidth, height);
-                
+
                 ctx.drawImage(
-                    tempCanvas,
+                    tempInterpCanvas,
                     0, 0, width, stretchedHeight,
                     currentX, height - stretchedHeight, currentWidth, stretchedHeight
                 );
@@ -1074,70 +1097,62 @@ export function drawInterpolatedSpectrogram() {
             // console.log(`🟢🟢 Zoom OUT (progress=${progress.toFixed(3)}): Drawing elastic friend in gaps - left=${leftEdgeWidth.toFixed(1)}px, right=${rightEdgeWidth.toFixed(1)}px`);
             
             // Draw elastic friend edges with same frequency stretch as the rest
+            // Reuse tempInterpCanvas (already sized to width x stretchedHeight above)
+            const edgeCtx = tempInterpCanvas.getContext('2d');
+            edgeCtx.clearRect(0, 0, width, stretchedHeight);
+
             if (stretchedHeight >= height) {
-                // Stretching up
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = width;
-                tempCanvas.height = stretchedHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                
-                // Draw full elastic friend slice (stretched)
-                tempCtx.drawImage(
+                // Stretching up - draw full elastic friend slice (stretched)
+                edgeCtx.drawImage(
                     cachedFullSpectrogramCanvas,
                     sourceX, 0, sourceWidth, cachedFullSpectrogramCanvas.height,
                     0, 0, width, stretchedHeight
                 );
-                
+
                 // LEFT edge
                 if (leftEdgeWidth > 0) {
                     ctx.drawImage(
-                        tempCanvas,
+                        tempInterpCanvas,
                         0, stretchedHeight - height, leftEdgeWidth, height,
                         0, 0, leftEdgeWidth, height
                     );
                 }
-                
+
                 // RIGHT edge
                 if (rightEdgeWidth > 0) {
                     ctx.drawImage(
-                        tempCanvas,
+                        tempInterpCanvas,
                         width - rightEdgeWidth, stretchedHeight - height, rightEdgeWidth, height,
                         rightEdgeStart, 0, rightEdgeWidth, height
                     );
                 }
             } else {
-                // Shrinking down
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = width;
-                tempCanvas.height = stretchedHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                
-                // Draw full elastic friend slice (shrunk)
-                tempCtx.drawImage(
+                // Shrinking down - draw full elastic friend slice (shrunk)
+                edgeCtx.drawImage(
                     cachedFullSpectrogramCanvas,
                     sourceX, 0, sourceWidth, cachedFullSpectrogramCanvas.height,
                     0, 0, width, stretchedHeight
                 );
-                
+
                 // Fill background
                 const [r, g, b] = getColormapBackgroundColor();
                 ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-                
+
                 // LEFT edge
                 if (leftEdgeWidth > 0) {
                     ctx.fillRect(0, 0, leftEdgeWidth, height);
                     ctx.drawImage(
-                        tempCanvas,
+                        tempInterpCanvas,
                         0, 0, leftEdgeWidth, stretchedHeight,
                         0, height - stretchedHeight, leftEdgeWidth, stretchedHeight
                     );
                 }
-                
+
                 // RIGHT edge
                 if (rightEdgeWidth > 0) {
                     ctx.fillRect(rightEdgeStart, 0, rightEdgeWidth, height);
                     ctx.drawImage(
-                        tempCanvas,
+                        tempInterpCanvas,
                         width - rightEdgeWidth, 0, rightEdgeWidth, stretchedHeight,
                         rightEdgeStart, height - stretchedHeight, rightEdgeWidth, stretchedHeight
                     );
@@ -1280,33 +1295,34 @@ export function drawInterpolatedSpectrogram() {
                 const sourceWidth = (targetEndInComposite - targetStartInComposite) * compositeWidth;
                 
                 // 🎨 Apply playback stretch to HQ composite too!
-                const tempHQ = document.createElement('canvas');
-                tempHQ.width = screenWidth;
-                tempHQ.height = stretchedHeight;
-                const tempHQCtx = tempHQ.getContext('2d');
-                
+                // Reuse canvas — just resize (which clears it). Only createElement once.
+                if (!tempHQCanvas) tempHQCanvas = document.createElement('canvas');
+                tempHQCanvas.width = screenWidth;
+                tempHQCanvas.height = stretchedHeight;
+                const tempHQCtx = tempHQCanvas.getContext('2d');
+
                 // Draw and stretch HQ to match current playback rate
                 tempHQCtx.drawImage(
                     cachedZoomedSpectrogramCanvas,
                     sourceX, 0, sourceWidth, cachedZoomedSpectrogramCanvas.height,
                     0, 0, screenWidth, stretchedHeight
                 );
-                
+
                 // Fade in during second half of animation - motion hides it!
                 ctx.globalAlpha = fadeProgress;
-                
+
                 // Draw the stretched HQ at screen position
                 if (stretchedHeight >= height) {
                     // Stretched up - draw bottom portion
                     ctx.drawImage(
-                        tempHQ,
+                        tempHQCanvas,
                         0, stretchedHeight - height, screenWidth, height,
                         screenX, 0, screenWidth, height
                     );
                 } else {
                     // Shrunk down - draw at bottom
                     ctx.drawImage(
-                        tempHQ,
+                        tempHQCanvas,
                         0, 0, screenWidth, stretchedHeight,
                         screenX, height - stretchedHeight, screenWidth, stretchedHeight
                     );
@@ -2285,6 +2301,12 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             });
         }
         
+        // Free old infinite canvas GPU memory before creating new one
+        if (infiniteSpectrogramCanvas) {
+            infiniteSpectrogramCanvas.width = 0;
+            infiniteSpectrogramCanvas.height = 0;
+        }
+
         // Create infinite canvas from final (target-only) render
         const infiniteHeight = Math.floor(height * MAX_PLAYBACK_RATE);
         infiniteSpectrogramCanvas = document.createElement('canvas');

@@ -1032,11 +1032,14 @@ export function setupSpectrogramSelection() {
             const containerRect = container.getBoundingClientRect();
             spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
             spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
-            spectrogramOverlayCanvas.width = canvas.width;
-            spectrogramOverlayCanvas.height = canvas.height;
+            // Only resize if dimensions changed (resizing clears the canvas, causing flicker)
+            if (spectrogramOverlayCanvas.width !== canvas.width || spectrogramOverlayCanvas.height !== canvas.height) {
+                spectrogramOverlayCanvas.width = canvas.width;
+                spectrogramOverlayCanvas.height = canvas.height;
+            }
             spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
             spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
-            
+
             // Redraw boxes after repositioning to ensure they're still visible
             if (spectrogramOverlayCtx) {
                 redrawCanvasBoxes();
@@ -1044,7 +1047,7 @@ export function setupSpectrogramSelection() {
         }
     });
     spectrogramResizeObserver.observe(canvas);
-    
+
     // Also reposition on visibility change (catches sleep/wake)
     spectrogramRepositionOnVisibility = () => {
         if (document.visibilityState === 'visible' && spectrogramOverlayCanvas && canvas) {
@@ -1052,11 +1055,14 @@ export function setupSpectrogramSelection() {
             const containerRect = container.getBoundingClientRect();
             spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
             spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
-            spectrogramOverlayCanvas.width = canvas.width;
-            spectrogramOverlayCanvas.height = canvas.height;
+            // Only resize if dimensions changed (resizing clears the canvas, causing flicker)
+            if (spectrogramOverlayCanvas.width !== canvas.width || spectrogramOverlayCanvas.height !== canvas.height) {
+                spectrogramOverlayCanvas.width = canvas.width;
+                spectrogramOverlayCanvas.height = canvas.height;
+            }
             spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
             spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
-            
+
             // Redraw boxes after repositioning
             if (spectrogramOverlayCtx) {
                 redrawCanvasBoxes();

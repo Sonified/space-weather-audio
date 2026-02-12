@@ -1463,12 +1463,16 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                         // Duration will be set once all chunks are complete (line 607-608)
                         // Don't set it early with estimated value - causes mismatch during progressive loading
                         
+                        const removeDC = document.getElementById('removeDCOffset').checked;
+                        const filterSlider = document.getElementById('waveformFilterSlider');
+                        const filterAlpha = 0.95 + (parseInt(filterSlider.value) / 100) * (0.9999 - 0.95);
+
                         State.waveformWorker.postMessage({
                             type: 'build-waveform',
                             canvasWidth: width,
                             canvasHeight: height,
-                            removeDC: false,  // No DC removal until complete
-                            alpha: 0.995,
+                            removeDC: removeDC,
+                            alpha: filterAlpha,
                             totalExpectedSamples: totalSamples  // For progressive left-to-right filling
                         });
                         

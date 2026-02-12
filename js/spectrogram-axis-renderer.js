@@ -106,13 +106,12 @@ export function drawFrequencyAxis() {
     const canvas = document.getElementById('spectrogram-axis');
     if (!canvas) return;
     
-    // CRITICAL: Set width to 60px to match display width - ticks must stay OUTSIDE spectrogram
-    canvas.width = 60;
-    
-    // Ensure canvas height is synced with spectrogram before drawing
+    // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
     const spectrogramCanvas = document.getElementById('spectrogram');
-    if (spectrogramCanvas && canvas.height !== spectrogramCanvas.height) {
-        canvas.height = spectrogramCanvas.height;
+    const targetHeight = spectrogramCanvas ? spectrogramCanvas.height : canvas.height;
+    if (canvas.width !== 60 || canvas.height !== targetHeight) {
+        canvas.width = 60;
+        canvas.height = targetHeight;
     }
     
     const ctx = canvas.getContext('2d');
@@ -665,11 +664,11 @@ export function resizeAxisCanvas() {
     
     if (!spectrogramCanvas || !axisCanvas) return;
     
-    // CRITICAL: Set width to match display width (60px) - prevents ticks from encroaching
-    axisCanvas.width = 60;
-    
-    // Match height to spectrogram
-    axisCanvas.height = spectrogramCanvas.height;
+    // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
+    if (axisCanvas.width !== 60 || axisCanvas.height !== spectrogramCanvas.height) {
+        axisCanvas.width = 60;
+        axisCanvas.height = spectrogramCanvas.height;
+    }
     
     // Reposition and redraw after resize
     positionAxisCanvas();

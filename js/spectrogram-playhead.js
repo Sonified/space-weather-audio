@@ -59,8 +59,11 @@ function initPlayheadOverlay() {
             const containerRect = container.getBoundingClientRect();
             playheadOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
             playheadOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
-            playheadOverlayCanvas.width = canvas.width;
-            playheadOverlayCanvas.height = canvas.height;
+            // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
+            if (playheadOverlayCanvas.width !== canvas.width || playheadOverlayCanvas.height !== canvas.height) {
+                playheadOverlayCanvas.width = canvas.width;
+                playheadOverlayCanvas.height = canvas.height;
+            }
             playheadOverlayCanvas.style.width = canvas.offsetWidth + 'px';
             playheadOverlayCanvas.style.height = canvas.offsetHeight + 'px';
         }

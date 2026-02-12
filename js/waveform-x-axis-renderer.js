@@ -57,9 +57,11 @@ export function drawWaveformXAxis() {
         maxCanvasWidth = displayWidth;
     }
     
-    // Set internal canvas resolution to match display size
-    canvas.width = displayWidth;
-    canvas.height = 40; // Fixed height for x-axis
+    // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
+    if (canvas.width !== displayWidth || canvas.height !== 40) {
+        canvas.width = displayWidth;
+        canvas.height = 40;
+    }
     
     const ctx = canvas.getContext('2d');
     const canvasWidth = canvas.width;
@@ -863,9 +865,11 @@ export function resizeWaveformXAxisCanvas() {
         maxCanvasWidth = currentWidth;
     }
     
-    // Match width to waveform display width
-    xAxisCanvas.width = currentWidth;
-    xAxisCanvas.height = 40;
+    // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
+    if (xAxisCanvas.width !== currentWidth || xAxisCanvas.height !== 40) {
+        xAxisCanvas.width = currentWidth;
+        xAxisCanvas.height = 40;
+    }
     
     // Reposition and redraw after resize
     positionWaveformXAxisCanvas();

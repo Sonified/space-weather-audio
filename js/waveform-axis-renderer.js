@@ -18,9 +18,11 @@ export function drawWaveformAxis() {
     const displayHeight = waveformCanvas.offsetHeight;
     const devicePixelRatio = window.devicePixelRatio || 1;
     
-    // Set internal canvas resolution to match display size (no devicePixelRatio scaling for axis)
-    canvas.width = 60;
-    canvas.height = displayHeight;
+    // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
+    if (canvas.width !== 60 || canvas.height !== displayHeight) {
+        canvas.width = 60;
+        canvas.height = displayHeight;
+    }
     
     const ctx = canvas.getContext('2d');
     const canvasWidth = canvas.width;
@@ -120,11 +122,12 @@ export function resizeWaveformAxisCanvas() {
     
     if (!waveformCanvas || !axisCanvas) return;
     
-    // CRITICAL: Set width to match display width (60px) - prevents ticks from encroaching
-    axisCanvas.width = 60;
-    
-    // Match height to waveform DISPLAY height (not internal canvas height which may be scaled)
-    axisCanvas.height = waveformCanvas.offsetHeight;
+    // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
+    const newHeight = waveformCanvas.offsetHeight;
+    if (axisCanvas.width !== 60 || axisCanvas.height !== newHeight) {
+        axisCanvas.width = 60;
+        axisCanvas.height = newHeight;
+    }
     
     // Reposition and redraw after resize
     positionWaveformAxisCanvas();

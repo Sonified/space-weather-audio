@@ -73,10 +73,14 @@ export function drawRegionButtons() {
     const waveformCanvas = document.getElementById('waveform');
     if (!waveformCanvas) return;
     
-    // ✅ FRESH dimensions every time (just like x-axis!)
+    // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
     const dpr = window.devicePixelRatio || 1;
-    buttonsCanvas.width = waveformCanvas.offsetWidth * dpr;
-    buttonsCanvas.height = waveformCanvas.offsetHeight * dpr;
+    const newWidth = Math.round(waveformCanvas.offsetWidth * dpr);
+    const newHeight = Math.round(waveformCanvas.offsetHeight * dpr);
+    if (buttonsCanvas.width !== newWidth || buttonsCanvas.height !== newHeight) {
+        buttonsCanvas.width = newWidth;
+        buttonsCanvas.height = newHeight;
+    }
     
     // 🔍 DIAGNOSTIC: Log render context (throttled to once per second)
     // const now = performance.now();

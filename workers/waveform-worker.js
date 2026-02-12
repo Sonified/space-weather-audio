@@ -181,16 +181,55 @@ function buildMinMaxWaveform(samples, canvasWidth) {
 }
 
 /**
- * Remove DC offset and drift using exponential moving average (high-pass DC blocker).
- * This is the same algorithm used in the main thread.
+ * Remove DC offset and drift using forward-backward EMA (zero-phase high-pass filter).
+ * Each pass is warm-started with the local edge average to eliminate startup transients.
  */
 function removeDCOffset(data, alpha = 0.995) {
-    let mean = data[0];
-    const y = new Float32Array(data.length);
-    for (let i = 0; i < data.length; i++) {
+    const n = data.length;
+    if (n === 0) return new Float32Array(0);
+
+    // Warmup: compute local average at each edge so the EMA starts settled
+    // Window = 3x time constant (tau = 1/(1-alpha))
+    const warmup = Math.min(n, Math.ceil(3 / (1 - alpha)));
+
+    let initFwd = 0;
+    for (let i = 0; i < warmup; i++) initFwd += data[i];
+    initFwd /= warmup;
+
+    let initBwd = 0;
+    for (let i = n - warmup; i < n; i++) initBwd += data[i];
+    initBwd /= warmup;
+
+    // Forward pass: EMA from left to right
+    const fwd = new Float32Array(n);
+    let mean = initFwd;
+    for (let i = 0; i < n; i++) {
         mean = alpha * mean + (1 - alpha) * data[i];
-        y[i] = data[i] - mean;
+        fwd[i] = mean;
     }
+
+    // Backward pass: EMA from right to left
+    const bwd = new Float32Array(n);
+    mean = initBwd;
+    for (let i = n - 1; i >= 0; i--) {
+        mean = alpha * mean + (1 - alpha) * data[i];
+        bwd[i] = mean;
+    }
+
+    // Subtract averaged forward+backward mean (zero-phase)
+    const y = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+        y[i] = data[i] - (fwd[i] + bwd[i]) * 0.5;
+    }
+
+    // Cosine taper at edges to kill any residual boundary artifacts
+    const taperLen = Math.min(Math.ceil(n * 0.001), warmup, Math.floor(n / 2));
+    for (let i = 0; i < taperLen; i++) {
+        const w = 0.5 * (1 - Math.cos(Math.PI * i / taperLen));
+        y[i] *= w;
+        y[n - 1 - i] *= w;
+    }
+
     return y;
 }
 
@@ -198,27 +237,24 @@ function removeDCOffset(data, alpha = 0.995) {
  * Normalize data to [-1, 1] range.
  */
 function normalize(data) {
-    // Find min and max
-    let min = data[0];
-    let max = data[0];
-    for (let i = 1; i < data.length; i++) {
-        if (data[i] < min) min = data[i];
-        if (data[i] > max) max = data[i];
+    // Find peak absolute value to scale symmetrically around zero
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) {
+        const abs = data[i] < 0 ? -data[i] : data[i];
+        if (abs > peak) peak = abs;
     }
-    
-    // If all values are the same, return zeros
-    if (max === min) {
+
+    // If all values are zero, return zeros
+    if (peak === 0) {
         return new Float32Array(data.length);
     }
-    
-    // Scale to [-1, 1] range
+
+    // Scale to [-1, 1] preserving zero-centering
     const normalized = new Float32Array(data.length);
-    const range = max - min;
     for (let i = 0; i < data.length; i++) {
-        // Map [min, max] to [-1, 1]
-        normalized[i] = 2 * (data[i] - min) / range - 1;
+        normalized[i] = data[i] / peak;
     }
-    
+
     return normalized;
 }
 
