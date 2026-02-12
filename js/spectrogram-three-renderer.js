@@ -38,11 +38,9 @@ let fullMagnitudeTexture = null;     // Full-view FFT magnitudes
 let regionMagnitudeTexture = null;   // Region FFT magnitudes (HQ)
 let colormapTexture = null;
 
-// Raw magnitude data (kept for texture rebuilds on colormap/scale changes)
-let fullMagnitudeData = null;
+// Magnitude dimensions (data lives in texture.image.data — no duplicate refs)
 let fullMagnitudeWidth = 0;
 let fullMagnitudeHeight = 0;
-let regionMagnitudeData = null;
 let regionMagnitudeWidth = 0;
 let regionMagnitudeHeight = 0;
 
@@ -388,7 +386,7 @@ function memoryHealthCheck() {
 
     if (!isStudyMode()) {
         const avgPercent = (memoryHistory.reduce((sum, h) => sum + h.percent, 0) / memoryHistory.length).toFixed(1);
-        console.log(`Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
+        console.log(`🏥 Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
     }
 }
 
@@ -575,8 +573,6 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             return;
         }
 
-        // Store raw data for later texture rebuilds
-        fullMagnitudeData = result.data;
         fullMagnitudeWidth = result.width;
         fullMagnitudeHeight = result.height;
 
@@ -730,8 +726,6 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             return;
         }
 
-        // Store region magnitude data
-        regionMagnitudeData = result.data;
         regionMagnitudeWidth = result.width;
         regionMagnitudeHeight = result.height;
 
@@ -917,7 +911,6 @@ export function resetSpectrogramState() {
     if (regionMagnitudeTexture) {
         regionMagnitudeTexture.dispose();
         regionMagnitudeTexture = null;
-        regionMagnitudeData = null;
     }
 }
 
@@ -950,12 +943,10 @@ export function clearCompleteSpectrogram() {
     if (fullMagnitudeTexture) {
         fullMagnitudeTexture.dispose();
         fullMagnitudeTexture = null;
-        fullMagnitudeData = null;
     }
     if (regionMagnitudeTexture) {
         regionMagnitudeTexture.dispose();
         regionMagnitudeTexture = null;
-        regionMagnitudeData = null;
     }
     if (colormapTexture) {
         colormapTexture.dispose();
@@ -1053,7 +1044,6 @@ export function clearCachedZoomedSpectrogram() {
     if (regionMagnitudeTexture) {
         regionMagnitudeTexture.dispose();
         regionMagnitudeTexture = null;
-        regionMagnitudeData = null;
         console.log('Cleared region magnitude texture');
     }
 }
