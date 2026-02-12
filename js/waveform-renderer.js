@@ -39,6 +39,8 @@ let wfTextureWidth = 0;
 let wfTextureHeight = 0;
 let wfOverlayCanvas = null;
 let wfOverlayCtx = null;
+let wfCachedWidth = 0;   // Cached device-pixel dimensions (avoid offsetWidth in render path)
+let wfCachedHeight = 0;
 
 const wfVertexShader = /* glsl */ `
 varying vec2 vUv;
@@ -126,13 +128,13 @@ function initWaveformThreeScene() {
     const canvas = document.getElementById('waveform');
     if (!canvas) return;
 
-    const width = Math.round(canvas.offsetWidth * window.devicePixelRatio);
-    const height = Math.round(canvas.offsetHeight * window.devicePixelRatio);
-    canvas.width = width;
-    canvas.height = height;
+    wfCachedWidth = Math.round(canvas.offsetWidth * window.devicePixelRatio);
+    wfCachedHeight = Math.round(canvas.offsetHeight * window.devicePixelRatio);
+    canvas.width = wfCachedWidth;
+    canvas.height = wfCachedHeight;
 
     wfRenderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
-    wfRenderer.setSize(width, height, false);
+    wfRenderer.setSize(wfCachedWidth, wfCachedHeight, false);
 
     wfCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
     wfCamera.position.z = 1;
@@ -156,8 +158,8 @@ function initWaveformThreeScene() {
             uTextureHeight: { value: 1.0 },
             uViewportStart: { value: 0.0 },
             uViewportEnd: { value: 1.0 },
-            uCanvasWidth: { value: parseFloat(width) },
-            uCanvasHeight: { value: parseFloat(height) },
+            uCanvasWidth: { value: parseFloat(wfCachedWidth) },
+            uCanvasHeight: { value: parseFloat(wfCachedHeight) },
             uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) }
         },
         vertexShader: wfVertexShader,
@@ -171,7 +173,36 @@ function initWaveformThreeScene() {
     // Create overlay canvas for 2d drawing (regions, playhead, selection)
     createWaveformOverlay(canvas);
 
-    console.log(`Three.js waveform renderer initialized (${width}x${height})`);
+    // Cache dimensions on resize (avoid offsetWidth reads in render path)
+    const wfResizeObserver = new ResizeObserver(() => {
+        const w = Math.round(canvas.offsetWidth * window.devicePixelRatio);
+        const h = Math.round(canvas.offsetHeight * window.devicePixelRatio);
+        if (w > 0 && h > 0) {
+            wfCachedWidth = w;
+            wfCachedHeight = h;
+        }
+    });
+    wfResizeObserver.observe(canvas);
+
+    // WebGL context loss/restore handlers (Chromium can drop contexts under GPU pressure)
+    canvas.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        console.warn('Waveform WebGL context lost — will restore on next render');
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+        console.log('Waveform WebGL context restored — re-uploading textures');
+        // Re-upload colormap
+        if (wfColormapTexture) wfColormapTexture.dispose();
+        wfColormapTexture = buildWaveformColormapTexture();
+        if (wfMaterial) wfMaterial.uniforms.uColormap.value = wfColormapTexture;
+        // Re-upload sample data
+        if (wfSampleTexture && wfMaterial) {
+            wfSampleTexture.needsUpdate = true;
+            wfMaterial.uniforms.uSamples.value = wfSampleTexture;
+        }
+    });
+
+    console.log(`Three.js waveform renderer initialized (${wfCachedWidth}x${wfCachedHeight})`);
 }
 
 function buildWaveformColormapTexture() {
@@ -279,21 +310,19 @@ export function uploadWaveformSamples(samples) {
 function renderWaveformGPU(viewportStart = 0.0, viewportEnd = 1.0) {
     if (!wfRenderer || !wfScene || !wfCamera || !wfSampleTexture) return;
 
-    // Handle canvas resize
+    // Handle canvas resize using cached dimensions (no layout-forcing offsetWidth reads)
     const canvas = wfRenderer.domElement;
-    const width = Math.round(canvas.offsetWidth * window.devicePixelRatio);
-    const height = Math.round(canvas.offsetHeight * window.devicePixelRatio);
-    if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-        wfRenderer.setSize(width, height, false);
-        wfMaterial.uniforms.uCanvasWidth.value = parseFloat(width);
-        wfMaterial.uniforms.uCanvasHeight.value = parseFloat(height);
-        // Resize overlay to match (ResizeObserver handles CSS position)
+    if (wfCachedWidth > 0 && wfCachedHeight > 0 &&
+        (canvas.width !== wfCachedWidth || canvas.height !== wfCachedHeight)) {
+        canvas.width = wfCachedWidth;
+        canvas.height = wfCachedHeight;
+        wfRenderer.setSize(wfCachedWidth, wfCachedHeight, false);
+        wfMaterial.uniforms.uCanvasWidth.value = parseFloat(wfCachedWidth);
+        wfMaterial.uniforms.uCanvasHeight.value = parseFloat(wfCachedHeight);
+        // Resize overlay to match
         if (wfOverlayCanvas) {
-            const cr = canvas.getBoundingClientRect();
-            wfOverlayCanvas.width = Math.round(cr.width * window.devicePixelRatio);
-            wfOverlayCanvas.height = Math.round(cr.height * window.devicePixelRatio);
+            wfOverlayCanvas.width = wfCachedWidth;
+            wfOverlayCanvas.height = wfCachedHeight;
         }
     }
 
@@ -989,7 +1018,11 @@ export function setupWaveformInteraction() {
                 State.setIsSelecting(true);
                 canvas.style.cursor = 'col-resize';
                 console.log('📏 Selection drag detected');
-                
+
+                // Clear active playing region so selection box renders during drag
+                // (isPlayingActiveRegion() was blocking the yellow box in drawWaveformOverlays)
+                resetAllRegionPlayButtons();
+
                 // 🏛️ Only clear active region if NOT inside a region (outside the temple)
                 // Inside the temple, selections are within sacred walls, flag stays up
                 if (!zoomState.isInRegion()) {

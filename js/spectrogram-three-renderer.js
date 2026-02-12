@@ -202,6 +202,20 @@ function initThreeScene() {
     mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
 
+    // WebGL context loss/restore handlers (Chromium can drop contexts under GPU pressure)
+    canvas.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        console.warn('Spectrogram WebGL context lost — will restore on next render');
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+        console.log('Spectrogram WebGL context restored — re-uploading textures');
+        // Re-upload colormap
+        rebuildColormapTexture();
+        // Mark magnitude textures for re-upload
+        if (fullMagnitudeTexture) fullMagnitudeTexture.needsUpdate = true;
+        if (regionMagnitudeTexture) regionMagnitudeTexture.needsUpdate = true;
+    });
+
     console.log(`Three.js spectrogram renderer initialized (${width}x${height})`);
 }
 

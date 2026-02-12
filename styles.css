@@ -1032,6 +1032,8 @@ canvas {
     border: 2px solid var(--accent-glow);
     box-shadow: none;
     transition: border-color 0.3s ease;
+    will-change: transform;
+    contain: paint;
 }
 
 #spectrogram {
@@ -1041,6 +1043,8 @@ canvas {
     border: 2px solid var(--accent-glow);
     box-shadow: none;
     transition: box-shadow 0.3s ease, border-color 0.3s ease;
+    will-change: transform;
+    contain: paint;
 }
 
 #spectrogram.spectrogram-glow {
