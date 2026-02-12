@@ -45,6 +45,12 @@ const DATASET_VARIABLES = {
     'WI_H2_MFI': 'BGSE', // Wind uses component names
     'MMS1_FGM_SRVY_L2': 'mms1_fgm_b_gse_srvy_l2',
     'MMS1_FGM_BRST_L2': 'mms1_fgm_b_gse_brst_l2',
+    // THEMIS FGM - Fluxgate Magnetometer, low-res (~4 Hz) GSE coordinates
+    'THA_L2_FGM': 'tha_fgl_gse',
+    'THB_L2_FGM': 'thb_fgl_gse',
+    'THC_L2_FGM': 'thc_fgl_gse',
+    'THD_L2_FGM': 'thd_fgl_gse',
+    'THE_L2_FGM': 'the_fgl_gse',
     // THEMIS SCM - fast-survey GSE coordinates (X, Y, Z components)
     'THA_L2_SCM': 'tha_scf_gse',
     'THB_L2_SCM': 'thb_scf_gse',
@@ -56,7 +62,21 @@ const DATASET_VARIABLES = {
     'SOLO_L2_MAG-RTN-BURST': 'B_RTN',
     // GOES-R Series Magnetometer - GSE coordinates (X, Y, Z) at 10 Hz
     'DN_MAGN-L2-HIRES_G16': 'b_gse',
-    'DN_MAGN-L2-HIRES_G19': 'b_gse'
+    'DN_MAGN-L2-HIRES_G19': 'b_gse',
+    // MMS1 Electric Double Probe - DC E-field, GSE coordinates (Ex, Ey, Ez)
+    'MMS1_EDP_SLOW_L2_DCE': 'mms1_edp_dce_gse_slow_l2',
+    // MMS1 Search Coil Magnetometer - Survey mode, GSE coordinates (Bx, By, Bz)
+    'MMS1_SCM_SRVY_L2_SCSRVY': 'mms1_scm_acb_gse_scsrvy_srvy_l2',
+    // THEMIS EFI - Electric Field Instrument, slow-survey GSE coordinates (Ex, Ey, Ez)
+    'THA_L2_EFI': 'tha_efs_dot0_gse',
+    'THB_L2_EFI': 'thb_efs_dot0_gse',
+    'THC_L2_EFI': 'thc_efs_dot0_gse',
+    'THD_L2_EFI': 'thd_efs_dot0_gse',
+    'THE_L2_EFI': 'the_efs_dot0_gse',
+    // PSP FIELDS - Digital Fields Board DC differential voltage waveform
+    'PSP_FLD_L2_DFB_WF_DVDC': 'psp_fld_l2_dfb_wf_dVdc_sensor',
+    // Solar Orbiter RPW - Radio and Plasma Waves, LFR survey E-field
+    'SOLO_L2_RPW-LFR-SURV-CWF-E': 'EDC'
 };
 
 /**

@@ -292,25 +292,39 @@ export function saveDateTime() {
 const SPACECRAFT_DATASETS = {
     'PSP': [
         { value: 'PSP_FLD_L2_MAG_RTN', label: 'PSP_FLD_L2_MAG_RTN (Full Cadence)' },
-        { value: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC', label: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)' }
+        { value: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC', label: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)' },
+        { value: 'PSP_FLD_L2_DFB_WF_DVDC', label: 'PSP_FLD_L2_DFB_WF_DVDC (Electric Field Waveform)' }
     ],
     'Wind': [
         { value: 'WI_H2_MFI', label: 'WI_H2_MFI (Magnetic Field)' }
     ],
     'MMS': [
-        { value: 'MMS1_FGM_SRVY_L2', label: 'MMS1_FGM_SRVY_L2 (Survey Mode)' },
-        { value: 'MMS1_FGM_BRST_L2', label: 'MMS1_FGM_BRST_L2 (Burst Mode)' }
+        { value: 'MMS1_FGM_SRVY_L2', label: 'MMS1_FGM_SRVY_L2 (FGM Survey)' },
+        { value: 'MMS1_FGM_BRST_L2', label: 'MMS1_FGM_BRST_L2 (FGM Burst)' },
+        { value: 'MMS1_EDP_SLOW_L2_DCE', label: 'MMS1_EDP_SLOW_L2_DCE (Electric Field)' },
+        { value: 'MMS1_SCM_SRVY_L2_SCSRVY', label: 'MMS1_SCM_SRVY_L2_SCSRVY (Search Coil Mag)' }
     ],
     'THEMIS': [
+        { value: 'THA_L2_FGM', label: 'THA_L2_FGM (THEMIS-A FGM)' },
+        { value: 'THB_L2_FGM', label: 'THB_L2_FGM (THEMIS-B FGM)' },
+        { value: 'THC_L2_FGM', label: 'THC_L2_FGM (THEMIS-C FGM)' },
+        { value: 'THD_L2_FGM', label: 'THD_L2_FGM (THEMIS-D FGM)' },
+        { value: 'THE_L2_FGM', label: 'THE_L2_FGM (THEMIS-E FGM)' },
         { value: 'THA_L2_SCM', label: 'THA_L2_SCM (THEMIS-A SCM)' },
         { value: 'THB_L2_SCM', label: 'THB_L2_SCM (THEMIS-B SCM)' },
         { value: 'THC_L2_SCM', label: 'THC_L2_SCM (THEMIS-C SCM)' },
         { value: 'THD_L2_SCM', label: 'THD_L2_SCM (THEMIS-D SCM)' },
-        { value: 'THE_L2_SCM', label: 'THE_L2_SCM (THEMIS-E SCM)' }
+        { value: 'THE_L2_SCM', label: 'THE_L2_SCM (THEMIS-E SCM)' },
+        { value: 'THA_L2_EFI', label: 'THA_L2_EFI (THEMIS-A Electric Field)' },
+        { value: 'THB_L2_EFI', label: 'THB_L2_EFI (THEMIS-B Electric Field)' },
+        { value: 'THC_L2_EFI', label: 'THC_L2_EFI (THEMIS-C Electric Field)' },
+        { value: 'THD_L2_EFI', label: 'THD_L2_EFI (THEMIS-D Electric Field)' },
+        { value: 'THE_L2_EFI', label: 'THE_L2_EFI (THEMIS-E Electric Field)' }
     ],
     'SolO': [
         { value: 'SOLO_L2_MAG-RTN-NORMAL', label: 'SOLO_L2_MAG-RTN-NORMAL (Normal Mode)' },
-        { value: 'SOLO_L2_MAG-RTN-BURST', label: 'SOLO_L2_MAG-RTN-BURST (Burst Mode)' }
+        { value: 'SOLO_L2_MAG-RTN-BURST', label: 'SOLO_L2_MAG-RTN-BURST (Burst Mode)' },
+        { value: 'SOLO_L2_RPW-LFR-SURV-CWF-E', label: 'SOLO_L2_RPW-LFR-SURV-CWF-E (Electric Field)' }
     ],
     'GOES': [
         { value: 'DN_MAGN-L2-HIRES_G16', label: 'GOES-16 MAG 10 Hz (Aug 2018 - Apr 2025)' },

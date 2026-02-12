@@ -36,11 +36,28 @@ const COMPONENT_LABELS = {
     'default': ['Component 1', 'Component 2', 'Component 3']
 };
 
+// Dataset-specific overrides for electric field components
+const DATASET_COMPONENT_LABELS = {
+    'MMS1_EDP_SLOW_L2_DCE': ['Ex (GSE)', 'Ey (GSE)', 'Ez (GSE)'],
+    'MMS1_SCM_SRVY_L2_SCSRVY': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    'THA_L2_EFI': ['Ex (GSE)', 'Ey (GSE)', 'Ez (GSE)'],
+    'THB_L2_EFI': ['Ex (GSE)', 'Ey (GSE)', 'Ez (GSE)'],
+    'THC_L2_EFI': ['Ex (GSE)', 'Ey (GSE)', 'Ez (GSE)'],
+    'THD_L2_EFI': ['Ex (GSE)', 'Ey (GSE)', 'Ez (GSE)'],
+    'THE_L2_EFI': ['Ex (GSE)', 'Ey (GSE)', 'Ez (GSE)'],
+    'PSP_FLD_L2_DFB_WF_DVDC': ['dV1 (Sensor)', 'dV2 (Sensor)'],
+    'SOLO_L2_RPW-LFR-SURV-CWF-E': ['Ex', 'Ey', 'Ez'],
+};
+
 /**
  * Get component labels for current spacecraft
  * @returns {Array<string>}
  */
 function getLabelsForSpacecraft() {
+    // Check dataset-specific labels first (for electric field, SCM, etc.)
+    if (currentDataset && DATASET_COMPONENT_LABELS[currentDataset]) {
+        return DATASET_COMPONENT_LABELS[currentDataset];
+    }
     return COMPONENT_LABELS[currentSpacecraft] || COMPONENT_LABELS['default'];
 }
 
@@ -215,9 +232,10 @@ export async function switchComponent(componentIndex) {
             console.warn(`   ⚠️ No workletNode available!`);
         }
 
-        // Redraw waveform (new signal, same time axis)
-        const { drawWaveform } = await import('./waveform-renderer.js');
-        drawWaveform();
+        // Update raw waveform backup and apply de-trend if active
+        window.rawWaveformData = new Float32Array(samples);
+        const { changeWaveformFilter } = await import('./waveform-renderer.js');
+        changeWaveformFilter();
 
         // 🔄 SPECTROGRAM CROSSFADE: Use same pattern as frequency scale change
         // (capture old, reset state, render new, animate crossfade)
