@@ -138,15 +138,21 @@ export class SpectrogramWorkerPool {
                 if (taskData.onBatchComplete) {
                     taskData.onBatchComplete(e.data.results, progress, workerIndex);
                 }
-                
+
                 // Resolve promise
                 taskData.resolve(e.data.results);
 
-                // Break closure chain — release references to large audioData buffer
+                // Break closure chain — release references to large data
                 taskData.audioData = null;
                 taskData.resolve = null;
                 taskData.onBatchComplete = null;
                 taskData.window = null;
+                taskData.completionTracker = null;
+                // Clear worker message results to free Float32Array magnitudes
+                if (e.data) {
+                    e.data.results = null;
+                    e.data = null;
+                }
 
                 // Process next queued task if any
                 if (this.taskQueue.length > 0) {

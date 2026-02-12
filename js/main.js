@@ -2551,16 +2551,34 @@ async function initializeMainApp() {
                 // 🔥 FIX: Use statically imported functions instead of dynamic import
                 // This prevents creating new Context instances (147k+ Context leak!)
                 const cleanupOnUnload = () => {
-                    // Call synchronously - modules are already loaded
+                    // Cancel all animation loops
                     audioPlayerModule.cancelAllRAFLoops();
                     axisModule.cancelScaleTransitionRAF();
-                    // Use statically imported function instead of dynamic import
                     cancelZoomTransitionRAF();
-                    
-                    // 🔥 FIX: Cleanup event listeners to prevent memory leaks
-                    // Use statically imported functions to avoid creating new Context instances
+
+                    // Cleanup event listeners
                     cleanupSpectrogramSelection();
                     cleanupKeyboardShortcuts();
+
+                    // Dispose GPU resources (Three.js textures, materials, geometry)
+                    clearCompleteSpectrogram();
+                    clearWaveformRenderer();
+
+                    // Terminate waveform worker
+                    if (State.waveformWorker) {
+                        State.waveformWorker.terminate();
+                        State.setWaveformWorker(null);
+                    }
+
+                    // Close AudioContext (releases system audio resources)
+                    if (State.audioContext && State.audioContext.state !== 'closed') {
+                        State.audioContext.close().catch(() => {});
+                    }
+
+                    // Null large data arrays to help GC
+                    State.setCompleteSamplesArray(null);
+                    window.rawWaveformData = null;
+                    window.displayWaveformData = null;
                 };
                 window._solarAudioCleanupHandlers.cleanupOnUnload = cleanupOnUnload;
             
