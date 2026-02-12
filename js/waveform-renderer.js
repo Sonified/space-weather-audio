@@ -411,7 +411,6 @@ function drawWaveformOverlays() {
             endX = endProgress * width;
         }
         const selectionWidth = endX - startX;
-
         wfOverlayCtx.fillStyle = 'rgba(255, 220, 120, 0.25)';
         wfOverlayCtx.fillRect(startX, 0, selectionWidth, height);
 
@@ -1019,10 +1018,6 @@ export function setupWaveformInteraction() {
                 canvas.style.cursor = 'col-resize';
                 console.log('📏 Selection drag detected');
 
-                // Clear active playing region so selection box renders during drag
-                // (isPlayingActiveRegion() was blocking the yellow box in drawWaveformOverlays)
-                resetAllRegionPlayButtons();
-
                 // 🏛️ Only clear active region if NOT inside a region (outside the temple)
                 // Inside the temple, selections are within sacred walls, flag stays up
                 if (!zoomState.isInRegion()) {
@@ -1045,11 +1040,29 @@ export function setupWaveformInteraction() {
                     startPos = startProgress * State.totalAudioDuration;
                 }
                 const endPos = targetPosition;
-                
+
                 State.setSelectionStart(Math.min(startPos, endPos));
                 State.setSelectionEnd(Math.max(startPos, endPos));
-                
+
                 drawWaveformWithSelection();
+
+                // Draw selection box directly on overlay (backup — ensures visibility during drag)
+                if (wfOverlayCtx && wfOverlayCanvas) {
+                    const dpr = window.devicePixelRatio || 1;
+                    const ox = Math.min(State.selectionStartX, e.clientX - rect.left) * dpr;
+                    const ow = Math.abs((e.clientX - rect.left) - State.selectionStartX) * dpr;
+                    const oh = wfOverlayCanvas.height;
+                    wfOverlayCtx.fillStyle = 'rgba(255, 220, 120, 0.25)';
+                    wfOverlayCtx.fillRect(ox, 0, ow, oh);
+                    wfOverlayCtx.strokeStyle = 'rgba(255, 180, 100, 0.6)';
+                    wfOverlayCtx.lineWidth = 2;
+                    wfOverlayCtx.beginPath();
+                    wfOverlayCtx.moveTo(ox, 0);
+                    wfOverlayCtx.lineTo(ox, oh);
+                    wfOverlayCtx.moveTo(ox + ow, 0);
+                    wfOverlayCtx.lineTo(ox + ow, oh);
+                    wfOverlayCtx.stroke();
+                }
             } else {
                 updateScrubPreview(e);
             }
