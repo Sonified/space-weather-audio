@@ -2341,7 +2341,7 @@ export async function openWelcomeModal() {
         if (title) title.textContent = '🔬 EMIC Wave Analysis Study';
         // Update existing paragraphs in place (preserves button + its event handler)
         if (paragraphs[0]) {
-            paragraphs[0].textContent = 'You will be listening to magnetometer data from the GOES satellite and identifying EMIC waves. Please use headphones or high-quality speakers in a quiet environment free from distractions.';
+            paragraphs[0].innerHTML = 'You will be listening to magnetometer data from the <b>GOES satellite</b> and identifying <b>EMIC waves</b>. Please use headphones or high-quality speakers in a quiet environment free from distractions.';
         }
         if (paragraphs[1]) {
             paragraphs[1].innerHTML = 'If you have any questions, contact Lucy Williams at <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>';
