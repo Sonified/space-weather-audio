@@ -189,10 +189,10 @@
             <div class="controls">
                 <div class="controls-row-1">
                     <div class="control-group">
-                        <select id="spacecraft"><option value="THEMIS" selected>THEMIS</option></select>
+                        <select id="spacecraft"><option value="GOES-16" selected>GOES-16</option></select>
                     </div>
                     <div class="control-group">
-                        <select id="dataType"><option value="THA_L2_SCM" selected>THA_L2_SCM</option></select>
+                        <select id="dataType"><option value="GOES16_1MAGN_L2_1S" selected>GOES16_1MAGN_L2_1S</option></select>
                     </div>
                     <div class="control-group">
                         <input type="checkbox" id="removeDCOffset">
@@ -203,10 +203,10 @@
                     </div>
                 </div>
                 <div class="control-group">
-                    <input type="date" id="startDate" value="2021-04-29">
-                    <input type="text" id="startTime" value="07:40:00.000">
-                    <input type="date" id="endDate" value="2021-04-29">
-                    <input type="text" id="endTime" value="08:20:00.000">
+                    <input type="date" id="startDate" value="2022-01-21">
+                    <input type="text" id="startTime" value="00:00:00.000">
+                    <input type="date" id="endDate" value="2022-01-27">
+                    <input type="text" id="endTime" value="23:59:59.000">
                     <button type="button" id="startBtn">📡 Fetch Data</button>
                     <div class="status info" id="status"></div>
                 </div>
@@ -388,8 +388,96 @@
         console.groupEnd();
     </script>
     
+    <!-- EMIC Study: IndexedDB caching layer for hardcoded GOES-16 data -->
+    <script>
+        // EMIC-specific IndexedDB cache (emic-study-cache / audio-data)
+        // Wraps the normal fetch pipeline with a persistent local cache
+        window.__emicCache = {
+            DB_NAME: 'emic-study-cache',
+            STORE_NAME: 'audio-data',
+            _getKey: function() {
+                return 'GOES16_1MAGN_L2_1S_2022-01-21T00:00:00.000Z_2022-01-27T23:59:59.000Z_b_gsm';
+            },
+            openDB: function() {
+                var self = this;
+                return new Promise(function(resolve, reject) {
+                    var req = indexedDB.open(self.DB_NAME, 1);
+                    req.onupgradeneeded = function(e) {
+                        e.target.result.createObjectStore(self.STORE_NAME);
+                    };
+                    req.onsuccess = function(e) { resolve(e.target.result); };
+                    req.onerror = function(e) { reject(e.target.error); };
+                });
+            },
+            get: async function() {
+                try {
+                    var db = await this.openDB();
+                    return new Promise(function(resolve, reject) {
+                        var tx = db.transaction('audio-data', 'readonly');
+                        var req = tx.objectStore('audio-data').get(window.__emicCache._getKey());
+                        req.onsuccess = function() { resolve(req.result || null); };
+                        req.onerror = function() { resolve(null); };
+                    });
+                } catch(e) { return null; }
+            },
+            put: async function(blob) {
+                try {
+                    var db = await this.openDB();
+                    return new Promise(function(resolve, reject) {
+                        var tx = db.transaction('audio-data', 'readwrite');
+                        tx.objectStore('audio-data').put(blob, window.__emicCache._getKey());
+                        tx.oncomplete = function() { resolve(); };
+                        tx.onerror = function() { resolve(); };
+                    });
+                } catch(e) { /* ignore */ }
+            }
+        };
+    </script>
+
     <!-- APPLICATION LAYER -->
     <script type="module" src="js/main.js?v=20260212b"></script>
+    
+    <!-- EMIC Study: Hook fetch button for IndexedDB caching + status updates -->
+    <script type="module">
+        if (window.__EMIC_STUDY_MODE) {
+            // Wait for DOM + main.js to initialize
+            const startBtn = document.getElementById('startBtn');
+            const statusEl = document.getElementById('status');
+            if (startBtn) {
+                // Add our handler BEFORE main.js's handler (capture phase)
+                startBtn.addEventListener('click', async function(e) {
+                    if (!statusEl) return;
+                    // Check EMIC IndexedDB cache first
+                    const cached = await window.__emicCache.get();
+                    if (cached) {
+                        statusEl.textContent = '📦 Loading from cache...';
+                        statusEl.className = 'status info';
+                        console.log('🔬 EMIC: Found data in IndexedDB cache');
+                    } else {
+                        statusEl.textContent = '📡 Fetching GOES-16 magnetometer data from CDAWeb...';
+                        statusEl.className = 'status loading';
+                        console.log('🔬 EMIC: No cache, will fetch from CDAWeb');
+                    }
+                }, true); // capture phase = runs first
+
+                // After fetch completes, store in EMIC cache
+                // Listen for the worklet data-complete which signals successful load
+                const origAddEventListener = startBtn.addEventListener;
+                window.addEventListener('componentsReady', async function() {
+                    // Data loaded successfully - cache it
+                    try {
+                        const { getAudioData } = await import('./js/cdaweb-cache.js');
+                        const entry = await getAudioData('GOES-16', 'GOES16_1MAGN_L2_1S', 
+                            '2022-01-21T00:00:00.000Z', '2022-01-27T23:59:59.000Z');
+                        if (entry && entry.wavBlob) {
+                            await window.__emicCache.put(entry.wavBlob);
+                            console.log('🔬 EMIC: Cached WAV in IndexedDB');
+                        }
+                    } catch(e) { console.warn('EMIC cache store failed:', e); }
+                });
+            }
+        }
+    </script>
     
     <!-- EMIC Study: Read participant ID from URL param -->
     <script>
