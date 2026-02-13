@@ -238,15 +238,19 @@ function createWaveformOverlay(waveformCanvas) {
     const parent = waveformCanvas.parentElement;
     if (parent) {
         // Position overlay exactly over the waveform canvas using rects
+        // Subtract parent's clientTop/clientLeft because position:absolute is
+        // relative to the padding edge, but getBoundingClientRect includes border
         const canvasRect = waveformCanvas.getBoundingClientRect();
         const parentRect = parent.getBoundingClientRect();
+        const pBorderTop = parent.clientTop;   // parent border-top width
+        const pBorderLeft = parent.clientLeft;  // parent border-left width
 
         wfOverlayCanvas.width = Math.round(canvasRect.width * window.devicePixelRatio);
         wfOverlayCanvas.height = Math.round(canvasRect.height * window.devicePixelRatio);
         wfOverlayCanvas.style.cssText = `
             position: absolute;
-            top: ${canvasRect.top - parentRect.top}px;
-            left: ${canvasRect.left - parentRect.left}px;
+            top: ${canvasRect.top - parentRect.top - pBorderTop}px;
+            left: ${canvasRect.left - parentRect.left - pBorderLeft}px;
             width: ${canvasRect.width}px;
             height: ${canvasRect.height}px;
             pointer-events: none;
@@ -265,8 +269,8 @@ function createWaveformOverlay(waveformCanvas) {
             if (wfOverlayCanvas && waveformCanvas) {
                 const cr = waveformCanvas.getBoundingClientRect();
                 const pr = parent.getBoundingClientRect();
-                wfOverlayCanvas.style.top = (cr.top - pr.top) + 'px';
-                wfOverlayCanvas.style.left = (cr.left - pr.left) + 'px';
+                wfOverlayCanvas.style.top = (cr.top - pr.top - parent.clientTop) + 'px';
+                wfOverlayCanvas.style.left = (cr.left - pr.left - parent.clientLeft) + 'px';
                 wfOverlayCanvas.style.width = cr.width + 'px';
                 wfOverlayCanvas.style.height = cr.height + 'px';
                 const newW = Math.round(cr.width * window.devicePixelRatio);

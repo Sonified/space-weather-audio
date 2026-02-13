@@ -43,8 +43,9 @@ export function positionWaveformButtonsCanvas() {
     const panelRect = panel.getBoundingClientRect();
     
     // Position buttons canvas exactly over waveform (transparent overlay)
-    const leftEdge = waveformRect.left - panelRect.left;
-    const topEdge = waveformRect.top - panelRect.top;
+    // Subtract panel border because position:absolute is relative to padding edge
+    const leftEdge = waveformRect.left - panelRect.left - panel.clientLeft;
+    const topEdge = waveformRect.top - panelRect.top - panel.clientTop;
     
     buttonsCanvas.style.cssText = `
         position: absolute;
