@@ -252,21 +252,7 @@ function createWaveformOverlay(waveformCanvas) {
         wfOverlayCanvas.style.width = waveformCanvas.clientWidth + 'px';
         wfOverlayCanvas.style.height = waveformCanvas.clientHeight + 'px';
 
-        console.log('🔴 OVERLAY DEBUG:', {
-            offsetTop: waveformCanvas.offsetTop,
-            offsetLeft: waveformCanvas.offsetLeft,
-            clientTop: waveformCanvas.clientTop,
-            clientLeft: waveformCanvas.clientLeft,
-            clientWidth: waveformCanvas.clientWidth,
-            clientHeight: waveformCanvas.clientHeight,
-            offsetWidth: waveformCanvas.offsetWidth,
-            offsetHeight: waveformCanvas.offsetHeight,
-            canvasWidth: waveformCanvas.width,
-            canvasHeight: waveformCanvas.height,
-            dpr,
-            overlayTop: wfOverlayCanvas.style.top,
-            overlayHeight: wfOverlayCanvas.style.height
-        });
+        // Debug removed — fix confirmed working
 
         parent.appendChild(wfOverlayCanvas);
 

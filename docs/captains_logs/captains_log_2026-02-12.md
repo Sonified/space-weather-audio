@@ -193,6 +193,53 @@ Fix:
 - "Recent:" label font-size preserved at 13px
 - Recent search dropdown text left-aligned, slightly gray (`#888`)
 
+---
+
+## The Great Overlay Debugging Saga (Evening Session)
+
+### The Bug
+Waveform playhead and region highlights were rendering 2px too low — not reaching the top of the black waveform area and spilling 2px past the bottom edge. The spectrogram playhead was perfectly aligned, which made the waveform issue even more maddening.
+
+### The 45-Minute Journey
+What followed was an embarrassingly long debugging session involving ~8 failed fix attempts pushed directly to production (lesson learned). The approaches tried:
+
+1. **Compensate for waveform border in overlay sizing** — made it worse
+2. **Switch waveform `border` to `outline`** — no change
+3. **Use `clientWidth`/`clientHeight`** — wrong direction
+4. **Remove border entirely, use `box-shadow`** — no change
+5. **Subtract parent panel's `clientTop`** — partially worked
+6. **Copy spectrogram-playhead.js approach exactly** — still broken
+7. **Add debug lines (green=top, red=bottom)** — pushed to production with users on it 🤦
+8. **The actual fix: `offsetTop + clientTop` for position, `clientWidth/Height` for size**
+
+### Root Cause
+Every failed attempt used `getBoundingClientRect()` to compute overlay position. The problem: `getBoundingClientRect()` returns coordinates relative to the viewport's border-box edge, but `position: absolute` places elements relative to the containing block's **padding edge**. The panel has a 2px border, creating a persistent 2px offset that no amount of subtraction gymnastics could cleanly fix.
+
+The spectrogram playhead had the same 2px offset, but its own 2px border masked it visually. The waveform's border masked the top but not the bottom.
+
+### The Fix
+Use `offsetTop`/`offsetLeft` (already in the correct coordinate space for absolute positioning) plus `clientTop`/`clientLeft` (to skip the waveform's own border). Size the overlay with `clientWidth`/`clientHeight` (content area only, no border). Zero `getBoundingClientRect()` math needed.
+
+```javascript
+// Before (broken): viewport coords → manual border subtraction → still wrong
+const canvasRect = waveformCanvas.getBoundingClientRect();
+const parentRect = parent.getBoundingClientRect();
+overlay.style.top = (canvasRect.top - parentRect.top) + 'px';
+
+// After (works): already in the right coordinate space
+overlay.style.top = (waveformCanvas.offsetTop + waveformCanvas.clientTop) + 'px';
+overlay.style.height = waveformCanvas.clientHeight + 'px';
+```
+
+### Lessons Learned
+1. **Don't push debug visuals to production.** Work on a branch or test locally.
+2. **Don't guess — diagnose.** Should have added debug lines on attempt #1, not attempt #7.
+3. **`getBoundingClientRect()` vs `offsetTop`**: rect is viewport-relative; offset is offsetParent-relative. For `position: absolute`, use offset properties.
+4. **`offsetHeight` vs `clientHeight`**: offset includes border; client excludes it. When overlaying content *inside* a bordered element, use client dimensions.
+5. **When something works (spectrogram), understand *why* before copying it.** The spectrogram's border was masking the same bug.
+
+---
+
 ## Process Notes
 
 This work was done collaboratively with Nova (OpenClaw AI assistant) using parallel sub-agents. The initial electric field integration was handled by a single agent. The new spacecraft additions were parallelized across 5 simultaneous agents (ACE, DSCOVR, Cluster, Geotail, Voyagers), each independently testing the CDAWeb audio API and integrating confirmed-working datasets. Total wall-clock time for the full expansion: approximately 45 minutes.
