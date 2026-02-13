@@ -237,23 +237,18 @@ function createWaveformOverlay(waveformCanvas) {
 
     const parent = waveformCanvas.parentElement;
     if (parent) {
-        // Position overlay exactly over the waveform canvas content area
-        // Use clientWidth/clientHeight (excludes border) for accurate content sizing
+        // Position overlay exactly over the waveform canvas using rects
         const canvasRect = waveformCanvas.getBoundingClientRect();
         const parentRect = parent.getBoundingClientRect();
-        const cw = waveformCanvas.clientWidth;
-        const ch = waveformCanvas.clientHeight;
-        const offsetX = (canvasRect.width - cw) / 2; // border offset
-        const offsetY = (canvasRect.height - ch) / 2;
 
-        wfOverlayCanvas.width = Math.round(cw * window.devicePixelRatio);
-        wfOverlayCanvas.height = Math.round(ch * window.devicePixelRatio);
+        wfOverlayCanvas.width = Math.round(canvasRect.width * window.devicePixelRatio);
+        wfOverlayCanvas.height = Math.round(canvasRect.height * window.devicePixelRatio);
         wfOverlayCanvas.style.cssText = `
             position: absolute;
-            top: ${canvasRect.top - parentRect.top + offsetY}px;
-            left: ${canvasRect.left - parentRect.left + offsetX}px;
-            width: ${cw}px;
-            height: ${ch}px;
+            top: ${canvasRect.top - parentRect.top}px;
+            left: ${canvasRect.left - parentRect.left}px;
+            width: ${canvasRect.width}px;
+            height: ${canvasRect.height}px;
             pointer-events: none;
             z-index: 5;
             background: transparent !important;
@@ -270,16 +265,12 @@ function createWaveformOverlay(waveformCanvas) {
             if (wfOverlayCanvas && waveformCanvas) {
                 const cr = waveformCanvas.getBoundingClientRect();
                 const pr = parent.getBoundingClientRect();
-                const rcw = waveformCanvas.clientWidth;
-                const rch = waveformCanvas.clientHeight;
-                const rox = (cr.width - rcw) / 2;
-                const roy = (cr.height - rch) / 2;
-                wfOverlayCanvas.style.top = (cr.top - pr.top + roy) + 'px';
-                wfOverlayCanvas.style.left = (cr.left - pr.left + rox) + 'px';
-                wfOverlayCanvas.style.width = rcw + 'px';
-                wfOverlayCanvas.style.height = rch + 'px';
-                const newW = Math.round(rcw * window.devicePixelRatio);
-                const newH = Math.round(rch * window.devicePixelRatio);
+                wfOverlayCanvas.style.top = (cr.top - pr.top) + 'px';
+                wfOverlayCanvas.style.left = (cr.left - pr.left) + 'px';
+                wfOverlayCanvas.style.width = cr.width + 'px';
+                wfOverlayCanvas.style.height = cr.height + 'px';
+                const newW = Math.round(cr.width * window.devicePixelRatio);
+                const newH = Math.round(cr.height * window.devicePixelRatio);
                 if (wfOverlayCanvas.width !== newW || wfOverlayCanvas.height !== newH) {
                     wfOverlayCanvas.width = newW;
                     wfOverlayCanvas.height = newH;
