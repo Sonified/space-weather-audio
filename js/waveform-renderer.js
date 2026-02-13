@@ -237,25 +237,18 @@ function createWaveformOverlay(waveformCanvas) {
 
     const parent = waveformCanvas.parentElement;
     if (parent) {
-        // Position overlay exactly over the waveform canvas content area (inside border)
+        // Position overlay exactly over the waveform canvas using rects
         const canvasRect = waveformCanvas.getBoundingClientRect();
         const parentRect = parent.getBoundingClientRect();
-        const cs = getComputedStyle(waveformCanvas);
-        const borderT = parseFloat(cs.borderTopWidth) || 0;
-        const borderB = parseFloat(cs.borderBottomWidth) || 0;
-        const borderL = parseFloat(cs.borderLeftWidth) || 0;
-        const borderR = parseFloat(cs.borderRightWidth) || 0;
-        const contentWidth = canvasRect.width - borderL - borderR;
-        const contentHeight = canvasRect.height - borderT - borderB;
 
-        wfOverlayCanvas.width = Math.round(contentWidth * window.devicePixelRatio);
-        wfOverlayCanvas.height = Math.round(contentHeight * window.devicePixelRatio);
+        wfOverlayCanvas.width = Math.round(canvasRect.width * window.devicePixelRatio);
+        wfOverlayCanvas.height = Math.round(canvasRect.height * window.devicePixelRatio);
         wfOverlayCanvas.style.cssText = `
             position: absolute;
-            top: ${canvasRect.top - parentRect.top + borderT}px;
-            left: ${canvasRect.left - parentRect.left + borderL}px;
-            width: ${contentWidth}px;
-            height: ${contentHeight}px;
+            top: ${canvasRect.top - parentRect.top}px;
+            left: ${canvasRect.left - parentRect.left}px;
+            width: ${canvasRect.width}px;
+            height: ${canvasRect.height}px;
             pointer-events: none;
             z-index: 5;
             background: transparent !important;
@@ -272,19 +265,12 @@ function createWaveformOverlay(waveformCanvas) {
             if (wfOverlayCanvas && waveformCanvas) {
                 const cr = waveformCanvas.getBoundingClientRect();
                 const pr = parent.getBoundingClientRect();
-                const rcs = getComputedStyle(waveformCanvas);
-                const rBT = parseFloat(rcs.borderTopWidth) || 0;
-                const rBB = parseFloat(rcs.borderBottomWidth) || 0;
-                const rBL = parseFloat(rcs.borderLeftWidth) || 0;
-                const rBR = parseFloat(rcs.borderRightWidth) || 0;
-                const cW = cr.width - rBL - rBR;
-                const cH = cr.height - rBT - rBB;
-                wfOverlayCanvas.style.top = (cr.top - pr.top + rBT) + 'px';
-                wfOverlayCanvas.style.left = (cr.left - pr.left + rBL) + 'px';
-                wfOverlayCanvas.style.width = cW + 'px';
-                wfOverlayCanvas.style.height = cH + 'px';
-                const newW = Math.round(cW * window.devicePixelRatio);
-                const newH = Math.round(cH * window.devicePixelRatio);
+                wfOverlayCanvas.style.top = (cr.top - pr.top) + 'px';
+                wfOverlayCanvas.style.left = (cr.left - pr.left) + 'px';
+                wfOverlayCanvas.style.width = cr.width + 'px';
+                wfOverlayCanvas.style.height = cr.height + 'px';
+                const newW = Math.round(cr.width * window.devicePixelRatio);
+                const newH = Math.round(cr.height * window.devicePixelRatio);
                 if (wfOverlayCanvas.width !== newW || wfOverlayCanvas.height !== newH) {
                     wfOverlayCanvas.width = newW;
                     wfOverlayCanvas.height = newH;
