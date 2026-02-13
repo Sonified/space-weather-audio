@@ -122,6 +122,8 @@ export function initializeComponentSelector(fileUrls, metadata = {}) {
 
         selector.value = currentComponentIndex;
         container.style.display = 'flex';
+        container.style.opacity = '1';
+        container.style.pointerEvents = 'auto';
 
         // console.log(`📊 Component selector initialized with ${componentCount} components`);
     } else {

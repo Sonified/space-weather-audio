@@ -180,7 +180,7 @@
                     <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
                     <label for="removeDCOffsetEmic" style="font-size: 13px; font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend</label>
                 </div>
-                <div id="componentSelectorContainer" style="display: none; align-items: center; gap: 6px; margin-left: 8px;">
+                <div id="componentSelectorContainer" style="display: flex; align-items: center; gap: 6px; margin-left: 8px; opacity: 0.4; pointer-events: none;">
                     <label for="componentSelector" style="font-size: 13px; font-weight: 600; color: #666; white-space: nowrap;">Component:</label>
                     <select id="componentSelector" style="padding: 4px 8px; font-size: 13px; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer;">
                         <option value="0">br (Radial)</option>
