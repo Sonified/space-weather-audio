@@ -1032,6 +1032,7 @@ canvas {
     box-shadow: none;
     transition: border-color 0.3s ease;
     contain: layout style paint;
+    overflow: hidden;
 }
 
 #spectrogram {
