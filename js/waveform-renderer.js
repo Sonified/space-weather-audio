@@ -246,8 +246,10 @@ function createWaveformOverlay(waveformCanvas) {
         wfOverlayCanvas.style.pointerEvents = 'none';
         wfOverlayCanvas.style.zIndex = '5';
         wfOverlayCanvas.style.background = 'transparent';
-        wfOverlayCanvas.style.left = (canvasRect.left - parentRect.left) + 'px';
-        wfOverlayCanvas.style.top = (canvasRect.top - parentRect.top) + 'px';
+        // Subtract parent border: position:absolute is relative to padding edge,
+        // but getBoundingClientRect measures from border edge
+        wfOverlayCanvas.style.left = (canvasRect.left - parentRect.left - parent.clientLeft) + 'px';
+        wfOverlayCanvas.style.top = (canvasRect.top - parentRect.top - parent.clientTop) + 'px';
         wfOverlayCanvas.width = waveformCanvas.width;
         wfOverlayCanvas.height = waveformCanvas.height;
         wfOverlayCanvas.style.width = waveformCanvas.offsetWidth + 'px';
@@ -261,8 +263,8 @@ function createWaveformOverlay(waveformCanvas) {
             if (wfOverlayCanvas && waveformCanvas) {
                 const cr = waveformCanvas.getBoundingClientRect();
                 const pr = parent.getBoundingClientRect();
-                wfOverlayCanvas.style.left = (cr.left - pr.left) + 'px';
-                wfOverlayCanvas.style.top = (cr.top - pr.top) + 'px';
+                wfOverlayCanvas.style.left = (cr.left - pr.left - parent.clientLeft) + 'px';
+                wfOverlayCanvas.style.top = (cr.top - pr.top - parent.clientTop) + 'px';
                 if (wfOverlayCanvas.width !== waveformCanvas.width || wfOverlayCanvas.height !== waveformCanvas.height) {
                     wfOverlayCanvas.width = waveformCanvas.width;
                     wfOverlayCanvas.height = waveformCanvas.height;
@@ -463,6 +465,24 @@ function drawWaveformOverlays() {
     const width = wfOverlayCanvas.width;
     const height = wfOverlayCanvas.height;
     wfOverlayCtx.clearRect(0, 0, width, height);
+
+    // 🔴 DEBUG: Draw colored border lines to diagnose overlay alignment
+    // GREEN = top edge of overlay, RED = bottom edge, BLUE = left, YELLOW = right
+    wfOverlayCtx.save();
+    wfOverlayCtx.lineWidth = 4;
+    // Top edge - GREEN
+    wfOverlayCtx.strokeStyle = '#00ff00';
+    wfOverlayCtx.beginPath();
+    wfOverlayCtx.moveTo(0, 2);
+    wfOverlayCtx.lineTo(width, 2);
+    wfOverlayCtx.stroke();
+    // Bottom edge - RED
+    wfOverlayCtx.strokeStyle = '#ff0000';
+    wfOverlayCtx.beginPath();
+    wfOverlayCtx.moveTo(0, height - 2);
+    wfOverlayCtx.lineTo(width, height - 2);
+    wfOverlayCtx.stroke();
+    wfOverlayCtx.restore();
 
     // Region highlights
     drawRegionHighlights(wfOverlayCtx, width, height);
