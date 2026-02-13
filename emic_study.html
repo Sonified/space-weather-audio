@@ -176,12 +176,12 @@
         <div class="panel" style="padding: 8px 15px;">
             <div class="emic-controls-bar">
                 <button type="button" id="startBtn" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
-                <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
+                <div style="display: flex; align-items: center; gap: 6px; margin-left: 16px;">
                     <label for="removeDCOffsetEmic" style="font-size: 13px; font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
                     <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
                 </div>
                 <div style="width: 1px; height: 24px; background: #444; margin: 0 4px;"></div>
-                <div id="componentSelectorContainer" style="display: flex; align-items: center; gap: 6px; margin-left: 8px; opacity: 0.4; pointer-events: none;">
+                <div id="componentSelectorContainer" style="display: flex; align-items: center; gap: 6px; margin-left: 4px; opacity: 0.4; pointer-events: none;">
                     <label for="componentSelector" style="font-size: 13px; font-weight: 600; color: #666; white-space: nowrap;">Component:</label>
                     <select id="componentSelector" style="padding: 6px 10px; font-size: 14px; border-radius: 4px; border: 1px solid #555; background: white; color: #333; cursor: pointer; height: 32px;">
                         <option value="0">br (Radial)</option>
@@ -190,7 +190,7 @@
                     </select>
                 </div>
                 <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
-                <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 150px; font-size: 13px;"></div>
+                <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 0 1 auto; min-width: 80px; font-size: 13px;"></div>
             </div>
         </div>
 
