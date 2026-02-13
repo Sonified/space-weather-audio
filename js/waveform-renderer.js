@@ -480,38 +480,6 @@ function drawWaveformOverlays() {
     const height = wfOverlayCanvas.height;
     wfOverlayCtx.clearRect(0, 0, width, height);
 
-    // 🔴 DEBUG: Show overlay dimensions
-    wfOverlayCtx.save();
-    const wfc = document.getElementById('waveform');
-    const debugInfo = wfc ? [
-        `overlay: ${wfOverlayCanvas.width}x${wfOverlayCanvas.height} css:${wfOverlayCanvas.style.width}x${wfOverlayCanvas.style.height}`,
-        `canvas.offset: ${wfc.offsetWidth}x${wfc.offsetHeight}`,
-        `canvas.client: ${wfc.clientWidth}x${wfc.clientHeight}`,
-        `canvas.wh: ${wfc.width}x${wfc.height}`,
-        `rect: ${Math.round(wfc.getBoundingClientRect().width)}x${Math.round(wfc.getBoundingClientRect().height)}`,
-        `dpr: ${window.devicePixelRatio}`,
-        `top: ${wfOverlayCanvas.style.top}`
-    ] : ['no wfc'];
-    wfOverlayCtx.font = '20px monospace';
-    wfOverlayCtx.fillStyle = '#00ff00';
-    debugInfo.forEach((line, i) => {
-        wfOverlayCtx.fillText(line, 20, 40 + i * 24);
-    });
-    // Top edge - GREEN
-    wfOverlayCtx.lineWidth = 4;
-    wfOverlayCtx.strokeStyle = '#00ff00';
-    wfOverlayCtx.beginPath();
-    wfOverlayCtx.moveTo(0, 2);
-    wfOverlayCtx.lineTo(width, 2);
-    wfOverlayCtx.stroke();
-    // Bottom edge - RED
-    wfOverlayCtx.strokeStyle = '#ff0000';
-    wfOverlayCtx.beginPath();
-    wfOverlayCtx.moveTo(0, height - 2);
-    wfOverlayCtx.lineTo(width, height - 2);
-    wfOverlayCtx.stroke();
-    wfOverlayCtx.restore();
-
     // Region highlights
     drawRegionHighlights(wfOverlayCtx, width, height);
     drawRegionButtons();
