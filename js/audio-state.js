@@ -60,7 +60,7 @@ export let justSeeked = false;  // Track if we just performed a seek (to avoid r
 export let spacecraftWithData = null;  // Track which spacecraft currently has data loaded
 
 // Visualization state
-export let frequencyScale = 'sqrt'; // 'linear', 'sqrt', or 'logarithmic'
+export let frequencyScale = 'logarithmic'; // 'linear', 'sqrt', or 'logarithmic'
 export let fftSize = 2048; // FFT size for spectrogram (256, 512, 1024, 2048, 4096, 8192)
 
 // Animation frame IDs (for cleanup to prevent memory leaks)
