@@ -176,7 +176,7 @@
         <div class="panel" style="padding: 8px 15px;">
             <div class="emic-controls-bar">
                 <button type="button" id="startBtn" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
-                <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
                 <div id="componentSelectorContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px; opacity: 0.4; pointer-events: none;">
                     <label for="componentSelector" style="font-size: 13px; font-weight: 600; color: #666; white-space: nowrap;">Component:</label>
                     <select id="componentSelector" style="padding: 6px 10px; font-size: 14px; border-radius: 4px; border: 1px solid #555; background: white; color: #333; cursor: pointer; height: 32px;">
@@ -185,12 +185,12 @@
                         <option value="2">bn (Normal)</option>
                     </select>
                 </div>
-                <div style="width: 1px; height: 24px; background: #444; margin: 0 4px;"></div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
                 <div style="display: flex; align-items: center; gap: 6px; padding: 0 8px;">
                     <label for="removeDCOffsetEmic" style="font-size: 13px; font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
                     <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
                 </div>
-                <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
                 <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 80px; font-size: 13px;"></div>
             </div>
         </div>
@@ -279,7 +279,7 @@
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
                 </div>
-                <div style="width: 1px; height: 24px; background: #444; margin: 0 4px;"></div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
                 <div class="emic-btn-group">
                     <label>Stretch:</label>
                     <button type="button" class="emic-btn active" data-stretch="resample">Resample</button>
@@ -287,7 +287,7 @@
                     <button type="button" class="emic-btn" data-stretch="wavelet">Wavelet</button>
                     <button type="button" class="emic-btn" data-stretch="paulstretch">Paulstretch</button>
                 </div>
-                <div style="width: 1px; height: 24px; background: #444; margin: 0 4px;"></div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
                 <div class="emic-btn-group">
                     <label>Speed:</label>
                     <button type="button" class="emic-btn" data-speed="0.5">0.5×</button>
