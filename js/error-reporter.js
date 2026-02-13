@@ -274,9 +274,9 @@ async function stopErrorFlameEffect() {
  * Warm up the body background
  */
 function warmUpBackground() {
-    // Fade body background to warmer/brighter colors
-    document.body.style.transition = 'background 1s ease-in-out';
-    document.body.style.background = 'linear-gradient(135deg, #3f0a0a 0%, #4d1a1a 50%, #5a2a2a 100%)';
+    // Page background stays fixed for contrast hierarchy - don't change it
+    // document.body.style.transition = 'background 1s ease-in-out';
+    // document.body.style.background = 'linear-gradient(135deg, #3f0a0a 0%, #4d1a1a 50%, #5a2a2a 100%)';
 }
 
 /**

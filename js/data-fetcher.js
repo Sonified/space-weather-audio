@@ -65,16 +65,43 @@ const DATASET_VARIABLES = {
     'DN_MAGN-L2-HIRES_G19': 'b_gse',
     // MMS1 Electric Double Probe - DC E-field, GSE coordinates (Ex, Ey, Ez)
     'MMS1_EDP_SLOW_L2_DCE': 'mms1_edp_dce_gse_slow_l2',
-    // MMS1 Search Coil Magnetometer - Survey mode, GSE coordinates (Bx, By, Bz)
+    'MMS1_EDP_FAST_L2_DCE': 'mms1_edp_dce_gse_fast_l2',
+    'MMS1_EDP_BRST_L2_DCE': 'mms1_edp_dce_gse_brst_l2',
+    // MMS1 Search Coil Magnetometer - GSE coordinates (Bx, By, Bz)
     'MMS1_SCM_SRVY_L2_SCSRVY': 'mms1_scm_acb_gse_scsrvy_srvy_l2',
+    'MMS1_SCM_BRST_L2_SCB': 'mms1_scm_acb_gse_scb_brst_l2',
     // THEMIS EFI - Electric Field Instrument, slow-survey GSE coordinates (Ex, Ey, Ez)
     'THA_L2_EFI': 'tha_efs_dot0_gse',
+    // Voyager 1 & 2 - HG coordinates (Radial, Tangential, Normal)
+    'VOYAGER1_2S_MAG': 'B1',
+    'VOYAGER2_2S_MAG': 'B1',
     'THB_L2_EFI': 'thb_efs_dot0_gse',
     'THC_L2_EFI': 'thc_efs_dot0_gse',
     'THD_L2_EFI': 'thd_efs_dot0_gse',
     'THE_L2_EFI': 'the_efs_dot0_gse',
     // PSP FIELDS - Digital Fields Board DC differential voltage waveform
     'PSP_FLD_L2_DFB_WF_DVDC': 'psp_fld_l2_dfb_wf_dVdc_sensor',
+    // Cluster FGM - Fluxgate Magnetometer, 5 vectors/sec GSE coordinates
+    'C1_CP_FGM_5VPS': 'B_vec_xyz_gse__C1_CP_FGM_5VPS',
+    'C2_CP_FGM_5VPS': 'B_vec_xyz_gse__C2_CP_FGM_5VPS',
+    'C3_CP_FGM_5VPS': 'B_vec_xyz_gse__C3_CP_FGM_5VPS',
+    'C4_CP_FGM_5VPS': 'B_vec_xyz_gse__C4_CP_FGM_5VPS',
+    // Cluster STAFF - Search Coil Magnetometer, CWF GSE coordinates
+    'C1_CP_STA_CWF_GSE': 'B_vec_xyz_Instrument__C1_CP_STA_CWF_GSE',
+    'C2_CP_STA_CWF_GSE': 'B_vec_xyz_Instrument__C2_CP_STA_CWF_GSE',
+    'C3_CP_STA_CWF_GSE': 'B_vec_xyz_Instrument__C3_CP_STA_CWF_GSE',
+    'C4_CP_STA_CWF_GSE': 'B_vec_xyz_Instrument__C4_CP_STA_CWF_GSE',
+    // Cluster EFW - Electric Field, ISR2 coordinates
+    'C1_CP_EFW_L3_E3D_INERT': 'E_Vec_xyz_ISR2__C1_CP_EFW_L3_E3D_INERT',
+    'C2_CP_EFW_L3_E3D_INERT': 'E_Vec_xyz_ISR2__C2_CP_EFW_L3_E3D_INERT',
+    'C3_CP_EFW_L3_E3D_INERT': 'E_Vec_xyz_ISR2__C3_CP_EFW_L3_E3D_INERT',
+    'C4_CP_EFW_L3_E3D_INERT': 'E_Vec_xyz_ISR2__C4_CP_EFW_L3_E3D_INERT',
+    // Geotail - Magnetic Field (Editor-B, 3-sec GSE)
+    'GE_EDB3SEC_MGF': 'BGSE',
+    // Geotail - Electric Field Detector (spherical probe, sunward & duskward)
+    'GE_K0_EFD': 'Es',
+    // ACE - Magnetic Field Investigation, GSE coordinates (1 sec)
+    'AC_H3_MFI': 'BGSEc',
     // Solar Orbiter RPW - Radio and Plasma Waves, LFR survey E-field
     'SOLO_L2_RPW-LFR-SURV-CWF-E': 'EDC'
 };
@@ -163,6 +190,16 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         
         // Validate response
         if (!result || !result.FileDescription || result.FileDescription.length === 0) {
+            // Provide helpful message for burst-mode datasets
+            const burstDatasets = ['MMS1_EDP_BRST_L2_DCE', 'MMS1_FGM_BRST_L2', 'MMS1_SCM_BRST_L2_SCB', 'MMS1_EDP_BRST_L2_HMFE'];
+            if (burstDatasets.includes(dataset)) {
+                const statusEl = document.getElementById('status');
+                if (statusEl) {
+                    statusEl.textContent = '⚠️ MMS burst data is not available for this time range. Burst mode only activates during specific magnetospheric events. Try a different time period or use Survey/Fast mode instead.';
+                    statusEl.className = 'status warning';
+                }
+                throw new Error('MMS burst data is not available for this time range. Burst mode only activates during specific magnetospheric events.');
+            }
             throw new Error('No audio file created by CDAWeb API');
         }
         

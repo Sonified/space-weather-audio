@@ -289,46 +289,102 @@ export function saveDateTime() {
 }
 
 // Spacecraft to datasets mapping for the Data dropdown
+// Spacecraft datasets organized by instrument group
+// Items with 'group' key create <optgroup> headers; magnetic field groups always come first
 const SPACECRAFT_DATASETS = {
     'PSP': [
-        { value: 'PSP_FLD_L2_MAG_RTN', label: 'PSP_FLD_L2_MAG_RTN (Full Cadence)' },
-        { value: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC', label: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)' },
-        { value: 'PSP_FLD_L2_DFB_WF_DVDC', label: 'PSP_FLD_L2_DFB_WF_DVDC (Electric Field Waveform)' }
+        { group: 'Magnetic Field' },
+        { value: 'PSP_FLD_L2_MAG_RTN', label: 'MAG RTN (Full Cadence)' },
+        { value: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC', label: 'MAG RTN (4 Samples/Cycle)' },
+        { group: 'Electric Field' },
+        { value: 'PSP_FLD_L2_DFB_WF_DVDC', label: 'DFB DC Voltage Waveform' }
     ],
     'Wind': [
-        { value: 'WI_H2_MFI', label: 'WI_H2_MFI (Magnetic Field)' }
+        { group: 'Magnetic Field' },
+        { value: 'WI_H2_MFI', label: 'MFI (Magnetic Field Investigation)' }
     ],
     'MMS': [
-        { value: 'MMS1_FGM_SRVY_L2', label: 'MMS1_FGM_SRVY_L2 (FGM Survey)' },
-        { value: 'MMS1_FGM_BRST_L2', label: 'MMS1_FGM_BRST_L2 (FGM Burst)' },
-        { value: 'MMS1_EDP_SLOW_L2_DCE', label: 'MMS1_EDP_SLOW_L2_DCE (Electric Field)' },
-        { value: 'MMS1_SCM_SRVY_L2_SCSRVY', label: 'MMS1_SCM_SRVY_L2_SCSRVY (Search Coil Mag)' }
+        { group: 'Magnetic Field (FGM)' },
+        { value: 'MMS1_FGM_SRVY_L2', label: 'FGM Survey' },
+        { value: 'MMS1_FGM_BRST_L2', label: 'FGM Burst' },
+        { group: 'Magnetic Field (Search Coil)' },
+        { value: 'MMS1_SCM_SRVY_L2_SCSRVY', label: 'SCM Survey' },
+        { value: 'MMS1_SCM_BRST_L2_SCB', label: 'SCM Burst' },
+        { group: 'Electric Field (EDP)' },
+        { value: 'MMS1_EDP_SLOW_L2_DCE', label: 'EDP Slow Survey' },
+        { value: 'MMS1_EDP_FAST_L2_DCE', label: 'EDP Fast Survey' },
+        { value: 'MMS1_EDP_BRST_L2_DCE', label: 'EDP Burst' }
     ],
     'THEMIS': [
-        { value: 'THA_L2_FGM', label: 'THA_L2_FGM (THEMIS-A FGM)' },
-        { value: 'THB_L2_FGM', label: 'THB_L2_FGM (THEMIS-B FGM)' },
-        { value: 'THC_L2_FGM', label: 'THC_L2_FGM (THEMIS-C FGM)' },
-        { value: 'THD_L2_FGM', label: 'THD_L2_FGM (THEMIS-D FGM)' },
-        { value: 'THE_L2_FGM', label: 'THE_L2_FGM (THEMIS-E FGM)' },
-        { value: 'THA_L2_SCM', label: 'THA_L2_SCM (THEMIS-A SCM)' },
-        { value: 'THB_L2_SCM', label: 'THB_L2_SCM (THEMIS-B SCM)' },
-        { value: 'THC_L2_SCM', label: 'THC_L2_SCM (THEMIS-C SCM)' },
-        { value: 'THD_L2_SCM', label: 'THD_L2_SCM (THEMIS-D SCM)' },
-        { value: 'THE_L2_SCM', label: 'THE_L2_SCM (THEMIS-E SCM)' },
-        { value: 'THA_L2_EFI', label: 'THA_L2_EFI (THEMIS-A Electric Field)' },
-        { value: 'THB_L2_EFI', label: 'THB_L2_EFI (THEMIS-B Electric Field)' },
-        { value: 'THC_L2_EFI', label: 'THC_L2_EFI (THEMIS-C Electric Field)' },
-        { value: 'THD_L2_EFI', label: 'THD_L2_EFI (THEMIS-D Electric Field)' },
-        { value: 'THE_L2_EFI', label: 'THE_L2_EFI (THEMIS-E Electric Field)' }
+        { group: 'Magnetic Field (FGM)' },
+        { value: 'THA_L2_FGM', label: 'THEMIS-A FGM' },
+        { value: 'THB_L2_FGM', label: 'THEMIS-B FGM' },
+        { value: 'THC_L2_FGM', label: 'THEMIS-C FGM' },
+        { value: 'THD_L2_FGM', label: 'THEMIS-D FGM' },
+        { value: 'THE_L2_FGM', label: 'THEMIS-E FGM' },
+        { group: 'Magnetic Field (Search Coil)' },
+        { value: 'THA_L2_SCM', label: 'THEMIS-A SCM' },
+        { value: 'THB_L2_SCM', label: 'THEMIS-B SCM' },
+        { value: 'THC_L2_SCM', label: 'THEMIS-C SCM' },
+        { value: 'THD_L2_SCM', label: 'THEMIS-D SCM' },
+        { value: 'THE_L2_SCM', label: 'THEMIS-E SCM' },
+        { group: 'Electric Field (EFI)' },
+        { value: 'THA_L2_EFI', label: 'THEMIS-A EFI' },
+        { value: 'THB_L2_EFI', label: 'THEMIS-B EFI' },
+        { value: 'THC_L2_EFI', label: 'THEMIS-C EFI' },
+        { value: 'THD_L2_EFI', label: 'THEMIS-D EFI' },
+        { value: 'THE_L2_EFI', label: 'THEMIS-E EFI' }
     ],
     'SolO': [
-        { value: 'SOLO_L2_MAG-RTN-NORMAL', label: 'SOLO_L2_MAG-RTN-NORMAL (Normal Mode)' },
-        { value: 'SOLO_L2_MAG-RTN-BURST', label: 'SOLO_L2_MAG-RTN-BURST (Burst Mode)' },
-        { value: 'SOLO_L2_RPW-LFR-SURV-CWF-E', label: 'SOLO_L2_RPW-LFR-SURV-CWF-E (Electric Field)' }
+        { group: 'Magnetic Field' },
+        { value: 'SOLO_L2_MAG-RTN-NORMAL', label: 'MAG Normal Mode' },
+        { value: 'SOLO_L2_MAG-RTN-BURST', label: 'MAG Burst Mode' },
+        { group: 'Electric Field' },
+        { value: 'SOLO_L2_RPW-LFR-SURV-CWF-E', label: 'RPW LFR Electric Field' }
     ],
     'GOES': [
+        { group: 'Magnetic Field' },
         { value: 'DN_MAGN-L2-HIRES_G16', label: 'GOES-16 MAG 10 Hz (Aug 2018 - Apr 2025)' },
         { value: 'DN_MAGN-L2-HIRES_G19', label: 'GOES-19 MAG 10 Hz (Jun 2025 - present)' }
+    ],
+    'ACE': [
+        { group: 'Magnetic Field' },
+        { value: 'AC_H3_MFI', label: 'MFI 1-sec GSE' }
+    ],
+    'DSCOVR': [
+        { group: 'Magnetic Field' },
+        { value: 'DSCOVR_H0_MAG', label: 'Fluxgate MAG 1-sec GSE' }
+    ],
+    'Cluster': [
+        { group: 'Magnetic Field (FGM)' },
+        { value: 'C1_CP_FGM_5VPS', label: 'C1 FGM 5 Vec/s' },
+        { value: 'C2_CP_FGM_5VPS', label: 'C2 FGM 5 Vec/s' },
+        { value: 'C3_CP_FGM_5VPS', label: 'C3 FGM 5 Vec/s' },
+        { value: 'C4_CP_FGM_5VPS', label: 'C4 FGM 5 Vec/s' },
+        { group: 'Magnetic Field (Search Coil)' },
+        { value: 'C1_CP_STA_CWF_GSE', label: 'C1 STAFF CWF GSE' },
+        { value: 'C2_CP_STA_CWF_GSE', label: 'C2 STAFF CWF GSE' },
+        { value: 'C3_CP_STA_CWF_GSE', label: 'C3 STAFF CWF GSE' },
+        { value: 'C4_CP_STA_CWF_GSE', label: 'C4 STAFF CWF GSE' },
+        { group: 'Electric Field (EFW)' },
+        { value: 'C1_CP_EFW_L3_E3D_INERT', label: 'C1 EFW E3D Inertial' },
+        { value: 'C2_CP_EFW_L3_E3D_INERT', label: 'C2 EFW E3D Inertial' },
+        { value: 'C3_CP_EFW_L3_E3D_INERT', label: 'C3 EFW E3D Inertial' },
+        { value: 'C4_CP_EFW_L3_E3D_INERT', label: 'C4 EFW E3D Inertial' }
+    ],
+    'Geotail': [
+        { group: 'Magnetic Field' },
+        { value: 'GE_EDB3SEC_MGF', label: 'MGF Editor-B 3-sec GSE' },
+        { group: 'Electric Field' },
+        { value: 'GE_K0_EFD', label: 'EFD Spherical Probe' }
+    ],
+    'Voyager 1': [
+        { group: 'Magnetic Field' },
+        { value: 'VOYAGER1_2S_MAG', label: 'MAG 1.92-sec HG' }
+    ],
+    'Voyager 2': [
+        { group: 'Magnetic Field' },
+        { value: 'VOYAGER2_2S_MAG', label: 'MAG 1.92-sec HG' }
     ]
 };
 
@@ -354,10 +410,23 @@ export function updateDatasetOptions() {
         return;
     }
 
-    // Populate the dataType dropdown with datasets for the selected spacecraft
-    dataTypeSelect.innerHTML = datasets.map((ds, index) =>
-        `<option value="${ds.value}"${index === 0 ? ' selected' : ''}>${ds.label}</option>`
-    ).join('');
+    // Populate the dataType dropdown with optgroup headers and options
+    let html = '';
+    let firstValue = true;
+    let inGroup = false;
+    for (const ds of datasets) {
+        if (ds.group) {
+            // Close previous optgroup if open
+            if (inGroup) html += '</optgroup>';
+            html += `<optgroup label="${ds.group}">`;
+            inGroup = true;
+        } else {
+            html += `<option value="${ds.value}"${firstValue ? ' selected' : ''}>${ds.label}</option>`;
+            firstValue = false;
+        }
+    }
+    if (inGroup) html += '</optgroup>';
+    dataTypeSelect.innerHTML = html;
 
     console.log(`📊 Updated dataset options for ${spacecraft}: ${datasets.length} datasets available`);
 }

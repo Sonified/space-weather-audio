@@ -161,13 +161,13 @@ export const colormapNames = {
 
 // Accent colors for each colormap (used for UI borders/glows)
 const colormapAccents = {
-    solar:   { color: '#ff6b35', rgb: '255, 107, 53', bg: 'linear-gradient(135deg, #1a1410, #0a0503)' },
-    turbo:   { color: '#23a6d5', rgb: '35, 166, 213', bg: 'linear-gradient(135deg, #0f1a1f, #050a0d)' },
-    viridis: { color: '#21918c', rgb: '33, 145, 140', bg: 'linear-gradient(135deg, #151a22, #080a10)' },
-    jet:     { color: '#5dadec', rgb: '93, 173, 236', bg: 'linear-gradient(135deg, #141828, #080a14)' },
-    aurora:  { color: '#9b4dca', rgb: '155, 77, 202', bg: 'linear-gradient(135deg, #1e1b2e, #0a0814)' },
-    plasma:  { color: '#22d3ee', rgb: '34, 211, 238', bg: 'linear-gradient(135deg, #12181f, #08090c)' },
-    inferno: { color: '#808080', rgb: '128, 128, 128', bg: 'linear-gradient(135deg, #1a1f35, #0a0e1a)' }
+    solar:   { color: '#ff6b35', rgb: '255, 107, 53', bg: 'linear-gradient(135deg, #1a0f0a, #100805)', pageBg: '#3a2b2b' },
+    turbo:   { color: '#23a6d5', rgb: '35, 166, 213', bg: 'linear-gradient(135deg, #1a2830, #0f1a20)', pageBg: '#2b303a' },
+    viridis: { color: '#21918c', rgb: '33, 145, 140', bg: 'linear-gradient(135deg, #1e2830, #121c22)', pageBg: '#2b3535' },
+    jet:     { color: '#5dadec', rgb: '93, 173, 236', bg: 'linear-gradient(135deg, #1e2438, #121820)', pageBg: '#2b2b3a' },
+    aurora:  { color: '#9b4dca', rgb: '155, 77, 202', bg: 'linear-gradient(135deg, #2a2540, #1a1428)', pageBg: '#332b3a' },
+    plasma:  { color: '#22d3ee', rgb: '34, 211, 238', bg: 'linear-gradient(135deg, #1c2530, #101820)', pageBg: '#2b333a' },
+    inferno: { color: '#808080', rgb: '128, 128, 128', bg: 'linear-gradient(135deg, #252a40, #161a28)', pageBg: '#2b2b3a' }
 };
 
 /**
@@ -183,6 +183,9 @@ export function updateAccentColors() {
     root.style.setProperty('--accent-border', `rgba(${accent.rgb}, 0.2)`);
     root.style.setProperty('--accent-soft', `rgba(${accent.rgb}, 0.12)`);
     root.style.setProperty('--accent-bg', accent.bg);
+    root.style.setProperty('--page-bg', accent.pageBg);
+    document.body.style.background = accent.pageBg;
+    document.documentElement.style.background = accent.pageBg;
 }
 
 /**

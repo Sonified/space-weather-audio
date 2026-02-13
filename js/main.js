@@ -739,16 +739,34 @@ export async function startStreaming(event) {
         
         console.log(`🛰️ ${logTime()} Fetching: ${spacecraft} ${dataset} from ${startTimeISO} to ${endTimeISO}`);
         
-        // Update status
+        // Update status with animated loading indicator
         const statusDiv = document.getElementById('status');
+        let dotCount = 0;
+        const baseMessage = `Fetching ${spacecraft} ${dataset} from CDAWeb`;
+        let loadingInterval = null;
         if (statusDiv) {
-            statusDiv.textContent = 'Fetching audio data from CDAWeb...';
-            statusDiv.className = 'status info';
+            // Cancel any active typing/pulse animations that could fight with our interval
+            import('./tutorial-effects.js').then(m => m.cancelTyping && m.cancelTyping()).catch(() => {});
+            statusDiv.textContent = baseMessage + '...';
+            statusDiv.className = 'status loading';
+            loadingInterval = setInterval(() => {
+                dotCount = (dotCount % 3) + 1;
+                // Re-assert loading class in case something else changed it
+                if (!statusDiv.classList.contains('loading')) {
+                    statusDiv.className = 'status loading';
+                }
+                statusDiv.textContent = baseMessage + '.'.repeat(dotCount);
+            }, 500);
         }
         
         // Fetch and load the CDAWeb audio data
+        try {
         const { fetchAndLoadCDAWebData } = await import('./data-fetcher.js');
         await fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO);
+        } finally {
+            if (loadingInterval) clearInterval(loadingInterval);
+            if (statusDiv) statusDiv.classList.remove('loading');
+        }
         
         // Check if autoPlay is enabled and start playback indicator
         const autoPlayEnabled = document.getElementById('autoPlay').checked;

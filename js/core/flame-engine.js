@@ -83,8 +83,9 @@ export async function enterOverheatMode() {
     
     try {
         // Warm up background (25% dimmer for subtlety)
-        document.body.style.transition = 'background 1s ease-in-out';
-        document.body.style.background = 'linear-gradient(135deg, #2f0808 0%, #3a1414 50%, #442020 100%)';
+        // Page background stays fixed for contrast hierarchy - don't change it
+        // document.body.style.transition = 'background 1s ease-in-out';
+        // document.body.style.background = 'linear-gradient(135deg, #2f0808 0%, #3a1414 50%, #442020 100%)';
         
         // Initialize audio context for pink noise
         if (!audioContext) {
@@ -188,8 +189,8 @@ export function exitOverheatMode() {
         }
     }
     
-    // Reset background
-    document.body.style.background = '';
+    // Page background stays fixed - no reset needed
+    // document.body.style.background = '';
 }
 
 /**

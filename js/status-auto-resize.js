@@ -13,11 +13,19 @@ let statusResizeHandler = null;
 export function autoResizeStatusText(element) {
     if (!element) return;
 
-    // Reset to max font size to start
+    // Skip resize during loading animation — text is just dots changing,
+    // no need to recalculate font size every 500ms
+    if (element.classList.contains('loading')) return;
+
+    // Check if text fits at current size before resetting
+    const currentSize = parseFloat(element.style.fontSize) || 16;
+    if (element.scrollWidth <= element.clientWidth && currentSize === 16) return;
+
+    // Try growing back to max first
     let fontSize = 16;
     element.style.fontSize = `${fontSize}px`;
 
-    // Check if text is overflowing (scrollWidth > clientWidth)
+    // Shrink only if overflowing
     while (element.scrollWidth > element.clientWidth && fontSize > 10) {
         fontSize -= 0.5;
         element.style.fontSize = `${fontSize}px`;

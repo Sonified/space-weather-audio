@@ -32,6 +32,17 @@ const COMPONENT_LABELS = {
     'SolO': ['br (Radial)', 'bt (Tangential)', 'bn (Normal)'],
     // GOES - GSE coordinates (X, Y, Z)
     'GOES': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    // ACE - GSE coordinates
+    'ACE': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    // Geotail - GSE coordinates
+    'Geotail': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    // Voyager 1 & 2 - HG coordinates (Radial, Tangential, Normal)
+    'Voyager 1': ['BR (Radial)', 'BT (Tangential)', 'BN (Normal)'],
+    'Voyager 2': ['BR (Radial)', 'BT (Tangential)', 'BN (Normal)'],
+    // DSCOVR - GSE coordinates
+    'DSCOVR': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    // Cluster - GSE coordinates (FGM default, EFW/STAFF overridden in DATASET_COMPONENT_LABELS)
+    'Cluster': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
     // Default fallback
     'default': ['Component 1', 'Component 2', 'Component 3']
 };
@@ -47,6 +58,18 @@ const DATASET_COMPONENT_LABELS = {
     'THE_L2_EFI': ['Ex (GSE)', 'Ey (GSE)', 'Ez (GSE)'],
     'PSP_FLD_L2_DFB_WF_DVDC': ['dV1 (Sensor)', 'dV2 (Sensor)'],
     'SOLO_L2_RPW-LFR-SURV-CWF-E': ['Ex', 'Ey', 'Ez'],
+    // Cluster EFW - ISR2 coordinates
+    'C1_CP_EFW_L3_E3D_INERT': ['Ex (ISR2)', 'Ey (ISR2)', 'Ez (ISR2)'],
+    'C2_CP_EFW_L3_E3D_INERT': ['Ex (ISR2)', 'Ey (ISR2)', 'Ez (ISR2)'],
+    'C3_CP_EFW_L3_E3D_INERT': ['Ex (ISR2)', 'Ey (ISR2)', 'Ez (ISR2)'],
+    'C4_CP_EFW_L3_E3D_INERT': ['Ex (ISR2)', 'Ey (ISR2)', 'Ez (ISR2)'],
+    // Cluster STAFF Search Coil - GSE coordinates
+    'C1_CP_STA_CWF_GSE': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    'C2_CP_STA_CWF_GSE': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    'C3_CP_STA_CWF_GSE': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    'C4_CP_STA_CWF_GSE': ['Bx (GSE)', 'By (GSE)', 'Bz (GSE)'],
+    // Geotail EFD
+    'GE_K0_EFD': ['E-sunward', 'E-duskward'],
 };
 
 /**
