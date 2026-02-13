@@ -254,7 +254,7 @@
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
                 </div>
-                <div id="componentSelectorContainer" style="display: none; align-items: center; gap: 8px; padding: 0 15px 0 5px;">
+                <div id="componentSelectorContainer" style="display: none; align-items: center; gap: 8px; padding: 0 15px 0 5px; margin-left: auto;">
                     <label for="componentSelector" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0;">Component:</label>
                     <select id="componentSelector" style="padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; background: white; cursor: pointer; min-width: 120px;">
                         <option value="0">br (Radial)</option>
@@ -262,7 +262,7 @@
                         <option value="2">bn (Normal)</option>
                     </select>
                 </div>
-                <button type="button" id="completeBtn" disabled class="begin-analysis-btn" style="display: none; margin-left: auto;">Begin Analysis</button>
+                <button type="button" id="completeBtn" disabled class="begin-analysis-btn" style="display: none;">Begin Analysis</button>
                 <div style="display: none;">
                     <input type="range" id="waveformFilterSlider" min="0" max="100" step="1" value="95">
                     <label for="waveformFilterSlider" id="waveformFilterLabel"><span id="waveformFilterValue">0.9974</span></label>
