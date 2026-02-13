@@ -2285,7 +2285,9 @@ export async function closeParticipantModal(keepOverlay = null) {
 // Welcome Modal Functions
 export async function openWelcomeModal() {
     // In Study Mode, ONLY allow welcome modal through the workflow - NEVER allow manual opening
-    if (isStudyMode()) {
+    // EMIC study always shows welcome modal — skip the guards
+    const { isEmicStudyMode } = await import('./master-modes.js');
+    if (isStudyMode() && !isEmicStudyMode()) {
         // In STUDY mode, welcome modal can ONLY be opened through the workflow
         // Check if we're in the workflow by checking if pre-survey is already open
         const preSurveyModal = document.getElementById('preSurveyModal');
