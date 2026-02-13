@@ -128,12 +128,9 @@
     <div class="container">
         <!-- EMIC Study Header (matches main site layout) -->
         <div class="top-header-bar" style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001;">
-            <div style="flex: 1; display: flex; align-items: flex-end; gap: 8px;">
-                <button type="button" id="startBtn" style="min-width: 120px; padding: 8px 16px; font-size: 14px;">📡 Fetch Data</button>
-            </div>
+            <div style="flex: 1;"></div>
             <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.88; color: #fff;">EMIC Wave Analysis Study</h1>
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
-                <div class="status info" id="status" style="margin-top: 0; padding: 6px 12px; flex: 1; min-width: 150px; font-size: 13px;"></div>
                 <button id="aboutInfoBtn" type="button" class="header-info-btn" title="About this study">i</button>
                 <div id="participantIdDisplay" style="display: block; margin-bottom: 0;">
                     <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(100, 100, 100, 0.6); background: rgba(40, 40, 40, 0.4); transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
@@ -146,6 +143,8 @@
         <!-- EMIC Study Controls: Stretch Algorithm + Speed -->
         <div class="panel" style="padding: 8px 15px;">
             <div class="emic-controls-bar">
+                <button type="button" id="startBtn" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
+                <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
                 <div class="emic-btn-group">
                     <label>Stretch:</label>
                     <button type="button" class="emic-btn active" data-stretch="resample">Resample</button>
@@ -160,7 +159,8 @@
                     <button type="button" class="emic-btn" data-speed="0.75">0.75×</button>
                     <button type="button" class="emic-btn active" data-speed="1">1×</button>
                 </div>
-                <span class="emic-placeholder-note">(Controls not yet wired — placeholders for study interface)</span>
+                <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
+                <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 150px; font-size: 13px;"></div>
             </div>
         </div>
 
