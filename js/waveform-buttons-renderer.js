@@ -41,17 +41,24 @@ export function positionWaveformButtonsCanvas() {
     
     const waveformRect = waveformCanvas.getBoundingClientRect();
     const panelRect = panel.getBoundingClientRect();
+    const cs = getComputedStyle(waveformCanvas);
+    const bT = parseFloat(cs.borderTopWidth) || 0;
+    const bB = parseFloat(cs.borderBottomWidth) || 0;
+    const bL = parseFloat(cs.borderLeftWidth) || 0;
+    const bR = parseFloat(cs.borderRightWidth) || 0;
     
-    // Position buttons canvas exactly over waveform (transparent overlay)
-    const leftEdge = waveformRect.left - panelRect.left;
-    const topEdge = waveformRect.top - panelRect.top;
+    // Position buttons canvas exactly over waveform content area (inside border)
+    const leftEdge = waveformRect.left - panelRect.left + bL;
+    const topEdge = waveformRect.top - panelRect.top + bT;
+    const contentW = waveformRect.width - bL - bR;
+    const contentH = waveformRect.height - bT - bB;
     
     buttonsCanvas.style.cssText = `
         position: absolute;
         left: ${leftEdge}px;
         top: ${topEdge}px;
-        width: ${waveformRect.width}px;
-        height: ${waveformRect.height}px;
+        width: ${contentW}px;
+        height: ${contentH}px;
         pointer-events: none;
         opacity: 1;
         visibility: visible;
