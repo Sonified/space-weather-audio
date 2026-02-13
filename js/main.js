@@ -1708,7 +1708,7 @@ async function initializeMainApp() {
             }
             
             // Priority 2: In Personal Mode, trigger fetch data if fetch button is enabled (only on first load)
-            if ((isPersonalMode() || isEmicStudyMode()) && !hasPerformedFirstFetch) {
+            if ((isPersonalMode() || isEmicStudyMode() || CURRENT_MODE === AppMode.SOLAR_PORTAL) && !hasPerformedFirstFetch) {
                 const fetchBtn = document.getElementById('startBtn');
                 if (fetchBtn && 
                     !fetchBtn.disabled &&
