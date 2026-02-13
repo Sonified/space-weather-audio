@@ -177,7 +177,7 @@
             <div class="emic-controls-bar">
                 <button type="button" id="startBtn" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
                 <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
-                    <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;">
+                    <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
                     <label for="removeDCOffsetEmic" style="font-size: 13px; font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend</label>
                 </div>
                 <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
