@@ -184,9 +184,8 @@
             </div>
         </div>
         
-        <!-- Selection Panel — spacecraft/data/dates hidden, but elements exist for JS -->
         <!-- Hidden form fields that startStreaming() reads -->
-        <div style="display: none;">
+        <div class="panel panel-selection" style="display: none;">
             <select id="spacecraft"><option value="GOES-16" selected>GOES-16</option></select>
             <select id="dataType"><option value="GOES16_1MAGN_L2_1S" selected>GOES16_1MAGN_L2_1S</option></select>
             <input type="checkbox" id="removeDCOffset">
@@ -196,8 +195,6 @@
             <input type="text" id="startTime" value="00:00:00.000">
             <input type="date" id="endDate" value="2022-01-27">
             <input type="text" id="endTime" value="23:59:59.000">
-        </div>
-        <div style="display: none;">
                 <div class="control-group" id="stationControlGroup" style="display: none;">
                     <select id="station"><option value="">Loading stations...</option></select>
                 </div>
