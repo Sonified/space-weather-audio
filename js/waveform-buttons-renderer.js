@@ -39,19 +39,16 @@ export function positionWaveformButtonsCanvas() {
     
     if (!waveformCanvas || !buttonsCanvas || !panel) return;
     
-    const waveformRect = waveformCanvas.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    
-    // Position buttons canvas exactly over waveform (same approach as spectrogram-playhead.js)
-    const leftEdge = waveformRect.left - panelRect.left;
-    const topEdge = waveformRect.top - panelRect.top;
+    // Use offsetTop/Left + clientTop/Left for position, clientWidth/Height for size
+    const leftEdge = waveformCanvas.offsetLeft + waveformCanvas.clientLeft;
+    const topEdge = waveformCanvas.offsetTop + waveformCanvas.clientTop;
     
     buttonsCanvas.style.cssText = `
         position: absolute;
         left: ${leftEdge}px;
         top: ${topEdge}px;
-        width: ${waveformCanvas.offsetWidth}px;
-        height: ${waveformCanvas.offsetHeight}px;
+        width: ${waveformCanvas.clientWidth}px;
+        height: ${waveformCanvas.clientHeight}px;
         pointer-events: none;
         opacity: 1;
         visibility: visible;
