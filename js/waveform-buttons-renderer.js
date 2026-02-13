@@ -42,17 +42,16 @@ export function positionWaveformButtonsCanvas() {
     const waveformRect = waveformCanvas.getBoundingClientRect();
     const panelRect = panel.getBoundingClientRect();
     
-    // Position buttons canvas exactly over waveform (transparent overlay)
-    // Subtract panel border because position:absolute is relative to padding edge
-    const leftEdge = waveformRect.left - panelRect.left - panel.clientLeft;
-    const topEdge = waveformRect.top - panelRect.top - panel.clientTop;
+    // Position buttons canvas exactly over waveform (same approach as spectrogram-playhead.js)
+    const leftEdge = waveformRect.left - panelRect.left;
+    const topEdge = waveformRect.top - panelRect.top;
     
     buttonsCanvas.style.cssText = `
         position: absolute;
         left: ${leftEdge}px;
         top: ${topEdge}px;
-        width: ${waveformRect.width}px;
-        height: ${waveformRect.height}px;
+        width: ${waveformCanvas.offsetWidth}px;
+        height: ${waveformCanvas.offsetHeight}px;
         pointer-events: none;
         opacity: 1;
         visibility: visible;

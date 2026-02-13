@@ -237,29 +237,21 @@ function createWaveformOverlay(waveformCanvas) {
 
     const parent = waveformCanvas.parentElement;
     if (parent) {
-        // Position overlay exactly over the waveform canvas using rects
-        // Subtract parent's clientTop/clientLeft because position:absolute is
-        // relative to the padding edge, but getBoundingClientRect includes border
+        // Match spectrogram-playhead.js approach exactly:
+        // Use canvas.width/height for device pixels, offsetWidth/Height for CSS
         const canvasRect = waveformCanvas.getBoundingClientRect();
         const parentRect = parent.getBoundingClientRect();
-        const pBorderTop = parent.clientTop;   // parent border-top width
-        const pBorderLeft = parent.clientLeft;  // parent border-left width
 
-        wfOverlayCanvas.width = Math.round(canvasRect.width * window.devicePixelRatio);
-        wfOverlayCanvas.height = Math.round(canvasRect.height * window.devicePixelRatio);
-        wfOverlayCanvas.style.cssText = `
-            position: absolute;
-            top: ${canvasRect.top - parentRect.top - pBorderTop}px;
-            left: ${canvasRect.left - parentRect.left - pBorderLeft}px;
-            width: ${canvasRect.width}px;
-            height: ${canvasRect.height}px;
-            pointer-events: none;
-            z-index: 5;
-            background: transparent !important;
-            box-shadow: none !important;
-            border: none !important;
-            border-radius: 0 !important;
-        `;
+        wfOverlayCanvas.style.position = 'absolute';
+        wfOverlayCanvas.style.pointerEvents = 'none';
+        wfOverlayCanvas.style.zIndex = '5';
+        wfOverlayCanvas.style.background = 'transparent';
+        wfOverlayCanvas.style.left = (canvasRect.left - parentRect.left) + 'px';
+        wfOverlayCanvas.style.top = (canvasRect.top - parentRect.top) + 'px';
+        wfOverlayCanvas.width = waveformCanvas.width;
+        wfOverlayCanvas.height = waveformCanvas.height;
+        wfOverlayCanvas.style.width = waveformCanvas.offsetWidth + 'px';
+        wfOverlayCanvas.style.height = waveformCanvas.offsetHeight + 'px';
 
         parent.appendChild(wfOverlayCanvas);
 
@@ -269,18 +261,15 @@ function createWaveformOverlay(waveformCanvas) {
             if (wfOverlayCanvas && waveformCanvas) {
                 const cr = waveformCanvas.getBoundingClientRect();
                 const pr = parent.getBoundingClientRect();
-                wfOverlayCanvas.style.top = (cr.top - pr.top - parent.clientTop) + 'px';
-                wfOverlayCanvas.style.left = (cr.left - pr.left - parent.clientLeft) + 'px';
-                wfOverlayCanvas.style.width = cr.width + 'px';
-                wfOverlayCanvas.style.height = cr.height + 'px';
-                const newW = Math.round(cr.width * window.devicePixelRatio);
-                const newH = Math.round(cr.height * window.devicePixelRatio);
-                if (wfOverlayCanvas.width !== newW || wfOverlayCanvas.height !== newH) {
-                    wfOverlayCanvas.width = newW;
-                    wfOverlayCanvas.height = newH;
-                    // Resizing clears the canvas — repaint regions/selection immediately
+                wfOverlayCanvas.style.left = (cr.left - pr.left) + 'px';
+                wfOverlayCanvas.style.top = (cr.top - pr.top) + 'px';
+                if (wfOverlayCanvas.width !== waveformCanvas.width || wfOverlayCanvas.height !== waveformCanvas.height) {
+                    wfOverlayCanvas.width = waveformCanvas.width;
+                    wfOverlayCanvas.height = waveformCanvas.height;
                     drawWaveformOverlays();
                 }
+                wfOverlayCanvas.style.width = waveformCanvas.offsetWidth + 'px';
+                wfOverlayCanvas.style.height = waveformCanvas.offsetHeight + 'px';
             }
         });
         wfOverlayResizeObserver.observe(waveformCanvas);
