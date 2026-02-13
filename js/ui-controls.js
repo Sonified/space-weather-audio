@@ -2338,7 +2338,7 @@ export async function openWelcomeModal() {
             const btn = body.querySelector('.modal-submit');
             body.innerHTML = `
                 <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
-                    You will be listening to real magnetometer data from the GOES satellite and identifying EMIC waves. Please use headphones or high-quality speakers in a quiet environment free from distractions.
+                    You will be listening to magnetometer data from the GOES satellite and identifying EMIC waves. Please use headphones or high-quality speakers in a quiet environment free from distractions.
                 </p>
                 <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
                     If you have any questions, contact Lucy Williams at <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>
