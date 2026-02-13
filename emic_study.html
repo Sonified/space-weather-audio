@@ -18,6 +18,7 @@
             --axis-label-font-size: 14px;
             --axis-label-color: #bbb;
             --axis-tick-color: #666;
+            --panel-label-size: 16px;
         }
         
         /* EMIC Study specific styles */
@@ -85,7 +86,7 @@
         }
         
         .emic-btn-group label {
-            font-size: 18px;
+            font-size: var(--panel-label-size);
             font-weight: 600;
             margin-right: 4px;
             white-space: nowrap;
@@ -177,7 +178,7 @@
                 <button type="button" id="startBtn" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
                 <div id="componentSelectorContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px; opacity: 0.4; pointer-events: none;">
-                    <label for="componentSelector" style="font-size: 18px; font-weight: 600; color: #666; white-space: nowrap;">Component:</label>
+                    <label for="componentSelector" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; white-space: nowrap;">Component:</label>
                     <select id="componentSelector" style="padding: 6px 10px; font-size: 14px; border-radius: 4px; border: 1px solid #555; background: white; color: #333; cursor: pointer; height: 32px;">
                         <option value="0">br (Radial)</option>
                         <option value="1">bt (Tangential)</option>
@@ -186,7 +187,7 @@
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
                 <div style="display: flex; align-items: center; gap: 6px; padding: 0 8px;">
-                    <label for="removeDCOffsetEmic" style="font-size: 18px; font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
+                    <label for="removeDCOffsetEmic" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
                     <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
@@ -271,11 +272,11 @@
                 <button type="button" id="playPauseBtn" disabled style="width: 135px; min-width: 135px;">⏸️ Pause</button>
                 <button type="button" id="loopBtn" disabled style="width: 135px; min-width: 135px;">🔁 Loop</button>
                 <div style="display: none; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(450px, 100%); gap: 10px; padding: 0 15px;">
-                    <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
+                    <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: var(--panel-label-size); flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
                     <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" style="flex: 1; min-width: 0;">
                 </div>
                 <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(350px, 100%); gap: 10px; padding: 0 15px 0 5px;">
-                    <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
+                    <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: var(--panel-label-size); flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
