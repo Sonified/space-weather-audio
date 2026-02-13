@@ -2351,7 +2351,7 @@ export async function openWelcomeModal() {
             newBtn.type = 'button';
             newBtn.className = 'modal-submit';
             newBtn.textContent = 'Begin';
-            newBtn.addEventListener('click', () => closeWelcomeModal(false));
+            newBtn.addEventListener('click', async () => await closeWelcomeModal(false));
             body.appendChild(newBtn);
         }
     }
