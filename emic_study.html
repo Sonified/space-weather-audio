@@ -10,7 +10,8 @@
     <script>
         // Force EMIC_STUDY mode before any modules load
         window.__EMIC_STUDY_MODE = true;
-        localStorage.setItem('selectedMode', 'emic_study');
+        // Don't persist to localStorage — mode is detected by URL/window flag only
+        // so it doesn't bleed into the main page
     </script>
     <style>
         :root {
