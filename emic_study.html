@@ -122,6 +122,10 @@
             font-style: italic;
             padding: 0 8px;
         }
+        #participantId {
+            max-width: 280px;
+        }
+        
         .begin-analysis-btn {
             display: none !important;
         }
@@ -154,20 +158,9 @@
         <div class="panel" style="padding: 8px 15px;">
             <div class="emic-controls-bar">
                 <button type="button" id="startBtn" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
-                <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
-                <div class="emic-btn-group">
-                    <label>Stretch:</label>
-                    <button type="button" class="emic-btn active" data-stretch="resample">Resample</button>
-                    <button type="button" class="emic-btn" data-stretch="granular">Granular</button>
-                    <button type="button" class="emic-btn" data-stretch="wavelet">Wavelet</button>
-                    <button type="button" class="emic-btn" data-stretch="paulstretch">Paulstretch</button>
-                </div>
-                <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
-                <div class="emic-btn-group">
-                    <label>Speed:</label>
-                    <button type="button" class="emic-btn" data-speed="0.5">0.5×</button>
-                    <button type="button" class="emic-btn" data-speed="0.75">0.75×</button>
-                    <button type="button" class="emic-btn active" data-speed="1">1×</button>
+                <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
+                    <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;">
+                    <label for="removeDCOffsetEmic" style="font-size: 13px; font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend</label>
                 </div>
                 <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
                 <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 150px; font-size: 13px;"></div>
@@ -257,6 +250,21 @@
                 <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(350px, 100%); gap: 10px; padding: 0 15px 0 5px;">
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
+                </div>
+                <div style="width: 1px; height: 24px; background: #444; margin: 0 4px;"></div>
+                <div class="emic-btn-group">
+                    <label>Stretch:</label>
+                    <button type="button" class="emic-btn active" data-stretch="resample">Resample</button>
+                    <button type="button" class="emic-btn" data-stretch="granular">Granular</button>
+                    <button type="button" class="emic-btn" data-stretch="wavelet">Wavelet</button>
+                    <button type="button" class="emic-btn" data-stretch="paulstretch">Paulstretch</button>
+                </div>
+                <div style="width: 1px; height: 24px; background: #444; margin: 0 4px;"></div>
+                <div class="emic-btn-group">
+                    <label>Speed:</label>
+                    <button type="button" class="emic-btn" data-speed="0.5">0.5×</button>
+                    <button type="button" class="emic-btn" data-speed="0.75">0.75×</button>
+                    <button type="button" class="emic-btn active" data-speed="1">1×</button>
                 </div>
                 <div id="componentSelectorContainer" style="display: none; align-items: center; gap: 8px; padding: 0 15px 0 5px; margin-left: auto;">
                     <label for="componentSelector" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0;">Component:</label>
