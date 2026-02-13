@@ -147,10 +147,12 @@
                 <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
                 <div class="emic-btn-group">
                     <label>Stretch:</label>
-                    <button type="button" class="emic-btn active" data-stretch="resample">Resample</button>
-                    <button type="button" class="emic-btn" data-stretch="granular">Granular</button>
-                    <button type="button" class="emic-btn" data-stretch="wavelet">Wavelet</button>
-                    <button type="button" class="emic-btn" data-stretch="paulstretch">Paulstretch</button>
+                    <select id="stretchAlgorithm" style="padding: 4px 8px; font-size: 13px; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer;">
+                        <option value="resample" selected>Resample</option>
+                        <option value="granular">Granular</option>
+                        <option value="wavelet">Wavelet</option>
+                        <option value="paulstretch">Paulstretch</option>
+                    </select>
                 </div>
                 <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
                 <div class="emic-btn-group">
