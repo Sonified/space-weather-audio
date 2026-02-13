@@ -184,17 +184,30 @@
             </div>
         </div>
         
-        <!-- Hidden form fields that startStreaming() reads -->
+        <!-- Selection Panel — hidden, but elements exist for startStreaming() -->
         <div class="panel panel-selection" style="display: none;">
-            <select id="spacecraft"><option value="GOES-16" selected>GOES-16</option></select>
-            <select id="dataType"><option value="GOES16_1MAGN_L2_1S" selected>GOES16_1MAGN_L2_1S</option></select>
-            <input type="checkbox" id="removeDCOffset">
-            <select id="recentSearches"><option value="">-- Select Recent Search --</option></select>
-            <button type="button" id="shareBtn" disabled>Share</button>
-            <input type="date" id="startDate" value="2022-01-21">
-            <input type="text" id="startTime" value="00:00:00.000">
-            <input type="date" id="endDate" value="2022-01-27">
-            <input type="text" id="endTime" value="23:59:59.000">
+            <div class="controls">
+                <div class="controls-row-1">
+                    <div class="control-group">
+                        <select id="spacecraft"><option value="GOES-16" selected>GOES-16</option></select>
+                    </div>
+                    <div class="control-group">
+                        <select id="dataType"><option value="GOES16_1MAGN_L2_1S" selected>GOES16_1MAGN_L2_1S</option></select>
+                    </div>
+                    <div class="control-group">
+                        <input type="checkbox" id="removeDCOffset">
+                    </div>
+                    <div class="control-group">
+                        <select id="recentSearches"><option value="">-- Select Recent Search --</option></select>
+                        <button type="button" id="shareBtn" disabled style="display:none;">Share</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <input type="date" id="startDate" value="2022-01-21">
+                    <input type="text" id="startTime" value="00:00:00.000">
+                    <input type="date" id="endDate" value="2022-01-27">
+                    <input type="text" id="endTime" value="23:59:59.000">
+                </div>
                 <div class="control-group" id="stationControlGroup" style="display: none;">
                     <select id="station"><option value="">Loading stations...</option></select>
                 </div>
