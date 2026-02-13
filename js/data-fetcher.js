@@ -64,7 +64,6 @@ const DATASET_VARIABLES = {
     'DN_MAGN-L2-HIRES_G16': 'b_gse',
     'DN_MAGN-L2-HIRES_G19': 'b_gse',
     // GOES-16 1-second magnetometer L2 - GSM coordinates
-    'GOES16_1MAGN_L2_1S': 'b_gsm',
     // MMS1 Electric Double Probe - DC E-field, GSE coordinates (Ex, Ey, Ez)
     'MMS1_EDP_SLOW_L2_DCE': 'mms1_edp_dce_gse_slow_l2',
     'MMS1_EDP_FAST_L2_DCE': 'mms1_edp_dce_gse_fast_l2',

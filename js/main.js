@@ -2120,8 +2120,8 @@ async function initializeMainApp() {
             const { isEmicStudyMode } = await import('./master-modes.js');
             if (isEmicStudyMode()) {
                 await startStreaming(e, {
-                    spacecraft: 'GOES-16',
-                    dataset: 'GOES16_1MAGN_L2_1S',
+                    spacecraft: 'GOES',
+                    dataset: 'DN_MAGN-L2-HIRES_G16',
                     startTime: '2022-01-21T00:00:00.000Z',
                     endTime: '2022-01-27T23:59:59.000Z'
                 });
