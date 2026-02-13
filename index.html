@@ -54,6 +54,9 @@
         </div>
     </div>
     <script>
+        // Force solar_portal mode for main page so EMIC doesn't bleed in
+        localStorage.setItem('selectedMode', 'solar_portal');
+        
         // Check once on load - show overlay only on small screens
         (function() {
             var overlay = document.getElementById('mobileOverlay');
