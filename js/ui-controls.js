@@ -1102,10 +1102,13 @@ export function setupModalEventListeners() {
                 }
                 
                 await closeWelcomeModal();
-                // Open pre-survey after welcome closes
-                setTimeout(() => {
-                    openPreSurveyModal();
-                }, 350);
+                // Open pre-survey after welcome closes (not in EMIC mode)
+                const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
+                if (!isEmic()) {
+                    setTimeout(() => {
+                        openPreSurveyModal();
+                    }, 350);
+                }
             });
         }
         
@@ -2334,26 +2337,18 @@ export async function openWelcomeModal() {
     
     if (welcomeMode === 'participant') {
         const title = welcomeModal.querySelector('.modal-title');
-        const body = welcomeModal.querySelector('.modal-body');
+        const paragraphs = welcomeModal.querySelectorAll('.modal-body p');
         if (title) title.textContent = '🔬 EMIC Wave Analysis Study';
-        if (body) {
-            const btn = body.querySelector('.modal-submit');
-            body.innerHTML = `
-                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
-                    You will be listening to magnetometer data from the GOES satellite and identifying EMIC waves. Please use headphones or high-quality speakers in a quiet environment free from distractions.
-                </p>
-                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
-                    If you have any questions, contact Lucy Williams at <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>
-                </p>
-            `;
-            // Re-add the button
-            const newBtn = document.createElement('button');
-            newBtn.type = 'button';
-            newBtn.className = 'modal-submit';
-            newBtn.textContent = 'Begin';
-            newBtn.addEventListener('click', async () => await closeWelcomeModal(false));
-            body.appendChild(newBtn);
+        // Update existing paragraphs in place (preserves button + its event handler)
+        if (paragraphs[0]) {
+            paragraphs[0].textContent = 'You will be listening to magnetometer data from the GOES satellite and identifying EMIC waves. Please use headphones or high-quality speakers in a quiet environment free from distractions.';
         }
+        if (paragraphs[1]) {
+            paragraphs[1].innerHTML = 'If you have any questions, contact Lucy Williams at <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>';
+        }
+        // Hide extra paragraphs (original has 4, we only need 2)
+        if (paragraphs[2]) paragraphs[2].style.display = 'none';
+        if (paragraphs[3]) paragraphs[3].style.display = 'none';
     }
     
     showModal(welcomeModal);
@@ -2362,7 +2357,11 @@ export async function openWelcomeModal() {
 
 export async function closeWelcomeModal(keepOverlay = null) {
     // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
-    if (keepOverlay === null) {
+    const { isEmicStudyMode } = await import('./master-modes.js');
+    if (isEmicStudyMode()) {
+        // EMIC: welcome is the last modal, always dismiss overlay
+        keepOverlay = false;
+    } else if (keepOverlay === null) {
         const nextModal = await getNextModalInWorkflow('welcomeModal');
         keepOverlay = nextModal !== null;
     }
