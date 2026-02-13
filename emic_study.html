@@ -195,10 +195,10 @@
             <div class="controls">
                 <div class="controls-row-1">
                     <div class="control-group">
-                        <select id="spacecraft"><option value="GOES-16" selected>GOES-16</option></select>
+                        <select id="spacecraft"><option value="GOES" selected>GOES-16</option></select>
                     </div>
                     <div class="control-group">
-                        <select id="dataType"><option value="GOES16_1MAGN_L2_1S" selected>GOES16_1MAGN_L2_1S</option></select>
+                        <select id="dataType"><option value="DN_MAGN-L2-HIRES_G16" selected>DN_MAGN-L2-HIRES_G16</option></select>
                     </div>
                     <div class="control-group">
                         <input type="checkbox" id="removeDCOffset">
@@ -400,7 +400,7 @@
             DB_NAME: 'emic-study-cache',
             STORE_NAME: 'audio-data',
             _getKey: function() {
-                return 'GOES16_1MAGN_L2_1S_2022-01-21T00:00:00.000Z_2022-01-27T23:59:59.000Z_b_gsm';
+                return 'DN_MAGN-L2-HIRES_G16_2022-01-21T00:00:00.000Z_2022-01-27T23:59:59.000Z_b_gse';
             },
             openDB: function() {
                 var self = this;
@@ -439,7 +439,7 @@
     </script>
 
     <!-- APPLICATION LAYER -->
-    <script type="module" src="js/main.js?v=20260212b"></script>
+    <script type="module" src="js/main.js?v=20260212c"></script>
     
     <!-- EMIC Study: Hook fetch button for IndexedDB caching + status updates -->
     <script type="module">
@@ -471,7 +471,7 @@
                     // Data loaded successfully - cache it
                     try {
                         const { getAudioData } = await import('./js/cdaweb-cache.js');
-                        const entry = await getAudioData('GOES-16', 'GOES16_1MAGN_L2_1S', 
+                        const entry = await getAudioData('GOES-16', 'DN_MAGN-L2-HIRES_G16', 
                             '2022-01-21T00:00:00.000Z', '2022-01-27T23:59:59.000Z');
                         if (entry && entry.wavBlob) {
                             await window.__emicCache.put(entry.wavBlob);
