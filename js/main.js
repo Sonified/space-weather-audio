@@ -628,7 +628,7 @@ export async function initAudioWorklet() {
 // console.log('🟢 LINE 523 - After initAudioWorklet function');
 
 // Main streaming function
-export async function startStreaming(event) {
+export async function startStreaming(event, config = null) {
     try {
         if (event) {
             event.preventDefault();
@@ -719,23 +719,38 @@ export async function startStreaming(event) {
         
         console.log('🎬 [0ms] Fetching CDAWeb audio data');
         
-        // Get form values for CDAWeb request
-        const spacecraft = document.getElementById('spacecraft').value;
-        const dataset = document.getElementById('dataType').value;
-        const startDate = document.getElementById('startDate').value;
-        const startTime = document.getElementById('startTime').value;
-        const endDate = document.getElementById('endDate').value;
-        const endTime = document.getElementById('endTime').value;
+        // Get data config: direct config object OR form values
+        let spacecraft, dataset, startTimeISO, endTimeISO;
         
-        // Validate inputs
-        if (!spacecraft || !dataset || !startDate || !startTime || !endDate || !endTime) {
-            alert('Please fill in all fields (spacecraft, dataset, start date/time, end date/time)');
-            return;
+        if (config) {
+            // Direct config passed (e.g., EMIC study with fixed time window)
+            spacecraft = config.spacecraft;
+            dataset = config.dataset;
+            startTimeISO = config.startTime;
+            endTimeISO = config.endTime;
+        } else {
+            // Read from form elements
+            const spacecraftEl = document.getElementById('spacecraft');
+            const dataTypeEl = document.getElementById('dataType');
+            const startDateEl = document.getElementById('startDate');
+            const startTimeEl = document.getElementById('startTime');
+            const endDateEl = document.getElementById('endDate');
+            const endTimeEl = document.getElementById('endTime');
+            
+            const sv = spacecraftEl?.value, dv = dataTypeEl?.value;
+            const sd = startDateEl?.value, st = startTimeEl?.value;
+            const ed = endDateEl?.value, et = endTimeEl?.value;
+            
+            if (!sv || !dv || !sd || !st || !ed || !et) {
+                alert('Please fill in all fields (spacecraft, dataset, start date/time, end date/time)');
+                return;
+            }
+            
+            spacecraft = sv;
+            dataset = dv;
+            startTimeISO = `${sd}T${st}Z`;
+            endTimeISO = `${ed}T${et}Z`;
         }
-        
-        // Combine date and time into ISO 8601 format
-        const startTimeISO = `${startDate}T${startTime}Z`;
-        const endTimeISO = `${endDate}T${endTime}Z`;
         
         console.log(`🛰️ ${logTime()} Fetching: ${spacecraft} ${dataset} from ${startTimeISO} to ${endTimeISO}`);
         
@@ -2101,7 +2116,18 @@ async function initializeMainApp() {
             const { cancelTyping } = await import('./tutorial-effects.js');
             cancelTyping();
             saveRecentSearch(); // Save search before fetching (no-op now, handled by cache)
-            await startStreaming(e);
+            // EMIC mode: pass hardcoded config directly, skip form fields
+            const { isEmicStudyMode } = await import('./master-modes.js');
+            if (isEmicStudyMode()) {
+                await startStreaming(e, {
+                    spacecraft: 'GOES-16',
+                    dataset: 'GOES16_1MAGN_L2_1S',
+                    startTime: '2022-01-21T00:00:00.000Z',
+                    endTime: '2022-01-27T23:59:59.000Z'
+                });
+            } else {
+                await startStreaming(e);
+            }
             e.target.blur(); // Blur so spacebar can toggle play/pause
         });
         console.log('🟢 startBtn event listener attached successfully!');
