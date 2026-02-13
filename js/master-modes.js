@@ -30,7 +30,8 @@ export const AppMode = {
     STUDY_W2_S1_RETURNING: 'study_w2_s1_returning',  // Week 2, Session 1 - mid-session (page refresh)
     STUDY_W2_S2: 'study_w2_s2',  // Week 2, Session 2
     TUTORIAL_END: 'tutorial_end',
-    SOLAR_PORTAL: 'solar_portal'  // Solar Portal mode - participant setup only, no study workflow
+    SOLAR_PORTAL: 'solar_portal',  // Solar Portal mode - participant setup only, no study workflow
+    EMIC_STUDY: 'emic_study'  // Lauren Blum EMIC wave research interface
 };
 
 /**
@@ -69,13 +70,19 @@ if (storedMode === 'study') {
     }
 }
 
-// Production: Always force SOLAR_PORTAL mode
+// Check if we're on the EMIC study page (works in both local and production)
+const isEmicStudyPage = typeof window !== 'undefined' && 
+    (window.location.pathname.includes('emic_study') || window.__EMIC_STUDY_MODE === true);
+
+// Production: Always force SOLAR_PORTAL mode (unless on EMIC study page)
 // Local: Allow mode switching via localStorage or DEFAULT_MODE
-export const CURRENT_MODE = isLocalEnvironment()
-    ? (storedMode && Object.values(AppMode).includes(storedMode)
-        ? storedMode
-        : DEFAULT_MODE)
-    : AppMode.SOLAR_PORTAL; // Force SOLAR_PORTAL mode for production
+export const CURRENT_MODE = isEmicStudyPage
+    ? AppMode.EMIC_STUDY
+    : (isLocalEnvironment()
+        ? (storedMode && Object.values(AppMode).includes(storedMode)
+            ? storedMode
+            : DEFAULT_MODE)
+        : AppMode.SOLAR_PORTAL); // Force SOLAR_PORTAL mode for production
 
 /**
  * Mode Configuration
@@ -257,7 +264,37 @@ const MODE_CONFIG = {
         enforceSequence: false,
         showParticipantSetup: true,  // Show participant setup on first visit
         hideBeginAnalysisButton: true,  // Permanently hide Begin Analysis button
-        hideSimulatePanel: true  // Hide simulate panel at bottom
+        hideSimulatePanel: true,  // Hide simulate panel at bottom
+        welcomeMode: 'user'  // 'user' = casual user name, 'participant' = formal study participant ID
+    },
+    
+    [AppMode.EMIC_STUDY]: {
+        name: 'EMIC Study',
+        description: 'Lauren Blum EMIC wave research interface',
+        skipTutorial: true,
+        showPreSurveys: false,
+        showPostSurveys: false,
+        requireQualtricsSubmission: false,
+        enableAdminFeatures: false,
+        showSubmitButton: true,
+        autoStartPlayback: false,
+        // EMIC-specific feature flags (features not yet built - these are placeholders)
+        scrollView: true,
+        miniMap: true,
+        dayMarkers: true,
+        stretchSelector: true,
+        speedSelector: true,
+        directAnnotation: true,
+        adminExport: true,
+        fixedTimeWindow: true,
+        participantIds: true,
+        // Data defaults
+        defaultSpacecraft: 'THEMIS',
+        defaultDataset: 'THA_L2_SCM',
+        // Participant experience
+        alwaysShowParticipantId: true,
+        alwaysShowWelcome: true,
+        welcomeMode: 'participant'  // 'user' = casual user name, 'participant' = formal study participant ID
     }
 };
 
@@ -284,7 +321,12 @@ export function isStudyMode() {
            CURRENT_MODE === AppMode.STUDY_CLEAN || 
            CURRENT_MODE === AppMode.STUDY_W2_S1 ||
            CURRENT_MODE === AppMode.STUDY_W2_S1_RETURNING ||
-           CURRENT_MODE === AppMode.STUDY_W2_S2;
+           CURRENT_MODE === AppMode.STUDY_W2_S2 ||
+           CURRENT_MODE === AppMode.EMIC_STUDY;
+}
+
+export function isEmicStudyMode() {
+    return CURRENT_MODE === AppMode.EMIC_STUDY;
 }
 
 export function isStudyCleanMode() {

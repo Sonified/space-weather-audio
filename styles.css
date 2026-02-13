@@ -1425,6 +1425,12 @@ input[type="checkbox"] {
     height: 100%;
     align-items: center;
     justify-content: center;
+    opacity: 0;
+    transition: opacity 250ms ease-out;
+}
+
+.modal-window.modal-visible {
+    opacity: 1;
 }
 
 .modal-content {

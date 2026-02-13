@@ -890,6 +890,31 @@ async function initializeDevMode() {
 }
 
 /**
+ * EMIC STUDY MODE: Clean research interface, no modals, no tutorial
+ */
+async function initializeEmicStudyMode() {
+    // Hide unnecessary UI elements
+    const completeBtn = document.getElementById('completeBtn');
+    if (completeBtn) completeBtn.style.display = 'none';
+    const simulatePanel = document.querySelector('.panel-simulate');
+    if (simulatePanel) simulatePanel.style.display = 'none';
+
+    // Skip tutorial entirely
+    localStorage.setItem('study_tutorial_in_progress', 'false');
+    localStorage.setItem('study_tutorial_completed', 'true');
+    localStorage.setItem('study_has_seen_tutorial', 'true');
+
+    // Enable all features immediately
+    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+    enableAllTutorialRestrictedFeatures();
+
+    // Show participant setup immediately
+    openParticipantModal();
+
+    console.log('🔬 EMIC Study mode initialized');
+}
+
+/**
  * SOLAR PORTAL MODE: Participant setup only, no study workflow
  */
 async function initializeSolarPortalMode() {
@@ -1013,6 +1038,10 @@ async function initializeApp() {
             
         case AppMode.SOLAR_PORTAL:
             await initializeSolarPortalMode();
+            break;
+
+        case AppMode.EMIC_STUDY:
+            await initializeEmicStudyMode();
             break;
             
         case AppMode.PRODUCTION:

@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>EMIC Wave Analysis Tool</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔬</text></svg>">
+    <link rel="stylesheet" href="styles.css?v=20251210c">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        // Force EMIC_STUDY mode before any modules load
+        window.__EMIC_STUDY_MODE = true;
+        localStorage.setItem('selectedMode', 'emic_study');
+    </script>
+    <style>
+        :root {
+            --axis-label-font-size: 14px;
+            --axis-label-color: #bbb;
+            --axis-tick-color: #666;
+        }
+        
+        /* EMIC Study specific styles */
+        .emic-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 6px;
+            margin-top: 0px;
+            position: relative;
+            z-index: 1001;
+        }
+        
+        .emic-header h1 {
+            margin: 0;
+            font-size: 1.5em;
+            opacity: 0.88;
+            color: #fff;
+        }
+        
+        .emic-header .subtitle {
+            font-size: 0.55em;
+            opacity: 0.6;
+            font-weight: 400;
+            display: block;
+            margin-top: 2px;
+        }
+        
+        .emic-participant-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .emic-participant-bar label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #aaa;
+            white-space: nowrap;
+        }
+        
+        .emic-participant-bar input {
+            padding: 4px 10px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: rgba(60, 60, 60, 0.9);
+            color: #ddd;
+            width: 120px;
+        }
+        
+        .emic-controls-bar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 8px 12px;
+            flex-wrap: wrap;
+        }
+        
+        .emic-btn-group {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        
+        .emic-btn-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #aaa;
+            margin-right: 4px;
+            white-space: nowrap;
+        }
+        
+        .emic-btn {
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: rgba(60, 60, 60, 0.9);
+            color: #ccc;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        
+        .emic-btn:hover {
+            background: rgba(80, 80, 80, 0.9);
+            color: #fff;
+        }
+        
+        .emic-btn.active {
+            background: rgba(102, 126, 234, 0.8);
+            border-color: rgba(102, 126, 234, 0.9);
+            color: #fff;
+        }
+        
+        .emic-placeholder-note {
+            font-size: 11px;
+            color: #666;
+            font-style: italic;
+            padding: 0 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- EMIC Study Header (matches main site layout) -->
+        <div class="top-header-bar" style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001;">
+            <div style="flex: 1;"></div>
+            <h1 style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.88; color: #fff;">EMIC Wave Analysis Study</h1>
+            <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
+                <button id="aboutInfoBtn" type="button" class="header-info-btn" title="About this tool">i</button>
+                <div id="participantIdDisplay" style="display: block; margin-bottom: 0;">
+                    <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(100, 100, 100, 0.6); background: rgba(40, 40, 40, 0.4); transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
+                        Participant ID: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- EMIC Study Controls: Stretch Algorithm + Speed -->
+        <div class="panel" style="padding: 8px 15px;">
+            <div class="emic-controls-bar">
+                <div class="emic-btn-group">
+                    <label>Stretch:</label>
+                    <button type="button" class="emic-btn active" data-stretch="resample">Resample</button>
+                    <button type="button" class="emic-btn" data-stretch="granular">Granular</button>
+                    <button type="button" class="emic-btn" data-stretch="wavelet">Wavelet</button>
+                    <button type="button" class="emic-btn" data-stretch="paulstretch">Paulstretch</button>
+                </div>
+                <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
+                <div class="emic-btn-group">
+                    <label>Speed:</label>
+                    <button type="button" class="emic-btn" data-speed="0.5">0.5×</button>
+                    <button type="button" class="emic-btn" data-speed="0.75">0.75×</button>
+                    <button type="button" class="emic-btn active" data-speed="1">1×</button>
+                </div>
+                <span class="emic-placeholder-note">(Controls not yet wired — placeholders for study interface)</span>
+            </div>
+        </div>
+
+        <!-- Hidden elements that main.js expects to exist -->
+        <div id="modeSelectorContainer" style="display: none;">
+            <select id="modeSelector" style="display: none;">
+                <option value="emic_study" selected>🔬 EMIC Study</option>
+            </select>
+        </div>
+        
+        <!-- Cache Row (hidden by default, same as index.html) -->
+        <div class="panel panel-cache" id="cachePanel" style="padding: 15px 20px; display: none;">
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Cache:</label>
+                <button type="button" id="purgeCacheBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🗑️ Purge CDN Cache</button>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="bypassCache" style="width: 20px; height: 20px; cursor: pointer;">
+                    <label for="bypassCache" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #333;">Bypass CDN Cache</label>
+                </div>
+                <button type="button" id="downloadBtn" disabled style="padding: 10px 20px; font-size: 14px; min-width: auto;">💾 Download Audio File</button>
+            </div>
+        </div>
+        
+        <!-- Selection Panel — spacecraft/data/dates hidden, but elements exist for JS -->
+        <div class="panel panel-selection" style="display: none;">
+            <div class="controls">
+                <div class="controls-row-1">
+                    <div class="control-group">
+                        <select id="spacecraft"><option value="THEMIS" selected>THEMIS</option></select>
+                    </div>
+                    <div class="control-group">
+                        <select id="dataType"><option value="THA_L2_SCM" selected>THA_L2_SCM</option></select>
+                    </div>
+                    <div class="control-group">
+                        <input type="checkbox" id="removeDCOffset">
+                    </div>
+                    <div class="control-group">
+                        <select id="recentSearches"><option value="">-- Select Recent Search --</option></select>
+                        <button type="button" id="shareBtn" disabled style="display:none;">Share</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <input type="date" id="startDate" value="2021-04-29">
+                    <input type="text" id="startTime" value="07:40:00.000">
+                    <input type="date" id="endDate" value="2021-04-29">
+                    <input type="text" id="endTime" value="08:20:00.000">
+                    <button type="button" id="startBtn">📡 Fetch Data</button>
+                    <div class="status info" id="status"></div>
+                </div>
+                <div class="control-group" id="stationControlGroup" style="display: none;">
+                    <select id="station"><option value="">Loading stations...</option></select>
+                </div>
+                <div class="control-group" id="durationControlGroup" style="display: none;">
+                    <select id="duration"><option value="24" selected>24 hours</option></select>
+                </div>
+                <div class="control-group" style="display: none;">
+                    <input type="checkbox" id="autoPlay" checked>
+                </div>
+                <div class="control-group" id="forceIrisControlGroup" style="display: none;">
+                    <button type="button" id="forceIrisBtn">🌐 Force IRIS Fetch: OFF</button>
+                </div>
+                <div class="control-group" style="display: none;">
+                    <select id="baseSampleRate"><option value="44100" selected>44.1 kHz</option></select>
+                </div>
+                <div class="control-group" style="display: none;">
+                    <button type="button" id="antiAliasingBtn" class="loop-active">🎛️ Anti-Alias: ON</button>
+                </div>
+                <div class="control-group" style="display: none;">
+                    <select id="highpassFreq"><option value="0.02" selected>0.02 Hz</option></select>
+                </div>
+                <div style="display: none;">
+                    <input type="checkbox" id="enableNormalize" checked>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Playback Controls -->
+        <div class="panel panel-playback">
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
+                <button type="button" id="playPauseBtn" disabled style="width: 135px; min-width: 135px;">⏸️ Pause</button>
+                <button type="button" id="loopBtn" disabled style="width: 135px; min-width: 135px;">🔁 Loop</button>
+                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(450px, 100%); gap: 10px; padding: 0 15px;">
+                    <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
+                    <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" style="flex: 1; min-width: 0;">
+                </div>
+                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(350px, 100%); gap: 10px; padding: 0 15px 0 5px;">
+                    <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
+                    <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
+                </div>
+                <div id="componentSelectorContainer" style="display: none; align-items: center; gap: 8px; padding: 0 15px 0 5px;">
+                    <label for="componentSelector" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0;">Component:</label>
+                    <select id="componentSelector" style="padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; background: white; cursor: pointer; min-width: 120px;">
+                        <option value="0">br (Radial)</option>
+                        <option value="1">bt (Tangential)</option>
+                        <option value="2">bn (Normal)</option>
+                    </select>
+                </div>
+                <button type="button" id="completeBtn" disabled class="begin-analysis-btn" style="display: none;">Begin Analysis</button>
+                <div style="display: none;">
+                    <input type="range" id="waveformFilterSlider" min="0" max="100" step="1" value="95">
+                    <label for="waveformFilterSlider" id="waveformFilterLabel"><span id="waveformFilterValue">0.9974</span></label>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Visualization Panel -->
+        <div class="panel panel-visualization" style="position: relative;">
+            <canvas id="waveform" width="1200" height="135"></canvas>
+            <canvas id="waveform-axis" width="60" height="135"></canvas>
+            <canvas id="waveform-x-axis" width="1200" height="40"></canvas>
+            <canvas id="waveform-buttons" width="1200" height="135"></canvas>
+            <canvas id="spectrogram" width="1200" height="450"></canvas>
+            <canvas id="spectrogram-axis" width="60" height="450"></canvas>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px;">
+                <div id="oscilloscope-panel" style="display: none; pointer-events: none;">
+                    <div style="position: relative; border-radius: 5px; padding: 4px; background: linear-gradient(135deg, rgba(40, 40, 70, 0.85) 0%, rgba(25, 25, 55, 0.8) 100%); box-shadow: 0 0 5px rgba(102, 126, 234, 0.2), inset 0 0 20px rgba(80, 90, 130, 0.5);">
+                        <canvas id="oscilloscope" width="106" height="28" style="display: block; width: 106px; height: 28px; border-radius: 2px; background: rgba(3, 3, 8, 0.98);"></canvas>
+                        <div id="oscilloscope-frost" style="position: absolute; top: 0; left: 0; width: 106px; height: 28px; border-radius: 2px; pointer-events: none; opacity: 0.5;"></div>
+                    </div>
+                </div>
+                <div class="viz-controls" style="display: flex; align-items: center; gap: 30px; margin-left: auto;">
+                    <div style="display: none;">
+                        <input type="checkbox" id="playOnClick" checked>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <label for="liveAnnotation" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8d0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; user-select: none;">Live Annotation</label>
+                        <input type="checkbox" id="liveAnnotation" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label for="fftSize" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">FFT:</label>
+                        <select id="fftSize" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                            <option value="512">512</option>
+                            <option value="1024">1024</option>
+                            <option value="2048" selected>2048</option>
+                            <option value="4096">4096</option>
+                            <option value="8192">8192</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label for="colormap" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Color Map:</label>
+                        <select id="colormap" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                            <option value="inferno" selected>Inferno</option>
+                            <option value="solar">Solar</option>
+                            <option value="aurora">Aurora</option>
+                            <option value="jet">Jet</option>
+                            <option value="plasma">Plasma</option>
+                            <option value="turbo">Turbo</option>
+                            <option value="viridis">Viridis</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label for="frequencyScale" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Frequency Scale:</label>
+                        <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                            <option value="linear">Linear (C)</option>
+                            <option value="sqrt">Square Root (V)</option>
+                            <option value="logarithmic" selected>Logarithmic (B)</option>
+                        </select>
+                    </div>
+                    <div style="display: none;">
+                        <input type="number" id="minFreqMultiplier" value="3.8" step="0.1" min="0.1" max="20">
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tracked Regions Panel -->
+        <div class="panel panel-regions" id="trackedRegionsPanel" style="position: relative;">
+            <h2 style="margin-bottom: 12px; font-size: 1.3em;">Selected Regions</h2>
+            <div id="regionsListContainer">
+                <div id="regionsList"></div>
+            </div>
+            <div id="downloadAudioContainer" style="position: absolute; bottom: -50px; right: 0; display: none; z-index: 100; gap: 8px;">
+                <button type="button" id="recordAudioBtn" style="padding: 9px 18px; background: linear-gradient(135deg, #b85050 0%, #963030 100%); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; height: 38px;">🔴 Begin Recording</button>
+                <button type="button" id="downloadAllComponentsBtn" style="display: none; padding: 9px 18px; background: linear-gradient(135deg, #aa6655 0%, #884433 100%); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; height: 38px;">📦 Download All Components</button>
+                <button type="button" id="downloadAudioBtn" style="padding: 9px 18px; background: linear-gradient(135deg, #aa6655 0%, #884433 100%); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; height: 38px;">📥 Download This Component</button>
+            </div>
+        </div>
+        
+        <!-- Metrics Panel (hidden by default) -->
+        <div class="panel panel-metrics" id="metricsPanel" style="display: none;">
+            <div class="metrics">
+                <div class="metric"><div class="metric-label">Time to First Audio</div><div class="metric-value" id="ttfa">--</div></div>
+                <div class="metric"><div class="metric-label">Download Size</div><div class="metric-value" id="downloadSize">--</div></div>
+                <div class="metric"><div class="metric-label">Sample Count</div><div class="metric-value" id="sampleCount">--</div></div>
+                <div class="metric"><div class="metric-label">Current Position</div><div class="metric-value" id="currentPosition">0m 0s</div></div>
+                <div class="metric"><div class="metric-label">Playback Duration</div><div class="metric-value" id="playbackDuration">--</div></div>
+            </div>
+        </div>
+        
+        <!-- Simulate Row (hidden for EMIC study) -->
+        <div class="panel panel-simulate" style="padding: 15px 20px; display: none;">
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <button type="button" id="participantModalBtn" style="display:none;">👤 Participant Setup</button>
+                <button type="button" id="welcomeModalBtn" style="display:none;">👋 Welcome</button>
+                <button type="button" id="preSurveyModalBtn" style="display:none;">📊 Pre-Survey</button>
+                <button type="button" id="activityLevelModalBtn" style="display:none;">🌋 Activity Level</button>
+                <button type="button" id="awesfModalBtn" style="display:none;">✨ AWE-SF</button>
+                <button type="button" id="postSurveyModalBtn" style="display:none;">📊 Post-Survey</button>
+                <button type="button" id="endModalBtn" style="display:none;">🎉 End</button>
+                <button type="button" id="submitBtn" style="display:none;">📤 Submit to Qualtrics</button>
+                <button type="button" id="adminModeBtn" style="display:none;">👑 Admin Mode: OFF</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Permanent Modal Overlay -->
+    <div id="permanentOverlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); z-index: 1000; align-items: center; justify-content: center; opacity: 1;"></div>
+    
+    <!-- Hidden participant ID/name elements that existing JS may reference -->
+    <div id="participantIdDisplay" style="display: none;">
+        <span id="participantIdText"><span id="participantIdValue"></span></span>
+    </div>
+    <div id="tutorialHelpBtn" style="display: none;"></div>
+    
+    <!-- CORE SYSTEM -->
+    <script type="module">
+        console.groupCollapsed('🔥 [CORE] Core Systems Initialization');
+        import { initFlameEngine } from './js/core/flame-engine.js';
+        import { initErrorSystem } from './js/core/error-system.js';
+        const flame = initFlameEngine();
+        const errorSystem = initErrorSystem(flame);
+        window.enterOverheatMode = () => flame.enterOverheatMode();
+        window.exitOverheatMode = () => flame.exitOverheatMode();
+        console.log('🔥 Core systems initialized (flame engine + error system)');
+        console.groupEnd();
+    </script>
+    
+    <!-- APPLICATION LAYER -->
+    <script type="module" src="js/main.js?v=20260212b"></script>
+    
+    <!-- EMIC Study: Read participant ID from URL param -->
+    <script>
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            var pid = params.get('pid') || params.get('participant') || '';
+            var input = document.getElementById('emicParticipantId');
+            if (pid && input) {
+                input.value = pid;
+                input.title = 'Participant ID set via URL';
+            } else if (input) {
+                input.removeAttribute('readonly');
+                input.placeholder = 'Enter your ID...';
+            }
+            
+            // Wire up stretch/speed button toggles
+            document.querySelectorAll('.emic-btn[data-stretch]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.emic-btn[data-stretch]').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                });
+            });
+            document.querySelectorAll('.emic-btn[data-speed]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.emic-btn[data-speed]').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                });
+            });
+        })();
+    </script>
+</body>
+</html>

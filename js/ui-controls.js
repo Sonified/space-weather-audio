@@ -103,6 +103,22 @@ function checkIfAnyModalVisible() {
     });
 }
 
+function showModal(modal) {
+    if (!modal) return;
+    modal.style.display = 'flex';
+    // Trigger reflow so transition plays
+    modal.offsetHeight;
+    modal.classList.add('modal-visible');
+}
+
+function hideModal(modal) {
+    if (!modal) return;
+    modal.classList.remove('modal-visible');
+    setTimeout(() => {
+        modal.style.display = 'none';
+    }, 250);
+}
+
 function fadeInOverlay() {
     const overlay = document.getElementById('permanentOverlay');
     if (!overlay) return;
@@ -2091,7 +2107,7 @@ function removeModalEventListeners() {
     modalListenersSetup = false;
 }
 
-export function openParticipantModal() {
+export async function openParticipantModal() {
     console.log('🔍 openParticipantModal() called');
     
     // Close all other modals first
@@ -2111,39 +2127,74 @@ export function openParticipantModal() {
     const participantIdInput = document.getElementById('participantId');
     const participantSubmitBtn = document.querySelector('#participantModal .modal-submit');
     const modalTitle = modal.querySelector('.modal-title');
-    const instructionText = modal.querySelector('.modal-body p');
+    const allBodyParagraphs = modal.querySelectorAll('.modal-body p');
+    const instructionText = allBodyParagraphs[0] || null;
+    const subtitleText = allBodyParagraphs[1] || null;
     
     // Determine context: initial setup vs upper right corner click
     const hasExistingId = participantId && participantId.trim().length > 0;
     const idFromQualtrics = urlId && urlId.trim().length > 0;
     
-    // Dynamically update modal text based on context
-    if (hasExistingId && !idFromQualtrics) {
-        // User clicked from upper right corner - ID exists in localStorage
-        if (modalTitle) {
-            modalTitle.textContent = "☀️ Welcome!";
-        }
-        if (instructionText) {
-            instructionText.textContent = "Enter your user name below:";
-            instructionText.style.fontWeight = 'normal'; // Remove bold styling for confirmation message
-        }
-    } else if (hasExistingId && idFromQualtrics) {
-        // Initial setup - ID came from Qualtrics URL
+    // Check welcome mode from master-modes config
+    const { getCurrentModeConfig } = await import('./master-modes.js');
+    const modeConfig = getCurrentModeConfig();
+    const welcomeMode = modeConfig.welcomeMode || 'user';  // default to 'user'
+    
+    // Dynamically update modal text based on context + welcome mode
+    if (welcomeMode === 'participant') {
+        // Formal study mode — participant ID
         if (modalTitle) {
             modalTitle.textContent = "☀️ Welcome";
         }
-        if (instructionText) {
-            instructionText.textContent = "Your participant ID has successfully been transferred from Qualtrics:";
-            instructionText.style.fontWeight = 'bold'; // Keep bold styling for instruction
+        if (hasExistingId && idFromQualtrics) {
+            if (instructionText) {
+                instructionText.textContent = "Your participant ID has been transferred from Qualtrics:";
+                instructionText.style.fontWeight = 'bold';
+            }
+        } else if (hasExistingId) {
+            if (instructionText) {
+                instructionText.textContent = "Enter your participant ID below:";
+                instructionText.style.fontWeight = 'normal';
+            }
+        } else {
+            if (instructionText) {
+                instructionText.textContent = "Enter your participant ID below:";
+                instructionText.style.fontWeight = 'bold';
+            }
+        }
+        if (subtitleText) {
+            subtitleText.textContent = "This will be used to track your responses for the study.";
+        }
+        // Update input placeholder
+        if (participantIdInput) {
+            participantIdInput.placeholder = 'Enter participant ID...';
         }
     } else {
-        // Initial setup - no ID exists
-        if (modalTitle) {
-            modalTitle.textContent = "☀️ Welcome";
-        }
-        if (instructionText) {
-            instructionText.textContent = "Enter a user name to begin:";
-            instructionText.style.fontWeight = 'bold'; // Keep bold styling for instruction
+        // Casual user mode (default) — user name
+        if (hasExistingId && !idFromQualtrics) {
+            if (modalTitle) {
+                modalTitle.textContent = "☀️ Welcome!";
+            }
+            if (instructionText) {
+                instructionText.textContent = "Enter your user name below:";
+                instructionText.style.fontWeight = 'normal';
+            }
+        } else if (hasExistingId && idFromQualtrics) {
+            if (modalTitle) {
+                modalTitle.textContent = "☀️ Welcome";
+            }
+            if (instructionText) {
+                instructionText.textContent = "Your participant ID has successfully been transferred from Qualtrics:";
+                instructionText.style.fontWeight = 'bold';
+            }
+        } else {
+            if (modalTitle) {
+                modalTitle.textContent = "☀️ Welcome";
+            }
+            if (instructionText) {
+                instructionText.textContent = "Enter a user name to begin:";
+                instructionText.style.fontWeight = 'bold';
+            }
         }
     }
     
@@ -2169,8 +2220,8 @@ export function openParticipantModal() {
         console.warn('⚠️ Participant submit button not found');
     }
     
-    // Show the modal
-    modal.style.display = 'flex';
+    // Show the modal with fade
+    showModal(modal);
     console.log('👤 Participant Setup modal opened');
     console.log('   Modal element:', modal);
     console.log('   Modal display:', modal.style.display);
@@ -2187,7 +2238,11 @@ export async function closeParticipantModal(keepOverlay = null) {
         const skipWorkflow = localStorage.getItem('skipStudyWorkflow') === 'true';
         const hasSeenParticipantSetup = localStorage.getItem('study_has_seen_participant_setup') === 'true';
         
-        if (skipWorkflow || hasSeenParticipantSetup) {
+        const { isEmicStudyMode } = await import('./master-modes.js');
+        if (isEmicStudyMode()) {
+            // EMIC mode: always keep overlay (welcome modal follows)
+            keepOverlay = true;
+        } else if (skipWorkflow || hasSeenParticipantSetup) {
             // Manual open - always fade out overlay
             keepOverlay = false;
         } else {
@@ -2217,9 +2272,7 @@ export async function closeParticipantModal(keepOverlay = null) {
     }
     
     const modal = document.getElementById('participantModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
+    hideModal(modal);
     
     // Only fade out overlay if NOT keeping it for next modal
     if (!keepOverlay) {
@@ -2230,7 +2283,7 @@ export async function closeParticipantModal(keepOverlay = null) {
 }
 
 // Welcome Modal Functions
-export function openWelcomeModal() {
+export async function openWelcomeModal() {
     // In Study Mode, ONLY allow welcome modal through the workflow - NEVER allow manual opening
     if (isStudyMode()) {
         // In STUDY mode, welcome modal can ONLY be opened through the workflow
@@ -2272,7 +2325,36 @@ export function openWelcomeModal() {
     // Fade in overlay background (standard design pattern)
     fadeInOverlay();
     
-    welcomeModal.style.display = 'flex';
+    // Update content based on welcome mode
+    const { getCurrentModeConfig } = await import('./master-modes.js');
+    const modeConfig = getCurrentModeConfig();
+    const welcomeMode = modeConfig.welcomeMode || 'user';
+    
+    if (welcomeMode === 'participant') {
+        const title = welcomeModal.querySelector('.modal-title');
+        const body = welcomeModal.querySelector('.modal-body');
+        if (title) title.textContent = '🔬 EMIC Wave Analysis Study';
+        if (body) {
+            const btn = body.querySelector('.modal-submit');
+            body.innerHTML = `
+                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
+                    You will be listening to real magnetometer data from the GOES satellite and identifying EMIC waves. Please use headphones or high-quality speakers in a quiet environment free from distractions.
+                </p>
+                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
+                    If you have any questions, contact Lucy Williams at <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>
+                </p>
+            `;
+            // Re-add the button
+            const newBtn = document.createElement('button');
+            newBtn.type = 'button';
+            newBtn.className = 'modal-submit';
+            newBtn.textContent = 'Begin';
+            newBtn.addEventListener('click', () => closeWelcomeModal(false));
+            body.appendChild(newBtn);
+        }
+    }
+    
+    showModal(welcomeModal);
     console.log('👋 Welcome modal opened');
 }
 
@@ -2284,13 +2366,11 @@ export async function closeWelcomeModal(keepOverlay = null) {
     }
     
     const modal = document.getElementById('welcomeModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
+    hideModal(modal);
     
     // Only fade out overlay if NOT keeping it for next modal
     if (!keepOverlay) {
-        fadeOutOverlay();
+        setTimeout(() => fadeOutOverlay(), 250);
     }
     
     console.log(`👋 Welcome modal closed (keepOverlay: ${keepOverlay})`);
