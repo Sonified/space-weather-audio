@@ -2157,7 +2157,7 @@ export async function openParticipantModal() {
         } else if (hasExistingId) {
             if (instructionText) {
                 instructionText.textContent = "Enter your participant ID below:";
-                instructionText.style.fontWeight = 'normal';
+                instructionText.style.fontWeight = 'bold';
             }
         } else {
             if (instructionText) {
