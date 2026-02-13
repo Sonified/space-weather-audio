@@ -34,6 +34,7 @@ import {
     isPersonalMode,
     isDevMode,
     isStudyMode,
+    isEmicStudyMode,
     initializeMasterMode
 } from './master-modes.js';
 import { initShareModal, openShareModal, checkAndLoadSharedSession, applySharedSession, updateShareButtonState } from './share-modal.js';
@@ -1707,7 +1708,7 @@ async function initializeMainApp() {
             }
             
             // Priority 2: In Personal Mode, trigger fetch data if fetch button is enabled (only on first load)
-            if (isPersonalMode() && !hasPerformedFirstFetch) {
+            if ((isPersonalMode() || isEmicStudyMode()) && !hasPerformedFirstFetch) {
                 const fetchBtn = document.getElementById('startBtn');
                 if (fetchBtn && 
                     !fetchBtn.disabled &&
