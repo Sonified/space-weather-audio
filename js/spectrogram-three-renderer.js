@@ -897,6 +897,45 @@ export function drawInterpolatedSpectrogram() {
     renderFrame();
 }
 
+/**
+ * Update spectrogram viewport from zoomState directly (no animation).
+ * Used by scroll-to-zoom for instant viewport slicing.
+ */
+export function updateSpectrogramViewportFromZoom() {
+    if (!material || !threeRenderer) return;
+    if (!State.dataStartTime || !State.dataEndTime) return;
+
+    const dataStartMs = State.dataStartTime.getTime();
+    const dataEndMs = State.dataEndTime.getTime();
+    const dataDurationMs = dataEndMs - dataStartMs;
+    if (dataDurationMs <= 0) return;
+
+    // Read current viewport from zoomState timestamps directly
+    const viewStartMs = zoomState.isInitialized() ? zoomState.currentViewStartTime.getTime() : dataStartMs;
+    const viewEndMs = zoomState.isInitialized() ? zoomState.currentViewEndTime.getTime() : dataEndMs;
+
+    // Use full texture for scroll zoom (no region texture without a real region)
+    if (fullMagnitudeTexture && activeTexture !== 'full') {
+        material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+        activeTexture = 'full';
+    }
+
+    material.uniforms.uViewportStart.value = (viewStartMs - dataStartMs) / dataDurationMs;
+    material.uniforms.uViewportEnd.value = (viewEndMs - dataStartMs) / dataDurationMs;
+
+    // Update stretch + frequency
+    const playbackRate = State.currentPlaybackRate || 1.0;
+    material.uniforms.uStretchFactor.value = calculateStretchFactor(playbackRate, State.frequencyScale);
+    updateFrequencyUniforms();
+
+    // Hide the dimming overlay during scroll zoom
+    if (spectrogramOverlay) {
+        spectrogramOverlay.style.opacity = '0';
+    }
+
+    renderFrame();
+}
+
 // ─── State management ───────────────────────────────────────────────────────
 
 export function resetSpectrogramState() {
@@ -1258,6 +1297,12 @@ function updateSpectrogramOverlay(progress) {
         createSpectrogramOverlay();
     }
     if (!spectrogramOverlay) return;
+
+    // In EMIC study mode, never dim the spectrogram
+    if (window.__EMIC_STUDY_MODE) {
+        spectrogramOverlay.style.opacity = '0';
+        return;
+    }
 
     // If zooming TO a region (including region-to-region), overlay should stay transparent.
     // The overlay only dims when zooming OUT from a region to full view.

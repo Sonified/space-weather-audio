@@ -449,6 +449,19 @@ function getWaveformViewport() {
         const regionRange = zoomState.getRegionRange();
         startSample = zoomState.originalToResampledSample(regionRange.startSample);
         endSample = zoomState.originalToResampledSample(regionRange.endSample);
+    } else if (zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
+        // Support scroll-zoom: viewport timestamps may differ from full data range
+        const dataStartMs = State.dataStartTime.getTime();
+        const dataEndMs = State.dataEndTime.getTime();
+        const dataSpanMs = dataEndMs - dataStartMs;
+        if (dataSpanMs > 0) {
+            const viewStartMs = zoomState.currentViewStartTime.getTime();
+            const viewEndMs = zoomState.currentViewEndTime.getTime();
+            const startFrac = (viewStartMs - dataStartMs) / dataSpanMs;
+            const endFrac = (viewEndMs - dataStartMs) / dataSpanMs;
+            startSample = Math.round(startFrac * totalSamples);
+            endSample = Math.round(endFrac * totalSamples);
+        }
     }
 
     return {

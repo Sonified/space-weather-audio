@@ -29,6 +29,7 @@ import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shor
 import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown, removeVolumeSliderGlow } from './tutorial.js';
 import { isTutorialActive } from './tutorial-state.js';
 import { drawDayMarkers, clearDayMarkers } from './day-markers.js';
+import { initScrollZoom } from './scroll-zoom.js';
 import {
     CURRENT_MODE,
     AppMode,
@@ -827,6 +828,9 @@ export async function startStreaming(event, config = null) {
 
         // Draw day markers if checkbox is already checked (EMIC mode)
         drawDayMarkers();
+
+        // Initialize scroll-to-zoom (EMIC mode, gated by checkbox)
+        initScrollZoom();
 
         console.log(`🎉 ${logTime()} Complete!`);
         console.log('════════════════════');

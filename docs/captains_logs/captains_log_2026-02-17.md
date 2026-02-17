@@ -50,7 +50,130 @@ Day markers weren't appearing when the checkbox was already checked and data was
 
 ---
 
+## Scroll-to-Zoom: Full Implementation
+
+New module `js/scroll-zoom.js` — cursor-anchored scroll-to-zoom for spectrogram and waveform canvases, gated behind the "Scroll to zoom" checkbox. Mouse wheel and trackpad two-finger pinch/scroll both work (macOS fires trackpad gestures as `wheel` events). `passive: false` on the listeners so `preventDefault()` actually blocks page scroll in Chrome.
+
+### Zoom math
+Cursor position maps to a fraction across the canvas → timestamp under cursor. Zoom factor derived from `deltaY`, clamped to `[0.8, 1.2]` per tick to prevent wild jumps. New viewport computed keeping the cursor timestamp anchored:
+```
+newStart = cursorTime - (cursorTime - oldStart) * zoomFactor
+newEnd = cursorTime + (oldEnd - cursorTime) * zoomFactor
+```
+Clamped to data bounds, minimum 1 second visible, snaps to full view when zoomed all the way out.
+
+### The mode bypass — key architectural decision
+The existing zoom system uses `zoomState.mode` (`'full'` vs `'region'`) to control UI behavior throughout ~15 code paths. Calling `setViewportToRegion()` sets `mode='region'`, which triggers `isInRegion()=true` — hiding blue region boxes, region zoom/play buttons, and changing click behavior. Scroll-zoom needs continuous viewport changes without any of those side effects.
+
+Solution: directly set `zoomState.currentViewStartTime` / `currentViewEndTime` without touching `mode` (stays `'full'`). This required updating four viewport-reading functions that all had the same fallback pattern of `isInRegion() ? regionRange : dataStartTime/dataEndTime`:
+- `getWaveformViewport()` in `waveform-renderer.js` — computes sample range from zoomState timestamps
+- `drawWaveformXAxis()` in `waveform-x-axis-renderer.js` — reads viewport for axis label placement
+- `getInterpolatedTimeRange()` in `waveform-x-axis-renderer.js` — used by region boxes and buttons for positioning
+- `getVisibleTimeRange()` in `day-markers.js` — used for midnight boundary calculations
+- `updateSpectrogramViewportFromZoom()` in `spectrogram-three-renderer.js` — new function (see below)
+
+### New: `updateSpectrogramViewportFromZoom()`
+The existing `updateSpectrogramViewport()` (called during playback) never sets `uViewportStart`/`uViewportEnd` shader uniforms — those are set once during full render. Created `updateSpectrogramViewportFromZoom()` that reads zoomState timestamps, computes viewport fractions, and writes them directly to the shader uniforms. Also hides the dimming overlay and triggers a render frame.
+
+### EMIC dark overlay removal
+`updateSpectrogramOverlay()` was setting opacity 1.0 in full view mode, causing a dark `rgba(0,0,0,0.3)` layer over the spectrogram. Added an early return in EMIC mode that always keeps the overlay transparent (`opacity = '0'`). This fixed both the initial data load and scroll-zoom scenarios.
+
+### Instant render pipeline
+Each scroll tick fires the full chain with zero animation:
+```
+drawWaveformFromMinMax() → drawWaveformXAxis() → updateSpectrogramViewportFromZoom()
+→ updateAllFeatureBoxPositions() → drawSpectrogramPlayhead() → drawDayMarkers()
+```
+
+---
+
 ## Files Changed
 
-- `js/day-markers.js` — Left-aligned labels, waveform labels, DPR scaling, spectrogram buffer sizing, z-index bump
-- `js/main.js` — `drawDayMarkers()` call after data load completes in `startStreaming()`; initial draw on EMIC init if checkbox already checked
+- `js/scroll-zoom.js` — **NEW** — Scroll-to-zoom module with cursor-anchored zoom, checkbox gating, preventDefault
+- `js/day-markers.js` — Left-aligned labels, waveform labels, DPR scaling, spectrogram buffer sizing, z-index bump, scroll-zoom viewport support
+- `js/main.js` — `drawDayMarkers()` + `initScrollZoom()` calls after data load; initial draw on EMIC init
+- `js/spectrogram-three-renderer.js` — New `updateSpectrogramViewportFromZoom()`, EMIC dark overlay bypass
+- `js/waveform-renderer.js` — `getWaveformViewport()` reads zoomState timestamps for scroll-zoom
+- `js/waveform-x-axis-renderer.js` — `drawWaveformXAxis()` and `getInterpolatedTimeRange()` read zoomState timestamps
+
+---
+
+## GOES Magnetometer Data → R2 Progressive Streaming Pipeline
+
+Built a new pipeline to download GOES magnetometer data from CDAWeb and upload it to Cloudflare R2 for progressive streaming — replacing the current approach of pulling pre-audified WAV files from CDAWeb on every page load.
+
+### The Problem
+
+The EMIC study currently fetches audio-format WAV files from CDAWeb's REST API (`?format=audio`) in real time. This works but ties every playback to a live CDAWeb request. For the study, we want pre-staged data on our own CDN for fast, reliable progressive streaming — the same pattern that powers the volcano seismic audio.
+
+### CDAWeb Format Investigation
+
+Tested two CDAWeb output formats for GOES-16 magnetometer data (`DN_MAGN-L2-HIRES_G16`, variable `b_gse`):
+
+| Format | 10 min of data | Notes |
+|--------|---------------|-------|
+| `?format=json` | **37 MB** | Absurdly bloated — CDAWeb dumps the full day's `time` variable (864K records as JSON objects) even for a 10-minute query. Actual science data is 70 KB buried in 37 MB of ceremony. 530x overhead. |
+| `?format=cdf` | **1.9 MB** | Compact binary. Same `time` variable but binary-packed. Easily parsed with `cdflib`. |
+| Raw Float32 | **70 KB** | The actual `b_gse` payload: `(6000, 3)` float32 array |
+
+CDF was the clear winner.
+
+### Full Day Size Breakdown (24h at 10 Hz)
+
+864,000 samples per component:
+
+| What | Size |
+|------|------|
+| CDF from CDAWeb | 17.9 MB |
+| Raw Float32 (all 3 axes) | 9.9 MB |
+| Raw Float32 (single axis) | 3.3 MB |
+| Zstd-3 compressed (single axis) | **~2.4 MB** |
+
+Decision: store each component (Bx, By, Bz) separately since the study likely only needs one component at a time. ~18 KB per 10-minute chunk compressed — tiny.
+
+### Pipeline Script: `backend/goes_to_r2.py`
+
+Python script that lives in the repo (not a cron job — run manually when we need data):
+
+1. Hits CDAWeb REST API with `?format=cdf` for the specified date range
+2. Downloads CDF, extracts `b_gse` via `cdflib`
+3. Trims to exact day boundary (CDAWeb returns 864,001 samples — one extra at midnight)
+4. Splits each component (Bx, By, Bz) into 10m/1h/6h chunks
+5. Zstd-3 compresses each chunk
+6. Uploads `.bin.zst` files + per-component metadata JSON to R2
+
+Usage:
+```bash
+python3 backend/goes_to_r2.py 2022-01-21              # Single day
+python3 backend/goes_to_r2.py 2022-01-21 2022-01-27   # Date range
+python3 backend/goes_to_r2.py 2022-01-21 --dry-run    # Preview without uploading
+```
+
+### R2 Structure (emic-study bucket)
+
+```
+data/2022/01/21/GOES-16/mag/bx/metadata.json
+data/2022/01/21/GOES-16/mag/bx/10m/GOES-16_mag_bx_10m_2022-01-21-00-00-00_to_2022-01-21-00-10-00.bin.zst
+data/2022/01/21/GOES-16/mag/bx/1h/GOES-16_mag_bx_1h_2022-01-21-00-00-00_to_2022-01-21-01-00-00.bin.zst
+data/2022/01/21/GOES-16/mag/bx/6h/GOES-16_mag_bx_6h_2022-01-21-00-00-00_to_2022-01-21-06-00-00.bin.zst
+```
+
+Same pattern for `by/` and `bz/`. Metadata includes per-chunk `min`, `max`, `samples`, `compressed_size`, `filename` — matching the volcano system's metadata structure for browser-side global normalization.
+
+### Test Run: 2022-01-21
+
+Successfully uploaded one full day to the `emic-study` R2 bucket:
+- 528 files total (3 components × 172 chunks + 3 metadata files)
+- 22.6 MB total
+- 144 ten-minute + 24 one-hour + 4 six-hour chunks per component
+- Fixed a boundary issue: CDAWeb's extra sample at midnight created 13-byte "runt" chunks with matching start/end times. Added trimming to `extract_components()` and cleaned up the ghosts from R2.
+
+### What's Next
+
+- Run remaining EMIC study days (Jan 22–27, 2022)
+- Wire up browser-side progressive streaming from the `emic-study` R2 bucket
+- Adapt `fetchFromR2Worker()` in `data-fetcher.js` to read from the new R2 structure
+
+### Files Changed
+
+- `backend/goes_to_r2.py` — **NEW** — CDAWeb CDF download → chunk → compress → R2 upload pipeline

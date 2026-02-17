@@ -83,9 +83,9 @@ export function drawWaveformXAxis() {
         displayStartTime = regionRange.startTime;
         displayEndTime = regionRange.endTime;
     } else {
-        // Full view: show full time range
-        displayStartTime = State.dataStartTime;
-        displayEndTime = State.dataEndTime;
+        // Full view (or scroll-zoomed): use zoomState timestamps
+        displayStartTime = zoomState.isInitialized() ? zoomState.currentViewStartTime : State.dataStartTime;
+        displayEndTime = zoomState.isInitialized() ? zoomState.currentViewEndTime : State.dataEndTime;
     }
     
     // 🏛️ Interpolate during zoom transition
@@ -985,8 +985,9 @@ export function getInterpolatedTimeRange() {
         targetStartTime = regionRange.startTime;
         targetEndTime = regionRange.endTime;
     } else {
-        targetStartTime = State.dataStartTime;
-        targetEndTime = State.dataEndTime;
+        // Full view (or scroll-zoomed): use zoomState timestamps
+        targetStartTime = zoomState.isInitialized() ? zoomState.currentViewStartTime : State.dataStartTime;
+        targetEndTime = zoomState.isInitialized() ? zoomState.currentViewEndTime : State.dataEndTime;
     }
 
     // If not in transition, return target range directly

@@ -91,6 +91,10 @@ function getVisibleTimeRange() {
         const range = zoomState.getRegionRange();
         return { startTime: range.startTime, endTime: range.endTime };
     }
+    // Use zoomState timestamps (supports scroll-zoom where viewport != full data range)
+    if (zoomState.isInitialized()) {
+        return { startTime: zoomState.currentViewStartTime, endTime: zoomState.currentViewEndTime };
+    }
     return { startTime: State.dataStartTime, endTime: State.dataEndTime };
 }
 
