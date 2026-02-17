@@ -28,6 +28,7 @@ import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown, removeVolumeSliderGlow } from './tutorial.js';
 import { isTutorialActive } from './tutorial-state.js';
+import { drawDayMarkers, clearDayMarkers } from './day-markers.js';
 import {
     CURRENT_MODE,
     AppMode,
@@ -824,6 +825,9 @@ export async function startStreaming(event, config = null) {
         // Enable share button now that data is loaded
         updateShareButtonState();
 
+        // Draw day markers if checkbox is already checked (EMIC mode)
+        drawDayMarkers();
+
         console.log(`🎉 ${logTime()} Complete!`);
         console.log('════════════════════');
         console.log('📌 v2.0 (2026-02-12) Three.js GPU-accelerated rendering');
@@ -924,10 +928,51 @@ async function initializeEmicStudyMode() {
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
     enableAllTutorialRestrictedFeatures();
 
-    // Show participant setup immediately
-    openParticipantModal();
+    // Enable region creation (normally gated behind "Begin Analysis")
+    const { setRegionCreationEnabled } = await import('./audio-state.js');
+    setRegionCreationEnabled(true);
 
-    console.log('🔬 EMIC Study mode initialized');
+    // Persist all navigation panel controls to localStorage
+    const navControls = [
+        { id: 'viewingMode', key: 'emic_viewing_mode', type: 'select' },
+        { id: 'clickBehavior', key: 'emic_click_behavior', type: 'select' },
+        { id: 'scrollBehavior', key: 'emic_scroll_behavior', type: 'checkbox' },
+        { id: 'miniMapView', key: 'emic_minimap_view', type: 'select' },
+        { id: 'showDayMarkers', key: 'emic_day_markers', type: 'checkbox' },
+        { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
+    ];
+    for (const ctrl of navControls) {
+        const el = document.getElementById(ctrl.id);
+        if (!el) continue;
+        const saved = localStorage.getItem(ctrl.key);
+        if (ctrl.type === 'checkbox') {
+            if (saved !== null) el.checked = saved === 'true';
+            el.addEventListener('change', () => localStorage.setItem(ctrl.key, el.checked));
+        } else {
+            if (saved !== null) el.value = saved;
+            el.addEventListener('change', () => localStorage.setItem(ctrl.key, el.value));
+        }
+    }
+
+    const skipLogin = localStorage.getItem('emic_skip_login_welcome') === 'true';
+
+    if (!skipLogin) {
+        // Show participant setup immediately
+        openParticipantModal();
+    } else {
+        // Hide overlay, go straight to app
+        const overlay = document.getElementById('permanentOverlay');
+        if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
+    }
+
+    // Wire day markers checkbox to redraw, and draw immediately if already checked
+    const dayMarkersCheckbox = document.getElementById('showDayMarkers');
+    if (dayMarkersCheckbox) {
+        dayMarkersCheckbox.addEventListener('change', () => drawDayMarkers());
+        if (dayMarkersCheckbox.checked) drawDayMarkers();
+    }
+
+    console.log('🔬 EMIC Study mode initialized (skipLogin:', skipLogin, ')');
 }
 
 /**
@@ -1416,7 +1461,7 @@ async function initializeMainApp() {
     // ═══════════════════════════════════════════════════════════
     // 🚨 STUDY MODE: Show overlay IMMEDIATELY to prevent UI interaction
     // ═══════════════════════════════════════════════════════════
-    if (isStudyMode()) {
+    if (isStudyMode() && localStorage.getItem('emic_skip_login_welcome') !== 'true') {
         const overlay = document.getElementById('permanentOverlay');
         if (overlay) {
             overlay.style.display = 'flex';
@@ -1951,6 +1996,7 @@ async function initializeMainApp() {
         initializeMaxCanvasWidth();
         positionWaveformXAxisCanvas();
         drawWaveformXAxis();
+        drawDayMarkers();
         positionWaveformDateCanvas();
         drawWaveformDate();
         positionWaveformButtonsCanvas();

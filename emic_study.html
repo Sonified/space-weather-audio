@@ -312,7 +312,7 @@
             <canvas id="spectrogram" width="1200" height="450"></canvas>
             <canvas id="spectrogram-axis" width="60" height="450"></canvas>
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px;">
-                <div id="oscilloscope-panel" style="display: none; pointer-events: none;">
+                <div id="oscilloscope-panel" style="display: block; pointer-events: none;">
                     <div style="position: relative; border-radius: 5px; padding: 4px; background: linear-gradient(135deg, rgba(40, 40, 70, 0.85) 0%, rgba(25, 25, 55, 0.8) 100%); box-shadow: 0 0 5px rgba(102, 126, 234, 0.2), inset 0 0 20px rgba(80, 90, 130, 0.5);">
                         <canvas id="oscilloscope" width="106" height="28" style="display: block; width: 106px; height: 28px; border-radius: 2px; background: rgba(3, 3, 8, 0.98);"></canvas>
                         <div id="oscilloscope-frost" style="position: absolute; top: 0; left: 0; width: 106px; height: 28px; border-radius: 2px; pointer-events: none; opacity: 0.5;"></div>
@@ -363,6 +363,60 @@
             </div>
         </div>
         
+        <!-- Navigation Options Panel -->
+        <div class="panel panel-view-options" id="viewOptionsPanel" style="padding: 8px 20px;">
+            <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                <label style="font-weight: 700; font-size: 14px; color: #e8e8ff; margin: 0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; user-select: none;">⚙️ Navigation:</label>
+                
+                <!-- Viewing Mode -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label for="viewingMode" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none;">Mode:</label>
+                    <select id="viewingMode" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer;">
+                        <option value="full" selected>Region Creation</option>
+                        <option value="scroll">Windowed Scroll</option>
+                        <option value="pageTurn">Windowed Page Turn</option>
+                    </select>
+                </div>
+
+                <!-- Click Behavior -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label for="clickBehavior" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none;">Click:</label>
+                    <select id="clickBehavior" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer;">
+                        <option value="play" selected>Play from position</option>
+                        <option value="playhead">Move playhead only</option>
+                    </select>
+                </div>
+
+                <!-- Mini-map View -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label for="miniMapView" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none;">Mini-Map:</label>
+                    <select id="miniMapView" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer;">
+                        <option value="spectrogram" selected>Spectrogram</option>
+                        <option value="linePlot">Line Plot</option>
+                        <option value="both">Combination</option>
+                    </select>
+                </div>
+
+                <!-- Scroll Behavior toggle -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <label for="scrollBehavior" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none; cursor: pointer;">Scroll to zoom</label>
+                    <input type="checkbox" id="scrollBehavior" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                </div>
+
+                <!-- Day Markers toggle -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <label for="showDayMarkers" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none; cursor: pointer;">Day Markers</label>
+                    <input type="checkbox" id="showDayMarkers" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                </div>
+
+                <!-- Skip Login & Welcome -->
+                <div style="display: flex; align-items: center; gap: 6px; margin-left: auto;">
+                    <label for="skipLoginWelcome" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none; cursor: pointer;">Skip Login & Welcome</label>
+                    <input type="checkbox" id="skipLoginWelcome" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                </div>
+            </div>
+        </div>
+
         <!-- Tracked Regions Panel -->
         <div class="panel panel-regions" id="trackedRegionsPanel" style="position: relative;">
             <h2 style="margin-bottom: 12px; font-size: 1.3em;">Selected Regions</h2>
@@ -404,7 +458,14 @@
     </div>
     
     <!-- Permanent Modal Overlay -->
-    <div id="permanentOverlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center; opacity: 1;"></div>
+    <script>
+        // Hide overlay immediately if skip login is set — prevents flash
+        if (localStorage.getItem('emic_skip_login_welcome') === 'true') {
+            document.write('<div id="permanentOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center; opacity: 0;"></div>');
+        } else {
+            document.write('<div id="permanentOverlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center; opacity: 1;"></div>');
+        }
+    </script>
     
     <!-- Hidden participant ID/name elements that existing JS may reference -->
     <div id="participantIdDisplay" style="display: none;">
@@ -541,6 +602,20 @@
                 btn.addEventListener('click', function() {
                     document.querySelectorAll('.emic-btn[data-speed]').forEach(function(b) { b.classList.remove('active'); });
                     btn.classList.add('active');
+
+                    var speed = parseFloat(btn.getAttribute('data-speed'));
+                    var slider = document.getElementById('playbackSpeed');
+                    if (!slider) return;
+
+                    // Reverse the logarithmic mapping: speed -> slider value
+                    var sliderValue;
+                    if (speed <= 1.0) {
+                        sliderValue = 667 * Math.log10(speed / 0.1);
+                    } else {
+                        sliderValue = 667 + 333 * Math.log(speed) / Math.log(15);
+                    }
+                    slider.value = Math.round(sliderValue);
+                    slider.dispatchEvent(new Event('input'));
                 });
             });
         })();

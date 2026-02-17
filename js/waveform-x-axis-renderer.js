@@ -10,6 +10,7 @@ import { drawInterpolatedSpectrogram, updateSpectrogramViewport, cancelActiveRen
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
 import { redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
+import { drawDayMarkers } from './day-markers.js';
 
 // Debug flag for axis drawing logs (set to true to enable detailed logging)
 const DEBUG_AXIS = false;
@@ -294,6 +295,9 @@ export function drawWaveformXAxis() {
                     
                     // 🎨 Update canvas feature boxes too (follow elastic horizontal stretch!)
                     redrawAllCanvasFeatureBoxes();
+                    
+                    // 📅 Update day markers during zoom transition
+                    drawDayMarkers();
                 });
             }
         } else {
@@ -312,6 +316,9 @@ export function drawWaveformXAxis() {
             // 🎯 CRITICAL: Redraw x-axis at final position so tick density updates!
             // Without this, region-to-region zoom would keep the interpolated tick density
             drawWaveformXAxis();
+            
+            // 📅 Update day markers at final position
+            drawDayMarkers();
         }
     }
 }
