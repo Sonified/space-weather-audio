@@ -2693,7 +2693,7 @@ function renderFeatures(regionId, regionIndex) {
  * Render standalone features list in the sidebar (windowed mode, no regions)
  * Shows a simple flat list of features numbered sequentially
  */
-function renderStandaloneFeaturesList() {
+export function renderStandaloneFeaturesList() {
     const container = document.getElementById('regionsList');
     if (!container) return;
 

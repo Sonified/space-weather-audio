@@ -3,10 +3,10 @@
  * Keyboard shortcuts for region navigation and feature drawing
  */
 
-import { zoomToRegion, zoomToFull, getCurrentRegions, getActiveRegionIndex, isInFrequencySelectionMode, startFrequencySelection, addFeature, createRegionFromSelectionTimes, toggleRegionPlay, stopFrequencySelection } from './region-tracker.js';
+import { zoomToRegion, zoomToFull, getCurrentRegions, getActiveRegionIndex, isInFrequencySelectionMode, startFrequencySelection, addFeature, createRegionFromSelectionTimes, toggleRegionPlay, stopFrequencySelection, getStandaloneFeatures, deleteStandaloneFeature, renderStandaloneFeaturesList, updateCompleteButtonState, updateCmpltButtonState } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
-import { changeFrequencyScale } from './spectrogram-renderer.js';
+import { changeFrequencyScale, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { isStudyMode } from './master-modes.js';
 
 // 🔥 FIX: Track if shortcuts are initialized to prevent duplicate listeners
@@ -61,21 +61,37 @@ function handleKeyboardShortcut(event) {
     const isTextarea = event.target.tagName === 'TEXTAREA';
     const isContentEditable = event.target.isContentEditable;
     
-    // Allow Escape key to work even when in text inputs/textareas
+    // Allow Escape and Ctrl+Z to work even when in text inputs/textareas
     const isEscapeKey = event.key === 'Escape';
+    const isUndoKey = event.key === 'z' && (event.ctrlKey || event.metaKey) && !event.shiftKey;
     const isTypingInField = isTextInput || isTextarea || isContentEditable;
-    
-    if (isTypingInField && !isEscapeKey) {
-        return; // Let browser handle normally (but not Escape)
+
+    if (isTypingInField && !isEscapeKey && !isUndoKey) {
+        return; // Let browser handle normally (but not Escape or Ctrl+Z)
     }
-    
-    // Debug: Log all key presses during tutorial (can be removed later)
-    // if (event.key === 'Escape' || (event.key >= '1' && event.key <= '9')) {
-    //     console.log(`⌨️ Keyboard shortcut handler called: key=${event.key}, target=${event.target.tagName}`);
-    // }
-    
+
+    // Ctrl+Z / Cmd+Z: Undo last standalone feature
+    if (isUndoKey) {
+        const features = getStandaloneFeatures();
+        if (features.length > 0) {
+            event.preventDefault();
+            deleteStandaloneFeature(features.length - 1);
+            redrawAllCanvasFeatureBoxes();
+            renderStandaloneFeaturesList();
+            updateCompleteButtonState();
+            updateCmpltButtonState();
+            console.log(`⌨️ Ctrl+Z: undid feature (${features.length - 1} remaining)`);
+        }
+        return;
+    }
+
     // Number keys (1-9): Zoom to region, or play region if already zoomed into it
+    // Only in Region Creation mode — windowed modes don't use region navigation
     if (event.key >= '1' && event.key <= '9') {
+        const viewingModeEl = document.getElementById('viewingMode');
+        const viewingMode = viewingModeEl ? viewingModeEl.value : 'regionCreation';
+        if (viewingMode !== 'regionCreation') return;
+
         const regionIndex = parseInt(event.key) - 1; // Convert '1' to 0, '2' to 1, etc.
         const regions = getCurrentRegions();
         

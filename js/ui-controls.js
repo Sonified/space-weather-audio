@@ -1115,7 +1115,7 @@ export function setupModalEventListeners() {
                         if (statusEl) {
                             const { typeText } = await import('./tutorial-effects.js');
                             statusEl.className = 'status info';
-                            const msg = State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin';
+                            const msg = State.isMobileScreen() ? 'Click Fetch Data to begin (or press ENTER)' : '👈 click Fetch Data to begin (or press ENTER)';
                             typeText(statusEl, msg, 30, 10);
                         }
                     }, 500);
