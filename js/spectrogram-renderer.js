@@ -35,6 +35,7 @@ function animateFeatureBoxesDuringScaleTransition() {
 
 // Spectrogram selection state (pure canvas - separate overlay layer!)
 let spectrogramSelectionActive = false;
+let spectrogramWasDrag = false;  // True once drag exceeds 5px threshold
 let spectrogramStartX = null;
 let spectrogramStartY = null;
 let spectrogramCurrentX = null;  // Current drag position (for canvas rendering)
@@ -1028,13 +1029,10 @@ export function setupSpectrogramSelection() {
             return; // Don't start new selection
         }
 
-        // Check main window click mode from gear popover
+        // Check main window Click dropdown (mousedown action)
         const mainClickMode = document.getElementById('mainWindowClick');
-        const isDrawFeatureMode = mainClickMode && mainClickMode.value === 'drawFeature';
-
-        // If not in "Draw feature" mode and not zoomed into a region, handle as click-to-seek
-        if (!isDrawFeatureMode && !zoomState.isInRegion()) {
-            // Click-to-seek in EMIC windowed modes (scroll/pageTurn)
+        if (mainClickMode && mainClickMode.value === 'playAudio' && !zoomState.isInRegion()) {
+            // Click=Play audio: seek immediately on mousedown
             const modeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
             const isWindowed = modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
             if (isWindowed && State.completeSamplesArray && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
@@ -1058,8 +1056,7 @@ export function setupSpectrogramSelection() {
                     waveform.drawWaveformWithSelection();
                 });
             }
-
-            return;
+            // Don't return — continue to start selection tracking for potential drag
         }
 
         // 🔥 FIX: ALWAYS force-reset state before starting new selection
@@ -1189,6 +1186,7 @@ export function setupSpectrogramSelection() {
         spectrogramStartY = e.clientY - canvasRect.top;
         spectrogramCurrentX = null;  // Reset - will be set on first mousemove
         spectrogramCurrentY = null;  // Reset - will be set on first mousemove
+        spectrogramWasDrag = false;  // Reset - will be set when drag exceeds threshold
         spectrogramSelectionActive = true;
 
         // 🔥 FIX: Safety timeout - if mouseup never fires, auto-cancel after 5 seconds
@@ -1240,23 +1238,37 @@ export function setupSpectrogramSelection() {
         // Reuse canvasRect from above (already declared at line 1248)
         const currentX = e.clientX - canvasRect.left;
         const currentY = e.clientY - canvasRect.top;
-        
+
         // ✅ PURE CANVAS: Update state
         spectrogramCurrentX = currentX;
         spectrogramCurrentY = currentY;
-        
+
+        // Detect drag threshold crossing
+        if (!spectrogramWasDrag && spectrogramStartX !== null) {
+            const dx = Math.abs(currentX - spectrogramStartX);
+            const dy = Math.abs(currentY - spectrogramStartY);
+            if (Math.max(dx, dy) >= 5) {
+                spectrogramWasDrag = true;
+            }
+        }
+
+        // Only draw selection box if Drag is set to drawFeature
+        const mainDragMode = document.getElementById('mainWindowDrag');
+        const isDragDrawFeature = mainDragMode && mainDragMode.value === 'drawFeature';
+        if (!isDragDrawFeature) return;
+
         // Draw ALL boxes (completed + current dragging)
         const width = spectrogramOverlayCanvas.width;
         const height = spectrogramOverlayCanvas.height;
-        
+
         // Clear and redraw everything
         spectrogramOverlayCtx.clearRect(0, 0, width, height);
-        
+
         // Redraw all completed boxes
         for (const box of completedSelectionBoxes) {
             drawSavedBox(spectrogramOverlayCtx, box);
         }
-        
+
         // Draw current dragging box
         drawSpectrogramSelectionBox(spectrogramOverlayCtx, width, height);
     });
@@ -1289,25 +1301,63 @@ export function setupSpectrogramSelection() {
         if (!spectrogramSelectionActive) {
             return;
         }
-        
-        // Check if user actually dragged (minimum 5 pixels)
-        if (spectrogramCurrentX === null || spectrogramCurrentY === null) {
-            // User just clicked, didn't drag - cancel
+
+        // Clear safety timeout since mouseup fired successfully
+        if (spectrogramSelectionTimeout) {
+            clearTimeout(spectrogramSelectionTimeout);
+            spectrogramSelectionTimeout = null;
+        }
+
+        // Determine if this was a click (no drag) or a drag
+        const wasDrag = spectrogramWasDrag;
+
+        if (!wasDrag) {
+            // --- CLICK (no significant drag) ---
+            cancelSpectrogramSelection();
+
+            // Check Release dropdown: seek-to-position on release
+            const mainReleaseMode = document.getElementById('mainWindowRelease');
+            if (mainReleaseMode && mainReleaseMode.value === 'playAudio' && !zoomState.isInRegion()) {
+                const canvasRect = canvas.getBoundingClientRect();
+                const releaseX = e.clientX - canvasRect.left;
+                const modeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+                const isWindowed = modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
+                if (isWindowed && State.completeSamplesArray && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
+                    const timestamp = zoomState.pixelToTimestamp(releaseX, canvasRect.width);
+                    const dataStartMs = State.dataStartTime.getTime();
+                    const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;
+                    const fraction = (timestamp.getTime() - dataStartMs) / dataSpanMs;
+                    const targetPosition = fraction * State.totalAudioDuration;
+                    const clamped = Math.max(0, Math.min(targetPosition, State.totalAudioDuration));
+                    State.setCurrentAudioPosition(clamped);
+                    if (State.audioContext) {
+                        State.setLastUpdateTime(State.audioContext.currentTime);
+                    }
+                    Promise.all([
+                        import('./audio-player.js'),
+                        import('./spectrogram-playhead.js'),
+                        import('./waveform-renderer.js')
+                    ]).then(([audioPlayer, playhead, waveform]) => {
+                        audioPlayer.seekToPosition(clamped, true);
+                        playhead.drawSpectrogramPlayhead();
+                        waveform.drawWaveformWithSelection();
+                    });
+                }
+            }
+            return;
+        }
+
+        // --- DRAG (exceeded 5px threshold) ---
+        const mainDragMode = document.getElementById('mainWindowDrag');
+        const isDragDrawFeature = mainDragMode && mainDragMode.value === 'drawFeature';
+
+        if (!isDragDrawFeature) {
+            // Drag=No action — cancel without creating feature
             cancelSpectrogramSelection();
             return;
         }
-        
-        const dragDistanceX = Math.abs(spectrogramCurrentX - spectrogramStartX);
-        const dragDistanceY = Math.abs(spectrogramCurrentY - spectrogramStartY);
-        const dragDistance = Math.max(dragDistanceX, dragDistanceY);
-        
-        if (dragDistance < 5) {
-            // Not enough drag - cancel
-            cancelSpectrogramSelection();
-            return;
-        }
-        
-        const rect = canvas.getBoundingClientRect();
+
+        // Drag=Draw feature — create the feature
         const endY_css = spectrogramCurrentY;
         const endX_css = spectrogramCurrentX;
 
@@ -1319,15 +1369,9 @@ export function setupSpectrogramSelection() {
         const startX_device = spectrogramStartX * scaleX;
         const endX_device = endX_css * scaleX;
 
-        // 🔥 FIX: Clear safety timeout since mouseup fired successfully
-        if (spectrogramSelectionTimeout) {
-            clearTimeout(spectrogramSelectionTimeout);
-            spectrogramSelectionTimeout = null;
-        }
-        
         // Stop accepting new mouse moves first
         spectrogramSelectionActive = false;
-        
+
         // Call the handler (this creates the data for the feature and returns region/feature indices)
         const result = await handleSpectrogramSelection(
             startY_device, endY_device,
@@ -1335,10 +1379,10 @@ export function setupSpectrogramSelection() {
             startX_device, endX_device,
             canvas.width    // ← DEVICE PIXELS!
         );
-        
-        // ✅ Rebuild canvas boxes from feature data (ensures sync with array!)
+
+        // Rebuild canvas boxes from feature data (ensures sync with array!)
         rebuildCanvasBoxesFromFeatures();
-        
+
         // Reset coordinate state for next box
         spectrogramStartX = null;
         spectrogramStartY = null;

@@ -1108,6 +1108,17 @@ export function setupModalEventListeners() {
                     setTimeout(() => {
                         openPreSurveyModal();
                     }, 350);
+                } else {
+                    // EMIC mode: show "click Fetch Data to begin" with typewriter effect
+                    setTimeout(async () => {
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            const { typeText } = await import('./tutorial-effects.js');
+                            statusEl.className = 'status info';
+                            const msg = State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin';
+                            typeText(statusEl, msg, 30, 10);
+                        }
+                    }, 500);
                 }
             });
         }

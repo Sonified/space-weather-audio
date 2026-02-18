@@ -367,8 +367,22 @@
                     <div class="gear-popover-row">
                         <span class="gear-label">Click:</span>
                         <select id="mainWindowClick" class="gear-select">
+                            <option value="noAction" selected>No action</option>
+                            <option value="playAudio">Play audio</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Release:</span>
+                        <select id="mainWindowRelease" class="gear-select">
                             <option value="playAudio" selected>Play audio</option>
-                            <option value="drawFeature">Draw feature</option>
+                            <option value="noAction">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Drag:</span>
+                        <select id="mainWindowDrag" class="gear-select">
+                            <option value="drawFeature" selected>Draw feature</option>
+                            <option value="noAction">No action</option>
                         </select>
                     </div>
                     <div class="gear-popover-row">

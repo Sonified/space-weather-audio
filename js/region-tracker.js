@@ -1750,9 +1750,9 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         // Auto-determine which feature to fill in
         const activeRegionIdx = getActiveRegionIndex();
 
-        // Check if we're in windowed mode with "Draw feature" — standalone features (no regions needed)
-        const mainClickEl = document.getElementById('mainWindowClick');
-        const isDrawFeature = mainClickEl && mainClickEl.value === 'drawFeature';
+        // Check if we're in windowed mode with "Draw feature" drag — standalone features (no regions needed)
+        const mainDragEl = document.getElementById('mainWindowDrag');
+        const isDrawFeature = mainDragEl && mainDragEl.value === 'drawFeature';
         const modeEl = document.getElementById('viewingMode');
         const isWindowed = modeEl && (modeEl.value === 'static' || modeEl.value === 'scroll' || modeEl.value === 'pageTurn');
 

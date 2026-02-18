@@ -1618,11 +1618,24 @@ export function setupWaveformInteraction() {
                     requestAnimationFrame(renderMinimapDragFrame);
                 }
             }
-            function onDocMouseUp() {
+            function onDocMouseUp(ev) {
                 minimapDragging = false;
                 canvas.style.cursor = 'pointer';
                 document.removeEventListener('mousemove', onDocMouseMove);
                 document.removeEventListener('mouseup', onDocMouseUp);
+
+                // "Move & play": seek playhead to release position and start playback
+                const navClickEl = document.getElementById('navBarClick');
+                if (navClickEl && navClickEl.value === 'moveAndPlay') {
+                    const r = canvas.getBoundingClientRect();
+                    const dStartMs = State.dataStartTime.getTime();
+                    const dEndMs = State.dataEndTime.getTime();
+                    const dSpanMs = dEndMs - dStartMs;
+                    const f = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+                    const releaseMs = dStartMs + f * dSpanMs;
+                    const positionSeconds = (releaseMs - dStartMs) / 1000;
+                    seekToPosition(positionSeconds, true);
+                }
             }
             document.addEventListener('mousemove', onDocMouseMove);
             document.addEventListener('mouseup', onDocMouseUp);

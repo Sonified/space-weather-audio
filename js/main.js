@@ -941,6 +941,8 @@ async function initializeEmicStudyMode() {
         { id: 'viewingMode', key: 'emic_viewing_mode', type: 'select' },
         { id: 'navBarClick', key: 'emic_navbar_click', type: 'select' },
         { id: 'mainWindowClick', key: 'emic_main_click_mode', type: 'select' },
+        { id: 'mainWindowRelease', key: 'emic_main_release', type: 'select' },
+        { id: 'mainWindowDrag', key: 'emic_main_drag', type: 'select' },
         { id: 'navBarScroll', key: 'emic_navbar_scroll', type: 'select' },
         { id: 'mainWindowScroll', key: 'emic_main_scroll', type: 'select' },
         { id: 'miniMapView', key: 'emic_minimap_view', type: 'select' },
@@ -956,7 +958,14 @@ async function initializeEmicStudyMode() {
             if (saved !== null) el.checked = saved === 'true';
             el.addEventListener('change', () => localStorage.setItem(ctrl.key, el.checked));
         } else {
-            if (saved !== null) el.value = saved;
+            if (saved !== null) {
+                el.value = saved;
+                // If stored value doesn't match any option (e.g. options changed), reset to default
+                if (el.value !== saved) {
+                    localStorage.removeItem(ctrl.key);
+                    el.selectedIndex = 0;
+                }
+            }
             el.addEventListener('change', () => {
                 localStorage.setItem(ctrl.key, el.value);
                 el.blur(); // Remove focus so dropdown doesn't stay highlighted
@@ -2423,13 +2432,18 @@ async function initializeMainApp() {
             console.log('✅ Auto play disabled after Begin Analysis confirmation');
         }
         
-        // Switch main window click mode to "Draw feature" after Begin Analysis
-        const mainClickSelect = document.getElementById('mainWindowClick');
-        if (mainClickSelect) {
-            mainClickSelect.value = 'drawFeature';
-            localStorage.setItem('emic_main_click_mode', 'drawFeature');
-            console.log('✅ Main window click mode set to Draw Feature after Begin Analysis');
+        // Configure interaction dropdowns for analysis mode after Begin Analysis
+        const mainDragSelect = document.getElementById('mainWindowDrag');
+        if (mainDragSelect) {
+            mainDragSelect.value = 'drawFeature';
+            localStorage.setItem('emic_main_drag', 'drawFeature');
         }
+        const mainReleaseSelect = document.getElementById('mainWindowRelease');
+        if (mainReleaseSelect) {
+            mainReleaseSelect.value = 'playAudio';
+            localStorage.setItem('emic_main_release', 'playAudio');
+        }
+        console.log('✅ Main window interaction set for analysis: drag=drawFeature, release=playAudio');
         // Also disable the hidden playOnClick checkbox
         const playOnClickCheckbox = document.getElementById('playOnClick');
         if (playOnClickCheckbox) {
