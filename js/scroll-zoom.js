@@ -3,6 +3,10 @@
  * Scroll-to-zoom for spectrogram and waveform canvases (EMIC study mode).
  * Gated behind the "Scroll to zoom" checkbox (#scrollBehavior).
  * Supports mouse wheel and trackpad two-finger pinch/scroll.
+ *
+ * Wheel events can fire far faster than 60fps on trackpads.
+ * We compute zoom math on every event (so preventDefault works immediately)
+ * but coalesce rendering to one frame via requestAnimationFrame.
  */
 
 import { zoomState } from './zoom-state.js';
@@ -15,12 +19,12 @@ import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
 import { drawDayMarkers } from './day-markers.js';
 
 let initialized = false;
+let rafPending = false; // true while a render frame is scheduled
 
 /**
  * Get current viewport start/end as ms timestamps
  */
 function getViewport() {
-    // Always read from zoomState timestamps (works for both full and scroll-zoomed views)
     if (zoomState.isInitialized()) {
         return {
             startMs: zoomState.currentViewStartTime.getTime(),
@@ -31,6 +35,20 @@ function getViewport() {
         startMs: State.dataStartTime.getTime(),
         endMs: State.dataEndTime.getTime()
     };
+}
+
+/**
+ * Render everything for the current zoomState viewport.
+ * Called once per animation frame, no matter how many wheel events fired.
+ */
+function renderFrame() {
+    rafPending = false;
+    drawWaveformFromMinMax();
+    drawWaveformXAxis();
+    updateSpectrogramViewportFromZoom();
+    updateAllFeatureBoxPositions();
+    drawSpectrogramPlayhead();
+    drawDayMarkers();
 }
 
 /**
@@ -87,13 +105,11 @@ function onWheel(e) {
         zoomState.currentViewEndTime = new Date(newEndMs);
     }
 
-    // Instant render — no animation
-    drawWaveformFromMinMax();
-    drawWaveformXAxis();
-    updateSpectrogramViewportFromZoom();
-    updateAllFeatureBoxPositions();
-    drawSpectrogramPlayhead();
-    drawDayMarkers();
+    // Schedule one render per animation frame — coalesces rapid wheel events
+    if (!rafPending) {
+        rafPending = true;
+        requestAnimationFrame(renderFrame);
+    }
 }
 
 /**

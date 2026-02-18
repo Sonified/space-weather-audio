@@ -33,10 +33,12 @@ let wfCamera = null;
 let wfMaterial = null;
 let wfMesh = null;
 let wfSampleTexture = null;
+let wfMipTexture = null;       // Min/max mip texture for zoomed-out rendering
 let wfColormapTexture = null;
 let wfTotalSamples = 0;
 let wfTextureWidth = 0;
 let wfTextureHeight = 0;
+const WF_MIP_BIN_SIZE = 256;  // Each mip texel covers 256 raw samples
 let wfOverlayCanvas = null;
 let wfOverlayCtx = null;
 let wfCachedWidth = 0;   // Cached device-pixel dimensions (avoid offsetWidth in render path)
@@ -56,10 +58,15 @@ void main() {
 
 const wfFragmentShader = /* glsl */ `
 uniform sampler2D uSamples;
+uniform sampler2D uMipMinMax;
 uniform sampler2D uColormap;
 uniform float uTotalSamples;
 uniform float uTextureWidth;
 uniform float uTextureHeight;
+uniform float uMipTextureWidth;
+uniform float uMipTextureHeight;
+uniform float uMipTotalBins;
+uniform float uMipBinSize;
 uniform float uViewportStart;
 uniform float uViewportEnd;
 uniform float uCanvasWidth;
@@ -78,8 +85,17 @@ float getSample(float index) {
     return texture2D(uSamples, uv).r;
 }
 
+vec2 getMipBin(float index) {
+    float row = floor(index / uMipTextureWidth);
+    float col = index - row * uMipTextureWidth;
+    vec2 uv = vec2(
+        (col + 0.5) / uMipTextureWidth,
+        (row + 0.5) / uMipTextureHeight
+    );
+    return texture2D(uMipMinMax, uv).rg;
+}
+
 void main() {
-    // Map pixel X to sample range
     float viewStartSample = uViewportStart * uTotalSamples;
     float viewEndSample = uViewportEnd * uTotalSamples;
     float samplesPerPixel = (viewEndSample - viewStartSample) / uCanvasWidth;
@@ -87,19 +103,33 @@ void main() {
     float pixelStart = viewStartSample + vUv.x * (viewEndSample - viewStartSample);
     float pixelEnd = pixelStart + samplesPerPixel;
 
-    float startIdx = floor(max(pixelStart, 0.0));
-    float endIdx = ceil(min(pixelEnd, uTotalSamples));
-    float count = endIdx - startIdx;
-
-    // Find min/max in this sample range
     float minVal = 1.0;
     float maxVal = -1.0;
 
-    for (int i = 0; i < 8192; i++) {
-        if (float(i) >= count) break;
-        float s = getSample(startIdx + float(i));
-        minVal = min(minVal, s);
-        maxVal = max(maxVal, s);
+    if (samplesPerPixel > uMipBinSize && uMipTotalBins > 0.0) {
+        // Zoomed out: use pre-computed min/max bins
+        float binStart = floor(max(pixelStart / uMipBinSize, 0.0));
+        float binEnd = ceil(min(pixelEnd / uMipBinSize, uMipTotalBins));
+        float binCount = binEnd - binStart;
+
+        for (int i = 0; i < 512; i++) {
+            if (float(i) >= binCount) break;
+            vec2 mm = getMipBin(binStart + float(i));
+            minVal = min(minVal, mm.r);
+            maxVal = max(maxVal, mm.g);
+        }
+    } else {
+        // Zoomed in: scan raw samples
+        float startIdx = floor(max(pixelStart, 0.0));
+        float endIdx = ceil(min(pixelEnd, uTotalSamples));
+        float count = endIdx - startIdx;
+
+        for (int i = 0; i < 8192; i++) {
+            if (float(i) >= count) break;
+            float s = getSample(startIdx + float(i));
+            minVal = min(minVal, s);
+            maxVal = max(maxVal, s);
+        }
     }
 
     // Y mapping: vUv.y 0=bottom, 1=top → amplitude -1 to +1
@@ -156,10 +186,15 @@ function initWaveformThreeScene() {
     wfMaterial = new THREE.ShaderMaterial({
         uniforms: {
             uSamples: { value: null },
+            uMipMinMax: { value: null },
             uColormap: { value: wfColormapTexture },
             uTotalSamples: { value: 0.0 },
             uTextureWidth: { value: 1.0 },
             uTextureHeight: { value: 1.0 },
+            uMipTextureWidth: { value: 1.0 },
+            uMipTextureHeight: { value: 1.0 },
+            uMipTotalBins: { value: 0.0 },
+            uMipBinSize: { value: parseFloat(WF_MIP_BIN_SIZE) },
             uViewportStart: { value: 0.0 },
             uViewportEnd: { value: 1.0 },
             uCanvasWidth: { value: parseFloat(wfCachedWidth) },
@@ -205,6 +240,10 @@ function initWaveformThreeScene() {
         if (wfSampleTexture && wfMaterial) {
             wfSampleTexture.needsUpdate = true;
             wfMaterial.uniforms.uSamples.value = wfSampleTexture;
+        }
+        if (wfMipTexture && wfMaterial) {
+            wfMipTexture.needsUpdate = true;
+            wfMaterial.uniforms.uMipMinMax.value = wfMipTexture;
         }
     };
     canvas.addEventListener('webglcontextlost', wfOnContextLost);
@@ -301,7 +340,6 @@ export function uploadWaveformSamples(samples) {
     const paddedLength = wfTextureWidth * wfTextureHeight;
     const data = new Float32Array(paddedLength);
     data.set(samples);
-    // Remaining values stay 0 (silence padding)
 
     if (wfSampleTexture) wfSampleTexture.dispose();
     wfSampleTexture = new THREE.DataTexture(data, wfTextureWidth, wfTextureHeight, THREE.RedFormat, THREE.FloatType);
@@ -316,8 +354,42 @@ export function uploadWaveformSamples(samples) {
     wfMaterial.uniforms.uTextureWidth.value = parseFloat(wfTextureWidth);
     wfMaterial.uniforms.uTextureHeight.value = parseFloat(wfTextureHeight);
 
+    // Build min/max mip texture: each bin covers WF_MIP_BIN_SIZE raw samples
+    // Stored as RG float pairs: .r = min, .g = max
+    const mipBins = Math.ceil(wfTotalSamples / WF_MIP_BIN_SIZE);
+    const mipTexWidth = 4096;
+    const mipTexHeight = Math.ceil(mipBins / mipTexWidth);
+    const mipPadded = mipTexWidth * mipTexHeight;
+    const mipData = new Float32Array(mipPadded * 2); // 2 channels: RG
+
+    for (let bin = 0; bin < mipBins; bin++) {
+        const start = bin * WF_MIP_BIN_SIZE;
+        const end = Math.min(start + WF_MIP_BIN_SIZE, wfTotalSamples);
+        let mn = Infinity, mx = -Infinity;
+        for (let j = start; j < end; j++) {
+            const v = samples[j];
+            if (v < mn) mn = v;
+            if (v > mx) mx = v;
+        }
+        mipData[bin * 2]     = mn; // .r = min
+        mipData[bin * 2 + 1] = mx; // .g = max
+    }
+
+    if (wfMipTexture) wfMipTexture.dispose();
+    wfMipTexture = new THREE.DataTexture(mipData, mipTexWidth, mipTexHeight, THREE.RGFormat, THREE.FloatType);
+    wfMipTexture.minFilter = THREE.NearestFilter;
+    wfMipTexture.magFilter = THREE.NearestFilter;
+    wfMipTexture.wrapS = THREE.ClampToEdgeWrapping;
+    wfMipTexture.wrapT = THREE.ClampToEdgeWrapping;
+    wfMipTexture.needsUpdate = true;
+
+    wfMaterial.uniforms.uMipMinMax.value = wfMipTexture;
+    wfMaterial.uniforms.uMipTextureWidth.value = parseFloat(mipTexWidth);
+    wfMaterial.uniforms.uMipTextureHeight.value = parseFloat(mipTexHeight);
+    wfMaterial.uniforms.uMipTotalBins.value = parseFloat(mipBins);
+
     wfLastUploadedSamples = samples;
-    console.log(`Waveform samples uploaded to GPU: ${wfTotalSamples.toLocaleString()} samples (${wfTextureWidth}x${wfTextureHeight} texture)`);
+    console.log(`Waveform uploaded: ${wfTotalSamples.toLocaleString()} samples (${wfTextureWidth}x${wfTextureHeight}), mip: ${mipBins.toLocaleString()} bins (${mipTexWidth}x${mipTexHeight})`);
 }
 
 /**
@@ -372,6 +444,7 @@ export function rebuildWaveformColormapTexture() {
 export function clearWaveformRenderer() {
     // Dispose textures
     if (wfSampleTexture) { wfSampleTexture.dispose(); wfSampleTexture = null; }
+    if (wfMipTexture) { wfMipTexture.dispose(); wfMipTexture = null; }
     if (wfColormapTexture) { wfColormapTexture.dispose(); wfColormapTexture = null; }
 
     // Dispose scene objects
