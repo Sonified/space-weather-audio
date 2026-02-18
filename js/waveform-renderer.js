@@ -16,7 +16,7 @@ import { zoomState } from './zoom-state.js';
 import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 import { isStudyMode } from './master-modes.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
-import { restoreViewportState, updateSpectrogramViewportFromZoom } from './spectrogram-three-renderer.js';
+import { restoreViewportState, updateSpectrogramViewportFromZoom, getFullMagnitudeTexture, getSpectrogramParams } from './spectrogram-three-renderer.js';
 import { drawDayMarkers } from './day-markers.js';
 import { getColorLUT } from './colormaps.js';
 import { updateLiveAnnotations } from './spectrogram-live-annotations.js';
@@ -49,6 +49,10 @@ let wfOverlayResizeObserver = null;
 let wfOnContextLost = null;
 let wfOnContextRestored = null;
 
+// ─── Minimap spectrogram (second GPU pass) ───────────────────────────────────
+let wfSpectroMaterial = null;
+let wfSpectroMesh = null;
+
 const wfVertexShader = /* glsl */ `
 varying vec2 vUv;
 void main() {
@@ -73,6 +77,7 @@ uniform float uViewportEnd;
 uniform float uCanvasWidth;
 uniform float uCanvasHeight;
 uniform vec3 uBackgroundColor;
+uniform float uTransparentBg;
 
 varying vec2 vUv;
 
@@ -151,7 +156,7 @@ void main() {
     // Center line (~1px thick)
     float centerThickness = 1.0 / uCanvasHeight;
     if (abs(vUv.y - 0.5) < centerThickness) {
-        gl_FragColor = vec4(0.4, 0.4, 0.4, 1.0);
+        gl_FragColor = vec4(0.4, 0.4, 0.4, uTransparentBg > 0.5 ? 0.6 : 1.0);
         return;
     }
 
@@ -161,7 +166,7 @@ void main() {
         vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
         gl_FragColor = vec4(color, 1.0);
     } else {
-        gl_FragColor = vec4(uBackgroundColor, 1.0);
+        gl_FragColor = vec4(uBackgroundColor, uTransparentBg > 0.5 ? 0.0 : 1.0);
     }
 }
 `;
@@ -209,15 +214,79 @@ function initWaveformThreeScene() {
             uViewportEnd: { value: 1.0 },
             uCanvasWidth: { value: parseFloat(wfCachedWidth) },
             uCanvasHeight: { value: parseFloat(wfCachedHeight) },
-            uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) }
+            uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) },
+            uTransparentBg: { value: 0.0 }
         },
         vertexShader: wfVertexShader,
-        fragmentShader: wfFragmentShader
+        fragmentShader: wfFragmentShader,
+        transparent: true
     });
 
     const geometry = new THREE.PlaneGeometry(2, 2);
     wfMesh = new THREE.Mesh(geometry, wfMaterial);
     wfScene.add(wfMesh);
+
+    // Spectrogram material for minimap mode (reuses magnitude texture from main spectrogram)
+    wfSpectroColormapTexture = buildSpectroColormapTexture();
+    wfSpectroMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uMagnitudes: { value: null },
+            uColormap: { value: wfSpectroColormapTexture },
+            uViewportStart: { value: 0.0 },
+            uViewportEnd: { value: 1.0 },
+            uStretchFactor: { value: 1.0 },
+            uFrequencyScale: { value: 0 },
+            uMinFreq: { value: 0.1 },
+            uMaxFreq: { value: 50.0 },
+            uDbFloor: { value: -100.0 },
+            uDbRange: { value: 100.0 },
+            uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) }
+        },
+        vertexShader: wfVertexShader,
+        fragmentShader: /* glsl */ `
+uniform sampler2D uMagnitudes;
+uniform sampler2D uColormap;
+uniform float uViewportStart;
+uniform float uViewportEnd;
+uniform float uStretchFactor;
+uniform int uFrequencyScale;
+uniform float uMinFreq;
+uniform float uMaxFreq;
+uniform float uDbFloor;
+uniform float uDbRange;
+uniform vec3 uBackgroundColor;
+varying vec2 vUv;
+void main() {
+    float effectiveY = vUv.y / uStretchFactor;
+    if (effectiveY > 1.0) {
+        gl_FragColor = vec4(uBackgroundColor, 1.0);
+        return;
+    }
+    float freq;
+    if (uFrequencyScale == 0) {
+        freq = uMinFreq + effectiveY * (uMaxFreq - uMinFreq);
+    } else if (uFrequencyScale == 1) {
+        float normalized = effectiveY * effectiveY;
+        freq = uMinFreq + normalized * (uMaxFreq - uMinFreq);
+    } else {
+        float logMin = log2(max(uMinFreq, 0.001)) / log2(10.0);
+        float logMax = log2(uMaxFreq) / log2(10.0);
+        float logFreq = logMin + effectiveY * (logMax - logMin);
+        freq = pow(10.0, logFreq);
+    }
+    float texV = clamp(freq / uMaxFreq, 0.0, 1.0);
+    float texU = uViewportStart + vUv.x * (uViewportEnd - uViewportStart);
+    float magnitude = texture2D(uMagnitudes, vec2(texU, texV)).r;
+    float db = 20.0 * log(magnitude + 1.0e-10) / log(10.0);
+    float normalized = clamp((db - uDbFloor) / uDbRange, 0.0, 1.0);
+    vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
+    gl_FragColor = vec4(color, 1.0);
+}
+`
+    });
+    wfSpectroMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), wfSpectroMaterial);
+    wfSpectroMesh.visible = false;
+    wfScene.add(wfSpectroMesh);
 
     // Create overlay canvas for 2d drawing (regions, playhead, selection)
     createWaveformOverlay(canvas);
@@ -259,6 +328,13 @@ function initWaveformThreeScene() {
     canvas.addEventListener('webglcontextlost', wfOnContextLost);
     canvas.addEventListener('webglcontextrestored', wfOnContextRestored);
 
+    // Re-render minimap when spectrogram texture becomes available
+    window.addEventListener('spectrogram-ready', () => {
+        if (getMinimapMode() !== 'linePlot') {
+            drawWaveformFromMinMax();
+        }
+    });
+
     console.log(`Three.js waveform renderer initialized (${wfCachedWidth}x${wfCachedHeight})`);
 }
 
@@ -269,6 +345,25 @@ function buildWaveformColormapTexture() {
         data[i * 4]     = waveformColorLUT[i * 3];
         data[i * 4 + 1] = waveformColorLUT[i * 3 + 1];
         data[i * 4 + 2] = waveformColorLUT[i * 3 + 2];
+        data[i * 4 + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(data, 256, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+}
+
+/** Build a colormap texture from the raw spectrogram LUT (no brightness boost) */
+let wfSpectroColormapTexture = null;
+function buildSpectroColormapTexture() {
+    const lut = getColorLUT();
+    if (!lut) return null;
+    const data = new Uint8Array(256 * 4);
+    for (let i = 0; i < 256; i++) {
+        data[i * 4]     = lut[i * 3];
+        data[i * 4 + 1] = lut[i * 3 + 1];
+        data[i * 4 + 2] = lut[i * 3 + 2];
         data[i * 4 + 3] = 255;
     }
     const tex = new THREE.DataTexture(data, 256, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -437,6 +532,81 @@ function renderWaveformGPU(viewportStart = 0.0, viewportEnd = 1.0) {
 }
 
 /**
+ * Render the minimap with the appropriate mode (spectrogram, linePlot, or both).
+ * - spectrogram: render spectrogram pass only (reusing main spectrogram FFT texture)
+ * - linePlot: render waveform amplitude pass only (existing GPU shader)
+ * - both: render spectrogram first, then waveform on top with transparent background
+ */
+function renderMinimapWithMode(mode, viewportStart, viewportEnd) {
+    if (!wfRenderer || !wfScene || !wfCamera) return;
+
+    const showSpectrogram = (mode === 'spectrogram' || mode === 'both');
+    const showWaveform = (mode === 'linePlot' || mode === 'both');
+
+    // Update spectrogram mesh with current magnitude texture
+    if (showSpectrogram && wfSpectroMaterial) {
+        const magData = getFullMagnitudeTexture();
+        if (magData) {
+            wfSpectroMaterial.uniforms.uMagnitudes.value = magData.texture;
+            wfSpectroMaterial.uniforms.uViewportStart.value = viewportStart;
+            wfSpectroMaterial.uniforms.uViewportEnd.value = viewportEnd;
+
+            // Sync frequency scale params from main spectrogram
+            const params = getSpectrogramParams();
+            wfSpectroMaterial.uniforms.uFrequencyScale.value = params.frequencyScale;
+            wfSpectroMaterial.uniforms.uMinFreq.value = params.minFreq;
+            wfSpectroMaterial.uniforms.uMaxFreq.value = params.maxFreq;
+            wfSpectroMaterial.uniforms.uDbFloor.value = params.dbFloor;
+            wfSpectroMaterial.uniforms.uDbRange.value = params.dbRange;
+            wfSpectroMaterial.uniforms.uStretchFactor.value = 1.0; // minimap always 1x
+
+            const lut = getColorLUT();
+            if (lut) {
+                wfSpectroMaterial.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
+            }
+        }
+        wfSpectroMesh.visible = !!magData;
+    } else if (wfSpectroMesh) {
+        wfSpectroMesh.visible = false;
+    }
+
+    // Configure waveform mesh
+    if (showWaveform && wfSampleTexture) {
+        wfMesh.visible = true;
+        wfMaterial.uniforms.uTransparentBg.value = mode === 'both' ? 1.0 : 0.0;
+        wfMaterial.uniforms.uViewportStart.value = viewportStart;
+        wfMaterial.uniforms.uViewportEnd.value = viewportEnd;
+        const lut = getColorLUT();
+        if (lut) {
+            wfMaterial.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
+        }
+    } else {
+        wfMesh.visible = false;
+    }
+
+    // Render order: spectrogram behind, waveform in front
+    if (wfSpectroMesh) wfSpectroMesh.renderOrder = 0;
+    wfMesh.renderOrder = 1;
+
+    // Handle canvas resize
+    const canvas = wfRenderer.domElement;
+    if (wfCachedWidth > 0 && wfCachedHeight > 0 &&
+        (canvas.width !== wfCachedWidth || canvas.height !== wfCachedHeight)) {
+        canvas.width = wfCachedWidth;
+        canvas.height = wfCachedHeight;
+        wfRenderer.setSize(wfCachedWidth, wfCachedHeight, false);
+        wfMaterial.uniforms.uCanvasWidth.value = parseFloat(wfCachedWidth);
+        wfMaterial.uniforms.uCanvasHeight.value = parseFloat(wfCachedHeight);
+        if (wfOverlayCanvas) {
+            wfOverlayCanvas.width = wfCachedWidth;
+            wfOverlayCanvas.height = wfCachedHeight;
+        }
+    }
+
+    wfRenderer.render(wfScene, wfCamera);
+}
+
+/**
  * Rebuild waveform colormap texture (call after colormap change)
  */
 export function rebuildWaveformColormapTexture() {
@@ -444,6 +614,11 @@ export function rebuildWaveformColormapTexture() {
     wfColormapTexture = buildWaveformColormapTexture();
     if (wfMaterial) {
         wfMaterial.uniforms.uColormap.value = wfColormapTexture;
+    }
+    if (wfSpectroMaterial) {
+        if (wfSpectroColormapTexture) wfSpectroColormapTexture.dispose();
+        wfSpectroColormapTexture = buildSpectroColormapTexture();
+        wfSpectroMaterial.uniforms.uColormap.value = wfSpectroColormapTexture;
     }
 }
 
@@ -464,6 +639,15 @@ export function clearWaveformRenderer() {
         wfMesh = null;
     }
     if (wfMaterial) { wfMaterial.dispose(); wfMaterial = null; }
+
+    // Dispose spectrogram minimap objects
+    if (wfSpectroMesh) {
+        wfSpectroMesh.geometry.dispose();
+        if (wfScene) wfScene.remove(wfSpectroMesh);
+        wfSpectroMesh = null;
+    }
+    if (wfSpectroMaterial) { wfSpectroMaterial.dispose(); wfSpectroMaterial = null; }
+    if (wfSpectroColormapTexture) { wfSpectroColormapTexture.dispose(); wfSpectroColormapTexture = null; }
 
     // Disconnect observers
     if (wfResizeObserver) { wfResizeObserver.disconnect(); wfResizeObserver = null; }
@@ -527,6 +711,14 @@ function isEmicWindowedMode() {
     if (!window.__EMIC_STUDY_MODE) return false;
     const modeSelect = document.getElementById('viewingMode');
     return modeSelect && (modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
+}
+
+/**
+ * Get the current minimap display mode ('spectrogram', 'linePlot', or 'both')
+ */
+function getMinimapMode() {
+    const el = document.getElementById('miniMapView');
+    return el ? el.value : 'linePlot';
 }
 
 // --- Minimap viewport drag state ---
@@ -630,7 +822,7 @@ function drawWaveformOverlays() {
                 const rightX = viewEndFrac * width;
 
                 // Dim areas outside viewport
-                wfOverlayCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                wfOverlayCtx.fillStyle = 'rgba(0, 0, 0, 0.3)';
                 wfOverlayCtx.fillRect(0, 0, leftX, height);
                 wfOverlayCtx.fillRect(rightX, 0, width - rightX, height);
 
@@ -967,9 +1159,10 @@ export function drawWaveform() {
     // Upload samples to GPU texture (the shader handles everything)
     uploadWaveformSamples(State.completeSamplesArray);
 
-    // Compute viewport from zoom state and render
+    // Compute viewport from zoom state and render with current minimap mode
     const viewport = getWaveformViewport();
-    renderWaveformGPU(viewport.start, viewport.end);
+    const mode = getMinimapMode();
+    renderMinimapWithMode(mode, viewport.start, viewport.end);
 
     // Draw axes
     positionWaveformAxisCanvas();
@@ -1000,7 +1193,8 @@ export function drawWaveformFromMinMax() {
     }
 
     const viewport = getWaveformViewport();
-    renderWaveformGPU(viewport.start, viewport.end);
+    const mode = getMinimapMode();
+    renderMinimapWithMode(mode, viewport.start, viewport.end);
 
     // Draw axes
     positionWaveformAxisCanvas();
@@ -1039,7 +1233,8 @@ export function drawInterpolatedWaveform() {
     const viewportStart = (interpStartMs - dataStartMs) / dataDurationMs;
     const viewportEnd = (interpEndMs - dataStartMs) / dataDurationMs;
 
-    renderWaveformGPU(viewportStart, viewportEnd);
+    const mode = getMinimapMode();
+    renderMinimapWithMode(mode, viewportStart, viewportEnd);
 
     // Overlays track the same interpolated range
     drawWaveformOverlays();
@@ -1259,9 +1454,31 @@ export function setupWaveformInteraction() {
             minimapDragging = true;
             canvas.style.cursor = 'grabbing';
             const dataStartMs = State.dataStartTime.getTime();
-            const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;
+            const dataEndMs = State.dataEndTime.getTime();
+            const dataSpanMs = dataEndMs - dataStartMs;
             const frac = Math.max(0, Math.min(1, startX / rect.width));
-            minimapDragStartMs = dataStartMs + frac * dataSpanMs;
+            const clickMs = dataStartMs + frac * dataSpanMs;
+
+            // If click is outside the current viewport box, snap-center on click point
+            const viewStartMs = zoomState.currentViewStartTime.getTime();
+            const viewEndMs = zoomState.currentViewEndTime.getTime();
+            if (clickMs < viewStartMs || clickMs > viewEndMs) {
+                const viewSpanMs = viewEndMs - viewStartMs;
+                let newStart = clickMs - viewSpanMs / 2;
+                let newEnd = clickMs + viewSpanMs / 2;
+                // Clamp to data bounds
+                if (newStart < dataStartMs) { newStart = dataStartMs; newEnd = dataStartMs + viewSpanMs; }
+                if (newEnd > dataEndMs) { newEnd = dataEndMs; newStart = dataEndMs - viewSpanMs; }
+                zoomState.currentViewStartTime = new Date(newStart);
+                zoomState.currentViewEndTime = new Date(newEnd);
+                // Render the snap immediately
+                if (!minimapRafPending) {
+                    minimapRafPending = true;
+                    requestAnimationFrame(renderMinimapDragFrame);
+                }
+            }
+
+            minimapDragStartMs = clickMs;
             minimapViewStartMsAtDrag = zoomState.currentViewStartTime.getTime();
             minimapViewEndMsAtDrag = zoomState.currentViewEndTime.getTime();
             e.preventDefault();

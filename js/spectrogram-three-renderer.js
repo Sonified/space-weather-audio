@@ -613,6 +613,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         completeSpectrogramRendered = true;
         State.setSpectrogramInitialized(true);
 
+        // Notify minimap that spectrogram texture is ready
+        window.dispatchEvent(new Event('spectrogram-ready'));
+
         // Restart memory monitoring (stopped during cleanup)
         startMemoryMonitoring();
 
@@ -1457,6 +1460,36 @@ export async function startCompleteVisualization() {
 
     console.log('Starting Three.js spectrogram visualization');
     await renderCompleteSpectrogram();
+}
+
+// ─── Minimap spectrogram access ─────────────────────────────────────────────
+
+/**
+ * Get the full-view magnitude texture for use in the minimap waveform renderer.
+ * Returns { texture, width, height } or null if not yet computed.
+ */
+export function getFullMagnitudeTexture() {
+    if (!fullMagnitudeTexture) return null;
+    return { texture: fullMagnitudeTexture, width: fullMagnitudeWidth, height: fullMagnitudeHeight };
+}
+
+/**
+ * Get current spectrogram rendering parameters for minimap use.
+ */
+export function getSpectrogramParams() {
+    const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+    const originalNyquist = originalSampleRate / 2;
+    const minFreq = getLogScaleMinFreq();
+    let freqScaleInt = 0;
+    if (State.frequencyScale === 'logarithmic') freqScaleInt = 2;
+    else if (State.frequencyScale === 'sqrt') freqScaleInt = 1;
+    return {
+        maxFreq: originalNyquist,
+        minFreq,
+        frequencyScale: freqScaleInt,
+        dbFloor: -100.0,
+        dbRange: 100.0
+    };
 }
 
 // ─── Colormap change support ────────────────────────────────────────────────

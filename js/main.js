@@ -940,6 +940,8 @@ async function initializeEmicStudyMode() {
     const navControls = [
         { id: 'viewingMode', key: 'emic_viewing_mode', type: 'select' },
         { id: 'clickBehavior', key: 'emic_click_behavior', type: 'select' },
+        { id: 'navBarClick', key: 'emic_navbar_click', type: 'select' },
+        { id: 'mainWindowPlayOnClick', key: 'emic_main_play_on_click', type: 'checkbox' },
         { id: 'scrollBehavior', key: 'emic_scroll_behavior', type: 'checkbox' },
         { id: 'miniMapView', key: 'emic_minimap_view', type: 'select' },
         { id: 'showDayMarkers', key: 'emic_day_markers', type: 'checkbox' },
@@ -957,6 +959,62 @@ async function initializeEmicStudyMode() {
             el.addEventListener('change', () => localStorage.setItem(ctrl.key, el.value));
         }
     }
+
+    // Minimap mode change: re-render waveform with new mode
+    const miniMapViewEl = document.getElementById('miniMapView');
+    if (miniMapViewEl) {
+        miniMapViewEl.addEventListener('change', () => {
+            drawWaveformFromMinMax();
+        });
+    }
+
+    // --- Gear icons: show in EMIC mode, toggle popovers, position over canvases ---
+    const gearContainers = document.querySelectorAll('.panel-gear');
+    gearContainers.forEach(g => g.style.display = 'block');
+
+    // Position gear icons over their respective canvases (top-right corner, inside the canvas)
+    function positionGearIcons() {
+        const wfCanvas = document.getElementById('waveform');
+        const navGear = document.getElementById('navBarGear');
+        if (wfCanvas && navGear) {
+            navGear.style.top = (wfCanvas.offsetTop + 2) + 'px';
+            navGear.style.right = 'auto';
+            navGear.style.left = (wfCanvas.offsetLeft + wfCanvas.offsetWidth - 32) + 'px';
+        }
+        const specCanvas = document.getElementById('spectrogram');
+        const mainGear = document.getElementById('mainWindowGear');
+        if (specCanvas && mainGear) {
+            mainGear.style.top = (specCanvas.offsetTop + 2) + 'px';
+            mainGear.style.right = 'auto';
+            mainGear.style.left = (specCanvas.offsetLeft + specCanvas.offsetWidth - 32) + 'px';
+        }
+    }
+    positionGearIcons();
+    const wfEl = document.getElementById('waveform');
+    const specEl = document.getElementById('spectrogram');
+    if (wfEl) new ResizeObserver(positionGearIcons).observe(wfEl);
+    if (specEl) new ResizeObserver(positionGearIcons).observe(specEl);
+
+    // Toggle popover on gear click, close on click-outside
+    document.querySelectorAll('.gear-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const popover = btn.nextElementSibling;
+            const wasOpen = popover.classList.contains('open');
+            // Close all popovers first
+            document.querySelectorAll('.gear-popover').forEach(p => p.classList.remove('open'));
+            if (!wasOpen) popover.classList.add('open');
+        });
+    });
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.gear-popover') && !e.target.closest('.gear-btn')) {
+            document.querySelectorAll('.gear-popover').forEach(p => p.classList.remove('open'));
+        }
+    });
+    // Blur selects after change so the native focus highlight drops immediately
+    document.querySelectorAll('.gear-select').forEach(sel => {
+        sel.addEventListener('change', () => sel.blur());
+    });
 
     const skipLogin = localStorage.getItem('emic_skip_login_welcome') === 'true';
 

@@ -409,3 +409,54 @@ Fix: both `updateCanvasAnnotations()` and `redrawCanvasBoxes()` now check `spect
 ### Files Changed (Session 4 — Click-to-Seek & Fixes)
 
 - `js/spectrogram-renderer.js` — Click-to-seek in windowed modes, dynamic imports for circular dependency fix, selection box preserved during playback animation, feature box clicks bypassed in windowed modes
+
+---
+
+## Minimap Display Mode Selector: Spectrogram / Line Plot / Combination
+
+Added a mode selector to the Navigation Bar gear popover that switches the minimap (waveform navigation bar) between three display modes:
+
+### Three modes, all GPU-rendered
+
+- **Line Plot** (default): The existing GPU waveform shader — min/max amplitude bands colored by the waveform colormap. This is what the minimap always showed before.
+- **Spectrogram**: GPU spectrogram shader running on the waveform canvas, reusing the `fullMagnitudeTexture` already computed by the main spectrogram renderer. No FFT recomputation — just grabs the existing 1x texture.
+- **Combination**: Both passes composited — spectrogram renders first, then the waveform renders on top with transparent background pixels (alpha blending).
+
+### Architecture: dual-shader on a single WebGL canvas
+
+The waveform canvas (`#waveform`) already had a Three.js WebGL renderer with one shader material for the amplitude waveform. Added a second `ShaderMaterial` (`wfSpectroMaterial`) with the same spectrogram fragment shader used by the main window. Both meshes live in the same scene; `renderMinimapWithMode()` toggles visibility based on the selected mode.
+
+For combination mode, the waveform shader needed transparent background support. Added a `uTransparentBg` uniform — when set to 1.0, background pixels output `alpha=0` instead of the solid background color, and the center line drops to 60% opacity. The waveform material has `transparent: true` so Three.js enables blending, and `renderOrder` ensures spectrogram (0) draws before waveform (1).
+
+### Separate colormaps
+
+The waveform shader uses a brightness-boosted colormap (`buildWaveformColorLUT()`) so amplitude bands are visible on dark backgrounds. The spectrogram shader needs the raw colormap — using the boosted version washed everything out to near-white. Added `buildSpectroColormapTexture()` which reads directly from `getColorLUT()` without brightness adjustment. Both colormaps rebuild when the user changes colormaps.
+
+### Spectrogram texture access
+
+Exported two new functions from `spectrogram-three-renderer.js`:
+- `getFullMagnitudeTexture()` — returns `{ texture, width, height }` for the existing FFT magnitude texture
+- `getSpectrogramParams()` — returns frequency scale, min/max freq, dB floor/range for shader uniform sync
+
+### Auto-refresh on spectrogram ready
+
+The spectrogram computes its FFT asynchronously after audio loads. If the minimap is in spectrogram mode when data first loads, the texture doesn't exist yet — minimap would be blank until the user interacts. Fixed with a `spectrogram-ready` custom event dispatched from `renderCompleteSpectrogram()`, listened to in the waveform renderer to trigger `drawWaveformFromMinMax()`.
+
+### UI: gear popover placement
+
+Moved the minimap mode selector from a standalone dropdown in the navigation controls bar into the Navigation Bar gear popover (top gear icon), alongside the existing "Click: Move window / Move & play" control. New row: "Mode: Line Plot / Spectrogram / Combination". Persisted to localStorage via the existing `navControls` system.
+
+### index.html safety
+
+`getMinimapMode()` returns `'linePlot'` when no `#miniMapView` element exists — so the main site is completely unaffected by these changes.
+
+### Viewport dim overlay
+
+Reduced the outside-viewport dimming from 50% to 30% black opacity for better spectrogram visibility when scroll-zoomed.
+
+### Files Changed (Session 5 — Minimap Mode Selector)
+
+- `js/waveform-renderer.js` — `getMinimapMode()`, `renderMinimapWithMode()` multi-pass renderer, `wfSpectroMaterial`/`wfSpectroMesh`, `uTransparentBg` uniform in waveform shader, `buildSpectroColormapTexture()`, `spectrogram-ready` listener, viewport dim 50%→30%
+- `js/spectrogram-three-renderer.js` — `getFullMagnitudeTexture()`, `getSpectrogramParams()` exports, `spectrogram-ready` event dispatch
+- `js/main.js` — `miniMapView` change listener triggers `drawWaveformFromMinMax()`
+- `emic_study.html` — Mode selector moved into `#navBarPopover` gear popover, old standalone selector removed
