@@ -443,21 +443,14 @@
             </div>
         </div>
         
-        <!-- Navigation Options Panel -->
-        <div class="panel panel-view-options" id="viewOptionsPanel" style="padding: 8px 20px;">
-            <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
-                <label style="font-weight: 700; font-size: 14px; color: #e8e8ff; margin: 0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; user-select: none;">⚙️ Navigation:</label>
-                
-                <!-- Skip Login & Welcome -->
-                <div style="display: flex; align-items: center; gap: 6px; margin-left: auto;">
-                    <label for="skipLoginWelcome" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none; cursor: pointer;">Skip Login & Welcome</label>
-                    <input type="checkbox" id="skipLoginWelcome" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
-                </div>
-            </div>
+        <!-- Skip Login & Welcome (standalone, below main panel) -->
+        <div style="display: flex; align-items: center; gap: 6px; justify-content: flex-end; padding: 6px 20px 0;">
+            <label for="skipLoginWelcome" style="font-size: 13px; font-weight: 600; color: #888; white-space: nowrap; user-select: none; cursor: pointer;">Skip Login & Welcome</label>
+            <input type="checkbox" id="skipLoginWelcome" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
         </div>
 
         <!-- Tracked Regions Panel -->
-        <div class="panel panel-regions" id="trackedRegionsPanel" style="position: relative;">
+        <div class="panel panel-regions" id="trackedRegionsPanel" style="position: relative; display: none;">
             <h2 style="margin-bottom: 12px; font-size: 1.3em;">Selected Regions</h2>
             <div id="regionsListContainer">
                 <div id="regionsList"></div>

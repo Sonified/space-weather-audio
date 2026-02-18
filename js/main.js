@@ -972,13 +972,11 @@ async function initializeEmicStudyMode() {
         });
     }
 
-    // --- Advanced mode toggle: controls visibility of gear icons + navigation panel ---
+    // --- Advanced mode toggle: controls visibility of gear icons ---
     const advancedCheckbox = document.getElementById('advancedMode');
-    const viewOptionsPanel = document.getElementById('viewOptionsPanel');
     function applyAdvancedMode(enabled) {
         const gearContainers = document.querySelectorAll('.panel-gear');
         gearContainers.forEach(g => g.style.display = enabled ? 'block' : 'none');
-        if (viewOptionsPanel) viewOptionsPanel.style.display = enabled ? '' : 'none';
     }
     if (advancedCheckbox) {
         const savedAdvanced = localStorage.getItem('emic_advanced_mode');
