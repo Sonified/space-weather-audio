@@ -629,8 +629,8 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             updateSpectrogramOverlay(progress);
         }
 
-        // Kick off 4x hi-res upgrade in background (fire-and-forget)
-        upgradeFullTextureToHiRes(4);
+        // Kick off 8x hi-res upgrade in background (fire-and-forget)
+        upgradeFullTextureToHiRes(8);
 
     } catch (error) {
         console.error('Error rendering spectrogram:', error);
