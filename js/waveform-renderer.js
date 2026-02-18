@@ -633,6 +633,10 @@ function drawWaveformOverlays() {
                 wfOverlayCtx.fillRect(0, 0, leftX, height);
                 wfOverlayCtx.fillRect(rightX, 0, width - rightX, height);
 
+                // Light fill inside viewport
+                wfOverlayCtx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                wfOverlayCtx.fillRect(leftX, 0, rightX - leftX, height);
+
                 // White border around viewport
                 wfOverlayCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
                 wfOverlayCtx.lineWidth = 1.5;

@@ -278,6 +278,10 @@ Data URLs will be: `https://spaceweather.now.audio/emic/data/2022/01/21/GOES-16/
 
 Rewired `tests/browser/test_r2_audification.html` to fetch directly from the worker (`spaceweather.now.audio/emic/data/...`) instead of using the local presign server. No Python server needed anymore. The `presign_server.py` can be deprecated.
 
+Moved to top level as `test_r2_audification.html` so it's accessible at `spaceweather.now.audio/test_r2_audification.html` via the worker's GitHub Pages proxy.
+
+Replaced the static "First chunk / Last chunk" dropdown with a dynamic chunk browser: click **Load Chunks** to fetch metadata, then a dropdown lists every chunk with its UTC time range (e.g. `#0: 2022-01-21 00:00–00:10 UTC`). Changing component or chunk type auto-reloads the list. Metadata is cached so `fetchAndPlay` no longer re-fetches it on every click.
+
 ### Minimap Viewport Indicator Fixes
 
 Two bugs in the waveform minimap's white zoom box:
@@ -302,7 +306,8 @@ When the zoom viewport didn't cross a midnight boundary, `drawDayMarkers()` call
 - `backend/goes_to_r2.py` — **NEW** — CDAWeb CDF download → chunk → compress → R2 upload pipeline, fill value interpolation
 - `worker/wrangler.toml` — Added `emic-data` R2 binding (`EMIC_DATA`)
 - `worker/src/index.js` — Added `/emic/data/*` route serving from `emic-data` bucket
-- `tests/browser/test_r2_audification.html` — Rewired to fetch from worker, no presign server
+- `test_r2_audification.html` — **NEW** (top-level) — Dynamic chunk browser, fetches from worker
+- `tests/browser/test_r2_audification.html` — Synced copy of above
 - `tests/browser/presign_server.py` — **NEW** (now deprecated) — Was temporary presign helper
 - `js/waveform-renderer.js` — Minimap viewport indicator always visible in windowed mode
 - `js/day-markers.js` — Don't bail early when zoomed viewport has no midnight boundaries
@@ -351,3 +356,46 @@ No region selection, no seek, no "Add Region" button during drag — just pure v
 - `js/waveform-x-axis-renderer.js` — X-axis labels use full range in windowed mode
 - `js/day-markers.js` — Waveform markers use full data range in windowed mode
 - `js/main.js` — `#viewingMode` change listener: resets zoom, re-renders all
+
+---
+
+## Spectrogram Click-to-Seek & Selection Box Fix
+
+### Click-to-seek in windowed modes
+
+Added click-to-seek on the spectrogram in windowed scroll/pageTurn modes. Clicking anywhere on the spectrogram moves the playhead to that position. Uses `pixelToTimestamp()` to map the click to a timestamp in the current viewport, then converts to audio time via fraction-of-dataset mapping.
+
+**Bug: wrong playhead position** — Initial implementation used `zoomState.timestampToSeconds()`, which returns real-world seconds from data start (e.g., 604800 for 7 days). But audio time is compressed — `totalAudioDuration` might be 300 seconds. Fixed by converting timestamp → fraction of full dataset → audio seconds: `fraction * totalAudioDuration`.
+
+**Bug: feature box clicks zoomed to region** — In windowed mode, clicking on a feature box (red outline) triggered `zoomToRegion()`, switching the entire state to region mode and breaking the viewport. Fixed by bypassing the feature box zoom handler in windowed modes — clicks fall through to click-to-seek instead.
+
+### Circular dependency from new imports
+
+Adding `seekToPosition` (from `audio-player.js`) and `drawWaveformWithSelection` (from `waveform-renderer.js`) as static imports in `spectrogram-renderer.js` created circular dependency chains:
+- `spectrogram-renderer.js` → `waveform-renderer.js` → `spectrogram-renderer.js`
+- `spectrogram-renderer.js` → `audio-player.js` → `spectrogram-renderer.js`
+
+This broke ES module initialization — the spectrogram selection overlay never set up properly, so feature box drawing in Region Creation mode silently failed.
+
+Fix: replaced static imports with dynamic `import()` calls inside the click-to-seek handler. These only resolve at click time, long after all modules have finished loading:
+```javascript
+Promise.all([
+    import('./audio-player.js'),
+    import('./spectrogram-playhead.js'),
+    import('./waveform-renderer.js')
+]).then(([audioPlayer, playhead, waveform]) => {
+    audioPlayer.seekToPosition(clamped, true);
+    playhead.drawSpectrogramPlayhead();
+    waveform.drawWaveformWithSelection();
+});
+```
+
+### Selection box invisible during drag (while audio playing)
+
+`updateCanvasAnnotations()` runs every animation frame during audio playback. It clears the entire spectrogram selection overlay canvas and redraws only completed feature boxes — wiping out the in-progress red selection box drawn by the `mousemove` handler 60 times per second.
+
+Fix: both `updateCanvasAnnotations()` and `redrawCanvasBoxes()` now check `spectrogramSelectionActive` and call `drawSpectrogramSelectionBox()` after drawing completed boxes, preserving the drag-in-progress red box.
+
+### Files Changed (Session 4 — Click-to-Seek & Fixes)
+
+- `js/spectrogram-renderer.js` — Click-to-seek in windowed modes, dynamic imports for circular dependency fix, selection box preserved during playback animation, feature box clicks bypassed in windowed modes

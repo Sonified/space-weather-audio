@@ -272,6 +272,10 @@ function redrawCanvasBoxes() {
         for (const savedBox of completedSelectionBoxes) {
             drawSavedBox(spectrogramOverlayCtx, savedBox);
         }
+        // Preserve in-progress selection box if user is currently dragging
+        if (spectrogramSelectionActive) {
+            drawSpectrogramSelectionBox(spectrogramOverlayCtx, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+        }
     }
 }
 
@@ -308,6 +312,11 @@ export function updateCanvasAnnotations() {
         const placedAnnotations = []; // Track placed annotations for collision detection
         for (const savedBox of completedSelectionBoxes) {
             drawSavedBox(spectrogramOverlayCtx, savedBox, true, placedAnnotations); // true = only draw annotations
+        }
+
+        // PASS 3: Draw in-progress selection box (if user is currently dragging)
+        if (spectrogramSelectionActive) {
+            drawSpectrogramSelectionBox(spectrogramOverlayCtx, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
         }
 
         // DEBUG: Show timing numbers on canvas
@@ -985,7 +994,10 @@ export function setupSpectrogramSelection() {
         const clickY = e.clientY - canvasRect.top;
 
         const clickedBox = getClickedBox(clickX, clickY);
-        if (clickedBox && !spectrogramSelectionActive) {
+        // In EMIC windowed modes, don't handle feature box clicks (click-to-seek instead)
+        const _modeSelectForBox = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+        const _isWindowedForBox = _modeSelectForBox && (_modeSelectForBox.value === 'scroll' || _modeSelectForBox.value === 'pageTurn');
+        if (clickedBox && !spectrogramSelectionActive && !_isWindowedForBox) {
             // Check if we're zoomed out - if so, zoom to the region
             if (!zoomState.isInRegion()) {
                 console.log(`🔍 Clicked feature box while zoomed out - zooming to region ${clickedBox.regionIndex + 1}`);
@@ -1001,16 +1013,32 @@ export function setupSpectrogramSelection() {
         // 🎯 NEW ARCHITECTURE: Allow drawing when zoomed into a region (no 'f' key needed!)
         // If not zoomed in, don't handle - user is looking at full view
         if (!zoomState.isInRegion()) {
-            console.log('🖱️ [MOUSEDOWN] Not in region - returning early (zoom state says not zoomed in)');
-
-            // Show helpful message - user needs to create a region first (only if not in tutorial)
-            import('./tutorial-state.js').then(({ isTutorialActive }) => {
-                if (!isTutorialActive()) {
-                    import('./tutorial-effects.js').then(({ setStatusText }) => {
-                        setStatusText('Create a new region to zoom in and select features.', 'status info');
-                    });
+            // Click-to-seek in EMIC windowed modes (scroll/pageTurn)
+            const modeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+            const isWindowed = modeSelect && (modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
+            if (isWindowed && State.completeSamplesArray && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
+                const timestamp = zoomState.pixelToTimestamp(clickX, canvasRect.width);
+                // Convert timestamp to fraction of dataset, then to audio time
+                const dataStartMs = State.dataStartTime.getTime();
+                const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;
+                const fraction = (timestamp.getTime() - dataStartMs) / dataSpanMs;
+                const targetPosition = fraction * State.totalAudioDuration;
+                const clamped = Math.max(0, Math.min(targetPosition, State.totalAudioDuration));
+                State.setCurrentAudioPosition(clamped);
+                if (State.audioContext) {
+                    State.setLastUpdateTime(State.audioContext.currentTime);
                 }
-            });
+                // Dynamic imports to avoid circular dependency
+                Promise.all([
+                    import('./audio-player.js'),
+                    import('./spectrogram-playhead.js'),
+                    import('./waveform-renderer.js')
+                ]).then(([audioPlayer, playhead, waveform]) => {
+                    audioPlayer.seekToPosition(clamped, true);
+                    playhead.drawSpectrogramPlayhead();
+                    waveform.drawWaveformWithSelection();
+                });
+            }
 
             return;
         }
