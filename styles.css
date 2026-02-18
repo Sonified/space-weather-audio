@@ -3339,7 +3339,7 @@ input[type="range"]:disabled {
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
     padding: 10px 14px;
-    min-width: 170px;
+    min-width: 220px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(8px);
     z-index: 31;
@@ -3389,6 +3389,16 @@ input[type="range"]:disabled {
     color: #ddd;
     color-scheme: dark;
     cursor: pointer;
+    flex: 1;
+}
+.gear-select:focus,
+.gear-select:focus-visible {
+    outline: none !important;
+    border-color: #555 !important;
+    box-shadow: none !important;
+    background: #3c3c3c;
+    color: #ddd;
+    -webkit-focus-ring-color: transparent;
 }
 .gear-select option {
     background: #3c3c3c;

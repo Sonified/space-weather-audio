@@ -1564,8 +1564,7 @@ async function initializeMainApp() {
     // Update participant ID display
     updateParticipantIdDisplay();
 
-    // Start memory health monitoring
-    startMemoryMonitoring();
+    // Memory monitoring is started after recent-searches cache loads (see below)
     
     // ═══════════════════════════════════════════════════════════
     // 🚨 STUDY MODE: Show overlay IMMEDIATELY to prevent UI interaction
@@ -2156,11 +2155,13 @@ async function initializeMainApp() {
             });
             
             console.log(`📋 Loaded ${recentSearches.length} recent searches from cache`);
+            startMemoryMonitoring();
         } catch (e) {
             console.warn('Could not load recent searches:', e);
+            startMemoryMonitoring();
         }
     }
-    
+
     // Expose loadRecentSearches globally so startStreaming can call it
     window.loadRecentSearches = loadRecentSearches;
     

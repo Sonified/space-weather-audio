@@ -357,9 +357,7 @@ function logMemory(label) {
         const total = (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(1);
         const limit = (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(1);
         const percent = ((performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) * 100).toFixed(1);
-        if (!isStudyMode()) {
-            console.log(`\u{1F4BE} ${label}: ${used}MB / ${total}MB (limit: ${limit}MB, ${percent}% used)`);
-        }
+        console.log(`\u{1F4BE} ${label}: ${used}MB / ${total}MB (limit: ${limit}MB, ${percent}% used)`);
     }
 }
 
@@ -391,18 +389,24 @@ function memoryHealthCheck() {
         }
     }
 
-    if (!isStudyMode()) {
-        const avgPercent = (memoryHistory.reduce((sum, h) => sum + h.percent, 0) / memoryHistory.length).toFixed(1);
-        console.log(`🏥 Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
-    }
+    const avgPercent = (memoryHistory.reduce((sum, h) => sum + h.percent, 0) / memoryHistory.length).toFixed(1);
+    console.log(`🏥 Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
 }
 
 export function startMemoryMonitoring() {
     if (memoryMonitorInterval) return;
-    if (!isStudyMode()) {
-        console.log('Starting memory health monitoring (every 10 seconds)');
-    }
-    memoryMonitorInterval = setInterval(memoryHealthCheck, 10000);
+    console.log('Starting memory health monitoring (30s intervals, switching to 60s after 5 min)');
+    const startTime = Date.now();
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    memoryMonitorInterval = setInterval(() => {
+        memoryHealthCheck();
+        // After 5 minutes, switch from 30s to 60s interval
+        if (Date.now() - startTime >= FIVE_MINUTES && memoryMonitorInterval) {
+            clearInterval(memoryMonitorInterval);
+            memoryMonitorInterval = setInterval(memoryHealthCheck, 60000);
+            console.log('Memory monitoring: switching to 60s interval');
+        }
+    }, 30000);
     memoryHealthCheck();
 }
 
