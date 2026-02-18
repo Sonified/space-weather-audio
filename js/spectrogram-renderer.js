@@ -7,7 +7,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, startFrequencySelection, zoomToRegion } from './region-tracker.js';
-import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged } from './spectrogram-three-renderer.js';
+import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
@@ -624,6 +624,9 @@ export async function changeFftSize() {
             // Full view: clear and re-render
             clearCompleteSpectrogram();
             await renderCompleteSpectrogram();
+
+            // Re-apply scroll-zoom viewport if zoomed in
+            updateSpectrogramViewportFromZoom();
 
             // Update feature box positions after re-render
             updateAllFeatureBoxPositions();

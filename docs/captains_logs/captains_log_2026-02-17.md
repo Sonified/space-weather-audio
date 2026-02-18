@@ -294,9 +294,18 @@ Two bugs in the waveform minimap's white zoom box:
 
 When the zoom viewport didn't cross a midnight boundary, `drawDayMarkers()` called `getMidnightBoundaries()` on the zoomed range, got zero results, and bailed early with `clearDayMarkers()` — which also cleared the *minimap's* day markers (which use the full data range, not the zoomed range). Removed the early return so the function continues to the waveform minimap section, which correctly computes its own midnight boundaries from the full data range.
 
+### Feature Boxes Not Tracking Spectrogram During Scroll
+
+Canvas-based red feature boxes (drawn by `drawSavedBox()` via `redrawCanvasBoxes()`) use `getInterpolatedTimeRange()` for x-positioning — same as the orange DOM boxes. But they were only being redrawn during audio playback (via `updateCanvasAnnotations()` in the animation loop) or on explicit zoom events. During scroll-wheel zoom or minimap drag, the spectrogram texture shifted but the canvas overlay with the red boxes stayed frozen at their old pixel positions.
+
+Fix: added `updateCanvasAnnotations()` to both scroll render paths:
+- `renderMinimapDragFrame()` in `waveform-renderer.js` (minimap drag-to-pan)
+- `renderFrame()` in `scroll-zoom.js` (scroll-wheel zoom)
+
+Now both the orange DOM boxes AND the red canvas boxes stay pinned to the spectrogram content during all forms of scrolling.
+
 ### What's Next
 
-- Deploy worker with `npx wrangler deploy` (needs auth)
 - Run remaining EMIC study days (Jan 23–27, 2022)
 - Wire up browser-side progressive streaming from `emic-data` into the main app
 - Adapt `fetchFromR2Worker()` in `data-fetcher.js` to read from the new R2 structure
@@ -309,7 +318,8 @@ When the zoom viewport didn't cross a midnight boundary, `drawDayMarkers()` call
 - `test_r2_audification.html` — **NEW** (top-level) — Dynamic chunk browser, fetches from worker
 - `tests/browser/test_r2_audification.html` — Synced copy of above
 - `tests/browser/presign_server.py` — **NEW** (now deprecated) — Was temporary presign helper
-- `js/waveform-renderer.js` — Minimap viewport indicator always visible in windowed mode
+- `js/waveform-renderer.js` — Minimap viewport indicator always visible in windowed mode; canvas feature boxes redrawn during minimap drag
+- `js/scroll-zoom.js` — Canvas feature boxes redrawn during scroll-wheel zoom
 - `js/day-markers.js` — Don't bail early when zoomed viewport has no midnight boundaries
 
 ---

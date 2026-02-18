@@ -557,6 +557,7 @@ function renderMinimapDragFrame() {
     drawWaveformXAxis();
     updateSpectrogramViewportFromZoom();
     updateAllFeatureBoxPositions();
+    updateCanvasAnnotations();
     drawSpectrogramPlayhead();
     drawDayMarkers();
 }

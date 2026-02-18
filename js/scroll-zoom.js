@@ -7,19 +7,28 @@
  * Wheel events can fire far faster than 60fps on trackpads.
  * We compute zoom math on every event (so preventDefault works immediately)
  * but coalesce rendering to one frame via requestAnimationFrame.
+ *
+ * Two-level quality system:
+ * 1. During scrolling: UV-crops the full texture (4x upgraded) — instant, decent quality
+ * 2. After scrolling settles (400ms): renders viewport-specific hi-res texture
+ *    with 30% padding — region-zoom quality. Stays active while viewport fits.
  */
 
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { drawWaveformFromMinMax } from './waveform-renderer.js';
 import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
-import { updateSpectrogramViewportFromZoom } from './spectrogram-three-renderer.js';
+import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
+import { updateCanvasAnnotations } from './spectrogram-renderer.js';
 import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
 import { drawDayMarkers } from './day-markers.js';
 
 let initialized = false;
-let rafPending = false; // true while a render frame is scheduled
+let rafPending = false;     // true while a render frame is scheduled
+let hiResTimer = null;      // debounce timer for hi-res viewport render
+
+const HI_RES_DELAY_MS = 400; // ms after last scroll event to trigger hi-res render
 
 /**
  * Get current viewport start/end as ms timestamps
@@ -47,6 +56,56 @@ function renderFrame() {
     drawWaveformXAxis();
     updateSpectrogramViewportFromZoom();
     updateAllFeatureBoxPositions();
+    updateCanvasAnnotations();
+    drawSpectrogramPlayhead();
+    drawDayMarkers();
+}
+
+/**
+ * After scroll-zoom settles, render a hi-res texture for the current viewport.
+ * Gives region-zoom quality. Rendered with 30% padding so minor scrolling
+ * after settling stays within the hi-res bounds.
+ */
+async function renderHiResViewport() {
+    if (!State.dataStartTime || !State.dataEndTime) return;
+
+    const { startMs, endMs } = getViewport();
+    const dataStartMs = State.dataStartTime.getTime();
+    const dataEndMs = State.dataEndTime.getTime();
+    const dataSpanMs = dataEndMs - dataStartMs;
+    const dataDurationSeconds = dataSpanMs / 1000;
+
+    // Don't re-render if at full zoom (already full resolution)
+    if (endMs - startMs >= dataSpanMs * 0.95) return;
+
+    // Convert viewport to seconds from data start
+    const startSeconds = (startMs - dataStartMs) / 1000;
+    const endSeconds = (endMs - dataStartMs) / 1000;
+    const viewSpanSeconds = endSeconds - startSeconds;
+
+    // Add 30% padding so minor scrolling stays within hi-res bounds
+    const padding = viewSpanSeconds * 0.3;
+    const expandedStart = Math.max(0, startSeconds - padding);
+    const expandedEnd = Math.min(dataDurationSeconds, endSeconds + padding);
+
+    console.log(`🔍 Scroll settled — hi-res render: ${viewSpanSeconds.toFixed(0)}s viewport (padded: ${(expandedEnd - expandedStart).toFixed(0)}s)`);
+
+    // Render in background — doesn't disrupt current display
+    const success = await renderCompleteSpectrogramForRegion(expandedStart, expandedEnd, true);
+
+    // Only activate hi-res texture if the render actually completed
+    // (it may have been aborted by a newer render)
+    if (!success) return;
+
+    // Mark the hi-res texture as ready with its bounds
+    setScrollZoomHiRes(expandedStart, expandedEnd);
+
+    // Update viewport to pick up the hi-res texture
+    updateSpectrogramViewportFromZoom();
+
+    // Update overlays
+    updateAllFeatureBoxPositions();
+    updateCanvasAnnotations();
     drawSpectrogramPlayhead();
     drawDayMarkers();
 }
@@ -110,6 +169,10 @@ function onWheel(e) {
         rafPending = true;
         requestAnimationFrame(renderFrame);
     }
+
+    // Debounce hi-res viewport render: reset timer on every scroll event
+    if (hiResTimer) clearTimeout(hiResTimer);
+    hiResTimer = setTimeout(renderHiResViewport, HI_RES_DELAY_MS);
 }
 
 /**

@@ -63,6 +63,13 @@ let smartRenderBounds = {
     renderComplete: false
 };
 
+// Scroll-zoom hi-res viewport texture tracking (separate from region zoom)
+let scrollZoomHiRes = {
+    startSeconds: null,  // expanded render start (with padding)
+    endSeconds: null,    // expanded render end (with padding)
+    ready: false
+};
+
 // Grey overlay for zoomed-out mode
 let spectrogramOverlay = null;
 let spectrogramOverlayResizeObserver = null;
@@ -622,11 +629,79 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             updateSpectrogramOverlay(progress);
         }
 
+        // Kick off 4x hi-res upgrade in background (fire-and-forget)
+        upgradeFullTextureToHiRes(4);
+
     } catch (error) {
         console.error('Error rendering spectrogram:', error);
     } finally {
         renderingInProgress = false;
         if (!isStudyMode()) console.groupEnd();
+    }
+}
+
+// ─── Hi-res full texture upgrade (background) ──────────────────────────────
+
+let hiResAbortController = null;
+
+/**
+ * Re-render the full data range at higher resolution (4x canvas width) in the background.
+ * When done, swaps the fullMagnitudeTexture so all UV-crop zooming is sharper.
+ * Safe to call multiple times — cancels any in-progress upgrade.
+ */
+export async function upgradeFullTextureToHiRes(multiplier = 4) {
+    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) return;
+    if (!threeRenderer || !material) return;
+
+    // Cancel any in-progress upgrade
+    if (hiResAbortController) {
+        hiResAbortController.abort();
+        hiResAbortController = null;
+    }
+
+    hiResAbortController = new AbortController();
+    const signal = hiResAbortController.signal;
+
+    try {
+        const audioData = State.completeSamplesArray;
+        const totalSamples = audioData.length;
+        const fftSize = State.fftSize || 2048;
+        const canvas = threeRenderer.domElement;
+        const baseWidth = canvas.width;
+        const maxTimeSlices = baseWidth * multiplier;
+        const hopSize = Math.max(1, Math.floor((totalSamples - fftSize) / maxTimeSlices));
+        const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+
+        console.log(`🔬 Upgrading spectrogram to hi-res: ${numTimeSlices} columns (${multiplier}x)`);
+        const startTime = performance.now();
+
+        const result = await computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize, signal);
+        if (!result || signal.aborted) {
+            return;
+        }
+
+        // Replace full texture with hi-res version
+        if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
+        fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
+        fullMagnitudeWidth = result.width;
+        fullMagnitudeHeight = result.height;
+
+        const elapsed = performance.now() - startTime;
+        console.log(`🔬 Hi-res upgrade complete: ${numTimeSlices} columns in ${elapsed.toFixed(0)}ms`);
+
+        // Only activate if the full texture is currently in use.
+        // If scroll-zoom hi-res is active (region texture), don't stomp on it —
+        // the upgraded full texture will be picked up next time we fall back.
+        if (activeTexture === 'full') {
+            material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+            renderFrame();
+        }
+    } catch (error) {
+        if (!signal.aborted) {
+            console.error('Error upgrading to hi-res texture:', error);
+        }
+    } finally {
+        hiResAbortController = null;
     }
 }
 
@@ -646,6 +721,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
     activeRenderRegionId = regionId;
     renderingInProgress = true;
     const signal = activeRenderAbortController.signal;
+    let renderSucceeded = false;
 
     initThreeScene();
     const canvas = threeRenderer?.domElement;
@@ -720,9 +796,13 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         // Compute FFT
         const result = await computeFFTToTexture(regionSamples, fftSize, numTimeSlices, hopSize, signal);
         if (!result || signal.aborted) {
-            renderingInProgress = false;
-            activeRenderAbortController = null;
-            activeRenderRegionId = null;
+            // Only clean up singleton state if it still belongs to this render
+            // (a newer render may have already claimed it)
+            if (activeRenderRegionId === regionId) {
+                renderingInProgress = false;
+                activeRenderAbortController = null;
+                activeRenderRegionId = null;
+            }
             return;
         }
 
@@ -732,6 +812,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         // Create region texture
         if (regionMagnitudeTexture) regionMagnitudeTexture.dispose();
         regionMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
+        renderSucceeded = true;
 
         // Mark smart render as complete
         smartRenderBounds.renderComplete = true;
@@ -778,6 +859,8 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             renderingInProgress = false;
         }
     }
+
+    return renderSucceeded;
 }
 
 // ─── Viewport update (playback rate stretch) ────────────────────────────────
@@ -914,14 +997,42 @@ export function updateSpectrogramViewportFromZoom() {
     const viewStartMs = zoomState.isInitialized() ? zoomState.currentViewStartTime.getTime() : dataStartMs;
     const viewEndMs = zoomState.isInitialized() ? zoomState.currentViewEndTime.getTime() : dataEndMs;
 
-    // Use full texture for scroll zoom (no region texture without a real region)
-    if (fullMagnitudeTexture && activeTexture !== 'full') {
-        material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
-        activeTexture = 'full';
-    }
+    // Check if scroll-zoom hi-res texture covers the current viewport
+    if (scrollZoomHiRes.ready && regionMagnitudeTexture && scrollZoomHiRes.startSeconds !== null) {
+        const hiResStartMs = dataStartMs + scrollZoomHiRes.startSeconds * 1000;
+        const hiResEndMs = dataStartMs + scrollZoomHiRes.endSeconds * 1000;
+        const hiResDurationMs = hiResEndMs - hiResStartMs;
 
-    material.uniforms.uViewportStart.value = (viewStartMs - dataStartMs) / dataDurationMs;
-    material.uniforms.uViewportEnd.value = (viewEndMs - dataStartMs) / dataDurationMs;
+        const fitsInBounds = viewStartMs >= hiResStartMs - 1 && viewEndMs <= hiResEndMs + 1 && hiResDurationMs > 0;
+
+        if (fitsInBounds) {
+            // Viewport fits within hi-res texture — use it
+            const uvStart = (viewStartMs - hiResStartMs) / hiResDurationMs;
+            const uvEnd = (viewEndMs - hiResStartMs) / hiResDurationMs;
+            // Always update the uniform — the texture object changes on every re-render
+            // (can't skip this even if activeTexture is already 'region')
+            material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
+            activeTexture = 'region';
+            material.uniforms.uViewportStart.value = uvStart;
+            material.uniforms.uViewportEnd.value = uvEnd;
+        } else {
+            // Viewport exceeds hi-res bounds — fall back to full texture
+            if (fullMagnitudeTexture) {
+                material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+                activeTexture = 'full';
+            }
+            material.uniforms.uViewportStart.value = (viewStartMs - dataStartMs) / dataDurationMs;
+            material.uniforms.uViewportEnd.value = (viewEndMs - dataStartMs) / dataDurationMs;
+        }
+    } else {
+        // No hi-res texture — use full texture
+        if (fullMagnitudeTexture) {
+            material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+            activeTexture = 'full';
+        }
+        material.uniforms.uViewportStart.value = (viewStartMs - dataStartMs) / dataDurationMs;
+        material.uniforms.uViewportEnd.value = (viewEndMs - dataStartMs) / dataDurationMs;
+    }
 
     // Update stretch + frequency
     const playbackRate = State.currentPlaybackRate || 1.0;
@@ -936,6 +1047,21 @@ export function updateSpectrogramViewportFromZoom() {
     renderFrame();
 }
 
+/**
+ * Mark the scroll-zoom hi-res viewport texture as ready with its bounds.
+ * Called after renderCompleteSpectrogramForRegion completes in background.
+ */
+export function setScrollZoomHiRes(startSeconds, endSeconds) {
+    scrollZoomHiRes = { startSeconds, endSeconds, ready: true };
+}
+
+/**
+ * Clear scroll-zoom hi-res state (e.g. on FFT size change or mode switch).
+ */
+export function clearScrollZoomHiRes() {
+    scrollZoomHiRes = { startSeconds: null, endSeconds: null, ready: false };
+}
+
 // ─── State management ───────────────────────────────────────────────────────
 
 export function resetSpectrogramState() {
@@ -944,6 +1070,9 @@ export function resetSpectrogramState() {
     State.setSpectrogramInitialized(false);
 
     renderContext = { startSample: null, endSample: null, frequencyScale: null };
+
+    // Clear scroll-zoom hi-res state
+    scrollZoomHiRes = { startSeconds: null, endSeconds: null, ready: false };
 
     // Don't dispose full texture during transitions — we need it
     // Dispose region texture
