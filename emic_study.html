@@ -346,6 +346,13 @@
                             <option value="none">No action</option>
                         </select>
                     </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Markers:</span>
+                        <select id="navBarMarkers" class="gear-select">
+                            <option value="daily" selected>Daily</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -369,6 +376,13 @@
                         <select id="mainWindowScroll" class="gear-select">
                             <option value="zoom" selected>Zoom</option>
                             <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Markers:</span>
+                        <select id="mainWindowMarkers" class="gear-select">
+                            <option value="daily" selected>Daily</option>
+                            <option value="none">None</option>
                         </select>
                     </div>
                 </div>
@@ -434,12 +448,6 @@
             <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
                 <label style="font-weight: 700; font-size: 14px; color: #e8e8ff; margin: 0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; user-select: none;">⚙️ Navigation:</label>
                 
-                <!-- Day Markers toggle -->
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <label for="showDayMarkers" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none; cursor: pointer;">Day Markers</label>
-                    <input type="checkbox" id="showDayMarkers" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
-                </div>
-
                 <!-- Skip Login & Welcome -->
                 <div style="display: flex; align-items: center; gap: 6px; margin-left: auto;">
                     <label for="skipLoginWelcome" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none; cursor: pointer;">Skip Login & Welcome</label>

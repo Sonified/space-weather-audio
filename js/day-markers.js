@@ -1,7 +1,7 @@
 /**
  * day-markers.js
  * Draws UTC midnight boundary markers on spectrogram and waveform canvases
- * Only active in EMIC study mode when the "Day Markers" checkbox is enabled
+ * Per-panel control via gear popover dropdowns (#navBarMarkers, #mainWindowMarkers)
  */
 
 import * as State from './audio-state.js';
@@ -70,14 +70,13 @@ function initSpectrogramOverlay() {
 }
 
 /**
- * Check if day markers should be drawn
+ * Check if day markers should be drawn on a specific panel
  */
-function shouldDrawDayMarkers() {
-    // Must be in EMIC study mode
+function shouldDrawMarkersForPanel(panel) {
     if (!window.__EMIC_STUDY_MODE) return false;
-    // Check checkbox
-    const checkbox = document.getElementById('showDayMarkers');
-    return checkbox ? checkbox.checked : false;
+    const id = panel === 'navBar' ? 'navBarMarkers' : 'mainWindowMarkers';
+    const select = document.getElementById(id);
+    return select ? select.value !== 'none' : false;
 }
 
 /**
@@ -162,7 +161,11 @@ function drawMarkerLine(ctx, x, height, dateLabel, labelPosition = 'top') {
  * Call this after renders and on zoom changes.
  */
 export function drawDayMarkers() {
-    if (!shouldDrawDayMarkers()) {
+    const showSpectrogram = shouldDrawMarkersForPanel('mainWindow');
+    const showWaveform = shouldDrawMarkersForPanel('navBar');
+
+    // If neither panel wants markers, clear and bail
+    if (!showSpectrogram && !showWaveform) {
         clearDayMarkers();
         return;
     }
@@ -179,7 +182,6 @@ export function drawDayMarkers() {
     // --- Spectrogram overlay ---
     if (!spectrogramOverlayCanvas) initSpectrogramOverlay();
     if (spectrogramOverlayCtx) {
-        // Re-sync overlay buffer to current CSS size in case it changed
         const specCanvas = document.getElementById('spectrogram');
         const cssW = specCanvas ? specCanvas.offsetWidth : spectrogramOverlayCanvas.width;
         const cssH = specCanvas ? specCanvas.offsetHeight : spectrogramOverlayCanvas.height;
@@ -188,18 +190,18 @@ export function drawDayMarkers() {
             spectrogramOverlayCanvas.height = cssH;
         }
         spectrogramOverlayCtx.clearRect(0, 0, cssW, cssH);
-        for (const midnight of midnights) {
-            const frac = (midnight.getTime() - startMs) / spanMs;
-            const x = Math.round(frac * cssW);
-            if (x < 0 || x > cssW) continue;
-            const label = `${MONTHS[midnight.getUTCMonth()]} ${midnight.getUTCDate()}`;
-            drawMarkerLine(spectrogramOverlayCtx, x, cssH, label);
+        if (showSpectrogram) {
+            for (const midnight of midnights) {
+                const frac = (midnight.getTime() - startMs) / spanMs;
+                const x = Math.round(frac * cssW);
+                if (x < 0 || x > cssW) continue;
+                const label = `${MONTHS[midnight.getUTCMonth()]} ${midnight.getUTCDate()}`;
+                drawMarkerLine(spectrogramOverlayCtx, x, cssH, label);
+            }
         }
     }
 
     // --- Waveform canvas overlay ---
-    // Draw directly on a separate overlay so we don't interfere with waveform rendering.
-    // Re-use or create a waveform day-marker overlay canvas.
     let wfOverlay = document.getElementById('waveform-day-markers-overlay');
     const wfCanvas = document.getElementById('waveform');
     if (wfCanvas && !wfOverlay) {
@@ -221,7 +223,6 @@ export function drawDayMarkers() {
             wfOverlay.style.height = wfCanvas.offsetHeight + 'px';
             container.appendChild(wfOverlay);
 
-            // Keep in sync
             new ResizeObserver(() => {
                 if (wfOverlay && wfCanvas) {
                     const cr2 = wfCanvas.getBoundingClientRect();
@@ -245,32 +246,31 @@ export function drawDayMarkers() {
         const bufH = wfOverlay.height;
         wfCtx.clearRect(0, 0, bufW, bufH);
 
-        // In EMIC windowed mode (scroll/page-turn), waveform is a minimap — always use full data range
-        // Region Creation mode uses the zoomed range like normal
-        const emicMode = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
-        const isEmicWindowed = emicMode && (emicMode.value === 'static' || emicMode.value === 'scroll' || emicMode.value === 'pageTurn');
-        const wfStartMs = isEmicWindowed && State.dataStartTime
-            ? State.dataStartTime.getTime() : startMs;
-        const wfSpanMs = isEmicWindowed && State.dataStartTime && State.dataEndTime
-            ? State.dataEndTime.getTime() - State.dataStartTime.getTime() : spanMs;
-        const wfMidnights = isEmicWindowed && State.dataStartTime && State.dataEndTime
-            ? getMidnightBoundaries(State.dataStartTime, State.dataEndTime) : midnights;
+        if (showWaveform) {
+            // In EMIC windowed mode, waveform is a minimap — always use full data range
+            const emicMode = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+            const isEmicWindowed = emicMode && (emicMode.value === 'static' || emicMode.value === 'scroll' || emicMode.value === 'pageTurn');
+            const wfStartMs = isEmicWindowed && State.dataStartTime
+                ? State.dataStartTime.getTime() : startMs;
+            const wfSpanMs = isEmicWindowed && State.dataStartTime && State.dataEndTime
+                ? State.dataEndTime.getTime() - State.dataStartTime.getTime() : spanMs;
+            const wfMidnights = isEmicWindowed && State.dataStartTime && State.dataEndTime
+                ? getMidnightBoundaries(State.dataStartTime, State.dataEndTime) : midnights;
 
-        // Waveform canvas buffer is scaled by devicePixelRatio —
-        // apply DPR scale so we draw in CSS-pixel coordinates
-        const dpr = window.devicePixelRatio || 1;
-        const cssW = bufW / dpr;
-        const cssH = bufH / dpr;
-        wfCtx.save();
-        wfCtx.scale(dpr, dpr);
-        for (const midnight of wfMidnights) {
-            const frac = (midnight.getTime() - wfStartMs) / wfSpanMs;
-            const x = Math.round(frac * cssW);
-            if (x < 0 || x > cssW) continue;
-            const label = `${MONTHS[midnight.getUTCMonth()]} ${midnight.getUTCDate()}`;
-            drawMarkerLine(wfCtx, x, cssH, label, 'bottom');
+            const dpr = window.devicePixelRatio || 1;
+            const cssW = bufW / dpr;
+            const cssH = bufH / dpr;
+            wfCtx.save();
+            wfCtx.scale(dpr, dpr);
+            for (const midnight of wfMidnights) {
+                const frac = (midnight.getTime() - wfStartMs) / wfSpanMs;
+                const x = Math.round(frac * cssW);
+                if (x < 0 || x > cssW) continue;
+                const label = `${MONTHS[midnight.getUTCMonth()]} ${midnight.getUTCDate()}`;
+                drawMarkerLine(wfCtx, x, cssH, label, 'bottom');
+            }
+            wfCtx.restore();
         }
-        wfCtx.restore();
     }
 }
 

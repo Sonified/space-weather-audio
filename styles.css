@@ -3339,7 +3339,7 @@ input[type="range"]:disabled {
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
     padding: 10px 14px;
-    min-width: 220px;
+    min-width: 240px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(8px);
     z-index: 31;
@@ -3376,7 +3376,8 @@ input[type="range"]:disabled {
     color: #ccc;
     white-space: nowrap;
     user-select: none;
-    min-width: 42px;
+    min-width: 62px;
+    text-align: right;
 }
 
 .gear-select {

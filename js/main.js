@@ -826,7 +826,7 @@ export async function startStreaming(event, config = null) {
         // Enable share button now that data is loaded
         updateShareButtonState();
 
-        // Draw day markers if checkbox is already checked (EMIC mode)
+        // Draw day markers if enabled in gear popovers (EMIC mode)
         drawDayMarkers();
 
         // Initialize scroll-to-zoom (EMIC mode, gated by checkbox)
@@ -944,7 +944,8 @@ async function initializeEmicStudyMode() {
         { id: 'navBarScroll', key: 'emic_navbar_scroll', type: 'select' },
         { id: 'mainWindowScroll', key: 'emic_main_scroll', type: 'select' },
         { id: 'miniMapView', key: 'emic_minimap_view', type: 'select' },
-        { id: 'showDayMarkers', key: 'emic_day_markers', type: 'checkbox' },
+        { id: 'navBarMarkers', key: 'emic_navbar_markers', type: 'select' },
+        { id: 'mainWindowMarkers', key: 'emic_main_markers', type: 'select' },
         { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
     ];
     for (const ctrl of navControls) {
@@ -1018,14 +1019,24 @@ async function initializeEmicStudyMode() {
             e.stopPropagation();
             const popover = btn.nextElementSibling;
             const wasOpen = popover.classList.contains('open');
-            // Close all popovers first
-            document.querySelectorAll('.gear-popover').forEach(p => p.classList.remove('open'));
-            if (!wasOpen) popover.classList.add('open');
+            // Close all popovers first & reset z-index
+            document.querySelectorAll('.gear-popover').forEach(p => {
+                p.classList.remove('open');
+                p.closest('.panel-gear').style.zIndex = '30';
+            });
+            if (!wasOpen) {
+                popover.classList.add('open');
+                // Boost this gear above others so popover isn't covered
+                popover.closest('.panel-gear').style.zIndex = '35';
+            }
         });
     });
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.gear-popover') && !e.target.closest('.gear-btn')) {
-            document.querySelectorAll('.gear-popover').forEach(p => p.classList.remove('open'));
+            document.querySelectorAll('.gear-popover').forEach(p => {
+                p.classList.remove('open');
+                p.closest('.panel-gear').style.zIndex = '30';
+            });
         }
     });
     // Blur selects after change so the native focus highlight drops immediately
@@ -1044,11 +1055,15 @@ async function initializeEmicStudyMode() {
         if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
     }
 
-    // Wire day markers checkbox to redraw, and draw immediately if already checked
-    const dayMarkersCheckbox = document.getElementById('showDayMarkers');
-    if (dayMarkersCheckbox) {
-        dayMarkersCheckbox.addEventListener('change', () => drawDayMarkers());
-        if (dayMarkersCheckbox.checked) drawDayMarkers();
+    // Wire per-panel day markers dropdowns to redraw
+    const navBarMarkersEl = document.getElementById('navBarMarkers');
+    const mainWindowMarkersEl = document.getElementById('mainWindowMarkers');
+    if (navBarMarkersEl) navBarMarkersEl.addEventListener('change', () => drawDayMarkers());
+    if (mainWindowMarkersEl) mainWindowMarkersEl.addEventListener('change', () => drawDayMarkers());
+    // Draw immediately if either panel has markers enabled
+    if ((navBarMarkersEl && navBarMarkersEl.value !== 'none') ||
+        (mainWindowMarkersEl && mainWindowMarkersEl.value !== 'none')) {
+        drawDayMarkers();
     }
 
     // Toggle regions panel visibility based on viewing mode

@@ -97,3 +97,41 @@ The old single `#scrollBehavior` checkbox and its `emic_scroll_behavior` localSt
 - `js/scroll-zoom.js` — Per-canvas scroll gating via `#navBarScroll`/`#mainWindowScroll` dropdowns instead of single checkbox; removed duplicate `const canvas` declaration
 - `js/spectrogram-three-renderer.js` — Removed `isStudyMode()` guards from memory monitoring, 30s→60s interval schedule
 - `styles.css` — `.gear-popover` min-width 220px, `.gear-select` flex: 1, `:focus`/`:focus-visible` suppression rules
+
+---
+
+## Per-Panel Day Markers
+
+Replaced the single "Day Markers" checkbox in the bottom navigation bar with per-panel "Markers:" dropdowns in each gear popover. Each panel can independently show or hide day markers.
+
+### Two new dropdowns
+
+- **Navigation Bar gear** → `#navBarMarkers`: Controls day markers on the waveform/minimap canvas
+- **Main Window gear** → `#mainWindowMarkers`: Controls day markers on the spectrogram canvas
+
+Both default to "Daily" with a "None" alternative. Persisted to localStorage via `emic_navbar_markers` and `emic_main_markers`.
+
+### Per-panel gating in day-markers.js
+
+Replaced `shouldDrawDayMarkers()` (single global check) with `shouldDrawMarkersForPanel(panel)`. `drawDayMarkers()` now evaluates each panel independently — spectrogram drawing is gated by `#mainWindowMarkers`, waveform drawing by `#navBarMarkers`. You can show markers on the spectrogram but hide them on the minimap (or vice versa).
+
+The old single `#showDayMarkers` checkbox and its `emic_show_day_markers` localStorage key are removed.
+
+---
+
+## Gear Popover Layout Polish
+
+### Z-index stacking fix
+
+The nav bar gear popover was being hidden behind the main window gear icon below it — both `.panel-gear` containers had `z-index: 30`. Fixed by dynamically boosting the active popover's parent to `z-index: 35` when opened, resetting to `30` on close.
+
+### Label width and alignment
+
+Increased `.gear-label` min-width from 42px to 62px so labels like "Markers:" and "Scroll:" have room. Added `text-align: right` so all labels flush against their dropdowns. Adjusted `.gear-popover` min-width to 240px — wide enough for the new rows without excess whitespace.
+
+### Files Changed (Session 11 — Per-Panel Markers + Layout Polish)
+
+- `emic_study.html` — "Markers:" dropdown added to both gear popovers; old "Day Markers" checkbox removed from nav bar
+- `js/main.js` — `navControls` updated: replaced `showDayMarkers` checkbox with `navBarMarkers` + `mainWindowMarkers` select entries; marker dropdown change listeners; z-index stacking on popover open/close
+- `js/day-markers.js` — `shouldDrawMarkersForPanel(panel)` replaces `shouldDrawDayMarkers()`, per-panel gating in `drawDayMarkers()`
+- `styles.css` — `.gear-label` min-width 62px + text-align right, `.gear-popover` min-width 240px
