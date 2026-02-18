@@ -939,9 +939,8 @@ async function initializeEmicStudyMode() {
     // Persist all navigation panel controls to localStorage
     const navControls = [
         { id: 'viewingMode', key: 'emic_viewing_mode', type: 'select' },
-        { id: 'clickBehavior', key: 'emic_click_behavior', type: 'select' },
         { id: 'navBarClick', key: 'emic_navbar_click', type: 'select' },
-        { id: 'mainWindowPlayOnClick', key: 'emic_main_play_on_click', type: 'checkbox' },
+        { id: 'mainWindowClick', key: 'emic_main_click_mode', type: 'select' },
         { id: 'scrollBehavior', key: 'emic_scroll_behavior', type: 'checkbox' },
         { id: 'miniMapView', key: 'emic_minimap_view', type: 'select' },
         { id: 'showDayMarkers', key: 'emic_day_markers', type: 'checkbox' },
@@ -968,9 +967,23 @@ async function initializeEmicStudyMode() {
         });
     }
 
-    // --- Gear icons: show in EMIC mode, toggle popovers, position over canvases ---
-    const gearContainers = document.querySelectorAll('.panel-gear');
-    gearContainers.forEach(g => g.style.display = 'block');
+    // --- Advanced mode toggle: controls visibility of gear icons + navigation panel ---
+    const advancedCheckbox = document.getElementById('advancedMode');
+    const viewOptionsPanel = document.getElementById('viewOptionsPanel');
+    function applyAdvancedMode(enabled) {
+        const gearContainers = document.querySelectorAll('.panel-gear');
+        gearContainers.forEach(g => g.style.display = enabled ? 'block' : 'none');
+        if (viewOptionsPanel) viewOptionsPanel.style.display = enabled ? '' : 'none';
+    }
+    if (advancedCheckbox) {
+        const savedAdvanced = localStorage.getItem('emic_advanced_mode');
+        if (savedAdvanced !== null) advancedCheckbox.checked = savedAdvanced === 'true';
+        applyAdvancedMode(advancedCheckbox.checked);
+        advancedCheckbox.addEventListener('change', () => {
+            localStorage.setItem('emic_advanced_mode', advancedCheckbox.checked);
+            applyAdvancedMode(advancedCheckbox.checked);
+        });
+    }
 
     // Position gear icons over their respective canvases (top-right corner, inside the canvas)
     function positionGearIcons() {
@@ -2376,12 +2389,18 @@ async function initializeMainApp() {
             console.log('✅ Auto play disabled after Begin Analysis confirmation');
         }
         
-        // Disable play on click checkbox after Begin Analysis is confirmed
+        // Switch main window click mode to "Draw feature" after Begin Analysis
+        const mainClickSelect = document.getElementById('mainWindowClick');
+        if (mainClickSelect) {
+            mainClickSelect.value = 'drawFeature';
+            localStorage.setItem('emic_main_click_mode', 'drawFeature');
+            console.log('✅ Main window click mode set to Draw Feature after Begin Analysis');
+        }
+        // Also disable the hidden playOnClick checkbox
         const playOnClickCheckbox = document.getElementById('playOnClick');
         if (playOnClickCheckbox) {
             playOnClickCheckbox.checked = false;
             playOnClickCheckbox.disabled = true;
-            console.log('✅ Play on click disabled after Begin Analysis confirmation');
         }
         
         // Enable region creation after "Begin Analysis" is confirmed

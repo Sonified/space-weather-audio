@@ -6,7 +6,7 @@
 
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
-import { getCurrentRegions, getCurrentFrequencySelection } from './region-tracker.js';
+import { getCurrentRegions, getStandaloneFeatures, getCurrentFrequencySelection, getFlatFeatureNumber } from './region-tracker.js';
 import { getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 
@@ -34,11 +34,10 @@ export function addFeatureBox(regionIndex, featureIndex, boxElement) {
     boxElement.style.border = '2px solid rgba(255, 140, 0, 0.8)';
     boxElement.style.background = 'rgba(255, 140, 0, 0.15)';
 
-    // Add feature number label in upper left corner
-    // Format: region.feature (e.g., 1.1, 1.2, 2.1)
+    // Add flat sequential feature number label
     const numberLabel = document.createElement('div');
     numberLabel.className = 'feature-box-number';
-    numberLabel.textContent = `${regionIndex + 1}.${featureIndex + 1}`;
+    numberLabel.textContent = `${getFlatFeatureNumber(regionIndex, featureIndex)}`;
     numberLabel.style.position = 'absolute';
     numberLabel.style.top = '3px';
     numberLabel.style.left = '6px';
@@ -101,7 +100,7 @@ export function renumberFeatureBoxes(regionIndex) {
                 // Update the number label
                 const numberLabel = foundBox.querySelector('.feature-box-number');
                 if (numberLabel) {
-                    numberLabel.textContent = newFeatureIndex + 1; // Update to new 1-indexed number
+                    numberLabel.textContent = getFlatFeatureNumber(regionIndex, newFeatureIndex);
                 }
 
                 // Store with new key

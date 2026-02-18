@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, startFrequencySelection, zoomToRegion } from './region-tracker.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber } from './region-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
@@ -235,30 +235,45 @@ function getClickedBox(x, y) {
  */
 function rebuildCanvasBoxesFromFeatures() {
     const regions = getCurrentRegions();
-    if (!regions) return;
-    
     completedSelectionBoxes = [];
-    
-    // Rebuild boxes from actual feature data (always in sync!)
-    regions.forEach((region, regionIndex) => {
-        if (!region.features) return;
-        
-        region.features.forEach((feature, featureIndex) => {
-            // Only add boxes for complete features
-            if (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime) {
-                completedSelectionBoxes.push({
-                    regionIndex,
-                    featureIndex,
-                    startTime: feature.startTime,
-                    endTime: feature.endTime,
-                    lowFreq: parseFloat(feature.lowFreq),
-                    highFreq: parseFloat(feature.highFreq),
-                    notes: feature.notes
-                });
-            }
+
+    // Rebuild boxes from region-based features
+    if (regions) {
+        regions.forEach((region, regionIndex) => {
+            if (!region.features) return;
+
+            region.features.forEach((feature, featureIndex) => {
+                if (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime) {
+                    completedSelectionBoxes.push({
+                        regionIndex,
+                        featureIndex,
+                        startTime: feature.startTime,
+                        endTime: feature.endTime,
+                        lowFreq: parseFloat(feature.lowFreq),
+                        highFreq: parseFloat(feature.highFreq),
+                        notes: feature.notes
+                    });
+                }
+            });
         });
+    }
+
+    // Rebuild boxes from standalone features (regionIndex = -1)
+    const standalone = getStandaloneFeatures();
+    standalone.forEach((feature, featureIndex) => {
+        if (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime) {
+            completedSelectionBoxes.push({
+                regionIndex: -1,
+                featureIndex,
+                startTime: feature.startTime,
+                endTime: feature.endTime,
+                lowFreq: parseFloat(feature.lowFreq),
+                highFreq: parseFloat(feature.highFreq),
+                notes: feature.notes
+            });
+        }
     });
-    
+
     // Redraw with rebuilt boxes
     redrawCanvasBoxes();
 }
@@ -1013,15 +1028,17 @@ export function setupSpectrogramSelection() {
             return; // Don't start new selection
         }
 
-        // 🎯 NEW ARCHITECTURE: Allow drawing when zoomed into a region (no 'f' key needed!)
-        // If not zoomed in, don't handle - user is looking at full view
-        if (!zoomState.isInRegion()) {
+        // Check main window click mode from gear popover
+        const mainClickMode = document.getElementById('mainWindowClick');
+        const isDrawFeatureMode = mainClickMode && mainClickMode.value === 'drawFeature';
+
+        // If not in "Draw feature" mode and not zoomed into a region, handle as click-to-seek
+        if (!isDrawFeatureMode && !zoomState.isInRegion()) {
             // Click-to-seek in EMIC windowed modes (scroll/pageTurn)
             const modeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
             const isWindowed = modeSelect && (modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
             if (isWindowed && State.completeSamplesArray && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
                 const timestamp = zoomState.pixelToTimestamp(clickX, canvasRect.width);
-                // Convert timestamp to fraction of dataset, then to audio time
                 const dataStartMs = State.dataStartTime.getTime();
                 const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;
                 const fraction = (timestamp.getTime() - dataStartMs) / dataSpanMs;
@@ -1031,7 +1048,6 @@ export function setupSpectrogramSelection() {
                 if (State.audioContext) {
                     State.setLastUpdateTime(State.audioContext.currentTime);
                 }
-                // Dynamic imports to avoid circular dependency
                 Promise.all([
                     import('./audio-player.js'),
                     import('./spectrogram-playhead.js'),
@@ -1488,9 +1504,8 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
         ctx.fillRect(x, y, width, height);
 
-        // Add feature number label in upper left corner (like orange boxes!)
-        // Format: region.feature (e.g., 1.1, 1.2, 2.1)
-        const numberText = `${box.regionIndex + 1}.${box.featureIndex + 1}`;
+        // Add flat sequential feature number label
+        const numberText = `${getFlatFeatureNumber(box.regionIndex, box.featureIndex)}`;
         ctx.font = '16px Arial, sans-serif'; // Removed bold for flatter look
         ctx.fillStyle = 'rgba(255, 160, 80, 0.9)'; // Slightly more opaque, less 3D
         ctx.textAlign = 'left';

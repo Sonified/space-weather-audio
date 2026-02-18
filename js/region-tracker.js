@@ -38,6 +38,10 @@ let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
 let regionsDelayedForCrossfade = false; // Flag to track if regions are waiting for crossfade to complete
 
+// Standalone features - exist independently of regions (used in windowed modes)
+// Each feature: { type, repetition, lowFreq, highFreq, startTime, endTime, notes, speedFactor }
+let standaloneFeatures = [];
+
 /**
  * Update spectrogram touch-action for mobile devices
  * When zoomed into a region, allow drawing (touch-action: none)
@@ -261,6 +265,71 @@ function loadRegionsFromStorage(spacecraft) {
     return null;
 }
 
+// ── Standalone Features (region-free, used in windowed modes) ────────────
+
+/**
+ * Get the current standalone features array
+ */
+export function getStandaloneFeatures() {
+    return standaloneFeatures;
+}
+
+/**
+ * Save standalone features and persist to localStorage
+ */
+function saveStandaloneFeatures() {
+    try {
+        const storageKey = getCurrentStorageKey();
+        if (!storageKey) return;
+        const data = { features: standaloneFeatures, savedAt: new Date().toISOString() };
+        localStorage.setItem(storageKey + '_standalone', JSON.stringify(data));
+    } catch (error) {
+        console.error('❌ Failed to save standalone features:', error);
+    }
+}
+
+/**
+ * Load standalone features from localStorage
+ */
+function loadStandaloneFeatures() {
+    try {
+        const storageKey = getCurrentStorageKey();
+        if (!storageKey) return;
+        const stored = localStorage.getItem(storageKey + '_standalone');
+        if (stored) {
+            const data = JSON.parse(stored);
+            if (data && Array.isArray(data.features)) {
+                standaloneFeatures = data.features;
+                console.log(`📂 Loaded ${standaloneFeatures.length} standalone feature(s)`);
+                return;
+            }
+        }
+    } catch (error) {
+        console.error('❌ Failed to load standalone features:', error);
+    }
+    standaloneFeatures = [];
+}
+
+/**
+ * Add a standalone feature (returns the new feature index)
+ */
+function addStandaloneFeature(featureData) {
+    standaloneFeatures.push(featureData);
+    saveStandaloneFeatures();
+    return standaloneFeatures.length - 1;
+}
+
+/**
+ * Delete a standalone feature by index
+ */
+export function deleteStandaloneFeature(featureIndex) {
+    if (featureIndex < 0 || featureIndex >= standaloneFeatures.length) return;
+    standaloneFeatures.splice(featureIndex, 1);
+    saveStandaloneFeatures();
+}
+
+// ── End Standalone Features ──────────────────────────────────────────────
+
 /**
  * Set regions for the current spacecraft
  * Uses currentSpacecraft if set, otherwise reads from UI
@@ -389,6 +458,30 @@ const MAX_TOTAL_FEATURES = 100; // Global maximum features across all regions
 function getTotalFeatureCount() {
     const regions = getCurrentRegions();
     return regions.reduce((total, region) => total + region.featureCount, 0);
+}
+
+/**
+ * Get flat sequential feature number across all regions + standalone features.
+ * Region features are numbered first, then standalone features continue the sequence.
+ * regionIndex === -1 means standalone feature.
+ */
+export function getFlatFeatureNumber(regionIndex, featureIndex) {
+    const regions = getCurrentRegions();
+    let count = 0;
+
+    if (regionIndex === -1) {
+        // Standalone feature: count all region features first, then add standalone index
+        for (const region of regions) {
+            count += (region.features ? region.features.length : 0);
+        }
+        return count + featureIndex + 1;
+    }
+
+    // Region-based feature: count features in preceding regions
+    for (let i = 0; i < regionIndex && i < regions.length; i++) {
+        count += (regions[i].features ? regions[i].features.length : 0);
+    }
+    return count + featureIndex + 1;
 }
 
 /**
@@ -530,6 +623,9 @@ export function loadRegionsAfterDataFetch() {
         drawWaveformWithSelection();
         updateCompleteButtonState();
     }
+
+    // Load standalone features (for windowed modes)
+    loadStandaloneFeatures();
 
     // Check for pending view settings (from shared links) and apply zoom after a delay
     const pendingViewSettings = sessionStorage.getItem('pendingSharedViewSettings');
@@ -1652,38 +1748,49 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         isSelectingFrequency = false;
     } else {
         // Auto-determine which feature to fill in
-        // Find the active region and either use incomplete feature or create new one
-        const activeRegionIndex = getActiveRegionIndex();
-        if (activeRegionIndex === null) {
+        const activeRegionIdx = getActiveRegionIndex();
+
+        // Check if we're in windowed mode with "Draw feature" — standalone features (no regions needed)
+        const mainClickEl = document.getElementById('mainWindowClick');
+        const isDrawFeature = mainClickEl && mainClickEl.value === 'drawFeature';
+        const modeEl = document.getElementById('viewingMode');
+        const isWindowed = modeEl && (modeEl.value === 'scroll' || modeEl.value === 'pageTurn');
+
+        if (activeRegionIdx === null && isDrawFeature && isWindowed) {
+            // ── Standalone feature mode (no region required) ──
+            regionIndex = -1; // Sentinel: indicates standalone feature
+            featureIndex = standaloneFeatures.length; // Will be filled after coordinate conversion below
+            console.log(`🎯 Standalone feature mode: will create feature #${featureIndex + 1}`);
+        } else if (activeRegionIdx === null) {
             console.warn('⚠️ No active region - cannot create feature');
             return;
-        }
-
-        const region = regions[activeRegionIndex];
-        if (!region) {
-            console.warn('⚠️ Active region not found');
-            return;
-        }
-
-        // Find first incomplete feature, or we'll create a new one
-        featureIndex = region.features.findIndex(feature =>
-            !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
-        );
-
-        // No incomplete features - create a new one
-        if (featureIndex === -1) {
-            const totalFeatures = getTotalFeatureCount();
-            if (region.featureCount >= MAX_FEATURES_PER_REGION || totalFeatures >= MAX_TOTAL_FEATURES) {
-                console.warn('⚠️ Cannot create feature - limit reached');
+        } else {
+            // ── Region-based feature mode ──
+            const region = regions[activeRegionIdx];
+            if (!region) {
+                console.warn('⚠️ Active region not found');
                 return;
             }
 
-            addFeature(activeRegionIndex);
-            featureIndex = region.features.length - 1; // New feature will be at the end (0-indexed)
-        }
+            // Find first incomplete feature, or create a new one
+            featureIndex = region.features.findIndex(feature =>
+                !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
+            );
 
-        regionIndex = activeRegionIndex;
-        console.log(`🎯 Auto-selected feature: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
+            if (featureIndex === -1) {
+                const totalFeatures = getTotalFeatureCount();
+                if (region.featureCount >= MAX_FEATURES_PER_REGION || totalFeatures >= MAX_TOTAL_FEATURES) {
+                    console.warn('⚠️ Cannot create feature - limit reached');
+                    return;
+                }
+
+                addFeature(activeRegionIdx);
+                featureIndex = region.features.length - 1;
+            }
+
+            regionIndex = activeRegionIdx;
+            console.log(`🎯 Auto-selected feature: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
+        }
     }
     
     console.log('🎯 ========== MOUSE UP: Feature Selection Complete ==========');
@@ -1772,16 +1879,52 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         }
     }
     
-    // Update feature data (regions already declared at top of function)
-    if (regions[regionIndex] && regions[regionIndex].features[featureIndex]) {
+    // ── Save feature data ──
+    if (regionIndex === -1) {
+        // ── Standalone feature (no region) ──
+        const newFeature = {
+            type: 'Impulsive',
+            repetition: 'Unique',
+            lowFreq: lowFreq.toFixed(2),
+            highFreq: highFreq.toFixed(2),
+            startTime: startTime || '',
+            endTime: endTime || '',
+            notes: '',
+            speedFactor: getCurrentSpeedFactor()
+        };
+        featureIndex = addStandaloneFeature(newFeature);
+
+        console.log('💾 SAVED standalone feature:', { featureIndex, lowFreq: lowFreq.toFixed(2), highFreq: highFreq.toFixed(2), startTime, endTime });
+        console.log('🎯 ========== END Feature Selection ==========\n');
+
+        // Rebuild canvas boxes (includes standalone features)
+        redrawAllCanvasFeatureBoxes();
+        renderStandaloneFeaturesList();
+
+        // Update complete button state
+        updateCompleteButtonState();
+        updateCmpltButtonState();
+
+        return {
+            regionIndex: -1,
+            featureIndex,
+            featureData: {
+                startTime: newFeature.startTime,
+                endTime: newFeature.endTime,
+                lowFreq: parseFloat(newFeature.lowFreq),
+                highFreq: parseFloat(newFeature.highFreq)
+            }
+        };
+    } else if (regions[regionIndex] && regions[regionIndex].features[featureIndex]) {
+        // ── Region-based feature ──
         regions[regionIndex].features[featureIndex].lowFreq = lowFreq.toFixed(2);
         regions[regionIndex].features[featureIndex].highFreq = highFreq.toFixed(2);
-        
+
         if (startTime && endTime) {
             regions[regionIndex].features[featureIndex].startTime = startTime;
             regions[regionIndex].features[featureIndex].endTime = endTime;
         }
-        
+
         console.log('💾 SAVED to feature data:', {
             regionIndex,
             featureIndex,
@@ -1791,51 +1934,39 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             endTime
         });
         console.log('🎯 ========== END Feature Selection ==========\n');
-        
+
         setCurrentRegions(regions);
-        
-        // 🎯 NEW ARCHITECTURE: Return region/feature indices for canvas box storage
-        // (OLD: used to call addFeatureBox() to create orange DOM boxes - now using pure canvas!)
-        
+
         // Re-render the feature
         renderFeatures(regions[regionIndex].id, regionIndex);
-        
-        // Update complete button state (enable if first feature identified)
-        updateCompleteButtonState(); // Begin Analysis button
-        updateCmpltButtonState(); // Complete button
-        
+
+        // Update complete button state
+        updateCompleteButtonState();
+        updateCmpltButtonState();
+
         // Pulse the button and focus notes field
         setTimeout(() => {
             const selectBtn = document.getElementById(`select-btn-${regionIndex}-${featureIndex}`);
             const notesField = document.getElementById(`notes-${regionIndex}-${featureIndex}`);
-            
+
             if (selectBtn) {
                 selectBtn.classList.remove('active', 'pulse');
                 selectBtn.classList.add('completed', 'pulse');
                 setTimeout(() => selectBtn.classList.remove('pulse'), 250);
             }
-            
-            // 🔧 TESTING: Disabled auto-focus to test ghost click bug
-            // if (notesField) {
-            //     setTimeout(() => {
-            //         notesField.classList.add('pulse');
-            //         notesField.focus();
-            //         setTimeout(() => notesField.classList.remove('pulse'), 800);
-            //     }, 150);
-            // }
         }, 50);
-        
+
         // 🎓 Resolve tutorial promise if waiting for feature selection
         if (State.waitingForFeatureSelection && State._featureSelectionResolve) {
             State._featureSelectionResolve();
             State.setWaitingForFeatureSelection(false);
             State.setFeatureSelectionResolve(null);
         }
-        
-        // ✅ Return indices and feature data for canvas box storage
+
+        // Return indices and feature data for canvas box storage
         const featureData = regions[regionIndex].features[featureIndex];
-        return { 
-            regionIndex, 
+        return {
+            regionIndex,
             featureIndex,
             featureData: {
                 startTime: featureData.startTime,
@@ -2448,7 +2579,7 @@ function renderFeatures(regionId, regionIndex) {
         }
         
         featureRow.innerHTML = `
-            <span class="feature-number">Feature ${featureIndex + 1}</span>
+            <span class="feature-number">Feature ${getFlatFeatureNumber(regionIndex, featureIndex)}</span>
             <select id="repetition-${regionIndex}-${featureIndex}">
                 <option value="Unique" ${feature.repetition === 'Unique' || !feature.repetition ? 'selected' : ''}>Unique</option>
                 <option value="Repeated" ${feature.repetition === 'Repeated' ? 'selected' : ''}>Repeated</option>
@@ -2555,6 +2686,101 @@ function renderFeatures(regionId, regionIndex) {
         });
         
         container.appendChild(featureRow);
+    });
+}
+
+/**
+ * Render standalone features list in the sidebar (windowed mode, no regions)
+ * Shows a simple flat list of features numbered sequentially
+ */
+function renderStandaloneFeaturesList() {
+    const container = document.getElementById('regionsList');
+    if (!container) return;
+
+    // Remove old standalone section if it exists
+    const oldSection = document.getElementById('standaloneFeaturesList');
+    if (oldSection) oldSection.remove();
+
+    if (standaloneFeatures.length === 0) return;
+
+    // Count region-based features for flat numbering offset
+    const regions = getCurrentRegions();
+    let regionFeatureCount = 0;
+    for (const region of regions) {
+        regionFeatureCount += (region.features ? region.features.length : 0);
+    }
+
+    const section = document.createElement('div');
+    section.id = 'standaloneFeaturesList';
+    section.className = 'standalone-features-section';
+    container.appendChild(section);
+
+    standaloneFeatures.forEach((feature, idx) => {
+        const flatNum = regionFeatureCount + idx + 1;
+        const featureRow = document.createElement('div');
+        featureRow.className = 'feature-row';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-feature-btn-inline';
+        deleteBtn.textContent = '\u00d7';
+        deleteBtn.title = 'Delete this feature';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteStandaloneFeature(idx);
+            redrawAllCanvasFeatureBoxes();
+            renderStandaloneFeaturesList();
+        };
+
+        const hasCoords = feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime;
+
+        featureRow.innerHTML = `
+            <span class="feature-number">Feature ${flatNum}</span>
+            <select id="repetition-sa-${idx}">
+                <option value="Unique" ${feature.repetition === 'Unique' || !feature.repetition ? 'selected' : ''}>Unique</option>
+                <option value="Repeated" ${feature.repetition === 'Repeated' ? 'selected' : ''}>Repeated</option>
+            </select>
+            <select id="type-sa-${idx}">
+                <option value="Impulsive" ${feature.type === 'Impulsive' || !feature.type ? 'selected' : ''}>Impulsive</option>
+                <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
+            </select>
+            <span class="freq-display ${hasCoords ? 'completed' : ''}">${hasCoords ? formatFeatureButtonText(feature) : 'No selection'}</span>
+            <textarea class="freq-input notes-field"
+                      placeholder="Add description..."
+                      id="notes-sa-${idx}">${feature.notes || ''}</textarea>
+        `;
+
+        featureRow.insertBefore(deleteBtn, featureRow.firstChild);
+
+        // Wire up change listeners
+        const repetitionSelect = featureRow.querySelector(`#repetition-sa-${idx}`);
+        const typeSelect = featureRow.querySelector(`#type-sa-${idx}`);
+        const notesField = featureRow.querySelector(`#notes-sa-${idx}`);
+
+        repetitionSelect.addEventListener('change', function() {
+            standaloneFeatures[idx].repetition = this.value;
+            saveStandaloneFeatures();
+            this.blur();
+        });
+
+        typeSelect.addEventListener('change', function() {
+            standaloneFeatures[idx].type = this.value;
+            saveStandaloneFeatures();
+            this.blur();
+        });
+
+        notesField.addEventListener('change', function() {
+            standaloneFeatures[idx].notes = this.value;
+            saveStandaloneFeatures();
+        });
+
+        notesField.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                this.blur();
+            }
+        });
+
+        section.appendChild(featureRow);
     });
 }
 

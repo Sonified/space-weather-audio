@@ -342,8 +342,11 @@
                 <div class="gear-popover" id="mainWindowPopover">
                     <div class="gear-popover-title">Main Window</div>
                     <div class="gear-popover-row">
-                        <label for="mainWindowPlayOnClick" class="gear-label">Play on click</label>
-                        <input type="checkbox" id="mainWindowPlayOnClick" class="gear-checkbox" checked>
+                        <label for="mainWindowClick" class="gear-label">Click:</label>
+                        <select id="mainWindowClick" class="gear-select">
+                            <option value="playAudio" selected>Play audio</option>
+                            <option value="drawFeature">Draw feature</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -354,6 +357,10 @@
                         <div id="oscilloscope-frost" style="position: absolute; top: 0; left: 0; width: 106px; height: 28px; border-radius: 2px; pointer-events: none; opacity: 0.5;"></div>
                     </div>
                 </div>
+                <label id="advancedToggle" style="display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 700; color: #ffe8d0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">
+                    Advanced
+                    <input type="checkbox" id="advancedMode" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                </label>
                 <div class="viz-controls" style="display: flex; align-items: center; gap: 30px; margin-left: auto;">
                     <div style="display: none;">
                         <input type="checkbox" id="playOnClick" checked>
@@ -411,15 +418,6 @@
                         <option value="full" selected>Region Creation</option>
                         <option value="scroll">Windowed Scroll</option>
                         <option value="pageTurn">Windowed Page Turn</option>
-                    </select>
-                </div>
-
-                <!-- Click Behavior -->
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label for="clickBehavior" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none;">Click:</label>
-                    <select id="clickBehavior" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer;">
-                        <option value="play" selected>Play from position</option>
-                        <option value="playhead">Move playhead only</option>
                     </select>
                 </div>
 

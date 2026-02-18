@@ -460,3 +460,140 @@ Reduced the outside-viewport dimming from 50% to 30% black opacity for better sp
 - `js/spectrogram-three-renderer.js` — `getFullMagnitudeTexture()`, `getSpectrogramParams()` exports, `spectrogram-ready` event dispatch
 - `js/main.js` — `miniMapView` change listener triggers `drawWaveformFromMinMax()`
 - `emic_study.html` — Mode selector moved into `#navBarPopover` gear popover, old standalone selector removed
+
+---
+
+## Per-Panel Gear Icon Settings UI
+
+Added gear icon (⚙) settings popovers overlaid on each canvas panel in EMIC study mode. Each gear sits in the top-right corner of its canvas and opens a small popover with panel-specific controls.
+
+### Two gear popovers
+
+- **Navigation Bar** (waveform): "Click: Move window / Move & play" dropdown + "Mode: Line Plot / Spectrogram / Combination" dropdown
+- **Main Window** (spectrogram): "Play on click" checkbox — gates whether clicking the spectrogram starts playback or just moves the playhead
+
+### The `<button>` saga
+
+Multiple rounds of CSS overrides (background: none, border: none, outline: none, appearance: none, fixed dimensions, flex centering) couldn't fully eliminate browser button chrome around the gear icon. The Unicode gear glyph ⚙ renders taller than wide, so `width: auto; height: auto` created a tall rectangle, and forced square dimensions still showed a visible box due to browser `<button>` defaults (padding, min-height, focus rings, border-box).
+
+**The fix**: swap `<button>` to `<span>` with `cursor: pointer`. Eliminated all browser defaults in one step — final CSS is just 6 lines: `color`, `font-size`, `cursor`, `line-height`, `transition`, `user-select`. **Lesson: never use `<button>` for icon-only clickable elements.**
+
+### Positioning
+
+Gears are positioned via JS using canvas `offsetTop`/`offsetLeft`/`offsetWidth`, not CSS `right`, because `.panel-visualization` has `padding: 20px` that shifts the canvas inward. A `ResizeObserver` on each canvas keeps gears pinned on resize.
+
+### Select dropdown dark mode fix
+
+After picking an option from the dropdown, the OS renders a light focus highlight with white text over the dark select — making the selection invisible. Two fixes:
+1. `color-scheme: dark` on the `<select>` tells the browser to use dark-mode native rendering
+2. `sel.addEventListener('change', () => sel.blur())` immediately removes focus after selection, dropping the highlight
+
+### Play on click wiring
+
+The `#mainWindowPlayOnClick` checkbox gates `seekToPosition()`'s second argument (`shouldStartPlayback`). When unchecked, clicking the spectrogram calls `seekToPosition(clamped, false)` — moves the playhead without starting playback. When checked (default), passes `true` to seek and play.
+
+### Old Click dropdown removed
+
+The standalone "Click" dropdown that was in the navigation options panel has been removed — its functionality is now split between the two gear popovers (nav bar click mode + main window play-on-click).
+
+### Files Changed (Session 6 — Gear Icons)
+
+- `emic_study.html` — Gear icon HTML (`<span>` elements), popovers with controls, removed old Click dropdown
+- `styles.css` — `.panel-gear`, `.gear-btn`, `.gear-popover`, `.gear-select` styles, dark mode form control fixes
+- `js/main.js` — Gear positioning via canvas offsets + ResizeObserver, popover toggle/click-outside-close, blur-on-change for selects, localStorage persistence for new control IDs, removed old `clickBehavior` persistence entry
+- `js/spectrogram-renderer.js` — Click-to-seek gated by `#mainWindowPlayOnClick` checkbox
+
+---
+
+## Feature Boxes Duplicated onto Minimap
+
+Duplicated the red spectrogram feature boxes onto the waveform minimap so users can see where they've annotated features in the timeline overview. The minimap boxes are true rectangles with both time (X) and frequency (Y) mapping — not just vertical bands.
+
+### Coordinate mapping
+
+- **X (time)**: In windowed modes (scroll/pageTurn), features map to the full data range since the minimap always shows everything. In Region Creation mode, features map to the current viewport (same as how the playhead and selection box work).
+- **Y (frequency)**: Uses the same `getYPositionForFrequencyScaled()` function that `drawSavedBox()` uses on the spectrogram — handles linear, logarithmic, and square root frequency scales, plus playback rate stretching. Just passes the minimap canvas height instead of the spectrogram canvas height.
+
+### Drawing style
+
+Matches the spectrogram exactly:
+- Red border (`#ff4444`, 1.5px stroke)
+- Semi-transparent red fill (`rgba(255, 68, 68, 0.2)`)
+- Feature number labels (`1.1`, `1.2`, etc.) in 10px font (scaled down from 16px on the spectrogram)
+- Minimum 2px dimensions enforced so tiny features stay visible at full zoom-out
+
+### Integration
+
+Added `drawMinimapFeatureBoxes()` in `drawWaveformOverlays()`, drawn after the viewport indicator but before region highlights and the playhead — so boxes sit under the dim overlay and don't obscure the playhead. Renders on every overlay pass (which runs on every frame during playback, every scroll event, every zoom change, etc.), reading directly from `getRegions()` which was already imported.
+
+### Files Changed (Session 7 — Minimap Feature Boxes)
+
+- `js/waveform-renderer.js` — New `drawMinimapFeatureBoxes()` function, `getYPositionForFrequencyScaled` import from `spectrogram-axis-renderer.js`, called from `drawWaveformOverlays()`
+
+---
+
+## Main Window Gear: "Click" Mode Dropdown
+
+Replaced the "Play on click" checkbox in the main window gear popover with a "Click:" dropdown offering two modes:
+
+- **Play audio** (default): Clicking the spectrogram seeks to that position and starts playback (previous behavior)
+- **Draw feature**: Clicking and dragging draws a feature box on the spectrogram
+
+### Begin Analysis integration
+
+When the user clicks "Begin Analysis", the dropdown auto-switches to "Draw feature" mode so they can immediately start annotating without manually changing the gear setting.
+
+### Files Changed (Session 8 — Click Mode Dropdown)
+
+- `emic_study.html` — Replaced `#mainWindowPlayOnClick` checkbox with `#mainWindowClick` select dropdown
+- `js/main.js` — `mainWindowClick` persistence via localStorage, Begin Analysis sets dropdown to `drawFeature`
+- `js/spectrogram-renderer.js` — Click handler checks `mainWindowClick` value instead of checkbox
+
+---
+
+## Standalone Features & Flat Numbering (Region-Free Feature Drawing)
+
+### The problem
+
+In windowed modes (scroll/pageTurn), there are no regions — the entire dataset is the viewport. But the feature drawing system required an active region to store features inside (`region.features[]`). Drawing a feature box triggered "No active region - cannot create feature".
+
+### Standalone features — no regions required
+
+Added a new `standaloneFeatures[]` array in `region-tracker.js` that stores features independently of regions. In windowed mode with "Draw feature" selected, drawing a box creates a standalone feature directly — no auto-created regions, no lazy workarounds.
+
+Each standalone feature has the same shape as region features: `{ type, repetition, lowFreq, highFreq, startTime, endTime, notes, speedFactor }`. They're persisted to localStorage with a `_standalone` suffix on the storage key.
+
+### How it works
+
+In `handleSpectrogramSelection()`, when `activeRegionIndex === null` and we're in windowed + draw-feature mode, `regionIndex` is set to `-1` (sentinel value). After coordinate conversion, the feature is pushed to `standaloneFeatures[]` via `addStandaloneFeature()` instead of into a region's features array.
+
+### Flat sequential numbering
+
+All features — both region-based and standalone — are now numbered with a single flat sequence (1, 2, 3...) instead of the old region.feature format (1.1, 1.2, 2.1...).
+
+`getFlatFeatureNumber(regionIndex, featureIndex)` counts features across all regions first, then standalone features continue the sequence. `regionIndex === -1` indicates a standalone feature.
+
+Updated in all rendering paths:
+- Canvas box labels (`drawSavedBox` in spectrogram-renderer.js)
+- DOM feature box labels (`addFeatureBox` in spectrogram-feature-boxes.js)
+- Minimap feature box labels (`drawMinimapFeatureBoxes` in waveform-renderer.js)
+- Sidebar feature labels (`renderFeatures` in region-tracker.js)
+
+### Sidebar rendering
+
+`renderStandaloneFeaturesList()` renders standalone features in the regions list container with type/repetition dropdowns, notes textarea, and delete buttons. Changes auto-persist to localStorage.
+
+### Canvas box rebuild
+
+`rebuildCanvasBoxesFromFeatures()` now includes standalone features (with `regionIndex: -1`) alongside region features, so they appear as red boxes on the spectrogram and minimap.
+
+### Architecture note
+
+This is a stepping stone toward completely removing the regions panel in windowed mode. Features now exist as first-class entities independent of regions.
+
+### Files Changed (Session 8 — Standalone Features & Flat Numbering)
+
+- `js/region-tracker.js` — `standaloneFeatures[]` storage, `getStandaloneFeatures()`, `addStandaloneFeature()`, `deleteStandaloneFeature()`, `saveStandaloneFeatures()`, `loadStandaloneFeatures()`, `renderStandaloneFeaturesList()`, `getFlatFeatureNumber()`, standalone branch in `handleSpectrogramSelection()`
+- `js/spectrogram-renderer.js` — `rebuildCanvasBoxesFromFeatures()` includes standalone features, `drawSavedBox()` uses flat numbering, imports `getStandaloneFeatures`/`getFlatFeatureNumber`
+- `js/spectrogram-feature-boxes.js` — `addFeatureBox()` and `renumberFeatureBoxes()` use flat numbering
+- `js/waveform-renderer.js` — `drawMinimapFeatureBoxes()` draws standalone features, uses flat numbering

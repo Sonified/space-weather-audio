@@ -8,7 +8,7 @@ import { PlaybackState, isTouchDevice } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
-import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay, renderRegionsAfterCrossfade } from './region-tracker.js';
+import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay, renderRegionsAfterCrossfade, getStandaloneFeatures, getFlatFeatureNumber } from './region-tracker.js';
 import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview, cleanupPlayheadOverlay } from './spectrogram-playhead.js';
@@ -21,6 +21,7 @@ import { drawDayMarkers } from './day-markers.js';
 import { getColorLUT } from './colormaps.js';
 import { updateLiveAnnotations } from './spectrogram-live-annotations.js';
 import { updateCanvasAnnotations } from './spectrogram-renderer.js';
+import { getYPositionForFrequencyScaled } from './spectrogram-axis-renderer.js';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
@@ -794,6 +795,93 @@ function getWaveformViewport() {
 }
 
 /**
+ * Draw feature boxes on the minimap overlay — duplicates the red boxes from the spectrogram.
+ * Maps feature time/frequency coordinates to minimap pixel space.
+ */
+function drawMinimapFeatureBoxes(ctx, width, height) {
+    if (!window.__EMIC_STUDY_MODE) return;
+    if (!State.dataStartTime || !State.dataEndTime) return;
+
+    const regions = getRegions() || [];
+    const standalone = getStandaloneFeatures();
+    if (regions.length === 0 && standalone.length === 0) return;
+
+    const dataStartMs = State.dataStartTime.getTime();
+    const dataEndMs = State.dataEndTime.getTime();
+    const dataSpanMs = dataEndMs - dataStartMs;
+    if (dataSpanMs <= 0) return;
+
+    const originalNyquist = State.originalDataFrequencyRange?.max || 50;
+    const playbackRate = State.currentPlaybackRate || 1.0;
+    const scaleType = State.frequencyScale || 'linear';
+
+    // Determine time range for X mapping
+    let mapStartMs = dataStartMs;
+    let mapSpanMs = dataSpanMs;
+    if (!isEmicWindowedMode() && zoomState.isInitialized()) {
+        // Region Creation mode: map to current viewport
+        mapStartMs = zoomState.currentViewStartTime.getTime();
+        mapSpanMs = zoomState.currentViewEndTime.getTime() - mapStartMs;
+        if (mapSpanMs <= 0) return;
+    }
+
+    // Helper to draw a single feature box on the minimap
+    function drawOneMinimapFeature(feature, regionIndex, featureIndex) {
+        if (!feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime) return;
+
+        const lowFreq = parseFloat(feature.lowFreq);
+        const highFreq = parseFloat(feature.highFreq);
+        const fStartMs = new Date(feature.startTime).getTime();
+        const fEndMs = new Date(feature.endTime).getTime();
+
+        const leftX = ((fStartMs - mapStartMs) / mapSpanMs) * width;
+        const rightX = ((fEndMs - mapStartMs) / mapSpanMs) * width;
+        if (rightX < 0 || leftX > width) return;
+
+        const lowFreqY = getYPositionForFrequencyScaled(lowFreq, originalNyquist, height, scaleType, playbackRate);
+        const highFreqY = getYPositionForFrequencyScaled(highFreq, originalNyquist, height, scaleType, playbackRate);
+
+        let x = Math.max(0, Math.min(leftX, rightX));
+        let y = Math.min(highFreqY, lowFreqY);
+        let w = Math.min(width, Math.max(leftX, rightX)) - x;
+        let h = Math.abs(lowFreqY - highFreqY);
+
+        if (w < 2) { x -= 1; w = 2; }
+        if (h < 2) { const cy = y + h / 2; y = cy - 1; h = 2; }
+
+        ctx.strokeStyle = '#ff4444';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
+        ctx.fillRect(x, y, w, h);
+
+        // Flat sequential feature number label
+        const numberText = `${getFlatFeatureNumber(regionIndex, featureIndex)}`;
+        ctx.font = '10px Arial, sans-serif';
+        ctx.fillStyle = 'rgba(255, 160, 80, 0.9)';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+        ctx.fillText(numberText, x + 2, y + 1);
+    }
+
+    // Draw region-based features
+    for (const region of regions) {
+        if (!region.features) continue;
+        const regionIndex = regions.indexOf(region);
+        region.features.forEach((feature, featureIndex) => {
+            drawOneMinimapFeature(feature, regionIndex, featureIndex);
+        });
+    }
+
+    // Draw standalone features (reuse variable from top of function)
+    standalone.forEach((feature, featureIndex) => {
+        drawOneMinimapFeature(feature, -1, featureIndex);
+    });
+}
+
+/**
  * Draw overlays (regions, playhead, selection) on the transparent overlay canvas
  */
 function drawWaveformOverlays() {
@@ -837,6 +925,9 @@ function drawWaveformOverlays() {
             }
         }
     }
+
+    // Feature boxes on minimap (red boxes duplicated from spectrogram)
+    drawMinimapFeatureBoxes(wfOverlayCtx, width, height);
 
     // Region highlights: hide entirely in windowed modes (scroll/pageTurn), show in region creation mode
     if (!isEmicWindowedMode()) {
