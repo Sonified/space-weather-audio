@@ -16,7 +16,8 @@ import { zoomState } from './zoom-state.js';
 import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 import { isStudyMode } from './master-modes.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
-import { restoreViewportState } from './spectrogram-three-renderer.js';
+import { restoreViewportState, updateSpectrogramViewportFromZoom } from './spectrogram-three-renderer.js';
+import { drawDayMarkers } from './day-markers.js';
 import { getColorLUT } from './colormaps.js';
 import { updateLiveAnnotations } from './spectrogram-live-annotations.js';
 import { updateCanvasAnnotations } from './spectrogram-renderer.js';
@@ -520,9 +521,56 @@ export function getWaveformOverlayCanvas() {
 }
 
 /**
+ * Check if we're in an EMIC windowed mode (scroll or page-turn, NOT region creation)
+ */
+function isEmicWindowedMode() {
+    if (!window.__EMIC_STUDY_MODE) return false;
+    const modeSelect = document.getElementById('viewingMode');
+    return modeSelect && (modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
+}
+
+// --- Minimap viewport drag state ---
+let minimapDragging = false;
+let minimapDragStartMs = 0;       // timestamp under cursor at drag start
+let minimapViewStartMsAtDrag = 0; // viewport start at drag start
+let minimapViewEndMsAtDrag = 0;   // viewport end at drag start
+let minimapRafPending = false;
+
+/**
+ * Check if the minimap viewport indicator is visible (zoomed in within windowed mode)
+ */
+function isMinimapZoomed() {
+    if (!isEmicWindowedMode()) return false;
+    if (!zoomState.isInitialized() || !State.dataStartTime || !State.dataEndTime) return false;
+    const dataStartMs = State.dataStartTime.getTime();
+    const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;
+    if (dataSpanMs <= 0) return false;
+    return true; // Always show viewport indicator in windowed mode
+}
+
+/**
+ * Render spectrogram + overlays for minimap drag (rAF coalesced)
+ */
+function renderMinimapDragFrame() {
+    minimapRafPending = false;
+    drawWaveformFromMinMax();
+    drawWaveformXAxis();
+    updateSpectrogramViewportFromZoom();
+    updateAllFeatureBoxPositions();
+    drawSpectrogramPlayhead();
+    drawDayMarkers();
+}
+
+/**
  * Compute viewport [0-1] range from current zoom state
  */
 function getWaveformViewport() {
+    // In EMIC windowed mode (scroll/page-turn), waveform is a navigation bar — always show full range
+    // Region Creation mode keeps normal zoom behavior
+    if (isEmicWindowedMode()) {
+        return { start: 0, end: 1 };
+    }
+
     const totalSamples = State.completeSamplesArray ? State.completeSamplesArray.length : 1;
     let startSample = 0;
     let endSample = totalSamples;
@@ -561,14 +609,54 @@ function drawWaveformOverlays() {
     const height = wfOverlayCanvas.height;
     wfOverlayCtx.clearRect(0, 0, width, height);
 
-    // Region highlights
-    drawRegionHighlights(wfOverlayCtx, width, height);
-    drawRegionButtons();
+    // Detect if we're in EMIC windowed mode AND actually scroll-zoomed to a sub-range
+    let isEmicScrollZoomed = false;
+    if (isEmicWindowedMode() && zoomState.isInitialized()
+        && State.dataStartTime && State.dataEndTime) {
+        const dataStartMs = State.dataStartTime.getTime();
+        const dataEndMs = State.dataEndTime.getTime();
+        const dataSpanMs = dataEndMs - dataStartMs;
+        if (dataSpanMs > 0) {
+            const viewStartMs = zoomState.currentViewStartTime.getTime();
+            const viewEndMs = zoomState.currentViewEndTime.getTime();
+            const viewStartFrac = (viewStartMs - dataStartMs) / dataSpanMs;
+            const viewEndFrac = (viewEndMs - dataStartMs) / dataSpanMs;
+            isEmicScrollZoomed = true;
+
+            // Draw viewport indicator in windowed mode
+            {
+                const leftX = viewStartFrac * width;
+                const rightX = viewEndFrac * width;
+
+                // Dim areas outside viewport
+                wfOverlayCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                wfOverlayCtx.fillRect(0, 0, leftX, height);
+                wfOverlayCtx.fillRect(rightX, 0, width - rightX, height);
+
+                // White border around viewport
+                wfOverlayCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                wfOverlayCtx.lineWidth = 1.5;
+                wfOverlayCtx.strokeRect(leftX, 0.5, rightX - leftX, height - 1);
+            }
+        }
+    }
+
+    // Region highlights: hide entirely in windowed modes (scroll/pageTurn), show in region creation mode
+    if (!isEmicWindowedMode()) {
+        drawRegionHighlights(wfOverlayCtx, width, height);
+        drawRegionButtons();
+    }
 
     // Selection box
     if (State.selectionStart !== null && State.selectionEnd !== null && !isPlayingActiveRegion()) {
         let startX, endX;
-        if (zoomState.isInitialized()) {
+        if (isEmicScrollZoomed) {
+            // Minimap: always map to full range
+            const startProgress = State.selectionStart / State.totalAudioDuration;
+            const endProgress = State.selectionEnd / State.totalAudioDuration;
+            startX = startProgress * width;
+            endX = endProgress * width;
+        } else if (zoomState.isInitialized()) {
             const startSample = zoomState.timeToSample(State.selectionStart);
             const endSample = zoomState.timeToSample(State.selectionEnd);
             startX = zoomState.sampleToPixel(startSample, width);
@@ -599,7 +687,11 @@ function drawWaveformOverlays() {
 
     if (playheadPosition !== null && State.totalAudioDuration > 0 && playheadPosition >= 0) {
         let x;
-        if (isZoomTransitionInProgress && zoomState.isInitialized()) {
+        if (isEmicScrollZoomed) {
+            // Minimap: always map to full range
+            const progress = Math.min(playheadPosition / State.totalAudioDuration, 1.0);
+            x = progress * width;
+        } else if (isZoomTransitionInProgress && zoomState.isInitialized()) {
             const sample = zoomState.timeToSample(playheadPosition);
             const playheadTimestamp = zoomState.sampleToRealTimestamp(sample);
             if (playheadTimestamp) {
@@ -965,23 +1057,12 @@ export function setupWaveformInteraction() {
         // 🙏 Timestamps as source of truth: Convert pixel to timestamp, then to seconds
         // Flow: pixel → timestamp (source of truth) → seconds (working units)
         let targetPosition;
-        if (zoomState.isInitialized()) {
+        if (isEmicWindowedMode() || !zoomState.isInitialized()) {
+            // EMIC minimap (scroll/page-turn): waveform shows full range, click maps to full duration
+            targetPosition = progress * State.totalAudioDuration;
+        } else {
             const timestamp = zoomState.pixelToTimestamp(x, rect.width);
             targetPosition = zoomState.timestampToSeconds(timestamp);
-
-            // 🔍 DIAGNOSTIC: Show COMPLETE click path
-            // console.log('🖱️ CLICK:', {
-            //     pixel: x.toFixed(1) + 'px',
-            //     viewport: `${zoomState.currentViewStartTime?.toISOString()} → ${zoomState.currentViewEndTime?.toISOString()}`,
-            //     clickTimestamp: timestamp.toISOString(),
-            //     targetSeconds: targetPosition.toFixed(3) + 's',
-            //     totalDuration: State.totalAudioDuration?.toFixed(1) + 's',
-            //     sampleRate: zoomState.sampleRate + 'Hz',
-            //     wouldCalculateSample: Math.floor(targetPosition * zoomState.sampleRate).toLocaleString()
-            // });
-        } else {
-            // Fallback to old behavior if zoom state not initialized
-            targetPosition = progress * State.totalAudioDuration;
         }
 
         return { targetPosition, progress, x, width: rect.width };
@@ -1168,6 +1249,20 @@ export function setupWaveformInteraction() {
             }
         }
         
+        // --- Minimap viewport drag: intercept in windowed mode when zoomed ---
+        if (isMinimapZoomed()) {
+            minimapDragging = true;
+            canvas.style.cursor = 'grabbing';
+            const dataStartMs = State.dataStartTime.getTime();
+            const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;
+            const frac = Math.max(0, Math.min(1, startX / rect.width));
+            minimapDragStartMs = dataStartMs + frac * dataSpanMs;
+            minimapViewStartMsAtDrag = zoomState.currentViewStartTime.getTime();
+            minimapViewEndMsAtDrag = zoomState.currentViewEndTime.getTime();
+            e.preventDefault();
+            return;
+        }
+
         // Normal waveform interaction - start selection/drag
         State.setSelectionStartX(startX);
         State.setIsDragging(true);
@@ -1177,6 +1272,40 @@ export function setupWaveformInteraction() {
     });
     
     canvas.addEventListener('mousemove', (e) => {
+        // --- Minimap viewport drag ---
+        if (minimapDragging) {
+            const rect = canvas.getBoundingClientRect();
+            const dataStartMs = State.dataStartTime.getTime();
+            const dataEndMs = State.dataEndTime.getTime();
+            const dataSpanMs = dataEndMs - dataStartMs;
+            const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const cursorMs = dataStartMs + frac * dataSpanMs;
+            const deltaMs = cursorMs - minimapDragStartMs;
+
+            const viewSpanMs = minimapViewEndMsAtDrag - minimapViewStartMsAtDrag;
+            let newStartMs = minimapViewStartMsAtDrag + deltaMs;
+            let newEndMs = minimapViewEndMsAtDrag + deltaMs;
+
+            // Clamp to data bounds
+            if (newStartMs < dataStartMs) {
+                newStartMs = dataStartMs;
+                newEndMs = dataStartMs + viewSpanMs;
+            }
+            if (newEndMs > dataEndMs) {
+                newEndMs = dataEndMs;
+                newStartMs = dataEndMs - viewSpanMs;
+            }
+
+            zoomState.currentViewStartTime = new Date(newStartMs);
+            zoomState.currentViewEndTime = new Date(newEndMs);
+
+            if (!minimapRafPending) {
+                minimapRafPending = true;
+                requestAnimationFrame(renderMinimapDragFrame);
+            }
+            return;
+        }
+
         if (State.isDragging && State.selectionStartX !== null) {
             const rect = canvas.getBoundingClientRect();
             const currentX = e.clientX - rect.left;
@@ -1239,6 +1368,13 @@ export function setupWaveformInteraction() {
     });
     
     canvas.addEventListener('mouseup', (e) => {
+        // --- Minimap viewport drag end ---
+        if (minimapDragging) {
+            minimapDragging = false;
+            canvas.style.cursor = 'pointer';
+            return;
+        }
+
         // 🔧 FIX: Check for button clicks even when not dragging
         // (in case we returned early from mousedown to prevent scrub preview)
         const rect = canvas.getBoundingClientRect();
@@ -1544,6 +1680,11 @@ export function setupWaveformInteraction() {
     });
     
     canvas.addEventListener('mouseleave', () => {
+        if (minimapDragging) {
+            minimapDragging = false;
+            canvas.style.cursor = 'pointer';
+            return;
+        }
         if (State.isDragging) {
             const wasSelecting = State.isSelecting;
             State.setIsDragging(false);

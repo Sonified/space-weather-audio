@@ -2,10 +2,14 @@ name = "space-weather-audio-api"
 main = "src/index.js"
 compatibility_date = "2024-01-01"
 
-# R2 bucket binding
+# R2 bucket bindings
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "space-weather-audio"
+
+[[r2_buckets]]
+binding = "EMIC_DATA"
+bucket_name = "emic-data"
 
 # Environment variables (set via `wrangler secret put`)
 # R2 credentials are NOT needed here - Workers have native R2 bindings!

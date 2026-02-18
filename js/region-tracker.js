@@ -961,6 +961,12 @@ export { drawRegionButtons, positionWaveformButtonsCanvas, resizeWaveformButtons
  * Uses EXACT same approach as yellow selection box
  */
 export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
+    // In EMIC windowed modes (scroll/pageTurn), waveform is a minimap — no region highlights
+    if (window.__EMIC_STUDY_MODE) {
+        const modeSelect = document.getElementById('viewingMode');
+        if (modeSelect && (modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn')) return;
+    }
+
     if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
         return; // No data loaded yet
     }

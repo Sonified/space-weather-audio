@@ -38,7 +38,7 @@ DATAVIEW = "sp_phys"
 R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "66f906f29f28b08ae9c80d4f36e25c7a")
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "c25a7b55517f857fd655c1abce5e5fad")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "be3380d55e463eb1c17417feddd3d70cea414ad5a600493f0f36ba768da533fd")
-R2_BUCKET = "emic-study"
+R2_BUCKET = "emic-data"
 
 # Dataset → satellite name mapping
 DATASET_TO_SAT = {

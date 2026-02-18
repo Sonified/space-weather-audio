@@ -258,12 +258,96 @@ Added `interpolate_fill_values()` to the pipeline: scans for any value ≤ −99
 
 Had to nuke the entire R2 bucket (1,038 objects from Jan 21 + 22) and re-upload both days with clean interpolated data.
 
+### R2 Bucket Rename: `emic-study` → `emic-data`
+
+Decided on clean bucket naming for the project: `emic-data` (public, GOES magnetometer data) and `emic-participants` (private, future participant data). Created the new `emic-data` bucket, nuked all 1,038 objects from `emic-study`, updated all code references (`goes_to_r2.py`, `presign_server.py`, `test_r2_audification.html`), and re-uploaded Jan 21–22 to the new bucket.
+
+### Serving Data via Cloudflare Worker (not public bucket URL)
+
+Initially tried making the R2 bucket publicly accessible via the `r2.dev` development URL, but that returned 401 and is rate-limited / not production-ready anyway. Realized the volcano seismic data used the same pattern: a Cloudflare Worker with a native R2 binding serves the files with CORS headers and caching — no public URLs, no presigned URLs needed.
+
+Added `emic-data` as a second R2 binding (`EMIC_DATA`) in the existing worker (`worker/wrangler.toml`), and added a `/emic/data/*` route to `worker/src/index.js` that:
+- Strips the `/emic/` prefix to get the R2 key
+- Reads from the `EMIC_DATA` bucket binding
+- Serves with CORS headers and 24-hour cache (`Cache-Control: public, max-age=86400`)
+- Sets `Content-Type` based on extension (`.json` → `application/json`, `.zst` → `application/zstd`)
+
+Data URLs will be: `https://spaceweather.now.audio/emic/data/2022/01/21/GOES-16/mag/bz/metadata.json`
+
+### Browser Test Page Updated
+
+Rewired `tests/browser/test_r2_audification.html` to fetch directly from the worker (`spaceweather.now.audio/emic/data/...`) instead of using the local presign server. No Python server needed anymore. The `presign_server.py` can be deprecated.
+
+### Minimap Viewport Indicator Fixes
+
+Two bugs in the waveform minimap's white zoom box:
+
+1. **Box disappeared at full zoom-out**: `drawWaveformOverlays()` had an inline threshold check (`viewStartFrac > 0.001 || viewEndFrac < 0.999`) that hid the viewport indicator when the view covered the full data range. Removed the threshold — now always shows the white box in windowed mode, even at full zoom-out.
+
+2. **`isMinimapZoomed()` had the same threshold**: A separate function used elsewhere had the identical stale check. Simplified to always return `true` in windowed mode.
+
+### Day Markers Disappearing on Zoom
+
+When the zoom viewport didn't cross a midnight boundary, `drawDayMarkers()` called `getMidnightBoundaries()` on the zoomed range, got zero results, and bailed early with `clearDayMarkers()` — which also cleared the *minimap's* day markers (which use the full data range, not the zoomed range). Removed the early return so the function continues to the waveform minimap section, which correctly computes its own midnight boundaries from the full data range.
+
 ### What's Next
 
+- Deploy worker with `npx wrangler deploy` (needs auth)
 - Run remaining EMIC study days (Jan 23–27, 2022)
-- Wire up browser-side progressive streaming from the `emic-study` R2 bucket
+- Wire up browser-side progressive streaming from `emic-data` into the main app
 - Adapt `fetchFromR2Worker()` in `data-fetcher.js` to read from the new R2 structure
 
 ### Files Changed
 
 - `backend/goes_to_r2.py` — **NEW** — CDAWeb CDF download → chunk → compress → R2 upload pipeline, fill value interpolation
+- `worker/wrangler.toml` — Added `emic-data` R2 binding (`EMIC_DATA`)
+- `worker/src/index.js` — Added `/emic/data/*` route serving from `emic-data` bucket
+- `tests/browser/test_r2_audification.html` — Rewired to fetch from worker, no presign server
+- `tests/browser/presign_server.py` — **NEW** (now deprecated) — Was temporary presign helper
+- `js/waveform-renderer.js` — Minimap viewport indicator always visible in windowed mode
+- `js/day-markers.js` — Don't bail early when zoomed viewport has no midnight boundaries
+
+---
+
+## Waveform Navigation Bar (Minimap) for Windowed Modes
+
+Converted the waveform from a zooming view into a static navigation/overview bar for EMIC study's "Windowed Scroll" and "Windowed Page Turn" modes. The waveform always shows the full dataset; when scroll-zoomed, a white-bordered viewport indicator highlights the visible portion and everything outside is dimmed (60% black overlay). Region Creation mode is completely unaffected — the waveform still zooms normally there.
+
+### Mode gating
+
+All minimap behavior is gated on the `#viewingMode` dropdown value (`scroll` or `pageTurn`), not on `window.__EMIC_STUDY_MODE` alone. This was the key insight after three wrong gates:
+1. First tried `__EMIC_STUDY_MODE` — broke Region Creation mode
+2. Then `!zoomState.isInRegion()` — `isInRegion()` means "zoomed into a specific region", not "regions exist"; at full view with regions, minimap activated and hid them
+3. Then `isInRegion()` as part of the gate — broke scroll-zoom in Region Creation mode
+
+The correct gate: `isEmicWindowedMode()` checks `#viewingMode` for `scroll` or `pageTurn`.
+
+### What changed
+
+- **`getWaveformViewport()`** returns `{start: 0, end: 1}` in windowed mode — shader always renders full sample range
+- **`drawWaveformOverlays()`** draws viewport indicator (white border + dimmed exterior) when zoomed in
+- **Playhead** maps to full data range in windowed mode (not zoomed viewport)
+- **Click/seek** maps to full data range — clicking at 50% of the minimap = 50% through the audio
+- **Region highlights and buttons** hidden entirely in windowed modes (gates inside `drawRegionHighlights()` and `drawRegionButtons()`)
+- **X-axis labels** always show full time range in windowed mode
+- **Day markers** on waveform always use full data range in windowed mode
+- **Mode switch listener** on `#viewingMode`: switching to windowed mode resets zoom to full view and re-renders everything
+
+### Minimap drag-to-pan
+
+Click and drag on the minimap to slide the viewport window around. Implemented as a parallel mouse interaction path in `setupWaveformInteraction()`:
+- `mousedown` in windowed mode records cursor timestamp and viewport position, starts drag
+- `mousemove` computes delta in timestamp space, shifts viewport (clamped to data bounds)
+- `mouseup`/`mouseleave` stops drag
+- Render coalesced via `requestAnimationFrame` — same pipeline as scroll-zoom (waveform, x-axis, spectrogram viewport, feature boxes, playhead, day markers)
+
+No region selection, no seek, no "Add Region" button during drag — just pure viewport sliding.
+
+### Files Changed (Session 3 — Minimap)
+
+- `js/waveform-renderer.js` — `isEmicWindowedMode()` helper, `getWaveformViewport()` full range, viewport indicator overlay, playhead/selection/click mapping, minimap drag-to-pan interaction
+- `js/waveform-buttons-renderer.js` — `drawRegionButtons()` bails in windowed modes
+- `js/region-tracker.js` — `drawRegionHighlights()` bails in windowed modes
+- `js/waveform-x-axis-renderer.js` — X-axis labels use full range in windowed mode
+- `js/day-markers.js` — Waveform markers use full data range in windowed mode
+- `js/main.js` — `#viewingMode` change listener: resets zoom, re-renders all

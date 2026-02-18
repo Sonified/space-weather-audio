@@ -171,10 +171,6 @@ export function drawDayMarkers() {
     if (!range.startTime || !range.endTime) return;
 
     const midnights = getMidnightBoundaries(range.startTime, range.endTime);
-    if (midnights.length === 0) {
-        clearDayMarkers();
-        return;
-    }
 
     const startMs = range.startTime.getTime();
     const spanMs = range.endTime.getTime() - startMs;
@@ -249,6 +245,17 @@ export function drawDayMarkers() {
         const bufH = wfOverlay.height;
         wfCtx.clearRect(0, 0, bufW, bufH);
 
+        // In EMIC windowed mode (scroll/page-turn), waveform is a minimap — always use full data range
+        // Region Creation mode uses the zoomed range like normal
+        const emicMode = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+        const isEmicWindowed = emicMode && (emicMode.value === 'scroll' || emicMode.value === 'pageTurn');
+        const wfStartMs = isEmicWindowed && State.dataStartTime
+            ? State.dataStartTime.getTime() : startMs;
+        const wfSpanMs = isEmicWindowed && State.dataStartTime && State.dataEndTime
+            ? State.dataEndTime.getTime() - State.dataStartTime.getTime() : spanMs;
+        const wfMidnights = isEmicWindowed && State.dataStartTime && State.dataEndTime
+            ? getMidnightBoundaries(State.dataStartTime, State.dataEndTime) : midnights;
+
         // Waveform canvas buffer is scaled by devicePixelRatio —
         // apply DPR scale so we draw in CSS-pixel coordinates
         const dpr = window.devicePixelRatio || 1;
@@ -256,8 +263,8 @@ export function drawDayMarkers() {
         const cssH = bufH / dpr;
         wfCtx.save();
         wfCtx.scale(dpr, dpr);
-        for (const midnight of midnights) {
-            const frac = (midnight.getTime() - startMs) / spanMs;
+        for (const midnight of wfMidnights) {
+            const frac = (midnight.getTime() - wfStartMs) / wfSpanMs;
             const x = Math.round(frac * cssW);
             if (x < 0 || x > cssW) continue;
             const label = `${MONTHS[midnight.getUTCMonth()]} ${midnight.getUTCDate()}`;

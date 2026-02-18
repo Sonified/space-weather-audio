@@ -287,6 +287,32 @@ export default {
       }
 
       // =======================================================================
+      // EMIC Data Routes: /emic/data/*
+      // Serves GOES magnetometer chunks from emic-data R2 bucket
+      // =======================================================================
+      if (path.startsWith('/emic/data/')) {
+        const r2Key = path.slice('/emic/'.length); // Strip /emic/ prefix → data/2022/...
+        const obj = await env.EMIC_DATA.get(r2Key);
+
+        if (!obj) {
+          return json({ error: 'Not found', key: r2Key }, 404);
+        }
+
+        // Determine content type from extension
+        let contentType = 'application/octet-stream';
+        if (r2Key.endsWith('.json')) contentType = 'application/json';
+        else if (r2Key.endsWith('.zst')) contentType = 'application/zstd';
+
+        return new Response(obj.body, {
+          headers: {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=86400', // 24h cache — data doesn't change
+            ...CORS_HEADERS,
+          },
+        });
+      }
+
+      // =======================================================================
       // Proxy everything else to GitHub Pages
       // =======================================================================
       const githubPagesUrl = 'https://sonified.github.io/space-weather-audio';

@@ -976,6 +976,23 @@ async function initializeEmicStudyMode() {
         if (dayMarkersCheckbox.checked) drawDayMarkers();
     }
 
+    // When switching to a windowed mode, reset waveform to full view and re-render
+    const viewingModeSelect = document.getElementById('viewingMode');
+    if (viewingModeSelect) {
+        viewingModeSelect.addEventListener('change', () => {
+            const mode = viewingModeSelect.value;
+            if (mode === 'scroll' || mode === 'pageTurn') {
+                // Reset zoom to full view so waveform minimap shows everything
+                zoomState.setViewportToFull();
+            }
+            // Re-render waveform, x-axis, buttons, and day markers for the new mode
+            drawWaveformFromMinMax();
+            drawWaveformXAxis();
+            drawRegionButtons();
+            drawDayMarkers();
+        });
+    }
+
     console.log('🔬 EMIC Study mode initialized (skipLogin:', skipLogin, ')');
 }
 
