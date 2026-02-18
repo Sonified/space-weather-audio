@@ -138,6 +138,15 @@ void main() {
     float yMin = minVal * 0.9;
     float yMax = maxVal * 0.9;
 
+    // Enforce minimum band thickness so the waveform doesn't vanish when zoomed in
+    // (when minVal == maxVal, the band is zero pixels wide)
+    float minThickness = 2.0 / uCanvasHeight;
+    if (yMax - yMin < minThickness) {
+        float center = (yMin + yMax) * 0.5;
+        yMin = center - minThickness * 0.5;
+        yMax = center + minThickness * 0.5;
+    }
+
     // Center line (~1px thick)
     float centerThickness = 1.0 / uCanvasHeight;
     if (abs(vUv.y - 0.5) < centerThickness) {

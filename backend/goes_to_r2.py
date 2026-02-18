@@ -124,6 +124,25 @@ def extract_components(cdf_path):
     print(f"  📊 b_gse shape: {b_gse.shape}, dtype: {b_gse.dtype}")
     print(f"     Samples: {b_gse.shape[0]:,} ({b_gse.shape[0] / SAMPLE_RATE / 3600:.1f} hours at {SAMPLE_RATE} Hz)")
 
+    # Replace fill values (-9999) with NaN, then interpolate
+    FILL_VALUE = -9999.0
+    fill_mask = b_gse <= FILL_VALUE
+    total_fill = np.sum(fill_mask)
+    if total_fill > 0:
+        b_gse = b_gse.astype(np.float32)  # ensure float for NaN
+        b_gse[fill_mask] = np.nan
+        fill_pct = total_fill / b_gse.size * 100
+        print(f"  🩹 Found {total_fill:,} fill values ({fill_pct:.2f}%) — interpolating")
+
+        # Interpolate each component across the full day before chunking
+        for col in range(3):
+            series = b_gse[:, col]
+            nans = np.isnan(series)
+            if np.any(nans) and not np.all(nans):
+                valid = np.where(~nans)[0]
+                series[nans] = np.interp(np.where(nans)[0], valid, series[valid])
+                b_gse[:, col] = series
+
     components = {}
     for i, name in enumerate(COMPONENTS):
         arr = b_gse[:, i].astype(np.float32)

@@ -98,6 +98,88 @@ drawWaveformFromMinMax() → drawWaveformXAxis() → updateSpectrogramViewportFr
 
 ---
 
+## Scroll-Zoom Performance: From Choppy to Butter
+
+### rAF throttle
+Trackpad wheel events fire far faster than 60fps. Every event was triggering the full render pipeline — redundant draws that the GPU couldn't keep up with at 7-day zoom. Fixed with a classic `requestAnimationFrame` coalescing pattern: zoom math runs on every wheel event (so `preventDefault()` fires immediately), but the render pipeline only runs once per animation frame via a `rafPending` flag.
+
+### The real bottleneck: waveform shader looping 5000× per pixel
+At 7-day zoom (~6M samples across ~1200 pixels), the fragment shader was scanning ~5000 raw texture samples per pixel to find min/max. That's ~6 million texture lookups per frame — the GPU was grinding.
+
+### Solution: Min/max mip texture (250× speedup)
+Pre-computed a min/max mip texture at upload time — each texel stores the min and max of 256 consecutive raw samples in a two-channel `RG Float32` texture. The shader now has two paths:
+
+```glsl
+if (samplesPerPixel > uMipBinSize && uMipTotalBins > 0.0) {
+    // Zoomed out: loop over ~20 mip bins instead of ~5000 raw samples
+    for (int i = 0; i < 512; i++) {
+        vec2 mm = getMipBin(binStart + float(i));
+        minVal = min(minVal, mm.r);
+        maxVal = max(maxVal, mm.g);
+    }
+} else {
+    // Zoomed in: scan raw samples (few per pixel, already fast)
+}
+```
+
+At 7-day zoom: `5000 samples / 256 per bin = ~20 mip lookups per pixel`. That's a 250× reduction in texture reads. The result: perfectly smooth butter-scrolling through a week of 10 Hz magnetometer data on a GPU waveform renderer. Universal optimization — works for EMIC study, main site, volcano data, everything.
+
+### Mip texture construction (in `uploadWaveformSamples()`)
+```javascript
+const mipBins = Math.ceil(totalSamples / 256);
+const mipData = new Float32Array(texWidth * texHeight * 2); // RG channels
+for (let bin = 0; bin < mipBins; bin++) {
+    // scan 256 samples, store min in R, max in G
+}
+wfMipTexture = new THREE.DataTexture(mipData, w, h, THREE.RGFormat, THREE.FloatType);
+```
+
+---
+
+## Region Zoom: Viewport-Aware Animation
+
+When clicking the magnifying glass on a region while scroll-zoomed, the animation hardcoded its start point as `State.dataStartTime / dataEndTime` — the full data range. So it always animated from fully-zoomed-out, even if you were already zoomed into a nearby section. Same problem in reverse with `zoomToFull()`.
+
+Fix: both `zoomToRegion()` and `zoomToFull()` in `region-tracker.js` now read `zoomState.currentViewStartTime / currentViewEndTime` as the animation origin when zoomState is initialized, falling back to full data range otherwise. Animations now start from wherever you actually are.
+
+---
+
+## Day Marker Styling Polish
+
+### Label positioning: spectrogram top, waveform bottom
+Date labels were at the top of both canvases, overlapping with region play/zoom buttons on the waveform. Added a `labelPosition` parameter to `drawMarkerLine()` — spectrogram keeps default `'top'`, waveform passes `'bottom'`. Labels now sit at opposite ends, never collide with buttons.
+
+### Drop shadow instead of pill background
+Replaced the filled pill background behind date text with a lightweight CSS text shadow (`shadowBlur: 4, shadowColor: rgba(0,0,0,0.8)`). Cleaner look, less visual weight, still readable against any background.
+
+---
+
+## Waveform Line Disappearing on Zoom-In
+
+When zooming in past single-sample-per-pixel resolution, the waveform data line faded to nothing and disappeared entirely. Root cause: the shader computes `yMin = minVal * 0.9` and `yMax = maxVal * 0.9` per pixel column. When each pixel covers ≤1 sample, `minVal == maxVal`, so `yMax - yMin == 0` — a zero-width band. The check `amplitude >= yMin && amplitude <= yMax` matches zero pixels.
+
+Fix: enforce minimum band thickness in the shader:
+```glsl
+float minThickness = 2.0 / uCanvasHeight;
+if (yMax - yMin < minThickness) {
+    float center = (yMin + yMax) * 0.5;
+    yMin = center - minThickness * 0.5;
+    yMax = center + minThickness * 0.5;
+}
+```
+Guarantees at least a 2-device-pixel-thick line at any zoom level. At full zoom-in, you now see a clean thin trace through the data instead of nothing.
+
+---
+
+## Files Changed (Session 2)
+
+- `js/scroll-zoom.js` — rAF throttle for wheel event coalescing
+- `js/waveform-renderer.js` — Min/max mip texture system, shader two-path branching, minimum band thickness fix
+- `js/region-tracker.js` — `zoomToRegion()` and `zoomToFull()` read current scroll-zoom viewport
+- `js/day-markers.js` — Label position parameter (top/bottom), drop shadow text styling, text nudge
+
+---
+
 ## GOES Magnetometer Data → R2 Progressive Streaming Pipeline
 
 Built a new pipeline to download GOES magnetometer data from CDAWeb and upload it to Cloudflare R2 for progressive streaming — replacing the current approach of pulling pre-audified WAV files from CDAWeb on every page load.
@@ -168,12 +250,20 @@ Successfully uploaded one full day to the `emic-study` R2 bucket:
 - 144 ten-minute + 24 one-hour + 4 six-hour chunks per component
 - Fixed a boundary issue: CDAWeb's extra sample at midnight created 13-byte "runt" chunks with matching start/end times. Added trimming to `extract_components()` and cleaned up the ghosts from R2.
 
+### Fill Value Interpolation (−9999 sentinel)
+
+Jan 22 data revealed min values of −9999.00 across all components — CDAWeb's fill/missing data sentinel. These blow up normalization ranges and would produce wild spikes in the waveform.
+
+Added `interpolate_fill_values()` to the pipeline: scans for any value ≤ −9990, replaces with `np.nan`, then linearly interpolates across valid neighbors using `np.interp`. Crucially, this runs on the full-day array *before* chunking — so gaps that happen to land on a chunk boundary get interpolated cleanly across the seam.
+
+Had to nuke the entire R2 bucket (1,038 objects from Jan 21 + 22) and re-upload both days with clean interpolated data.
+
 ### What's Next
 
-- Run remaining EMIC study days (Jan 22–27, 2022)
+- Run remaining EMIC study days (Jan 23–27, 2022)
 - Wire up browser-side progressive streaming from the `emic-study` R2 bucket
 - Adapt `fetchFromR2Worker()` in `data-fetcher.js` to read from the new R2 structure
 
 ### Files Changed
 
-- `backend/goes_to_r2.py` — **NEW** — CDAWeb CDF download → chunk → compress → R2 upload pipeline
+- `backend/goes_to_r2.py` — **NEW** — CDAWeb CDF download → chunk → compress → R2 upload pipeline, fill value interpolation

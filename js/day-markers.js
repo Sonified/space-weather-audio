@@ -125,7 +125,7 @@ function getMidnightBoundaries(startTime, endTime) {
 /**
  * Draw dashed vertical line with date label on a 2D context
  */
-function drawMarkerLine(ctx, x, height, dateLabel) {
+function drawMarkerLine(ctx, x, height, dateLabel, labelPosition = 'top') {
     ctx.save();
 
     // Dashed line
@@ -137,31 +137,21 @@ function drawMarkerLine(ctx, x, height, dateLabel) {
     ctx.lineTo(x, height);
     ctx.stroke();
 
-    // Date label at top, left-aligned to the dashed line
+    // Date label, left-aligned to the dashed line
     if (dateLabel) {
         ctx.setLineDash([]);
         ctx.font = 'bold 11px Arial, sans-serif';
         ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
+        ctx.textBaseline = labelPosition === 'bottom' ? 'bottom' : 'top';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 1;
 
-        // Background pill for readability
-        const metrics = ctx.measureText(dateLabel);
-        const pad = 4;
-        const pillW = metrics.width + pad * 2;
-        const pillH = 16;
-        const pillX = x + 3; // Start just right of the dashed line
-        const pillY = 4;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-        ctx.beginPath();
-        if (ctx.roundRect) {
-            ctx.roundRect(pillX, pillY, pillW, pillH, 4);
-        } else {
-            ctx.rect(pillX, pillY, pillW, pillH);
-        }
-        ctx.fill();
-
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.fillText(dateLabel, pillX + pad, pillY + 2);
+        const textX = x + 6;
+        const textY = labelPosition === 'bottom' ? height - 6 : 6;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fillText(dateLabel, textX, textY);
     }
 
     ctx.restore();
@@ -271,7 +261,7 @@ export function drawDayMarkers() {
             const x = Math.round(frac * cssW);
             if (x < 0 || x > cssW) continue;
             const label = `${MONTHS[midnight.getUTCMonth()]} ${midnight.getUTCDate()}`;
-            drawMarkerLine(wfCtx, x, cssH, label);
+            drawMarkerLine(wfCtx, x, cssH, label, 'bottom');
         }
         wfCtx.restore();
     }

@@ -3320,9 +3320,9 @@ export function zoomToRegion(regionIndex) {
         oldStartTime = zoomState.sampleToRealTimestamp(oldRange.startSample);
         oldEndTime = zoomState.sampleToRealTimestamp(oldRange.endSample);
     } else {
-        // Coming from full view - elastic friend is ready!
-        oldStartTime = State.dataStartTime;
-        oldEndTime = State.dataEndTime;
+        // Use current viewport (may be scroll-zoomed or full view)
+        oldStartTime = zoomState.isInitialized() ? zoomState.currentViewStartTime : State.dataStartTime;
+        oldEndTime = zoomState.isInitialized() ? zoomState.currentViewEndTime : State.dataEndTime;
     }
     
     hideAddRegionButton();
@@ -3675,11 +3675,11 @@ export function zoomToFull() {
         oldStartTime = zoomState.sampleToRealTimestamp(oldRange.startSample);
         oldEndTime = zoomState.sampleToRealTimestamp(oldRange.endSample);
     } else {
-        // Already in full view, no transition needed
-        oldStartTime = State.dataStartTime;
-        oldEndTime = State.dataEndTime;
+        // Use current viewport (may be scroll-zoomed or full view)
+        oldStartTime = zoomState.isInitialized() ? zoomState.currentViewStartTime : State.dataStartTime;
+        oldEndTime = zoomState.isInitialized() ? zoomState.currentViewEndTime : State.dataEndTime;
     }
-    
+
     // 🦋 Clear selection, but preserve active playing region if it exists
     // If we're playing a region, we should keep playing it even after zooming out
     State.setSelectionStart(null);
