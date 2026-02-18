@@ -977,6 +977,8 @@ async function initializeEmicStudyMode() {
     function applyAdvancedMode(enabled) {
         const gearContainers = document.querySelectorAll('.panel-gear');
         gearContainers.forEach(g => g.style.display = enabled ? 'block' : 'none');
+        const skipLoginRow = document.getElementById('skipLoginRow');
+        if (skipLoginRow) skipLoginRow.style.display = enabled ? 'flex' : 'none';
     }
     if (advancedCheckbox) {
         const savedAdvanced = localStorage.getItem('emic_advanced_mode');

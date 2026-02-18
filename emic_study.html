@@ -18,7 +18,7 @@
             --axis-label-font-size: 14px;
             --axis-label-color: #bbb;
             --axis-tick-color: #666;
-            --panel-label-size: 16px;
+            --panel-label-size: 15px;
         }
         
         /* EMIC Study specific styles */
@@ -88,7 +88,7 @@
         .emic-btn-group label {
             font-size: var(--panel-label-size);
             font-weight: 600;
-            color: #666;
+            color: #444;
             margin-right: 4px;
             white-space: nowrap;
         }
@@ -444,7 +444,7 @@
         </div>
         
         <!-- Skip Login & Welcome (standalone, below main panel) -->
-        <div style="display: flex; align-items: center; gap: 6px; justify-content: flex-end; padding: 6px 20px 0;">
+        <div id="skipLoginRow" style="display: flex; align-items: center; gap: 6px; justify-content: flex-end; padding: 6px 20px 0;">
             <label for="skipLoginWelcome" style="font-size: 13px; font-weight: 600; color: #888; white-space: nowrap; user-select: none; cursor: pointer;">Skip Login & Welcome</label>
             <input type="checkbox" id="skipLoginWelcome" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
         </div>

@@ -908,20 +908,38 @@ function drawWaveformOverlays() {
             {
                 const leftX = viewStartFrac * width;
                 const rightX = viewEndFrac * width;
+                const r = 3; // Match canvas border-radius
+                const edge = 2; // Threshold: if within 2px of canvas edge, no rounding on that side
 
-                // Dim areas outside viewport
+                // Per-corner radii: [top-left, top-right, bottom-right, bottom-left]
+                const rTL = leftX > edge ? r : 0;
+                const rTR = (width - rightX) > edge ? r : 0;
+                const rBR = (width - rightX) > edge ? r : 0;
+                const rBL = leftX > edge ? r : 0;
+                const radii = [rTL, rTR, rBR, rBL];
+
+                // Dim areas outside viewport using clipping with rounded rect cutout
+                wfOverlayCtx.save();
+                wfOverlayCtx.beginPath();
+                wfOverlayCtx.rect(0, 0, width, height);
+                // Cut out rounded viewport rect (reverse winding for hole)
+                wfOverlayCtx.roundRect(leftX, 0, rightX - leftX, height, radii);
                 wfOverlayCtx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                wfOverlayCtx.fillRect(0, 0, leftX, height);
-                wfOverlayCtx.fillRect(rightX, 0, width - rightX, height);
+                wfOverlayCtx.fill('evenodd');
+                wfOverlayCtx.restore();
 
-                // Light fill inside viewport
+                // Light fill inside viewport (rounded)
+                wfOverlayCtx.beginPath();
+                wfOverlayCtx.roundRect(leftX, 0, rightX - leftX, height, radii);
                 wfOverlayCtx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-                wfOverlayCtx.fillRect(leftX, 0, rightX - leftX, height);
+                wfOverlayCtx.fill();
 
-                // White border around viewport
+                // White border around viewport (rounded)
+                wfOverlayCtx.beginPath();
+                wfOverlayCtx.roundRect(leftX + 0.5, 0.5, rightX - leftX - 1, height - 1, radii);
                 wfOverlayCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
                 wfOverlayCtx.lineWidth = 1.5;
-                wfOverlayCtx.strokeRect(leftX, 0.5, rightX - leftX, height - 1);
+                wfOverlayCtx.stroke();
             }
         }
     }
@@ -1574,6 +1592,41 @@ export function setupWaveformInteraction() {
             minimapDragStartMs = clickMs;
             minimapViewStartMsAtDrag = zoomState.currentViewStartTime.getTime();
             minimapViewEndMsAtDrag = zoomState.currentViewEndTime.getTime();
+
+            // Attach document-level listeners so drag continues outside canvas
+            function onDocMouseMove(ev) {
+                if (!minimapDragging) return;
+                const r = canvas.getBoundingClientRect();
+                const dStartMs = State.dataStartTime.getTime();
+                const dEndMs = State.dataEndTime.getTime();
+                const dSpanMs = dEndMs - dStartMs;
+                const f = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+                const cMs = dStartMs + f * dSpanMs;
+                const delta = cMs - minimapDragStartMs;
+
+                const vSpan = minimapViewEndMsAtDrag - minimapViewStartMsAtDrag;
+                let ns = minimapViewStartMsAtDrag + delta;
+                let ne = minimapViewEndMsAtDrag + delta;
+                if (ns < dStartMs) { ns = dStartMs; ne = dStartMs + vSpan; }
+                if (ne > dEndMs) { ne = dEndMs; ns = dEndMs - vSpan; }
+
+                zoomState.currentViewStartTime = new Date(ns);
+                zoomState.currentViewEndTime = new Date(ne);
+
+                if (!minimapRafPending) {
+                    minimapRafPending = true;
+                    requestAnimationFrame(renderMinimapDragFrame);
+                }
+            }
+            function onDocMouseUp() {
+                minimapDragging = false;
+                canvas.style.cursor = 'pointer';
+                document.removeEventListener('mousemove', onDocMouseMove);
+                document.removeEventListener('mouseup', onDocMouseUp);
+            }
+            document.addEventListener('mousemove', onDocMouseMove);
+            document.addEventListener('mouseup', onDocMouseUp);
+
             e.preventDefault();
             return;
         }
@@ -1587,39 +1640,8 @@ export function setupWaveformInteraction() {
     });
     
     canvas.addEventListener('mousemove', (e) => {
-        // --- Minimap viewport drag ---
-        if (minimapDragging) {
-            const rect = canvas.getBoundingClientRect();
-            const dataStartMs = State.dataStartTime.getTime();
-            const dataEndMs = State.dataEndTime.getTime();
-            const dataSpanMs = dataEndMs - dataStartMs;
-            const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            const cursorMs = dataStartMs + frac * dataSpanMs;
-            const deltaMs = cursorMs - minimapDragStartMs;
-
-            const viewSpanMs = minimapViewEndMsAtDrag - minimapViewStartMsAtDrag;
-            let newStartMs = minimapViewStartMsAtDrag + deltaMs;
-            let newEndMs = minimapViewEndMsAtDrag + deltaMs;
-
-            // Clamp to data bounds
-            if (newStartMs < dataStartMs) {
-                newStartMs = dataStartMs;
-                newEndMs = dataStartMs + viewSpanMs;
-            }
-            if (newEndMs > dataEndMs) {
-                newEndMs = dataEndMs;
-                newStartMs = dataEndMs - viewSpanMs;
-            }
-
-            zoomState.currentViewStartTime = new Date(newStartMs);
-            zoomState.currentViewEndTime = new Date(newEndMs);
-
-            if (!minimapRafPending) {
-                minimapRafPending = true;
-                requestAnimationFrame(renderMinimapDragFrame);
-            }
-            return;
-        }
+        // Minimap viewport drag is handled by document-level listeners
+        if (minimapDragging) return;
 
         if (State.isDragging && State.selectionStartX !== null) {
             const rect = canvas.getBoundingClientRect();
@@ -1683,12 +1705,8 @@ export function setupWaveformInteraction() {
     });
     
     canvas.addEventListener('mouseup', (e) => {
-        // --- Minimap viewport drag end ---
-        if (minimapDragging) {
-            minimapDragging = false;
-            canvas.style.cursor = 'pointer';
-            return;
-        }
+        // Minimap viewport drag is handled by document-level listeners
+        if (minimapDragging) return;
 
         // 🔧 FIX: Check for button clicks even when not dragging
         // (in case we returned early from mousedown to prevent scrub preview)
@@ -1995,11 +2013,7 @@ export function setupWaveformInteraction() {
     });
     
     canvas.addEventListener('mouseleave', () => {
-        if (minimapDragging) {
-            minimapDragging = false;
-            canvas.style.cursor = 'pointer';
-            return;
-        }
+        // Minimap viewport drag continues via document listeners — don't cancel here
         if (State.isDragging) {
             const wasSelecting = State.isSelecting;
             State.setIsDragging(false);
