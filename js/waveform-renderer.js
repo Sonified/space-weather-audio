@@ -629,7 +629,7 @@ function drawWaveformOverlays() {
                 const rightX = viewEndFrac * width;
 
                 // Dim areas outside viewport
-                wfOverlayCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                wfOverlayCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
                 wfOverlayCtx.fillRect(0, 0, leftX, height);
                 wfOverlayCtx.fillRect(rightX, 0, width - rightX, height);
 

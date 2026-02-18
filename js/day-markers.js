@@ -128,10 +128,10 @@ function getMidnightBoundaries(startTime, endTime) {
 function drawMarkerLine(ctx, x, height, dateLabel, labelPosition = 'top') {
     ctx.save();
 
-    // Dashed line
-    ctx.setLineDash([8, 6]);
+    // Dotted line
+    ctx.setLineDash([2, 2]);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, height);
