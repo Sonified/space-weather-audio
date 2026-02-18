@@ -1014,7 +1014,7 @@ export function setupSpectrogramSelection() {
         const clickedBox = getClickedBox(clickX, clickY);
         // In EMIC windowed modes, don't handle feature box clicks (click-to-seek instead)
         const _modeSelectForBox = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
-        const _isWindowedForBox = _modeSelectForBox && (_modeSelectForBox.value === 'scroll' || _modeSelectForBox.value === 'pageTurn');
+        const _isWindowedForBox = _modeSelectForBox && (_modeSelectForBox.value === 'static' || _modeSelectForBox.value === 'scroll' || _modeSelectForBox.value === 'pageTurn');
         if (clickedBox && !spectrogramSelectionActive && !_isWindowedForBox) {
             // Check if we're zoomed out - if so, zoom to the region
             if (!zoomState.isInRegion()) {
@@ -1036,7 +1036,7 @@ export function setupSpectrogramSelection() {
         if (!isDrawFeatureMode && !zoomState.isInRegion()) {
             // Click-to-seek in EMIC windowed modes (scroll/pageTurn)
             const modeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
-            const isWindowed = modeSelect && (modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
+            const isWindowed = modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
             if (isWindowed && State.completeSamplesArray && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
                 const timestamp = zoomState.pixelToTimestamp(clickX, canvasRect.width);
                 const dataStartMs = State.dataStartTime.getTime();

@@ -316,14 +316,14 @@
                 <div class="gear-popover" id="navBarPopover">
                     <div class="gear-popover-title">Navigation Bar</div>
                     <div class="gear-popover-row">
-                        <label for="navBarClick" class="gear-label">Click:</label>
+                        <span class="gear-label">Click:</span>
                         <select id="navBarClick" class="gear-select">
                             <option value="moveWindow" selected>Move window</option>
                             <option value="moveAndPlay">Move & play</option>
                         </select>
                     </div>
                     <div class="gear-popover-row">
-                        <label for="miniMapView" class="gear-label">Mode:</label>
+                        <span class="gear-label">Show:</span>
                         <select id="miniMapView" class="gear-select">
                             <option value="linePlot" selected>Line Plot</option>
                             <option value="spectrogram">Spectrogram</option>
@@ -342,7 +342,7 @@
                 <div class="gear-popover" id="mainWindowPopover">
                     <div class="gear-popover-title">Main Window</div>
                     <div class="gear-popover-row">
-                        <label for="mainWindowClick" class="gear-label">Click:</label>
+                        <span class="gear-label">Click:</span>
                         <select id="mainWindowClick" class="gear-select">
                             <option value="playAudio" selected>Play audio</option>
                             <option value="drawFeature">Draw feature</option>
@@ -416,6 +416,7 @@
                     <label for="viewingMode" style="font-size: 13px; font-weight: 600; color: #ccc; white-space: nowrap; user-select: none;">Mode:</label>
                     <select id="viewingMode" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer;">
                         <option value="full" selected>Region Creation</option>
+                        <option value="static">Windowed Static</option>
                         <option value="scroll">Windowed Scroll</option>
                         <option value="pageTurn">Windowed Page Turn</option>
                     </select>

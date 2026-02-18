@@ -1060,7 +1060,7 @@ export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
     // In EMIC windowed modes (scroll/pageTurn), waveform is a minimap — no region highlights
     if (window.__EMIC_STUDY_MODE) {
         const modeSelect = document.getElementById('viewingMode');
-        if (modeSelect && (modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn')) return;
+        if (modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn')) return;
     }
 
     if (!State.dataStartTime || !State.dataEndTime || !State.totalAudioDuration) {
@@ -1754,7 +1754,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         const mainClickEl = document.getElementById('mainWindowClick');
         const isDrawFeature = mainClickEl && mainClickEl.value === 'drawFeature';
         const modeEl = document.getElementById('viewingMode');
-        const isWindowed = modeEl && (modeEl.value === 'scroll' || modeEl.value === 'pageTurn');
+        const isWindowed = modeEl && (modeEl.value === 'static' || modeEl.value === 'scroll' || modeEl.value === 'pageTurn');
 
         if (activeRegionIdx === null && isDrawFeature && isWindowed) {
             // ── Standalone feature mode (no region required) ──

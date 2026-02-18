@@ -711,7 +711,7 @@ export function getWaveformOverlayCanvas() {
 function isEmicWindowedMode() {
     if (!window.__EMIC_STUDY_MODE) return false;
     const modeSelect = document.getElementById('viewingMode');
-    return modeSelect && (modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
+    return modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
 }
 
 /**
@@ -1543,6 +1543,8 @@ export function setupWaveformInteraction() {
         // --- Minimap viewport drag: intercept in windowed mode when zoomed ---
         if (isMinimapZoomed()) {
             minimapDragging = true;
+            pageTurnUserDragged = true; // User manually moved viewport — break page-turn catch
+            pageTurnPlayheadWasInView = false; // Reset — must see playhead enter viewport before re-engaging
             canvas.style.cursor = 'grabbing';
             const dataStartMs = State.dataStartTime.getTime();
             const dataEndMs = State.dataEndTime.getTime();
@@ -2282,6 +2284,86 @@ export function setupWaveformInteraction() {
 // Diagnostic logging state
 let lastDiagnosticTime = 0;
 
+// ── Page Turn mode: auto-advance viewport when playhead reaches window edge ──
+// When the user manually drags/scrolls the viewport away from the playhead,
+// auto-advance pauses. It re-engages when the playhead naturally reaches the
+// end of whatever window it's currently in.
+let pageTurnUserDragged = false; // set when user manually moves viewport
+let pageTurnPlayheadWasInView = false; // tracks if playhead entered viewport after user drag
+
+function checkPageTurnAdvance() {
+    const modeEl = document.getElementById('viewingMode');
+    if (!modeEl || modeEl.value !== 'pageTurn') return;
+    if (!zoomState.isInitialized() || !State.dataStartTime || !State.dataEndTime) return;
+    if (State.totalAudioDuration <= 0) return;
+    // Don't advance while user is actively dragging the minimap viewport
+    if (minimapDragging) return;
+
+    // Current playhead timestamp
+    const playheadMs = State.dataStartTime.getTime() +
+        (State.currentAudioPosition / State.totalAudioDuration) *
+        (State.dataEndTime.getTime() - State.dataStartTime.getTime());
+
+    const viewStartMs = zoomState.currentViewStartTime.getTime();
+    const viewEndMs = zoomState.currentViewEndTime.getTime();
+    const viewSpanMs = viewEndMs - viewStartMs;
+    if (viewSpanMs <= 0) return;
+
+    const dataStartMs = State.dataStartTime.getTime();
+    const dataEndMs = State.dataEndTime.getTime();
+
+    // If user dragged away, only re-engage when the playhead has been INSIDE the
+    // viewport and then naturally reaches the end. This prevents snapping back when
+    // the user drags the window left (away from the playhead that's already past it).
+    if (pageTurnUserDragged) {
+        const playheadInView = playheadMs >= viewStartMs && playheadMs < viewEndMs;
+        if (playheadInView) {
+            // Playhead is inside viewport — mark that we've seen it, wait for it to reach the end
+            pageTurnPlayheadWasInView = true;
+            return;
+        }
+        if (pageTurnPlayheadWasInView && playheadMs >= viewEndMs) {
+            // Playhead was in view and just crossed the end — re-engage
+            pageTurnUserDragged = false;
+            pageTurnPlayheadWasInView = false;
+        } else {
+            // Playhead is outside and was never in view since drag — stay disengaged
+            return;
+        }
+    }
+
+    // Auto-advance: playhead is at or past the window end
+    if (playheadMs >= viewEndMs) {
+        let newStartMs = viewEndMs; // Next page starts where current ended
+        let newEndMs = newStartMs + viewSpanMs;
+
+        // Clamp to data bounds
+        if (newEndMs > dataEndMs) {
+            newEndMs = dataEndMs;
+            newStartMs = Math.max(dataStartMs, dataEndMs - viewSpanMs);
+        }
+
+        zoomState.currentViewStartTime = new Date(newStartMs);
+        zoomState.currentViewEndTime = new Date(newEndMs);
+
+        // Trigger full re-render for the new page
+        drawWaveformFromMinMax();
+        drawWaveformXAxis();
+        updateSpectrogramViewportFromZoom();
+        updateAllFeatureBoxPositions();
+        updateCanvasAnnotations();
+        drawDayMarkers();
+    }
+}
+
+/**
+ * Mark that the user manually moved the viewport (breaks page-turn catch)
+ */
+export function notifyPageTurnUserDragged() {
+    pageTurnUserDragged = true;
+    pageTurnPlayheadWasInView = false;
+}
+
 // 🔥 HELPER: Start playback indicator loop (ensures cleanup before starting)
 export function startPlaybackIndicator() {
     // 🔥 FIX: Check if document is connected before starting RAF
@@ -2343,8 +2425,8 @@ export function updatePlaybackIndicator() {
     // Use State.completeSamplesArray.length instead if needed, or remove diagnostic code entirely
     
     if (totalAudioDuration > 0) {
-        // Region button reset is handled by 'selection-end-reached' message from worklet
-        // The worklet is the single source of truth for when boundaries are reached
+        // Page Turn mode: advance viewport when playhead reaches window edge
+        checkPageTurnAdvance();
 
         drawWaveformWithSelection();
         drawSpectrogramPlayhead();  // Draw playhead on spectrogram too

@@ -597,3 +597,63 @@ This is a stepping stone toward completely removing the regions panel in windowe
 - `js/spectrogram-renderer.js` — `rebuildCanvasBoxesFromFeatures()` includes standalone features, `drawSavedBox()` uses flat numbering, imports `getStandaloneFeatures`/`getFlatFeatureNumber`
 - `js/spectrogram-feature-boxes.js` — `addFeatureBox()` and `renumberFeatureBoxes()` use flat numbering
 - `js/waveform-renderer.js` — `drawMinimapFeatureBoxes()` draws standalone features, uses flat numbering
+
+---
+
+## Four Viewing Modes: Region Creation, Windowed Static, Windowed Scroll, Windowed Page Turn
+
+Added a fourth viewing mode "Windowed Static" to the mode selector dropdown. The three windowed modes are now:
+
+- **Windowed Static**: Current behavior — viewport stays put, user controls it manually via minimap drag or scroll-zoom. This is what "Windowed Scroll" used to be before adding the other modes.
+- **Windowed Scroll**: Placeholder for future smooth-follow behavior (currently behaves like Static).
+- **Windowed Page Turn**: Auto-advances the viewport when the playhead reaches the right edge of the window. Turns the page by one full window width.
+
+### Page Turn auto-advance logic
+
+`checkPageTurnAdvance()` runs every animation frame from `updatePlaybackIndicator()`. When the playhead timestamp crosses `viewEndMs`, the viewport jumps forward by one window width (clamped to data bounds), triggering a full re-render of waveform, spectrogram, axes, overlays, and day markers.
+
+### User override: drag breaks page-turn catch
+
+If the user manually moves the viewport (minimap drag, scroll-zoom, or spectrogram click-to-seek), `pageTurnUserDragged` is set to `true`, which disengages auto-advance. Page turn only re-engages when the playhead has been **inside** the current viewport and then naturally exits the right edge — tracked by a `pageTurnPlayheadWasInView` flag. This two-phase approach prevents the viewport from snapping back when the user drags the window away from the playhead (e.g., dragging left when the playhead is already past the window).
+
+The `minimapDragging` guard also blocks `checkPageTurnAdvance()` entirely during an active minimap drag, so the viewport can't jump out from under the user's cursor.
+
+### Bug fix: stale `pageTurnPlayheadWasInView`
+
+The minimap mousedown handler set `pageTurnUserDragged = true` directly instead of calling `notifyPageTurnUserDragged()`, so `pageTurnPlayheadWasInView` retained its old value. If it was `true` from a previous cycle, the check immediately saw "playhead was in view + now past end" and re-engaged, causing the viewport to snap back after a drag. Fixed by resetting `pageTurnPlayheadWasInView = false` alongside `pageTurnUserDragged = true` in the mousedown handler.
+
+### `'static'` added to all windowed mode checks
+
+All files that check for windowed mode (`value === 'scroll' || value === 'pageTurn'`) now also check `value === 'static'`:
+
+- `js/waveform-renderer.js` — `isEmicWindowedMode()`
+- `js/spectrogram-renderer.js` — two locations
+- `js/region-tracker.js` — two locations
+- `js/main.js` — `updateRegionsPanelVisibility()` and mode change listener
+- `js/day-markers.js` — day marker time range
+- `js/waveform-buttons-renderer.js` — minimap button suppression
+- `js/waveform-x-axis-renderer.js` — x-axis full range
+
+### Regions panel hidden in windowed mode
+
+`updateRegionsPanelVisibility()` in `main.js` hides `#trackedRegionsPanel` when the mode is `static`, `scroll`, or `pageTurn`. The panel reappears in Region Creation mode.
+
+### UI polish
+
+- **Dropdown blur-on-change**: All select-type nav controls (`viewingMode`, `navBarClick`, `mainWindowClick`, `miniMapView`) now call `el.blur()` after change, preventing the white focus highlight from persisting.
+- **Gear popover labels**: Changed `<label for="...">` to `<span>` for gear popover labels ("Click:", "Show:"), preventing label clicks from focusing the adjacent dropdown.
+- **Nav bar gear label**: Changed "Mode:" to "Show:" for the minimap display mode selector.
+- **Gear popover alignment**: Added `min-width: 42px` to `.gear-label` and removed `justify-content: space-between` from `.gear-popover-row`, so select dropdowns align on their left edges.
+
+### Files Changed (Session 9 — Viewing Modes & Page Turn)
+
+- `emic_study.html` — Fourth `<option value="static">` in `#viewingMode`, `<label>` → `<span>` for gear labels, "Mode:" → "Show:"
+- `js/waveform-renderer.js` — `checkPageTurnAdvance()`, `pageTurnUserDragged`/`pageTurnPlayheadWasInView` flags, `notifyPageTurnUserDragged()` export, `isEmicWindowedMode()` includes `'static'`
+- `js/scroll-zoom.js` — Calls `notifyPageTurnUserDragged()` on wheel zoom
+- `js/main.js` — `updateRegionsPanelVisibility()`, `'static'` in mode checks, blur-on-change for all nav selects
+- `js/spectrogram-renderer.js` — `'static'` in two windowed checks
+- `js/region-tracker.js` — `'static'` in two windowed checks
+- `js/day-markers.js` — `'static'` in windowed check
+- `js/waveform-buttons-renderer.js` — `'static'` in windowed check
+- `js/waveform-x-axis-renderer.js` — `'static'` in windowed check
+- `styles.css` — `.gear-label` min-width, `.gear-popover-row` alignment fix

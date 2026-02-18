@@ -67,7 +67,7 @@ export function drawRegionButtons() {
     // In EMIC windowed modes (scroll/pageTurn), waveform is a minimap — no region buttons
     if (window.__EMIC_STUDY_MODE) {
         const modeSelect = document.getElementById('viewingMode');
-        if (modeSelect && (modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn')) {
+        if (modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn')) {
             const bc = document.getElementById('waveform-buttons');
             if (bc) bc.getContext('2d', { alpha: true })?.clearRect(0, 0, bc.width, bc.height);
             return;

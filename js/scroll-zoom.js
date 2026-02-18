@@ -16,7 +16,7 @@
 
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
-import { drawWaveformFromMinMax } from './waveform-renderer.js';
+import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './waveform-renderer.js';
 import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
@@ -122,6 +122,7 @@ function onWheel(e) {
     if (!State.dataStartTime || !State.dataEndTime) return;
 
     e.preventDefault();
+    notifyPageTurnUserDragged(); // User manually zoomed — break page-turn catch
 
     const canvas = e.currentTarget;
     const { startMs, endMs } = getViewport();

@@ -955,7 +955,10 @@ async function initializeEmicStudyMode() {
             el.addEventListener('change', () => localStorage.setItem(ctrl.key, el.checked));
         } else {
             if (saved !== null) el.value = saved;
-            el.addEventListener('change', () => localStorage.setItem(ctrl.key, el.value));
+            el.addEventListener('change', () => {
+                localStorage.setItem(ctrl.key, el.value);
+                el.blur(); // Remove focus so dropdown doesn't stay highlighted
+            });
         }
     }
 
@@ -1047,20 +1050,34 @@ async function initializeEmicStudyMode() {
         if (dayMarkersCheckbox.checked) drawDayMarkers();
     }
 
+    // Toggle regions panel visibility based on viewing mode
+    function updateRegionsPanelVisibility() {
+        const mode = document.getElementById('viewingMode')?.value;
+        const panel = document.getElementById('trackedRegionsPanel');
+        if (panel) {
+            panel.style.display = (mode === 'static' || mode === 'scroll' || mode === 'pageTurn') ? 'none' : '';
+        }
+    }
+
     // When switching to a windowed mode, reset waveform to full view and re-render
     const viewingModeSelect = document.getElementById('viewingMode');
     if (viewingModeSelect) {
+        // Set initial visibility after localStorage restore
+        updateRegionsPanelVisibility();
+
         viewingModeSelect.addEventListener('change', () => {
             const mode = viewingModeSelect.value;
-            if (mode === 'scroll' || mode === 'pageTurn') {
+            if (mode === 'static' || mode === 'scroll' || mode === 'pageTurn') {
                 // Reset zoom to full view so waveform minimap shows everything
                 zoomState.setViewportToFull();
             }
+            updateRegionsPanelVisibility();
             // Re-render waveform, x-axis, buttons, and day markers for the new mode
             drawWaveformFromMinMax();
             drawWaveformXAxis();
             drawRegionButtons();
             drawDayMarkers();
+            viewingModeSelect.blur();
         });
     }
 

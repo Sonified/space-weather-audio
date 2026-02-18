@@ -248,7 +248,7 @@ export function drawDayMarkers() {
         // In EMIC windowed mode (scroll/page-turn), waveform is a minimap — always use full data range
         // Region Creation mode uses the zoomed range like normal
         const emicMode = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
-        const isEmicWindowed = emicMode && (emicMode.value === 'scroll' || emicMode.value === 'pageTurn');
+        const isEmicWindowed = emicMode && (emicMode.value === 'static' || emicMode.value === 'scroll' || emicMode.value === 'pageTurn');
         const wfStartMs = isEmicWindowed && State.dataStartTime
             ? State.dataStartTime.getTime() : startMs;
         const wfSpanMs = isEmicWindowed && State.dataStartTime && State.dataEndTime
