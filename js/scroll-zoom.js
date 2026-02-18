@@ -1,7 +1,7 @@
 /**
  * scroll-zoom.js
  * Scroll-to-zoom for spectrogram and waveform canvases (EMIC study mode).
- * Gated behind the "Scroll to zoom" checkbox (#scrollBehavior).
+ * Per-canvas gating via gear popover dropdowns (#navBarScroll, #mainWindowScroll).
  * Supports mouse wheel and trackpad two-finger pinch/scroll.
  *
  * Wheel events can fire far faster than 60fps on trackpads.
@@ -114,9 +114,12 @@ async function renderHiResViewport() {
  * Handle wheel event on a canvas
  */
 function onWheel(e) {
-    // Gate: only zoom if checkbox is checked
-    const checkbox = document.getElementById('scrollBehavior');
-    if (!checkbox || !checkbox.checked) return;
+    // Gate: check per-canvas scroll dropdown (nav bar vs main window)
+    const canvas = e.currentTarget;
+    const scrollSelect = canvas.id === 'waveform'
+        ? document.getElementById('navBarScroll')
+        : document.getElementById('mainWindowScroll');
+    if (!scrollSelect || scrollSelect.value !== 'zoom') return;
 
     // Must have data loaded
     if (!State.dataStartTime || !State.dataEndTime) return;
@@ -124,7 +127,6 @@ function onWheel(e) {
     e.preventDefault();
     notifyPageTurnUserDragged(); // User manually zoomed — break page-turn catch
 
-    const canvas = e.currentTarget;
     const { startMs, endMs } = getViewport();
     const spanMs = endMs - startMs;
     if (spanMs <= 0) return;

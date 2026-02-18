@@ -73,9 +73,27 @@ Removed all four `!isStudyMode()` guards that were suppressing memory monitoring
 
 ---
 
-## Files Changed
+## Per-Panel Scroll-to-Zoom
 
-- `emic_study.html` — Viewing mode dropdown moved into nav bar gear popover, old standalone dropdown removed, option order: Region Creation → Page Turn → Scroll → Static
-- `js/main.js` — `startMemoryMonitoring()` moved to after cache load (+ catch block fallback)
+Replaced the single "Scroll to zoom" checkbox in the bottom navigation bar with per-panel "Scroll:" dropdowns in each gear popover. Each panel can independently enable or disable scroll-zoom.
+
+### Two new dropdowns
+
+- **Navigation Bar gear** → `#navBarScroll`: Controls scroll-zoom on the waveform/minimap canvas
+- **Main Window gear** → `#mainWindowScroll`: Controls scroll-zoom on the spectrogram canvas
+
+Both default to "Zoom" with a "No action" alternative. Persisted to localStorage via `emic_navbar_scroll` and `emic_main_scroll`.
+
+### Per-canvas gating in scroll-zoom.js
+
+`onWheel()` now checks `e.currentTarget.id` to determine which canvas received the wheel event, then reads the corresponding dropdown. If `canvas.id === 'waveform'` it checks `#navBarScroll`; otherwise it checks `#mainWindowScroll`. This means you can have zoom enabled on the spectrogram but disabled on the minimap (or vice versa).
+
+The old single `#scrollBehavior` checkbox and its `emic_scroll_behavior` localStorage key are removed.
+
+### Files Changed (Session 10 — Per-Panel Scroll + Earlier Polish)
+
+- `emic_study.html` — Viewing mode dropdown moved into nav bar gear popover, old standalone dropdown removed, option order: Region Creation → Page Turn → Scroll → Static; "Scroll:" dropdown added to both gear popovers; old "Scroll to zoom" checkbox removed from nav bar
+- `js/main.js` — `startMemoryMonitoring()` moved to after cache load; `navControls` updated: replaced `scrollBehavior` checkbox with `navBarScroll` + `mainWindowScroll` select entries
+- `js/scroll-zoom.js` — Per-canvas scroll gating via `#navBarScroll`/`#mainWindowScroll` dropdowns instead of single checkbox; removed duplicate `const canvas` declaration
 - `js/spectrogram-three-renderer.js` — Removed `isStudyMode()` guards from memory monitoring, 30s→60s interval schedule
 - `styles.css` — `.gear-popover` min-width 220px, `.gear-select` flex: 1, `:focus`/`:focus-visible` suppression rules
