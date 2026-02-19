@@ -47,6 +47,7 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
         this.fadeInRemaining = 0;
         this.fadeOutRemaining = 0;
         this.pendingSeekPosition = null;
+        this.pendingPause = false;
 
         // Precompute grain window (Hann)
         this.grainWindow = new Float32Array(this.grainSize);
@@ -68,7 +69,8 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
 
             switch (type) {
                 case 'load-audio':
-                    this.sourceBuffer = new Float32Array(data.samples);
+                    // Accept transferred Float32Array directly, or convert from plain array
+                    this.sourceBuffer = (data.samples instanceof Float32Array) ? data.samples : new Float32Array(data.samples);
                     this.sourcePosition = 0;
                     this.resetBuffers();
                     this.port.postMessage({ type: 'loaded', duration: data.samples.length / sampleRate });
@@ -80,7 +82,12 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
                     break;
 
                 case 'pause':
-                    this.isPlaying = false;
+                    if (this.isPlaying) {
+                        // Soft pause: fade out then stop (reuse existing fade infrastructure)
+                        this.fadeOutRemaining = this.fadeOutLength;
+                        this.pendingSeekPosition = null; // Not a seek — just a stop
+                        this.pendingPause = true;
+                    }
                     break;
 
                 case 'seek':
@@ -208,16 +215,27 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
                 sample *= fadeProgress * fadeProgress;
                 this.fadeOutRemaining--;
 
-                if (this.fadeOutRemaining === 0 && this.pendingSeekPosition !== null) {
-                    this.sourcePosition = this.pendingSeekPosition;
-                    this.pendingSeekPosition = null;
-                    this.resetBuffers();
-                    this.fadeInRemaining = this.fadeInLength;
-                    // Fill rest with silence and break - next frame will have fresh grains
-                    for (let j = i; j < channel.length; j++) {
-                        channel[j] = 0;
+                if (this.fadeOutRemaining === 0) {
+                    if (this.pendingPause) {
+                        // Soft pause complete — stop playback
+                        this.isPlaying = false;
+                        this.pendingPause = false;
+                        for (let j = i; j < channel.length; j++) {
+                            channel[j] = 0;
+                        }
+                        return true;
                     }
-                    return true;
+                    if (this.pendingSeekPosition !== null) {
+                        this.sourcePosition = this.pendingSeekPosition;
+                        this.pendingSeekPosition = null;
+                        this.resetBuffers();
+                        this.fadeInRemaining = this.fadeInLength;
+                        // Fill rest with silence and break - next frame will have fresh grains
+                        for (let j = i; j < channel.length; j++) {
+                            channel[j] = 0;
+                        }
+                        return true;
+                    }
                 }
             }
             // Apply fade-in

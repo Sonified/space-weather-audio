@@ -71,6 +71,7 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
         this.fadeInRemaining = 0;
         this.fadeOutRemaining = 0;
         this.pendingSeekPosition = null;
+        this.pendingPause = false;
 
         // Output buffer for AudioWorklet process() callback
         this.outputRingBuffer = new Float32Array(65536);
@@ -306,7 +307,8 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
             switch (type) {
                 case 'load-audio':
                     console.log(`📨 Paul: Loading audio: ${data.samples.length} samples`);
-                    this.sourceBuffer = new Float32Array(data.samples);
+                    // Accept transferred Float32Array directly, or convert from plain array
+                    this.sourceBuffer = (data.samples instanceof Float32Array) ? data.samples : new Float32Array(data.samples);
                     this.sourcePosition = 0;
                     this.resetBuffers();
                     this.port.postMessage({ type: 'loaded', duration: data.samples.length / sampleRate });
@@ -320,7 +322,11 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
 
                 case 'pause':
                     console.log('⏸️ Paul: PAUSE');
-                    this.isPlaying = false;
+                    if (this.isPlaying) {
+                        this.fadeOutRemaining = this.fadeOutLength;
+                        this.pendingSeekPosition = null;
+                        this.pendingPause = true;
+                    }
                     break;
 
                 case 'seek':
@@ -471,18 +477,28 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
                 sample *= fadeProgress * fadeProgress; // Quadratic fade
                 this.fadeOutRemaining--;
 
-                // When fade-out completes, apply the pending seek
-                if (this.fadeOutRemaining === 0 && this.pendingSeekPosition !== null) {
-                    this.sourcePosition = this.pendingSeekPosition;
-                    this.pendingSeekPosition = null;
-                    this.resetBuffers();
-                    this.fadeInRemaining = this.fadeInLength;
-                    console.log(`⏩ Paul: Fade-out complete, seeking to: ${this.sourcePosition}`);
-                    // Fill rest with silence and return - next frame will have fresh audio
-                    for (let j = i; j < channel.length; j++) {
-                        channel[j] = 0;
+                if (this.fadeOutRemaining === 0) {
+                    if (this.pendingPause) {
+                        this.isPlaying = false;
+                        this.pendingPause = false;
+                        for (let j = i; j < channel.length; j++) {
+                            channel[j] = 0;
+                        }
+                        return true;
                     }
-                    return true;
+                    // When fade-out completes, apply the pending seek
+                    if (this.pendingSeekPosition !== null) {
+                        this.sourcePosition = this.pendingSeekPosition;
+                        this.pendingSeekPosition = null;
+                        this.resetBuffers();
+                        this.fadeInRemaining = this.fadeInLength;
+                        console.log(`⏩ Paul: Fade-out complete, seeking to: ${this.sourcePosition}`);
+                        // Fill rest with silence and return - next frame will have fresh audio
+                        for (let j = i; j < channel.length; j++) {
+                            channel[j] = 0;
+                        }
+                        return true;
+                    }
                 }
             }
             // Apply fade-in

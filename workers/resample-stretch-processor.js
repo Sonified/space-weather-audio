@@ -27,6 +27,7 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
         this.fadeInRemaining = 0;
         this.fadeOutRemaining = 0;
         this.pendingSeekPosition = null;
+        this.pendingPause = false;
 
         this.setupMessageHandler();
     }
@@ -38,7 +39,8 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
 
             switch (type) {
                 case 'load-audio':
-                    this.sourceBuffer = new Float32Array(data.samples);
+                    // Accept transferred Float32Array directly, or convert from plain array
+                    this.sourceBuffer = (data.samples instanceof Float32Array) ? data.samples : new Float32Array(data.samples);
                     this.sourcePosition = 0;
                     this.port.postMessage({ type: 'loaded', duration: data.samples.length / sampleRate });
                     break;
@@ -49,7 +51,11 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
                     break;
 
                 case 'pause':
-                    this.isPlaying = false;
+                    if (this.isPlaying) {
+                        this.fadeOutRemaining = this.fadeOutLength;
+                        this.pendingSeekPosition = null;
+                        this.pendingPause = true;
+                    }
                     break;
 
                 case 'seek':
@@ -131,13 +137,23 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
                 this.fadeOutRemaining--;
 
                 // When fade-out completes, apply pending seek
-                if (this.fadeOutRemaining === 0 && this.pendingSeekPosition !== null) {
-                    this.sourcePosition = this.pendingSeekPosition;
-                    this.pendingSeekPosition = null;
-                    this.fadeInRemaining = this.fadeInLength;
-                    // Don't advance position this frame
-                    channel[i] = 0;
-                    continue;
+                if (this.fadeOutRemaining === 0) {
+                    if (this.pendingPause) {
+                        this.isPlaying = false;
+                        this.pendingPause = false;
+                        for (let j = i; j < channel.length; j++) {
+                            channel[j] = 0;
+                        }
+                        return true;
+                    }
+                    if (this.pendingSeekPosition !== null) {
+                        this.sourcePosition = this.pendingSeekPosition;
+                        this.pendingSeekPosition = null;
+                        this.fadeInRemaining = this.fadeInLength;
+                        // Don't advance position this frame
+                        channel[i] = 0;
+                        continue;
+                    }
                 }
             }
             // Apply fade-in

@@ -391,74 +391,59 @@ export function changePlaybackSpeed() {
 
 const STRETCH_CROSSFADE_DURATION = 0.15; // 150ms crossfade
 
+const PROCESSOR_NAMES = {
+    resample: 'resample-stretch-processor',
+    paul: 'paul-stretch-processor',
+    granular: 'granular-stretch-processor'
+};
+
 /**
- * Create a stretch AudioWorkletNode for the given algorithm.
- * Connects it to stretchGainNode (which is already wired to masterGain).
+ * Create a single stretch AudioWorkletNode for the given algorithm.
+ * Connects it to stretchGainNode. Does NOT load audio — that's done by primeStretchProcessors.
  */
 function createStretchNode(algorithm) {
-    // Disconnect old stretch node if exists
-    if (State.stretchNode) {
-        State.stretchNode.port.postMessage({ type: 'pause' });
-        State.stretchNode.disconnect();
-    }
-
-    const processorNames = {
-        resample: 'resample-stretch-processor',
-        paul: 'paul-stretch-processor',
-        granular: 'granular-stretch-processor'
-    };
-    const processorName = processorNames[algorithm] || 'paul-stretch-processor';
-    const stretchFactor = 1 / getBaseSpeed();
+    const processorName = PROCESSOR_NAMES[algorithm] || 'paul-stretch-processor';
     const windowSize = 4096;
 
     let options;
     if (algorithm === 'resample') {
-        options = {
-            processorOptions: { stretchFactor }
-        };
+        options = { processorOptions: { stretchFactor: 1.0 } };
     } else if (algorithm === 'paul') {
-        options = {
-            processorOptions: {
-                windowSize,
-                stretchFactor
-            }
-        };
+        options = { processorOptions: { windowSize, stretchFactor: 1.0 } };
     } else {
-        options = {
-            processorOptions: {
-                stretchFactor,
-                grainSize: windowSize,
-                overlap: 0.75,
-                scatter: 0.1
-            }
-        };
+        options = { processorOptions: { stretchFactor: 1.0, grainSize: windowSize, overlap: 0.75, scatter: 0.1 } };
     }
 
     const node = new AudioWorkletNode(State.audioContext, processorName, options);
     node.connect(State.stretchGainNode);
-    State.setStretchNode(node);
+    node._ready = false; // Tracks whether audio has been loaded
+    node._algorithm = algorithm;
 
-    // Listen for messages from stretch processor
+    // Listen for messages
     node.port.onmessage = (event) => {
         const { type } = event.data;
         if (type === 'loaded') {
-            console.log('🎛️ Stretch processor: audio loaded');
-            // If we have a pending seek + play, do it now
+            console.log(`🎛️ Stretch [${algorithm}]: audio loaded (primed)`);
+            node._ready = true;
+            // If there's a pending resume (engage was called before prime finished), handle it
             if (node._pendingResume) {
-                const { position, shouldPlay } = node._pendingResume;
-                // Convert real-world seconds to audio-buffer seconds for the processor
+                const { position, shouldPlay, doCrossfade } = node._pendingResume;
                 const audioPos = realWorldToAudioSeconds(position);
                 node.port.postMessage({ type: 'seek', data: { position: audioPos } });
-                State.setStretchStartPosition(position); // Keep real-world seconds in state
+                State.setStretchStartPosition(position);
                 if (shouldPlay) {
                     node.port.postMessage({ type: 'play' });
                     State.setStretchStartTime(State.audioContext.currentTime);
                 }
+                if (doCrossfade) {
+                    performCrossfade('toStretch');
+                }
                 node._pendingResume = null;
             }
         } else if (type === 'ended') {
-            console.log('🎛️ Stretch processor: playback ended');
-            // Reset to beginning
+            // Only handle 'ended' if this is the currently active stretch node
+            if (State.stretchNode !== node) return;
+            console.log(`🎛️ Stretch [${algorithm}]: playback ended`);
             node.port.postMessage({ type: 'seek', data: { position: 0 } });
             State.setStretchStartPosition(0);
 
@@ -478,6 +463,86 @@ function createStretchNode(algorithm) {
     };
 
     return node;
+}
+
+/**
+ * Pre-prime all stretch processors: create nodes + load audio so they're ready for instant switching.
+ * Called when completeSamplesArray is set (data loaded).
+ */
+export function primeStretchProcessors(samples) {
+    if (!State.audioContext || !State.stretchGainNode) {
+        console.log('🎛️ Cannot prime stretch processors: audio context not ready');
+        return;
+    }
+
+    console.log(`🎛️ Priming stretch processors with ${samples.length} samples...`);
+
+    // Clean up old primed nodes — release audio buffers for GC
+    const oldNodes = State.stretchNodes;
+    for (const algo of Object.keys(oldNodes)) {
+        if (oldNodes[algo]) {
+            oldNodes[algo].port.postMessage({ type: 'pause' });
+            oldNodes[algo].port.postMessage({ type: 'load-audio', data: { samples: new Float32Array(0) } });
+            oldNodes[algo].disconnect();
+        }
+    }
+
+    const nodes = {};
+
+    for (const algo of ['resample', 'paul', 'granular']) {
+        const node = createStretchNode(algo);
+        // Each processor gets its own Float32Array copy via transferable buffer
+        // This avoids: (1) Array.from() bottleneck, (2) structured clone overhead
+        // The buffer ownership transfers to the worklet thread — zero main-thread GC pressure
+        const copy = new Float32Array(samples);
+        node.port.postMessage(
+            { type: 'load-audio', data: { samples: copy } },
+            [copy.buffer]  // Transfer ownership — copy is neutered after this
+        );
+        nodes[algo] = node;
+    }
+
+    State.setStretchNodes(nodes);
+
+    // If stretch is currently active, update the active node reference
+    if (State.stretchActive && State.stretchAlgorithm !== 'resample') {
+        const activeAlgo = State.stretchAlgorithm;
+        if (nodes[activeAlgo]) {
+            State.setStretchNode(nodes[activeAlgo]);
+        }
+    }
+}
+
+/**
+ * Perform the gain crossfade between source and stretch paths.
+ * direction: 'toStretch' or 'toSource'
+ */
+function performCrossfade(direction) {
+    const now = State.audioContext.currentTime;
+    if (direction === 'toStretch') {
+        State.sourceGainNode.gain.setValueAtTime(State.sourceGainNode.gain.value, now);
+        State.sourceGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
+        State.stretchGainNode.gain.setValueAtTime(State.stretchGainNode.gain.value, now);
+        State.stretchGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
+        // Pause source after crossfade
+        setTimeout(() => {
+            if (State.stretchActive) {
+                State.workletNode?.port.postMessage({ type: 'pause' });
+            }
+        }, STRETCH_CROSSFADE_DURATION * 1000 + 50);
+    } else {
+        State.stretchGainNode.gain.setValueAtTime(State.stretchGainNode.gain.value, now);
+        State.stretchGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
+        State.sourceGainNode.gain.setValueAtTime(State.sourceGainNode.gain.value, now);
+        State.sourceGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
+        // Pause stretch after crossfade
+        const stretchNode = State.stretchNode;
+        setTimeout(() => {
+            if (stretchNode && !State.stretchActive) {
+                stretchNode.port.postMessage({ type: 'pause' });
+            }
+        }, STRETCH_CROSSFADE_DURATION * 1000 + 50);
+    }
 }
 
 /**
@@ -534,97 +599,69 @@ export function getCurrentPosition() {
 
 /**
  * Engage stretch processor (speed dropped below 1.0).
- * Crossfades from source to stretch.
+ * Uses pre-primed node — just seek, play, and crossfade.
  */
 function engageStretch(stretchFactor) {
     if (!State.audioContext || !State.completeSamplesArray) return;
 
     const wasPlaying = State.playbackState === PlaybackState.PLAYING;
     const currentPosition = State.currentAudioPosition;
-
-    console.log(`🎛️ Engaging stretch: factor=${stretchFactor.toFixed(1)}x, position=${currentPosition.toFixed(2)}s, playing=${wasPlaying}`);
-
-    // Create stretch node for selected algorithm
     const algorithm = State.stretchAlgorithm;
-    const node = createStretchNode(algorithm);
 
-    // Send audio data to stretch processor
-    node.port.postMessage({
-        type: 'load-audio',
-        data: { samples: Array.from(State.completeSamplesArray) }
-    });
+    console.log(`🎛️ Engaging stretch [${algorithm}]: factor=${stretchFactor.toFixed(1)}x, position=${currentPosition.toFixed(2)}s, playing=${wasPlaying}`);
 
-    // Queue seek + play after 'loaded' message arrives
-    node._pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
+    // Get pre-primed node
+    const node = State.stretchNodes[algorithm];
+    if (!node) {
+        console.error(`🎛️ No primed node for algorithm: ${algorithm}`);
+        return;
+    }
 
-    // Crossfade: source out, stretch in
-    const now = State.audioContext.currentTime;
-
-    State.sourceGainNode.gain.setValueAtTime(1, now);
-    State.sourceGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
-
-    State.stretchGainNode.gain.setValueAtTime(0, now);
-    State.stretchGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
-
-    // Pause source after crossfade completes
-    setTimeout(() => {
-        if (State.stretchActive) {
-            State.workletNode?.port.postMessage({ type: 'pause' });
-        }
-    }, STRETCH_CROSSFADE_DURATION * 1000 + 50);
-
+    State.setStretchNode(node);
     State.setStretchActive(true);
     State.setStretchFactor(stretchFactor);
     State.setStretchStartPosition(currentPosition);
     State.setStretchStartTime(State.audioContext.currentTime);
+
+    // Set stretch factor on the processor
+    node.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
+
+    if (node._ready) {
+        // Node is primed — seek, play, crossfade immediately
+        const audioPos = realWorldToAudioSeconds(currentPosition);
+        node.port.postMessage({ type: 'seek', data: { position: audioPos } });
+        if (wasPlaying) {
+            node.port.postMessage({ type: 'play' });
+            State.setStretchStartTime(State.audioContext.currentTime);
+        }
+        performCrossfade('toStretch');
+    } else {
+        // Node still loading — queue seek+play+crossfade for when loaded
+        node._pendingResume = { position: currentPosition, shouldPlay: wasPlaying, doCrossfade: true };
+    }
 }
 
 /**
  * Disengage stretch processor (speed returned to >= 1.0).
- * Crossfades from stretch back to source.
+ * Crossfades from stretch back to source. Stretch node stays primed for reuse.
  */
 function disengageStretch(finalSpeed) {
     if (!State.audioContext) return;
 
-    // Calculate where the stretch processor currently is
     const currentPosition = getCurrentPosition();
 
     console.log(`🎛️ Disengaging stretch: position=${currentPosition.toFixed(2)}s, speed=${finalSpeed.toFixed(2)}`);
 
-    // Seek source to the stretch processor's current position and resume
-    const samplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second
-                               || State.currentMetadata?.original_sample_rate
-                               || 1200;
-    // Set source speed first
+    // Set source speed and seek to current stretch position
     State.workletNode?.port.postMessage({ type: 'set-speed', speed: finalSpeed });
-
-    // Seek source processor
-    State.workletNode?.port.postMessage({
-        type: 'seek',
-        data: { position: currentPosition }
-    });
+    State.workletNode?.port.postMessage({ type: 'seek', position: currentPosition });
 
     // Resume source if we were playing
     if (State.playbackState === PlaybackState.PLAYING) {
         State.workletNode?.port.postMessage({ type: 'play' });
     }
 
-    // Crossfade: stretch out, source in
-    const now = State.audioContext.currentTime;
-
-    State.stretchGainNode.gain.setValueAtTime(1, now);
-    State.stretchGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
-
-    State.sourceGainNode.gain.setValueAtTime(0, now);
-    State.sourceGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
-
-    // Pause stretch processor after crossfade completes
-    const stretchNode = State.stretchNode;
-    setTimeout(() => {
-        if (stretchNode && !State.stretchActive) {
-            stretchNode.port.postMessage({ type: 'pause' });
-        }
-    }, STRETCH_CROSSFADE_DURATION * 1000 + 50);
+    performCrossfade('toSource');
 
     State.setStretchActive(false);
     State.setCurrentAudioPosition(currentPosition);
@@ -632,7 +669,7 @@ function disengageStretch(finalSpeed) {
 
 /**
  * Switch stretch algorithm.
- * Handles: switching while stretch active, engaging/disengaging based on algorithm + speed.
+ * Uses pre-primed nodes — instant swap, no loading delay.
  */
 export function switchStretchAlgorithm(algorithm) {
     State.setStretchAlgorithm(algorithm);
@@ -652,38 +689,48 @@ export function switchStretchAlgorithm(algorithm) {
         return;
     }
 
-    // If stretch is currently active, swap to new algorithm with crossfade
-    if (State.stretchActive && State.audioContext && State.completeSamplesArray) {
+    // If stretch is currently active, hot-swap to the pre-primed node for the new algorithm
+    if (State.stretchActive && State.audioContext) {
         const currentPosition = getCurrentPosition();
         const wasPlaying = State.playbackState === PlaybackState.PLAYING;
         const stretchFactor = 1 / baseSpeed;
+        const newNode = State.stretchNodes[algorithm];
+
+        if (!newNode) {
+            console.error(`🎛️ No primed node for algorithm: ${algorithm}`);
+            return;
+        }
 
         console.log(`🎛️ Switching stretch algorithm to ${algorithm}, position=${currentPosition.toFixed(2)}s`);
 
-        // Store old node for crossfade
         const oldNode = State.stretchNode;
+        const now = State.audioContext.currentTime;
+        const SWITCH_FADE = 0.025; // 25ms micro-crossfade to avoid clicks
 
-        // Create new node (connects to stretchGainNode)
-        const newNode = createStretchNode(algorithm);
+        // Fade stretchGain to 0, swap nodes in the silence gap, fade back up
+        State.stretchGainNode.gain.setValueAtTime(State.stretchGainNode.gain.value, now);
+        State.stretchGainNode.gain.linearRampToValueAtTime(0, now + SWITCH_FADE);
+
+        // Prepare new node during fade-out (messages are queued, won't produce audio until 'play')
         newNode.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
+        const audioPos = realWorldToAudioSeconds(currentPosition);
+        newNode.port.postMessage({ type: 'seek', data: { position: audioPos } });
 
-        // Send audio to new node
-        newNode.port.postMessage({
-            type: 'load-audio',
-            data: { samples: Array.from(State.completeSamplesArray) }
-        });
-
-        // Queue resume after loaded
-        newNode._pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
-
-        // Pause and disconnect old node
-        if (oldNode) {
-            setTimeout(() => {
+        // After fade-out completes, swap nodes and fade back in
+        setTimeout(() => {
+            if (oldNode) {
                 oldNode.port.postMessage({ type: 'pause' });
-                oldNode.disconnect();
-            }, 100);
-        }
+            }
+            State.setStretchNode(newNode);
+            if (wasPlaying) {
+                newNode.port.postMessage({ type: 'play' });
+            }
+            const swapTime = State.audioContext.currentTime;
+            State.stretchGainNode.gain.setValueAtTime(0, swapTime);
+            State.stretchGainNode.gain.linearRampToValueAtTime(1, swapTime + SWITCH_FADE);
+        }, SWITCH_FADE * 1000 + 5); // +5ms safety margin
 
+        State.setStretchFactor(stretchFactor);
         State.setStretchStartPosition(currentPosition);
         State.setStretchStartTime(State.audioContext.currentTime);
     }

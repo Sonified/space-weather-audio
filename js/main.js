@@ -6,7 +6,7 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm } from './audio-player.js';
+import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-three-renderer.js';
@@ -421,7 +421,10 @@ export async function initAudioWorklet() {
     stretchGain.connect(gain);
     gain.connect(analyser);
     gain.connect(State.audioContext.destination);
-    
+
+    // Register callback to prime stretch processors when audio data is ready
+    State.setOnCompleteSamplesReady((samples) => primeStretchProcessors(samples));
+
     updatePlaybackSpeed();
     
     // Initialize oscilloscope visualization

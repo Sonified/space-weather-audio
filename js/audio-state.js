@@ -22,6 +22,7 @@ export let stretchNode = null;         // AudioWorkletNode for active stretch pr
 export let stretchGainNode = null;     // GainNode for stretch path crossfade
 export let sourceGainNode = null;      // GainNode for source path crossfade
 export let stretchAlgorithm = 'resample';  // 'resample' | 'paul' | 'granular' | 'wavelet'
+export let stretchNodes = {};          // Pre-primed nodes: { paul: node, granular: node, resample: node }
 export let stretchActive = false;      // Whether stretch path is currently the active output
 export let stretchFactor = 1.0;        // Current stretch factor (1/baseSpeed)
 export let stretchStartTime = 0;       // audioContext.currentTime when stretch playback started
@@ -149,6 +150,7 @@ export function setWorkletNode(value) { workletNode = value; }
 export function setAnalyserNode(value) { analyserNode = value; }
 export function setGainNode(value) { gainNode = value; }
 export function setStretchNode(value) { stretchNode = value; }
+export function setStretchNodes(value) { stretchNodes = value; }
 export function setStretchGainNode(value) { stretchGainNode = value; }
 export function setSourceGainNode(value) { sourceGainNode = value; }
 export function setStretchAlgorithm(value) { stretchAlgorithm = value; }
@@ -172,13 +174,19 @@ export function setPausedPosition(value) { pausedPosition = value; }
 export function setPlaybackDurationSeconds(value) { playbackDurationSeconds = value; }
 export function setAvailableStations(value) { availableStations = value; }
 export function setAllReceivedData(value) { allReceivedData = value; }
-export function setCompleteSamplesArray(value) { 
+let _onCompleteSamplesReady = null;
+export function setOnCompleteSamplesReady(fn) { _onCompleteSamplesReady = fn; }
+export function setCompleteSamplesArray(value) {
     // 🔥 FIX: Explicitly null old value before setting new one to help GC
     // This ensures the old Float32Array reference is broken before assignment
     if (completeSamplesArray !== value) {
         completeSamplesArray = null;
     }
-    completeSamplesArray = value; 
+    completeSamplesArray = value;
+    // Notify stretch processors to prime with new audio data
+    if (value && _onCompleteSamplesReady) {
+        _onCompleteSamplesReady(value);
+    }
 }
 export function setOriginalAudioBlob(value) { originalAudioBlob = value; }
 export function setCurrentMetadata(value) { currentMetadata = value; }

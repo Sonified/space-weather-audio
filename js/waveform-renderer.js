@@ -5,7 +5,7 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState, isTouchDevice } from './audio-state.js';
-import { seekToPosition, updateWorkletSelection } from './audio-player.js';
+import { seekToPosition, updateWorkletSelection, getCurrentPosition } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
 import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay, renderRegionsAfterCrossfade, getStandaloneFeatures } from './region-tracker.js';
@@ -2443,6 +2443,12 @@ export function updatePlaybackIndicator() {
     // Use State.completeSamplesArray.length instead if needed, or remove diagnostic code entirely
     
     if (totalAudioDuration > 0) {
+        // When stretch is active, update position from wall-clock calculation
+        // (source worklet is paused so it won't send position updates)
+        if (State.stretchActive) {
+            State.setCurrentAudioPosition(getCurrentPosition());
+        }
+
         // Page Turn mode: advance viewport when playhead reaches window edge
         checkPageTurnAdvance();
 
@@ -2559,7 +2565,17 @@ export function changeWaveformFilter() {
         }
         window.displayWaveformData = normalized;
         State.setCompleteSamplesArray(normalized);
-        
+
+        // Also swap the AudioProcessor worklet's buffer so resampled playback uses detrended audio
+        if (State.workletNode) {
+            const copy = new Float32Array(normalized);
+            State.workletNode.port.postMessage(
+                { type: 'swap-buffer', samples: copy },
+                [copy.buffer]
+            );
+            console.log(`  🔄 Swapped AudioProcessor buffer with detrended audio`);
+        }
+
         console.log(`  🎨 Redrawing waveform...`);
         drawWaveform();
     } else if (State.waveformWorker) {
