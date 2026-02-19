@@ -26,6 +26,9 @@ import cdflib
 import numpy as np
 import requests
 import zstandard as zstd
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env from project root
 
 # =============================================================================
 # Configuration
@@ -34,10 +37,12 @@ import zstandard as zstd
 CDAWEB_BASE = "https://cdaweb.gsfc.nasa.gov/WS/cdasr/1"
 DATAVIEW = "sp_phys"
 
-# R2 credentials
-R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "66f906f29f28b08ae9c80d4f36e25c7a")
-R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "c25a7b55517f857fd655c1abce5e5fad")
-R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "be3380d55e463eb1c17417feddd3d70cea414ad5a600493f0f36ba768da533fd")
+# R2 credentials — set via .env file or environment variables (never hardcode)
+R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
+if not R2_ACCESS_KEY_ID or not R2_SECRET_ACCESS_KEY:
+    raise EnvironmentError("R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY must be set. See .env file.")
 R2_BUCKET = "emic-data"
 
 # Dataset → satellite name mapping
