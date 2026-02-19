@@ -21,8 +21,9 @@
             --panel-label-size: 15px;
         }
         
-        /* EMIC: taller spectrogram (540px vs 450px default) */
-        #spectrogram { height: 540px; }
+        /* EMIC: taller spectrogram, shorter minimap (14px transferred) */
+        #spectrogram { height: 554px; }
+        #waveform { height: 121px; }
 
         /* EMIC Study specific styles */
         .emic-header {
@@ -269,6 +270,21 @@
             cursor: pointer;
             accent-color: #80d0ff;
         }
+        .drawer-input {
+            width: 70px;
+            padding: 4px 8px;
+            background: #2a2a2a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #ddd;
+            font-size: 13px;
+            font-family: monospace;
+            text-align: right;
+        }
+        .drawer-input:focus {
+            outline: none;
+            border-color: #80d0ff;
+        }
 
     </style>
 </head>
@@ -420,10 +436,10 @@
         
         <!-- Visualization Panel -->
         <div class="panel panel-visualization" style="position: relative;">
-            <canvas id="waveform" width="1200" height="135"></canvas>
-            <canvas id="waveform-axis" width="60" height="135"></canvas>
+            <canvas id="waveform" width="1200" height="121"></canvas>
+            <canvas id="waveform-axis" width="60" height="121"></canvas>
             <canvas id="waveform-x-axis" width="1200" height="40"></canvas>
-            <canvas id="waveform-buttons" width="1200" height="135"></canvas>
+            <canvas id="waveform-buttons" width="1200" height="121"></canvas>
 
             <!-- Navigation Bar gear icon + popover -->
             <div class="panel-gear" id="navBarGear">
@@ -471,8 +487,8 @@
                 </div>
             </div>
 
-            <canvas id="spectrogram" width="1200" height="540"></canvas>
-            <canvas id="spectrogram-axis" width="60" height="540"></canvas>
+            <canvas id="spectrogram" width="1200" height="554"></canvas>
+            <canvas id="spectrogram-axis" width="60" height="554"></canvas>
 
             <!-- Main Window gear icon + popover -->
             <div class="panel-gear" id="mainWindowGear">
@@ -602,6 +618,17 @@
                 <div class="drawer-row">
                     <label for="skipLoginWelcome" class="drawer-label">Skip Login & Welcome</label>
                     <input type="checkbox" id="skipLoginWelcome" class="drawer-checkbox">
+                </div>
+            </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Panel Heights (px)</div>
+                <div class="drawer-row">
+                    <label for="heightMinimap" class="drawer-label">Minimap</label>
+                    <input type="number" id="heightMinimap" class="drawer-input" min="50" max="400" step="1">
+                </div>
+                <div class="drawer-row">
+                    <label for="heightSpectrogram" class="drawer-label">Spectrogram</label>
+                    <input type="number" id="heightSpectrogram" class="drawer-input" min="200" max="1200" step="1">
                 </div>
             </div>
             <!-- Additional settings sections will be added here -->

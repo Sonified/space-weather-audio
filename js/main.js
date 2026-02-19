@@ -1055,6 +1055,41 @@ async function initializeEmicStudyMode() {
     });
     if (drawerCloseBtn) drawerCloseBtn.addEventListener('click', closeSettingsDrawer);
 
+    // --- Panel height inputs in settings drawer ---
+    const heightMinimapInput = document.getElementById('heightMinimap');
+    const heightSpectrogramInput = document.getElementById('heightSpectrogram');
+
+    // Pre-load current heights
+    const wfEl_ = document.getElementById('waveform');
+    const specEl_ = document.getElementById('spectrogram');
+    if (heightMinimapInput && wfEl_) heightMinimapInput.value = wfEl_.offsetHeight;
+    if (heightSpectrogramInput && specEl_) heightSpectrogramInput.value = specEl_.offsetHeight;
+
+    function applyPanelHeight(input, canvasId, axisId, buttonsId) {
+        const h = parseInt(input.value);
+        if (isNaN(h) || h < parseInt(input.min) || h > parseInt(input.max)) return;
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        canvas.style.height = h + 'px';
+        canvas.height = h;
+        // Update companion canvases (axis, buttons) buffer height
+        const companions = [axisId, buttonsId].filter(Boolean);
+        for (const id of companions) {
+            const el = document.getElementById(id);
+            if (el) el.height = h;
+        }
+        window.dispatchEvent(new Event('resize'));
+    }
+
+    if (heightMinimapInput) {
+        heightMinimapInput.addEventListener('change', () =>
+            applyPanelHeight(heightMinimapInput, 'waveform', 'waveform-axis', 'waveform-buttons'));
+    }
+    if (heightSpectrogramInput) {
+        heightSpectrogramInput.addEventListener('change', () =>
+            applyPanelHeight(heightSpectrogramInput, 'spectrogram', 'spectrogram-axis', null));
+    }
+
     // Position gear icons over their respective canvases (top-right corner, inside the canvas)
     function positionGearIcons() {
         const wfCanvas = document.getElementById('waveform');
