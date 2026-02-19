@@ -6,7 +6,7 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef } from './audio-player.js';
+import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-three-renderer.js';
@@ -347,7 +347,23 @@ export async function initAudioWorklet() {
         State.workletNode.disconnect();
         State.setWorkletNode(null);
     }
-    
+
+    // Clean up old stretch node if exists
+    if (State.stretchNode) {
+        State.stretchNode.port.onmessage = null;
+        State.stretchNode.disconnect();
+        State.setStretchNode(null);
+        State.setStretchActive(false);
+    }
+    if (State.seismicGainNode) {
+        State.seismicGainNode.disconnect();
+        State.setSeismicGainNode(null);
+    }
+    if (State.stretchGainNode) {
+        State.stretchGainNode.disconnect();
+        State.setStretchGainNode(null);
+    }
+
     // 🔥 FIX: Disconnect old analyser node to prevent memory leak
     if (State.analyserNode) {
         console.log('🧹 Disconnecting old analyser node...');
@@ -356,12 +372,15 @@ export async function initAudioWorklet() {
     }
     
     if (!State.audioContext) {
-        const ctx = new AudioContext({ 
+        const ctx = new AudioContext({
             latencyHint: 'playback'  // 30ms buffer for stable playback (prevents dropouts)
         });
         State.setAudioContext(ctx);
         await ctx.audioWorklet.addModule('workers/audio-worklet.js');
-        
+        // Load stretch processor worklets for sub-1x speed time-stretching
+        await ctx.audioWorklet.addModule('workers/paul-stretch-processor.js');
+        await ctx.audioWorklet.addModule('workers/granular-stretch-processor.js');
+
         if (!isStudyMode()) {
             console.groupCollapsed('🎵 [AUDIO] Audio Context Setup');
             console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: ${ctx.sampleRate} Hz, latency: playback)`);
@@ -374,18 +393,31 @@ export async function initAudioWorklet() {
     
     const worklet = new AudioWorkletNode(State.audioContext, 'seismic-processor');
     State.setWorkletNode(worklet);
-    
+
     const analyser = State.audioContext.createAnalyser();
     analyser.fftSize = 2048;
     State.setAnalyserNode(analyser);
-    
+
+    // Master volume gain (user's volume slider)
     const gain = State.audioContext.createGain();
-    // Set to user's volume setting (worklet now handles fades internally)
     const volumeSlider = document.getElementById('volumeSlider');
     gain.gain.value = volumeSlider ? parseFloat(volumeSlider.value) / 100 : 1.0;
     State.setGainNode(gain);
-    
-    worklet.connect(gain);
+
+    // Dual-path crossfade gains: seismic (normal) vs stretch (sub-1x speed)
+    const seismicGain = State.audioContext.createGain();
+    seismicGain.gain.value = 1; // Seismic active by default
+    State.setSeismicGainNode(seismicGain);
+
+    const stretchGain = State.audioContext.createGain();
+    stretchGain.gain.value = 0; // Stretch silent by default
+    State.setStretchGainNode(stretchGain);
+
+    // Audio graph: worklet → seismicGain → masterGain → analyser + destination
+    //              stretchNode → stretchGain → masterGain (connected when stretch activates)
+    worklet.connect(seismicGain);
+    seismicGain.connect(gain);
+    stretchGain.connect(gain);
     gain.connect(analyser);
     gain.connect(State.audioContext.destination);
     
@@ -2379,6 +2411,13 @@ async function initializeMainApp() {
             speedSlider.classList.remove('speed-slider-glow');
         }
     });
+    // Stretch algorithm selector
+    const stretchAlgoSelect = document.getElementById('stretchAlgorithm');
+    if (stretchAlgoSelect) {
+        stretchAlgoSelect.addEventListener('change', (e) => {
+            switchStretchAlgorithm(e.target.value);
+        });
+    }
     const volumeSlider = document.getElementById('volumeSlider');
     if (volumeSlider) {
         // Remove glow on mousedown/touchstart (when user clicks down, not on release)

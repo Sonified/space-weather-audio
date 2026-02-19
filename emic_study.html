@@ -21,6 +21,9 @@
             --panel-label-size: 15px;
         }
         
+        /* EMIC: taller spectrogram (540px vs 450px default) */
+        #spectrogram { height: 540px; }
+
         /* EMIC Study specific styles */
         .emic-header {
             display: flex;
@@ -468,8 +471,8 @@
                 </div>
             </div>
 
-            <canvas id="spectrogram" width="1200" height="450"></canvas>
-            <canvas id="spectrogram-axis" width="60" height="450"></canvas>
+            <canvas id="spectrogram" width="1200" height="540"></canvas>
+            <canvas id="spectrogram-axis" width="60" height="540"></canvas>
 
             <!-- Main Window gear icon + popover -->
             <div class="panel-gear" id="mainWindowGear">

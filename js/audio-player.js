@@ -102,9 +102,14 @@ export async function startPlayback() {
         console.log(`🔊 [startPlayback] AudioContext already running - state: ${State.audioContext?.state}`);
     }
 
-    // 🏎️ AUTONOMOUS: Just tell worklet to play - it handles fade-in automatically
+    // 🏎️ AUTONOMOUS: Just tell worklet/stretch to play - it handles fade-in automatically
     console.log('🔊 [startPlayback] Sending play message to worklet');
-    State.workletNode?.port.postMessage({ type: 'play' });
+    if (State.stretchActive && State.stretchNode) {
+        State.stretchNode.port.postMessage({ type: 'play' });
+        State.setStretchStartTime(State.audioContext.currentTime);
+    } else {
+        State.workletNode?.port.postMessage({ type: 'play' });
+    }
 
     // Restart playback indicator
     if (State.audioContext && State.totalAudioDuration > 0) {
@@ -148,9 +153,16 @@ export function pausePlayback() {
     // 🔥 FIX: Cancel animation frame loops to prevent memory leaks
     cancelAllRAFLoops();
     
-    // 🏎️ AUTONOMOUS: Just tell worklet to pause - it handles fade-out automatically
-    // UI will update when worklet sends 'fade-complete' message
-    State.workletNode?.port.postMessage({ type: 'pause' });
+    // 🏎️ AUTONOMOUS: Just tell worklet/stretch to pause - it handles fade-out automatically
+    if (State.stretchActive && State.stretchNode) {
+        State.stretchNode.port.postMessage({ type: 'pause' });
+        // Lock in current position for resume using getCurrentPosition()
+        if (State.audioContext) {
+            State.setStretchStartPosition(getCurrentPosition());
+        }
+    } else {
+        State.workletNode?.port.postMessage({ type: 'pause' });
+    }
     
     // Update master button
     const btn = document.getElementById('playPauseBtn');
@@ -295,7 +307,7 @@ export function updateWorkletSelection() {
 export function updatePlaybackSpeed() {
     const slider = document.getElementById('playbackSpeed');
     const value = parseFloat(slider.value);
-    
+
     // Logarithmic mapping: 0-1000 -> 0.1-15, with 667 = 1.0
     let baseSpeed;
     if (value <= 667) {
@@ -305,24 +317,56 @@ export function updatePlaybackSpeed() {
         const normalized = (value - 667) / 333;
         baseSpeed = Math.pow(15, normalized);
     }
-    
+
     // Display shows ONLY the slider value (not multiplied)
     document.getElementById('speedValue').textContent = baseSpeed.toFixed(2) + 'x';
-    
+
     // Apply base sample rate multiplier to actual playback speed
     const multiplier = getBaseSampleRateMultiplier();
     const finalSpeed = baseSpeed * multiplier;
-    
+
     // Store final speed for worklet and loop logic
     State.setCurrentPlaybackRate(finalSpeed);
-    
-    if (State.workletNode) {
-        State.workletNode.port.postMessage({
-            type: 'set-speed',
-            speed: finalSpeed
-        });
+
+    // Show/hide stretch algorithm dropdown based on speed
+    const stretchContainer = document.getElementById('stretchAlgorithmContainer');
+    if (stretchContainer) {
+        stretchContainer.style.display = baseSpeed < 1.0 ? 'flex' : 'none';
     }
-    
+
+    // Stretch switching: sub-1x speed uses stretch processor, >= 1x uses seismic
+    if (baseSpeed < 1.0 && State.completeSamplesArray) {
+        const stretchFactor = 1 / baseSpeed;
+
+        if (!State.stretchActive) {
+            // Engage stretch processor
+            engageStretch(stretchFactor);
+        } else {
+            // Already stretching — lock in position using OLD factor, then update
+            if (State.playbackState === PlaybackState.PLAYING && State.audioContext) {
+                const lockedPosition = getCurrentPosition(); // Uses State.stretchFactor (old value)
+                State.setStretchStartPosition(lockedPosition);
+                State.setStretchStartTime(State.audioContext.currentTime);
+            }
+            // Now update the factor in state and worklet
+            State.setStretchFactor(stretchFactor);
+            if (State.stretchNode) {
+                State.stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
+            }
+        }
+    } else if (baseSpeed >= 1.0 && State.stretchActive) {
+        // Disengage stretch, return to seismic
+        disengageStretch(finalSpeed);
+    } else {
+        // Normal seismic path (speed >= 1.0, no stretch active)
+        if (State.workletNode) {
+            State.workletNode.port.postMessage({
+                type: 'set-speed',
+                speed: finalSpeed
+            });
+        }
+    }
+
     // Update spectrogram axis to reflect new playback speed
     updateAxisForPlaybackSpeed();
 
@@ -331,7 +375,7 @@ export function updatePlaybackSpeed() {
 
     // Update feature box positions for new playback speed (horizontal stretching)
     updateAllFeatureBoxPositions();
-    
+
     // Update canvas feature boxes too!
     redrawAllCanvasFeatureBoxes();
 }
@@ -339,6 +383,257 @@ export function updatePlaybackSpeed() {
 export function changePlaybackSpeed() {
     updatePlaybackSpeed();
     updatePlaybackDuration();
+}
+
+// ===== STRETCH PROCESSOR MANAGEMENT =====
+
+const STRETCH_CROSSFADE_DURATION = 0.15; // 150ms crossfade
+
+/**
+ * Create a stretch AudioWorkletNode for the given algorithm.
+ * Connects it to stretchGainNode (which is already wired to masterGain).
+ */
+function createStretchNode(algorithm) {
+    // Disconnect old stretch node if exists
+    if (State.stretchNode) {
+        State.stretchNode.port.postMessage({ type: 'pause' });
+        State.stretchNode.disconnect();
+    }
+
+    const processorName = algorithm === 'paul' ? 'paul-stretch-processor' : 'granular-stretch-processor';
+    const stretchFactor = 1 / getBaseSpeed();
+    const windowSize = 4096;
+
+    let options;
+    if (algorithm === 'paul') {
+        options = {
+            processorOptions: {
+                windowSize,
+                stretchFactor
+            }
+        };
+    } else {
+        options = {
+            processorOptions: {
+                stretchFactor,
+                grainSize: windowSize,
+                overlap: 0.75,
+                scatter: 0.1
+            }
+        };
+    }
+
+    const node = new AudioWorkletNode(State.audioContext, processorName, options);
+    node.connect(State.stretchGainNode);
+    State.setStretchNode(node);
+
+    // Listen for messages from stretch processor
+    node.port.onmessage = (event) => {
+        const { type } = event.data;
+        if (type === 'loaded') {
+            console.log('🎛️ Stretch processor: audio loaded');
+            // If we have a pending seek + play, do it now
+            if (node._pendingResume) {
+                const { position, shouldPlay } = node._pendingResume;
+                node.port.postMessage({ type: 'seek', data: { position } });
+                State.setStretchStartPosition(position);
+                if (shouldPlay) {
+                    node.port.postMessage({ type: 'play' });
+                    State.setStretchStartTime(State.audioContext.currentTime);
+                }
+                node._pendingResume = null;
+            }
+        } else if (type === 'ended') {
+            console.log('🎛️ Stretch processor: playback ended');
+            // Reset to beginning
+            node.port.postMessage({ type: 'seek', data: { position: 0 } });
+            State.setStretchStartPosition(0);
+
+            if (State.isLooping) {
+                node.port.postMessage({ type: 'play' });
+                State.setStretchStartTime(State.audioContext.currentTime);
+            } else {
+                State.setPlaybackState(PlaybackState.STOPPED);
+                setPlayingState(false);
+                cancelAllRAFLoops();
+                const btn = document.getElementById('playPauseBtn');
+                btn.textContent = '▶️ Play';
+                btn.classList.remove('pause-active');
+                btn.classList.add('play-active');
+            }
+        }
+    };
+
+    return node;
+}
+
+/**
+ * Get current baseSpeed from slider (without multiplier).
+ */
+function getBaseSpeed() {
+    const slider = document.getElementById('playbackSpeed');
+    const value = parseFloat(slider.value);
+    if (value <= 667) {
+        const normalized = value / 667;
+        return 0.1 * Math.pow(10, normalized);
+    } else {
+        const normalized = (value - 667) / 333;
+        return Math.pow(15, normalized);
+    }
+}
+
+/**
+ * Get the current playback position in seconds.
+ * Works for both seismic and stretch paths.
+ */
+export function getCurrentPosition() {
+    if (State.stretchActive && State.audioContext) {
+        const elapsed = State.audioContext.currentTime - State.stretchStartTime;
+        return State.stretchStartPosition + elapsed / State.stretchFactor;
+    }
+    return State.currentAudioPosition;
+}
+
+/**
+ * Engage stretch processor (speed dropped below 1.0).
+ * Crossfades from seismic to stretch.
+ */
+function engageStretch(stretchFactor) {
+    if (!State.audioContext || !State.completeSamplesArray) return;
+
+    const wasPlaying = State.playbackState === PlaybackState.PLAYING;
+    const currentPosition = State.currentAudioPosition;
+
+    console.log(`🎛️ Engaging stretch: factor=${stretchFactor.toFixed(1)}x, position=${currentPosition.toFixed(2)}s, playing=${wasPlaying}`);
+
+    // Create stretch node for selected algorithm
+    const algorithm = State.stretchAlgorithm;
+    const node = createStretchNode(algorithm);
+
+    // Send audio data to stretch processor
+    node.port.postMessage({
+        type: 'load-audio',
+        data: { samples: Array.from(State.completeSamplesArray) }
+    });
+
+    // Queue seek + play after 'loaded' message arrives
+    node._pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
+
+    // Crossfade: seismic out, stretch in
+    const now = State.audioContext.currentTime;
+
+    State.seismicGainNode.gain.setValueAtTime(1, now);
+    State.seismicGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
+
+    State.stretchGainNode.gain.setValueAtTime(0, now);
+    State.stretchGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
+
+    // Pause seismic after crossfade completes
+    setTimeout(() => {
+        if (State.stretchActive) {
+            State.workletNode?.port.postMessage({ type: 'pause' });
+        }
+    }, STRETCH_CROSSFADE_DURATION * 1000 + 50);
+
+    State.setStretchActive(true);
+    State.setStretchFactor(stretchFactor);
+    State.setStretchStartPosition(currentPosition);
+    State.setStretchStartTime(State.audioContext.currentTime);
+}
+
+/**
+ * Disengage stretch processor (speed returned to >= 1.0).
+ * Crossfades from stretch back to seismic.
+ */
+function disengageStretch(finalSpeed) {
+    if (!State.audioContext) return;
+
+    // Calculate where the stretch processor currently is
+    const currentPosition = getCurrentPosition();
+
+    console.log(`🎛️ Disengaging stretch: position=${currentPosition.toFixed(2)}s, speed=${finalSpeed.toFixed(2)}`);
+
+    // Seek seismic to the stretch processor's current position and resume
+    const samplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second
+                               || State.currentMetadata?.original_sample_rate
+                               || 1200;
+    // Set seismic speed first
+    State.workletNode?.port.postMessage({ type: 'set-speed', speed: finalSpeed });
+
+    // Seek seismic processor
+    State.workletNode?.port.postMessage({
+        type: 'seek',
+        data: { position: currentPosition }
+    });
+
+    // Resume seismic if we were playing
+    if (State.playbackState === PlaybackState.PLAYING) {
+        State.workletNode?.port.postMessage({ type: 'play' });
+    }
+
+    // Crossfade: stretch out, seismic in
+    const now = State.audioContext.currentTime;
+
+    State.stretchGainNode.gain.setValueAtTime(1, now);
+    State.stretchGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
+
+    State.seismicGainNode.gain.setValueAtTime(0, now);
+    State.seismicGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
+
+    // Pause stretch processor after crossfade completes
+    const stretchNode = State.stretchNode;
+    setTimeout(() => {
+        if (stretchNode && !State.stretchActive) {
+            stretchNode.port.postMessage({ type: 'pause' });
+        }
+    }, STRETCH_CROSSFADE_DURATION * 1000 + 50);
+
+    State.setStretchActive(false);
+    State.setCurrentAudioPosition(currentPosition);
+}
+
+/**
+ * Switch stretch algorithm while stretch is active.
+ * Called when user changes the algorithm dropdown.
+ */
+export function switchStretchAlgorithm(algorithm) {
+    State.setStretchAlgorithm(algorithm);
+
+    // If stretch is currently active, swap to new algorithm with crossfade
+    if (State.stretchActive && State.audioContext && State.completeSamplesArray) {
+        const currentPosition = getCurrentPosition();
+        const wasPlaying = State.playbackState === PlaybackState.PLAYING;
+        const stretchFactor = 1 / getBaseSpeed();
+
+        console.log(`🎛️ Switching stretch algorithm to ${algorithm}, position=${currentPosition.toFixed(2)}s`);
+
+        // Store old node for crossfade
+        const oldNode = State.stretchNode;
+
+        // Create new node (connects to stretchGainNode)
+        const newNode = createStretchNode(algorithm);
+        newNode.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
+
+        // Send audio to new node
+        newNode.port.postMessage({
+            type: 'load-audio',
+            data: { samples: Array.from(State.completeSamplesArray) }
+        });
+
+        // Queue resume after loaded
+        newNode._pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
+
+        // Pause and disconnect old node
+        if (oldNode) {
+            setTimeout(() => {
+                oldNode.port.postMessage({ type: 'pause' });
+                oldNode.disconnect();
+            }, 100);
+        }
+
+        State.setStretchStartPosition(currentPosition);
+        State.setStretchStartTime(State.audioContext.currentTime);
+    }
 }
 
 export function changeVolume() {
@@ -406,11 +701,17 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         State.setLastWorkletUpdateTime(State.audioContext.currentTime);
         State.setLastUpdateTime(State.audioContext.currentTime);
         
-        // 🏎️ AUTONOMOUS: Just tell worklet to seek - it handles crossfade automatically if playing
-        State.workletNode.port.postMessage({ 
-            type: 'seek',
-            position: targetPosition  // Send position in seconds, worklet converts to samples
-        });
+        // 🏎️ AUTONOMOUS: Tell the active processor to seek
+        if (State.stretchActive && State.stretchNode) {
+            State.stretchNode.port.postMessage({ type: 'seek', data: { position: targetPosition } });
+            State.setStretchStartPosition(targetPosition);
+            State.setStretchStartTime(State.audioContext.currentTime);
+        } else {
+            State.workletNode.port.postMessage({
+                type: 'seek',
+                position: targetPosition  // Send position in seconds, worklet converts to samples
+            });
+        }
         
         // if (DEBUG_LOOP_FADES) {
         //     console.log(`🎯 SEEK: Position ${targetPosition.toFixed(2)}s (${targetSample.toLocaleString()} samples), wasPlaying=${wasPlaying}`);
@@ -451,11 +752,21 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
                 console.log('🔊 [seekToPosition] AudioContext SUSPENDED - resuming...');
                 State.audioContext.resume().then(() => {
                     console.log('🔊 [seekToPosition] AudioContext RESUMED, sending play');
-                    State.workletNode.port.postMessage({ type: 'play' });
+                    if (State.stretchActive && State.stretchNode) {
+                        State.stretchNode.port.postMessage({ type: 'play' });
+                        State.setStretchStartTime(State.audioContext.currentTime);
+                    } else {
+                        State.workletNode.port.postMessage({ type: 'play' });
+                    }
                 });
             } else {
                 console.log('🔊 [seekToPosition] AudioContext already running, sending play');
-                State.workletNode.port.postMessage({ type: 'play' });
+                if (State.stretchActive && State.stretchNode) {
+                    State.stretchNode.port.postMessage({ type: 'play' });
+                    State.setStretchStartTime(State.audioContext.currentTime);
+                } else {
+                    State.workletNode.port.postMessage({ type: 'play' });
+                }
             }
         }
         

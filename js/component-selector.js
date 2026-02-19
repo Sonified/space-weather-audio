@@ -252,6 +252,14 @@ export async function switchComponent(componentIndex) {
             });
             console.log(`   🔊 Initiated crossfade swap (50ms equal-power crossfade)`);
 
+            // Also update stretch processor if it's active
+            if (State.stretchActive && State.stretchNode) {
+                State.stretchNode.port.postMessage({
+                    type: 'load-audio',
+                    data: { samples: Array.from(samples) }
+                });
+            }
+
             // No need to seek - the worklet maintains position during swap
         } else {
             console.warn(`   ⚠️ No workletNode available!`);
