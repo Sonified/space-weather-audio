@@ -130,10 +130,11 @@
             width: 80% !important;
         }
         
-        #welcomeModal .modal-content {
-            max-width: 520px !important;
+        #welcomeModal .modal-content,
+        #emicAboutModal .modal-content {
+            max-width: 720px !important;
             min-width: 320px !important;
-            width: 85% !important;
+            width: 90% !important;
             padding: 24px 28px !important;
         }
         
@@ -155,6 +156,117 @@
             display: block;
             margin: 16px auto 0 auto;
         }
+
+        /* Hamburger button */
+        .hamburger-btn {
+            display: none; /* shown by Advanced mode */
+            position: fixed;
+            top: 10px;
+            left: 12px;
+            z-index: 1100;
+            font-size: 22px;
+            color: #999;
+            cursor: pointer;
+            user-select: none;
+            line-height: 1;
+            padding: 4px 6px;
+            border-radius: 4px;
+            transition: color 0.15s, background-color 0.15s, left 0.25s ease;
+        }
+        .hamburger-btn:hover {
+            color: #ddd;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        /* Settings drawer — push layout */
+        .settings-drawer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 290px;
+            height: 100%;
+            background: #1e1e1e;
+            border-right: 1px solid #444;
+            z-index: 1100;
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            overflow-y: auto;
+            font-size: 13px;
+            color: #ddd;
+        }
+        .settings-drawer.open { transform: translateX(0); }
+
+        /* Push main content when drawer is open */
+        .container {
+            transition: margin-left 0.25s ease;
+        }
+        body.drawer-open .container {
+            margin-left: 290px;
+        }
+        body.drawer-open .hamburger-btn {
+            left: 302px;
+        }
+
+        .drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px 10px;
+            border-bottom: 1px solid #333;
+        }
+        .drawer-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #eee;
+        }
+        .drawer-close {
+            font-size: 22px;
+            color: #888;
+            cursor: pointer;
+            line-height: 1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: color 0.15s, background-color 0.15s;
+            user-select: none;
+        }
+        .drawer-close:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .drawer-section {
+            padding: 14px 16px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .drawer-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #777;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+        }
+        .drawer-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 4px 0;
+        }
+        .drawer-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #bbb;
+            cursor: pointer;
+            user-select: none;
+        }
+        .drawer-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #80d0ff;
+        }
+
     </style>
 </head>
 <body>
@@ -187,7 +299,7 @@
                     </select>
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
-                <div style="display: flex; align-items: center; gap: 6px; padding: 0 8px;">
+                <div id="detrendContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px;">
                     <label for="removeDCOffsetEmic" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
                     <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
                 </div>
@@ -399,6 +511,22 @@
                             <option value="none">None</option>
                         </select>
                     </div>
+                    <div class="gear-popover-title">Numbers</div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Color:</span>
+                        <select id="mainWindowNumbers" class="gear-select">
+                            <option value="hide">Hide</option>
+                            <option value="white">White</option>
+                            <option value="red" selected>Red</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Location:</span>
+                        <select id="mainWindowNumbersLoc" class="gear-select">
+                            <option value="above" selected>Above box</option>
+                            <option value="inside">Inside box</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px;">
@@ -445,9 +573,9 @@
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label for="frequencyScale" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Frequency Scale:</label>
                         <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
-                            <option value="linear">Linear (C)</option>
-                            <option value="sqrt">Square Root (V)</option>
-                            <option value="logarithmic" selected>Logarithmic (B)</option>
+                            <option value="logarithmic" selected>Logarithmic</option>
+                            <option value="sqrt">Square Root</option>
+                            <option value="linear">Linear</option>
                         </select>
                     </div>
                     <div style="display: none;">
@@ -457,10 +585,23 @@
             </div>
         </div>
         
-        <!-- Skip Login & Welcome (standalone, below main panel) -->
-        <div id="skipLoginRow" style="display: flex; align-items: center; gap: 6px; justify-content: flex-end; padding: 6px 20px 0;">
-            <label for="skipLoginWelcome" style="font-size: 13px; font-weight: 600; color: #888; white-space: nowrap; user-select: none; cursor: pointer;">Skip Login & Welcome</label>
-            <input type="checkbox" id="skipLoginWelcome" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+        <!-- Hamburger menu button (top-left, Advanced mode only) -->
+        <div id="hamburgerBtn" class="hamburger-btn" title="Settings drawer">&#9776;</div>
+
+        <!-- Settings drawer (slides in from left, pushes content) -->
+        <div id="settingsDrawer" class="settings-drawer">
+            <div class="drawer-header">
+                <span class="drawer-title">Settings</span>
+                <span id="drawerClose" class="drawer-close" title="Close">&times;</span>
+            </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Session</div>
+                <div class="drawer-row">
+                    <label for="skipLoginWelcome" class="drawer-label">Skip Login & Welcome</label>
+                    <input type="checkbox" id="skipLoginWelcome" class="drawer-checkbox">
+                </div>
+            </div>
+            <!-- Additional settings sections will be added here -->
         </div>
 
         <!-- Tracked Regions Panel -->
@@ -502,7 +643,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Permanent Modal Overlay -->
     <script>
         // Hide overlay immediately if skip login is set — prevents flash

@@ -148,7 +148,10 @@ function handleKeyboardShortcut(event) {
     }
     
     // Frequency scale shortcuts: 'c' for linear, 'v' for square root, 'b' for logarithmic
-    if (event.key === 'c' || event.key === 'C') {
+    // Disabled in windowed modes — keys conflict with typing in notes fields
+    const _viewingMode = document.getElementById('viewingMode')?.value || 'regionCreation';
+    const _isWindowed = _viewingMode === 'scroll' || _viewingMode === 'pageTurn' || _viewingMode === 'static';
+    if (!_isWindowed && (event.key === 'c' || event.key === 'C')) {
         event.preventDefault();
         const select = document.getElementById('frequencyScale');
         if (select && State.frequencyScale !== 'linear') {
@@ -171,7 +174,7 @@ function handleKeyboardShortcut(event) {
         return;
     }
     
-    if (event.key === 'v' || event.key === 'V') {
+    if (!_isWindowed && (event.key === 'v' || event.key === 'V')) {
         event.preventDefault();
         const select = document.getElementById('frequencyScale');
         if (select && State.frequencyScale !== 'sqrt') {
@@ -194,7 +197,7 @@ function handleKeyboardShortcut(event) {
         return;
     }
     
-    if (event.key === 'b' || event.key === 'B') {
+    if (!_isWindowed && (event.key === 'b' || event.key === 'B')) {
         event.preventDefault();
         const select = document.getElementById('frequencyScale');
         if (select && State.frequencyScale !== 'logarithmic') {

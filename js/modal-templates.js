@@ -846,6 +846,35 @@ export function createAwesfModal() {
     return modal;
 }
 
+export function createEmicAboutModal() {
+    const modal = document.createElement('div');
+    modal.id = 'emicAboutModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 720px;">
+            <div class="modal-header">
+                <h3 class="modal-title">About This Study</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: left;">
+                <p style="margin-bottom: 16px; color: #333; font-size: 16px; line-height: 1.6;">
+                    Your task is to listen to magnetometer data from the <b>GOES satellite</b> and identifying <b>Electromagnetic Ion Cyclotron (EMIC) waves</b>.
+                </p>
+                <p style="margin-bottom: 16px; color: #333; font-size: 16px; line-height: 1.6;">
+                    Please use headphones or high-quality speakers in a quiet environment free from distractions. Listen carefully and draw boxes around any features you identify in the spectrogram, and when you are finished use the "Complete" button to submit your results.
+                </p>
+                <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+                <p style="margin-bottom: 0; color: #555; font-size: 15px; line-height: 1.6;">
+                    If you have any questions or need assistance, please contact the study coordinator, Lucy Williams, at
+                    <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>.
+                </p>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
 export function createAboutModal() {
     const modal = document.createElement('div');
     modal.id = 'aboutModal';
@@ -904,6 +933,7 @@ export async function initializeModals() {
     const tutorialRevisitModal = createTutorialRevisitModal();
     const welcomeBackModal = createWelcomeBackModal();
     const aboutModal = createAboutModal();
+    const emicAboutModal = createEmicAboutModal();
 
     // Append modals to the permanent overlay instead of body
     const overlay = document.getElementById('permanentOverlay');
@@ -921,6 +951,7 @@ export async function initializeModals() {
     overlay.appendChild(tutorialRevisitModal);
     overlay.appendChild(welcomeBackModal);
     overlay.appendChild(aboutModal);
+    overlay.appendChild(emicAboutModal);
 
     // Pre-populate participant ID from URL (Qualtrics) or localStorage
     // BUT NOT in STUDY_CLEAN mode (always start fresh)

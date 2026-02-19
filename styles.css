@@ -3361,7 +3361,14 @@ input[type="range"]:disabled {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
+    text-align: center;
     user-select: none;
+}
+
+.gear-popover-row + .gear-popover-title {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .gear-popover-row {

@@ -304,6 +304,21 @@ Fix: added `updateCanvasAnnotations()` to both scroll render paths:
 
 Now both the orange DOM boxes AND the red canvas boxes stay pinned to the spectrogram content during all forms of scrolling.
 
+### Welcome Modal Polish
+
+- Added missing period after the email address in the EMIC welcome modal (`lewilliams@smith.edu` → `lewilliams@smith.edu.`)
+- Widened the welcome modal content box from `max-width: 520px` → `720px` and `width: 85%` → `90%` so the instructional text has more breathing room
+
+### EMIC About Modal (Info Button)
+
+The (i) info button in the upper right wasn't connected to a modal. Created a new `emicAboutModal` separate from the main site's `aboutModal`:
+
+- **`createEmicAboutModal()`** in `modal-templates.js` — present-tense instructions ("You are listening to audified magnetometer data..."), headphone guidance, and contact info for study coordinator Lucy Williams (`lewilliams@smith.edu`)
+- **Modal routing** in `main.js` — `aboutInfoBtn` click handler checks `window.__EMIC_STUDY_MODE` to open either `emicAboutModal` or `aboutModal`
+- **Close wiring** — close button calls `modalManager.closeModal('emicAboutModal')`, which handles overlay fade-out
+- **`closeAllModals()`** in `modal-manager.js` — added `'emicAboutModal'` to the hardcoded list
+- **CSS override** in `emic_study.html` — `#emicAboutModal .modal-content` shares the same wide layout as `#welcomeModal` (720px max-width) to override the generic `.modal-content` `!important` rule
+
 ### What's Next
 
 - Run remaining EMIC study days (Jan 23–27, 2022)
@@ -321,6 +336,11 @@ Now both the orange DOM boxes AND the red canvas boxes stay pinned to the spectr
 - `js/waveform-renderer.js` — Minimap viewport indicator always visible in windowed mode; canvas feature boxes redrawn during minimap drag
 - `js/scroll-zoom.js` — Canvas feature boxes redrawn during scroll-wheel zoom
 - `js/day-markers.js` — Don't bail early when zoomed viewport has no midnight boundaries
+- `js/ui-controls.js` — Added period after email in welcome modal text
+- `emic_study.html` — Widened welcome modal content box (520px → 720px), CSS override for EMIC about modal
+- `js/modal-templates.js` — New `createEmicAboutModal()` function, added to `initializeModals()`
+- `js/modal-manager.js` — Added `'emicAboutModal'` to `closeAllModals()` list
+- `js/main.js` — Info button routes to `emicAboutModal` in EMIC mode, close button wiring
 
 ---
 

@@ -2355,7 +2355,7 @@ export async function openWelcomeModal() {
             paragraphs[0].innerHTML = 'You will be listening to magnetometer data from the <b>GOES satellite</b> and identifying <b>EMIC waves</b>. Please use headphones or high-quality speakers in a quiet environment free from distractions.';
         }
         if (paragraphs[1]) {
-            paragraphs[1].innerHTML = 'If you have any questions, contact Lucy Williams at <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>';
+            paragraphs[1].innerHTML = 'If you have any questions, contact Lucy Williams at <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>.';
         }
         // Hide extra paragraphs (original has 4, we only need 2)
         if (paragraphs[2]) paragraphs[2].style.display = 'none';

@@ -1548,21 +1548,44 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
         ctx.fillRect(x, y, width, height);
 
-        // Add flat sequential feature number label
-        const numberText = `${getFlatFeatureNumber(box.regionIndex, box.featureIndex)}`;
-        ctx.font = '16px Arial, sans-serif'; // Removed bold for flatter look
-        ctx.fillStyle = 'rgba(255, 160, 80, 0.9)'; // Slightly more opaque, less 3D
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
+        // Add flat sequential feature number label (gated by Numbers dropdown)
+        const numbersMode = document.getElementById('mainWindowNumbers')?.value || 'red';
+        if (numbersMode !== 'hide') {
+            const numbersLoc = document.getElementById('mainWindowNumbersLoc')?.value || 'above';
+            const flatNum = getFlatFeatureNumber(box.regionIndex, box.featureIndex);
+            const numberText = `${flatNum}`;
+            const isRed = numbersMode === 'red';
+            ctx.font = '14px Arial, sans-serif';
+            ctx.fillStyle = isRed ? 'rgba(255, 80, 80, 0.9)' : 'rgba(255, 255, 255, 0.8)';
 
-        // No shadow - completely flat text
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
+            // Red labels get a light shadow for contrast, white labels get dark shadow
+            if (isRed) {
+                ctx.shadowBlur = 4;
+                ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
+            } else {
+                ctx.shadowBlur = 3;
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+            }
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
 
-        // Position: 6px from left, 7px from top (moved down more)
-        ctx.fillText(numberText, x + 6, y + 7);
+            // Smooth slide: centered when narrow, left-aligned when wide
+            const textWidth = ctx.measureText(numberText).width;
+            const centeredX = (width - textWidth) / 2;
+            ctx.textAlign = 'left';
+
+            if (numbersLoc === 'inside') {
+                ctx.textBaseline = 'top';
+                ctx.fillText(numberText, x + Math.min(2, centeredX), y + 2);
+            } else {
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(numberText, x + Math.min(2, centeredX), y - 3);
+            }
+
+            // Reset shadow so it doesn't bleed into subsequent draws
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+        }
     }
 
     // PASS 2: Draw annotation text above the box (if in annotations-only mode)

@@ -8,7 +8,7 @@ import { PlaybackState, isTouchDevice } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
-import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay, renderRegionsAfterCrossfade, getStandaloneFeatures, getFlatFeatureNumber } from './region-tracker.js';
+import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay, renderRegionsAfterCrossfade, getStandaloneFeatures } from './region-tracker.js';
 import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview, cleanupPlayheadOverlay } from './spectrogram-playhead.js';
@@ -826,7 +826,7 @@ function drawMinimapFeatureBoxes(ctx, width, height) {
     }
 
     // Helper to draw a single feature box on the minimap
-    function drawOneMinimapFeature(feature, regionIndex, featureIndex) {
+    function drawOneMinimapFeature(feature) {
         if (!feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime) return;
 
         const lowFreq = parseFloat(feature.lowFreq);
@@ -855,29 +855,20 @@ function drawMinimapFeatureBoxes(ctx, width, height) {
         ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
         ctx.fillRect(x, y, w, h);
 
-        // Flat sequential feature number label
-        const numberText = `${getFlatFeatureNumber(regionIndex, featureIndex)}`;
-        ctx.font = '10px Arial, sans-serif';
-        ctx.fillStyle = 'rgba(255, 160, 80, 0.9)';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
-        ctx.fillText(numberText, x + 2, y + 1);
+        // No number labels on minimap — too small to be useful
     }
 
     // Draw region-based features
     for (const region of regions) {
         if (!region.features) continue;
-        const regionIndex = regions.indexOf(region);
-        region.features.forEach((feature, featureIndex) => {
-            drawOneMinimapFeature(feature, regionIndex, featureIndex);
+        region.features.forEach((feature) => {
+            drawOneMinimapFeature(feature);
         });
     }
 
     // Draw standalone features (reuse variable from top of function)
-    standalone.forEach((feature, featureIndex) => {
-        drawOneMinimapFeature(feature, -1, featureIndex);
+    standalone.forEach((feature) => {
+        drawOneMinimapFeature(feature);
     });
 }
 

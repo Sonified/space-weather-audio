@@ -948,6 +948,8 @@ async function initializeEmicStudyMode() {
         { id: 'miniMapView', key: 'emic_minimap_view', type: 'select' },
         { id: 'navBarMarkers', key: 'emic_navbar_markers', type: 'select' },
         { id: 'mainWindowMarkers', key: 'emic_main_markers', type: 'select' },
+        { id: 'mainWindowNumbers', key: 'emic_main_numbers', type: 'select' },
+        { id: 'mainWindowNumbersLoc', key: 'emic_main_numbers_loc', type: 'select' },
         { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
     ];
     for (const ctrl of navControls) {
@@ -986,8 +988,10 @@ async function initializeEmicStudyMode() {
     function applyAdvancedMode(enabled) {
         const gearContainers = document.querySelectorAll('.panel-gear');
         gearContainers.forEach(g => g.style.display = enabled ? 'block' : 'none');
-        const skipLoginRow = document.getElementById('skipLoginRow');
-        if (skipLoginRow) skipLoginRow.style.display = enabled ? 'flex' : 'none';
+        const hamburgerBtn = document.getElementById('hamburgerBtn');
+        if (hamburgerBtn) hamburgerBtn.style.display = enabled ? 'block' : 'none';
+        // Close drawer if Advanced is turned off while drawer is open
+        if (!enabled) closeSettingsDrawer();
     }
     if (advancedCheckbox) {
         const savedAdvanced = localStorage.getItem('emic_advanced_mode');
@@ -996,8 +1000,28 @@ async function initializeEmicStudyMode() {
         advancedCheckbox.addEventListener('change', () => {
             localStorage.setItem('emic_advanced_mode', advancedCheckbox.checked);
             applyAdvancedMode(advancedCheckbox.checked);
+            updateRegionsPanelVisibility();
         });
     }
+
+    // --- Settings drawer (hamburger menu, push layout) ---
+    const drawerEl = document.getElementById('settingsDrawer');
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const drawerCloseBtn = document.getElementById('drawerClose');
+
+    function openSettingsDrawer() {
+        if (drawerEl) drawerEl.classList.add('open');
+        document.body.classList.add('drawer-open');
+    }
+    function closeSettingsDrawer() {
+        if (drawerEl) drawerEl.classList.remove('open');
+        document.body.classList.remove('drawer-open');
+    }
+    if (hamburgerBtn) hamburgerBtn.addEventListener('click', () => {
+        if (drawerEl?.classList.contains('open')) closeSettingsDrawer();
+        else openSettingsDrawer();
+    });
+    if (drawerCloseBtn) drawerCloseBtn.addEventListener('click', closeSettingsDrawer);
 
     // Position gear icons over their respective canvases (top-right corner, inside the canvas)
     function positionGearIcons() {
@@ -1075,12 +1099,35 @@ async function initializeEmicStudyMode() {
         drawDayMarkers();
     }
 
-    // Toggle regions panel visibility based on viewing mode
+    // Wire Numbers dropdowns to redraw feature boxes
+    const mainWindowNumbersEl = document.getElementById('mainWindowNumbers');
+    const mainWindowNumbersLocEl = document.getElementById('mainWindowNumbersLoc');
+    if (mainWindowNumbersEl) mainWindowNumbersEl.addEventListener('change', () => redrawAllCanvasFeatureBoxes());
+    if (mainWindowNumbersLocEl) mainWindowNumbersLocEl.addEventListener('change', () => redrawAllCanvasFeatureBoxes());
+
+    // Toggle regions panel + top bar controls visibility based on viewing mode
     function updateRegionsPanelVisibility() {
         const mode = document.getElementById('viewingMode')?.value;
+        const isWindowed = mode === 'static' || mode === 'scroll' || mode === 'pageTurn';
         const panel = document.getElementById('trackedRegionsPanel');
         if (panel) {
-            panel.style.display = (mode === 'static' || mode === 'scroll' || mode === 'pageTurn') ? 'none' : '';
+            panel.style.display = isWindowed ? 'none' : '';
+        }
+        // Hide Component and De-trend controls in windowed modes (unless Advanced is on)
+        // Use visibility:hidden (not display:none) so they still occupy space and the status bar stays put
+        const advanced = document.getElementById('advancedMode')?.checked;
+        const hideControls = isWindowed && !advanced;
+        const comp = document.getElementById('componentSelectorContainer');
+        const detrend = document.getElementById('detrendContainer');
+        if (comp) comp.style.visibility = hideControls ? 'hidden' : '';
+        if (detrend) detrend.style.visibility = hideControls ? 'hidden' : '';
+        // Hide the spacer divs between controls (siblings before/after comp and detrend)
+        if (comp?.previousElementSibling) comp.previousElementSibling.style.visibility = hideControls ? 'hidden' : '';
+        if (comp?.nextElementSibling && comp.nextElementSibling.id !== 'detrendContainer') {
+            comp.nextElementSibling.style.visibility = hideControls ? 'hidden' : '';
+        }
+        if (detrend?.nextElementSibling && detrend.nextElementSibling.id !== 'status') {
+            detrend.nextElementSibling.style.visibility = hideControls ? 'hidden' : '';
         }
     }
 
@@ -2571,7 +2618,8 @@ async function initializeMainApp() {
         aboutInfoBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            await modalManager.openModal('aboutModal');
+            const modalId = window.__EMIC_STUDY_MODE ? 'emicAboutModal' : 'aboutModal';
+            await modalManager.openModal(modalId);
         });
 
         // Wire up close button inside the about modal
@@ -2581,6 +2629,17 @@ async function initializeMainApp() {
             if (aboutCloseBtn) {
                 aboutCloseBtn.addEventListener('click', () => {
                     modalManager.closeModal('aboutModal');
+                });
+            }
+        }
+
+        // Wire up close button inside the EMIC about modal
+        const emicAboutModal = document.getElementById('emicAboutModal');
+        if (emicAboutModal) {
+            const emicAboutCloseBtn = emicAboutModal.querySelector('.modal-close');
+            if (emicAboutCloseBtn) {
+                emicAboutCloseBtn.addEventListener('click', () => {
+                    modalManager.closeModal('emicAboutModal');
                 });
             }
         }

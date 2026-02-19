@@ -57,6 +57,9 @@ class ModalManager {
                 
                 await this.fadeInOverlay();
                 modal.style.display = 'flex';
+                // Trigger reflow so the opacity transition plays
+                modal.offsetHeight;
+                modal.classList.add('modal-visible');
                 this.currentModal = modalId;
                 
                 if (onOpen) onOpen();
@@ -124,6 +127,7 @@ class ModalManager {
             }
             
             // Hide modal
+            modal.classList.remove('modal-visible');
             modal.style.display = 'none';
             
             // Fade out overlay unless keeping it for next modal
@@ -249,12 +253,14 @@ class ModalManager {
             'beginAnalysisModal',
             'missingStudyIdModal',
             'completeConfirmationModal',
-            'aboutModal'
+            'aboutModal',
+            'emicAboutModal'
         ];
         
         allModalIds.forEach(modalId => {
             const modal = document.getElementById(modalId);
             if (modal) {
+                modal.classList.remove('modal-visible');
                 modal.style.display = 'none';
             }
         });
