@@ -17,11 +17,11 @@ export let workletNode = null;
 export let analyserNode = null;
 export let gainNode = null;
 
-// Stretch audio nodes (dual-path: seismic vs stretch processor)
+// Stretch audio nodes (dual-path: source vs stretch processor)
 export let stretchNode = null;         // AudioWorkletNode for active stretch processor
 export let stretchGainNode = null;     // GainNode for stretch path crossfade
-export let seismicGainNode = null;     // GainNode for seismic path crossfade
-export let stretchAlgorithm = 'paul';  // 'paul' | 'granular'
+export let sourceGainNode = null;      // GainNode for source path crossfade
+export let stretchAlgorithm = 'resample';  // 'resample' | 'paul' | 'granular' | 'wavelet'
 export let stretchActive = false;      // Whether stretch path is currently the active output
 export let stretchFactor = 1.0;        // Current stretch factor (1/baseSpeed)
 export let stretchStartTime = 0;       // audioContext.currentTime when stretch playback started
@@ -150,7 +150,7 @@ export function setAnalyserNode(value) { analyserNode = value; }
 export function setGainNode(value) { gainNode = value; }
 export function setStretchNode(value) { stretchNode = value; }
 export function setStretchGainNode(value) { stretchGainNode = value; }
-export function setSeismicGainNode(value) { seismicGainNode = value; }
+export function setSourceGainNode(value) { sourceGainNode = value; }
 export function setStretchAlgorithm(value) { stretchAlgorithm = value; }
 export function setStretchActive(value) { stretchActive = value; }
 export function setStretchFactor(value) { stretchFactor = value; }

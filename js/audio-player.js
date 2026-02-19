@@ -334,8 +334,10 @@ export function updatePlaybackSpeed() {
         stretchContainer.style.display = baseSpeed < 1.0 ? 'flex' : 'none';
     }
 
-    // Stretch switching: sub-1x speed uses stretch processor, >= 1x uses seismic
-    if (baseSpeed < 1.0 && State.completeSamplesArray) {
+    // Stretch switching: sub-1x speed uses stretch processor (unless algorithm is 'resample')
+    const useStretch = baseSpeed < 1.0 && State.completeSamplesArray && State.stretchAlgorithm !== 'resample';
+
+    if (useStretch) {
         const stretchFactor = 1 / baseSpeed;
 
         if (!State.stretchActive) {
@@ -354,11 +356,11 @@ export function updatePlaybackSpeed() {
                 State.stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
             }
         }
-    } else if (baseSpeed >= 1.0 && State.stretchActive) {
-        // Disengage stretch, return to seismic
+    } else if (State.stretchActive) {
+        // Disengage stretch (speed >= 1.0, or switched to resample)
         disengageStretch(finalSpeed);
     } else {
-        // Normal seismic path (speed >= 1.0, no stretch active)
+        // Normal source path (resample or speed >= 1.0)
         if (State.workletNode) {
             State.workletNode.port.postMessage({
                 type: 'set-speed',
@@ -400,12 +402,21 @@ function createStretchNode(algorithm) {
         State.stretchNode.disconnect();
     }
 
-    const processorName = algorithm === 'paul' ? 'paul-stretch-processor' : 'granular-stretch-processor';
+    const processorNames = {
+        resample: 'resample-stretch-processor',
+        paul: 'paul-stretch-processor',
+        granular: 'granular-stretch-processor'
+    };
+    const processorName = processorNames[algorithm] || 'paul-stretch-processor';
     const stretchFactor = 1 / getBaseSpeed();
     const windowSize = 4096;
 
     let options;
-    if (algorithm === 'paul') {
+    if (algorithm === 'resample') {
+        options = {
+            processorOptions: { stretchFactor }
+        };
+    } else if (algorithm === 'paul') {
         options = {
             processorOptions: {
                 windowSize,
@@ -435,8 +446,10 @@ function createStretchNode(algorithm) {
             // If we have a pending seek + play, do it now
             if (node._pendingResume) {
                 const { position, shouldPlay } = node._pendingResume;
-                node.port.postMessage({ type: 'seek', data: { position } });
-                State.setStretchStartPosition(position);
+                // Convert real-world seconds to audio-buffer seconds for the processor
+                const audioPos = realWorldToAudioSeconds(position);
+                node.port.postMessage({ type: 'seek', data: { position: audioPos } });
+                State.setStretchStartPosition(position); // Keep real-world seconds in state
                 if (shouldPlay) {
                     node.port.postMessage({ type: 'play' });
                     State.setStretchStartTime(State.audioContext.currentTime);
@@ -483,20 +496,45 @@ function getBaseSpeed() {
 }
 
 /**
- * Get the current playback position in seconds.
- * Works for both seismic and stretch paths.
+ * Convert real-world seconds to audio-buffer seconds.
+ * Stretch processors work in audio-buffer time (44100 Hz), but the app
+ * tracks position in real-world seconds (e.g. 604,799s for a full day).
+ */
+function realWorldToAudioSeconds(realWorldSeconds) {
+    const samplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second
+                                || State.currentMetadata?.original_sample_rate
+                                || 1200;
+    return realWorldSeconds * samplesPerRealSecond / 44100;
+}
+
+/**
+ * Convert audio-buffer seconds back to real-world seconds.
+ */
+function audioSecondsToRealWorld(audioSeconds) {
+    const samplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second
+                                || State.currentMetadata?.original_sample_rate
+                                || 1200;
+    return audioSeconds * 44100 / samplesPerRealSecond;
+}
+
+/**
+ * Get the current playback position in real-world seconds.
+ * Works for both source and stretch paths.
  */
 export function getCurrentPosition() {
     if (State.stretchActive && State.audioContext) {
         const elapsed = State.audioContext.currentTime - State.stretchStartTime;
-        return State.stretchStartPosition + elapsed / State.stretchFactor;
+        // Stretch processor consumes (1/stretchFactor) audio-seconds per wall-clock second.
+        // Convert consumed audio-seconds back to real-world seconds.
+        const audioSecondsConsumed = elapsed / State.stretchFactor;
+        return State.stretchStartPosition + audioSecondsToRealWorld(audioSecondsConsumed);
     }
     return State.currentAudioPosition;
 }
 
 /**
  * Engage stretch processor (speed dropped below 1.0).
- * Crossfades from seismic to stretch.
+ * Crossfades from source to stretch.
  */
 function engageStretch(stretchFactor) {
     if (!State.audioContext || !State.completeSamplesArray) return;
@@ -519,16 +557,16 @@ function engageStretch(stretchFactor) {
     // Queue seek + play after 'loaded' message arrives
     node._pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
 
-    // Crossfade: seismic out, stretch in
+    // Crossfade: source out, stretch in
     const now = State.audioContext.currentTime;
 
-    State.seismicGainNode.gain.setValueAtTime(1, now);
-    State.seismicGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
+    State.sourceGainNode.gain.setValueAtTime(1, now);
+    State.sourceGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
 
     State.stretchGainNode.gain.setValueAtTime(0, now);
     State.stretchGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
 
-    // Pause seismic after crossfade completes
+    // Pause source after crossfade completes
     setTimeout(() => {
         if (State.stretchActive) {
             State.workletNode?.port.postMessage({ type: 'pause' });
@@ -543,7 +581,7 @@ function engageStretch(stretchFactor) {
 
 /**
  * Disengage stretch processor (speed returned to >= 1.0).
- * Crossfades from stretch back to seismic.
+ * Crossfades from stretch back to source.
  */
 function disengageStretch(finalSpeed) {
     if (!State.audioContext) return;
@@ -553,32 +591,32 @@ function disengageStretch(finalSpeed) {
 
     console.log(`🎛️ Disengaging stretch: position=${currentPosition.toFixed(2)}s, speed=${finalSpeed.toFixed(2)}`);
 
-    // Seek seismic to the stretch processor's current position and resume
+    // Seek source to the stretch processor's current position and resume
     const samplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second
                                || State.currentMetadata?.original_sample_rate
                                || 1200;
-    // Set seismic speed first
+    // Set source speed first
     State.workletNode?.port.postMessage({ type: 'set-speed', speed: finalSpeed });
 
-    // Seek seismic processor
+    // Seek source processor
     State.workletNode?.port.postMessage({
         type: 'seek',
         data: { position: currentPosition }
     });
 
-    // Resume seismic if we were playing
+    // Resume source if we were playing
     if (State.playbackState === PlaybackState.PLAYING) {
         State.workletNode?.port.postMessage({ type: 'play' });
     }
 
-    // Crossfade: stretch out, seismic in
+    // Crossfade: stretch out, source in
     const now = State.audioContext.currentTime;
 
     State.stretchGainNode.gain.setValueAtTime(1, now);
     State.stretchGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
 
-    State.seismicGainNode.gain.setValueAtTime(0, now);
-    State.seismicGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
+    State.sourceGainNode.gain.setValueAtTime(0, now);
+    State.sourceGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
 
     // Pause stretch processor after crossfade completes
     const stretchNode = State.stretchNode;
@@ -593,17 +631,32 @@ function disengageStretch(finalSpeed) {
 }
 
 /**
- * Switch stretch algorithm while stretch is active.
- * Called when user changes the algorithm dropdown.
+ * Switch stretch algorithm.
+ * Handles: switching while stretch active, engaging/disengaging based on algorithm + speed.
  */
 export function switchStretchAlgorithm(algorithm) {
     State.setStretchAlgorithm(algorithm);
+
+    const baseSpeed = getBaseSpeed();
+
+    // If switching to 'resample' while stretch is active, disengage back to source
+    if (algorithm === 'resample' && State.stretchActive) {
+        const multiplier = getBaseSampleRateMultiplier();
+        disengageStretch(baseSpeed * multiplier);
+        return;
+    }
+
+    // If switching to a real stretch algorithm while speed < 1.0 and stretch is NOT active, engage
+    if (algorithm !== 'resample' && baseSpeed < 1.0 && !State.stretchActive && State.completeSamplesArray) {
+        engageStretch(1 / baseSpeed);
+        return;
+    }
 
     // If stretch is currently active, swap to new algorithm with crossfade
     if (State.stretchActive && State.audioContext && State.completeSamplesArray) {
         const currentPosition = getCurrentPosition();
         const wasPlaying = State.playbackState === PlaybackState.PLAYING;
-        const stretchFactor = 1 / getBaseSpeed();
+        const stretchFactor = 1 / baseSpeed;
 
         console.log(`🎛️ Switching stretch algorithm to ${algorithm}, position=${currentPosition.toFixed(2)}s`);
 
@@ -703,8 +756,10 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         
         // 🏎️ AUTONOMOUS: Tell the active processor to seek
         if (State.stretchActive && State.stretchNode) {
-            State.stretchNode.port.postMessage({ type: 'seek', data: { position: targetPosition } });
-            State.setStretchStartPosition(targetPosition);
+            // Convert real-world seconds to audio-buffer seconds for the stretch processor
+            const audioPos = realWorldToAudioSeconds(targetPosition);
+            State.stretchNode.port.postMessage({ type: 'seek', data: { position: audioPos } });
+            State.setStretchStartPosition(targetPosition); // Keep real-world seconds in state
             State.setStretchStartTime(State.audioContext.currentTime);
         } else {
             State.workletNode.port.postMessage({

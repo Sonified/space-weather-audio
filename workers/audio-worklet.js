@@ -1,5 +1,5 @@
 /**
- * SeismicProcessor - AudioWorklet for real-time seismic audio processing
+ * AudioProcessor - AudioWorklet for real-time audio processing
  * 
  * Features:
  * - Circular buffer with dynamic expansion
@@ -16,7 +16,7 @@ const DEBUG_MESSAGES = true; // Log all incoming messages
 const DEBUG_PROCESS = false; // Log process() calls every 100 frames
 const DEBUG_SAMPLES = false; // Log sample content analysis
 
-class SeismicProcessor extends AudioWorkletProcessor {
+class AudioProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
         this.initializeBuffer();
@@ -1280,5 +1280,5 @@ class SeismicProcessor extends AudioWorkletProcessor {
     }
 }
 
-registerProcessor('seismic-processor', SeismicProcessor);
+registerProcessor('audio-processor', AudioProcessor);
 

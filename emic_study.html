@@ -5,14 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>EMIC Wave Analysis Study</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔬</text></svg>">
-    <link rel="stylesheet" href="styles.css?v=20260212g">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
         // Force EMIC_STUDY mode before any modules load
         window.__EMIC_STUDY_MODE = true;
-        // Don't persist to localStorage — mode is detected by URL/window flag only
-        // so it doesn't bleed into the main page
+
+        // Apply saved colormap accent colors BEFORE stylesheet loads to prevent flash
+        (function() {
+            var accents = {
+                solar:   { color: '#ff6b35', rgb: '255, 107, 53', bg: 'linear-gradient(135deg, #1a0f0a, #100805)', pageBg: '#3a2b2b' },
+                turbo:   { color: '#23a6d5', rgb: '35, 166, 213', bg: 'linear-gradient(135deg, #1a2830, #0f1a20)', pageBg: '#2b303a' },
+                viridis: { color: '#21918c', rgb: '33, 145, 140', bg: 'linear-gradient(135deg, #1e2830, #121c22)', pageBg: '#2b3535' },
+                jet:     { color: '#5dadec', rgb: '93, 173, 236', bg: 'linear-gradient(135deg, #1e2438, #121820)', pageBg: '#2b2b3a' },
+                aurora:  { color: '#9b4dca', rgb: '155, 77, 202', bg: 'linear-gradient(135deg, #2a2540, #1a1428)', pageBg: '#332b3a' },
+                plasma:  { color: '#22d3ee', rgb: '34, 211, 238', bg: 'linear-gradient(135deg, #1c2530, #101820)', pageBg: '#2b333a' },
+                inferno: { color: '#808080', rgb: '128, 128, 128', bg: 'linear-gradient(135deg, #252a40, #161a28)', pageBg: '#2b2b3a' }
+            };
+            var saved = localStorage.getItem('colormap');
+            var a = accents[saved] || accents.inferno;
+            var r = document.documentElement;
+            r.style.setProperty('--accent-color', a.color);
+            r.style.setProperty('--accent-rgb', a.rgb);
+            r.style.setProperty('--accent-glow', 'rgba(' + a.rgb + ', 0.25)');
+            r.style.setProperty('--accent-border', 'rgba(' + a.rgb + ', 0.2)');
+            r.style.setProperty('--accent-soft', 'rgba(' + a.rgb + ', 0.12)');
+            r.style.setProperty('--accent-bg', a.bg);
+            r.style.setProperty('--page-bg', a.pageBg);
+            r.style.background = a.pageBg;
+        })();
     </script>
+    <link rel="stylesheet" href="styles.css?v=20260212g">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
             --axis-label-font-size: 14px;
@@ -416,8 +438,8 @@
                     <label>Stretch:</label>
                     <button type="button" class="emic-btn active" data-stretch="resample">Resample</button>
                     <button type="button" class="emic-btn" data-stretch="granular">Granular</button>
-                    <button type="button" class="emic-btn" data-stretch="wavelet">Wavelet</button>
                     <button type="button" class="emic-btn" data-stretch="paulstretch">Paulstretch</button>
+                    <button type="button" class="emic-btn" data-stretch="wavelet">Wavelet</button>
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
                 <div class="emic-btn-group">
@@ -810,9 +832,15 @@
             
             // Wire up stretch/speed button toggles
             document.querySelectorAll('.emic-btn[data-stretch]').forEach(function(btn) {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', async function() {
                     document.querySelectorAll('.emic-btn[data-stretch]').forEach(function(b) { b.classList.remove('active'); });
                     btn.classList.add('active');
+
+                    // Map button data-stretch values to algorithm names used by audio-player
+                    var stretchMap = { resample: 'resample', granular: 'granular', paulstretch: 'paul', wavelet: 'wavelet' };
+                    var algorithm = stretchMap[btn.getAttribute('data-stretch')] || 'paul';
+                    var { switchStretchAlgorithm } = await import('./js/audio-player.js');
+                    switchStretchAlgorithm(algorithm);
                 });
             });
             document.querySelectorAll('.emic-btn[data-speed]').forEach(function(btn) {

@@ -355,9 +355,9 @@ export async function initAudioWorklet() {
         State.setStretchNode(null);
         State.setStretchActive(false);
     }
-    if (State.seismicGainNode) {
-        State.seismicGainNode.disconnect();
-        State.setSeismicGainNode(null);
+    if (State.sourceGainNode) {
+        State.sourceGainNode.disconnect();
+        State.setSourceGainNode(null);
     }
     if (State.stretchGainNode) {
         State.stretchGainNode.disconnect();
@@ -378,6 +378,7 @@ export async function initAudioWorklet() {
         State.setAudioContext(ctx);
         await ctx.audioWorklet.addModule('workers/audio-worklet.js');
         // Load stretch processor worklets for sub-1x speed time-stretching
+        await ctx.audioWorklet.addModule('workers/resample-stretch-processor.js');
         await ctx.audioWorklet.addModule('workers/paul-stretch-processor.js');
         await ctx.audioWorklet.addModule('workers/granular-stretch-processor.js');
 
@@ -391,7 +392,7 @@ export async function initAudioWorklet() {
         }
     }
     
-    const worklet = new AudioWorkletNode(State.audioContext, 'seismic-processor');
+    const worklet = new AudioWorkletNode(State.audioContext, 'audio-processor');
     State.setWorkletNode(worklet);
 
     const analyser = State.audioContext.createAnalyser();
@@ -404,19 +405,19 @@ export async function initAudioWorklet() {
     gain.gain.value = volumeSlider ? parseFloat(volumeSlider.value) / 100 : 1.0;
     State.setGainNode(gain);
 
-    // Dual-path crossfade gains: seismic (normal) vs stretch (sub-1x speed)
-    const seismicGain = State.audioContext.createGain();
-    seismicGain.gain.value = 1; // Seismic active by default
-    State.setSeismicGainNode(seismicGain);
+    // Dual-path crossfade gains: source (normal) vs stretch (sub-1x speed)
+    const sourceGain = State.audioContext.createGain();
+    sourceGain.gain.value = 1; // Source active by default
+    State.setSourceGainNode(sourceGain);
 
     const stretchGain = State.audioContext.createGain();
     stretchGain.gain.value = 0; // Stretch silent by default
     State.setStretchGainNode(stretchGain);
 
-    // Audio graph: worklet → seismicGain → masterGain → analyser + destination
+    // Audio graph: worklet → sourceGain → masterGain → analyser + destination
     //              stretchNode → stretchGain → masterGain (connected when stretch activates)
-    worklet.connect(seismicGain);
-    seismicGain.connect(gain);
+    worklet.connect(sourceGain);
+    sourceGain.connect(gain);
     stretchGain.connect(gain);
     gain.connect(analyser);
     gain.connect(State.audioContext.destination);
