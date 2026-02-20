@@ -572,11 +572,10 @@ function buildWaveformColormapTexture() {
 
 function createMagnitudeTexture(data, width, height) {
     const tex = new THREE.DataTexture(data, width, height, THREE.RedFormat, THREE.FloatType);
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = true;
     tex.needsUpdate = true;
     return tex;
 }

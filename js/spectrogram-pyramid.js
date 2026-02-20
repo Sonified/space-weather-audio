@@ -12,28 +12,72 @@
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import * as State from './audio-state.js';
+import { encodeBC4 } from './bc4-encoder.js';
 import { zoomState } from './zoom-state.js';
 import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
 import { isStudyMode } from './master-modes.js';
 
-// ─── Compression stubs (BC4 removed — Three.js lacks RGTC format support) ──
+// ─── BC4 Compression State ──────────────────────────────────────────────────
 
-export function setCompressionMode() {}
-export function getCompressionMode() { return 'uint8'; }
-export function isBC4Supported() { return false; }
-export function detectBC4Support() {}
+let compressionMode = 'uint8'; // 'uint8' or 'bc4'
+let bc4Supported = false;
+let rgtcFormat = null; // WebGL format constant
+
+export function setCompressionMode(mode) {
+    if (mode === compressionMode) return;
+    compressionMode = mode;
+    // Flush texture cache — tiles will be re-uploaded in new format on next access
+    for (const [key, entry] of tileTextureCache) {
+        if (entry.texture?.dispose) entry.texture.dispose();
+    }
+    tileTextureCache.clear();
+    console.log(`🔺 Compression mode: ${mode}, texture cache flushed`);
+}
+
+export function getCompressionMode() {
+    return compressionMode;
+}
+
+export function isBC4Supported() {
+    return bc4Supported;
+}
+
+export function detectBC4Support(renderer) {
+    // BC4/RGTC1 is a WebGL extension but Three.js CompressedTexture doesn't support
+    // raw GL format constants — it needs registered Three.js formats.
+    // Until Three.js adds RGTC support (or we bypass via raw WebGL uploads),
+    // Uint8 textures are the correct path. 1 byte/texel either way.
+    bc4Supported = false;
+    console.log('🔺 BC4 (RGTC1) compression: disabled (Three.js lacks RGTC format support)');
+}
 
 // ─── Uint8 Texture Helper ──────────────────────────────────────────────────
 
 function createUint8MagnitudeTexture(data, width, height) {
     const tex = new THREE.DataTexture(data, width, height, THREE.RedFormat, THREE.UnsignedByteType);
-    tex.minFilter = THREE.LinearMipmapLinearFilter; // trilinear: smooth mip transitions, no shimmer
+    tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = true; // GPU pre-averages at each power-of-2 reduction
+    tex.generateMipmaps = false; // We handle LOD via pyramid levels
     tex.needsUpdate = true;
     return tex;
+}
+
+function createBC4MagnitudeTexture(data, width, height, compressedData) {
+    const texture = new THREE.CompressedTexture(
+        [{ data: compressedData, width, height }],
+        width,
+        height,
+        rgtcFormat
+    );
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.generateMipmaps = false;
+    texture.needsUpdate = true;
+    return texture;
 }
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -543,7 +587,27 @@ export function getTileTexture(tile, key) {
         evictLRU();
     }
 
-    const texture = createUint8MagnitudeTexture(tile.magnitudeData, tile.width, tile.height);
+    // Create texture — BC4 compressed or Uint8 uncompressed
+    let texture;
+    if (compressionMode === 'bc4' && bc4Supported && rgtcFormat) {
+        const paddedWidth = Math.ceil(tile.width / 4) * 4;
+        const paddedHeight = Math.ceil(tile.height / 4) * 4;
+        
+        let sourceData = tile.magnitudeData;
+        if (paddedWidth !== tile.width || paddedHeight !== tile.height) {
+            sourceData = new Uint8Array(paddedWidth * paddedHeight);
+            for (let y = 0; y < tile.height; y++) {
+                for (let x = 0; x < tile.width; x++) {
+                    sourceData[y * paddedWidth + x] = tile.magnitudeData[y * tile.width + x];
+                }
+            }
+        }
+        
+        const compressed = encodeBC4(sourceData, paddedWidth, paddedHeight);
+        texture = createBC4MagnitudeTexture(sourceData, paddedWidth, paddedHeight, compressed);
+    } else {
+        texture = createUint8MagnitudeTexture(tile.magnitudeData, tile.width, tile.height);
+    }
     
     tileTextureCache.set(key, {
         texture,
