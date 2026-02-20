@@ -122,8 +122,10 @@ export class SpectrogramWorkerPool {
         const workerObj = this.workers[workerIndex];
         workerObj.busy = true;
         
+        const expectedResponseType = taskData.isUint8 ? 'batch-uint8-complete' : 'batch-complete';
+        
         const handler = (e) => {
-            if (e.data.type === 'batch-complete' && e.data.batchStart === taskData.batch.start) {
+            if (e.data.type === expectedResponseType && e.data.batchStart === taskData.batch.start) {
                 workerObj.worker.removeEventListener('message', handler);
                 
                 // Mark worker as available
@@ -165,15 +167,63 @@ export class SpectrogramWorkerPool {
         const endIdx = (taskData.batch.end - 1) * taskData.hopSize + taskData.fftSize;
         const batchAudioData = taskData.audioData.slice(startIdx, Math.min(endIdx, taskData.audioData.length));
         
-        workerObj.worker.postMessage({
-            type: 'compute-batch',
+        const messageType = taskData.isUint8 ? 'compute-batch-uint8' : 'compute-batch';
+        const msg = {
+            type: messageType,
             audioData: batchAudioData,
             batchStart: taskData.batch.start,
             batchEnd: taskData.batch.end,
             fftSize: taskData.fftSize,
             hopSize: taskData.hopSize,
             window: taskData.window
-        }, [batchAudioData.buffer]); // TRANSFER ownership - zero-copy!
+        };
+        if (taskData.isUint8) {
+            msg.dbFloor = taskData.dbFloor;
+            msg.dbRange = taskData.dbRange;
+        }
+        workerObj.worker.postMessage(msg, [batchAudioData.buffer]); // TRANSFER ownership - zero-copy!
+    }
+    
+    /**
+     * Process all batches in parallel, returning Uint8 normalized dB data.
+     * Same interface as processBatches() but with dbFloor/dbRange parameters.
+     */
+    async processBatchesUint8(audioData, batches, fftSize, hopSize, window, onBatchComplete, dbFloor = -100, dbRange = 100) {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+        
+        const totalBatches = batches.length;
+        const completionTracker = { completed: 0 };
+        
+        const batchPromises = batches.map((batch, batchIndex) => {
+            return new Promise((resolve) => {
+                const taskData = {
+                    batch,
+                    batchIndex,
+                    resolve,
+                    audioData,
+                    fftSize,
+                    hopSize,
+                    window,
+                    completionTracker,
+                    totalBatches,
+                    onBatchComplete,
+                    dbFloor,
+                    dbRange,
+                    isUint8: true
+                };
+                
+                if (this.availableWorkers.length > 0) {
+                    this.assignBatchToWorker(taskData);
+                } else {
+                    this.taskQueue.push(taskData);
+                }
+            });
+        });
+        
+        const allResults = await Promise.all(batchPromises);
+        return allResults;
     }
     
     /**

@@ -10,10 +10,24 @@
  * Upper levels are built lazily as pairs complete.
  */
 
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
 import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
 import { isStudyMode } from './master-modes.js';
+
+// ─── Uint8 Texture Helper ──────────────────────────────────────────────────
+
+function createUint8MagnitudeTexture(data, width, height) {
+    const tex = new THREE.DataTexture(data, width, height, THREE.RedFormat, THREE.UnsignedByteType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false; // We handle LOD via pyramid levels
+    tex.needsUpdate = true;
+    return tex;
+}
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -315,8 +329,8 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         const hopSize = Math.max(1, Math.floor((tileSamples.length - fftSize) / maxTimeSlices));
         const numTimeSlices = Math.min(maxTimeSlices, Math.floor((tileSamples.length - fftSize) / hopSize));
 
-        // Pack magnitude data: width=numTimeSlices, height=frequencyBinCount
-        const magnitudeData = new Float32Array(numTimeSlices * frequencyBinCount);
+        // Pack magnitude data: width=numTimeSlices, height=frequencyBinCount (Uint8)
+        const magnitudeData = new Uint8Array(numTimeSlices * frequencyBinCount);
 
         const batchSize = 50;
         const batches = [];
@@ -335,7 +349,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         };
 
         try {
-            await workerPool.processBatches(
+            await workerPool.processBatchesUint8(
                 tileSamples,
                 batches,
                 fftSize,
@@ -417,13 +431,11 @@ function cascadeUpward(level, tileIndex) {
     const freqBins = child0.height;
 
     if (child1) {
-        // Average two tiles into one
-        // Each child is TILE_COLS wide. Parent is also TILE_COLS wide.
-        // Take every other column from each child and average.
-        const parentData = new Float32Array(TILE_COLS * freqBins);
+        // Average two tiles into one (Uint8)
         const halfCols = Math.floor(child0.width / 2);
         const halfCols1 = Math.floor(child1.width / 2);
         const parentCols = halfCols + halfCols1;
+        const parentData = new Uint8Array(parentCols * freqBins);
 
         // Downsample child0: take pairs, average
         for (let col = 0; col < halfCols; col++) {
@@ -432,7 +444,7 @@ function cascadeUpward(level, tileIndex) {
             for (let bin = 0; bin < freqBins; bin++) {
                 const v0 = child0.magnitudeData[bin * child0.width + srcCol0];
                 const v1 = srcCol1 < child0.width ? child0.magnitudeData[bin * child0.width + srcCol1] : v0;
-                parentData[bin * parentCols + col] = (v0 + v1) / 2;
+                parentData[bin * parentCols + col] = Math.round((v0 + v1) / 2);
             }
         }
 
@@ -444,7 +456,7 @@ function cascadeUpward(level, tileIndex) {
             for (let bin = 0; bin < freqBins; bin++) {
                 const v0 = child1.magnitudeData[bin * child1.width + srcCol0];
                 const v1 = srcCol1 < child1.width ? child1.magnitudeData[bin * child1.width + srcCol1] : v0;
-                parentData[bin * parentCols + destCol] = (v0 + v1) / 2;
+                parentData[bin * parentCols + destCol] = Math.round((v0 + v1) / 2);
             }
         }
 
@@ -454,9 +466,9 @@ function cascadeUpward(level, tileIndex) {
         parent.actualFirstColSec = child0.actualFirstColSec;
         parent.actualLastColSec = child1.actualLastColSec;
     } else {
-        // Only one child (odd count) — just downsample it
+        // Only one child (odd count) — just downsample it (Uint8)
         const halfCols = Math.floor(child0.width / 2);
-        const parentData = new Float32Array(halfCols * freqBins);
+        const parentData = new Uint8Array(halfCols * freqBins);
 
         for (let col = 0; col < halfCols; col++) {
             const srcCol0 = col * 2;
@@ -464,7 +476,7 @@ function cascadeUpward(level, tileIndex) {
             for (let bin = 0; bin < freqBins; bin++) {
                 const v0 = child0.magnitudeData[bin * child0.width + srcCol0];
                 const v1 = srcCol1 < child0.width ? child0.magnitudeData[bin * child0.width + srcCol1] : v0;
-                parentData[bin * halfCols + col] = (v0 + v1) / 2;
+                parentData[bin * halfCols + col] = Math.round((v0 + v1) / 2);
             }
         }
 
@@ -500,7 +512,7 @@ function cascadeUpward(level, tileIndex) {
  * @param {Function} createTextureFn - Function(data, width, height) → THREE.DataTexture
  * @returns {THREE.DataTexture|null}
  */
-export function getTileTexture(tile, key, createTextureFn) {
+export function getTileTexture(tile, key) {
     if (!tile.ready || !tile.magnitudeData) return null;
 
     let entry = tileTextureCache.get(key);
@@ -514,8 +526,8 @@ export function getTileTexture(tile, key, createTextureFn) {
         evictLRU();
     }
 
-    // Create new texture
-    const texture = createTextureFn(tile.magnitudeData, tile.width, tile.height);
+    // Create new Uint8 texture
+    const texture = createUint8MagnitudeTexture(tile.magnitudeData, tile.width, tile.height);
     tileTextureCache.set(key, {
         texture,
         lastUsed: performance.now()

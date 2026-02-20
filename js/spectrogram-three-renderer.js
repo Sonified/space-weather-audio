@@ -197,8 +197,6 @@ uniform float uStretchFactor;
 uniform int uFrequencyScale;
 uniform float uMinFreq;
 uniform float uMaxFreq;
-uniform float uDbFloor;
-uniform float uDbRange;
 uniform vec3 uBackgroundColor;
 uniform float uOpacity;
 
@@ -227,9 +225,7 @@ void main() {
     float texV = clamp(freq / uMaxFreq, 0.0, 1.0);
     float texU = uViewportStart + vUv.x * (uViewportEnd - uViewportStart);
 
-    float magnitude = texture2D(uMagnitudes, vec2(texU, texV)).r;
-    float db = 20.0 * log(magnitude + 1.0e-10) / log(10.0);
-    float normalized = clamp((db - uDbFloor) / uDbRange, 0.0, 1.0);
+    float normalized = texture2D(uMagnitudes, vec2(texU, texV)).r;  // Already 0-1 from Uint8
     vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
 
     gl_FragColor = vec4(color, uOpacity);
@@ -447,8 +443,6 @@ function initThreeScene() {
                 uFrequencyScale: { value: 0 },
                 uMinFreq: { value: 0.1 },
                 uMaxFreq: { value: 50.0 },
-                uDbFloor: { value: -100.0 },
-                uDbRange: { value: 100.0 },
                 uBackgroundColor: { value: new THREE.Vector3(0, 0, 0) },
                 uOpacity: { value: 1.0 }
             },
@@ -1215,8 +1209,8 @@ function updateTileMeshPositions(visibleTiles) {
         if (i < displayTiles.length) {
             const vt = displayTiles[i];
 
-            // Get texture from pyramid LRU cache
-            const texture = getTileTexture(vt.tile, vt.key, createMagnitudeTexture);
+            // Get texture from pyramid LRU cache (Uint8, no factory fn needed)
+            const texture = getTileTexture(vt.tile, vt.key);
             if (!texture) {
                 tm.mesh.visible = false;
                 continue;
@@ -1240,8 +1234,7 @@ function updateTileMeshPositions(visibleTiles) {
                 tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
                 tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
                 tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
-                tm.material.uniforms.uDbFloor.value = material.uniforms.uDbFloor.value;
-                tm.material.uniforms.uDbRange.value = material.uniforms.uDbRange.value;
+                // Note: tiles are pre-normalized Uint8, no uDbFloor/uDbRange needed
                 tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
             }
 
@@ -1546,8 +1539,6 @@ export function drawInterpolatedSpectrogram() {
             tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
             tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
             tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
-            tm.material.uniforms.uDbFloor.value = material.uniforms.uDbFloor.value;
-            tm.material.uniforms.uDbRange.value = material.uniforms.uDbRange.value;
             tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
         }
     }
@@ -1669,8 +1660,6 @@ export function updateSpectrogramViewportFromZoom() {
             tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
             tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
             tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
-            tm.material.uniforms.uDbFloor.value = material.uniforms.uDbFloor.value;
-            tm.material.uniforms.uDbRange.value = material.uniforms.uDbRange.value;
             tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
         }
     }

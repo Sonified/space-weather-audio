@@ -173,5 +173,55 @@ self.onmessage = function(e) {
     }
 };
 
+    if (type === 'compute-batch-uint8') {
+        const { audioData, batchStart, batchEnd, fftSize, hopSize, window, dbFloor = -100, dbRange = 100 } = e.data;
+        
+        // Pre-compute twiddle factors once
+        if (!twiddleCache || twiddleCacheSize !== fftSize) {
+            precomputeTwiddleFactors(fftSize);
+        }
+        
+        const frequencyBinCount = fftSize / 2;
+        const segment = new Float32Array(fftSize);
+        const results = [];
+        
+        for (let sliceIdx = batchStart; sliceIdx < batchEnd; sliceIdx++) {
+            const relativeIdx = (sliceIdx - batchStart) * hopSize;
+            
+            for (let i = 0; i < fftSize; i++) {
+                segment[i] = audioData[relativeIdx + i] * window[i];
+            }
+            
+            const magnitudes = performFFT(segment);
+            
+            // Convert to Uint8 normalized dB
+            const uint8Magnitudes = new Uint8Array(frequencyBinCount);
+            for (let k = 0; k < frequencyBinCount; k++) {
+                const db = 20 * Math.log10(magnitudes[k] + 1e-10);
+                const normalized = Math.max(0, Math.min(1, (db - dbFloor) / dbRange));
+                uint8Magnitudes[k] = Math.round(normalized * 255);
+            }
+            
+            results.push({
+                sliceIdx: sliceIdx,
+                magnitudes: uint8Magnitudes
+            });
+        }
+        
+        segment.fill(0);
+        
+        const batchMemory = (results.length * frequencyBinCount / 1024).toFixed(1);
+        const transferList = results.map(r => r.magnitudes.buffer);
+        
+        self.postMessage({
+            type: 'batch-uint8-complete',
+            batchStart: batchStart,
+            batchEnd: batchEnd,
+            results: results,
+            batchMemoryKB: batchMemory
+        }, transferList);
+    }
+};
+
 // Signal that worker is ready
 self.postMessage({ type: 'ready' });
