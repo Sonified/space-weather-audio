@@ -520,10 +520,29 @@
                         </select>
                     </div>
                     <div class="gear-popover-row">
+                        <span class="gear-label">Markers:</span>
+                        <select id="navBarMarkers" class="gear-select">
+                            <option value="daily" selected>Daily</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-title">Scroll</div>
+                    <div class="gear-popover-row">
                         <span class="gear-label">V-Scroll:</span>
                         <select id="navBarScroll" class="gear-select">
                             <option value="zoom" selected>Zoom</option>
                             <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">V-Sens:</span>
+                        <select id="navBarVSens" class="gear-select" data-paired="navBarScroll">
+                            <option value="25">25%</option>
+                            <option value="50">50%</option>
+                            <option value="75">75%</option>
+                            <option value="100" selected>100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
                         </select>
                     </div>
                     <div class="gear-popover-row">
@@ -534,10 +553,15 @@
                         </select>
                     </div>
                     <div class="gear-popover-row">
-                        <span class="gear-label">Markers:</span>
-                        <select id="navBarMarkers" class="gear-select">
-                            <option value="daily" selected>Daily</option>
-                            <option value="none">None</option>
+                        <span class="gear-label">H-Sens:</span>
+                        <select id="navBarHSens" class="gear-select" data-paired="navBarHScroll">
+                            <option value="10">10%</option>
+                            <option value="25">25%</option>
+                            <option value="50">50%</option>
+                            <option value="75">75%</option>
+                            <option value="100" selected>100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
                         </select>
                     </div>
                 </div>
@@ -582,20 +606,6 @@
                         </select>
                     </div>
                     <div class="gear-popover-row">
-                        <span class="gear-label">V-Scroll:</span>
-                        <select id="mainWindowScroll" class="gear-select">
-                            <option value="zoom" selected>Zoom</option>
-                            <option value="none">No action</option>
-                        </select>
-                    </div>
-                    <div class="gear-popover-row">
-                        <span class="gear-label">H-Scroll:</span>
-                        <select id="mainWindowHScroll" class="gear-select">
-                            <option value="pan" selected>Pan</option>
-                            <option value="none">No action</option>
-                        </select>
-                    </div>
-                    <div class="gear-popover-row">
                         <span class="gear-label">Markers:</span>
                         <select id="mainWindowMarkers" class="gear-select">
                             <option value="daily" selected>Daily</option>
@@ -607,6 +617,44 @@
                         <select id="mainWindowXAxis" class="gear-select">
                             <option value="show" selected>Show Ticks</option>
                             <option value="hide">Hide Ticks</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-title">Scroll</div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">V-Scroll:</span>
+                        <select id="mainWindowScroll" class="gear-select">
+                            <option value="zoom" selected>Zoom</option>
+                            <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">V-Sens:</span>
+                        <select id="mainWindowVSens" class="gear-select" data-paired="mainWindowScroll">
+                            <option value="25">25%</option>
+                            <option value="50">50%</option>
+                            <option value="75">75%</option>
+                            <option value="100" selected>100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">H-Scroll:</span>
+                        <select id="mainWindowHScroll" class="gear-select">
+                            <option value="pan" selected>Pan</option>
+                            <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">H-Sens:</span>
+                        <select id="mainWindowHSens" class="gear-select" data-paired="mainWindowHScroll">
+                            <option value="10">10%</option>
+                            <option value="25">25%</option>
+                            <option value="50">50%</option>
+                            <option value="75">75%</option>
+                            <option value="100" selected>100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
                         </select>
                     </div>
                     <div class="gear-popover-title">Feature Numbers</div>

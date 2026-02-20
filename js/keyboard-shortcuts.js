@@ -32,6 +32,7 @@ export function initKeyboardShortcuts() {
     // Use window.addEventListener with capture phase to ensure we catch events
     // This ensures keyboard shortcuts work even if other handlers prevent default
     window.addEventListener('keydown', handleKeyboardShortcut, true);
+    window.addEventListener('keyup', handleArrowKeyUp, true);
     keyboardShortcutsInitialized = true;
     // Only log in dev/personal modes, not study mode
     if (!isStudyMode()) {
@@ -46,6 +47,8 @@ export function initKeyboardShortcuts() {
 export function cleanupKeyboardShortcuts() {
     if (keyboardShortcutsInitialized) {
         window.removeEventListener('keydown', handleKeyboardShortcut, true);
+        window.removeEventListener('keyup', handleArrowKeyUp, true);
+        stopArrowHold();
         keyboardShortcutsInitialized = false;
     }
 }
@@ -279,17 +282,152 @@ function handleKeyboardShortcut(event) {
         return;
     }
     
-    // Arrow keys: zoom and pan navigation
+    // Arrow keys: zoom and pan navigation (custom repeat — bypasses OS repeat delay)
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp' ||
         event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault();
-        handleArrowNavigation(event.key);
+        if (!event.repeat) {
+            startArrowHold(event.key);
+        }
         return;
     }
 
     // Enter key: Trigger first fetch (only works before first fetch, handled in main.js)
     // We don't handle it here, but we need to make sure we don't prevent it
     // The actual handler is in main.js DOMContentLoaded
+}
+
+// --- Arrow key hold system: tap = discrete step, hold = continuous smooth motion ---
+
+let arrowHoldKey = null;
+let arrowHoldTimer = null;     // 100ms timer to detect hold
+let arrowContinuousRaf = null; // rAF id for continuous motion
+const ARROW_HOLD_THRESHOLD_MS = 100;
+// Continuous motion: ~5 discrete steps worth of movement per second (matches initial tap feel)
+const ARROW_CONTINUOUS_RATE = 5.0; // steps per second
+
+function startArrowHold(key) {
+    stopArrowHold();
+    arrowHoldKey = key;
+    // Fire one discrete step immediately
+    handleArrowNavigation(key);
+    // After 100ms, if still held, switch to continuous smooth motion
+    arrowHoldTimer = setTimeout(() => {
+        arrowHoldTimer = null;
+        startContinuousMotion();
+    }, ARROW_HOLD_THRESHOLD_MS);
+}
+
+function startContinuousMotion() {
+    if (!arrowHoldKey) return;
+    // Cancel any in-progress discrete animation
+    if (navAnimation) {
+        cancelAnimationFrame(navAnimation.rafId);
+        navAnimation = null;
+    }
+
+    let lastTime = performance.now();
+
+    function tick(now) {
+        if (!arrowHoldKey) return;
+        const dt = (now - lastTime) / 1000; // seconds since last frame
+        lastTime = now;
+
+        if (!State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) {
+            arrowContinuousRaf = requestAnimationFrame(tick);
+            return;
+        }
+
+        const startMs = zoomState.currentViewStartTime.getTime();
+        const endMs = zoomState.currentViewEndTime.getTime();
+        const spanMs = endMs - startMs;
+        const dataStartMs = State.dataStartTime.getTime();
+        const dataEndMs = State.dataEndTime.getTime();
+        const dataSpanMs = dataEndMs - dataStartMs;
+
+        const zoomStepEl = document.getElementById('arrowZoomStep');
+        const panStepEl = document.getElementById('arrowPanStep');
+        const zoomPct = (zoomStepEl ? parseInt(zoomStepEl.value) : 15) / 100;
+        const panPct = (panStepEl ? parseInt(panStepEl.value) : 10) / 100;
+
+        // Scale step by dt and rate
+        const frameScale = dt * ARROW_CONTINUOUS_RATE;
+        let newStartMs = startMs;
+        let newEndMs = endMs;
+
+        const key = arrowHoldKey;
+        if (key === 'ArrowUp') {
+            const factor = 1 - zoomPct * frameScale;
+            const mid = (startMs + endMs) / 2;
+            const halfSpan = spanMs * factor / 2;
+            newStartMs = mid - halfSpan;
+            newEndMs = mid + halfSpan;
+        } else if (key === 'ArrowDown') {
+            const factor = 1 + zoomPct * frameScale;
+            const mid = (startMs + endMs) / 2;
+            const halfSpan = spanMs * factor / 2;
+            newStartMs = mid - halfSpan;
+            newEndMs = mid + halfSpan;
+        } else if (key === 'ArrowRight') {
+            const shift = spanMs * panPct * frameScale;
+            newStartMs += shift;
+            newEndMs += shift;
+        } else if (key === 'ArrowLeft') {
+            const shift = spanMs * panPct * frameScale;
+            newStartMs -= shift;
+            newEndMs -= shift;
+        }
+
+        // Clamp to data bounds
+        if (newStartMs < dataStartMs) {
+            const offset = dataStartMs - newStartMs;
+            newStartMs = dataStartMs;
+            if (key === 'ArrowLeft' || key === 'ArrowRight') newEndMs += offset;
+        }
+        if (newEndMs > dataEndMs) {
+            const offset = newEndMs - dataEndMs;
+            newEndMs = dataEndMs;
+            if (key === 'ArrowLeft' || key === 'ArrowRight') newStartMs -= offset;
+        }
+        if (newStartMs < dataStartMs) newStartMs = dataStartMs;
+        if (newEndMs - newStartMs < 1000) {
+            arrowContinuousRaf = requestAnimationFrame(tick);
+            return;
+        }
+
+        if (newEndMs - newStartMs >= dataSpanMs * 0.99) {
+            zoomState.setViewportToFull();
+        } else {
+            zoomState.currentViewStartTime = new Date(newStartMs);
+            zoomState.currentViewEndTime = new Date(newEndMs);
+        }
+        renderNavFrame();
+
+        arrowContinuousRaf = requestAnimationFrame(tick);
+    }
+
+    arrowContinuousRaf = requestAnimationFrame(tick);
+}
+
+function stopArrowHold() {
+    arrowHoldKey = null;
+    if (arrowHoldTimer) {
+        clearTimeout(arrowHoldTimer);
+        arrowHoldTimer = null;
+    }
+    if (arrowContinuousRaf) {
+        cancelAnimationFrame(arrowContinuousRaf);
+        arrowContinuousRaf = null;
+        // Schedule hi-res after continuous motion stops
+        scheduleHiResAfterNav();
+    }
+}
+
+function handleArrowKeyUp(event) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp' ||
+        event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        stopArrowHold();
+    }
 }
 
 // --- Arrow key navigation with smooth transitions ---

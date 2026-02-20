@@ -973,9 +973,13 @@ async function initializeEmicStudyMode() {
         { id: 'mainWindowRelease', key: 'emic_main_release', type: 'select' },
         { id: 'mainWindowDrag', key: 'emic_main_drag', type: 'select' },
         { id: 'navBarScroll', key: 'emic_navbar_scroll', type: 'select' },
+        { id: 'navBarVSens', key: 'emic_navbar_vsens', type: 'select' },
         { id: 'navBarHScroll', key: 'emic_navbar_hscroll', type: 'select' },
+        { id: 'navBarHSens', key: 'emic_navbar_hsens', type: 'select' },
         { id: 'mainWindowScroll', key: 'emic_main_scroll', type: 'select' },
+        { id: 'mainWindowVSens', key: 'emic_main_vsens', type: 'select' },
         { id: 'mainWindowHScroll', key: 'emic_main_hscroll', type: 'select' },
+        { id: 'mainWindowHSens', key: 'emic_main_hsens', type: 'select' },
         { id: 'miniMapView', key: 'emic_minimap_view', type: 'select' },
         { id: 'mainWindowView', key: 'emic_main_view', type: 'select' },
         { id: 'navBarMarkers', key: 'emic_navbar_markers', type: 'select' },
@@ -1009,6 +1013,24 @@ async function initializeEmicStudyMode() {
             });
         }
     }
+
+    // Wire up sensitivity selects: disable when paired scroll setting is off
+    function updateSensPaired() {
+        document.querySelectorAll('select[data-paired]').forEach(sensEl => {
+            const pairedId = sensEl.dataset.paired;
+            const pairedEl = document.getElementById(pairedId);
+            if (!pairedEl) return;
+            const isOff = pairedEl.value === 'none';
+            sensEl.disabled = isOff;
+            sensEl.style.opacity = isOff ? '0.4' : '1';
+        });
+    }
+    // Run once on init, then on any scroll setting change
+    updateSensPaired();
+    ['navBarScroll', 'navBarHScroll', 'mainWindowScroll', 'mainWindowHScroll'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', updateSensPaired);
+    });
 
     // Minimap mode change: re-render waveform with new mode
     const miniMapViewEl = document.getElementById('miniMapView');

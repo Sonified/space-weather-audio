@@ -162,13 +162,19 @@ function onWheel(e) {
     let newStartMs = startMs;
     let newEndMs = endMs;
 
+    // Read sensitivity multipliers (default 100% for both)
+    const vSensEl = document.getElementById(isNavBar ? 'navBarVSens' : 'mainWindowVSens');
+    const hSensEl = document.getElementById(isNavBar ? 'navBarHSens' : 'mainWindowHSens');
+    const vSens = (vSensEl ? parseInt(vSensEl.value) : 100) / 100;
+    const hSens = (hSensEl ? parseInt(hSensEl.value) : 100) / 100;
+
     // Vertical: zoom anchored on cursor
     if (hasVertical) {
         const rect = canvas.getBoundingClientRect();
         const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
         const cursorMs = startMs + frac * spanMs;
 
-        const raw = 1 + e.deltaY * 0.001;
+        const raw = 1 + e.deltaY * 0.001 * vSens;
         const zoomFactor = Math.max(0.8, Math.min(1.2, raw));
 
         newStartMs = cursorMs - (cursorMs - newStartMs) * zoomFactor;
@@ -177,7 +183,7 @@ function onWheel(e) {
 
     // Horizontal: pan (deltaX positive = scroll right = move viewport right)
     if (hasHorizontal) {
-        const panFraction = e.deltaX * 0.001; // ~0.1% of viewport per pixel of deltaX
+        const panFraction = e.deltaX * 0.0005 * hSens;
         const shift = spanMs * panFraction;
         newStartMs += shift;
         newEndMs += shift;
