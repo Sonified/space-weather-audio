@@ -14,6 +14,7 @@ export class SpectrogramWorkerPool {
         this.availableWorkers = [];
         this.taskQueue = [];
         this.initialized = false;
+        this.maxActive = this.numWorkers; // How many workers can run concurrently (reduced during interaction)
         
         // Only log in dev/personal modes, not study mode
         if (!isStudyMode()) {
@@ -245,11 +246,20 @@ export class SpectrogramWorkerPool {
         const pending = [...tiles]; // queue of tiles to assign
         let completed = 0;
         const total = tiles.length;
+        const idleWorkers = [];     // workers parked because we're at maxActive
 
         return new Promise((resolveAll) => {
             const assignNext = (workerIndex) => {
                 if (signal?.aborted) return;
                 if (pending.length === 0) return;
+
+                // Count how many workers are currently busy
+                const busyCount = this.workers.filter(w => w.busy).length;
+                if (busyCount >= this.maxActive) {
+                    // Already at capacity — park this worker until a slot opens
+                    idleWorkers.push(workerIndex);
+                    return;
+                }
 
                 const tile = pending.shift();
                 const workerObj = this.workers[workerIndex];
@@ -290,12 +300,36 @@ export class SpectrogramWorkerPool {
                 }, [tile.audioData.buffer]);
             };
 
+            // Store resume function so throttle() / resume() can kick idle workers
+            this._resumeIdleWorkers = () => {
+                while (idleWorkers.length > 0 && pending.length > 0) {
+                    assignNext(idleWorkers.shift());
+                }
+            };
+
             // Seed: assign one tile to each available worker
             const initialWorkers = Math.min(this.numWorkers, pending.length);
             for (let i = 0; i < initialWorkers; i++) {
                 assignNext(i);
             }
         });
+    }
+
+    /**
+     * Throttle: reduce active workers by `corestoFree` (default 1).
+     * Workers mid-FFT finish naturally, but the pool won't exceed the new cap.
+     * Frees CPU cores for the main thread's render loop.
+     */
+    throttle(coresToFree = 1) {
+        this.maxActive = Math.max(1, this.numWorkers - coresToFree);
+    }
+
+    /**
+     * Resume: restore full concurrency and kick idle workers back into action.
+     */
+    resume() {
+        this.maxActive = this.numWorkers;
+        if (this._resumeIdleWorkers) this._resumeIdleWorkers();
     }
 
     /**

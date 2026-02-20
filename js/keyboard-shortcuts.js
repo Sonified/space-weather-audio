@@ -11,7 +11,7 @@ import { isStudyMode } from './master-modes.js';
 import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './waveform-renderer.js';
 import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
-import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
+import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes, notifyInteractionStart, notifyInteractionEnd } from './spectrogram-three-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { updateCanvasAnnotations } from './spectrogram-renderer.js';
 import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
@@ -298,17 +298,43 @@ function handleKeyboardShortcut(event) {
 }
 
 // --- Arrow key hold system: tap = discrete step, hold = continuous smooth motion ---
+// Stack-based: most recently pressed arrow key drives motion.
+// Releasing a key only stops if it's the active one; otherwise the previous key resumes.
 
-let arrowHoldKey = null;
-let arrowHoldTimer = null;     // 100ms timer to detect hold
-let arrowContinuousRaf = null; // rAF id for continuous motion
+let arrowHoldKey = null;        // currently active arrow key
+let arrowHeldKeys = [];         // stack of held arrow keys (most recent last)
+let arrowHoldTimer = null;      // 100ms timer to detect hold
+let arrowContinuousRaf = null;  // rAF id for continuous motion
 const ARROW_HOLD_THRESHOLD_MS = 100;
 // Continuous motion: ~5 discrete steps worth of movement per second (matches initial tap feel)
 const ARROW_CONTINUOUS_RATE = 5.0; // steps per second
 
 function startArrowHold(key) {
-    stopArrowHold();
+    notifyInteractionStart();
+    // If a different arrow key is already held, push it to the stack
+    if (arrowHoldKey && arrowHoldKey !== key) {
+        // Add current active key to stack if not already there
+        if (!arrowHeldKeys.includes(arrowHoldKey)) {
+            arrowHeldKeys.push(arrowHoldKey);
+        }
+    }
+    // Remove key from stack if it was there (it's now the active key)
+    arrowHeldKeys = arrowHeldKeys.filter(k => k !== key);
+
+    const wasInContinuousMotion = arrowContinuousRaf !== null;
+    // Clear hold timer but preserve continuous motion rAF
+    if (arrowHoldTimer) {
+        clearTimeout(arrowHoldTimer);
+        arrowHoldTimer = null;
+    }
+
     arrowHoldKey = key;
+
+    if (wasInContinuousMotion) {
+        // Already in continuous motion — just switch direction, no discrete step
+        return;
+    }
+
     // Fire one discrete step immediately
     handleArrowNavigation(key);
     // After 100ms, if still held, switch to continuous smooth motion
@@ -411,6 +437,7 @@ function startContinuousMotion() {
 
 function stopArrowHold() {
     arrowHoldKey = null;
+    arrowHeldKeys = [];
     if (arrowHoldTimer) {
         clearTimeout(arrowHoldTimer);
         arrowHoldTimer = null;
@@ -421,12 +448,26 @@ function stopArrowHold() {
         // Schedule hi-res after continuous motion stops
         scheduleHiResAfterNav();
     }
+    notifyInteractionEnd();
 }
 
 function handleArrowKeyUp(event) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp' ||
         event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        stopArrowHold();
+        if (event.key === arrowHoldKey) {
+            // Released the active key — pop the previous key from the stack
+            const prevKey = arrowHeldKeys.pop();
+            if (prevKey) {
+                // Resume the previous direction (already in continuous motion)
+                arrowHoldKey = prevKey;
+            } else {
+                // No more keys held — stop everything
+                stopArrowHold();
+            }
+        } else {
+            // Released a non-active key — just remove from stack
+            arrowHeldKeys = arrowHeldKeys.filter(k => k !== event.key);
+        }
     }
 }
 
@@ -482,6 +523,7 @@ function smoothNavigateTo(targetStartMs, targetEndMs) {
             navAnimation = null;
             // Trigger hi-res render after settling
             scheduleHiResAfterNav();
+            notifyInteractionEnd();
         }
     }
 

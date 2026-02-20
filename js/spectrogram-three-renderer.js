@@ -17,7 +17,7 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { isStudyMode } from './master-modes.js';
 import { getColorLUT } from './colormaps.js';
-import { initPyramid, renderBaseTiles, pickLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported } from './spectrogram-pyramid.js';
+import { initPyramid, renderBaseTiles, pickLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers } from './spectrogram-pyramid.js';
 
 // ─── Module state ───────────────────────────────────────────────────────────
 
@@ -78,6 +78,36 @@ let scrollZoomHiRes = {
     endSeconds: null,    // expanded render end (with padding)
     ready: false
 };
+
+// ─── Interaction throttle (defer tile-ready updates during zoom/pan) ─────────
+let interactionActive = false;
+let interactionSettleTimer = null;
+let pendingTileUpdates = false;  // true if tiles arrived during interaction
+const INTERACTION_SETTLE_MS = 150;
+
+export function notifyInteractionStart() {
+    interactionActive = true;
+    throttleWorkers();
+    if (interactionSettleTimer) {
+        clearTimeout(interactionSettleTimer);
+        interactionSettleTimer = null;
+    }
+}
+
+export function notifyInteractionEnd() {
+    // Debounce: wait for interaction to truly settle before flushing
+    if (interactionSettleTimer) clearTimeout(interactionSettleTimer);
+    interactionSettleTimer = setTimeout(() => {
+        interactionActive = false;
+        interactionSettleTimer = null;
+        resumeWorkers();
+        if (pendingTileUpdates) {
+            pendingTileUpdates = false;
+            updateSpectrogramViewportFromZoom();
+            renderFrame();
+        }
+    }, INTERACTION_SETTLE_MS);
+}
 
 // ─── Tile rendering (pyramid LOD system) ─────────────────────────────────────
 const TILE_CROSSFADE_MS = 300; // crossfade duration when tiles appear (ms)
@@ -1073,9 +1103,14 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         initPyramid(dataDurationSec, pyramidSampleRate);
 
         // Set callback for tile readiness → triggers viewport update
+        // During active zoom/pan, defer expensive updates to avoid jank
         setOnTileReady((level, tileIndex) => {
             const key = `L${level}:${tileIndex}`;
             if (!tileReadyTimes.has(key)) tileReadyTimes.set(key, performance.now());
+            if (interactionActive) {
+                pendingTileUpdates = true;
+                return;
+            }
             updateSpectrogramViewportFromZoom();
             renderFrame();
         });

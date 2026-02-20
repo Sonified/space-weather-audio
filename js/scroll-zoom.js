@@ -19,7 +19,7 @@ import * as State from './audio-state.js';
 import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './waveform-renderer.js';
 import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
-import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
+import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes, notifyInteractionStart, notifyInteractionEnd } from './spectrogram-three-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { updateCanvasAnnotations } from './spectrogram-renderer.js';
 import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
@@ -28,6 +28,11 @@ import { drawDayMarkers } from './day-markers.js';
 let initialized = false;
 let rafPending = false;     // true while a render frame is scheduled
 let hiResTimer = null;      // debounce timer for hi-res viewport render
+
+// Sticky gesture direction — prevents accidental axis flips mid-gesture
+let gestureAxis = null;         // null | 'horizontal' | 'vertical'
+let gestureSettleTimer = null;  // resets when gesture ends
+const GESTURE_SETTLE_MS = 150;
 
 const HI_RES_DELAY_MS = 400; // ms after last scroll event to trigger hi-res render
 
@@ -137,19 +142,43 @@ function onWheel(e) {
     const vZoomEnabled = vScrollSelect && vScrollSelect.value === 'zoom';
     const hPanEnabled = hScrollSelect && hScrollSelect.value === 'pan';
 
-    // Disambiguate: trackpad gestures often produce both deltaX and deltaY.
-    // Use the dominant axis only to prevent horizontal swipes from triggering zoom.
+    // Sticky gesture direction: first event picks the axis normally,
+    // then switching requires a 2:1 ratio to prevent accidental flips mid-pan.
     const absX = Math.abs(e.deltaX);
     const absY = Math.abs(e.deltaY);
-    const dominantIsHorizontal = absX > absY;
-    const hasVertical = !dominantIsHorizontal && absY > 0 && vZoomEnabled;
-    const hasHorizontal = dominantIsHorizontal && absX > 0 && hPanEnabled;
+
+    // Reset settle timer on every event — gesture is still active
+    if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
+    gestureSettleTimer = setTimeout(() => {
+        gestureAxis = null;
+        gestureSettleTimer = null;
+    }, GESTURE_SETTLE_MS);
+
+    // Determine direction for this event
+    let eventAxis;
+    if (!gestureAxis) {
+        // First event of gesture: pick direction normally
+        eventAxis = absX >= absY ? 'horizontal' : 'vertical';
+        gestureAxis = eventAxis;
+    } else {
+        // Mid-gesture: stick with current axis unless the other axis is 2x dominant
+        if (gestureAxis === 'horizontal' && absY > absX * 2) {
+            gestureAxis = 'vertical';
+        } else if (gestureAxis === 'vertical' && absX > absY * 2) {
+            gestureAxis = 'horizontal';
+        }
+        eventAxis = gestureAxis;
+    }
+
+    const hasVertical = eventAxis === 'vertical' && absY > 0 && vZoomEnabled;
+    const hasHorizontal = eventAxis === 'horizontal' && absX > 0 && hPanEnabled;
 
     if (!hasVertical && !hasHorizontal) return;
     if (!State.dataStartTime || !State.dataEndTime) return;
 
     e.preventDefault();
     notifyPageTurnUserDragged();
+    notifyInteractionStart();
 
     const { startMs, endMs } = getViewport();
     const spanMs = endMs - startMs;
@@ -223,6 +252,9 @@ function onWheel(e) {
     // Debounce hi-res viewport render: reset timer on every scroll event
     if (hiResTimer) clearTimeout(hiResTimer);
     hiResTimer = setTimeout(renderHiResViewport, HI_RES_DELAY_MS);
+
+    // Signal interaction end (debounced — flushes deferred tile updates after settling)
+    notifyInteractionEnd();
 }
 
 /**

@@ -17,7 +17,7 @@ import { zoomState } from './zoom-state.js';
 import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 import { isStudyMode } from './master-modes.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
-import { restoreViewportState, updateSpectrogramViewportFromZoom, getFullMagnitudeTexture, getSpectrogramParams } from './spectrogram-three-renderer.js';
+import { restoreViewportState, updateSpectrogramViewportFromZoom, getFullMagnitudeTexture, getSpectrogramParams, notifyInteractionStart, notifyInteractionEnd } from './spectrogram-three-renderer.js';
 import { drawDayMarkers } from './day-markers.js';
 import { getColorLUT } from './colormaps.js';
 import { updateLiveAnnotations } from './spectrogram-live-annotations.js';
@@ -1564,6 +1564,7 @@ export function setupWaveformInteraction() {
         if (isMinimapZoomed()) {
             minimapDragging = true;
             minimapResizeEdge = null; // default: pan mode
+            notifyInteractionStart();
             pageTurnUserDragged = true; // User manually moved viewport — break page-turn catch
             pageTurnPlayheadWasInView = false; // Reset — must see playhead enter viewport before re-engaging
             const dataStartMs = State.dataStartTime.getTime();
@@ -1662,6 +1663,7 @@ export function setupWaveformInteraction() {
             function onDocMouseUp(ev) {
                 minimapDragging = false;
                 minimapResizeEdge = null;
+                notifyInteractionEnd();
                 canvas.style.cursor = 'pointer';
                 document.removeEventListener('mousemove', onDocMouseMove);
                 document.removeEventListener('mouseup', onDocMouseUp);

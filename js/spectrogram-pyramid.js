@@ -581,6 +581,21 @@ export function setOnTileReady(callback) {
     onTileReady = callback;
 }
 
+/**
+ * Throttle worker pool: stop assigning new tiles during user interaction.
+ * In-flight workers finish naturally, freeing CPU cores for smooth rendering.
+ */
+export function throttleWorkers() {
+    if (workerPool) workerPool.throttle();
+}
+
+/**
+ * Resume worker pool: kick idle workers back into tile processing.
+ */
+export function resumeWorkers() {
+    if (workerPool) workerPool.resume();
+}
+
 // ─── Cleanup ────────────────────────────────────────────────────────────────
 
 /**
