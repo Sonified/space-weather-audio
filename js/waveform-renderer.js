@@ -770,7 +770,7 @@ function getWaveformViewport() {
         return { start: 0, end: 1 };
     }
 
-    const totalSamples = State.completeSamplesArray ? State.completeSamplesArray.length : 1;
+    const totalSamples = State.getCompleteSamplesLength() || 1;
     let startSample = 0;
     let endSample = totalSamples;
 
@@ -1246,7 +1246,8 @@ function normalize(data) {
 }
 
 export function drawWaveform() {
-    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
+    const samplesLength = State.getCompleteSamplesLength();
+    if (samplesLength === 0) {
         console.log(`⚠️ drawWaveform() aborted: no data`);
         return;
     }
@@ -1259,10 +1260,11 @@ export function drawWaveform() {
 
     // Use original sample rate from metadata, NOT AudioContext rate
     const sampleRate = State.currentMetadata?.original_sample_rate || 50;
-    State.setTotalAudioDuration(State.completeSamplesArray.length / sampleRate);
+    State.setTotalAudioDuration(samplesLength / sampleRate);
 
     // Upload samples to GPU texture (the shader handles everything)
-    uploadWaveformSamples(State.completeSamplesArray);
+    const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
+    uploadWaveformSamples(samples);
 
     // Compute viewport from zoom state and render with current minimap mode
     const viewport = getWaveformViewport();
@@ -1293,7 +1295,7 @@ export function drawWaveformFromMinMax() {
     // GPU path: just re-render with current viewport
     if (!wfRenderer || !wfSampleTexture) {
         // Fallback: if GPU not initialized yet, trigger full drawWaveform
-        if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+        if (State.getCompleteSamplesLength() > 0) {
             drawWaveform();
         }
         return;
@@ -1378,8 +1380,8 @@ export function setupWaveformInteraction() {
     }
     
     function updateScrubPreview(event) {
-        if (!State.completeSamplesArray || !State.totalAudioDuration) return;
-        
+        if (State.getCompleteSamplesLength() === 0 || !State.totalAudioDuration) return;
+
         const { targetPosition, progress } = getPositionFromMouse(event);
         State.setScrubTargetPosition(targetPosition);
 
@@ -1438,7 +1440,7 @@ export function setupWaveformInteraction() {
     }
     
     function performSeek() {
-        if (!State.completeSamplesArray || !State.totalAudioDuration) {
+        if (State.getCompleteSamplesLength() === 0 || !State.totalAudioDuration) {
             console.log('⏸️ Seeking disabled - no audio data loaded');
             return;
         }
@@ -1464,7 +1466,7 @@ export function setupWaveformInteraction() {
     }
     
     canvas.addEventListener('mousedown', (e) => {
-        if (!State.completeSamplesArray || State.totalAudioDuration === 0) return;
+        if (State.getCompleteSamplesLength() === 0 || State.totalAudioDuration === 0) return;
         
         // Hide any existing "Add Region" button when starting a new selection
         hideAddRegionButton();
@@ -2090,7 +2092,7 @@ export function setupWaveformInteraction() {
             const wasSelecting = State.isSelecting;
             State.setIsDragging(false);
             State.setIsSelecting(false);
-            canvas.style.cursor = State.completeSamplesArray && State.totalAudioDuration > 0 ? 'pointer' : 'default';
+            canvas.style.cursor = State.getCompleteSamplesLength() > 0 && State.totalAudioDuration > 0 ? 'pointer' : 'default';
             
             if (State.selectionStartX !== null) {
                 if (wasSelecting && State.selectionStart !== null && State.selectionEnd !== null) {
@@ -2128,7 +2130,7 @@ export function setupWaveformInteraction() {
     });
     
     canvas.addEventListener('mouseenter', () => {
-        if (State.completeSamplesArray && State.totalAudioDuration > 0) {
+        if (State.getCompleteSamplesLength() > 0 && State.totalAudioDuration > 0) {
             canvas.style.cursor = 'pointer';
         }
     });
@@ -2153,7 +2155,7 @@ export function setupWaveformInteraction() {
 
         console.log('📱 TOUCH EVENT RECEIVED on waveform canvas');
 
-        if (!State.completeSamplesArray || State.totalAudioDuration === 0) {
+        if (State.getCompleteSamplesLength() === 0 || State.totalAudioDuration === 0) {
             console.log('📱 No audio data loaded yet, ignoring touch');
             return;
         }
@@ -2601,8 +2603,9 @@ export function changeWaveformFilter() {
     document.getElementById('waveformFilterValue').textContent = `${alpha.toFixed(4)}`;
     
     // Ensure raw data backup exists (some loading paths don't set it)
-    if (!window.rawWaveformData && State.completeSamplesArray && State.completeSamplesArray.length > 0) {
-        window.rawWaveformData = new Float32Array(State.completeSamplesArray);
+    if (!window.rawWaveformData && State.getCompleteSamplesLength() > 0) {
+        const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
+        window.rawWaveformData = new Float32Array(samples);
     }
 
     if (window.rawWaveformData && window.rawWaveformData.length > 0) {

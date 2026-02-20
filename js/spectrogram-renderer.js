@@ -1150,7 +1150,7 @@ export function setupSpectrogramSelection() {
             // Click=Play audio: seek immediately on mousedown
             const modeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
             const isWindowed = modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
-            if (isWindowed && State.completeSamplesArray && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
+            if (isWindowed && State.getCompleteSamplesLength() > 0 && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
                 const timestamp = zoomState.pixelToTimestamp(clickX, canvasRect.width);
                 const dataStartMs = State.dataStartTime.getTime();
                 const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;
@@ -1441,7 +1441,7 @@ export function setupSpectrogramSelection() {
                 const releaseX = e.clientX - canvasRect.left;
                 const modeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
                 const isWindowed = modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
-                if (isWindowed && State.completeSamplesArray && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
+                if (isWindowed && State.getCompleteSamplesLength() > 0 && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
                     const timestamp = zoomState.pixelToTimestamp(releaseX, canvasRect.width);
                     const dataStartMs = State.dataStartTime.getTime();
                     const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;

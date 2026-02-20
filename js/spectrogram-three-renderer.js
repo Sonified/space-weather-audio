@@ -1089,10 +1089,13 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             : dataDurationSec / 2;
 
         // Render base tiles (fire-and-forget, progressive)
+        const tileStartTime = performance.now();
         renderBaseTiles(State.completeSamplesArray, pyramidSampleRate, fftSize, viewCenterSec, (done, total) => {
             if (!isStudyMode()) console.log(`🔺 Tiles: ${done}/${total}`);
             // All base tiles rendered — compress audio buffer to save memory
             if (done === total) {
+                const elapsed = ((performance.now() - tileStartTime) / 1000).toFixed(1);
+                console.log(`🔺 All ${total} base tiles rendered in ${elapsed}s`);
                 requestIdleCallback(() => {
                     State.compressSamplesArray();
                 }, { timeout: 5000 });

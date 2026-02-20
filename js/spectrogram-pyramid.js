@@ -333,12 +333,8 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / fftSize));
     }
 
-    // Sort tiles: closest to viewport center first
-    const renderOrder = baseTiles.map((t, i) => i).sort((a, b) => {
-        const aCenterSec = (baseTiles[a].startSec + baseTiles[a].endSec) / 2;
-        const bCenterSec = (baseTiles[b].startSec + baseTiles[b].endSec) / 2;
-        return Math.abs(aCenterSec - viewCenterSec) - Math.abs(bCenterSec - viewCenterSec);
-    });
+    // Sequential order: first tile to last (streaming-ready)
+    const renderOrder = baseTiles.map((t, i) => i);
 
     let tilesComplete = 0;
 
@@ -449,11 +445,15 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         const secPerResampledSample = tileSpanSec / tileSamples.length;
         tile.actualFirstColSec = tileOriginSec + halfFFT * secPerResampledSample;
         tile.actualLastColSec = tileOriginSec + ((numTimeSlices - 1) * hopSize + halfFFT) * secPerResampledSample;
-        console.log(`🔺 Tile L0:${tileIdx} nominal=[${tile.startSec.toFixed(1)}, ${tile.endSec.toFixed(1)}] actual=[${tile.actualFirstColSec.toFixed(2)}, ${tile.actualLastColSec.toFixed(2)}] samples=${tileSamples.length} hop=${hopSize} slices=${numTimeSlices} secPerSample=${secPerResampledSample.toFixed(6)}`);
         tile.ready = true;
         tile.rendering = false;
-
         tilesComplete++;
+
+        // Log progress every 10% instead of every tile
+        const step = Math.max(1, Math.floor(baseTiles.length / 10));
+        if (tilesComplete % step === 0 || tilesComplete === baseTiles.length) {
+            console.log(`🔺 Tiles: ${tilesComplete}/${baseTiles.length} (${((tilesComplete / baseTiles.length) * 100).toFixed(0)}%)`);
+        }
 
         if (onProgress) {
             onProgress(tilesComplete, baseTiles.length);
