@@ -1093,9 +1093,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             if (!isStudyMode()) console.log(`🔺 Tiles: ${done}/${total}`);
             // All base tiles rendered — compress audio buffer to save memory
             if (done === total) {
-                setTimeout(() => {
+                requestIdleCallback(() => {
                     State.compressSamplesArray();
-                }, 2000);
+                }, { timeout: 5000 });
             }
         });
 
@@ -1194,8 +1194,7 @@ export function tilesOutresolveRegion(viewStartSec, viewEndSec) {
     if (visibleTiles.length === 0) return false;
 
     // Total pyramid columns visible vs region columns
-    const nonPrefetch = visibleTiles.filter(vt => !vt.isPrefetch);
-    const totalPyramidCols = nonPrefetch.length * TILE_COLS;
+    const totalPyramidCols = visibleTiles.length * TILE_COLS;
     return totalPyramidCols >= canvasWidth;
 }
 
@@ -1204,14 +1203,13 @@ export function tilesOutresolveRegion(viewStartSec, viewEndSec) {
  * Each tile mesh is a 2×2 quad in NDC space (-1 to 1).
  * Scale and translate X to cover only the tile's screen fraction.
  * 
- * visibleTiles: array of { tile, key, uvStart, uvEnd, screenFracStart, screenFracEnd, isPrefetch }
+ * visibleTiles: array of { tile, key, uvStart, uvEnd, screenFracStart, screenFracEnd }
  */
 function updateTileMeshPositions(visibleTiles) {
     let anyFading = false;
     const now = performance.now();
 
-    // Filter out prefetch tiles (they're for cache warming, not display)
-    const displayTiles = visibleTiles.filter(vt => !vt.isPrefetch);
+    const displayTiles = visibleTiles;
 
     for (let i = 0; i < tileMeshes.length; i++) {
         const tm = tileMeshes[i];

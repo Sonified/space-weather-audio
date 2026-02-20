@@ -88,8 +88,14 @@ function createBC4MagnitudeTexture(data, width, height, compressedData) {
 
 const BASE_TILE_DURATION_SEC = 15 * 60;  // 15 minutes
 const TILE_COLS = 1024;                   // FFT columns per tile
-const MAX_CACHED_TILES = 40;             // LRU cache limit
-const PREFETCH_TILES = 2;               // tiles to prefetch beyond viewport edges
+
+// Adaptive texture cache: scale with available device memory
+function getMaxCachedTiles() {
+    const mem = navigator.deviceMemory || 4; // GB (defaults to 4 if unsupported)
+    if (mem <= 2) return 16;
+    if (mem <= 4) return 32;
+    return 64;
+}
 
 // ─── Pyramid State ──────────────────────────────────────────────────────────
 
@@ -233,7 +239,7 @@ export function pickLevel(viewStartSec, viewEndSec, canvasWidth) {
 
 /**
  * Get visible tiles at a given level for a viewport.
- * Returns tiles that overlap [viewStartSec, viewEndSec] plus prefetch neighbors.
+ * Returns only tiles that overlap [viewStartSec, viewEndSec].
  * 
  * @returns {Array<{tile, uvStart, uvEnd, screenFracStart, screenFracEnd}>}
  */
@@ -249,10 +255,8 @@ export function getVisibleTiles(level, viewStartSec, viewEndSec) {
     for (let i = 0; i < tiles.length; i++) {
         const tile = tiles[i];
 
-        // Check overlap (with prefetch padding)
-        const prefetchPad = tile.duration * PREFETCH_TILES;
-        if (tile.endSec <= viewStartSec - prefetchPad) continue;
-        if (tile.startSec >= viewEndSec + prefetchPad) continue;
+        if (tile.endSec <= viewStartSec) continue;
+        if (tile.startSec >= viewEndSec) continue;
 
         if (!tile.ready) continue;
 
@@ -274,7 +278,6 @@ export function getVisibleTiles(level, viewStartSec, viewEndSec) {
             uvEnd,
             screenFracStart,
             screenFracEnd,
-            isPrefetch: tile.endSec <= viewStartSec || tile.startSec >= viewEndSec
         });
     }
 
@@ -569,7 +572,7 @@ function cascadeUpward(level, tileIndex) {
 
 /**
  * Get or create a GPU texture for a tile.
- * Uses LRU eviction when cache exceeds MAX_CACHED_TILES.
+ * Uses LRU eviction when cache exceeds adaptive limit.
  * 
  * @param {object} tile - Tile descriptor
  * @param {string} key - Tile key
@@ -586,7 +589,7 @@ export function getTileTexture(tile, key) {
     }
 
     // Evict if over limit
-    if (tileTextureCache.size >= MAX_CACHED_TILES) {
+    if (tileTextureCache.size >= getMaxCachedTiles()) {
         evictLRU();
     }
 
