@@ -260,19 +260,13 @@ export function getVisibleTiles(level, viewStartSec, viewEndSec) {
         const actualDuration = tile.actualLastColSec - tile.actualFirstColSec;
         if (actualDuration <= 0) continue;
 
-        // Use actual FFT column times for BOTH UV and screen positioning.
-        // Nominal tile boundaries (startSec/endSec) don't match where data actually exists,
-        // causing stair-step discontinuities at tile edges.
-        const clampedStart = Math.max(viewStartSec, tile.actualFirstColSec);
-        const clampedEnd = Math.min(viewEndSec, tile.actualLastColSec);
-        if (clampedStart >= clampedEnd) continue;
+        // UV: map nominal tile boundaries into the texture's actual column range.
+        // Screen: use nominal boundaries so tiles are edge-to-edge with no gaps.
+        const uvStart = (Math.max(viewStartSec, tile.startSec) - tile.actualFirstColSec) / actualDuration;
+        const uvEnd = (Math.min(viewEndSec, tile.endSec) - tile.actualFirstColSec) / actualDuration;
 
-        const uvStart = (clampedStart - tile.actualFirstColSec) / actualDuration;
-        const uvEnd = (clampedEnd - tile.actualFirstColSec) / actualDuration;
-
-        // Screen-space fraction — also based on actual column times
-        const screenFracStart = Math.max(0, (tile.actualFirstColSec - viewStartSec) / viewDuration);
-        const screenFracEnd = Math.min(1, (tile.actualLastColSec - viewStartSec) / viewDuration);
+        const screenFracStart = Math.max(0, (tile.startSec - viewStartSec) / viewDuration);
+        const screenFracEnd = Math.min(1, (tile.endSec - viewStartSec) / viewDuration);
 
         visible.push({
             tile,
