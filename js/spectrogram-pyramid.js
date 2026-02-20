@@ -367,10 +367,19 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             resampledEnd = endSample;
         }
 
-        const tileSamples = audioData.slice(
-            Math.max(0, resampledStart),
-            Math.min(audioData.length, resampledEnd)
-        );
+        // Use slice accessor (handles both Float32 direct and Int16 decompression)
+        let tileSamples;
+        if (audioData) {
+            tileSamples = audioData.slice(
+                Math.max(0, resampledStart),
+                Math.min(audioData.length, resampledEnd)
+            );
+        } else {
+            tileSamples = State.getCompleteSamplesSlice(
+                Math.max(0, resampledStart),
+                Math.min(State.getCompleteSamplesLength(), resampledEnd)
+            );
+        }
 
         if (tileSamples.length <= fftSize) {
             console.warn(`🔺 L0 tile ${tileIdx} too small for FFT (${tileSamples.length} samples)`);

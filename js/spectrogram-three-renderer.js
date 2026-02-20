@@ -694,7 +694,7 @@ function renderFrame() {
  * Called after spectrogram render completes (same sample data, separate textures).
  */
 function uploadMainWaveformSamples() {
-    const samples = State.completeSamplesArray;
+    const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
     if (!samples || samples.length === 0) return;
     if (!waveformMaterial) return;
 
@@ -921,7 +921,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         console.log('renderCompleteSpectrogram called:', { skipViewportUpdate, forceFullView });
     }
 
-    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
+    if (State.getCompleteSamplesLength() === 0) {
         if (!isStudyMode()) {
             console.log('No audio data available');
             console.groupEnd();
@@ -957,8 +957,8 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
     }
 
     // Check if re-render needed
-    const audioData = State.completeSamplesArray;
-    const totalSamples = audioData.length;
+    const audioData = State.completeSamplesArray || State.getCompleteSamplesArray();
+    const totalSamples = audioData ? audioData.length : 0;
     const needsRerender = fullMagnitudeTexture &&
         (renderContext.startSample !== 0 ||
          renderContext.endSample !== totalSamples ||
@@ -1091,6 +1091,12 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         // Render base tiles (fire-and-forget, progressive)
         renderBaseTiles(State.completeSamplesArray, pyramidSampleRate, fftSize, viewCenterSec, (done, total) => {
             if (!isStudyMode()) console.log(`🔺 Tiles: ${done}/${total}`);
+            // All base tiles rendered — compress audio buffer to save memory
+            if (done === total) {
+                setTimeout(() => {
+                    State.compressSamplesArray();
+                }, 2000);
+            }
         });
 
     } catch (error) {
@@ -1111,7 +1117,7 @@ let hiResAbortController = null;
  * Safe to call multiple times — cancels any in-progress upgrade.
  */
 export async function upgradeFullTextureToHiRes(multiplier = 4) {
-    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) return;
+    if (State.getCompleteSamplesLength() === 0) return;
     if (!threeRenderer || !material) return;
 
     // Cancel any in-progress upgrade
@@ -1124,7 +1130,7 @@ export async function upgradeFullTextureToHiRes(multiplier = 4) {
     const signal = hiResAbortController.signal;
 
     try {
-        const audioData = State.completeSamplesArray;
+        const audioData = State.completeSamplesArray || State.getCompleteSamplesArray();
         const totalSamples = audioData.length;
         const fftSize = State.fftSize || 2048;
         const canvas = threeRenderer.domElement;
@@ -1264,7 +1270,7 @@ function updateTileMeshPositions(visibleTiles) {
 // ─── Region render (zoomed in, HQ) ─────────────────────────────────────────
 
 export async function renderCompleteSpectrogramForRegion(startSeconds, endSeconds, renderInBackground = false, regionId = null, smartRenderOptions = null) {
-    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
+    if (State.getCompleteSamplesLength() === 0) {
         console.log('No audio data for region render');
         return;
     }
@@ -1331,7 +1337,9 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         // Extract region samples
         const resampledStartSample = zoomState.originalToResampledSample(startSample);
         const resampledEndSample = zoomState.originalToResampledSample(endSample);
-        const regionSamples = State.completeSamplesArray.slice(resampledStartSample, resampledEndSample);
+        const regionSamples = State.completeSamplesArray 
+            ? State.completeSamplesArray.slice(resampledStartSample, resampledEndSample)
+            : State.getCompleteSamplesSlice(resampledStartSample, resampledEndSample);
         const totalSamples = regionSamples.length;
 
         const fftSize = State.fftSize || 2048;
@@ -2149,7 +2157,7 @@ function updateSpectrogramOverlay(progress) {
 export async function startCompleteVisualization() {
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
+    if (State.getCompleteSamplesLength() === 0) {
         console.log('Cannot start visualization - no audio data');
         return;
     }
@@ -2204,6 +2212,18 @@ export function getTileCompression() {
 
 export function isTileBC4Supported() {
     return isBC4Supported();
+}
+
+/**
+ * Aggressive cleanup for beforeunload — frees all GPU and audio memory.
+ */
+export function aggressiveCleanup() {
+    disposePyramid();
+    if (fullMagnitudeTexture) { fullMagnitudeTexture.dispose(); fullMagnitudeTexture = null; }
+    if (regionMagnitudeTexture) { regionMagnitudeTexture.dispose(); regionMagnitudeTexture = null; }
+    if (threeRenderer) { threeRenderer.dispose(); }
+    State.setCompleteSamplesArray(null);
+    State.setCompressedSamplesBuffer(null);
 }
 
 /**

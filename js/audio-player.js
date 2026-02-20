@@ -335,7 +335,7 @@ export function updatePlaybackSpeed() {
     }
 
     // Stretch switching: sub-1x speed uses stretch processor (unless algorithm is 'resample')
-    const useStretch = baseSpeed < 1.0 && State.completeSamplesArray && State.stretchAlgorithm !== 'resample';
+    const useStretch = baseSpeed < 1.0 && State.getCompleteSamplesLength() > 0 && State.stretchAlgorithm !== 'resample';
 
     if (useStretch) {
         const stretchFactor = 1 / baseSpeed;
@@ -602,7 +602,7 @@ export function getCurrentPosition() {
  * Uses pre-primed node — just seek, play, and crossfade.
  */
 function engageStretch(stretchFactor) {
-    if (!State.audioContext || !State.completeSamplesArray) return;
+    if (!State.audioContext || State.getCompleteSamplesLength() === 0) return;
 
     const wasPlaying = State.playbackState === PlaybackState.PLAYING;
     const currentPosition = State.currentAudioPosition;
@@ -684,7 +684,7 @@ export function switchStretchAlgorithm(algorithm) {
     }
 
     // If switching to a real stretch algorithm while speed < 1.0 and stretch is NOT active, engage
-    if (algorithm !== 'resample' && baseSpeed < 1.0 && !State.stretchActive && State.completeSamplesArray) {
+    if (algorithm !== 'resample' && baseSpeed < 1.0 && !State.stretchActive && State.getCompleteSamplesLength() > 0) {
         engageStretch(1 / baseSpeed);
         return;
     }
@@ -764,7 +764,7 @@ export function resetVolumeTo1() {
 }
 
 export function seekToPosition(targetPosition, shouldStartPlayback = false) {
-    if (!State.audioContext || !State.workletNode || !State.completeSamplesArray || State.totalAudioDuration === 0) {
+    if (!State.audioContext || !State.workletNode || State.getCompleteSamplesLength() === 0 || State.totalAudioDuration === 0) {
         console.log('❌ Cannot seek: audio not ready');
         return;
     }
@@ -978,17 +978,17 @@ export function downloadAudio() {
     console.log('🔥 downloadAudio() called - VERSION 2 (44.1kHz)');
 
     // Always use completeSamplesArray which is resampled to 44.1kHz by the AudioContext
-    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) {
+    if (State.getCompleteSamplesLength() === 0) {
         console.warn('No audio data to download');
         return;
     }
 
     // completeSamplesArray is at 44100 Hz (AudioContext's native sample rate)
     const sampleRate = 44100;
-    console.log(`📥 Preparing WAV download: ${State.completeSamplesArray.length} samples @ ${sampleRate} Hz`);
+    const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
+    console.log(`📥 Preparing WAV download: ${samples.length} samples @ ${sampleRate} Hz`);
     const numChannels = 1; // Mono
     const bytesPerSample = 2; // 16-bit
-    const samples = State.completeSamplesArray;
     
     // Create WAV file
     const dataLength = samples.length * bytesPerSample;

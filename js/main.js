@@ -9,7 +9,7 @@ import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport } from './spectrogram-three-renderer.js';
+import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, aggressiveCleanup } from './spectrogram-three-renderer.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
@@ -512,24 +512,20 @@ export async function initAudioWorklet() {
             const { targetSample, wasPlaying, forceResume } = event.data;
             console.log(`🎯 [SEEK-READY] Re-sending samples from ${targetSample.toLocaleString()}, wasPlaying=${wasPlaying}, forceResume=${forceResume}`);
             
-            // 🔥 FIX: Copy completeSamplesArray to local variable to break closure chain
-            // This prevents the message handler closure from retaining the entire State module
-            const completeSamplesArray = State.completeSamplesArray;
+            // 🔥 FIX: Use accessor that handles both Float32 and compressed Int16
+            const totalSamplesCount = State.getCompleteSamplesLength();
             
-            if (completeSamplesArray && targetSample >= 0 && targetSample < completeSamplesArray.length) {
+            if (totalSamplesCount > 0 && targetSample >= 0 && targetSample < totalSamplesCount) {
                 // Tell worklet whether to auto-resume after buffering
                 const shouldAutoResume = wasPlaying || forceResume;
                 
                 // Send samples in chunks to avoid blocking
                 const chunkSize = 44100 * 10; // 10 seconds per chunk
-                const totalSamples = completeSamplesArray.length;
                 
-                for (let i = targetSample; i < totalSamples; i += chunkSize) {
-                    const end = Math.min(i + chunkSize, totalSamples);
-                    // 🔥 FIX: Copy slice to new ArrayBuffer to prevent retaining reference to completeSamplesArray's buffer
-                    // Slices share the same ArrayBuffer, which prevents GC of the original buffer
-                    const slice = completeSamplesArray.slice(i, end);
-                    const chunk = new Float32Array(slice); // Copy to new ArrayBuffer
+                for (let i = targetSample; i < totalSamplesCount; i += chunkSize) {
+                    const end = Math.min(i + chunkSize, totalSamplesCount);
+                    // Use getCompleteSamplesSlice which handles both Float32 and compressed Int16
+                    const chunk = State.getCompleteSamplesSlice(i, end);
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
@@ -538,7 +534,7 @@ export async function initAudioWorklet() {
                     });
                 }
                 
-                console.log(`📤 [SEEK-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}, autoResume=${shouldAutoResume}`);
+                console.log(`📤 [SEEK-READY] Sent ${(totalSamplesCount - targetSample).toLocaleString()} samples from position ${targetSample.toLocaleString()}, autoResume=${shouldAutoResume}`);
             } else {
                 console.error(`❌ [SEEK-READY] Cannot re-send: completeSamplesArray unavailable or invalid target ${targetSample}`);
             }
@@ -554,11 +550,10 @@ export async function initAudioWorklet() {
             const { targetSample } = event.data;
             // console.log(`🔄 [LOOP-READY] Re-sending samples from ${targetSample.toLocaleString()} (loop restart)`);
             
-            // 🔥 FIX: Copy completeSamplesArray to local variable to break closure chain
-            // This prevents the message handler closure from retaining the entire State module
-            const completeSamplesArray = State.completeSamplesArray;
+            // 🔥 FIX: Use accessor that handles both Float32 and compressed Int16
+            const totalSamplesCount = State.getCompleteSamplesLength();
             
-            if (completeSamplesArray && completeSamplesArray.length > 0) {
+            if (totalSamplesCount > 0) {
                 // Update position tracking to loop target
                 const newPositionSeconds = targetSample / 44100;
                 State.setCurrentAudioPosition(newPositionSeconds);
@@ -567,14 +562,11 @@ export async function initAudioWorklet() {
                 
                 // Send samples from target position onwards with auto-resume
                 const chunkSize = 44100 * 10; // 10 seconds per chunk
-                const totalSamples = completeSamplesArray.length;
                 
-                for (let i = targetSample; i < totalSamples; i += chunkSize) {
-                    const end = Math.min(i + chunkSize, totalSamples);
-                    // 🔥 FIX: Copy slice to new ArrayBuffer to prevent retaining reference to completeSamplesArray's buffer
-                    // Slices share the same ArrayBuffer, which prevents GC of the original buffer
-                    const slice = completeSamplesArray.slice(i, end);
-                    const chunk = new Float32Array(slice); // Copy to new ArrayBuffer
+                for (let i = targetSample; i < totalSamplesCount; i += chunkSize) {
+                    const end = Math.min(i + chunkSize, totalSamplesCount);
+                    // Use getCompleteSamplesSlice which handles both Float32 and compressed Int16
+                    const chunk = State.getCompleteSamplesSlice(i, end);
                     
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
@@ -583,7 +575,7 @@ export async function initAudioWorklet() {
                     });
                 }
                 
-                // console.log(`🔄 [LOOP-READY] Sent ${(totalSamples - targetSample).toLocaleString()} samples from ${newPositionSeconds.toFixed(2)}s, will auto-resume`);
+                // console.log(`🔄 [LOOP-READY] Sent ${(totalSamplesCount - targetSample).toLocaleString()} samples from ${newPositionSeconds.toFixed(2)}s, will auto-resume`);
             } else {
                 console.error(`❌ [LOOP-READY] Cannot loop: completeSamplesArray unavailable`);
             }
@@ -2250,7 +2242,7 @@ async function initializeMainApp() {
                         }
                         
                         // Re-render waveform at correct size
-                        if (State.completeSamplesArray && State.completeSamplesArray.length > 0) {
+                        if (State.getCompleteSamplesLength() > 0) {
                             drawWaveformFromMinMax();
                             drawWaveformWithSelection();
                         }
@@ -2871,13 +2863,13 @@ async function initializeMainApp() {
     if (downloadAudioBtn) {
         downloadAudioBtn.addEventListener('click', async () => {
             // Get current metadata
-            if (!State.currentMetadata || !State.completeSamplesArray) {
+            if (!State.currentMetadata || State.getCompleteSamplesLength() === 0) {
                 alert('No audio data loaded. Please fetch data first.');
                 return;
             }
             
             const metadata = State.currentMetadata;
-            const samples = State.completeSamplesArray;
+            const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
             
             // Create filename from metadata (include component if known)
             const spacecraft = metadata.spacecraft || 'PSP';
@@ -3118,7 +3110,7 @@ async function initializeMainApp() {
                     }
 
                     // Null large data arrays to help GC
-                    State.setCompleteSamplesArray(null);
+                    aggressiveCleanup();
                     window.rawWaveformData = null;
                     window.displayWaveformData = null;
                 };

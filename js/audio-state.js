@@ -4,6 +4,8 @@
  * All modules import and share this state
  */
 
+import { compressToInt16, decompressSlice, decompressAll } from './audio-compression.js';
+
 // Playback state enum
 export const PlaybackState = {
     STOPPED: 'STOPPED',  // Default/rest state (no audio, finished, or never started)
@@ -49,6 +51,7 @@ export let availableStations = { seismic: [], infrasound: [] };
 // Audio data
 export let allReceivedData = [];
 export let completeSamplesArray = null;
+export let compressedSamplesBuffer = null; // { data: Int16Array, scale: number, length: number }
 export let originalAudioBlob = null; // Store original WAV blob from CDAWeb for direct download
 export let currentMetadata = null;
 export let totalAudioDuration = 0;
@@ -188,6 +191,62 @@ export function setCompleteSamplesArray(value) {
         _onCompleteSamplesReady(value);
     }
 }
+export function setCompressedSamplesBuffer(value) { compressedSamplesBuffer = value; }
+
+/**
+ * Compress the samples array to save memory. Call after initial rendering is complete.
+ * The Float32 array is freed. Use getCompleteSamplesSlice() for on-demand decompression.
+ */
+export function compressSamplesArray() {
+    if (!completeSamplesArray || compressedSamplesBuffer) return;
+    
+    console.log(`🗜️ Compressing ${completeSamplesArray.length.toLocaleString()} samples (${(completeSamplesArray.byteLength / 1024 / 1024).toFixed(1)} MB Float32)...`);
+    const start = performance.now();
+    
+    compressedSamplesBuffer = compressToInt16(completeSamplesArray);
+    
+    const elapsed = performance.now() - start;
+    const savedMB = (completeSamplesArray.byteLength - compressedSamplesBuffer.data.byteLength) / 1024 / 1024;
+    console.log(`🗜️ Compressed in ${elapsed.toFixed(0)}ms — saved ${savedMB.toFixed(1)} MB (${(compressedSamplesBuffer.data.byteLength / 1024 / 1024).toFixed(1)} MB Int16)`);
+    
+    // Release the Float32 array
+    completeSamplesArray = null;
+}
+
+/**
+ * Get a Float32 slice of the samples, decompressing from Int16 if needed.
+ * This is the universal accessor — use this instead of completeSamplesArray.slice() directly.
+ */
+export function getCompleteSamplesSlice(start, end) {
+    if (completeSamplesArray) {
+        return completeSamplesArray.slice(start, end);
+    }
+    if (compressedSamplesBuffer) {
+        return decompressSlice(compressedSamplesBuffer, start, end);
+    }
+    return null;
+}
+
+/**
+ * Get the full samples array (decompresses if compressed).
+ * WARNING: This re-creates the full Float32 array — use sparingly.
+ * Prefer getCompleteSamplesSlice() for partial reads.
+ */
+export function getCompleteSamplesArray() {
+    if (completeSamplesArray) return completeSamplesArray;
+    if (compressedSamplesBuffer) return decompressAll(compressedSamplesBuffer);
+    return null;
+}
+
+/**
+ * Get the total sample count without decompressing.
+ */
+export function getCompleteSamplesLength() {
+    if (completeSamplesArray) return completeSamplesArray.length;
+    if (compressedSamplesBuffer) return compressedSamplesBuffer.length;
+    return 0;
+}
+
 export function setOriginalAudioBlob(value) { originalAudioBlob = value; }
 export function setCurrentMetadata(value) { currentMetadata = value; }
 export function setTotalAudioDuration(value) { totalAudioDuration = value; }
