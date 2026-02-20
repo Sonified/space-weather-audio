@@ -7,7 +7,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber, deleteRegion, deleteStandaloneFeature, renderStandaloneFeaturesList } from './region-tracker.js';
-import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged } from './spectrogram-three-renderer.js';
+import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
@@ -245,7 +245,7 @@ function getClickedCloseButton(x, y) {
     const y_device = y * scaleY;
 
     const closeSize = 12;
-    const closePad = 4;
+    const closePad = 6;
     const hitRadius = closeSize / 2 + 4; // generous hit target
 
     for (const box of completedSelectionBoxes) {
@@ -706,13 +706,42 @@ export async function changeFftSize() {
             // Update the elastic friend in background (for zoom-out)
             console.log(`🏠 Starting background render of full spectrogram for elastic friend...`);
             updateElasticFriendInBackground();
+        } else if (zoomState.isInitialized()) {
+            // Scroll-zoomed in (not in a region): render viewport first, full texture in background
+            const dataStartMs = State.dataStartTime.getTime();
+            const dataEndMs = State.dataEndTime.getTime();
+            const dataDuration = (dataEndMs - dataStartMs) / 1000;
+
+            const startMs = zoomState.currentViewStartTime.getTime();
+            const endMs = zoomState.currentViewEndTime.getTime();
+            const startSeconds = (startMs - dataStartMs) / 1000;
+            const endSeconds = (endMs - dataStartMs) / 1000;
+            const viewSpan = endSeconds - startSeconds;
+
+            // 30% padding so minor scrolling stays within hi-res bounds
+            const padding = viewSpan * 0.3;
+            const expandedStart = Math.max(0, startSeconds - padding);
+            const expandedEnd = Math.min(dataDuration, endSeconds + padding);
+
+            console.log(`📐 Scroll-zoomed — hi-res viewport first (${viewSpan.toFixed(0)}s), full texture in background`);
+
+            // Render just the viewport at hi-res (fast — small region)
+            resetSpectrogramState();
+            await renderCompleteSpectrogramForRegion(expandedStart, expandedEnd, false);
+            setScrollZoomHiRes(expandedStart, expandedEnd);
+            updateSpectrogramViewportFromZoom();
+
+            // Update feature box positions after re-render
+            updateAllFeatureBoxPositions();
+            redrawAllCanvasFeatureBoxes();
+
+            // Full texture in background (elastic friend for zoom-out)
+            console.log(`🏠 Starting background render of full spectrogram for elastic friend...`);
+            updateElasticFriendInBackground();
         } else {
             // Full view: clear and re-render
             clearCompleteSpectrogram();
             await renderCompleteSpectrogram();
-
-            // Re-apply scroll-zoom viewport if zoomed in
-            updateSpectrogramViewportFromZoom();
 
             // Update feature box positions after re-render
             updateAllFeatureBoxPositions();
@@ -1640,21 +1669,13 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
 
         // Draw close button (red ×) in top-right inside corner
         const closeSize = 12;
-        const closePad = 4;
+        const closePad = 6;
         const closeX = x + width - closeSize - closePad;
         const closeY = y + closePad;
         // Only draw if box is large enough to fit the button
         if (width > closeSize + closePad * 3 && height > closeSize + closePad * 3) {
-            // Background circle for visibility
-            const centerX = closeX + closeSize / 2;
-            const centerY = closeY + closeSize / 2;
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, closeSize / 2 + 2, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fill();
-
-            // Draw × lines
-            const inset = 3;
+            // Draw × lines (no background circle)
+            const inset = 2;
             ctx.strokeStyle = '#ff4444';
             ctx.lineWidth = 2;
             ctx.lineCap = 'round';
@@ -1674,8 +1695,8 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
             const flatNum = getFlatFeatureNumber(box.regionIndex, box.featureIndex);
             const numberText = `${flatNum}`;
             const isRed = numbersMode === 'red';
-            ctx.font = '14px Arial, sans-serif';
-            ctx.fillStyle = isRed ? 'rgba(255, 80, 80, 0.9)' : 'rgba(255, 255, 255, 0.8)';
+            ctx.font = '15px Arial, sans-serif';
+            ctx.fillStyle = isRed ? '#ff4444' : 'rgba(255, 255, 255, 0.8)';
 
             // Red labels get a light shadow for contrast, white labels get dark shadow
             if (isRed) {
@@ -1695,7 +1716,7 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
 
             if (numbersLoc === 'inside') {
                 ctx.textBaseline = 'top';
-                ctx.fillText(numberText, x + Math.min(2, centeredX), y + 2);
+                ctx.fillText(numberText, x + closePad, y + closePad);
             } else {
                 ctx.textBaseline = 'bottom';
                 ctx.fillText(numberText, x + Math.min(2, centeredX), y - 3);

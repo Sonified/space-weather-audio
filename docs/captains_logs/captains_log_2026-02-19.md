@@ -387,3 +387,58 @@ Added `drawDayMarkers()` to the end of the window resize handler in `main.js`.
 ### Files Changed
 
 - `js/main.js` — Added `drawDayMarkers()` call in resize handler after `updateAllFeatureBoxPositions()`
+
+---
+
+## Feature Box Visual Polish
+
+Tweaked the feature box close button and number label rendering for consistency and readability.
+
+### Close button backdrop removed
+
+The dark semi-transparent circle behind the × (`rgba(0,0,0,0.5)`) was too prominent. Removed it — now just bare red × lines against the box background.
+
+### Feature number color matched to ×
+
+The feature number label was `rgba(255, 80, 80, 0.9)` — lighter and translucent compared to the × at `#ff4444`. Changed to `#ff4444` so both elements match exactly.
+
+### Inside-mode number repositioned
+
+When "Location: Inside box" is selected, the feature number now sits at `x + closePad, y + closePad` — mirroring the × button's inset on the opposite (top-left) corner. Previously used ad-hoc `x+3, y+3` positioning.
+
+### Size and spacing tuning
+
+Iterative refinements to get × and number visually balanced:
+- `closeSize` 16 → 12, `inset` 3 → 2, `lineWidth` 2.5 → 2 — × was too large relative to the number
+- `closePad` 4 → 6 — both × and number pulled further from box corners
+- Font changed from `bold 16px` → `15px` Arial — dropped bold, slightly smaller to match × proportions
+
+### Files Changed
+
+- `js/spectrogram-renderer.js` — Removed circle backdrop from close button draw, changed number fillStyle from `rgba(255,80,80,0.9)` to `#ff4444`, repositioned inside-mode number to use `closePad` offset, tuned closeSize/closePad/inset/lineWidth/font for visual balance (both draw and hit-test functions)
+
+---
+
+## FFT Size Change While Scroll-Zoomed: Viewport-First Hi-Res Rendering
+
+Changing FFT size while scroll-zoomed in previously showed only a blurry UV-crop of the full texture — no hi-res re-render was triggered for the viewport.
+
+### Root cause
+
+`changeFftSize()` had two branches: region-zoom (renders region hi-res first, full texture in background) and everything else (renders full texture, UV-crops to viewport). The "everything else" branch handled scroll-zoom poorly — it re-rendered the entire full-resolution texture first (slow), then UV-cropped it to the viewport (blurry), and never triggered the hi-res viewport render that normally fires after scroll events settle.
+
+### Fix
+
+Added a third branch for scroll-zoom state (`zoomState.isInitialized()` but not `isInRegion()`). Mirrors the region-zoom pattern:
+
+1. Compute current viewport bounds from `zoomState.currentViewStartTime/EndTime` with 30% padding
+2. `resetSpectrogramState()` — clears stale hi-res texture and flags
+3. `renderCompleteSpectrogramForRegion(expandedStart, expandedEnd)` — hi-res render of just the viewport (fast, small region)
+4. `setScrollZoomHiRes()` + `updateSpectrogramViewportFromZoom()` — activate the hi-res texture
+5. `updateElasticFriendInBackground()` — full texture renders in background for eventual zoom-out
+
+User sees crisp viewport immediately, full texture prepares silently behind the scenes.
+
+### Files Changed
+
+- `js/spectrogram-renderer.js` — Three-branch `changeFftSize()`: region-zoom, scroll-zoom (new), full-view. Added `setScrollZoomHiRes` import from spectrogram-three-renderer.js
