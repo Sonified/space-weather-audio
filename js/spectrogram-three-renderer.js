@@ -47,6 +47,14 @@ let regionMagnitudeHeight = 0;
 // Track which texture the shader is currently using
 let activeTexture = 'full'; // 'full' or 'region'
 
+// Actual time coverage (FFT column center times, in seconds from data start)
+// Full texture:
+let fullTextureFirstColSec = 0;
+let fullTextureLastColSec = 0;
+// Region texture (always set during renderCompleteSpectrogramForRegion):
+let regionTextureActualStartSec = 0;
+let regionTextureActualEndSec = 0;
+
 // Render context tracking
 let renderContext = {
     startSample: null,
@@ -906,6 +914,11 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         fullMagnitudeWidth = result.width;
         fullMagnitudeHeight = result.height;
 
+        // Store actual FFT column center times (seconds from data start)
+        const sr = zoomState.sampleRate;
+        fullTextureFirstColSec = (fftSize / 2) / sr;
+        fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
+
         // Create GPU texture
         if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
         fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
@@ -1014,6 +1027,11 @@ export async function upgradeFullTextureToHiRes(multiplier = 4) {
         fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
         fullMagnitudeWidth = result.width;
         fullMagnitudeHeight = result.height;
+
+        // Update actual time coverage for the upgraded texture
+        const sr = zoomState.sampleRate;
+        fullTextureFirstColSec = (fftSize / 2) / sr;
+        fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
 
         const elapsed = performance.now() - startTime;
         console.log(`🔬 Hi-res upgrade complete: ${numTimeSlices} columns in ${elapsed.toFixed(0)}ms`);
@@ -1138,6 +1156,10 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
         regionMagnitudeWidth = result.width;
         regionMagnitudeHeight = result.height;
 
+        // Store actual FFT column center times (always, for any region render)
+        regionTextureActualStartSec = renderStartSeconds + (fftSize / 2) / originalSampleRate;
+        regionTextureActualEndSec = renderStartSeconds + ((numTimeSlices - 1) * hopSize + fftSize / 2) / originalSampleRate;
+
         // Create region texture
         if (regionMagnitudeTexture) regionMagnitudeTexture.dispose();
         regionMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
@@ -1261,29 +1283,40 @@ export function drawInterpolatedSpectrogram() {
         && smartRenderBounds.renderComplete
         && smartRenderBounds.expandedStart !== null;
 
+    // Actual full texture time coverage
+    const fullActualDurationSec = fullTextureLastColSec - fullTextureFirstColSec;
+    const fullStartMs = dataStartMs + fullTextureFirstColSec * 1000;
+    const fullDurationMs = fullActualDurationSec * 1000;
+
     if (regionReady) {
         const expandedStartMs = dataStartMs + smartRenderBounds.expandedStart * 1000;
         const expandedEndMs = dataStartMs + smartRenderBounds.expandedEnd * 1000;
-        const expandedDurationMs = expandedEndMs - expandedStartMs;
+
+        // Use actual FFT column times for UV mapping
+        // Use actual FFT column center times for UV mapping (module vars, always set)
+        const actualStartMs = dataStartMs + regionTextureActualStartSec * 1000;
+        const actualDurationMs = (regionTextureActualEndSec - regionTextureActualStartSec) * 1000;
 
         // Check if current interpolated viewport fits within the expanded texture
-        if (interpStartMs >= expandedStartMs && interpEndMs <= expandedEndMs && expandedDurationMs > 0) {
+        if (interpStartMs >= expandedStartMs && interpEndMs <= expandedEndMs && actualDurationMs > 0) {
             // Switch to high-res region texture
             if (activeTexture !== 'region') {
                 material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
                 activeTexture = 'region';
             }
-            // Map viewport to the expanded texture's coordinate space
-            material.uniforms.uViewportStart.value = (interpStartMs - expandedStartMs) / expandedDurationMs;
-            material.uniforms.uViewportEnd.value = (interpEndMs - expandedStartMs) / expandedDurationMs;
+            // Map viewport to actual column time coverage
+            material.uniforms.uViewportStart.value = (interpStartMs - actualStartMs) / actualDurationMs;
+            material.uniforms.uViewportEnd.value = (interpEndMs - actualStartMs) / actualDurationMs;
         } else {
             // Viewport still extends beyond expanded bounds — stay on full texture
             if (activeTexture !== 'full' && fullMagnitudeTexture) {
                 material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
                 activeTexture = 'full';
             }
-            material.uniforms.uViewportStart.value = (interpStartMs - dataStartMs) / dataDurationMs;
-            material.uniforms.uViewportEnd.value = (interpEndMs - dataStartMs) / dataDurationMs;
+            if (fullDurationMs > 0) {
+                material.uniforms.uViewportStart.value = (interpStartMs - fullStartMs) / fullDurationMs;
+                material.uniforms.uViewportEnd.value = (interpEndMs - fullStartMs) / fullDurationMs;
+            }
         }
     } else {
         // No region texture yet or zooming out — use full texture
@@ -1291,8 +1324,10 @@ export function drawInterpolatedSpectrogram() {
             material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
             activeTexture = 'full';
         }
-        material.uniforms.uViewportStart.value = (interpStartMs - dataStartMs) / dataDurationMs;
-        material.uniforms.uViewportEnd.value = (interpEndMs - dataStartMs) / dataDurationMs;
+        if (fullDurationMs > 0) {
+            material.uniforms.uViewportStart.value = (interpStartMs - fullStartMs) / fullDurationMs;
+            material.uniforms.uViewportEnd.value = (interpEndMs - fullStartMs) / fullDurationMs;
+        }
     }
 
     // Update stretch
@@ -1326,20 +1361,26 @@ export function updateSpectrogramViewportFromZoom() {
     const viewStartMs = zoomState.isInitialized() ? zoomState.currentViewStartTime.getTime() : dataStartMs;
     const viewEndMs = zoomState.isInitialized() ? zoomState.currentViewEndTime.getTime() : dataEndMs;
 
+    // Actual full texture time coverage (seconds from data start)
+    const fullActualDurationSec = fullTextureLastColSec - fullTextureFirstColSec;
+    const fullStartMs = dataStartMs + fullTextureFirstColSec * 1000;
+    const fullDurationMs = fullActualDurationSec * 1000;
+
     // Check if scroll-zoom hi-res texture covers the current viewport
     if (scrollZoomHiRes.ready && regionMagnitudeTexture && scrollZoomHiRes.startSeconds !== null) {
         const hiResStartMs = dataStartMs + scrollZoomHiRes.startSeconds * 1000;
         const hiResEndMs = dataStartMs + scrollZoomHiRes.endSeconds * 1000;
-        const hiResDurationMs = hiResEndMs - hiResStartMs;
 
-        const fitsInBounds = viewStartMs >= hiResStartMs - 1 && viewEndMs <= hiResEndMs + 1 && hiResDurationMs > 0;
+        // Use actual FFT column center times for UV mapping (module vars, always set)
+        const actualStartMs = dataStartMs + regionTextureActualStartSec * 1000;
+        const actualDurationMs = (regionTextureActualEndSec - regionTextureActualStartSec) * 1000;
+
+        const fitsInBounds = viewStartMs >= hiResStartMs - 1 && viewEndMs <= hiResEndMs + 1 && actualDurationMs > 0;
 
         if (fitsInBounds) {
-            // Viewport fits within hi-res texture — use it
-            const uvStart = (viewStartMs - hiResStartMs) / hiResDurationMs;
-            const uvEnd = (viewEndMs - hiResStartMs) / hiResDurationMs;
-            // Always update the uniform — the texture object changes on every re-render
-            // (can't skip this even if activeTexture is already 'region')
+            // Viewport fits within hi-res texture — use it with actual column times
+            const uvStart = (viewStartMs - actualStartMs) / actualDurationMs;
+            const uvEnd = (viewEndMs - actualStartMs) / actualDurationMs;
             material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
             activeTexture = 'region';
             material.uniforms.uViewportStart.value = uvStart;
@@ -1350,17 +1391,21 @@ export function updateSpectrogramViewportFromZoom() {
                 material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
                 activeTexture = 'full';
             }
-            material.uniforms.uViewportStart.value = (viewStartMs - dataStartMs) / dataDurationMs;
-            material.uniforms.uViewportEnd.value = (viewEndMs - dataStartMs) / dataDurationMs;
+            if (fullDurationMs > 0) {
+                material.uniforms.uViewportStart.value = (viewStartMs - fullStartMs) / fullDurationMs;
+                material.uniforms.uViewportEnd.value = (viewEndMs - fullStartMs) / fullDurationMs;
+            }
         }
     } else {
-        // No hi-res texture — use full texture
+        // No hi-res texture — use full texture with actual column times
         if (fullMagnitudeTexture) {
             material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
             activeTexture = 'full';
         }
-        material.uniforms.uViewportStart.value = (viewStartMs - dataStartMs) / dataDurationMs;
-        material.uniforms.uViewportEnd.value = (viewEndMs - dataStartMs) / dataDurationMs;
+        if (fullDurationMs > 0) {
+            material.uniforms.uViewportStart.value = (viewStartMs - fullStartMs) / fullDurationMs;
+            material.uniforms.uViewportEnd.value = (viewEndMs - fullStartMs) / fullDurationMs;
+        }
     }
 
     // Update stretch + frequency

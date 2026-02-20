@@ -442,3 +442,45 @@ User sees crisp viewport immediately, full texture prepares silently behind the 
 ### Files Changed
 
 - `js/spectrogram-renderer.js` — Three-branch `changeFftSize()`: region-zoom, scroll-zoom (new), full-view. Added `setScrollZoomHiRes` import from spectrogram-three-renderer.js
+
+---
+
+## Spectrogram Texture Alignment Fix: The GPS Was Drunk
+
+Spectrogram features visibly shifted ~10-20px horizontally when swapping between the hi-res region texture and the full "elastic friend" texture during scroll-zoom. The hi-res texture showed features in the correct position; the full texture was the liar.
+
+### The roast
+
+The old UV mapping system was a confident wrong person at a party. "Where does this texture start?" "At zero, obviously." Meanwhile it actually started at `fftSize/2 / sampleRate` — the center of the first FFT window. A rounding error so small you'd need a microscope to see it on the full 7-day timeline.
+
+But then you zoom into a 500-second window. You're viewing 0.08% of the data through 1200 pixels. That microscopic lie is now **10 pixels wide**. The GPS said you were at the restaurant but you're standing in traffic.
+
+The hi-res texture showed up — the one that actually bothered to check its coordinates — and everything looked perfect. Zoom out, the full texture takes over, and the spike JUMPS like a startled cat. The data literally flinched every time you changed zoom level.
+
+Then — chef's kiss — after fixing the full texture math, discovered the hi-res textures were also lying to EACH OTHER. Why? Because actual column times were being stored into `scrollZoomHiRes.actualStartSec`, but only after checking `if (scrollZoomHiRes.startSeconds !== null)` — which was null because `setScrollZoomHiRes()` hadn't been called yet. The function was trying to file paperwork with an office that hadn't opened yet.
+
+### Root cause 1: FFT window centering offset in UV mapping
+
+The first FFT column doesn't represent time=0. It represents time `fftSize/2 / sampleRate` (center of the first analysis window). Both full and region textures have this offset, but the old code assumed they covered `[0, totalDuration]` (full) or `[requestedRegionStart, requestedRegionEnd]` (region).
+
+The proportional error on a 604,800-second full texture is ~0.008%. Viewed through a 500-second viewport on a 1200-pixel screen, that's `0.00008 × 604800 / 500 × 1200 ≈ 116 pixels` of potential shift. Keyhole amplification.
+
+### Root cause 2: Race condition in actual time storage
+
+Region actual times were stored conditionally inside `scrollZoomHiRes` (checking `scrollZoomHiRes.startSeconds !== null`), but `setScrollZoomHiRes()` is called AFTER `renderCompleteSpectrogramForRegion()` completes. At render time, `startSeconds` was null, so actual times never got written. Successive hi-res renders at different zoom levels all silently failed to record their coordinates.
+
+### Fix
+
+**Phase 1 — Store actual FFT column center times, use them for UV mapping:**
+
+Added module-level vars `fullTextureFirstColSec`, `fullTextureLastColSec`, `regionTextureActualStartSec`, `regionTextureActualEndSec`. Each texture build stores its actual first and last column center times (in seconds from data start). Both `updateSpectrogramViewportFromZoom()` and `drawInterpolatedSpectrogram()` rewritten to map UV coordinates against actual column times instead of assumed ranges.
+
+**Phase 2 — Unconditional module vars for region times:**
+
+Moved region actual time storage from conditional `scrollZoomHiRes.actualStartSec` to unconditional module-level vars set during every `renderCompleteSpectrogramForRegion()` call — no state ordering dependency.
+
+**TL;DR:** The old system was a confident liar with bad timing. The new system carries a surveyor's tripod everywhere it goes.
+
+### Files Changed
+
+- `js/spectrogram-three-renderer.js` — Added 4 module vars for actual column times; stored times in full texture build, hi-res upgrade, and region render; rewrote UV math in `updateSpectrogramViewportFromZoom()` and `drawInterpolatedSpectrogram()` to use actual column coverage; removed all diagnostic logging from previous investigation
