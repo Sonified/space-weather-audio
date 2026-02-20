@@ -455,6 +455,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         const secPerResampledSample = tileSpanSec / tileSamples.length;
         tile.actualFirstColSec = tileOriginSec + halfFFT * secPerResampledSample;
         tile.actualLastColSec = tileOriginSec + ((numTimeSlices - 1) * hopSize + halfFFT) * secPerResampledSample;
+        console.log(`🔺 Tile L0:${tileIdx} nominal=[${tile.startSec.toFixed(1)}, ${tile.endSec.toFixed(1)}] actual=[${tile.actualFirstColSec.toFixed(2)}, ${tile.actualLastColSec.toFixed(2)}] samples=${tileSamples.length} hop=${hopSize} slices=${numTimeSlices} secPerSample=${secPerResampledSample.toFixed(6)}`);
         tile.ready = true;
         tile.rendering = false;
 
