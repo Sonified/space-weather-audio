@@ -9,6 +9,7 @@ import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { showTutorialOverlay, shouldShowPulse, markPulseShown, setStatusText, addSpectrogramGlow, removeSpectrogramGlow, disableWaveformClicks, enableWaveformClicks } from './tutorial.js';
@@ -633,7 +634,9 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         // Draw x-axis
         positionWaveformXAxisCanvas();
         drawWaveformXAxis();
-        
+        positionSpectrogramXAxisCanvas();
+        drawSpectrogramXAxis();
+
         // Draw frequency axis with new frequency range
         positionAxisCanvas();
         drawFrequencyAxis();
@@ -1242,6 +1245,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         // Draw x-axis with new time data
         positionWaveformXAxisCanvas();
         drawWaveformXAxis();
+        positionSpectrogramXAxisCanvas();
+        drawSpectrogramXAxis();
         positionWaveformDateCanvas();
         drawWaveformDate();
         
@@ -2221,6 +2226,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
     // Draw x-axis with new time data
     positionWaveformXAxisCanvas();
     drawWaveformXAxis();
+    positionSpectrogramXAxisCanvas();
+    drawSpectrogramXAxis();
     positionWaveformDateCanvas();
     drawWaveformDate();
     

@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber } from './region-tracker.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber, deleteRegion, deleteStandaloneFeature, renderStandaloneFeaturesList } from './region-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
@@ -226,6 +226,76 @@ function getClickedBox(x, y) {
         }
     }
     
+    return null;
+}
+
+/**
+ * Check if a click (CSS px) hit the close button of any feature box.
+ * Returns { regionIndex, featureIndex } or null.
+ */
+function getClickedCloseButton(x, y) {
+    if (!State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) return null;
+
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return null;
+
+    const scaleX = canvas.width / canvas.offsetWidth;
+    const scaleY = canvas.height / canvas.offsetHeight;
+    const x_device = x * scaleX;
+    const y_device = y * scaleY;
+
+    const closeSize = 12;
+    const closePad = 4;
+    const hitRadius = closeSize / 2 + 4; // generous hit target
+
+    for (const box of completedSelectionBoxes) {
+        const originalNyquist = State.originalDataFrequencyRange?.max || 50;
+        const playbackRate = State.currentPlaybackRate || 1.0;
+
+        const scaleTransition = getScaleTransitionState();
+        let lowFreqY_device, highFreqY_device;
+
+        if (scaleTransition.inProgress && scaleTransition.oldScaleType) {
+            const oldLowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
+            const newLowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+            const oldHighY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
+            const newHighY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+            lowFreqY_device = oldLowY + (newLowY - oldLowY) * scaleTransition.interpolationFactor;
+            highFreqY_device = oldHighY + (newHighY - oldHighY) * scaleTransition.interpolationFactor;
+        } else {
+            lowFreqY_device = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+            highFreqY_device = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        }
+
+        const interpolatedRange = getInterpolatedTimeRange();
+        const displayStartMs = interpolatedRange.startTime.getTime();
+        const displayEndMs = interpolatedRange.endTime.getTime();
+        const displaySpanMs = displayEndMs - displayStartMs;
+
+        const startMs = new Date(box.startTime).getTime();
+        const endMs = new Date(box.endTime).getTime();
+        const startX_device = ((startMs - displayStartMs) / displaySpanMs) * canvas.width;
+        const endX_device = ((endMs - displayStartMs) / displaySpanMs) * canvas.width;
+
+        const bx = Math.min(startX_device, endX_device);
+        const by = Math.min(highFreqY_device, lowFreqY_device);
+        const bw = Math.abs(endX_device - startX_device);
+        const bh = Math.abs(lowFreqY_device - highFreqY_device);
+
+        // Skip if box too small for close button
+        if (bw <= closeSize + closePad * 3 || bh <= closeSize + closePad * 3) continue;
+
+        // Close button center
+        const cx = bx + bw - closeSize / 2 - closePad;
+        const cy = by + closePad + closeSize / 2;
+
+        const dx = x_device - cx;
+        const dy = y_device - cy;
+        if (dx * dx + dy * dy <= hitRadius * hitRadius) {
+            return { regionIndex: box.regionIndex, featureIndex: box.featureIndex };
+        }
+    }
+
     return null;
 }
 
@@ -1012,6 +1082,22 @@ export function setupSpectrogramSelection() {
         const clickX = e.clientX - canvasRect.left;
         const clickY = e.clientY - canvasRect.top;
 
+        // Check close button (×) before anything else
+        const closedBox = getClickedCloseButton(clickX, clickY);
+        if (closedBox) {
+            if (closedBox.regionIndex === -1) {
+                // Standalone feature
+                if (confirm('Delete this feature?')) {
+                    deleteStandaloneFeature(closedBox.featureIndex);
+                    redrawAllCanvasFeatureBoxes();
+                    renderStandaloneFeaturesList();
+                }
+            } else {
+                deleteRegion(closedBox.regionIndex);
+            }
+            return;
+        }
+
         const clickedBox = getClickedBox(clickX, clickY);
         // In EMIC windowed modes, don't handle feature box clicks (click-to-seek instead)
         const _modeSelectForBox = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
@@ -1212,7 +1298,11 @@ export function setupSpectrogramSelection() {
         const hoverY = e.clientY - canvasRect.top;
         const hoveredBox = getClickedBox(hoverX, hoverY);
 
-        if (hoveredBox && !zoomState.isInRegion() && !spectrogramSelectionActive) {
+        // Close button hover gets pointer cursor regardless of zoom state
+        const hoveredClose = getClickedCloseButton(hoverX, hoverY);
+        if (hoveredClose && !spectrogramSelectionActive) {
+            canvas.style.cursor = 'pointer';
+        } else if (hoveredBox && !zoomState.isInRegion() && !spectrogramSelectionActive) {
             canvas.style.cursor = 'pointer';
         } else if (zoomState.isInRegion() && !spectrogramSelectionActive) {
             canvas.style.cursor = 'crosshair';
@@ -1547,6 +1637,35 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
 
         ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
         ctx.fillRect(x, y, width, height);
+
+        // Draw close button (red ×) in top-right inside corner
+        const closeSize = 12;
+        const closePad = 4;
+        const closeX = x + width - closeSize - closePad;
+        const closeY = y + closePad;
+        // Only draw if box is large enough to fit the button
+        if (width > closeSize + closePad * 3 && height > closeSize + closePad * 3) {
+            // Background circle for visibility
+            const centerX = closeX + closeSize / 2;
+            const centerY = closeY + closeSize / 2;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, closeSize / 2 + 2, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fill();
+
+            // Draw × lines
+            const inset = 3;
+            ctx.strokeStyle = '#ff4444';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(closeX + inset, closeY + inset);
+            ctx.lineTo(closeX + closeSize - inset, closeY + closeSize - inset);
+            ctx.moveTo(closeX + closeSize - inset, closeY + inset);
+            ctx.lineTo(closeX + inset, closeY + closeSize - inset);
+            ctx.stroke();
+            ctx.lineCap = 'butt';
+        }
 
         // Add flat sequential feature number label (gated by Numbers dropdown)
         const numbersMode = document.getElementById('mainWindowNumbers')?.value || 'red';

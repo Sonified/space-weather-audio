@@ -8,6 +8,7 @@ import { PlaybackState, isTouchDevice } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection, getCurrentPosition } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
+import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay, renderRegionsAfterCrossfade, getStandaloneFeatures } from './region-tracker.js';
 import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
@@ -724,10 +725,13 @@ function getMinimapMode() {
 
 // --- Minimap viewport drag state ---
 let minimapDragging = false;
+let minimapResizeEdge = null;     // null = pan, 'left' = resize left edge, 'right' = resize right edge
 let minimapDragStartMs = 0;       // timestamp under cursor at drag start
 let minimapViewStartMsAtDrag = 0; // viewport start at drag start
 let minimapViewEndMsAtDrag = 0;   // viewport end at drag start
 let minimapRafPending = false;
+const MINIMAP_EDGE_THRESHOLD_PX = 8; // pixels from edge to trigger resize cursor/drag
+const MINIMAP_MIN_WINDOW_MS = 60000; // minimum window width: 1 minute
 
 /**
  * Check if the minimap viewport indicator is visible (zoomed in within windowed mode)
@@ -748,6 +752,7 @@ function renderMinimapDragFrame() {
     minimapRafPending = false;
     drawWaveformFromMinMax();
     drawWaveformXAxis();
+    drawSpectrogramXAxis();
     updateSpectrogramViewportFromZoom();
     updateAllFeatureBoxPositions();
     updateCanvasAnnotations();
@@ -1269,6 +1274,8 @@ export function drawWaveform() {
     drawWaveformAxis();
     positionWaveformXAxisCanvas();
     drawWaveformXAxis();
+    positionSpectrogramXAxisCanvas();
+    drawSpectrogramXAxis();
     positionWaveformDateCanvas();
     drawWaveformDate();
 
@@ -1301,6 +1308,8 @@ export function drawWaveformFromMinMax() {
     drawWaveformAxis();
     positionWaveformXAxisCanvas();
     drawWaveformXAxis();
+    positionSpectrogramXAxisCanvas();
+    drawSpectrogramXAxis();
     positionWaveformDateCanvas();
     drawWaveformDate();
 
@@ -1549,34 +1558,56 @@ export function setupWaveformInteraction() {
             }
         }
         
-        // --- Minimap viewport drag: intercept in windowed mode when zoomed ---
+        // --- Minimap viewport drag/resize: intercept in windowed mode when zoomed ---
         if (isMinimapZoomed()) {
             minimapDragging = true;
+            minimapResizeEdge = null; // default: pan mode
             pageTurnUserDragged = true; // User manually moved viewport — break page-turn catch
             pageTurnPlayheadWasInView = false; // Reset — must see playhead enter viewport before re-engaging
-            canvas.style.cursor = 'grabbing';
             const dataStartMs = State.dataStartTime.getTime();
             const dataEndMs = State.dataEndTime.getTime();
             const dataSpanMs = dataEndMs - dataStartMs;
             const frac = Math.max(0, Math.min(1, startX / rect.width));
             const clickMs = dataStartMs + frac * dataSpanMs;
 
-            // If click is outside the current viewport box, snap-center on click point
             const viewStartMs = zoomState.currentViewStartTime.getTime();
             const viewEndMs = zoomState.currentViewEndTime.getTime();
-            if (clickMs < viewStartMs || clickMs > viewEndMs) {
-                const viewSpanMs = viewEndMs - viewStartMs;
-                let newStart = clickMs - viewSpanMs / 2;
-                let newEnd = clickMs + viewSpanMs / 2;
-                // Clamp to data bounds
-                if (newStart < dataStartMs) { newStart = dataStartMs; newEnd = dataStartMs + viewSpanMs; }
-                if (newEnd > dataEndMs) { newEnd = dataEndMs; newStart = dataEndMs - viewSpanMs; }
-                zoomState.currentViewStartTime = new Date(newStart);
-                zoomState.currentViewEndTime = new Date(newEnd);
-                // Render the snap immediately
-                if (!minimapRafPending) {
-                    minimapRafPending = true;
-                    requestAnimationFrame(renderMinimapDragFrame);
+
+            // Check if click is near a viewport edge (resize) vs interior (pan)
+            const viewStartFrac = (viewStartMs - dataStartMs) / dataSpanMs;
+            const viewEndFrac = (viewEndMs - dataStartMs) / dataSpanMs;
+            const leftEdgePx = viewStartFrac * rect.width;
+            const rightEdgePx = viewEndFrac * rect.width;
+            const nearLeftEdge = Math.abs(startX - leftEdgePx) < MINIMAP_EDGE_THRESHOLD_PX;
+            const nearRightEdge = Math.abs(startX - rightEdgePx) < MINIMAP_EDGE_THRESHOLD_PX;
+
+            if (nearLeftEdge && !nearRightEdge) {
+                minimapResizeEdge = 'left';
+                canvas.style.cursor = 'ew-resize';
+            } else if (nearRightEdge && !nearLeftEdge) {
+                minimapResizeEdge = 'right';
+                canvas.style.cursor = 'ew-resize';
+            } else if (nearLeftEdge && nearRightEdge) {
+                // Both edges close (very narrow window) — pick the closer one
+                minimapResizeEdge = (Math.abs(startX - leftEdgePx) <= Math.abs(startX - rightEdgePx)) ? 'left' : 'right';
+                canvas.style.cursor = 'ew-resize';
+            } else {
+                // Not near edges — pan mode
+                canvas.style.cursor = 'grabbing';
+
+                // If click is outside the current viewport box, snap-center on click point
+                if (clickMs < viewStartMs || clickMs > viewEndMs) {
+                    const viewSpanMs = viewEndMs - viewStartMs;
+                    let newStart = clickMs - viewSpanMs / 2;
+                    let newEnd = clickMs + viewSpanMs / 2;
+                    if (newStart < dataStartMs) { newStart = dataStartMs; newEnd = dataStartMs + viewSpanMs; }
+                    if (newEnd > dataEndMs) { newEnd = dataEndMs; newStart = dataEndMs - viewSpanMs; }
+                    zoomState.currentViewStartTime = new Date(newStart);
+                    zoomState.currentViewEndTime = new Date(newEnd);
+                    if (!minimapRafPending) {
+                        minimapRafPending = true;
+                        requestAnimationFrame(renderMinimapDragFrame);
+                    }
                 }
             }
 
@@ -1595,14 +1626,31 @@ export function setupWaveformInteraction() {
                 const cMs = dStartMs + f * dSpanMs;
                 const delta = cMs - minimapDragStartMs;
 
-                const vSpan = minimapViewEndMsAtDrag - minimapViewStartMsAtDrag;
-                let ns = minimapViewStartMsAtDrag + delta;
-                let ne = minimapViewEndMsAtDrag + delta;
-                if (ns < dStartMs) { ns = dStartMs; ne = dStartMs + vSpan; }
-                if (ne > dEndMs) { ne = dEndMs; ns = dEndMs - vSpan; }
-
-                zoomState.currentViewStartTime = new Date(ns);
-                zoomState.currentViewEndTime = new Date(ne);
+                if (minimapResizeEdge) {
+                    // --- Edge resize mode ---
+                    let ns = minimapViewStartMsAtDrag;
+                    let ne = minimapViewEndMsAtDrag;
+                    if (minimapResizeEdge === 'left') {
+                        ns = minimapViewStartMsAtDrag + delta;
+                        if (ns < dStartMs) ns = dStartMs;
+                        if (ne - ns < MINIMAP_MIN_WINDOW_MS) ns = ne - MINIMAP_MIN_WINDOW_MS;
+                    } else {
+                        ne = minimapViewEndMsAtDrag + delta;
+                        if (ne > dEndMs) ne = dEndMs;
+                        if (ne - ns < MINIMAP_MIN_WINDOW_MS) ne = ns + MINIMAP_MIN_WINDOW_MS;
+                    }
+                    zoomState.currentViewStartTime = new Date(ns);
+                    zoomState.currentViewEndTime = new Date(ne);
+                } else {
+                    // --- Pan mode (existing behavior) ---
+                    const vSpan = minimapViewEndMsAtDrag - minimapViewStartMsAtDrag;
+                    let ns = minimapViewStartMsAtDrag + delta;
+                    let ne = minimapViewEndMsAtDrag + delta;
+                    if (ns < dStartMs) { ns = dStartMs; ne = dStartMs + vSpan; }
+                    if (ne > dEndMs) { ne = dEndMs; ns = dEndMs - vSpan; }
+                    zoomState.currentViewStartTime = new Date(ns);
+                    zoomState.currentViewEndTime = new Date(ne);
+                }
 
                 if (!minimapRafPending) {
                     minimapRafPending = true;
@@ -1611,6 +1659,7 @@ export function setupWaveformInteraction() {
             }
             function onDocMouseUp(ev) {
                 minimapDragging = false;
+                minimapResizeEdge = null;
                 canvas.style.cursor = 'pointer';
                 document.removeEventListener('mousemove', onDocMouseMove);
                 document.removeEventListener('mouseup', onDocMouseUp);
@@ -1646,6 +1695,25 @@ export function setupWaveformInteraction() {
     canvas.addEventListener('mousemove', (e) => {
         // Minimap viewport drag is handled by document-level listeners
         if (minimapDragging) return;
+
+        // Minimap edge hover: show ew-resize cursor when near viewport edges
+        if (!State.isDragging && isMinimapZoomed()) {
+            const rect = canvas.getBoundingClientRect();
+            const hoverX = e.clientX - rect.left;
+            const dataStartMs = State.dataStartTime.getTime();
+            const dataEndMs = State.dataEndTime.getTime();
+            const dataSpanMs = dataEndMs - dataStartMs;
+            const viewStartFrac = (zoomState.currentViewStartTime.getTime() - dataStartMs) / dataSpanMs;
+            const viewEndFrac = (zoomState.currentViewEndTime.getTime() - dataStartMs) / dataSpanMs;
+            const leftEdgePx = viewStartFrac * rect.width;
+            const rightEdgePx = viewEndFrac * rect.width;
+            if (Math.abs(hoverX - leftEdgePx) < MINIMAP_EDGE_THRESHOLD_PX ||
+                Math.abs(hoverX - rightEdgePx) < MINIMAP_EDGE_THRESHOLD_PX) {
+                canvas.style.cursor = 'ew-resize';
+            } else {
+                canvas.style.cursor = 'pointer';
+            }
+        }
 
         if (State.isDragging && State.selectionStartX !== null) {
             const rect = canvas.getBoundingClientRect();
@@ -2367,6 +2435,7 @@ function checkPageTurnAdvance() {
         // Trigger full re-render for the new page
         drawWaveformFromMinMax();
         drawWaveformXAxis();
+        drawSpectrogramXAxis();
         updateSpectrogramViewportFromZoom();
         updateAllFeatureBoxPositions();
         updateCanvasAnnotations();

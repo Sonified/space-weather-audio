@@ -22,6 +22,7 @@ import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxis
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
+import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas, resizeSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchSpacecraftRegions, updateCompleteButtonState, updateCmpltButtonState, showAddRegionButton } from './region-tracker.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { zoomState } from './zoom-state.js';
@@ -985,6 +986,7 @@ async function initializeEmicStudyMode() {
         { id: 'mainWindowView', key: 'emic_main_view', type: 'select' },
         { id: 'navBarMarkers', key: 'emic_navbar_markers', type: 'select' },
         { id: 'mainWindowMarkers', key: 'emic_main_markers', type: 'select' },
+        { id: 'mainWindowXAxis', key: 'emic_main_xaxis', type: 'select' },
         { id: 'mainWindowNumbers', key: 'emic_main_numbers', type: 'select' },
         { id: 'mainWindowNumbersLoc', key: 'emic_main_numbers_loc', type: 'select' },
         { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
@@ -1026,6 +1028,24 @@ async function initializeEmicStudyMode() {
         mainWindowViewEl.addEventListener('change', () => {
             updateSpectrogramViewport(State.currentPlaybackRate || 1.0);
         });
+    }
+
+    // Main window x-axis toggle: show/hide spectrogram ticks + margin
+    const mainWindowXAxisEl = document.getElementById('mainWindowXAxis');
+    if (mainWindowXAxisEl) {
+        const applyXAxisVisibility = () => {
+            const show = mainWindowXAxisEl.value !== 'hide';
+            const xAxisCanvas = document.getElementById('spectrogram-x-axis');
+            const spectrogramCanvas = document.getElementById('spectrogram');
+            if (xAxisCanvas) xAxisCanvas.style.display = show ? '' : 'none';
+            if (spectrogramCanvas) spectrogramCanvas.style.marginBottom = show ? '30px' : '0';
+            if (show) {
+                positionSpectrogramXAxisCanvas();
+                drawSpectrogramXAxis();
+            }
+        };
+        applyXAxisVisibility(); // Apply on load
+        mainWindowXAxisEl.addEventListener('change', applyXAxisVisibility);
     }
 
     // --- Settings drawer (hamburger menu, push layout) ---
@@ -1229,6 +1249,7 @@ async function initializeEmicStudyMode() {
             // Re-render waveform, x-axis, buttons, and day markers for the new mode
             drawWaveformFromMinMax();
             drawWaveformXAxis();
+            drawSpectrogramXAxis();
             drawRegionButtons();
             drawDayMarkers();
             viewingModeSelect.blur();
@@ -2155,7 +2176,8 @@ async function initializeMainApp() {
             if (waveformCanvas && waveformXAxisCanvas) {
                 // Always reposition during resize (fast - no redraw)
                 positionWaveformXAxisCanvas();
-                
+                positionSpectrogramXAxisCanvas();
+
                 // Check if canvas width changed (horizontal resize)
                 const currentWidth = waveformCanvas.offsetWidth;
                 if (currentWidth !== lastWaveformXAxisWidth) {
@@ -2164,7 +2186,7 @@ async function initializeMainApp() {
                         clearTimeout(waveformXAxisResizeTimer);
                         waveformXAxisResizeTimer = null;
                     }
-                    
+
                     // Set new timer to wait 100ms after last resize event
                     waveformXAxisResizeTimer = setTimeout(() => {
                         // 🔥 FIX: Check document connection before DOM manipulation
@@ -2172,12 +2194,13 @@ async function initializeMainApp() {
                             waveformXAxisResizeTimer = null;
                             return;
                         }
-                        
+
                         // Resize and redraw x-axis ticks after resize is complete
                         resizeWaveformXAxisCanvas();
+                        resizeSpectrogramXAxisCanvas();
                         waveformXAxisResizeTimer = null;
                     }, 100);
-                    
+
                     lastWaveformXAxisWidth = currentWidth;
                 }
             }
@@ -2243,6 +2266,9 @@ async function initializeMainApp() {
             // Update feature box positions after resize (boxes need to reposition for new canvas dimensions)
             updateAllFeatureBoxPositions();
 
+            // Redraw day markers (overlay canvas buffer gets cleared on resize)
+            drawDayMarkers();
+
             resizeRAF = null;
         });
     });
@@ -2258,6 +2284,8 @@ async function initializeMainApp() {
         initializeMaxCanvasWidth();
         positionWaveformXAxisCanvas();
         drawWaveformXAxis();
+        positionSpectrogramXAxisCanvas();
+        drawSpectrogramXAxis();
         drawDayMarkers();
         positionWaveformDateCanvas();
         drawWaveformDate();

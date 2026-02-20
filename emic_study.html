@@ -538,6 +538,7 @@
 
             <canvas id="spectrogram" width="1200" height="554"></canvas>
             <canvas id="spectrogram-axis" width="60" height="554"></canvas>
+            <canvas id="spectrogram-x-axis" width="1200" height="40"></canvas>
 
             <!-- Main Window gear icon + popover -->
             <div class="panel-gear" id="mainWindowGear">
@@ -587,7 +588,14 @@
                             <option value="none">None</option>
                         </select>
                     </div>
-                    <div class="gear-popover-title">Numbers</div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">X-Axis:</span>
+                        <select id="mainWindowXAxis" class="gear-select">
+                            <option value="show" selected>Show Ticks</option>
+                            <option value="hide">Hide Ticks</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-title">Feature Numbers</div>
                     <div class="gear-popover-row">
                         <span class="gear-label">Color:</span>
                         <select id="mainWindowNumbers" class="gear-select">

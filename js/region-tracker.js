@@ -20,6 +20,7 @@ import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
 import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender, clearSmartRenderBounds, activateRegionTexture } from './spectrogram-three-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange, drawWaveformXAxis } from './waveform-x-axis-renderer.js';
+import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
 import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, changeColormap, changeFftSize, changeFrequencyScale } from './spectrogram-renderer.js';
@@ -3391,6 +3392,8 @@ export function deleteRegion(index) {
         const regions = getCurrentRegions();
         const deletedRegion = regions[index];
 
+        if (!deletedRegion) return;
+
         // If user is currently zoomed into this region, zoom out first
         if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === deletedRegion.id) {
             zoomToFull();
@@ -3404,14 +3407,14 @@ export function deleteRegion(index) {
             activeRegionIndex--;
         }
         renderRegions();
-        
+
         // ✅ Rebuild canvas boxes (removes boxes for deleted region!)
         redrawAllCanvasFeatureBoxes();
-        
+
         // Update complete button state (in case we deleted the last identified feature)
         updateCompleteButtonState(); // Begin Analysis button
         updateCmpltButtonState(); // Complete button
-        
+
         // Redraw waveform to update button positions
         drawWaveformWithSelection();
     }
@@ -3773,6 +3776,7 @@ export function zoomToRegion(regionIndex) {
 
         // 🎯 CRITICAL: Redraw x-axis so tick density updates for the new region!
         drawWaveformXAxis();
+        drawSpectrogramXAxis();
 
         // Rebuild waveform viewport (GPU data already uploaded — just re-render)
         drawWaveformFromMinMax();
@@ -4000,6 +4004,7 @@ export function zoomToFull() {
 
         // 🎯 Redraw x-axis so tick density updates for full view
         drawWaveformXAxis();
+        drawSpectrogramXAxis();
 
         // GPU waveform renderer is always up to date — no cached canvas rebuild needed
         

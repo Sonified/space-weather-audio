@@ -216,3 +216,174 @@ Removed all `Math.floor()` calls from playhead and scrub preview position calcul
 ### Files Changed
 
 - `js/spectrogram-playhead.js` — Removed `Math.floor()` from all playhead/preview X position calculations (6 instances); sub-pixel float values now match waveform renderer behavior
+
+---
+
+## Minimap Viewport Edge-Drag Resize
+
+The minimap viewport window (the highlighted region on the top panel showing what's visible in the spectrogram below) previously only supported click-to-snap and drag-to-pan. Added edge-drag resize so users can grab the left or right edge of the window to widen or narrow it.
+
+### Hover cursor
+
+In the canvas `mousemove` handler, when not dragging and in windowed mode, the mouse position is compared to the left and right viewport edge pixel positions. Within 8px of either edge, the cursor changes to `ew-resize` (horizontal resize arrows). Outside that zone it stays `pointer`.
+
+### Mousedown edge detection
+
+On mousedown, if the click is within 8px of a viewport edge, `minimapResizeEdge` is set to `'left'` or `'right'` and the cursor stays `ew-resize`. If both edges are within threshold (very narrow window), the closer edge wins. Clicks away from edges enter the existing pan mode with snap-center-on-outside-click behavior unchanged.
+
+### Drag behavior
+
+In the document-level `mousemove` handler, resize mode only moves the dragged edge while the opposite edge stays fixed. Pan mode (existing) translates both edges together. Both modes are clamped to data bounds. Resize enforces a 1-minute minimum window width (`MINIMAP_MIN_WINDOW_MS = 60000`) to prevent collapsing the window to zero.
+
+### State variables
+
+- `minimapResizeEdge` — `null` (pan), `'left'`, or `'right'`
+- `MINIMAP_EDGE_THRESHOLD_PX = 8` — hover/click detection zone in pixels
+- `MINIMAP_MIN_WINDOW_MS = 60000` — minimum viewport width in milliseconds
+
+### Files Changed
+
+- `js/waveform-renderer.js` — Added `minimapResizeEdge`, `MINIMAP_EDGE_THRESHOLD_PX`, `MINIMAP_MIN_WINDOW_MS` state; edge proximity detection in mousedown; resize vs pan branching in document mousemove; `ew-resize` cursor on hover near viewport edges in canvas mousemove
+
+---
+
+## Feature Box Close Buttons (×)
+
+Added red × close buttons to the upper-right inside corner of feature boxes on the spectrogram. Clicking the × deletes the feature after a confirmation prompt.
+
+### Drawing
+
+In `drawSavedBox()`, after the box stroke/fill, a close button is drawn if the box is large enough (width/height > `closeSize + closePad * 3`):
+- Dark semi-transparent circle backdrop (`rgba(0,0,0,0.5)`, radius `closeSize/2 + 2`)
+- Red × lines (`#ff4444`, lineWidth 2, round caps) with 3px inset from circle edges
+- Positioned at top-right inside corner: `closePad` from right edge, `closePad` from top
+
+### Hit testing
+
+`getClickedCloseButton(x, y)` performs circular hit-testing around the × center with a generous radius (`closeSize/2 + 4`). Uses the same coordinate conversion logic as `getClickedBox()` — device pixel scaling, frequency scale transitions, interpolated time range. Returns `{ regionIndex, featureIndex }` or `null`.
+
+### Delete routing
+
+The mousedown handler checks close buttons before any other click logic. Routes based on `regionIndex`:
+- **`regionIndex === -1`** (standalone feature): calls `deleteStandaloneFeature(featureIndex)` + `redrawAllCanvasFeatureBoxes()` + `renderStandaloneFeaturesList()`
+- **`regionIndex >= 0`** (region-based feature): calls `deleteRegion(regionIndex)`
+
+### Bug fix: standalone features weren't deletable
+
+The original implementation always called `deleteRegion(closedBox.regionIndex)` regardless of feature type. In windowed modes (page turn, scroll, static), all features are standalone (`regionIndex = -1`). `deleteRegion(-1)` tried `regions[-1]` → `undefined`, showed the confirm dialog but silently failed to delete anything. Fixed by checking `regionIndex === -1` and routing to `deleteStandaloneFeature()` instead.
+
+### Cursor
+
+Mousemove handler checks `getClickedCloseButton()` and sets `cursor: pointer` on hover.
+
+### Files Changed
+
+- `js/spectrogram-renderer.js` — Close button drawing in `drawSavedBox()`, `getClickedCloseButton()` hit-test function, mousedown handler routing (standalone vs region), cursor change on hover, added `deleteStandaloneFeature` and `renderStandaloneFeaturesList` imports
+- `js/region-tracker.js` — No changes (existing `deleteStandaloneFeature()` and `deleteRegion()` used as-is)
+
+---
+
+## Gear Popover Heading Rename
+
+Renamed the third gear popover section heading from "Numbers" to "Feature Numbers" for clarity — it controls the color and location of feature box number annotations on the spectrogram.
+
+### Files Changed
+
+- `emic_study.html` — `.gear-popover-title` text changed from "Numbers" to "Feature Numbers"
+
+---
+
+## Minimap Viewport Edge-Drag Resize
+
+Added edge-drag resize to the minimap viewport window. Users can grab the left or right edge to widen or narrow the viewport, in addition to the existing click-to-snap and drag-to-pan behavior.
+
+- Hover within 8px of viewport edge shows `ew-resize` cursor
+- Mousedown near edge enters resize mode (moves only that edge, opposite stays fixed)
+- 1-minute minimum window width enforced (`MINIMAP_MIN_WINDOW_MS = 60000`)
+- Click outside viewport still snap-centers as before
+
+### Files Changed
+
+- `js/waveform-renderer.js` — `minimapResizeEdge`, `MINIMAP_EDGE_THRESHOLD_PX`, `MINIMAP_MIN_WINDOW_MS` state; edge proximity detection in mousedown; resize vs pan branching in document mousemove; `ew-resize` cursor on hover
+
+---
+
+## Feature Box Close Buttons (x)
+
+Added red x close buttons to the upper-right inside corner of feature boxes on the spectrogram. Clicking deletes the feature after confirmation.
+
+- Dark circle backdrop + red x lines, positioned `closePad` from right/top edges
+- `getClickedCloseButton(x, y)` circular hit-testing with generous radius
+- Routes based on `regionIndex`: standalone features use `deleteStandaloneFeature()`, region-based use `deleteRegion()`
+- Fixed bug: standalone features (windowed modes) weren't deletable — `deleteRegion(-1)` silently failed
+
+### Files Changed
+
+- `js/spectrogram-renderer.js` — Close button drawing, hit-test function, mousedown routing, cursor on hover, added imports for `deleteStandaloneFeature` and `renderStandaloneFeaturesList`
+
+---
+
+## Spectrogram X-Axis Time Ticks
+
+Added time ticks below the main spectrogram window, matching the existing minimap x-axis pattern.
+
+### Architecture
+
+- **New file: `js/spectrogram-x-axis-renderer.js`** — Separate renderer importing tick calculators from `waveform-x-axis-renderer.js`
+- Three exported functions: `drawSpectrogramXAxis()`, `positionSpectrogramXAxisCanvas()`, `resizeSpectrogramXAxisCanvas()`
+- Uses `getInterpolatedTimeRange()` for time range (handles zoom transitions automatically)
+- No EMIC windowed override (unlike minimap which always shows full range in windowed mode)
+- Lazy `import()` in `waveform-x-axis-renderer.js` zoom transition RAF loop to avoid circular dependency
+
+### Tick calculator exports
+
+Seven tick functions in `waveform-x-axis-renderer.js` changed from private to `export function`: `calculateHourlyTicks`, `calculateSixHourTicks`, `calculateFourHourTicks`, `calculateTwoHourTicks`, `calculateOneMinuteTicks`, `calculateFiveMinuteTicks`, `calculateThirtyMinuteTicks`
+
+### X-Axis Show/Hide Toggle
+
+Added "X-Axis" dropdown to the main window gear popover with "Show Ticks" (default) and "Hide Ticks" options.
+
+- `#mainWindowXAxis` select persisted via `navControls` (`emic_main_xaxis` localStorage key)
+- When hidden: `#spectrogram-x-axis` canvas `display: none`, spectrogram `margin-bottom: 0`
+- When shown: canvas visible, `margin-bottom: 30px`
+- All three renderer functions gate on `isSpectrogramXAxisVisible()` — bail early when hidden (no tick math, no DOM measurements)
+
+### Call sites wired
+
+- **`js/main.js`** — Import + 4 sites: init positioning, resize handler (position + debounced resize), viewing mode change
+- **`js/data-fetcher.js`** — Import + 3 sites alongside existing waveform x-axis calls
+- **`js/waveform-x-axis-renderer.js`** — 2 lazy import sites in zoom transition RAF loop
+- **`js/waveform-renderer.js`** — Import + 4 `drawSpectrogramXAxis()` + 2 `positionSpectrogramXAxisCanvas()` calls
+- **`js/scroll-zoom.js`** — Import + 1 site in `renderFrame()`
+- **`js/region-tracker.js`** — Import + 2 sites (zoom-to-region, zoom-to-full)
+
+### Layout
+
+- `styles.css` — `margin-bottom: 30px` on `#spectrogram`; combined `#waveform-x-axis, #spectrogram-x-axis` CSS rules; added to touch-action mobile rule
+- `emic_study.html` — Added `<canvas id="spectrogram-x-axis">` after spectrogram-axis
+
+### Files Changed
+
+- `js/spectrogram-x-axis-renderer.js` (new) — Full renderer with visibility gate
+- `js/waveform-x-axis-renderer.js` — Exported 7 tick calculators, 2 lazy import call sites
+- `js/main.js` — Import, navControls entry, x-axis toggle handler, 4 call sites
+- `js/data-fetcher.js` — Import + 3 call sites
+- `js/waveform-renderer.js` — Import + 6 call sites
+- `js/scroll-zoom.js` — Import + 1 call site
+- `js/region-tracker.js` — Import + 2 call sites
+- `emic_study.html` — Canvas element + gear popover dropdown
+- `styles.css` — Margin, shared CSS rules, touch-action
+
+---
+
+## Day Markers Disappear on Browser Zoom Fix
+
+The spectrogram day marker overlay has a `ResizeObserver` that resizes its canvas buffer when the spectrogram canvas resizes. Resizing a canvas buffer clears all drawn content. No `drawDayMarkers()` call followed, so markers vanished on browser zoom (Cmd+/Cmd-). The minimap markers survived because the waveform redraw path calls `drawDayMarkers()` as a side effect.
+
+### Fix
+
+Added `drawDayMarkers()` to the end of the window resize handler in `main.js`.
+
+### Files Changed
+
+- `js/main.js` — Added `drawDayMarkers()` call in resize handler after `updateAllFeatureBoxPositions()`

@@ -286,6 +286,9 @@ export function drawWaveformXAxis() {
                     zoomTransitionRAF = null;
                     drawWaveformXAxis();
 
+                    // Update spectrogram x-axis (lazy import to avoid circular dependency)
+                    import('./spectrogram-x-axis-renderer.js').then(m => m.drawSpectrogramXAxis());
+
                     // 🏛️ Trigger interpolated waveform draw so everything zooms together
                     drawInterpolatedWaveform();
 
@@ -294,14 +297,14 @@ export function drawWaveformXAxis() {
 
                     // 📦 Update feature boxes to move smoothly with the zoom transition!
                     updateAllFeatureBoxPositions();
-                    
+
                     // 🎯 Update playheads during transition so they move smoothly!
                     drawWaveformWithSelection(); // Includes waveform playhead
                     drawSpectrogramPlayhead(); // Update spectrogram playhead during transition
-                    
+
                     // 🎨 Update canvas feature boxes too (follow elastic horizontal stretch!)
                     redrawAllCanvasFeatureBoxes();
-                    
+
                     // 📅 Update day markers during zoom transition
                     drawDayMarkers();
                 });
@@ -322,7 +325,8 @@ export function drawWaveformXAxis() {
             // 🎯 CRITICAL: Redraw x-axis at final position so tick density updates!
             // Without this, region-to-region zoom would keep the interpolated tick density
             drawWaveformXAxis();
-            
+            import('./spectrogram-x-axis-renderer.js').then(m => m.drawSpectrogramXAxis());
+
             // 📅 Update day markers at final position
             drawDayMarkers();
         }
@@ -428,7 +432,7 @@ export function positionWaveformDateCanvas() {
  * 2. Find first hour boundary in UTC (00:00, 01:00, 02:00, ..., 23:00 UTC)
  * 3. Generate ticks every hour in UTC
  */
-function calculateHourlyTicks(startUTC, endUTC) {
+export function calculateHourlyTicks(startUTC, endUTC) {
     const ticks = [];
 
     // Get UTC time components from start time
@@ -487,7 +491,7 @@ function calculateHourlyTicks(startUTC, endUTC) {
  * Quantizes at 6-hour boundaries (00:00, 06:00, 12:00, 18:00 UTC)
  * Used for multi-day data (> 24 hours)
  */
-function calculateSixHourTicks(startUTC, endUTC) {
+export function calculateSixHourTicks(startUTC, endUTC) {
     const ticks = [];
 
     // Get UTC time components from start time
@@ -546,7 +550,7 @@ function calculateSixHourTicks(startUTC, endUTC) {
  * Quantizes at 4-hour boundaries (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
  * Used when canvas width is <= 1/2 of maximum width
  */
-function calculateFourHourTicks(startUTC, endUTC) {
+export function calculateFourHourTicks(startUTC, endUTC) {
     const ticks = [];
 
     // Get UTC time components from start time
@@ -605,7 +609,7 @@ function calculateFourHourTicks(startUTC, endUTC) {
  * Quantizes at 2-hour boundaries (00:00, 02:00, 04:00, ..., 22:00 UTC)
  * Used when canvas width is <= 3/4 of maximum width
  */
-function calculateTwoHourTicks(startUTC, endUTC) {
+export function calculateTwoHourTicks(startUTC, endUTC) {
     const ticks = [];
 
     // Get UTC time components from start time
@@ -663,7 +667,7 @@ function calculateTwoHourTicks(startUTC, endUTC) {
  * Calculate 1-minute tick positions (UTC)
  * Used when region is less than 20 minutes for finest granularity
  */
-function calculateOneMinuteTicks(startUTC, endUTC) {
+export function calculateOneMinuteTicks(startUTC, endUTC) {
     const ticks = [];
 
     // Get UTC time components from start time
@@ -721,7 +725,7 @@ function calculateOneMinuteTicks(startUTC, endUTC) {
  * Quantizes at 5-minute boundaries (00:00, 00:05, 00:10, ..., 00:55 UTC)
  * Used when region is less than 2 hours for finer granularity
  */
-function calculateFiveMinuteTicks(startUTC, endUTC) {
+export function calculateFiveMinuteTicks(startUTC, endUTC) {
     const ticks = [];
 
     // Get UTC time components from start time
@@ -781,7 +785,7 @@ function calculateFiveMinuteTicks(startUTC, endUTC) {
  * Quantizes at 30-minute boundaries (00:00, 00:30, 01:00, 01:30, ..., 23:30 UTC)
  * Used when region is less than 6 hours but 2+ hours
  */
-function calculateThirtyMinuteTicks(startUTC, endUTC) {
+export function calculateThirtyMinuteTicks(startUTC, endUTC) {
     const ticks = [];
 
     // Get UTC time components from start time

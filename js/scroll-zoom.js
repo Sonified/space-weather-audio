@@ -18,6 +18,7 @@ import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './waveform-renderer.js';
 import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
+import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
 import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { updateCanvasAnnotations } from './spectrogram-renderer.js';
@@ -54,6 +55,7 @@ function renderFrame() {
     rafPending = false;
     drawWaveformFromMinMax();
     drawWaveformXAxis();
+    drawSpectrogramXAxis();
     updateSpectrogramViewportFromZoom();
     updateAllFeatureBoxPositions();
     updateCanvasAnnotations();
