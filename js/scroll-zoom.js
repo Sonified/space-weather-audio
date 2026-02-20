@@ -80,9 +80,19 @@ async function renderHiResViewport() {
     // Don't re-render if at full zoom (already full resolution)
     if (endMs - startMs >= dataSpanMs * 0.95) return;
 
-    // Convert viewport to seconds from data start
     const startSeconds = (startMs - dataStartMs) / 1000;
     const endSeconds = (endMs - dataStartMs) / 1000;
+
+    // Only render region if zoom is deeper than base pyramid tiles can handle.
+    // At 15-min base tiles with 1024 cols each, pyramid handles down to ~17 min zoom.
+    const viewDurationSec = (endMs - startMs) / 1000;
+    const canvasWidth = document.getElementById('spectrogram')?.width || 1200;
+    const baseTileColsInView = (viewDurationSec / (15 * 60)) * 1024; // TILE_COLS per 15min
+    if (baseTileColsInView >= canvasWidth * 0.8) {
+        console.log(`🔺 Pyramid handles this zoom level — skipping hi-res render`);
+        return;
+    }
+
     const viewSpanSeconds = endSeconds - startSeconds;
 
     // Add 30% padding so minor scrolling stays within hi-res bounds

@@ -1,0 +1,623 @@
+/**
+ * spectrogram-pyramid.js — Bottom-Up LOD Pyramid for Spectrogram Rendering
+ * 
+ * Architecture:
+ *   L0 (base): 15-minute tiles at 1024 FFT columns each (0.88 sec/col)
+ *   L1-L9: progressively coarser, built by averaging pairs from the level below
+ *   Viewport render: pixel-perfect for extreme deep zoom (<15 min)
+ * 
+ * Only tiles near the viewport are kept in GPU memory.
+ * Upper levels are built lazily as pairs complete.
+ */
+
+import * as State from './audio-state.js';
+import { zoomState } from './zoom-state.js';
+import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
+import { isStudyMode } from './master-modes.js';
+
+// ─── Configuration ──────────────────────────────────────────────────────────
+
+const BASE_TILE_DURATION_SEC = 15 * 60;  // 15 minutes
+const TILE_COLS = 1024;                   // FFT columns per tile
+const MAX_CACHED_TILES = 40;             // LRU cache limit
+const PREFETCH_TILES = 2;               // tiles to prefetch beyond viewport edges
+
+// ─── Pyramid State ──────────────────────────────────────────────────────────
+
+let pyramidLevels = [];        // Array of levels, each an array of tile descriptors
+let tileTextureCache = new Map(); // key -> { texture, lastUsed }
+let workerPool = null;
+let buildAbortController = null;
+let pyramidReady = false;
+let onTileReady = null;        // Callback when a tile becomes ready
+
+// Tile key format: "L{level}:{index}"
+function tileKey(level, index) {
+    return `L${level}:${index}`;
+}
+
+// ─── Pyramid Structure ──────────────────────────────────────────────────────
+
+/**
+ * Initialize the pyramid structure for a given data duration.
+ * Does NOT render anything — just sets up the tile grid.
+ * 
+ * @param {number} dataDurationSec - Total data duration in seconds
+ * @param {number} sampleRate - playback_samples_per_real_second
+ * @returns {number} Number of levels created
+ */
+export function initPyramid(dataDurationSec, sampleRate) {
+    pyramidLevels = [];
+    tileTextureCache.clear();
+    pyramidReady = false;
+
+    if (dataDurationSec <= 0) return 0;
+
+    // Level 0: base tiles at BASE_TILE_DURATION_SEC
+    let tileDuration = BASE_TILE_DURATION_SEC;
+    let level = 0;
+
+    while (true) {
+        const tileCount = Math.ceil(dataDurationSec / tileDuration);
+        const tiles = [];
+
+        for (let i = 0; i < tileCount; i++) {
+            const startSec = i * tileDuration;
+            const endSec = Math.min((i + 1) * tileDuration, dataDurationSec);
+            tiles.push({
+                level,
+                index: i,
+                startSec,
+                endSec,
+                duration: endSec - startSec,
+                magnitudeData: null,  // Float32Array: TILE_COLS × freqBins
+                width: 0,
+                height: 0,
+                ready: false,
+                rendering: false,
+                // Actual FFT column center times (for precise UV mapping)
+                actualFirstColSec: 0,
+                actualLastColSec: 0,
+            });
+        }
+
+        pyramidLevels.push(tiles);
+
+        // Stop when we have a single tile covering everything
+        if (tileCount <= 1) break;
+
+        // Next level: double the duration
+        tileDuration *= 2;
+        level++;
+    }
+
+    const totalTiles = pyramidLevels.reduce((sum, lvl) => sum + lvl.length, 0);
+    console.log(`🔺 Pyramid initialized: ${pyramidLevels.length} levels, ${totalTiles} total tiles, base=${BASE_TILE_DURATION_SEC}s`);
+    for (let i = 0; i < pyramidLevels.length; i++) {
+        const lvl = pyramidLevels[i];
+        const dur = lvl[0]?.duration || 0;
+        console.log(`   L${i}: ${lvl.length} tiles × ${(dur / 60).toFixed(1)}min = ${(dur / TILE_COLS).toFixed(2)}s/col`);
+    }
+
+    return pyramidLevels.length;
+}
+
+/**
+ * Get the number of pyramid levels.
+ */
+export function getLevelCount() {
+    return pyramidLevels.length;
+}
+
+/**
+ * Get tile descriptors for a level.
+ */
+export function getTilesAtLevel(level) {
+    return pyramidLevels[level] || [];
+}
+
+/**
+ * Get a specific tile.
+ */
+export function getTile(level, index) {
+    return pyramidLevels[level]?.[index] || null;
+}
+
+// ─── Level Picker ───────────────────────────────────────────────────────────
+
+/**
+ * Pick the optimal pyramid level for a given viewport.
+ * Returns the finest level where tiles have ≥ 1 col per screen pixel.
+ * 
+ * @param {number} viewStartSec - Viewport start in seconds
+ * @param {number} viewEndSec - Viewport end in seconds  
+ * @param {number} canvasWidth - Canvas width in pixels
+ * @returns {number} Optimal level index
+ */
+export function pickLevel(viewStartSec, viewEndSec, canvasWidth) {
+    const viewDuration = viewEndSec - viewStartSec;
+    if (viewDuration <= 0 || canvasWidth <= 0) return 0;
+
+    // We want the finest level where total visible columns ≥ canvasWidth
+    // (i.e., cols/pixel ≥ 1, so GPU downsamples rather than upsamples)
+    for (let level = 0; level < pyramidLevels.length; level++) {
+        const tiles = pyramidLevels[level];
+        if (tiles.length === 0) continue;
+
+        const tileDuration = tiles[0].duration;
+        // How many tiles overlap this viewport?
+        const tilesInView = viewDuration / tileDuration;
+        // Total columns for those tiles
+        const totalCols = tilesInView * TILE_COLS;
+        // Cols per pixel
+        const colsPerPixel = totalCols / canvasWidth;
+
+        if (colsPerPixel < 1.0) {
+            // This level is too coarse — use the previous (finer) level
+            return Math.max(0, level - 1);
+        }
+    }
+
+    // All levels have enough resolution — use the coarsest (top)
+    return pyramidLevels.length - 1;
+}
+
+/**
+ * Get visible tiles at a given level for a viewport.
+ * Returns tiles that overlap [viewStartSec, viewEndSec] plus prefetch neighbors.
+ * 
+ * @returns {Array<{tile, uvStart, uvEnd, screenFracStart, screenFracEnd}>}
+ */
+export function getVisibleTiles(level, viewStartSec, viewEndSec) {
+    const tiles = pyramidLevels[level];
+    if (!tiles || tiles.length === 0) return [];
+
+    const viewDuration = viewEndSec - viewStartSec;
+    if (viewDuration <= 0) return [];
+
+    const visible = [];
+
+    for (let i = 0; i < tiles.length; i++) {
+        const tile = tiles[i];
+
+        // Check overlap (with prefetch padding)
+        const prefetchPad = tile.duration * PREFETCH_TILES;
+        if (tile.endSec <= viewStartSec - prefetchPad) continue;
+        if (tile.startSec >= viewEndSec + prefetchPad) continue;
+
+        if (!tile.ready) continue;
+
+        // UV mapping using actual FFT column times
+        const actualDuration = tile.actualLastColSec - tile.actualFirstColSec;
+        if (actualDuration <= 0) continue;
+
+        const uvStart = (Math.max(viewStartSec, tile.startSec) - tile.actualFirstColSec) / actualDuration;
+        const uvEnd = (Math.min(viewEndSec, tile.endSec) - tile.actualFirstColSec) / actualDuration;
+
+        // Screen-space fraction
+        const screenFracStart = Math.max(0, (tile.startSec - viewStartSec) / viewDuration);
+        const screenFracEnd = Math.min(1, (tile.endSec - viewStartSec) / viewDuration);
+
+        visible.push({
+            tile,
+            key: tileKey(level, i),
+            uvStart,
+            uvEnd,
+            screenFracStart,
+            screenFracEnd,
+            isPrefetch: tile.endSec <= viewStartSec || tile.startSec >= viewEndSec
+        });
+    }
+
+    return visible.sort((a, b) => a.screenFracStart - b.screenFracStart);
+}
+
+/**
+ * Check if tiles at a given level fully cover the viewport.
+ */
+export function tilesReady(level, viewStartSec, viewEndSec) {
+    const tiles = pyramidLevels[level];
+    if (!tiles) return false;
+
+    for (const tile of tiles) {
+        // Does this tile overlap the viewport?
+        if (tile.endSec <= viewStartSec || tile.startSec >= viewEndSec) continue;
+        if (!tile.ready) return false;
+    }
+    return true;
+}
+
+// ─── Base Tile Rendering (L0) ───────────────────────────────────────────────
+
+/**
+ * Render base (L0) tiles from audio data.
+ * Prioritizes tiles overlapping the current viewport.
+ * 
+ * @param {Float32Array} audioData - Complete audio samples (resampled)
+ * @param {number} sampleRate - playback_samples_per_real_second
+ * @param {number} fftSize - FFT window size
+ * @param {number} viewCenterSec - Current viewport center for priority ordering
+ * @param {Function} onProgress - Callback(tilesComplete, tilesTotal)
+ */
+export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenterSec = 0, onProgress = null) {
+    const baseTiles = pyramidLevels[0];
+    if (!baseTiles || baseTiles.length === 0) return;
+
+    // Cancel any in-progress build
+    if (buildAbortController) {
+        buildAbortController.abort();
+    }
+    buildAbortController = new AbortController();
+    const signal = buildAbortController.signal;
+
+    // Initialize worker pool
+    if (!workerPool) {
+        workerPool = new SpectrogramWorkerPool();
+        await workerPool.initialize();
+    }
+
+    const frequencyBinCount = fftSize / 2;
+
+    // Pre-compute Hann window
+    const hannWindow = new Float32Array(fftSize);
+    for (let i = 0; i < fftSize; i++) {
+        hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / fftSize));
+    }
+
+    // Sort tiles: closest to viewport center first
+    const renderOrder = baseTiles.map((t, i) => i).sort((a, b) => {
+        const aCenterSec = (baseTiles[a].startSec + baseTiles[a].endSec) / 2;
+        const bCenterSec = (baseTiles[b].startSec + baseTiles[b].endSec) / 2;
+        return Math.abs(aCenterSec - viewCenterSec) - Math.abs(bCenterSec - viewCenterSec);
+    });
+
+    let tilesComplete = 0;
+
+    for (const tileIdx of renderOrder) {
+        if (signal.aborted) return;
+
+        const tile = baseTiles[tileIdx];
+        if (tile.ready) {
+            tilesComplete++;
+            continue;
+        }
+
+        tile.rendering = true;
+
+        // Extract samples for this tile
+        const startSample = Math.floor(tile.startSec * sampleRate);
+        const endSample = Math.floor(tile.endSec * sampleRate);
+        
+        // Handle resampling if needed
+        let resampledStart, resampledEnd;
+        if (zoomState.isInitialized() && zoomState.originalToResampledSample) {
+            resampledStart = zoomState.originalToResampledSample(startSample);
+            resampledEnd = zoomState.originalToResampledSample(endSample);
+        } else {
+            resampledStart = startSample;
+            resampledEnd = endSample;
+        }
+
+        const tileSamples = audioData.slice(
+            Math.max(0, resampledStart),
+            Math.min(audioData.length, resampledEnd)
+        );
+
+        if (tileSamples.length <= fftSize) {
+            console.warn(`🔺 L0 tile ${tileIdx} too small for FFT (${tileSamples.length} samples)`);
+            tile.rendering = false;
+            tilesComplete++;
+            continue;
+        }
+
+        // Compute FFT columns
+        const maxTimeSlices = TILE_COLS;
+        const hopSize = Math.max(1, Math.floor((tileSamples.length - fftSize) / maxTimeSlices));
+        const numTimeSlices = Math.min(maxTimeSlices, Math.floor((tileSamples.length - fftSize) / hopSize));
+
+        // Pack magnitude data: width=numTimeSlices, height=frequencyBinCount
+        const magnitudeData = new Float32Array(numTimeSlices * frequencyBinCount);
+
+        const batchSize = 50;
+        const batches = [];
+        for (let batchStart = 0; batchStart < numTimeSlices; batchStart += batchSize) {
+            batches.push({ start: batchStart, end: Math.min(batchStart + batchSize, numTimeSlices) });
+        }
+
+        const drawResults = (results) => {
+            for (const result of results) {
+                const { sliceIdx, magnitudes } = result;
+                for (let bin = 0; bin < frequencyBinCount; bin++) {
+                    magnitudeData[bin * numTimeSlices + sliceIdx] = magnitudes[bin];
+                }
+                result.magnitudes = null;
+            }
+        };
+
+        try {
+            await workerPool.processBatches(
+                tileSamples,
+                batches,
+                fftSize,
+                hopSize,
+                hannWindow,
+                drawResults
+            );
+        } catch (e) {
+            console.error(`🔺 L0 tile ${tileIdx} render failed:`, e);
+            tile.rendering = false;
+            tilesComplete++;
+            continue;
+        }
+
+        if (signal.aborted) return;
+
+        // Store results
+        tile.magnitudeData = magnitudeData;
+        tile.width = numTimeSlices;
+        tile.height = frequencyBinCount;
+        tile.actualFirstColSec = tile.startSec + (fftSize / 2) / sampleRate;
+        tile.actualLastColSec = tile.startSec + ((numTimeSlices - 1) * hopSize + fftSize / 2) / sampleRate;
+        tile.ready = true;
+        tile.rendering = false;
+
+        tilesComplete++;
+
+        if (onProgress) {
+            onProgress(tilesComplete, baseTiles.length);
+        }
+
+        // Notify that a tile is ready (triggers viewport update + pyramid cascade)
+        if (onTileReady) {
+            onTileReady(0, tileIdx);
+        }
+
+        // Try to build upper level tiles
+        cascadeUpward(0, tileIdx);
+
+        // Yield to main thread periodically
+        if (tilesComplete % 4 === 0) {
+            await new Promise(r => setTimeout(r, 0));
+        }
+    }
+
+    pyramidReady = true;
+    console.log(`🔺 Base tiles complete: ${tilesComplete}/${baseTiles.length}`);
+}
+
+// ─── Pyramid Builder (Upward Cascade) ───────────────────────────────────────
+
+/**
+ * After a tile at `level` becomes ready, check if we can build the parent.
+ * Parent at level+1 covers two adjacent tiles at level.
+ */
+function cascadeUpward(level, tileIndex) {
+    const nextLevel = level + 1;
+    if (nextLevel >= pyramidLevels.length) return;
+
+    const parentIndex = Math.floor(tileIndex / 2);
+    const siblingIndex = (tileIndex % 2 === 0) ? tileIndex + 1 : tileIndex - 1;
+
+    const currentTiles = pyramidLevels[level];
+    const parentTiles = pyramidLevels[nextLevel];
+
+    if (!parentTiles[parentIndex]) return;
+    if (parentTiles[parentIndex].ready) return; // Already built
+
+    // Check if both children are ready
+    const child0 = currentTiles[parentIndex * 2];
+    const child1 = currentTiles[parentIndex * 2 + 1];
+
+    if (!child0?.ready) return;
+    // child1 might not exist (odd number of tiles at this level)
+    if (child1 && !child1.ready) return;
+
+    // Build parent by averaging children
+    const parent = parentTiles[parentIndex];
+    const freqBins = child0.height;
+
+    if (child1) {
+        // Average two tiles into one
+        // Each child is TILE_COLS wide. Parent is also TILE_COLS wide.
+        // Take every other column from each child and average.
+        const parentData = new Float32Array(TILE_COLS * freqBins);
+        const halfCols = Math.floor(child0.width / 2);
+        const halfCols1 = Math.floor(child1.width / 2);
+        const parentCols = halfCols + halfCols1;
+
+        // Downsample child0: take pairs, average
+        for (let col = 0; col < halfCols; col++) {
+            const srcCol0 = col * 2;
+            const srcCol1 = col * 2 + 1;
+            for (let bin = 0; bin < freqBins; bin++) {
+                const v0 = child0.magnitudeData[bin * child0.width + srcCol0];
+                const v1 = srcCol1 < child0.width ? child0.magnitudeData[bin * child0.width + srcCol1] : v0;
+                parentData[bin * parentCols + col] = (v0 + v1) / 2;
+            }
+        }
+
+        // Downsample child1: take pairs, average
+        for (let col = 0; col < halfCols1; col++) {
+            const srcCol0 = col * 2;
+            const srcCol1 = col * 2 + 1;
+            const destCol = halfCols + col;
+            for (let bin = 0; bin < freqBins; bin++) {
+                const v0 = child1.magnitudeData[bin * child1.width + srcCol0];
+                const v1 = srcCol1 < child1.width ? child1.magnitudeData[bin * child1.width + srcCol1] : v0;
+                parentData[bin * parentCols + destCol] = (v0 + v1) / 2;
+            }
+        }
+
+        parent.magnitudeData = parentData;
+        parent.width = parentCols;
+        parent.height = freqBins;
+        parent.actualFirstColSec = child0.actualFirstColSec;
+        parent.actualLastColSec = child1.actualLastColSec;
+    } else {
+        // Only one child (odd count) — just downsample it
+        const halfCols = Math.floor(child0.width / 2);
+        const parentData = new Float32Array(halfCols * freqBins);
+
+        for (let col = 0; col < halfCols; col++) {
+            const srcCol0 = col * 2;
+            const srcCol1 = col * 2 + 1;
+            for (let bin = 0; bin < freqBins; bin++) {
+                const v0 = child0.magnitudeData[bin * child0.width + srcCol0];
+                const v1 = srcCol1 < child0.width ? child0.magnitudeData[bin * child0.width + srcCol1] : v0;
+                parentData[bin * halfCols + col] = (v0 + v1) / 2;
+            }
+        }
+
+        parent.magnitudeData = parentData;
+        parent.width = halfCols;
+        parent.height = freqBins;
+        parent.actualFirstColSec = child0.actualFirstColSec;
+        parent.actualLastColSec = child0.actualLastColSec;
+    }
+
+    parent.ready = true;
+
+    if (!isStudyMode()) {
+        console.log(`🔺 Built L${nextLevel} tile ${parentIndex}: ${parent.width} cols, ${(parent.duration / 60).toFixed(1)}min`);
+    }
+
+    if (onTileReady) {
+        onTileReady(nextLevel, parentIndex);
+    }
+
+    // Continue cascading
+    cascadeUpward(nextLevel, parentIndex);
+}
+
+// ─── Texture Management (LRU) ──────────────────────────────────────────────
+
+/**
+ * Get or create a GPU texture for a tile.
+ * Uses LRU eviction when cache exceeds MAX_CACHED_TILES.
+ * 
+ * @param {object} tile - Tile descriptor
+ * @param {string} key - Tile key
+ * @param {Function} createTextureFn - Function(data, width, height) → THREE.DataTexture
+ * @returns {THREE.DataTexture|null}
+ */
+export function getTileTexture(tile, key, createTextureFn) {
+    if (!tile.ready || !tile.magnitudeData) return null;
+
+    let entry = tileTextureCache.get(key);
+    if (entry) {
+        entry.lastUsed = performance.now();
+        return entry.texture;
+    }
+
+    // Evict if over limit
+    if (tileTextureCache.size >= MAX_CACHED_TILES) {
+        evictLRU();
+    }
+
+    // Create new texture
+    const texture = createTextureFn(tile.magnitudeData, tile.width, tile.height);
+    tileTextureCache.set(key, {
+        texture,
+        lastUsed: performance.now()
+    });
+
+    return texture;
+}
+
+function evictLRU() {
+    let oldestKey = null;
+    let oldestTime = Infinity;
+
+    for (const [key, entry] of tileTextureCache) {
+        if (entry.lastUsed < oldestTime) {
+            oldestTime = entry.lastUsed;
+            oldestKey = key;
+        }
+    }
+
+    if (oldestKey) {
+        const entry = tileTextureCache.get(oldestKey);
+        if (entry.texture?.dispose) entry.texture.dispose();
+        tileTextureCache.delete(oldestKey);
+    }
+}
+
+// ─── Event Hooks ────────────────────────────────────────────────────────────
+
+/**
+ * Set callback for when any tile becomes ready.
+ * @param {Function} callback - (level, tileIndex) => void
+ */
+export function setOnTileReady(callback) {
+    onTileReady = callback;
+}
+
+// ─── Cleanup ────────────────────────────────────────────────────────────────
+
+/**
+ * Dispose all textures and reset state.
+ */
+export function disposePyramid() {
+    if (buildAbortController) {
+        buildAbortController.abort();
+        buildAbortController = null;
+    }
+
+    for (const [key, entry] of tileTextureCache) {
+        if (entry.texture?.dispose) entry.texture.dispose();
+    }
+    tileTextureCache.clear();
+
+    // Free magnitude data
+    for (const level of pyramidLevels) {
+        for (const tile of level) {
+            tile.magnitudeData = null;
+            tile.ready = false;
+            tile.rendering = false;
+        }
+    }
+
+    pyramidLevels = [];
+    pyramidReady = false;
+    console.log('🔺 Pyramid disposed');
+}
+
+/**
+ * Free magnitude data for tiles far from viewport (keep textures in GPU).
+ * Call periodically to reduce JS heap usage.
+ */
+export function trimMagnitudeData(viewStartSec, viewEndSec) {
+    const keepPadding = BASE_TILE_DURATION_SEC * 4; // Keep 4 tiles of padding
+
+    for (const level of pyramidLevels) {
+        for (const tile of level) {
+            if (!tile.ready || !tile.magnitudeData) continue;
+            // Keep if near viewport
+            if (tile.endSec >= viewStartSec - keepPadding && tile.startSec <= viewEndSec + keepPadding) continue;
+            // Keep if texture is cached (GPU has it)
+            const key = tileKey(tile.level, tile.index);
+            if (tileTextureCache.has(key)) {
+                // GPU has the texture, safe to free JS-side data
+                tile.magnitudeData = null;
+            }
+        }
+    }
+}
+
+// ─── Debug / Status ─────────────────────────────────────────────────────────
+
+export function getStatus() {
+    const levels = pyramidLevels.map((tiles, i) => {
+        const ready = tiles.filter(t => t.ready).length;
+        return `L${i}: ${ready}/${tiles.length}`;
+    });
+
+    return {
+        levels: levels.join(', '),
+        cachedTextures: tileTextureCache.size,
+        pyramidReady,
+        totalLevels: pyramidLevels.length
+    };
+}
+
+export { TILE_COLS, BASE_TILE_DURATION_SEC };
