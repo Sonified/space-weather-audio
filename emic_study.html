@@ -696,6 +696,19 @@
                     <input type="number" id="heightSpectrogram" class="drawer-input" min="200" max="1200" step="1">
                 </div>
             </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Tile Compression</div>
+                <div class="drawer-row">
+                    <label for="tileCompression" class="drawer-label">Format</label>
+                    <select id="tileCompression" class="drawer-input" style="width: 100px; text-align: left;">
+                        <option value="uint8">Uint8</option>
+                        <option value="bc4">BC4</option>
+                    </select>
+                </div>
+                <div class="drawer-row">
+                    <span id="tileCompressionInfo" style="font-size: 11px; color: #888;"></span>
+                </div>
+            </div>
             <!-- Additional settings sections will be added here -->
         </div>
 
@@ -920,6 +933,41 @@
                 });
             });
         })();
+    </script>
+
+    <!-- Tile compression dropdown wiring -->
+    <script type="module">
+        const tileCompressionSelect = document.getElementById('tileCompression');
+        if (tileCompressionSelect) {
+            window.addEventListener('spectrogram-ready', async () => {
+                const { isTileBC4Supported, getTileCompression, setTileCompression } = await import('./js/spectrogram-three-renderer.js');
+                const infoEl = document.getElementById('tileCompressionInfo');
+                
+                if (!isTileBC4Supported()) {
+                    const bc4Option = tileCompressionSelect.querySelector('option[value="bc4"]');
+                    if (bc4Option) {
+                        bc4Option.disabled = true;
+                        bc4Option.textContent = 'BC4 (not supported)';
+                    }
+                    if (infoEl) infoEl.textContent = 'BC4 requires EXT_texture_compression_rgtc';
+                } else {
+                    if (infoEl) infoEl.textContent = 'BC4: 0.5 bytes/texel — Uint8: 1 byte/texel';
+                }
+                
+                tileCompressionSelect.value = getTileCompression();
+                
+                tileCompressionSelect.addEventListener('change', () => {
+                    setTileCompression(tileCompressionSelect.value);
+                    localStorage.setItem('tileCompression', tileCompressionSelect.value);
+                });
+                
+                const saved = localStorage.getItem('tileCompression');
+                if (saved && (saved === 'uint8' || saved === 'bc4')) {
+                    tileCompressionSelect.value = saved;
+                    setTileCompression(saved);
+                }
+            });
+        }
     </script>
 </body>
 </html>

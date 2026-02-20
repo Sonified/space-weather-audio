@@ -17,7 +17,7 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { isStudyMode } from './master-modes.js';
 import { getColorLUT } from './colormaps.js';
-import { initPyramid, renderBaseTiles, pickLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS } from './spectrogram-pyramid.js';
+import { initPyramid, renderBaseTiles, pickLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported } from './spectrogram-pyramid.js';
 
 // ─── Module state ───────────────────────────────────────────────────────────
 
@@ -361,6 +361,9 @@ function initThreeScene() {
         threeRenderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
     }
     threeRenderer.setSize(width, height, false);
+
+    // Detect BC4 support for pyramid tile compression
+    detectBC4Support(threeRenderer);
 
     // Orthographic camera: maps [-1,1] to canvas
     camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
@@ -2186,6 +2189,22 @@ export function getSpectrogramParams() {
 }
 
 // ─── Colormap change support ────────────────────────────────────────────────
+
+// ─── Tile Compression Control ───────────────────────────────────────────────
+
+export function setTileCompression(mode) {
+    setCompressionMode(mode);
+    updateSpectrogramViewportFromZoom();
+    renderFrame();
+}
+
+export function getTileCompression() {
+    return getCompressionMode();
+}
+
+export function isTileBC4Supported() {
+    return isBC4Supported();
+}
 
 /**
  * Call this when the colormap changes to rebuild the LUT texture.
