@@ -260,12 +260,19 @@ export function getVisibleTiles(level, viewStartSec, viewEndSec) {
         const actualDuration = tile.actualLastColSec - tile.actualFirstColSec;
         if (actualDuration <= 0) continue;
 
-        const uvStart = (Math.max(viewStartSec, tile.startSec) - tile.actualFirstColSec) / actualDuration;
-        const uvEnd = (Math.min(viewEndSec, tile.endSec) - tile.actualFirstColSec) / actualDuration;
+        // Use actual FFT column times for BOTH UV and screen positioning.
+        // Nominal tile boundaries (startSec/endSec) don't match where data actually exists,
+        // causing stair-step discontinuities at tile edges.
+        const clampedStart = Math.max(viewStartSec, tile.actualFirstColSec);
+        const clampedEnd = Math.min(viewEndSec, tile.actualLastColSec);
+        if (clampedStart >= clampedEnd) continue;
 
-        // Screen-space fraction
-        const screenFracStart = Math.max(0, (tile.startSec - viewStartSec) / viewDuration);
-        const screenFracEnd = Math.min(1, (tile.endSec - viewStartSec) / viewDuration);
+        const uvStart = (clampedStart - tile.actualFirstColSec) / actualDuration;
+        const uvEnd = (clampedEnd - tile.actualFirstColSec) / actualDuration;
+
+        // Screen-space fraction — also based on actual column times
+        const screenFracStart = Math.max(0, (tile.actualFirstColSec - viewStartSec) / viewDuration);
+        const screenFracEnd = Math.min(1, (tile.actualLastColSec - viewStartSec) / viewDuration);
 
         visible.push({
             tile,
@@ -352,9 +359,13 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
 
         tile.rendering = true;
 
-        // Extract samples for this tile
-        const startSample = Math.floor(tile.startSec * sampleRate);
-        const endSample = Math.floor(tile.endSec * sampleRate);
+        // Extract samples for this tile, with fftSize/2 overlap on each side.
+        // This ensures the first FFT column center aligns with tile.startSec
+        // and the last column center reaches tile.endSec, eliminating gaps
+        // between adjacent tiles.
+        const halfFFT = Math.floor(fftSize / 2);
+        const startSample = Math.max(0, Math.floor(tile.startSec * sampleRate) - halfFFT);
+        const endSample = Math.floor(tile.endSec * sampleRate) + halfFFT;
         
         // Handle resampling if needed
         let resampledStart, resampledEnd;
@@ -387,7 +398,10 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             continue;
         }
 
-        // Compute FFT columns
+        // Compute FFT columns with integer hop.
+        // Overlap samples ensure first column aligns to tile.startSec.
+        // Sub-pixel gap at tile boundary (~1s at SR=100) is handled by
+        // screen positioning using actual column times.
         const maxTimeSlices = TILE_COLS;
         const hopSize = Math.max(1, Math.floor((tileSamples.length - fftSize) / maxTimeSlices));
         const numTimeSlices = Math.min(maxTimeSlices, Math.floor((tileSamples.length - fftSize) / hopSize));
@@ -433,8 +447,14 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         tile.magnitudeData = magnitudeData;
         tile.width = numTimeSlices;
         tile.height = frequencyBinCount;
-        tile.actualFirstColSec = tile.startSec + (fftSize / 2) / sampleRate;
-        tile.actualLastColSec = tile.startSec + ((numTimeSlices - 1) * hopSize + fftSize / 2) / sampleRate;
+        // Map FFT column indices back to real time.
+        // tileSamples may be in resampled space, so convert via proportion of the
+        // known time span (startSample..endSample in original space = known seconds).
+        const tileOriginSec = startSample / sampleRate;
+        const tileSpanSec = (endSample - startSample) / sampleRate;
+        const secPerResampledSample = tileSpanSec / tileSamples.length;
+        tile.actualFirstColSec = tileOriginSec + halfFFT * secPerResampledSample;
+        tile.actualLastColSec = tileOriginSec + ((numTimeSlices - 1) * hopSize + halfFFT) * secPerResampledSample;
         tile.ready = true;
         tile.rendering = false;
 
