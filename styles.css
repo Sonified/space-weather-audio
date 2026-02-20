@@ -1,11 +1,13 @@
-/* Colormap-based accent colors (updated via JS when colormap changes) */
+/* Colormap-based accent colors (updated via JS when colormap changes).
+   Defaults match 'inferno' colormap — the app default. */
 :root {
-    --accent-color: #667eea;
-    --accent-rgb: 102, 126, 234;
-    --accent-glow: rgba(102, 126, 234, 0.25);
-    --accent-border: rgba(102, 126, 234, 0.2);
-    --accent-soft: rgba(102, 126, 234, 0.12);
-    --accent-bg: #252a38;
+    --accent-color: #808080;
+    --accent-rgb: 128, 128, 128;
+    --accent-glow: rgba(128, 128, 128, 0.25);
+    --accent-border: rgba(128, 128, 128, 0.2);
+    --accent-soft: rgba(128, 128, 128, 0.12);
+    --accent-bg: linear-gradient(135deg, #252a40, #161a28);
+    --page-bg: #2b2b3a;
 }
 
 * {

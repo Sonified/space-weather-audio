@@ -9,7 +9,7 @@ import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram, startMemoryMonitoring } from './spectrogram-three-renderer.js';
+import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport } from './spectrogram-three-renderer.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
@@ -982,6 +982,7 @@ async function initializeEmicStudyMode() {
         { id: 'navBarScroll', key: 'emic_navbar_scroll', type: 'select' },
         { id: 'mainWindowScroll', key: 'emic_main_scroll', type: 'select' },
         { id: 'miniMapView', key: 'emic_minimap_view', type: 'select' },
+        { id: 'mainWindowView', key: 'emic_main_view', type: 'select' },
         { id: 'navBarMarkers', key: 'emic_navbar_markers', type: 'select' },
         { id: 'mainWindowMarkers', key: 'emic_main_markers', type: 'select' },
         { id: 'mainWindowNumbers', key: 'emic_main_numbers', type: 'select' },
@@ -1019,24 +1020,11 @@ async function initializeEmicStudyMode() {
         });
     }
 
-    // --- Advanced mode toggle: controls visibility of gear icons ---
-    const advancedCheckbox = document.getElementById('advancedMode');
-    function applyAdvancedMode(enabled) {
-        const gearContainers = document.querySelectorAll('.panel-gear');
-        gearContainers.forEach(g => g.style.display = enabled ? 'block' : 'none');
-        const hamburgerBtn = document.getElementById('hamburgerBtn');
-        if (hamburgerBtn) hamburgerBtn.style.display = enabled ? 'block' : 'none';
-        // Close drawer if Advanced is turned off while drawer is open
-        if (!enabled) closeSettingsDrawer();
-    }
-    if (advancedCheckbox) {
-        const savedAdvanced = localStorage.getItem('emic_advanced_mode');
-        if (savedAdvanced !== null) advancedCheckbox.checked = savedAdvanced === 'true';
-        applyAdvancedMode(advancedCheckbox.checked);
-        advancedCheckbox.addEventListener('change', () => {
-            localStorage.setItem('emic_advanced_mode', advancedCheckbox.checked);
-            applyAdvancedMode(advancedCheckbox.checked);
-            updateRegionsPanelVisibility();
+    // Main window mode change: re-render spectrogram/waveform with new mode
+    const mainWindowViewEl = document.getElementById('mainWindowView');
+    if (mainWindowViewEl) {
+        mainWindowViewEl.addEventListener('change', () => {
+            updateSpectrogramViewport(State.currentPlaybackRate || 1.0);
         });
     }
 
@@ -1052,6 +1040,29 @@ async function initializeEmicStudyMode() {
     function closeSettingsDrawer() {
         if (drawerEl) drawerEl.classList.remove('open');
         document.body.classList.remove('drawer-open');
+    }
+
+    // --- Advanced mode toggle: controls visibility of gear icons ---
+    const advancedCheckbox = document.getElementById('advancedMode');
+    function applyAdvancedMode(enabled) {
+        const gearContainers = document.querySelectorAll('.panel-gear');
+        gearContainers.forEach(g => g.style.display = enabled ? 'block' : 'none');
+        const hamburgerBtn = document.getElementById('hamburgerBtn');
+        if (hamburgerBtn) hamburgerBtn.style.display = enabled ? 'block' : 'none';
+        const questionnairesPanel = document.getElementById('questionnairesPanel');
+        if (questionnairesPanel) questionnairesPanel.style.display = enabled ? '' : 'none';
+        // Close drawer if Advanced is turned off while drawer is open
+        if (!enabled) closeSettingsDrawer();
+    }
+    if (advancedCheckbox) {
+        const savedAdvanced = localStorage.getItem('emic_advanced_mode');
+        if (savedAdvanced !== null) advancedCheckbox.checked = savedAdvanced === 'true';
+        applyAdvancedMode(advancedCheckbox.checked);
+        advancedCheckbox.addEventListener('change', () => {
+            localStorage.setItem('emic_advanced_mode', advancedCheckbox.checked);
+            applyAdvancedMode(advancedCheckbox.checked);
+            updateRegionsPanelVisibility();
+        });
     }
     if (hamburgerBtn) hamburgerBtn.addEventListener('click', () => {
         if (drawerEl?.classList.contains('open')) closeSettingsDrawer();
@@ -2416,15 +2427,10 @@ async function initializeMainApp() {
             const { cancelTyping } = await import('./tutorial-effects.js');
             cancelTyping();
             saveRecentSearch(); // Save search before fetching (no-op now, handled by cache)
-            // EMIC mode: pass hardcoded config directly, skip form fields
+            // EMIC mode: use config defined in emic_study.html
             const { isEmicStudyMode } = await import('./master-modes.js');
             if (isEmicStudyMode()) {
-                await startStreaming(e, {
-                    spacecraft: 'GOES',
-                    dataset: 'DN_MAGN-L2-HIRES_G16',
-                    startTime: '2022-01-21T00:00:00.000Z',
-                    endTime: '2022-01-27T23:59:59.000Z'
-                });
+                await startStreaming(e, window.__EMIC_CONFIG);
             } else {
                 await startStreaming(e);
             }
@@ -2721,6 +2727,111 @@ async function initializeMainApp() {
                 });
             }
         }
+    }
+
+    // Post-study questionnaire: Background question button + modal
+    const backgroundQuestionBtn = document.getElementById('backgroundQuestionBtn');
+    const bgModal = document.getElementById('backgroundQuestionModal');
+    if (backgroundQuestionBtn && bgModal) {
+        backgroundQuestionBtn.addEventListener('click', async () => {
+            await modalManager.openModal('backgroundQuestionModal');
+        });
+
+        const bgSubmit = bgModal.querySelector('.modal-submit');
+        bgModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', () => { bgSubmit.disabled = false; });
+        });
+
+        const bgClose = bgModal.querySelector('.modal-close');
+        if (bgClose) {
+            bgClose.addEventListener('click', () => modalManager.closeModal('backgroundQuestionModal'));
+        }
+
+        bgSubmit.addEventListener('click', () => {
+            const value = document.querySelector('input[name="backgroundLevel"]:checked')?.value;
+            console.log('📋 Background level:', value);
+            modalManager.closeModal('backgroundQuestionModal');
+        });
+    }
+
+    // Post-study questionnaire: Data analysis experience button + modal
+    const dataAnalysisQuestionBtn = document.getElementById('dataAnalysisQuestionBtn');
+    const daModal = document.getElementById('dataAnalysisQuestionModal');
+    if (dataAnalysisQuestionBtn && daModal) {
+        dataAnalysisQuestionBtn.addEventListener('click', async () => {
+            await modalManager.openModal('dataAnalysisQuestionModal');
+        });
+
+        const daSubmit = daModal.querySelector('.modal-submit');
+        daModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', () => { daSubmit.disabled = false; });
+        });
+
+        const daClose = daModal.querySelector('.modal-close');
+        if (daClose) {
+            daClose.addEventListener('click', () => modalManager.closeModal('dataAnalysisQuestionModal'));
+        }
+
+        daSubmit.addEventListener('click', () => {
+            const value = document.querySelector('input[name="dataAnalysisLevel"]:checked')?.value;
+            console.log('📋 Data analysis level:', value);
+            modalManager.closeModal('dataAnalysisQuestionModal');
+        });
+    }
+
+    // Post-study questionnaire: Feedback (free response) button + modal
+    const feedbackQuestionBtn = document.getElementById('feedbackQuestionBtn');
+    const fbModal = document.getElementById('feedbackQuestionModal');
+    if (feedbackQuestionBtn && fbModal) {
+        feedbackQuestionBtn.addEventListener('click', async () => {
+            await modalManager.openModal('feedbackQuestionModal');
+        });
+
+        const fbSubmit = fbModal.querySelector('.modal-submit');
+        const fbTextarea = fbModal.querySelector('#feedbackText');
+
+        // Toggle button text between Skip and Submit based on textarea content
+        fbTextarea.addEventListener('input', () => {
+            fbSubmit.textContent = fbTextarea.value.trim() ? '✓ Submit' : 'Skip';
+        });
+
+        const fbClose = fbModal.querySelector('.modal-close');
+        if (fbClose) {
+            fbClose.addEventListener('click', () => modalManager.closeModal('feedbackQuestionModal'));
+        }
+
+        fbSubmit.addEventListener('click', () => {
+            const value = fbTextarea.value.trim();
+            console.log('📋 Feedback:', value || '(skipped)');
+            modalManager.closeModal('feedbackQuestionModal');
+        });
+    }
+
+    // Post-study questionnaire: Referral (free response) button + modal
+    const referralQuestionBtn = document.getElementById('referralQuestionBtn');
+    const refModal = document.getElementById('referralQuestionModal');
+    if (referralQuestionBtn && refModal) {
+        referralQuestionBtn.addEventListener('click', async () => {
+            await modalManager.openModal('referralQuestionModal');
+        });
+
+        const refSubmit = refModal.querySelector('.modal-submit');
+        const refTextarea = refModal.querySelector('#referralText');
+
+        refTextarea.addEventListener('input', () => {
+            refSubmit.textContent = refTextarea.value.trim() ? '✓ Submit' : 'Skip';
+        });
+
+        const refClose = refModal.querySelector('.modal-close');
+        if (refClose) {
+            refClose.addEventListener('click', () => modalManager.closeModal('referralQuestionModal'));
+        }
+
+        refSubmit.addEventListener('click', () => {
+            const value = refTextarea.value.trim();
+            console.log('📋 Referral:', value || '(skipped)');
+            modalManager.closeModal('referralQuestionModal');
+        });
     }
 
     // Set up component selector listener

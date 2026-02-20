@@ -70,6 +70,18 @@ let scrollZoomHiRes = {
     ready: false
 };
 
+// Waveform (time series) overlay mesh for main window view modes
+let waveformMesh = null;
+let waveformMaterial = null;
+let wfSampleTexture = null;
+let wfMipTexture = null;
+let wfColormapTexture = null;
+let wfTotalSamples = 0;
+let wfTextureWidth = 1;
+let wfTextureHeight = 1;
+let wfLastUploadedSamples = null;
+const WF_MIP_BIN_SIZE = 256;
+
 // Grey overlay for zoomed-out mode
 let spectrogramOverlay = null;
 let spectrogramOverlayResizeObserver = null;
@@ -160,6 +172,116 @@ void main() {
 }
 `;
 
+// ─── Waveform (time series) shader ──────────────────────────────────────────
+
+const wfFragmentShaderSource = /* glsl */ `
+uniform sampler2D uSamples;
+uniform sampler2D uMipMinMax;
+uniform sampler2D uColormap;
+uniform float uTotalSamples;
+uniform float uTextureWidth;
+uniform float uTextureHeight;
+uniform float uMipTextureWidth;
+uniform float uMipTextureHeight;
+uniform float uMipTotalBins;
+uniform float uMipBinSize;
+uniform float uViewportStart;
+uniform float uViewportEnd;
+uniform float uCanvasWidth;
+uniform float uCanvasHeight;
+uniform vec3 uBackgroundColor;
+uniform float uTransparentBg;
+
+varying vec2 vUv;
+
+float getSample(float index) {
+    float row = floor(index / uTextureWidth);
+    float col = index - row * uTextureWidth;
+    vec2 uv = vec2(
+        (col + 0.5) / uTextureWidth,
+        (row + 0.5) / uTextureHeight
+    );
+    return texture2D(uSamples, uv).r;
+}
+
+vec2 getMipBin(float index) {
+    float row = floor(index / uMipTextureWidth);
+    float col = index - row * uMipTextureWidth;
+    vec2 uv = vec2(
+        (col + 0.5) / uMipTextureWidth,
+        (row + 0.5) / uMipTextureHeight
+    );
+    return texture2D(uMipMinMax, uv).rg;
+}
+
+void main() {
+    float viewStartSample = uViewportStart * uTotalSamples;
+    float viewEndSample = uViewportEnd * uTotalSamples;
+    float samplesPerPixel = (viewEndSample - viewStartSample) / uCanvasWidth;
+
+    float pixelStart = viewStartSample + vUv.x * (viewEndSample - viewStartSample);
+    float pixelEnd = pixelStart + samplesPerPixel;
+
+    float minVal = 1.0;
+    float maxVal = -1.0;
+
+    if (samplesPerPixel > uMipBinSize && uMipTotalBins > 0.0) {
+        float binStart = floor(max(pixelStart / uMipBinSize, 0.0));
+        float binEnd = ceil(min(pixelEnd / uMipBinSize, uMipTotalBins));
+        float binCount = binEnd - binStart;
+        for (int i = 0; i < 512; i++) {
+            if (float(i) >= binCount) break;
+            vec2 mm = getMipBin(binStart + float(i));
+            minVal = min(minVal, mm.r);
+            maxVal = max(maxVal, mm.g);
+        }
+    } else {
+        float startIdx = floor(max(pixelStart, 0.0));
+        float endIdx = ceil(min(pixelEnd, uTotalSamples));
+        float count = endIdx - startIdx;
+        for (int i = 0; i < 8192; i++) {
+            if (float(i) >= count) break;
+            float s = getSample(startIdx + float(i));
+            minVal = min(minVal, s);
+            maxVal = max(maxVal, s);
+        }
+    }
+
+    float amplitude = (vUv.y - 0.5) * 2.0;
+    float yMin = minVal * 0.9;
+    float yMax = maxVal * 0.9;
+
+    float minThickness = 2.0 / uCanvasHeight;
+    if (yMax - yMin < minThickness) {
+        float center = (yMin + yMax) * 0.5;
+        yMin = center - minThickness * 0.5;
+        yMax = center + minThickness * 0.5;
+    }
+
+    float centerThickness = 1.0 / uCanvasHeight;
+    if (abs(vUv.y - 0.5) < centerThickness) {
+        gl_FragColor = vec4(0.4, 0.4, 0.4, uTransparentBg > 0.5 ? 0.6 : 1.0);
+        return;
+    }
+
+    if (amplitude >= yMin && amplitude <= yMax) {
+        float peakAmplitude = max(abs(minVal), abs(maxVal));
+        float normalized = clamp(peakAmplitude, 0.0, 1.0);
+        vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
+        gl_FragColor = vec4(color, 1.0);
+    } else {
+        gl_FragColor = vec4(uBackgroundColor, uTransparentBg > 0.5 ? 0.0 : 1.0);
+    }
+}
+`;
+
+// ─── Main window view mode ──────────────────────────────────────────────────
+
+function getMainWindowMode() {
+    const el = document.getElementById('mainWindowView');
+    return el ? el.value : 'spectrogram';
+}
+
 // ─── Three.js initialization ────────────────────────────────────────────────
 
 function initThreeScene() {
@@ -208,10 +330,43 @@ function initThreeScene() {
         fragmentShader: fragmentShaderSource
     });
 
-    // Full-screen quad
+    // Full-screen quad (spectrogram)
     const geometry = new THREE.PlaneGeometry(2, 2);
     mesh = new THREE.Mesh(geometry, material);
+    mesh.renderOrder = 0;
     scene.add(mesh);
+
+    // Waveform (time series) mesh — overlaid on spectrogram for combination mode
+    wfColormapTexture = buildWaveformColormapTexture();
+
+    const bgR = 0, bgG = 0, bgB = 0;
+    waveformMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uSamples: { value: null },
+            uMipMinMax: { value: null },
+            uColormap: { value: wfColormapTexture },
+            uTotalSamples: { value: 0.0 },
+            uTextureWidth: { value: 1.0 },
+            uTextureHeight: { value: 1.0 },
+            uMipTextureWidth: { value: 1.0 },
+            uMipTextureHeight: { value: 1.0 },
+            uMipTotalBins: { value: 0.0 },
+            uMipBinSize: { value: parseFloat(WF_MIP_BIN_SIZE) },
+            uViewportStart: { value: 0.0 },
+            uViewportEnd: { value: 1.0 },
+            uCanvasWidth: { value: parseFloat(width) },
+            uCanvasHeight: { value: parseFloat(height) },
+            uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) },
+            uTransparentBg: { value: 0.0 }
+        },
+        vertexShader: vertexShaderSource,
+        fragmentShader: wfFragmentShaderSource,
+        transparent: true
+    });
+    waveformMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), waveformMaterial);
+    waveformMesh.renderOrder = 1;
+    waveformMesh.visible = false;
+    scene.add(waveformMesh);
 
     // WebGL context loss/restore handlers (Chromium can drop contexts under GPU pressure)
     // Remove previous handlers if any (defensive against double-init)
@@ -227,6 +382,8 @@ function initThreeScene() {
         rebuildColormapTexture();
         if (fullMagnitudeTexture) fullMagnitudeTexture.needsUpdate = true;
         if (regionMagnitudeTexture) regionMagnitudeTexture.needsUpdate = true;
+        if (wfSampleTexture) wfSampleTexture.needsUpdate = true;
+        if (wfMipTexture) wfMipTexture.needsUpdate = true;
     };
     canvas.addEventListener('webglcontextlost', onContextLost);
     canvas.addEventListener('webglcontextrestored', onContextRestored);
@@ -262,6 +419,54 @@ function rebuildColormapTexture() {
     if (material) {
         material.uniforms.uColormap.value = colormapTexture;
     }
+    // Rebuild waveform colormap too
+    if (waveformMaterial) {
+        if (wfColormapTexture) wfColormapTexture.dispose();
+        wfColormapTexture = buildWaveformColormapTexture();
+        waveformMaterial.uniforms.uColormap.value = wfColormapTexture;
+    }
+}
+
+/**
+ * Build brightness-boosted colormap for waveform rendering.
+ * Makes waveform visible on dark backgrounds and when overlaid on spectrogram.
+ */
+function buildWaveformColormapTexture() {
+    const spectrogramLUT = getColorLUT();
+    if (!spectrogramLUT) return null;
+
+    const data = new Uint8Array(256 * 4);
+    for (let i = 0; i < 256; i++) {
+        let r = spectrogramLUT[i * 3];
+        let g = spectrogramLUT[i * 3 + 1];
+        let b = spectrogramLUT[i * 3 + 2];
+
+        // Brightness boost (same algorithm as waveform-renderer)
+        const boost = 0.4;
+        const minBrightness = 150;
+        r = Math.min(255, Math.round(r + (255 - r) * boost));
+        g = Math.min(255, Math.round(g + (255 - g) * boost));
+        b = Math.min(255, Math.round(b + (255 - b) * boost));
+
+        const brightness = (r + g + b) / 3;
+        if (brightness < minBrightness) {
+            const factor = minBrightness / Math.max(brightness, 1);
+            r = Math.min(255, Math.round(r * factor));
+            g = Math.min(255, Math.round(g * factor));
+            b = Math.min(255, Math.round(b * factor));
+        }
+
+        data[i * 4]     = r;
+        data[i * 4 + 1] = g;
+        data[i * 4 + 2] = b;
+        data[i * 4 + 3] = 255;
+    }
+
+    const tex = new THREE.DataTexture(data, 256, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
 }
 
 // ─── Helper: create magnitude texture from Float32Array ─────────────────────
@@ -331,7 +536,121 @@ function calculateStretchFactor(playbackRate, frequencyScale) {
 
 function renderFrame() {
     if (!threeRenderer || !scene || !camera) return;
+
+    const mode = getMainWindowMode();
+    const showSpectrogram = (mode === 'spectrogram' || mode === 'both');
+    const showWaveform = (mode === 'timeSeries' || mode === 'both');
+
+    // Toggle spectrogram mesh visibility
+    if (mesh) mesh.visible = showSpectrogram;
+
+    // Toggle waveform mesh visibility (only if samples uploaded)
+    if (waveformMesh) {
+        waveformMesh.visible = showWaveform && !!wfSampleTexture;
+        if (waveformMaterial) {
+            waveformMaterial.uniforms.uTransparentBg.value = mode === 'both' ? 1.0 : 0.0;
+        }
+    }
+
+    // Compute waveform viewport from timestamps (independent of spectrogram texture coordinate space)
+    if (showWaveform && waveformMaterial) {
+        if (State.dataStartTime && State.dataEndTime) {
+            const dataStartMs = State.dataStartTime.getTime();
+            const dataDurationMs = State.dataEndTime.getTime() - dataStartMs;
+            if (dataDurationMs > 0) {
+                const viewStartMs = zoomState.isInitialized() ? zoomState.currentViewStartTime.getTime() : dataStartMs;
+                const viewEndMs = zoomState.isInitialized() ? zoomState.currentViewEndTime.getTime() : (dataStartMs + dataDurationMs);
+                waveformMaterial.uniforms.uViewportStart.value = (viewStartMs - dataStartMs) / dataDurationMs;
+                waveformMaterial.uniforms.uViewportEnd.value = (viewEndMs - dataStartMs) / dataDurationMs;
+            }
+        }
+
+        // Update background color
+        const lut = getColorLUT();
+        if (lut) {
+            waveformMaterial.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
+        }
+
+        // Handle canvas resize
+        const canvas = threeRenderer.domElement;
+        waveformMaterial.uniforms.uCanvasWidth.value = parseFloat(canvas.width);
+        waveformMaterial.uniforms.uCanvasHeight.value = parseFloat(canvas.height);
+    }
+
     threeRenderer.render(scene, camera);
+}
+
+// ─── Waveform sample upload (for time series mode) ──────────────────────────
+
+/**
+ * Upload audio waveform samples to GPU textures for time series rendering.
+ * Called after spectrogram render completes (same sample data, separate textures).
+ */
+function uploadMainWaveformSamples() {
+    const samples = State.completeSamplesArray;
+    if (!samples || samples.length === 0) return;
+    if (!waveformMaterial) return;
+
+    // Skip re-upload if same data
+    if (samples === wfLastUploadedSamples && wfSampleTexture) return;
+
+    wfTotalSamples = samples.length;
+    wfTextureWidth = 4096;
+    wfTextureHeight = Math.ceil(wfTotalSamples / wfTextureWidth);
+
+    // Pad to fill texture rectangle
+    const paddedLength = wfTextureWidth * wfTextureHeight;
+    const data = new Float32Array(paddedLength);
+    data.set(samples);
+
+    if (wfSampleTexture) wfSampleTexture.dispose();
+    wfSampleTexture = new THREE.DataTexture(data, wfTextureWidth, wfTextureHeight, THREE.RedFormat, THREE.FloatType);
+    wfSampleTexture.minFilter = THREE.NearestFilter;
+    wfSampleTexture.magFilter = THREE.NearestFilter;
+    wfSampleTexture.wrapS = THREE.ClampToEdgeWrapping;
+    wfSampleTexture.wrapT = THREE.ClampToEdgeWrapping;
+    wfSampleTexture.needsUpdate = true;
+
+    waveformMaterial.uniforms.uSamples.value = wfSampleTexture;
+    waveformMaterial.uniforms.uTotalSamples.value = parseFloat(wfTotalSamples);
+    waveformMaterial.uniforms.uTextureWidth.value = parseFloat(wfTextureWidth);
+    waveformMaterial.uniforms.uTextureHeight.value = parseFloat(wfTextureHeight);
+
+    // Build min/max mip texture
+    const mipBins = Math.ceil(wfTotalSamples / WF_MIP_BIN_SIZE);
+    const mipTexWidth = 4096;
+    const mipTexHeight = Math.ceil(mipBins / mipTexWidth);
+    const mipPadded = mipTexWidth * mipTexHeight;
+    const mipData = new Float32Array(mipPadded * 2);
+
+    for (let bin = 0; bin < mipBins; bin++) {
+        const start = bin * WF_MIP_BIN_SIZE;
+        const end = Math.min(start + WF_MIP_BIN_SIZE, wfTotalSamples);
+        let mn = Infinity, mx = -Infinity;
+        for (let j = start; j < end; j++) {
+            const v = samples[j];
+            if (v < mn) mn = v;
+            if (v > mx) mx = v;
+        }
+        mipData[bin * 2]     = mn;
+        mipData[bin * 2 + 1] = mx;
+    }
+
+    if (wfMipTexture) wfMipTexture.dispose();
+    wfMipTexture = new THREE.DataTexture(mipData, mipTexWidth, mipTexHeight, THREE.RGFormat, THREE.FloatType);
+    wfMipTexture.minFilter = THREE.NearestFilter;
+    wfMipTexture.magFilter = THREE.NearestFilter;
+    wfMipTexture.wrapS = THREE.ClampToEdgeWrapping;
+    wfMipTexture.wrapT = THREE.ClampToEdgeWrapping;
+    wfMipTexture.needsUpdate = true;
+
+    waveformMaterial.uniforms.uMipMinMax.value = wfMipTexture;
+    waveformMaterial.uniforms.uMipTextureWidth.value = parseFloat(mipTexWidth);
+    waveformMaterial.uniforms.uMipTextureHeight.value = parseFloat(mipTexHeight);
+    waveformMaterial.uniforms.uMipTotalBins.value = parseFloat(mipBins);
+
+    wfLastUploadedSamples = samples;
+    console.log(`Main window waveform uploaded: ${wfTotalSamples.toLocaleString()} samples`);
 }
 
 // ─── Diagnostic functions ───────────────────────────────────────────────────
@@ -616,6 +935,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
 
         completeSpectrogramRendered = true;
         State.setSpectrogramInitialized(true);
+
+        // Upload waveform samples for time series mode
+        uploadMainWaveformSamples();
 
         // Notify minimap that spectrogram texture is ready
         window.dispatchEvent(new Event('spectrogram-ready'));
@@ -1138,6 +1460,21 @@ export function clearCompleteSpectrogram() {
         material.dispose();
         material = null;
     }
+
+    // Dispose waveform mesh/material/textures
+    if (waveformMesh) {
+        waveformMesh.geometry.dispose();
+        if (scene) scene.remove(waveformMesh);
+        waveformMesh = null;
+    }
+    if (waveformMaterial) {
+        waveformMaterial.dispose();
+        waveformMaterial = null;
+    }
+    if (wfSampleTexture) { wfSampleTexture.dispose(); wfSampleTexture = null; }
+    if (wfMipTexture) { wfMipTexture.dispose(); wfMipTexture = null; }
+    if (wfColormapTexture) { wfColormapTexture.dispose(); wfColormapTexture = null; }
+    wfLastUploadedSamples = null;
 
     // Clear the renderer (keep it alive — reused across loads)
     if (threeRenderer) {

@@ -9,6 +9,14 @@
         // Force EMIC_STUDY mode before any modules load
         window.__EMIC_STUDY_MODE = true;
 
+        // Single source of truth for EMIC study time range
+        window.__EMIC_CONFIG = {
+            spacecraft: 'GOES',
+            dataset: 'DN_MAGN-L2-HIRES_G16',
+            startTime: '2022-08-17T00:00:00.000Z',
+            endTime: '2022-08-24T00:00:00.000Z'
+        };
+
         // Apply saved colormap accent colors BEFORE stylesheet loads to prevent flash
         (function() {
             var accents = {
@@ -156,6 +164,22 @@
             width: 80% !important;
         }
         
+        #backgroundQuestionModal .modal-content,
+        #dataAnalysisQuestionModal .modal-content {
+            max-width: 612px !important;
+            min-width: 320px !important;
+            width: 85% !important;
+            padding: 24px 28px !important;
+        }
+
+        #feedbackQuestionModal .modal-content,
+        #referralQuestionModal .modal-content {
+            max-width: 680px !important;
+            min-width: 320px !important;
+            width: 88% !important;
+            padding: 24px 28px !important;
+        }
+
         #welcomeModal .modal-content,
         #emicAboutModal .modal-content {
             max-width: 720px !important;
@@ -308,6 +332,15 @@
             border-color: #80d0ff;
         }
 
+        /* Post-study questionnaire radio choices */
+        .radio-choice:hover {
+            background: rgba(0, 123, 255, 0.06);
+            border-color: #aac8e8;
+        }
+        .radio-choice:has(input:checked) {
+            background: rgba(0, 123, 255, 0.1);
+            border-color: #007bff;
+        }
     </style>
 </head>
 <body>
@@ -386,12 +419,6 @@
                         <select id="recentSearches"><option value="">-- Select Recent Search --</option></select>
                         <button type="button" id="shareBtn" disabled style="display:none;">Share</button>
                     </div>
-                </div>
-                <div class="control-group">
-                    <input type="date" id="startDate" value="2022-01-21">
-                    <input type="text" id="startTime" value="00:00:00.000">
-                    <input type="date" id="endDate" value="2022-01-27">
-                    <input type="text" id="endTime" value="23:59:59.000">
                 </div>
                 <div class="control-group" id="stationControlGroup" style="display: none;">
                     <select id="station"><option value="">Loading stations...</option></select>
@@ -517,6 +544,14 @@
                 <span class="gear-btn" role="button" aria-label="Main window settings">&#9881;</span>
                 <div class="gear-popover" id="mainWindowPopover">
                     <div class="gear-popover-title">Main Window</div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Show:</span>
+                        <select id="mainWindowView" class="gear-select">
+                            <option value="spectrogram" selected>Spectrogram</option>
+                            <option value="timeSeries">Time Series</option>
+                            <option value="both">Combination</option>
+                        </select>
+                    </div>
                     <div class="gear-popover-row">
                         <span class="gear-label">Click:</span>
                         <select id="mainWindowClick" class="gear-select">
@@ -669,6 +704,17 @@
             </div>
         </div>
         
+        <!-- Questionnaires Panel -->
+        <div class="panel" id="questionnairesPanel" style="padding: 10px 15px; background: var(--accent-bg); border: 2px solid rgba(255, 255, 255, 0.12); display: none;">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <label style="font-size: var(--panel-label-size); font-weight: 600; color: #888; white-space: nowrap;">Questionnaires:</label>
+                <button type="button" id="backgroundQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Background</button>
+                <button type="button" id="dataAnalysisQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Data Analysis Experience</button>
+                <button type="button" id="feedbackQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Feedback</button>
+                <button type="button" id="referralQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 How Did You Learn?</button>
+            </div>
+        </div>
+
         <!-- Metrics Panel (hidden by default) -->
         <div class="panel panel-metrics" id="metricsPanel" style="display: none;">
             <div class="metrics">
@@ -733,7 +779,8 @@
             DB_NAME: 'emic-study-cache',
             STORE_NAME: 'audio-data',
             _getKey: function() {
-                return 'DN_MAGN-L2-HIRES_G16_2022-01-21T00:00:00.000Z_2022-01-27T23:59:59.000Z_b_gse';
+                var c = window.__EMIC_CONFIG;
+                return c.dataset + '_' + c.startTime + '_' + c.endTime + '_b_gse';
             },
             openDB: function() {
                 var self = this;
@@ -804,8 +851,9 @@
                     // Data loaded successfully - cache it
                     try {
                         const { getAudioData } = await import('./js/cdaweb-cache.js');
-                        const entry = await getAudioData('GOES-16', 'DN_MAGN-L2-HIRES_G16', 
-                            '2022-01-21T00:00:00.000Z', '2022-01-27T23:59:59.000Z');
+                        const c = window.__EMIC_CONFIG;
+                        const spacecraft = c.dataset.includes('G16') ? 'GOES-16' : 'GOES-19';
+                        const entry = await getAudioData(spacecraft, c.dataset, c.startTime, c.endTime);
                         if (entry && entry.wavBlob) {
                             await window.__emicCache.put(entry.wavBlob);
                             console.log('🔬 EMIC: Cached WAV in IndexedDB');

@@ -147,7 +147,7 @@ export function drawSpectrogramPlayhead() {
                     
                     // 🎯 Only draw if playhead is within visible range (like waveform does)
                     if (progress >= 0 && progress <= 1.0) {
-                        playheadX = Math.floor(progress * width);
+                        playheadX = progress * width;
                     } else {
                         // Playhead is outside visible viewport - clear it and don't draw
                         playheadOverlayCtx.clearRect(0, 0, width, height);
@@ -168,7 +168,7 @@ export function drawSpectrogramPlayhead() {
             }
         } else if (zoomState.isInitialized()) {
             const sample = zoomState.timeToSample(State.currentAudioPosition);
-            playheadX = Math.floor(zoomState.sampleToPixel(sample, width));
+            playheadX = zoomState.sampleToPixel(sample, width);
             
             // Check if playhead is within bounds
             if (playheadX < 0 || playheadX > width) {
@@ -179,9 +179,9 @@ export function drawSpectrogramPlayhead() {
         } else {
             // Fallback to old behavior if zoom state not initialized
             const progress = Math.min(State.currentAudioPosition / State.totalAudioDuration, 1.0);
-            playheadX = Math.floor(progress * width);
+            playheadX = progress * width;
         }
-        
+
         // 🔥 PROTECTION: Ensure playheadX is finite before creating gradient
         if (!isFinite(playheadX) || playheadX < 0 || playheadX > width) {
             return; // Skip drawing if position is invalid
@@ -271,7 +271,7 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
             
             if (timeDiff > 0) {
                 const progress = (previewMs - interpStartMs) / timeDiff;
-                previewX = Math.floor(progress * width);
+                previewX = progress * width;
             } else {
                 previewX = 0; // Fallback if time range is invalid
             }
@@ -280,11 +280,11 @@ export function drawSpectrogramScrubPreview(targetPosition, isDragging = false) 
         }
     } else if (zoomState.isInitialized()) {
         const sample = zoomState.timeToSample(targetPosition);
-        previewX = Math.floor(zoomState.sampleToPixel(sample, width));
+        previewX = zoomState.sampleToPixel(sample, width);
     } else {
         // Fallback to old behavior if zoom state not initialized
         const progress = Math.min(targetPosition / State.totalAudioDuration, 1.0);
-        previewX = Math.floor(progress * width);
+        previewX = progress * width;
     }
     
     // 🔥 PROTECTION: Ensure previewX is finite before drawing

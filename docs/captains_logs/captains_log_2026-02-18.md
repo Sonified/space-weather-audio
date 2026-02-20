@@ -286,3 +286,55 @@ Removed number labels from minimap feature boxes in `waveform-renderer.js`. At m
 - `js/modal-manager.js` — `modal-visible` class add/remove in `openModal()`/`closeModal()`/`closeAllModals()`; added `'emicAboutModal'` to `closeAllModals()` list
 - `js/main.js` — Info button routes to `emicAboutModal` in EMIC mode; close button wiring for EMIC about modal
 - `js/waveform-renderer.js` — Removed minimap feature box number labels and `getFlatFeatureNumber` import
+
+---
+
+## EMIC Spectrogram Height Increase + Panel Height Controls
+
+### Spectrogram 450→554px, Minimap 135→121px (EMIC only)
+
+Transferred 14px from the minimap to the spectrogram on the EMIC study page. The main `index.html` is untouched — heights are overridden via inline `<style>` in `emic_study.html`:
+
+```css
+#spectrogram { height: 554px; }
+#waveform { height: 121px; }
+```
+
+Canvas buffer heights updated to match (HTML `height` attributes on `#spectrogram`, `#spectrogram-axis`, `#waveform`, `#waveform-axis`, `#waveform-buttons`). All JS reads canvas dimensions dynamically so no JS changes needed for the height itself.
+
+### Settings drawer: Panel Heights section
+
+Added a "Panel Heights (px)" section to the hamburger settings drawer with two number inputs:
+
+- **Minimap** — pre-loaded with current `offsetHeight`, range 50–400
+- **Spectrogram** — pre-loaded with current `offsetHeight`, range 200–1200
+
+On change (Enter or tab out), updates CSS display height, canvas buffer height, companion canvases (axis, buttons), and fires a `resize` event to trigger all existing repositioning/redraw logic.
+
+New `.drawer-input` CSS: monospace, right-aligned, dark theme styling with cyan focus ring.
+
+---
+
+## Colormap Flash Fix (FOUC Prevention)
+
+On page load, the UI briefly showed the wrong accent colors (blue-purple `#667eea` from old CSS defaults) and wrong spectrogram colormap before the saved preference loaded. Three-layer fix:
+
+### 1. CSS defaults aligned to inferno colormap
+
+`styles.css` `:root` block had hardcoded blue-purple accent colors (`#667eea`) that didn't match any actual colormap. Updated all defaults to match the 'inferno' colormap (gray `#808080`), which is the app default. Also added `--page-bg: #2b2b3a` so the `var(--page-bg, fallback)` pattern uses the correct default.
+
+### 2. Inline `<script>` before stylesheet — earliest possible CSS variable override
+
+Moved the colormap accent script to run *before* `<link rel="stylesheet">` in both `emic_study.html` and `index.html`. This inline script reads `localStorage.getItem('colormap')` and sets all CSS custom properties (`--accent-color`, `--accent-rgb`, `--accent-glow`, `--accent-border`, `--accent-soft`, `--accent-bg`, `--page-bg`) plus `html.style.background` before the browser even fetches the stylesheet. Since inline styles on `<html>` have higher specificity than `:root {}` rules, the correct colors are used from first paint.
+
+### 3. Module-level localStorage read in colormaps.js
+
+`currentColormap` was hardcoded to `'inferno'` at module definition. Changed to read from `localStorage` immediately so the first `getColorLUT()` / `buildColormapTexture()` call from the Three.js renderer uses the saved colormap. Prevents the spectrogram itself from briefly rendering with the wrong color palette.
+
+### Files Changed (Session 15 — Height Controls, Colormap Flash Fix)
+
+- `emic_study.html` — Spectrogram height 554px + minimap 121px overrides; panel height inputs in settings drawer; `.drawer-input` CSS; colormap inline script moved before stylesheet link, includes `--accent-bg`
+- `index.html` — Colormap inline script moved before stylesheet link, includes `--accent-bg`
+- `js/main.js` — Panel height inputs: pre-load current heights, `applyPanelHeight()` updates CSS + canvas buffer + fires resize; change listeners for minimap/spectrogram
+- `js/colormaps.js` — `currentColormap` reads from localStorage at module load (validated against known colormaps, falls back to 'inferno')
+- `styles.css` — `:root` accent defaults changed from blue-purple `#667eea` to inferno gray `#808080`; added `--page-bg: #2b2b3a`

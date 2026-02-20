@@ -3,8 +3,11 @@
  * Each colormap is a function that takes a normalized value (0-1) and returns [r, g, b]
  */
 
-// Current colormap selection
-let currentColormap = 'inferno';
+// Current colormap selection — restore from localStorage immediately so the
+// correct LUT is ready before any renderer initializes (avoids colormap flash)
+const _savedColormap = typeof localStorage !== 'undefined' && localStorage.getItem('colormap');
+let currentColormap = (_savedColormap && ['solar', 'turbo', 'viridis', 'inferno', 'aurora', 'plasma', 'jet'].includes(_savedColormap))
+    ? _savedColormap : 'inferno';
 
 // Pre-computed LUT for performance (256 levels * 3 channels)
 let colorLUT = null;

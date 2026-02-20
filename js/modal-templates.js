@@ -258,7 +258,7 @@ export function createTutorialIntroModal() {
     modal.className = 'modal-window';
     modal.style.display = 'none';
     modal.innerHTML = `
-        <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-content" style="max-width: 750px;">
             <div class="modal-header">
                 <h3 class="modal-title">🌋 Tutorial Introduction</h3>
             </div>
@@ -910,6 +910,148 @@ export function createAboutModal() {
     return modal;
 }
 
+export function createBackgroundQuestionModal() {
+    const modal = document.createElement('div');
+    modal.id = 'backgroundQuestionModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 750px;">
+            <div class="modal-header">
+                <h3 class="modal-title">📋 Questionnaire</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
+                    1. What is your background in physics or space science?
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="backgroundLevel" value="1" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>None</strong> <span style="color: #444;">: No prior background</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="backgroundLevel" value="2" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Minimal</strong> <span style="color: #444;">: Less than 1 year of coursework or experience</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="backgroundLevel" value="3" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Some</strong> <span style="color: #444;">: 1–2 years of coursework or experience</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="backgroundLevel" value="4" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Considerable</strong> <span style="color: #444;">: 3–5 years of coursework or professional experience</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="backgroundLevel" value="5" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Extensive</strong> <span style="color: #444;">: 5+ years of coursework or professional experience</span></div>
+                    </label>
+                </div>
+
+                <button type="button" class="modal-submit" disabled>✓ Submit</button>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+export function createDataAnalysisQuestionModal() {
+    const modal = document.createElement('div');
+    modal.id = 'dataAnalysisQuestionModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 750px;">
+            <div class="modal-header">
+                <h3 class="modal-title">📋 Questionnaire</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
+                    2. Have you previously analyzed scientific data?<br><span style="font-size: 14px; color: #888; font-weight: normal;">(e.g., time series, spectrograms, satellite measurements)</span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="dataAnalysisLevel" value="1" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Never</strong> <span style="color: #444;">: This was my first time working with scientific data</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="dataAnalysisLevel" value="2" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Rarely</strong> <span style="color: #444;">: A few times in coursework or casually</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="dataAnalysisLevel" value="3" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Occasionally</strong> <span style="color: #444;">: Regular coursework or some research involvement</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="dataAnalysisLevel" value="4" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Frequently</strong> <span style="color: #444;">: Ongoing research or professional work</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="dataAnalysisLevel" value="5" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Extensively</strong> <span style="color: #444;">: Multiple years of hands-on data analysis experience</span></div>
+                    </label>
+                </div>
+
+                <button type="button" class="modal-submit" disabled>✓ Submit</button>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+export function createFeedbackQuestionModal() {
+    const modal = document.createElement('div');
+    modal.id = 'feedbackQuestionModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 750px;">
+            <div class="modal-header">
+                <h3 class="modal-title">📋 Questionnaire</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
+                    3. Do you have any additional feedback you'd like to share?
+                </div>
+
+                <textarea id="feedbackText" placeholder="Type your response here (optional)..." style="width: 100%; min-height: 200px; padding: 14px; font-size: 15px; font-family: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box; line-height: 1.5; color: #333; transition: border-color 0.15s;" onfocus="this.style.borderColor='#007bff'" onblur="this.style.borderColor='#ddd'"></textarea>
+
+                <button type="button" class="modal-submit" id="feedbackSubmitBtn">Skip</button>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+export function createReferralQuestionModal() {
+    const modal = document.createElement('div');
+    modal.id = 'referralQuestionModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 750px;">
+            <div class="modal-header">
+                <h3 class="modal-title">📋 Questionnaire</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
+                    4. How did you learn about this experiment?
+                </div>
+
+                <textarea id="referralText" placeholder="Type your response here (optional)..." style="width: 100%; min-height: 100px; padding: 14px; font-size: 15px; font-family: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box; line-height: 1.5; color: #333; transition: border-color 0.15s;" onfocus="this.style.borderColor='#007bff'" onblur="this.style.borderColor='#ddd'"></textarea>
+
+                <button type="button" class="modal-submit" id="referralSubmitBtn">Skip</button>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
 // Initialize and inject modals into the page
 export async function initializeModals() {
     // 🔥 FIX: NEVER reinitialize while modals are already initialized!
@@ -934,6 +1076,10 @@ export async function initializeModals() {
     const welcomeBackModal = createWelcomeBackModal();
     const aboutModal = createAboutModal();
     const emicAboutModal = createEmicAboutModal();
+    const backgroundQuestionModal = createBackgroundQuestionModal();
+    const dataAnalysisQuestionModal = createDataAnalysisQuestionModal();
+    const feedbackQuestionModal = createFeedbackQuestionModal();
+    const referralQuestionModal = createReferralQuestionModal();
 
     // Append modals to the permanent overlay instead of body
     const overlay = document.getElementById('permanentOverlay');
@@ -952,6 +1098,10 @@ export async function initializeModals() {
     overlay.appendChild(welcomeBackModal);
     overlay.appendChild(aboutModal);
     overlay.appendChild(emicAboutModal);
+    overlay.appendChild(backgroundQuestionModal);
+    overlay.appendChild(dataAnalysisQuestionModal);
+    overlay.appendChild(feedbackQuestionModal);
+    overlay.appendChild(referralQuestionModal);
 
     // Pre-populate participant ID from URL (Qualtrics) or localStorage
     // BUT NOT in STUDY_CLEAN mode (always start fresh)
