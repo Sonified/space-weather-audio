@@ -413,19 +413,19 @@ function handleArrowNavigation(key) {
     // Read step sizes from settings (default: zoom 10%, pan 25%)
     const zoomStepEl = document.getElementById('arrowZoomStep');
     const panStepEl = document.getElementById('arrowPanStep');
-    const zoomPct = (zoomStepEl ? parseInt(zoomStepEl.value) : 10) / 100;
-    const panPct = (panStepEl ? parseInt(panStepEl.value) : 25) / 100;
+    const zoomPct = (zoomStepEl ? parseInt(zoomStepEl.value) : 15) / 100;
+    const panPct = (panStepEl ? parseInt(panStepEl.value) : 10) / 100;
 
     let newStartMs = startMs;
     let newEndMs = endMs;
 
-    if (key === 'ArrowDown') {
+    if (key === 'ArrowUp') {
         // Zoom in: shrink viewport by zoomPct, centered on midpoint
         const mid = (startMs + endMs) / 2;
         const halfSpan = spanMs * (1 - zoomPct) / 2;
         newStartMs = mid - halfSpan;
         newEndMs = mid + halfSpan;
-    } else if (key === 'ArrowUp') {
+    } else if (key === 'ArrowDown') {
         // Zoom out: expand viewport by zoomPct, centered on midpoint
         const mid = (startMs + endMs) / 2;
         const halfSpan = spanMs * (1 + zoomPct) / 2;

@@ -520,9 +520,16 @@
                         </select>
                     </div>
                     <div class="gear-popover-row">
-                        <span class="gear-label">Scroll:</span>
+                        <span class="gear-label">V-Scroll:</span>
                         <select id="navBarScroll" class="gear-select">
                             <option value="zoom" selected>Zoom</option>
+                            <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">H-Scroll:</span>
+                        <select id="navBarHScroll" class="gear-select">
+                            <option value="pan" selected>Pan</option>
                             <option value="none">No action</option>
                         </select>
                     </div>
@@ -575,9 +582,16 @@
                         </select>
                     </div>
                     <div class="gear-popover-row">
-                        <span class="gear-label">Scroll:</span>
+                        <span class="gear-label">V-Scroll:</span>
                         <select id="mainWindowScroll" class="gear-select">
                             <option value="zoom" selected>Zoom</option>
+                            <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">H-Scroll:</span>
+                        <select id="mainWindowHScroll" class="gear-select">
+                            <option value="pan" selected>Pan</option>
                             <option value="none">No action</option>
                         </select>
                     </div>
@@ -715,8 +729,8 @@
                     <label for="arrowZoomStep" class="drawer-label">Zoom Step</label>
                     <select id="arrowZoomStep" class="drawer-input" style="width: 70px; text-align: left;">
                         <option value="5">5%</option>
-                        <option value="10" selected>10%</option>
-                        <option value="15">15%</option>
+                        <option value="10">10%</option>
+                        <option value="15" selected>15%</option>
                         <option value="20">20%</option>
                         <option value="25">25%</option>
                         <option value="30">30%</option>
@@ -726,10 +740,10 @@
                     <label for="arrowPanStep" class="drawer-label">Pan Step</label>
                     <select id="arrowPanStep" class="drawer-input" style="width: 70px; text-align: left;">
                         <option value="5">5%</option>
-                        <option value="10">10%</option>
+                        <option value="10" selected>10%</option>
                         <option value="15">15%</option>
                         <option value="20">20%</option>
-                        <option value="25" selected>25%</option>
+                        <option value="25">25%</option>
                         <option value="30">30%</option>
                     </select>
                 </div>

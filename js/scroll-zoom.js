@@ -123,58 +123,87 @@ async function renderHiResViewport() {
 }
 
 /**
- * Handle wheel event on a canvas
+ * Handle wheel event on a canvas.
+ * Vertical scroll (deltaY) → zoom, horizontal scroll (deltaX) → pan.
+ * Each axis gated independently via gear popover dropdowns.
  */
 function onWheel(e) {
-    // Gate: check per-canvas scroll dropdown (nav bar vs main window)
     const canvas = e.currentTarget;
-    const scrollSelect = canvas.id === 'waveform'
-        ? document.getElementById('navBarScroll')
-        : document.getElementById('mainWindowScroll');
-    if (!scrollSelect || scrollSelect.value !== 'zoom') return;
+    const isNavBar = canvas.id === 'waveform';
 
-    // Must have data loaded
+    // Check which axes are enabled
+    const vScrollSelect = document.getElementById(isNavBar ? 'navBarScroll' : 'mainWindowScroll');
+    const hScrollSelect = document.getElementById(isNavBar ? 'navBarHScroll' : 'mainWindowHScroll');
+    const vZoomEnabled = vScrollSelect && vScrollSelect.value === 'zoom';
+    const hPanEnabled = hScrollSelect && hScrollSelect.value === 'pan';
+
+    // Disambiguate: trackpad gestures often produce both deltaX and deltaY.
+    // Use the dominant axis only to prevent horizontal swipes from triggering zoom.
+    const absX = Math.abs(e.deltaX);
+    const absY = Math.abs(e.deltaY);
+    const dominantIsHorizontal = absX > absY;
+    const hasVertical = !dominantIsHorizontal && absY > 0 && vZoomEnabled;
+    const hasHorizontal = dominantIsHorizontal && absX > 0 && hPanEnabled;
+
+    if (!hasVertical && !hasHorizontal) return;
     if (!State.dataStartTime || !State.dataEndTime) return;
 
     e.preventDefault();
-    notifyPageTurnUserDragged(); // User manually zoomed — break page-turn catch
+    notifyPageTurnUserDragged();
 
     const { startMs, endMs } = getViewport();
     const spanMs = endMs - startMs;
     if (spanMs <= 0) return;
 
-    // Cursor position as fraction across the canvas
-    const rect = canvas.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-
-    // Timestamp under cursor
-    const cursorMs = startMs + frac * spanMs;
-
-    // Zoom factor: scroll up (negative deltaY) = zoom in, scroll down = zoom out
-    // Clamp to [0.8, 1.2] per tick to prevent wild jumps
-    const raw = 1 + e.deltaY * 0.001;
-    const zoomFactor = Math.max(0.8, Math.min(1.2, raw));
-
-    // New viewport anchored on cursor position
-    let newStartMs = cursorMs - (cursorMs - startMs) * zoomFactor;
-    let newEndMs = cursorMs + (endMs - cursorMs) * zoomFactor;
-
-    // Clamp to data bounds
     const dataStartMs = State.dataStartTime.getTime();
     const dataEndMs = State.dataEndTime.getTime();
+    const dataSpanMs = dataEndMs - dataStartMs;
+
+    let newStartMs = startMs;
+    let newEndMs = endMs;
+
+    // Vertical: zoom anchored on cursor
+    if (hasVertical) {
+        const rect = canvas.getBoundingClientRect();
+        const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const cursorMs = startMs + frac * spanMs;
+
+        const raw = 1 + e.deltaY * 0.001;
+        const zoomFactor = Math.max(0.8, Math.min(1.2, raw));
+
+        newStartMs = cursorMs - (cursorMs - newStartMs) * zoomFactor;
+        newEndMs = cursorMs + (newEndMs - cursorMs) * zoomFactor;
+    }
+
+    // Horizontal: pan (deltaX positive = scroll right = move viewport right)
+    if (hasHorizontal) {
+        const panFraction = e.deltaX * 0.001; // ~0.1% of viewport per pixel of deltaX
+        const shift = spanMs * panFraction;
+        newStartMs += shift;
+        newEndMs += shift;
+    }
+
+    // Clamp to data bounds (preserve window size for pan)
+    if (newStartMs < dataStartMs) {
+        const offset = dataStartMs - newStartMs;
+        newStartMs = dataStartMs;
+        newEndMs += offset;
+    }
+    if (newEndMs > dataEndMs) {
+        const offset = newEndMs - dataEndMs;
+        newEndMs = dataEndMs;
+        newStartMs -= offset;
+    }
+    // Re-clamp start in case both ends overflowed
     if (newStartMs < dataStartMs) newStartMs = dataStartMs;
-    if (newEndMs > dataEndMs) newEndMs = dataEndMs;
 
     // Minimum zoom: don't go below 1 second of visible data
-    const minSpanMs = 1000;
-    if (newEndMs - newStartMs < minSpanMs) return;
+    if (newEndMs - newStartMs < 1000) return;
 
     // If zoomed all the way out, snap to full view
-    const dataSpanMs = dataEndMs - dataStartMs;
     if (newEndMs - newStartMs >= dataSpanMs * 0.99) {
         zoomState.setViewportToFull();
     } else {
-        // Set viewport timestamps directly — keep mode as 'full' so regions/buttons stay visible
         zoomState.currentViewStartTime = new Date(newStartMs);
         zoomState.currentViewEndTime = new Date(newEndMs);
     }
