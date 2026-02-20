@@ -89,30 +89,46 @@ function fftInPlace(complex) {
     }
 }
 
+// Pre-allocated FFT buffers (reused across calls to avoid GC pressure)
+let fftComplexBuf = null;   // Float32Array(N * 2)
+let fftMagnitudeBuf = null; // Float32Array(N / 2)
+let fftBufSize = 0;
+
+function ensureFFTBuffers(N) {
+    if (fftBufSize !== N) {
+        fftComplexBuf = new Float32Array(N * 2);
+        fftMagnitudeBuf = new Float32Array(N / 2);
+        fftBufSize = N;
+    }
+}
+
 /**
- * Perform FFT on real-valued signal
+ * Perform FFT on real-valued signal.
+ * Uses pre-allocated buffers — caller must copy magnitudes before next call.
  */
 function performFFT(signal) {
     const N = signal.length;
     const halfN = N / 2;
-    
-    // Convert to complex
-    const complex = new Float32Array(N * 2);
+
+    ensureFFTBuffers(N);
+    const complex = fftComplexBuf;
+    const magnitudes = fftMagnitudeBuf;
+
+    // Convert to complex (zero imaginary parts)
     for (let i = 0; i < N; i++) {
         complex[i * 2] = signal[i];
         complex[i * 2 + 1] = 0;
     }
-    
+
     fftInPlace(complex);
-    
-    // Extract magnitudes
-    const magnitudes = new Float32Array(halfN);
+
+    // Extract magnitudes into reusable buffer
     for (let k = 0; k < halfN; k++) {
         const real = complex[k * 2];
         const imag = complex[k * 2 + 1];
         magnitudes[k] = Math.sqrt(real * real + imag * imag) / N;
     }
-    
+
     return magnitudes;
 }
 
@@ -143,18 +159,15 @@ self.onmessage = function(e) {
                 segment[i] = audioData[relativeIdx + i] * window[i];
             }
             
-            // Perform FFT
-            const magnitudes = performFFT(segment);
-            
+            // Perform FFT (returns shared buffer — must copy for batch results)
+            const magnitudes = new Float32Array(performFFT(segment));
+
             // Store results
             results.push({
                 sliceIdx: sliceIdx,
                 magnitudes: magnitudes
             });
         }
-        
-        // Clear reusable buffer
-        segment.fill(0);
         
         // Calculate batch memory for monitoring
         const batchMemory = (results.length * results[0].magnitudes.length * 4 / 1024).toFixed(1);
@@ -245,9 +258,7 @@ self.onmessage = function(e) {
                 magnitudes: uint8Magnitudes
             });
         }
-        
-        segment.fill(0);
-        
+
         const batchMemory = (results.length * frequencyBinCount / 1024).toFixed(1);
         const transferList = results.map(r => r.magnitudes.buffer);
         
