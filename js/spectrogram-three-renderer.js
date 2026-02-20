@@ -78,6 +78,14 @@ let scrollZoomHiRes = {
     ready: false
 };
 
+// ─── Tile cache (per-day hi-res textures) ────────────────────────────────────
+const TILE_MULTIPLIER = 25;    // columns per tile = canvasWidth * TILE_MULTIPLIER / tileCount
+const TILE_CROSSFADE_MS = 300; // crossfade duration when tiles appear (ms)
+let tileCache = [];             // Array of { texture, data, width, height, startSec, endSec, actualFirstColSec, actualLastColSec, ready, readyTime }
+let tileMeshes = [];            // Array of { mesh, material } — up to 8 slots (7 days + 1 headroom)
+let tileRenderAbortController = null;
+let tilesFullyReady = false;    // true when all tiles have finished rendering
+
 // Waveform (time series) overlay mesh for main window view modes
 let waveformMesh = null;
 let waveformMaterial = null;
@@ -177,6 +185,56 @@ void main() {
     vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
 
     gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+// ─── Tile fragment shader (same as spectrogram but with opacity for crossfade) ─
+
+const tileFragmentShaderSource = /* glsl */ `
+uniform sampler2D uMagnitudes;
+uniform sampler2D uColormap;
+uniform float uViewportStart;
+uniform float uViewportEnd;
+uniform float uStretchFactor;
+uniform int uFrequencyScale;
+uniform float uMinFreq;
+uniform float uMaxFreq;
+uniform float uDbFloor;
+uniform float uDbRange;
+uniform vec3 uBackgroundColor;
+uniform float uOpacity;
+
+varying vec2 vUv;
+
+void main() {
+    float effectiveY = vUv.y / uStretchFactor;
+    if (effectiveY > 1.0) {
+        gl_FragColor = vec4(uBackgroundColor, uOpacity);
+        return;
+    }
+
+    float freq;
+    if (uFrequencyScale == 0) {
+        freq = uMinFreq + effectiveY * (uMaxFreq - uMinFreq);
+    } else if (uFrequencyScale == 1) {
+        float normalized = effectiveY * effectiveY;
+        freq = uMinFreq + normalized * (uMaxFreq - uMinFreq);
+    } else {
+        float logMin = log2(max(uMinFreq, 0.001)) / log2(10.0);
+        float logMax = log2(uMaxFreq) / log2(10.0);
+        float logFreq = logMin + effectiveY * (logMax - logMin);
+        freq = pow(10.0, logFreq);
+    }
+
+    float texV = clamp(freq / uMaxFreq, 0.0, 1.0);
+    float texU = uViewportStart + vUv.x * (uViewportEnd - uViewportStart);
+
+    float magnitude = texture2D(uMagnitudes, vec2(texU, texV)).r;
+    float db = 20.0 * log(magnitude + 1.0e-10) / log(10.0);
+    float normalized = clamp((db - uDbFloor) / uDbRange, 0.0, 1.0);
+    vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
+
+    gl_FragColor = vec4(color, uOpacity);
 }
 `;
 
@@ -376,6 +434,39 @@ function initThreeScene() {
     waveformMesh.visible = false;
     scene.add(waveformMesh);
 
+    // Tile meshes — up to 8 slots (7 days + 1 headroom), each covering a day's portion of the screen
+    // Rendered behind the main spectrogram mesh (renderOrder -1) so tiles show through
+    // when the main mesh has no texture assigned
+    tileMeshes = [];
+    // 8 slots: 7 days + 1 for partial day at boundaries
+    for (let i = 0; i < 8; i++) {
+        const tileMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uMagnitudes: { value: null },
+                uColormap: { value: colormapTexture },
+                uViewportStart: { value: 0.0 },
+                uViewportEnd: { value: 1.0 },
+                uStretchFactor: { value: 1.0 },
+                uFrequencyScale: { value: 0 },
+                uMinFreq: { value: 0.1 },
+                uMaxFreq: { value: 50.0 },
+                uDbFloor: { value: -100.0 },
+                uDbRange: { value: 100.0 },
+                uBackgroundColor: { value: new THREE.Vector3(0, 0, 0) },
+                uOpacity: { value: 1.0 }
+            },
+            vertexShader: vertexShaderSource,
+            fragmentShader: tileFragmentShaderSource,
+            transparent: true
+        });
+        const tileGeom = new THREE.PlaneGeometry(2, 2);
+        const tileMesh = new THREE.Mesh(tileGeom, tileMat);
+        tileMesh.renderOrder = -1;  // behind main spectrogram mesh
+        tileMesh.visible = false;
+        scene.add(tileMesh);
+        tileMeshes.push({ mesh: tileMesh, material: tileMat });
+    }
+
     // WebGL context loss/restore handlers (Chromium can drop contexts under GPU pressure)
     // Remove previous handlers if any (defensive against double-init)
     if (onContextLost) canvas.removeEventListener('webglcontextlost', onContextLost);
@@ -392,6 +483,10 @@ function initThreeScene() {
         if (regionMagnitudeTexture) regionMagnitudeTexture.needsUpdate = true;
         if (wfSampleTexture) wfSampleTexture.needsUpdate = true;
         if (wfMipTexture) wfMipTexture.needsUpdate = true;
+        // Re-upload tile textures
+        for (const tile of tileCache) {
+            if (tile.texture) tile.texture.needsUpdate = true;
+        }
     };
     canvas.addEventListener('webglcontextlost', onContextLost);
     canvas.addEventListener('webglcontextrestored', onContextRestored);
@@ -426,6 +521,10 @@ function rebuildColormapTexture() {
     colormapTexture = buildColormapTexture();
     if (material) {
         material.uniforms.uColormap.value = colormapTexture;
+    }
+    // Rebuild tile mesh colormaps
+    for (const tm of tileMeshes) {
+        tm.material.uniforms.uColormap.value = colormapTexture;
     }
     // Rebuild waveform colormap too
     if (waveformMaterial) {
@@ -549,8 +648,17 @@ function renderFrame() {
     const showSpectrogram = (mode === 'spectrogram' || mode === 'both');
     const showWaveform = (mode === 'timeSeries' || mode === 'both');
 
-    // Toggle spectrogram mesh visibility
-    if (mesh) mesh.visible = showSpectrogram;
+    // Toggle spectrogram mesh visibility — respect tile state
+    // When tiles are active, main mesh is hidden and tile meshes show instead
+    if (activeTexture === 'tiles') {
+        if (mesh) mesh.visible = false;
+        for (const tm of tileMeshes) {
+            if (tm.mesh.visible) tm.mesh.visible = showSpectrogram;
+        }
+    } else {
+        if (mesh) mesh.visible = showSpectrogram;
+        // Tile meshes may still be visible as fallback behind full texture
+    }
 
     // Toggle waveform mesh visibility (only if samples uploaded)
     if (waveformMesh) {
@@ -971,8 +1079,8 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             updateSpectrogramOverlay(progress);
         }
 
-        // Kick off 8x hi-res upgrade in background (fire-and-forget)
-        upgradeFullTextureToHiRes(8);
+        // Kick off per-day tile rendering in background (fire-and-forget)
+        renderTilesInBackground();
 
     } catch (error) {
         console.error('Error rendering spectrogram:', error);
@@ -1049,6 +1157,282 @@ export async function upgradeFullTextureToHiRes(multiplier = 4) {
         }
     } finally {
         hiResAbortController = null;
+    }
+}
+
+// ─── Tile-based hi-res rendering (per-day textures) ─────────────────────────
+
+/**
+ * Render per-day tile textures progressively in the background.
+ * Each tile covers one UTC day at TILE_MULTIPLIER× resolution.
+ * Tiles nearest the current viewport render first.
+ * Replaces upgradeFullTextureToHiRes() as the background quality upgrade path.
+ */
+async function renderTilesInBackground() {
+    if (!State.completeSamplesArray || State.completeSamplesArray.length === 0) return;
+    if (!State.dataStartTime || !State.dataEndTime) return;
+    if (!threeRenderer || !material) return;
+
+    // Cancel any in-progress tile rendering
+    if (tileRenderAbortController) {
+        tileRenderAbortController.abort();
+        tileRenderAbortController = null;
+    }
+
+    tileRenderAbortController = new AbortController();
+    const signal = tileRenderAbortController.signal;
+
+    // Dispose old tile cache
+    for (const tile of tileCache) {
+        if (tile.texture) tile.texture.dispose();
+    }
+    tileCache = [];
+    tilesFullyReady = false;
+
+    const dataStartMs = State.dataStartTime.getTime();
+    const dataEndMs = State.dataEndTime.getTime();
+    const dataDurationSec = (dataEndMs - dataStartMs) / 1000;
+
+    // Compute day boundaries (UTC midnight aligned)
+    const dayBoundaries = [];
+    const startDate = new Date(dataStartMs);
+    let dayStart = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate()));
+    if (dayStart.getTime() < dataStartMs) {
+        dayStart = new Date(dayStart.getTime() + 86400000);
+    }
+    // First tile starts at data start
+    dayBoundaries.push(0); // seconds from data start
+    while (dayStart.getTime() < dataEndMs) {
+        dayBoundaries.push((dayStart.getTime() - dataStartMs) / 1000);
+        dayStart = new Date(dayStart.getTime() + 86400000);
+    }
+    dayBoundaries.push(dataDurationSec); // last boundary = data end
+
+    const tileCount = dayBoundaries.length - 1;
+
+    // Initialize tile cache entries
+    for (let i = 0; i < tileCount; i++) {
+        tileCache.push({
+            texture: null,
+            data: null,
+            width: 0,
+            height: 0,
+            startSec: dayBoundaries[i],
+            endSec: dayBoundaries[i + 1],
+            actualFirstColSec: 0,
+            actualLastColSec: 0,
+            ready: false,
+            readyTime: 0
+        });
+    }
+
+    // Determine render order: viewport-center tile first, then outward
+    const viewCenterSec = zoomState.isInitialized()
+        ? ((zoomState.currentViewStartTime.getTime() + zoomState.currentViewEndTime.getTime()) / 2 - dataStartMs) / 1000
+        : dataDurationSec / 2;
+
+    const renderOrder = [...Array(tileCount).keys()].sort((a, b) => {
+        const aCenterSec = (tileCache[a].startSec + tileCache[a].endSec) / 2;
+        const bCenterSec = (tileCache[b].startSec + tileCache[b].endSec) / 2;
+        return Math.abs(aCenterSec - viewCenterSec) - Math.abs(bCenterSec - viewCenterSec);
+    });
+
+    const canvas = threeRenderer.domElement;
+    const canvasWidth = canvas.width;
+    const fftSize = State.fftSize || 2048;
+    const originalSampleRate = zoomState.sampleRate;
+    const audioData = State.completeSamplesArray;
+
+    console.log(`🧱 Rendering ${tileCount} day tiles at ${TILE_MULTIPLIER}x...`);
+    const totalStartTime = performance.now();
+
+    for (const tileIdx of renderOrder) {
+        if (signal.aborted) return;
+
+        const tile = tileCache[tileIdx];
+        const tileStartSec = tile.startSec;
+        const tileEndSec = tile.endSec;
+
+        // Extract samples for this tile
+        const startSample = Math.floor(tileStartSec * originalSampleRate);
+        const endSample = Math.floor(tileEndSec * originalSampleRate);
+        const resampledStart = zoomState.originalToResampledSample(startSample);
+        const resampledEnd = zoomState.originalToResampledSample(endSample);
+        const tileSamples = audioData.slice(resampledStart, resampledEnd);
+        const totalSamples = tileSamples.length;
+
+        if (totalSamples <= fftSize) {
+            console.warn(`🧱 Tile ${tileIdx} too small for FFT (${totalSamples} samples), skipping`);
+            continue;
+        }
+
+        // Target columns: proportional to this tile's share of canvas width, times multiplier
+        const tileFraction = (tileEndSec - tileStartSec) / dataDurationSec;
+        const maxTimeSlices = Math.max(64, Math.round(canvasWidth * TILE_MULTIPLIER * tileFraction));
+        const hopSize = Math.max(1, Math.floor((totalSamples - fftSize) / maxTimeSlices));
+        const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+
+        try {
+            const tileStart = performance.now();
+            const result = await computeFFTToTexture(tileSamples, fftSize, numTimeSlices, hopSize, signal);
+            if (!result || signal.aborted) return;
+
+            tile.data = result.data;
+            tile.width = result.width;
+            tile.height = result.height;
+            tile.actualFirstColSec = tileStartSec + (fftSize / 2) / originalSampleRate;
+            tile.actualLastColSec = tileStartSec + ((numTimeSlices - 1) * hopSize + fftSize / 2) / originalSampleRate;
+
+            // Create GPU texture
+            tile.texture = createMagnitudeTexture(result.data, result.width, result.height);
+            tile.ready = true;
+            tile.readyTime = performance.now();
+
+            const elapsed = performance.now() - tileStart;
+            console.log(`🧱 Tile ${tileIdx} ready: ${numTimeSlices} cols in ${elapsed.toFixed(0)}ms (day ${tileIdx + 1}/${tileCount})`);
+
+            // Re-evaluate tile visibility and trigger a render
+            updateSpectrogramViewportFromZoom();
+        } catch (error) {
+            if (!signal.aborted) {
+                console.error(`Error rendering tile ${tileIdx}:`, error);
+            }
+            return;
+        }
+    }
+
+    if (!signal.aborted) {
+        tilesFullyReady = true;
+        const totalElapsed = performance.now() - totalStartTime;
+        console.log(`🧱 All ${tileCount} tiles ready in ${totalElapsed.toFixed(0)}ms`);
+    }
+}
+
+/**
+ * Dispose all tile textures and reset tile cache.
+ */
+function disposeTileCache() {
+    if (tileRenderAbortController) {
+        tileRenderAbortController.abort();
+        tileRenderAbortController = null;
+    }
+    for (const tile of tileCache) {
+        if (tile.texture) tile.texture.dispose();
+    }
+    tileCache = [];
+    tilesFullyReady = false;
+    // Hide tile meshes
+    for (const tm of tileMeshes) {
+        tm.mesh.visible = false;
+    }
+}
+
+/**
+ * Given a viewport in seconds from data start, find which tiles overlap
+ * and compute UV + screen-space coordinates for each.
+ * Returns array of { tileIndex, uvStart, uvEnd, screenFracStart, screenFracEnd }
+ * (at most 3 entries, sorted left to right).
+ */
+function getVisibleTiles(viewStartSec, viewEndSec) {
+    const viewDuration = viewEndSec - viewStartSec;
+    if (viewDuration <= 0) return [];
+
+    const visible = [];
+    for (let i = 0; i < tileCache.length; i++) {
+        const tile = tileCache[i];
+        if (!tile.ready) continue;
+
+        // Check overlap between tile time range and viewport
+        if (tile.endSec <= viewStartSec || tile.startSec >= viewEndSec) continue;
+
+        // UV mapping using actual FFT column center times (alignment-safe)
+        const actualDuration = tile.actualLastColSec - tile.actualFirstColSec;
+        if (actualDuration <= 0) continue;
+
+        const uvStart = (Math.max(viewStartSec, tile.startSec) - tile.actualFirstColSec) / actualDuration;
+        const uvEnd = (Math.min(viewEndSec, tile.endSec) - tile.actualFirstColSec) / actualDuration;
+
+        // Screen-space: what fraction of the viewport does this tile cover?
+        const screenFracStart = Math.max(0, (tile.startSec - viewStartSec) / viewDuration);
+        const screenFracEnd = Math.min(1, (tile.endSec - viewStartSec) / viewDuration);
+
+        visible.push({ tileIndex: i, uvStart, uvEnd, screenFracStart, screenFracEnd });
+    }
+
+    return visible.sort((a, b) => a.screenFracStart - b.screenFracStart);
+}
+
+/**
+ * Check if tiles cover the given viewport (all visible portions have ready tiles).
+ */
+function tilesCoverViewport(viewStartSec, viewEndSec) {
+    if (tileCache.length === 0) return false;
+
+    // Check that every part of the viewport is covered by a ready tile
+    let coveredUpTo = viewStartSec;
+    for (const tile of tileCache) {
+        if (!tile.ready) continue;
+        if (tile.startSec <= coveredUpTo && tile.endSec > coveredUpTo) {
+            coveredUpTo = tile.endSec;
+        }
+    }
+    return coveredUpTo >= viewEndSec;
+}
+
+/**
+ * Position tile meshes to cover their portion of the screen.
+ * Each tile mesh is a 2×2 quad in NDC space (-1 to 1).
+ * Scale and translate X to cover only the tile's screen fraction.
+ */
+function updateTileMeshPositions(visibleTiles) {
+    let anyFading = false;
+    const now = performance.now();
+
+    for (let i = 0; i < tileMeshes.length; i++) {
+        const tm = tileMeshes[i];
+        if (i < visibleTiles.length) {
+            const vt = visibleTiles[i];
+            const tile = tileCache[vt.tileIndex];
+
+            // Set texture and UV uniforms
+            tm.material.uniforms.uMagnitudes.value = tile.texture;
+            tm.material.uniforms.uViewportStart.value = vt.uvStart;
+            tm.material.uniforms.uViewportEnd.value = vt.uvEnd;
+
+            // Crossfade: compute opacity based on time since tile became ready
+            const elapsed = now - tile.readyTime;
+            const opacity = TILE_CROSSFADE_MS > 0 ? Math.min(1, elapsed / TILE_CROSSFADE_MS) : 1;
+            tm.material.uniforms.uOpacity.value = opacity;
+            if (opacity < 1) anyFading = true;
+
+            // Sync frequency/stretch uniforms with main material
+            if (material) {
+                tm.material.uniforms.uStretchFactor.value = material.uniforms.uStretchFactor.value;
+                tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
+                tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
+                tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
+                tm.material.uniforms.uDbFloor.value = material.uniforms.uDbFloor.value;
+                tm.material.uniforms.uDbRange.value = material.uniforms.uDbRange.value;
+                tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
+            }
+
+            // Position: map screenFrac [0,1] to NDC [-1,1]
+            const ndcLeft = vt.screenFracStart * 2 - 1;
+            const ndcRight = vt.screenFracEnd * 2 - 1;
+            const ndcWidth = ndcRight - ndcLeft;
+            const ndcCenter = (ndcLeft + ndcRight) / 2;
+
+            tm.mesh.scale.set(ndcWidth / 2, 1, 1);  // geometry is 2 wide, so scale by half
+            tm.mesh.position.set(ndcCenter, 0, 0);
+            tm.mesh.visible = true;
+        } else {
+            tm.mesh.visible = false;
+        }
+    }
+
+    // If any tile is still fading in, schedule another render frame
+    if (anyFading) {
+        requestAnimationFrame(() => renderFrame());
     }
 }
 
@@ -1288,11 +1672,13 @@ export function drawInterpolatedSpectrogram() {
     const fullStartMs = dataStartMs + fullTextureFirstColSec * 1000;
     const fullDurationMs = fullActualDurationSec * 1000;
 
+    const interpStartSec = (interpStartMs - dataStartMs) / 1000;
+    const interpEndSec = (interpEndMs - dataStartMs) / 1000;
+
     if (regionReady) {
         const expandedStartMs = dataStartMs + smartRenderBounds.expandedStart * 1000;
         const expandedEndMs = dataStartMs + smartRenderBounds.expandedEnd * 1000;
 
-        // Use actual FFT column times for UV mapping
         // Use actual FFT column center times for UV mapping (module vars, always set)
         const actualStartMs = dataStartMs + regionTextureActualStartSec * 1000;
         const actualDurationMs = (regionTextureActualEndSec - regionTextureActualStartSec) * 1000;
@@ -1304,30 +1690,17 @@ export function drawInterpolatedSpectrogram() {
                 material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
                 activeTexture = 'region';
             }
-            // Map viewport to actual column time coverage
             material.uniforms.uViewportStart.value = (interpStartMs - actualStartMs) / actualDurationMs;
             material.uniforms.uViewportEnd.value = (interpEndMs - actualStartMs) / actualDurationMs;
+            if (mesh) mesh.visible = true;
+            for (const tm of tileMeshes) tm.mesh.visible = false;
         } else {
-            // Viewport still extends beyond expanded bounds — stay on full texture
-            if (activeTexture !== 'full' && fullMagnitudeTexture) {
-                material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
-                activeTexture = 'full';
-            }
-            if (fullDurationMs > 0) {
-                material.uniforms.uViewportStart.value = (interpStartMs - fullStartMs) / fullDurationMs;
-                material.uniforms.uViewportEnd.value = (interpEndMs - fullStartMs) / fullDurationMs;
-            }
+            // Viewport extends beyond region — try tiles
+            useInterpFallback(interpStartSec, interpEndSec, fullStartMs, fullDurationMs, dataStartMs);
         }
     } else {
-        // No region texture yet or zooming out — use full texture
-        if (fullMagnitudeTexture && activeTexture !== 'full') {
-            material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
-            activeTexture = 'full';
-        }
-        if (fullDurationMs > 0) {
-            material.uniforms.uViewportStart.value = (interpStartMs - fullStartMs) / fullDurationMs;
-            material.uniforms.uViewportEnd.value = (interpEndMs - fullStartMs) / fullDurationMs;
-        }
+        // No region texture yet or zooming out — try tiles
+        useInterpFallback(interpStartSec, interpEndSec, fullStartMs, fullDurationMs, dataStartMs);
     }
 
     // Update stretch
@@ -1337,11 +1710,74 @@ export function drawInterpolatedSpectrogram() {
     // Update frequency uniforms
     updateFrequencyUniforms();
 
+    // Sync tile mesh uniforms
+    for (const tm of tileMeshes) {
+        if (tm.mesh.visible) {
+            tm.material.uniforms.uStretchFactor.value = material.uniforms.uStretchFactor.value;
+            tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
+            tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
+            tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
+            tm.material.uniforms.uDbFloor.value = material.uniforms.uDbFloor.value;
+            tm.material.uniforms.uDbRange.value = material.uniforms.uDbRange.value;
+            tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
+        }
+    }
+
     // Update overlay
     updateSpectrogramOverlay();
 
     // One render call does everything
     renderFrame();
+}
+
+/**
+ * Fallback for drawInterpolatedSpectrogram: try tiles, then full texture.
+ */
+function useInterpFallback(viewStartSec, viewEndSec, fullStartMs, fullDurationMs, dataStartMs) {
+    const visibleTiles = getVisibleTiles(viewStartSec, viewEndSec);
+
+    // Check minification — don't use tiles if they'd alias at wide zoom
+    const MAX_TILE_MINIFICATION = 10;
+    const canvasWidth = threeRenderer?.domElement?.width || 1200;
+    let tooMinified = false;
+    for (const vt of visibleTiles) {
+        const tile = tileCache[vt.tileIndex];
+        const screenPixels = (vt.screenFracEnd - vt.screenFracStart) * canvasWidth;
+        if (screenPixels > 0 && tile.width / screenPixels > MAX_TILE_MINIFICATION) {
+            tooMinified = true;
+            break;
+        }
+    }
+
+    if (visibleTiles.length > 0 && !tooMinified && tilesCoverViewport(viewStartSec, viewEndSec)) {
+        // Transitioning TO tiles? Show at full opacity (were hidden behind main mesh)
+        if (activeTexture !== 'tiles') {
+            for (const tile of tileCache) {
+                if (tile.ready) tile.readyTime = 0;
+            }
+        }
+        updateTileMeshPositions(visibleTiles);
+        if (mesh) mesh.visible = false;
+        activeTexture = 'tiles';
+        return;
+    }
+
+    // Show tiles behind full texture if partially ready (but not if they'd alias)
+    if (visibleTiles.length > 0 && !tooMinified) {
+        updateTileMeshPositions(visibleTiles);
+    } else {
+        for (const tm of tileMeshes) tm.mesh.visible = false;
+    }
+
+    if (fullMagnitudeTexture) {
+        material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+        activeTexture = 'full';
+    }
+    if (mesh) mesh.visible = true;
+    if (fullDurationMs > 0) {
+        material.uniforms.uViewportStart.value = (dataStartMs + viewStartSec * 1000 - fullStartMs) / fullDurationMs;
+        material.uniforms.uViewportEnd.value = (dataStartMs + viewEndSec * 1000 - fullStartMs) / fullDurationMs;
+    }
 }
 
 /**
@@ -1360,13 +1796,17 @@ export function updateSpectrogramViewportFromZoom() {
     // Read current viewport from zoomState timestamps directly
     const viewStartMs = zoomState.isInitialized() ? zoomState.currentViewStartTime.getTime() : dataStartMs;
     const viewEndMs = zoomState.isInitialized() ? zoomState.currentViewEndTime.getTime() : dataEndMs;
+    const viewStartSec = (viewStartMs - dataStartMs) / 1000;
+    const viewEndSec = (viewEndMs - dataStartMs) / 1000;
 
     // Actual full texture time coverage (seconds from data start)
     const fullActualDurationSec = fullTextureLastColSec - fullTextureFirstColSec;
     const fullStartMs = dataStartMs + fullTextureFirstColSec * 1000;
     const fullDurationMs = fullActualDurationSec * 1000;
 
-    // Check if scroll-zoom hi-res texture covers the current viewport
+    let usedTiles = false;
+
+    // Priority 1: scroll-zoom hi-res region texture (deepest zoom)
     if (scrollZoomHiRes.ready && regionMagnitudeTexture && scrollZoomHiRes.startSeconds !== null) {
         const hiResStartMs = dataStartMs + scrollZoomHiRes.startSeconds * 1000;
         const hiResEndMs = dataStartMs + scrollZoomHiRes.endSeconds * 1000;
@@ -1385,27 +1825,16 @@ export function updateSpectrogramViewportFromZoom() {
             activeTexture = 'region';
             material.uniforms.uViewportStart.value = uvStart;
             material.uniforms.uViewportEnd.value = uvEnd;
+            if (mesh) mesh.visible = true;
+            // Hide tile meshes — region is higher quality
+            for (const tm of tileMeshes) tm.mesh.visible = false;
         } else {
-            // Viewport exceeds hi-res bounds — fall back to full texture
-            if (fullMagnitudeTexture) {
-                material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
-                activeTexture = 'full';
-            }
-            if (fullDurationMs > 0) {
-                material.uniforms.uViewportStart.value = (viewStartMs - fullStartMs) / fullDurationMs;
-                material.uniforms.uViewportEnd.value = (viewEndMs - fullStartMs) / fullDurationMs;
-            }
+            // Region doesn't cover viewport — try tiles
+            usedTiles = tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs);
         }
     } else {
-        // No hi-res texture — use full texture with actual column times
-        if (fullMagnitudeTexture) {
-            material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
-            activeTexture = 'full';
-        }
-        if (fullDurationMs > 0) {
-            material.uniforms.uViewportStart.value = (viewStartMs - fullStartMs) / fullDurationMs;
-            material.uniforms.uViewportEnd.value = (viewEndMs - fullStartMs) / fullDurationMs;
-        }
+        // No region texture — try tiles
+        usedTiles = tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs);
     }
 
     // Update stretch + frequency
@@ -1413,12 +1842,85 @@ export function updateSpectrogramViewportFromZoom() {
     material.uniforms.uStretchFactor.value = calculateStretchFactor(playbackRate, State.frequencyScale);
     updateFrequencyUniforms();
 
+    // Sync tile mesh frequency uniforms
+    for (const tm of tileMeshes) {
+        if (tm.mesh.visible) {
+            tm.material.uniforms.uStretchFactor.value = material.uniforms.uStretchFactor.value;
+            tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
+            tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
+            tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
+            tm.material.uniforms.uDbFloor.value = material.uniforms.uDbFloor.value;
+            tm.material.uniforms.uDbRange.value = material.uniforms.uDbRange.value;
+            tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
+        }
+    }
+
     // Hide the dimming overlay during scroll zoom
     if (spectrogramOverlay) {
         spectrogramOverlay.style.opacity = '0';
     }
 
     renderFrame();
+}
+
+/**
+ * Try to use tile cache for the viewport. Falls back to full texture if tiles
+ * don't cover the viewport. Returns true if tiles were used.
+ */
+function tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs) {
+    const visibleTiles = getVisibleTiles(viewStartSec, viewEndSec);
+
+    // Check minification ratio — tiles alias when heavily downsampled (zoomed way out).
+    // At full 7-day zoom each tile is ~2700 cols squeezed into ~171px = 16:1 aliasing.
+    // Full texture at 1200 cols for 1200px = 1:1, perfect at wide zoom.
+    // Only use tiles when they'd be ≤ 4 cols per screen pixel (good for 1-3 day zoom).
+    const MAX_TILE_MINIFICATION = 10;
+    const canvasWidth = threeRenderer?.domElement?.width || 1200;
+    let tooMinified = false;
+    for (const vt of visibleTiles) {
+        const tile = tileCache[vt.tileIndex];
+        const screenPixels = (vt.screenFracEnd - vt.screenFracStart) * canvasWidth;
+        if (screenPixels > 0 && tile.width / screenPixels > MAX_TILE_MINIFICATION) {
+            tooMinified = true;
+            break;
+        }
+    }
+
+    if (visibleTiles.length > 0 && !tooMinified && tilesCoverViewport(viewStartSec, viewEndSec)) {
+        // Transitioning TO tiles from full texture? Show all tiles at full opacity
+        // (they were hidden behind the main mesh — no need to crossfade)
+        if (activeTexture !== 'tiles') {
+            for (const tile of tileCache) {
+                if (tile.ready) tile.readyTime = 0;  // elapsed → huge → opacity 1.0
+            }
+        }
+        // Tiles cover the viewport — use them
+        updateTileMeshPositions(visibleTiles);
+        // Hide main spectrogram mesh — tiles render instead
+        if (mesh) mesh.visible = false;
+        activeTexture = 'tiles';
+        return true;
+    }
+
+    // Tiles don't fully cover viewport or would alias — fall back to full texture
+    // Show tiles behind only if they wouldn't alias
+    if (visibleTiles.length > 0 && !tooMinified) {
+        updateTileMeshPositions(visibleTiles);
+    } else {
+        for (const tm of tileMeshes) tm.mesh.visible = false;
+    }
+
+    if (fullMagnitudeTexture) {
+        material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+        activeTexture = 'full';
+        if (mesh) mesh.visible = true;
+    }
+    if (fullDurationMs > 0) {
+        const dataStartMs = State.dataStartTime.getTime();
+        material.uniforms.uViewportStart.value = (dataStartMs + viewStartSec * 1000 - fullStartMs) / fullDurationMs;
+        material.uniforms.uViewportEnd.value = (dataStartMs + viewEndSec * 1000 - fullStartMs) / fullDurationMs;
+    }
+    return false;
 }
 
 /**
@@ -1520,6 +2022,15 @@ export function clearCompleteSpectrogram() {
     if (wfMipTexture) { wfMipTexture.dispose(); wfMipTexture = null; }
     if (wfColormapTexture) { wfColormapTexture.dispose(); wfColormapTexture = null; }
     wfLastUploadedSamples = null;
+
+    // Dispose tile cache and tile meshes
+    disposeTileCache();
+    for (const tm of tileMeshes) {
+        tm.mesh.geometry.dispose();
+        tm.material.dispose();
+        if (scene) scene.remove(tm.mesh);
+    }
+    tileMeshes = [];
 
     // Clear the renderer (keep it alive — reused across loads)
     if (threeRenderer) {
@@ -1626,10 +2137,12 @@ export async function updateElasticFriendInBackground() {
     } catch (error) {
         console.error('Error updating elastic friend:', error);
     } finally {
-        // Restore region display if we were showing it
+        // Restore previous display if we were showing region or tiles
         if (savedActiveTexture === 'region' && savedRegionTexture && material) {
             material.uniforms.uMagnitudes.value = savedRegionTexture;
             activeTexture = 'region';
+        } else if (savedActiveTexture === 'tiles') {
+            activeTexture = 'tiles';
         }
     }
 }
