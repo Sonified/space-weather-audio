@@ -192,15 +192,13 @@ export function pickLevel(viewStartSec, viewEndSec, canvasWidth) {
 /**
  * Get visible tiles at a given level for a viewport.
  * Returns only tiles that overlap [viewStartSec, viewEndSec].
- * 
- * @returns {Array<{tile, uvStart, uvEnd, screenFracStart, screenFracEnd}>}
+ * World-space camera handles all viewport mapping — no UV or screen fraction math needed.
+ *
+ * @returns {Array<{tile, key}>}
  */
 export function getVisibleTiles(level, viewStartSec, viewEndSec) {
     const tiles = pyramidLevels[level];
     if (!tiles || tiles.length === 0) return [];
-
-    const viewDuration = viewEndSec - viewStartSec;
-    if (viewDuration <= 0) return [];
 
     const visible = [];
 
@@ -212,29 +210,13 @@ export function getVisibleTiles(level, viewStartSec, viewEndSec) {
 
         if (!tile.ready) continue;
 
-        // UV mapping using actual FFT column times
-        const actualDuration = tile.actualLastColSec - tile.actualFirstColSec;
-        if (actualDuration <= 0) continue;
-
-        // UV: map nominal tile boundaries into the texture's actual column range.
-        // Screen: use nominal boundaries so tiles are edge-to-edge with no gaps.
-        const uvStart = (Math.max(viewStartSec, tile.startSec) - tile.actualFirstColSec) / actualDuration;
-        const uvEnd = (Math.min(viewEndSec, tile.endSec) - tile.actualFirstColSec) / actualDuration;
-
-        const screenFracStart = Math.max(0, (tile.startSec - viewStartSec) / viewDuration);
-        const screenFracEnd = Math.min(1, (tile.endSec - viewStartSec) / viewDuration);
-
         visible.push({
             tile,
             key: tileKey(level, i),
-            uvStart,
-            uvEnd,
-            screenFracStart,
-            screenFracEnd,
         });
     }
 
-    return visible.sort((a, b) => a.screenFracStart - b.screenFracStart);
+    return visible;
 }
 
 /**

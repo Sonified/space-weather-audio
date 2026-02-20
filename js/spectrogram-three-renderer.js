@@ -109,6 +109,15 @@ export function notifyInteractionEnd() {
     }, INTERACTION_SETTLE_MS);
 }
 
+// ─── World-space positioning helper ──────────────────────────────────────────
+// PlaneGeometry(2,2) spans [-1,1]. Scale + translate to cover [startX, endX] × [0, 1].
+function positionMeshWorldSpace(mesh, startX, endX) {
+    const width = endX - startX;
+    const centerX = startX + width / 2;
+    mesh.scale.set(width / 2, 0.5, 1);  // half-extents (geometry is 2 wide, 2 tall)
+    mesh.position.set(centerX, 0.5, 0);  // center Y at 0.5 for [0,1] range
+}
+
 // ─── Tile rendering (pyramid LOD system) ─────────────────────────────────────
 const TILE_CROSSFADE_MS = 300; // crossfade duration when tiles appear (ms)
 let tileMeshes = [];            // Array of { mesh, material } — up to 32 slots for pyramid tiles
@@ -158,8 +167,6 @@ void main() {
 const fragmentShaderSource = /* glsl */ `
 uniform sampler2D uMagnitudes;
 uniform sampler2D uColormap;
-uniform float uViewportStart;
-uniform float uViewportEnd;
 uniform float uStretchFactor;
 uniform int uFrequencyScale;
 uniform float uMinFreq;
@@ -200,8 +207,8 @@ void main() {
     // Convert frequency to texture V coordinate (bin position)
     float texV = clamp(freq / uMaxFreq, 0.0, 1.0);
 
-    // Map screen X through viewport to get texture U coordinate
-    float texU = uViewportStart + vUv.x * (uViewportEnd - uViewportStart);
+    // World-space camera handles viewport — UV is always 0→1
+    float texU = vUv.x;
 
     // Sample magnitude from FFT texture
     float magnitude = texture2D(uMagnitudes, vec2(texU, texV)).r;
@@ -222,8 +229,6 @@ void main() {
 const tileFragmentShaderSource = /* glsl */ `
 uniform sampler2D uMagnitudes;
 uniform sampler2D uColormap;
-uniform float uViewportStart;
-uniform float uViewportEnd;
 uniform float uStretchFactor;
 uniform int uFrequencyScale;
 uniform float uMinFreq;
@@ -254,7 +259,7 @@ void main() {
     }
 
     float texV = clamp(freq / uMaxFreq, 0.0, 1.0);
-    float texU = uViewportStart + vUv.x * (uViewportEnd - uViewportStart);
+    float texU = vUv.x;  // World-space camera handles viewport — UV is always 0→1
 
     float normalized = texture2D(uMagnitudes, vec2(texU, texV)).r;  // Already 0-1 from Uint8
     vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
@@ -276,8 +281,7 @@ uniform float uMipTextureWidth;
 uniform float uMipTextureHeight;
 uniform float uMipTotalBins;
 uniform float uMipBinSize;
-uniform float uViewportStart;
-uniform float uViewportEnd;
+uniform float uSamplesPerPixel;
 uniform float uCanvasWidth;
 uniform float uCanvasHeight;
 uniform vec3 uBackgroundColor;
@@ -306,11 +310,9 @@ vec2 getMipBin(float index) {
 }
 
 void main() {
-    float viewStartSample = uViewportStart * uTotalSamples;
-    float viewEndSample = uViewportEnd * uTotalSamples;
-    float samplesPerPixel = (viewEndSample - viewStartSample) / uCanvasWidth;
-
-    float pixelStart = viewStartSample + vUv.x * (viewEndSample - viewStartSample);
+    // World-space camera: vUv.x maps 0→1 across full data range
+    float pixelStart = vUv.x * uTotalSamples;
+    float samplesPerPixel = uSamplesPerPixel;
     float pixelEnd = pixelStart + samplesPerPixel;
 
     float minVal = 1.0;
@@ -396,8 +398,9 @@ function initThreeScene() {
     // Detect BC4 support for pyramid tile compression
     detectBC4Support(threeRenderer);
 
-    // Orthographic camera: maps [-1,1] to canvas
-    camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
+    // Orthographic camera in world-space: X = seconds, Y = 0→1
+    // camera.left/right are updated by updateSpectrogramViewportFromZoom() before each render
+    camera = new THREE.OrthographicCamera(0, 1, 1, 0, 0, 10);
     camera.position.z = 1;
 
     scene = new THREE.Scene();
@@ -410,8 +413,6 @@ function initThreeScene() {
         uniforms: {
             uMagnitudes: { value: null },
             uColormap: { value: colormapTexture },
-            uViewportStart: { value: 0.0 },
-            uViewportEnd: { value: 1.0 },
             uStretchFactor: { value: 1.0 },
             uFrequencyScale: { value: 0 }, // 0=linear, 1=sqrt, 2=log
             uMinFreq: { value: 0.1 },
@@ -446,8 +447,7 @@ function initThreeScene() {
             uMipTextureHeight: { value: 1.0 },
             uMipTotalBins: { value: 0.0 },
             uMipBinSize: { value: parseFloat(WF_MIP_BIN_SIZE) },
-            uViewportStart: { value: 0.0 },
-            uViewportEnd: { value: 1.0 },
+            uSamplesPerPixel: { value: 1.0 },
             uCanvasWidth: { value: parseFloat(width) },
             uCanvasHeight: { value: parseFloat(height) },
             uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) },
@@ -471,8 +471,6 @@ function initThreeScene() {
             uniforms: {
                 uMagnitudes: { value: null },
                 uColormap: { value: colormapTexture },
-                uViewportStart: { value: 0.0 },
-                uViewportEnd: { value: 1.0 },
                 uStretchFactor: { value: 1.0 },
                 uFrequencyScale: { value: 0 },
                 uMinFreq: { value: 0.1 },
@@ -686,16 +684,18 @@ function renderFrame() {
         }
     }
 
-    // Compute waveform viewport from timestamps (independent of spectrogram texture coordinate space)
+    // Update waveform uniforms (mesh is positioned in world space, camera handles viewport)
     if (showWaveform && waveformMaterial) {
-        if (State.dataStartTime && State.dataEndTime) {
-            const dataStartMs = State.dataStartTime.getTime();
-            const dataDurationMs = State.dataEndTime.getTime() - dataStartMs;
-            if (dataDurationMs > 0) {
-                const viewStartMs = zoomState.isInitialized() ? zoomState.currentViewStartTime.getTime() : dataStartMs;
-                const viewEndMs = zoomState.isInitialized() ? zoomState.currentViewEndTime.getTime() : (dataStartMs + dataDurationMs);
-                waveformMaterial.uniforms.uViewportStart.value = (viewStartMs - dataStartMs) / dataDurationMs;
-                waveformMaterial.uniforms.uViewportEnd.value = (viewEndMs - dataStartMs) / dataDurationMs;
+        // Compute samplesPerPixel from camera view width
+        const canvas = threeRenderer.domElement;
+        const viewDurationSec = camera.right - camera.left;
+        const totalSamples = waveformMaterial.uniforms.uTotalSamples.value;
+        if (viewDurationSec > 0 && State.dataStartTime && State.dataEndTime) {
+            const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
+            if (dataDurationSec > 0) {
+                const viewFrac = viewDurationSec / dataDurationSec;
+                const viewSamples = viewFrac * totalSamples;
+                waveformMaterial.uniforms.uSamplesPerPixel.value = viewSamples / canvas.width;
             }
         }
 
@@ -706,7 +706,6 @@ function renderFrame() {
         }
 
         // Handle canvas resize
-        const canvas = threeRenderer.domElement;
         waveformMaterial.uniforms.uCanvasWidth.value = parseFloat(canvas.width);
         waveformMaterial.uniforms.uCanvasHeight.value = parseFloat(canvas.height);
     }
@@ -784,6 +783,15 @@ function uploadMainWaveformSamples() {
     waveformMaterial.uniforms.uMipTotalBins.value = parseFloat(mipBins);
 
     wfLastUploadedSamples = samples;
+
+    // Position waveform mesh in world space (covers full data duration)
+    if (waveformMesh && State.dataStartTime && State.dataEndTime) {
+        const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
+        if (dataDurationSec > 0) {
+            positionMeshWorldSpace(waveformMesh, 0, dataDurationSec);
+        }
+    }
+
     console.log(`Main window waveform uploaded: ${wfTotalSamples.toLocaleString()} samples`);
 }
 
@@ -1056,9 +1064,10 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         // Update frequency-related uniforms
         updateFrequencyUniforms();
 
-        // Set viewport to full view
-        material.uniforms.uViewportStart.value = 0.0;
-        material.uniforms.uViewportEnd.value = 1.0;
+        // Position full-texture mesh at fixed world-space location (set once, never moved)
+        if (mesh) {
+            positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
+        }
 
         // Record context
         renderContext = {
@@ -1196,9 +1205,12 @@ export async function upgradeFullTextureToHiRes(multiplier = 4) {
         const elapsed = performance.now() - startTime;
         console.log(`🔬 Hi-res upgrade complete: ${numTimeSlices} columns in ${elapsed.toFixed(0)}ms`);
 
+        // Reposition mesh for updated full texture coverage
+        if (mesh) {
+            positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
+        }
+
         // Only activate if the full texture is currently in use.
-        // If scroll-zoom hi-res is active (region texture), don't stomp on it —
-        // the upgraded full texture will be picked up next time we fall back.
         if (activeTexture === 'full') {
             material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
             renderFrame();
@@ -1238,7 +1250,7 @@ export function tilesOutresolveRegion(viewStartSec, viewEndSec) {
  * Each tile mesh is a 2×2 quad in NDC space (-1 to 1).
  * Scale and translate X to cover only the tile's screen fraction.
  * 
- * visibleTiles: array of { tile, key, uvStart, uvEnd, screenFracStart, screenFracEnd }
+ * visibleTiles: array of { tile, key }
  */
 function updateTileMeshPositions(visibleTiles) {
     let anyFading = false;
@@ -1256,10 +1268,8 @@ function updateTileMeshPositions(visibleTiles) {
                 continue;
             }
 
-            // Set texture and UV uniforms
+            // Set texture (UV is always 0→1 now — shader uses vUv.x directly)
             tm.material.uniforms.uMagnitudes.value = texture;
-            tm.material.uniforms.uViewportStart.value = vt.uvStart;
-            tm.material.uniforms.uViewportEnd.value = vt.uvEnd;
 
             // Crossfade: compute opacity based on time since tile became ready
             const readyTime = tileReadyTimes.get(vt.key) || 0;
@@ -1277,14 +1287,8 @@ function updateTileMeshPositions(visibleTiles) {
                 tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
             }
 
-            // Position: map screenFrac [0,1] to NDC [-1,1]
-            const ndcLeft = vt.screenFracStart * 2 - 1;
-            const ndcRight = vt.screenFracEnd * 2 - 1;
-            const ndcWidth = ndcRight - ndcLeft;
-            const ndcCenter = (ndcLeft + ndcRight) / 2;
-
-            tm.mesh.scale.set(ndcWidth / 2, 1, 1);  // geometry is 2 wide, so scale by half
-            tm.mesh.position.set(ndcCenter, 0, 0);
+            // Position tile at fixed world-space location (seconds)
+            positionMeshWorldSpace(tm.mesh, vt.tile.startSec, vt.tile.endSec);
             tm.mesh.visible = true;
         } else {
             tm.mesh.visible = false;
@@ -1292,7 +1296,7 @@ function updateTileMeshPositions(visibleTiles) {
     }
 
     // If any tile is still fading in, schedule another frame that
-    // recalculates opacities (not just re-renders the stale scene)
+    // updates opacities (positions are fixed, only opacity changes)
     if (anyFading) {
         requestAnimationFrame(() => {
             updateTileMeshPositions(visibleTiles);
@@ -1424,9 +1428,10 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
             activeTexture = 'region';
 
-            // Region data fills the full viewport
-            material.uniforms.uViewportStart.value = 0.0;
-            material.uniforms.uViewportEnd.value = 1.0;
+            // Position region mesh in world space
+            if (mesh) {
+                positionMeshWorldSpace(mesh, regionTextureActualStartSec, regionTextureActualEndSec);
+            }
 
             updateFrequencyUniforms();
 
@@ -1525,49 +1530,42 @@ export function drawInterpolatedSpectrogram() {
     const interpStartMs = interpolatedRange.startTime.getTime();
     const interpEndMs = interpolatedRange.endTime.getTime();
 
+    const interpStartSec = (interpStartMs - dataStartMs) / 1000;
+    const interpEndSec = (interpEndMs - dataStartMs) / 1000;
+
+    // ─── World-space camera: move camera to interpolated viewport ───
+    camera.left = interpStartSec;
+    camera.right = interpEndSec;
+    camera.updateProjectionMatrix();
+
     // Mid-animation swap: if zooming IN and the region texture is ready,
     // switch to it as soon as the interpolated viewport fits within the
-    // expanded render bounds. The expanded texture (2-3x region width)
-    // was designed exactly for this — coverage during the transition.
+    // expanded render bounds.
     const zoomingIn = getZoomDirection();
     const regionReady = zoomingIn && regionMagnitudeTexture
         && smartRenderBounds.renderComplete
         && smartRenderBounds.expandedStart !== null;
 
-    // Actual full texture time coverage
-    const fullActualDurationSec = fullTextureLastColSec - fullTextureFirstColSec;
-    const fullStartMs = dataStartMs + fullTextureFirstColSec * 1000;
-    const fullDurationMs = fullActualDurationSec * 1000;
-
-    const interpStartSec = (interpStartMs - dataStartMs) / 1000;
-    const interpEndSec = (interpEndMs - dataStartMs) / 1000;
-
     if (regionReady) {
-        const expandedStartMs = dataStartMs + smartRenderBounds.expandedStart * 1000;
-        const expandedEndMs = dataStartMs + smartRenderBounds.expandedEnd * 1000;
+        const expandedStartSec = smartRenderBounds.expandedStart;
+        const expandedEndSec = smartRenderBounds.expandedEnd;
 
-        // Use actual FFT column center times for UV mapping (module vars, always set)
-        const actualStartMs = dataStartMs + regionTextureActualStartSec * 1000;
-        const actualDurationMs = (regionTextureActualEndSec - regionTextureActualStartSec) * 1000;
-
-        // Check if current interpolated viewport fits within the expanded texture
-        if (interpStartMs >= expandedStartMs && interpEndMs <= expandedEndMs && actualDurationMs > 0) {
-            // Switch to high-res region texture
+        if (interpStartSec >= expandedStartSec && interpEndSec <= expandedEndSec) {
+            // Switch to high-res region texture — position mesh at its world-space location
             if (activeTexture !== 'region') {
                 material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
                 activeTexture = 'region';
             }
-            material.uniforms.uViewportStart.value = (interpStartMs - actualStartMs) / actualDurationMs;
-            material.uniforms.uViewportEnd.value = (interpEndMs - actualStartMs) / actualDurationMs;
-            if (mesh) mesh.visible = true;
+            if (mesh) {
+                positionMeshWorldSpace(mesh, regionTextureActualStartSec, regionTextureActualEndSec);
+                mesh.visible = true;
+            }
             for (const tm of tileMeshes) tm.mesh.visible = false;
         } else {
-            // Viewport extends beyond region — try tiles
-            useInterpFallback(interpStartSec, interpEndSec, fullStartMs, fullDurationMs);
+            useInterpFallback(interpStartSec, interpEndSec);
         }
     } else {
-        // No region texture yet or zooming out — try tiles
-        useInterpFallback(interpStartSec, interpEndSec, fullStartMs, fullDurationMs);
+        useInterpFallback(interpStartSec, interpEndSec);
     }
 
     // Update stretch
@@ -1598,9 +1596,9 @@ export function drawInterpolatedSpectrogram() {
 /**
  * Fallback for drawInterpolatedSpectrogram: try pyramid tiles, then full texture.
  */
-function useInterpFallback(viewStartSec, viewEndSec, fullStartMs, fullDurationMs) {
+function useInterpFallback(viewStartSec, viewEndSec) {
     // Delegate to tryUseTiles — same progressive tile logic
-    tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs);
+    tryUseTiles(viewStartSec, viewEndSec);
 }
 
 /**
@@ -1622,44 +1620,33 @@ export function updateSpectrogramViewportFromZoom() {
     const viewStartSec = (viewStartMs - dataStartMs) / 1000;
     const viewEndSec = (viewEndMs - dataStartMs) / 1000;
 
-    // Actual full texture time coverage (seconds from data start)
-    const fullActualDurationSec = fullTextureLastColSec - fullTextureFirstColSec;
-    const fullStartMs = dataStartMs + fullTextureFirstColSec * 1000;
-    const fullDurationMs = fullActualDurationSec * 1000;
+    // ─── World-space camera: just move the camera ───
+    camera.left = viewStartSec;
+    camera.right = viewEndSec;
+    camera.updateProjectionMatrix();
 
-    let usedTiles = false;
-
-    // Priority 1: scroll-zoom hi-res region texture — but only if pyramid tiles don't outresolve it.
+    // ─── Tile visibility + LOD selection ───
     const canvasWidth = threeRenderer.domElement.width;
     const tilesWin = tilesOutresolveRegion(viewStartSec, viewEndSec);
+
     if (!tilesWin && scrollZoomHiRes.ready && regionMagnitudeTexture && scrollZoomHiRes.startSeconds !== null) {
-        const hiResStartMs = dataStartMs + scrollZoomHiRes.startSeconds * 1000;
-        const hiResEndMs = dataStartMs + scrollZoomHiRes.endSeconds * 1000;
-
-        // Use actual FFT column center times for UV mapping (module vars, always set)
-        const actualStartMs = dataStartMs + regionTextureActualStartSec * 1000;
-        const actualDurationMs = (regionTextureActualEndSec - regionTextureActualStartSec) * 1000;
-
-        const fitsInBounds = viewStartMs >= hiResStartMs - 1 && viewEndMs <= hiResEndMs + 1 && actualDurationMs > 0;
+        const fitsInBounds = viewStartSec >= scrollZoomHiRes.startSeconds - 0.001
+            && viewEndSec <= scrollZoomHiRes.endSeconds + 0.001;
 
         if (fitsInBounds) {
-            // Viewport fits within hi-res texture — use it with actual column times
-            const uvStart = (viewStartMs - actualStartMs) / actualDurationMs;
-            const uvEnd = (viewEndMs - actualStartMs) / actualDurationMs;
+            // Use hi-res region texture — position its mesh in world space
             material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
             activeTexture = 'region';
-            material.uniforms.uViewportStart.value = uvStart;
-            material.uniforms.uViewportEnd.value = uvEnd;
-            if (mesh) mesh.visible = true;
-            // Hide tile meshes — region is higher quality
+            if (mesh) {
+                positionMeshWorldSpace(mesh, regionTextureActualStartSec, regionTextureActualEndSec);
+                mesh.visible = true;
+            }
             for (const tm of tileMeshes) tm.mesh.visible = false;
         } else {
-            // Region doesn't cover viewport — try tiles
-            usedTiles = tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs);
+            tryUseTiles(viewStartSec, viewEndSec);
         }
     } else {
-        // No region texture — try tiles
-        usedTiles = tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs);
+        tryUseTiles(viewStartSec, viewEndSec);
     }
 
     // Update stretch + frequency
@@ -1698,16 +1685,13 @@ export function updateSpectrogramViewportFromZoom() {
  *   one with ready tiles that fit our mesh pool (32 slots).
  * - renderFrame() never overrides these visibility decisions.
  */
-function tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs) {
+function tryUseTiles(viewStartSec, viewEndSec) {
     const canvasWidth = threeRenderer?.domElement?.width || 1200;
     const optimalLevel = pickLevel(viewStartSec, viewEndSec, canvasWidth);
     const maxSlots = tileMeshes.length; // 32
 
     // "Park and fill" strategy:
     // Find the LOWEST level that fits in 32 mesh slots — that's the display level.
-    // Tiles fill in progressively as cascade builds them. No level upgrades during
-    // build — the optimal level is used by pickLevel when viewport changes (zoom/pan).
-
     let visibleTiles = [];
     let usedLevel = -1;
 
@@ -1731,12 +1715,10 @@ function tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs) {
 
     // Diagnostic
     if (visibleTiles.length > 0) {
-        let cov = 0;
-        for (const t of visibleTiles) cov += t.screenFracEnd - t.screenFracStart;
-        console.log(`🎯 L${usedLevel}, ${visibleTiles.length} tiles, cov=${cov.toFixed(3)}, backdrop=${fullMagnitudeTexture ? 'YES' : 'NULL'}`);
+        console.log(`🎯 L${usedLevel}, ${visibleTiles.length} tiles, backdrop=${fullMagnitudeTexture ? 'YES' : 'NULL'}`);
     }
 
-    // Position tile meshes (slots beyond visibleTiles.length get hidden)
+    // Place tile meshes at fixed world-space positions (slots beyond visibleTiles.length get hidden)
     if (visibleTiles.length > 0) {
         if (activeTexture !== 'tiles') {
             // Transitioning TO tiles: existing tiles appear at full opacity (no flash)
@@ -1749,23 +1731,20 @@ function tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs) {
         for (const tm of tileMeshes) tm.mesh.visible = false;
     }
 
-    // Full texture: always visible as backdrop, unless tiles fully cover the viewport
+    // Full texture backdrop: always visible unless tiles fully cover the viewport.
+    // Mesh is already positioned in world space (set once when texture was uploaded).
     const tilesFullyCover = usedLevel >= 0 && tilesReady(usedLevel, viewStartSec, viewEndSec);
 
     if (tilesFullyCover) {
-        // Tiles cover everything — hide backdrop (optimization)
         if (mesh) mesh.visible = false;
     } else if (fullMagnitudeTexture) {
-        // Show full texture behind tiles (tiles render in front via renderOrder)
         material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
-        if (mesh) mesh.visible = true;
-        if (fullDurationMs > 0) {
-            const dataStartMs = State.dataStartTime.getTime();
-            material.uniforms.uViewportStart.value = (dataStartMs + viewStartSec * 1000 - fullStartMs) / fullDurationMs;
-            material.uniforms.uViewportEnd.value = (dataStartMs + viewEndSec * 1000 - fullStartMs) / fullDurationMs;
+        if (mesh) {
+            // Ensure mesh is at full-texture world position (may have been moved for region)
+            positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
+            mesh.visible = true;
         }
     } else {
-        // No full texture and no full tile coverage — nothing behind tiles
         if (mesh) mesh.visible = false;
     }
 
@@ -1818,9 +1797,10 @@ export function restoreInfiniteCanvasFromCache() {
     material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
     activeTexture = 'full';
 
-    // Reset viewport to full view
-    material.uniforms.uViewportStart.value = 0.0;
-    material.uniforms.uViewportEnd.value = 1.0;
+    // Restore full-texture world-space position
+    if (mesh) {
+        positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
+    }
 
     completeSpectrogramRendered = true;
     State.setSpectrogramInitialized(true);
@@ -2011,23 +1991,9 @@ export function activateRegionTexture(playbackRate) {
     material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
     activeTexture = 'region';
 
-    // If smart render was used, the texture covers an expanded range.
-    // Set viewport to show only the target region within the expanded texture.
-    if (smartRenderBounds.expandedStart !== null && smartRenderBounds.targetStart !== null) {
-        const expandedDuration = smartRenderBounds.expandedEnd - smartRenderBounds.expandedStart;
-        if (expandedDuration > 0) {
-            material.uniforms.uViewportStart.value =
-                (smartRenderBounds.targetStart - smartRenderBounds.expandedStart) / expandedDuration;
-            material.uniforms.uViewportEnd.value =
-                (smartRenderBounds.targetEnd - smartRenderBounds.expandedStart) / expandedDuration;
-        } else {
-            material.uniforms.uViewportStart.value = 0.0;
-            material.uniforms.uViewportEnd.value = 1.0;
-        }
-    } else {
-        // No smart render — texture covers exactly the target region
-        material.uniforms.uViewportStart.value = 0.0;
-        material.uniforms.uViewportEnd.value = 1.0;
+    // Position mesh at region's world-space location
+    if (mesh) {
+        positionMeshWorldSpace(mesh, regionTextureActualStartSec, regionTextureActualEndSec);
     }
 
     updateFrequencyUniforms();
