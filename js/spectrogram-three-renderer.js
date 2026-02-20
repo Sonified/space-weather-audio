@@ -83,6 +83,7 @@ let scrollZoomHiRes = {
 const TILE_CROSSFADE_MS = 300; // crossfade duration when tiles appear (ms)
 let tileMeshes = [];            // Array of { mesh, material } — up to 32 slots for pyramid tiles
 let tileReadyTimes = new Map(); // key -> performance.now() when tile became ready (for crossfade)
+let lastDisplayedLevel = -1;    // Track which level was displayed last frame (for re-fade prevention)
 
 // Waveform (time series) overlay mesh for main window view modes
 let waveformMesh = null;
@@ -432,8 +433,8 @@ function initThreeScene() {
     scene.add(waveformMesh);
 
     // Tile meshes — up to 32 slots for pyramid LOD tiles
-    // Rendered behind the main spectrogram mesh (renderOrder -1) so tiles show through
-    // when the main mesh has no texture assigned
+    // Rendered IN FRONT of the main spectrogram mesh so tiles progressively replace
+    // the low-res full texture as they complete (with crossfade via uOpacity)
     tileMeshes = [];
     for (let i = 0; i < 32; i++) {
         const tileMat = new THREE.ShaderMaterial({
@@ -455,7 +456,7 @@ function initThreeScene() {
         });
         const tileGeom = new THREE.PlaneGeometry(2, 2);
         const tileMesh = new THREE.Mesh(tileGeom, tileMat);
-        tileMesh.renderOrder = -1;  // behind main spectrogram mesh
+        tileMesh.renderOrder = 0.5;  // in front of full texture (0), behind waveform (1)
         tileMesh.visible = false;
         scene.add(tileMesh);
         tileMeshes.push({ mesh: tileMesh, material: tileMat });
@@ -639,16 +640,12 @@ function renderFrame() {
     const showSpectrogram = (mode === 'spectrogram' || mode === 'both');
     const showWaveform = (mode === 'timeSeries' || mode === 'both');
 
-    // Toggle spectrogram mesh visibility — respect tile state
-    // When tiles are active, main mesh is hidden and tile meshes show instead
-    if (activeTexture === 'tiles') {
+    // Mode gating only — hide everything when spectrogram isn't shown.
+    // Visibility of main mesh vs tile meshes is controlled by tryUseTiles/useInterpFallback.
+    // renderFrame never overrides those decisions.
+    if (!showSpectrogram) {
         if (mesh) mesh.visible = false;
-        for (const tm of tileMeshes) {
-            if (tm.mesh.visible) tm.mesh.visible = showSpectrogram;
-        }
-    } else {
-        if (mesh) mesh.visible = showSpectrogram;
-        // Tile meshes may still be visible as fallback behind full texture
+        for (const tm of tileMeshes) tm.mesh.visible = false;
     }
 
     // Toggle waveform mesh visibility (only if samples uploaded)
@@ -1212,12 +1209,10 @@ function updateTileMeshPositions(visibleTiles) {
     let anyFading = false;
     const now = performance.now();
 
-    const displayTiles = visibleTiles;
-
     for (let i = 0; i < tileMeshes.length; i++) {
         const tm = tileMeshes[i];
-        if (i < displayTiles.length) {
-            const vt = displayTiles[i];
+        if (i < visibleTiles.length) {
+            const vt = visibleTiles[i];
 
             // Get texture from pyramid LRU cache (Uint8, no factory fn needed)
             const texture = getTileTexture(vt.tile, vt.key);
@@ -1244,7 +1239,6 @@ function updateTileMeshPositions(visibleTiles) {
                 tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
                 tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
                 tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
-                // Note: tiles are pre-normalized Uint8, no uDbFloor/uDbRange needed
                 tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
             }
 
@@ -1262,9 +1256,13 @@ function updateTileMeshPositions(visibleTiles) {
         }
     }
 
-    // If any tile is still fading in, schedule another render frame
+    // If any tile is still fading in, schedule another frame that
+    // recalculates opacities (not just re-renders the stale scene)
     if (anyFading) {
-        requestAnimationFrame(() => renderFrame());
+        requestAnimationFrame(() => {
+            updateTileMeshPositions(visibleTiles);
+            renderFrame();
+        });
     }
 }
 
@@ -1530,11 +1528,11 @@ export function drawInterpolatedSpectrogram() {
             for (const tm of tileMeshes) tm.mesh.visible = false;
         } else {
             // Viewport extends beyond region — try tiles
-            useInterpFallback(interpStartSec, interpEndSec, fullStartMs, fullDurationMs, dataStartMs);
+            useInterpFallback(interpStartSec, interpEndSec, fullStartMs, fullDurationMs);
         }
     } else {
         // No region texture yet or zooming out — try tiles
-        useInterpFallback(interpStartSec, interpEndSec, fullStartMs, fullDurationMs, dataStartMs);
+        useInterpFallback(interpStartSec, interpEndSec, fullStartMs, fullDurationMs);
     }
 
     // Update stretch
@@ -1565,40 +1563,9 @@ export function drawInterpolatedSpectrogram() {
 /**
  * Fallback for drawInterpolatedSpectrogram: try pyramid tiles, then full texture.
  */
-function useInterpFallback(viewStartSec, viewEndSec, fullStartMs, fullDurationMs, dataStartMs) {
-    const canvasWidth = threeRenderer?.domElement?.width || 1200;
-    const optimalLevel = pickLevel(viewStartSec, viewEndSec, canvasWidth);
-    const visibleTiles = getPyramidVisibleTiles(optimalLevel, viewStartSec, viewEndSec);
-
-    if (visibleTiles.length > 0 && tilesReady(optimalLevel, viewStartSec, viewEndSec)) {
-        // Transitioning TO tiles? Show at full opacity
-        if (activeTexture !== 'tiles') {
-            for (const vt of visibleTiles) {
-                if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0);
-            }
-        }
-        updateTileMeshPositions(visibleTiles);
-        if (mesh) mesh.visible = false;
-        activeTexture = 'tiles';
-        return;
-    }
-
-    // Show partial tiles behind full texture
-    if (visibleTiles.length > 0) {
-        updateTileMeshPositions(visibleTiles);
-    } else {
-        for (const tm of tileMeshes) tm.mesh.visible = false;
-    }
-
-    if (fullMagnitudeTexture) {
-        material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
-        activeTexture = 'full';
-    }
-    if (mesh) mesh.visible = true;
-    if (fullDurationMs > 0) {
-        material.uniforms.uViewportStart.value = (dataStartMs + viewStartSec * 1000 - fullStartMs) / fullDurationMs;
-        material.uniforms.uViewportEnd.value = (dataStartMs + viewEndSec * 1000 - fullStartMs) / fullDurationMs;
-    }
+function useInterpFallback(viewStartSec, viewEndSec, fullStartMs, fullDurationMs) {
+    // Delegate to tryUseTiles — same progressive tile logic
+    tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs);
 }
 
 /**
@@ -1685,47 +1652,90 @@ export function updateSpectrogramViewportFromZoom() {
 }
 
 /**
- * Try to use pyramid tiles for the viewport. Falls back to full texture if tiles
- * don't cover the viewport. Returns true if tiles were used.
+ * Try to use pyramid tiles for the viewport.
+ *
+ * Design: tiles (renderOrder 0.5) always render IN FRONT of the full texture
+ * (renderOrder 0). The full texture is the blurry backdrop; tiles are the sharp
+ * detail that progressively replaces it — like a progressive JPEG.
+ *
+ * - Full texture stays visible as backdrop until tiles fully cover the viewport.
+ * - Tile level is chosen by walking down from the optimal level until we find
+ *   one with ready tiles that fit our mesh pool (32 slots).
+ * - renderFrame() never overrides these visibility decisions.
  */
 function tryUseTiles(viewStartSec, viewEndSec, fullStartMs, fullDurationMs) {
     const canvasWidth = threeRenderer?.domElement?.width || 1200;
     const optimalLevel = pickLevel(viewStartSec, viewEndSec, canvasWidth);
-    const visibleTiles = getPyramidVisibleTiles(optimalLevel, viewStartSec, viewEndSec);
+    const maxSlots = tileMeshes.length; // 32
 
-    if (visibleTiles.length > 0 && tilesReady(optimalLevel, viewStartSec, viewEndSec)) {
-        // Transitioning TO tiles from full texture? Show all tiles at full opacity
-        if (activeTexture !== 'tiles') {
-            for (const vt of visibleTiles) {
-                if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0); // instant opacity
-            }
+    // "Park and fill" strategy:
+    // Find the LOWEST level that fits in 32 mesh slots — that's the display level.
+    // Tiles fill in progressively as cascade builds them. No level upgrades during
+    // build — the optimal level is used by pickLevel when viewport changes (zoom/pan).
+
+    let visibleTiles = [];
+    let usedLevel = -1;
+
+    for (let level = 0; level <= optimalLevel; level++) {
+        const tiles = getPyramidVisibleTiles(level, viewStartSec, viewEndSec);
+        if (tiles.length > 0 && tiles.length <= maxSlots) {
+            visibleTiles = tiles;
+            usedLevel = level;
+            break;
         }
-        // Tiles cover the viewport — use them
-        updateTileMeshPositions(visibleTiles);
-        // Hide main spectrogram mesh — tiles render instead
-        if (mesh) mesh.visible = false;
-        activeTexture = 'tiles';
-        return true;
     }
 
-    // Tiles don't fully cover viewport — show partial tiles behind full texture
+    // When displayed level changes, stamp new tile keys with instant opacity
+    // so they don't re-fade from 0%. Only fade-in tiles that are genuinely new.
+    if (usedLevel >= 0 && usedLevel !== lastDisplayedLevel) {
+        for (const vt of visibleTiles) {
+            if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0);
+        }
+        lastDisplayedLevel = usedLevel;
+    }
+
+    // Diagnostic
     if (visibleTiles.length > 0) {
+        let cov = 0;
+        for (const t of visibleTiles) cov += t.screenFracEnd - t.screenFracStart;
+        console.log(`🎯 L${usedLevel}, ${visibleTiles.length} tiles, cov=${cov.toFixed(3)}, backdrop=${fullMagnitudeTexture ? 'YES' : 'NULL'}`);
+    }
+
+    // Position tile meshes (slots beyond visibleTiles.length get hidden)
+    if (visibleTiles.length > 0) {
+        if (activeTexture !== 'tiles') {
+            // Transitioning TO tiles: existing tiles appear at full opacity (no flash)
+            for (const vt of visibleTiles) {
+                if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0);
+            }
+        }
         updateTileMeshPositions(visibleTiles);
     } else {
         for (const tm of tileMeshes) tm.mesh.visible = false;
     }
 
-    if (fullMagnitudeTexture) {
+    // Full texture: always visible as backdrop, unless tiles fully cover the viewport
+    const tilesFullyCover = usedLevel >= 0 && tilesReady(usedLevel, viewStartSec, viewEndSec);
+
+    if (tilesFullyCover) {
+        // Tiles cover everything — hide backdrop (optimization)
+        if (mesh) mesh.visible = false;
+    } else if (fullMagnitudeTexture) {
+        // Show full texture behind tiles (tiles render in front via renderOrder)
         material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
-        activeTexture = 'full';
         if (mesh) mesh.visible = true;
+        if (fullDurationMs > 0) {
+            const dataStartMs = State.dataStartTime.getTime();
+            material.uniforms.uViewportStart.value = (dataStartMs + viewStartSec * 1000 - fullStartMs) / fullDurationMs;
+            material.uniforms.uViewportEnd.value = (dataStartMs + viewEndSec * 1000 - fullStartMs) / fullDurationMs;
+        }
+    } else {
+        // No full texture and no full tile coverage — nothing behind tiles
+        if (mesh) mesh.visible = false;
     }
-    if (fullDurationMs > 0) {
-        const dataStartMs = State.dataStartTime.getTime();
-        material.uniforms.uViewportStart.value = (dataStartMs + viewStartSec * 1000 - fullStartMs) / fullDurationMs;
-        material.uniforms.uViewportEnd.value = (dataStartMs + viewEndSec * 1000 - fullStartMs) / fullDurationMs;
-    }
-    return false;
+
+    activeTexture = visibleTiles.length > 0 ? 'tiles' : 'full';
+    return visibleTiles.length > 0;
 }
 
 /**
@@ -1831,6 +1841,7 @@ export function clearCompleteSpectrogram() {
     // Dispose pyramid and tile meshes
     disposePyramid();
     tileReadyTimes.clear();
+    lastDisplayedLevel = -1;
     for (const tm of tileMeshes) {
         tm.mesh.geometry.dispose();
         tm.material.dispose();
