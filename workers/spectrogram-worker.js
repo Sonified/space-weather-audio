@@ -171,8 +171,7 @@ self.onmessage = function(e) {
             batchMemoryKB: batchMemory
         }, transferList); // Transfer all magnitude buffers back
     }
-};
-
+    
     if (type === 'compute-batch-uint8') {
         const { audioData, batchStart, batchEnd, fftSize, hopSize, window, dbFloor = -100, dbRange = 100 } = e.data;
         
