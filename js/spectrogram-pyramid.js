@@ -43,16 +43,12 @@ export function isBC4Supported() {
 }
 
 export function detectBC4Support(renderer) {
-    const gl = renderer.getContext();
-    const ext = gl.getExtension('EXT_texture_compression_rgtc');
-    if (ext) {
-        bc4Supported = true;
-        rgtcFormat = ext.COMPRESSED_RED_RGTC1_EXT;
-        console.log('🔺 BC4 (RGTC1) compression: SUPPORTED');
-    } else {
-        bc4Supported = false;
-        console.log('🔺 BC4 (RGTC1) compression: not available, using Uint8');
-    }
+    // BC4/RGTC1 is a WebGL extension but Three.js CompressedTexture doesn't support
+    // raw GL format constants — it needs registered Three.js formats.
+    // Until Three.js adds RGTC support (or we bypass via raw WebGL uploads),
+    // Uint8 textures are the correct path. 1 byte/texel either way.
+    bc4Supported = false;
+    console.log('🔺 BC4 (RGTC1) compression: disabled (Three.js lacks RGTC format support)');
 }
 
 // ─── Uint8 Texture Helper ──────────────────────────────────────────────────
