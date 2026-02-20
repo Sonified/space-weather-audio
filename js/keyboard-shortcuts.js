@@ -8,6 +8,14 @@ import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { changeFrequencyScale, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { isStudyMode } from './master-modes.js';
+import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './waveform-renderer.js';
+import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
+import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
+import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
+import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
+import { updateCanvasAnnotations } from './spectrogram-renderer.js';
+import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
+import { drawDayMarkers } from './day-markers.js';
 
 // 🔥 FIX: Track if shortcuts are initialized to prevent duplicate listeners
 let keyboardShortcutsInitialized = false;
@@ -271,8 +279,196 @@ function handleKeyboardShortcut(event) {
         return;
     }
     
+    // Arrow keys: zoom and pan navigation
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp' ||
+        event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        handleArrowNavigation(event.key);
+        return;
+    }
+
     // Enter key: Trigger first fetch (only works before first fetch, handled in main.js)
     // We don't handle it here, but we need to make sure we don't prevent it
     // The actual handler is in main.js DOMContentLoaded
+}
+
+// --- Arrow key navigation with smooth transitions ---
+
+let navAnimation = null; // Current animation state (or null)
+const NAV_DURATION_MS = 200;
+
+function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+}
+
+function renderNavFrame() {
+    drawWaveformFromMinMax();
+    drawWaveformXAxis();
+    drawSpectrogramXAxis();
+    updateSpectrogramViewportFromZoom();
+    updateAllFeatureBoxPositions();
+    updateCanvasAnnotations();
+    drawSpectrogramPlayhead();
+    drawDayMarkers();
+}
+
+/**
+ * Smoothly animate viewport to target start/end timestamps.
+ * If called while animating, retargets to new destination.
+ */
+function smoothNavigateTo(targetStartMs, targetEndMs) {
+    const fromStartMs = zoomState.currentViewStartTime.getTime();
+    const fromEndMs = zoomState.currentViewEndTime.getTime();
+    const startTime = performance.now();
+
+    // If already animating, retarget: use current interpolated position as new "from"
+    if (navAnimation) {
+        cancelAnimationFrame(navAnimation.rafId);
+    }
+
+    function tick(now) {
+        const elapsed = now - startTime;
+        const t = Math.min(1, elapsed / NAV_DURATION_MS);
+        const eased = easeOutCubic(t);
+
+        const curStart = fromStartMs + (targetStartMs - fromStartMs) * eased;
+        const curEnd = fromEndMs + (targetEndMs - fromEndMs) * eased;
+
+        zoomState.currentViewStartTime = new Date(curStart);
+        zoomState.currentViewEndTime = new Date(curEnd);
+        renderNavFrame();
+
+        if (t < 1) {
+            navAnimation.rafId = requestAnimationFrame(tick);
+        } else {
+            navAnimation = null;
+            // Trigger hi-res render after settling
+            scheduleHiResAfterNav();
+        }
+    }
+
+    navAnimation = { rafId: requestAnimationFrame(tick) };
+}
+
+let hiResNavTimer = null;
+const HI_RES_NAV_DELAY_MS = 400;
+
+async function scheduleHiResAfterNav() {
+    if (hiResNavTimer) clearTimeout(hiResNavTimer);
+    hiResNavTimer = setTimeout(async () => {
+        if (!State.dataStartTime || !State.dataEndTime) return;
+
+        const startMs = zoomState.currentViewStartTime.getTime();
+        const endMs = zoomState.currentViewEndTime.getTime();
+        const dataStartMs = State.dataStartTime.getTime();
+        const dataEndMs = State.dataEndTime.getTime();
+        const dataSpanMs = dataEndMs - dataStartMs;
+
+        if (endMs - startMs >= dataSpanMs * 0.95) return;
+
+        const startSeconds = (startMs - dataStartMs) / 1000;
+        const endSeconds = (endMs - dataStartMs) / 1000;
+
+        const viewDurationSec = (endMs - startMs) / 1000;
+        const canvasWidth = document.getElementById('spectrogram')?.width || 1200;
+        const baseTileColsInView = (viewDurationSec / (15 * 60)) * 1024;
+        if (baseTileColsInView >= canvasWidth * 0.8) return;
+
+        const viewSpanSeconds = endSeconds - startSeconds;
+        const padding = viewSpanSeconds * 0.3;
+        const dataDurationSeconds = dataSpanMs / 1000;
+        const expandedStart = Math.max(0, startSeconds - padding);
+        const expandedEnd = Math.min(dataDurationSeconds, endSeconds + padding);
+
+        const success = await renderCompleteSpectrogramForRegion(expandedStart, expandedEnd, true);
+        if (!success) return;
+
+        setScrollZoomHiRes(expandedStart, expandedEnd);
+        updateSpectrogramViewportFromZoom();
+        updateAllFeatureBoxPositions();
+        updateCanvasAnnotations();
+        drawSpectrogramPlayhead();
+        drawDayMarkers();
+    }, HI_RES_NAV_DELAY_MS);
+}
+
+/**
+ * Handle arrow key navigation: zoom in/out and pan left/right
+ */
+function handleArrowNavigation(key) {
+    if (!State.dataStartTime || !State.dataEndTime) return;
+    if (!zoomState.isInitialized()) return;
+
+    notifyPageTurnUserDragged();
+
+    const startMs = zoomState.currentViewStartTime.getTime();
+    const endMs = zoomState.currentViewEndTime.getTime();
+    const spanMs = endMs - startMs;
+    if (spanMs <= 0) return;
+
+    const dataStartMs = State.dataStartTime.getTime();
+    const dataEndMs = State.dataEndTime.getTime();
+    const dataSpanMs = dataEndMs - dataStartMs;
+
+    // Read step sizes from settings (default: zoom 10%, pan 25%)
+    const zoomStepEl = document.getElementById('arrowZoomStep');
+    const panStepEl = document.getElementById('arrowPanStep');
+    const zoomPct = (zoomStepEl ? parseInt(zoomStepEl.value) : 10) / 100;
+    const panPct = (panStepEl ? parseInt(panStepEl.value) : 25) / 100;
+
+    let newStartMs = startMs;
+    let newEndMs = endMs;
+
+    if (key === 'ArrowDown') {
+        // Zoom in: shrink viewport by zoomPct, centered on midpoint
+        const mid = (startMs + endMs) / 2;
+        const halfSpan = spanMs * (1 - zoomPct) / 2;
+        newStartMs = mid - halfSpan;
+        newEndMs = mid + halfSpan;
+    } else if (key === 'ArrowUp') {
+        // Zoom out: expand viewport by zoomPct, centered on midpoint
+        const mid = (startMs + endMs) / 2;
+        const halfSpan = spanMs * (1 + zoomPct) / 2;
+        newStartMs = mid - halfSpan;
+        newEndMs = mid + halfSpan;
+    } else if (key === 'ArrowRight') {
+        // Pan right by panPct of current window
+        const shift = spanMs * panPct;
+        newStartMs = startMs + shift;
+        newEndMs = endMs + shift;
+    } else if (key === 'ArrowLeft') {
+        // Pan left by panPct of current window
+        const shift = spanMs * panPct;
+        newStartMs = startMs - shift;
+        newEndMs = endMs - shift;
+    }
+
+    // Clamp to data bounds
+    if (newStartMs < dataStartMs) {
+        const offset = dataStartMs - newStartMs;
+        newStartMs = dataStartMs;
+        // For pan, preserve window size by shifting end too
+        if (key === 'ArrowLeft' || key === 'ArrowRight') {
+            newEndMs = Math.min(dataEndMs, newEndMs + offset);
+        }
+    }
+    if (newEndMs > dataEndMs) {
+        const offset = newEndMs - dataEndMs;
+        newEndMs = dataEndMs;
+        if (key === 'ArrowLeft' || key === 'ArrowRight') {
+            newStartMs = Math.max(dataStartMs, newStartMs - offset);
+        }
+    }
+
+    // Minimum zoom: 1 second
+    if (newEndMs - newStartMs < 1000) return;
+
+    // Snap to full view if zoomed out to ≥99%
+    if (newEndMs - newStartMs >= dataSpanMs * 0.99) {
+        smoothNavigateTo(dataStartMs, dataEndMs);
+        return;
+    }
+
+    smoothNavigateTo(newStartMs, newEndMs);
 }
 

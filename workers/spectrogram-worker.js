@@ -172,6 +172,45 @@ self.onmessage = function(e) {
         }, transferList); // Transfer all magnitude buffers back
     }
     
+    if (type === 'compute-tile') {
+        const { audioData, fftSize, hopSize, numTimeSlices, window: hannWindow, dbFloor = -100, dbRange = 100, tileIndex } = e.data;
+
+        if (!twiddleCache || twiddleCacheSize !== fftSize) {
+            precomputeTwiddleFactors(fftSize);
+        }
+
+        const frequencyBinCount = fftSize / 2;
+        const segment = new Float32Array(fftSize);
+        // Pack directly into row-major Uint8: magnitudeData[bin * numTimeSlices + col]
+        const magnitudeData = new Uint8Array(numTimeSlices * frequencyBinCount);
+
+        for (let col = 0; col < numTimeSlices; col++) {
+            const offset = col * hopSize;
+
+            // Window the segment
+            for (let i = 0; i < fftSize; i++) {
+                segment[i] = audioData[offset + i] * hannWindow[i];
+            }
+
+            const magnitudes = performFFT(segment);
+
+            // Convert to dB → Uint8 and pack row-major
+            for (let bin = 0; bin < frequencyBinCount; bin++) {
+                const db = 20 * Math.log10(magnitudes[bin] + 1e-10);
+                const normalized = Math.max(0, Math.min(1, (db - dbFloor) / dbRange));
+                magnitudeData[bin * numTimeSlices + col] = Math.round(normalized * 255);
+            }
+        }
+
+        self.postMessage({
+            type: 'tile-complete',
+            tileIndex,
+            magnitudeData,
+            width: numTimeSlices,
+            height: frequencyBinCount
+        }, [magnitudeData.buffer]);
+    }
+
     if (type === 'compute-batch-uint8') {
         const { audioData, batchStart, batchEnd, fftSize, hopSize, window, dbFloor = -100, dbRange = 100 } = e.data;
         

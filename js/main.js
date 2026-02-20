@@ -982,6 +982,8 @@ async function initializeEmicStudyMode() {
         { id: 'mainWindowNumbers', key: 'emic_main_numbers', type: 'select' },
         { id: 'mainWindowNumbersLoc', key: 'emic_main_numbers_loc', type: 'select' },
         { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
+        { id: 'arrowZoomStep', key: 'emic_arrow_zoom_step', type: 'select' },
+        { id: 'arrowPanStep', key: 'emic_arrow_pan_step', type: 'select' },
     ];
     for (const ctrl of navControls) {
         const el = document.getElementById(ctrl.id);

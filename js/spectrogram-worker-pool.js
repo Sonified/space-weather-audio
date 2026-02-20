@@ -227,6 +227,78 @@ export class SpectrogramWorkerPool {
     }
     
     /**
+     * Process whole tiles in parallel — one tile per worker, work-stealing.
+     * Each tile is computed entirely within a single worker (all FFT columns).
+     *
+     * @param {Array} tiles - Array of { audioData, fftSize, hopSize, numTimeSlices, hannWindow, dbFloor, dbRange, tileIndex }
+     * @param {Function} onTileComplete - Callback(tileIndex, magnitudeData, width, height) called as each tile finishes
+     * @param {AbortSignal} signal - Optional abort signal
+     * @returns {Promise} Resolves when all tiles are complete or aborted
+     */
+    async processTiles(tiles, onTileComplete, signal = null) {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+
+        if (tiles.length === 0) return;
+
+        const pending = [...tiles]; // queue of tiles to assign
+        let completed = 0;
+        const total = tiles.length;
+
+        return new Promise((resolveAll) => {
+            const assignNext = (workerIndex) => {
+                if (signal?.aborted) return;
+                if (pending.length === 0) return;
+
+                const tile = pending.shift();
+                const workerObj = this.workers[workerIndex];
+                workerObj.busy = true;
+
+                const handler = (e) => {
+                    if (e.data.type === 'tile-complete' && e.data.tileIndex === tile.tileIndex) {
+                        workerObj.worker.removeEventListener('message', handler);
+                        workerObj.busy = false;
+
+                        if (!signal?.aborted) {
+                            onTileComplete(e.data.tileIndex, e.data.magnitudeData, e.data.width, e.data.height);
+                        }
+
+                        completed++;
+                        if (completed === total || signal?.aborted) {
+                            resolveAll();
+                        } else {
+                            // Work-stealing: this worker grabs the next pending tile
+                            assignNext(workerIndex);
+                        }
+                    }
+                };
+
+                workerObj.worker.addEventListener('message', handler);
+
+                // Transfer audioData buffer to worker (zero-copy)
+                workerObj.worker.postMessage({
+                    type: 'compute-tile',
+                    audioData: tile.audioData,
+                    fftSize: tile.fftSize,
+                    hopSize: tile.hopSize,
+                    numTimeSlices: tile.numTimeSlices,
+                    window: tile.hannWindow,
+                    dbFloor: tile.dbFloor,
+                    dbRange: tile.dbRange,
+                    tileIndex: tile.tileIndex,
+                }, [tile.audioData.buffer]);
+            };
+
+            // Seed: assign one tile to each available worker
+            const initialWorkers = Math.min(this.numWorkers, pending.length);
+            for (let i = 0; i < initialWorkers; i++) {
+                assignNext(i);
+            }
+        });
+    }
+
+    /**
      * Terminate all workers in the pool and free memory
      */
     terminate() {

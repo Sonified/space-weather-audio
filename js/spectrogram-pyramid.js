@@ -325,39 +325,32 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         await workerPool.initialize();
     }
 
-    const frequencyBinCount = fftSize / 2;
+    const halfFFT = Math.floor(fftSize / 2);
 
-    // Pre-compute Hann window
+    // Pre-compute Hann window (shared across all tiles)
     const hannWindow = new Float32Array(fftSize);
     for (let i = 0; i < fftSize; i++) {
         hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / fftSize));
     }
 
-    // Sequential order: first tile to last (streaming-ready)
-    const renderOrder = baseTiles.map((t, i) => i);
+    // ── Prepare all tile descriptors up front ──
+    const tileJobs = [];       // jobs to send to workers
+    const tileMeta = new Map(); // tileIndex → { startSample, endSample, tileSamplesLength }
+    let alreadyReady = 0;
 
-    let tilesComplete = 0;
-
-    for (const tileIdx of renderOrder) {
-        if (signal.aborted) return;
-
+    for (let tileIdx = 0; tileIdx < baseTiles.length; tileIdx++) {
         const tile = baseTiles[tileIdx];
         if (tile.ready) {
-            tilesComplete++;
+            alreadyReady++;
             continue;
         }
 
         tile.rendering = true;
 
-        // Extract samples for this tile, with fftSize/2 overlap on each side.
-        // This ensures the first FFT column center aligns with tile.startSec
-        // and the last column center reaches tile.endSec, eliminating gaps
-        // between adjacent tiles.
-        const halfFFT = Math.floor(fftSize / 2);
+        // Extract samples with fftSize/2 overlap on each side
         const startSample = Math.max(0, Math.floor(tile.startSec * sampleRate) - halfFFT);
         const endSample = Math.floor(tile.endSec * sampleRate) + halfFFT;
-        
-        // Handle resampling if needed
+
         let resampledStart, resampledEnd;
         if (zoomState.isInitialized() && zoomState.originalToResampledSample) {
             resampledStart = zoomState.originalToResampledSample(startSample);
@@ -367,7 +360,6 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             resampledEnd = endSample;
         }
 
-        // Use slice accessor (handles both Float32 direct and Int16 decompression)
         let tileSamples;
         if (audioData) {
             tileSamples = audioData.slice(
@@ -384,97 +376,88 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         if (tileSamples.length <= fftSize) {
             console.warn(`🔺 L0 tile ${tileIdx} too small for FFT (${tileSamples.length} samples)`);
             tile.rendering = false;
-            tilesComplete++;
+            alreadyReady++;
             continue;
         }
 
-        // Compute FFT columns with integer hop.
-        // Overlap samples ensure first column aligns to tile.startSec.
-        // Sub-pixel gap at tile boundary (~1s at SR=100) is handled by
-        // screen positioning using actual column times.
         const maxTimeSlices = TILE_COLS;
         const hopSize = Math.max(1, Math.floor((tileSamples.length - fftSize) / maxTimeSlices));
         const numTimeSlices = Math.min(maxTimeSlices, Math.floor((tileSamples.length - fftSize) / hopSize));
 
-        // Pack magnitude data: width=numTimeSlices, height=frequencyBinCount (Uint8)
-        const magnitudeData = new Uint8Array(numTimeSlices * frequencyBinCount);
+        // Store metadata for when results come back
+        tileMeta.set(tileIdx, {
+            startSample,
+            endSample,
+            tileSamplesLength: tileSamples.length,
+            hopSize,
+            numTimeSlices,
+        });
 
-        const batchSize = 50;
-        const batches = [];
-        for (let batchStart = 0; batchStart < numTimeSlices; batchStart += batchSize) {
-            batches.push({ start: batchStart, end: Math.min(batchStart + batchSize, numTimeSlices) });
-        }
+        // Hann window: copy per tile (transferred to worker, so each needs its own)
+        tileJobs.push({
+            audioData: tileSamples,
+            fftSize,
+            hopSize,
+            numTimeSlices,
+            hannWindow: new Float32Array(hannWindow),
+            dbFloor: -100,
+            dbRange: 100,
+            tileIndex: tileIdx,
+        });
+    }
 
-        const drawResults = (results) => {
-            for (const result of results) {
-                const { sliceIdx, magnitudes } = result;
-                for (let bin = 0; bin < frequencyBinCount; bin++) {
-                    magnitudeData[bin * numTimeSlices + sliceIdx] = magnitudes[bin];
-                }
-                result.magnitudes = null;
-            }
-        };
+    if (tileJobs.length === 0) {
+        pyramidReady = true;
+        console.log(`🔺 All ${baseTiles.length} tiles already ready`);
+        return;
+    }
 
-        try {
-            await workerPool.processBatchesUint8(
-                tileSamples,
-                batches,
-                fftSize,
-                hopSize,
-                hannWindow,
-                drawResults
-            );
-        } catch (e) {
-            console.error(`🔺 L0 tile ${tileIdx} render failed:`, e);
-            tile.rendering = false;
-            tilesComplete++;
-            continue;
-        }
+    console.log(`🔺 Dispatching ${tileJobs.length} tiles to ${workerPool.numWorkers} workers in parallel`);
+    const startTime = performance.now();
+    let tilesComplete = alreadyReady;
+    const totalTiles = baseTiles.length;
 
-        if (signal.aborted) return;
+    // ── Fire all tiles in parallel via work-stealing pool ──
+    await workerPool.processTiles(tileJobs, (tileIdx, magnitudeData, width, height) => {
+        const tile = baseTiles[tileIdx];
+        const meta = tileMeta.get(tileIdx);
 
-        // Store results
         tile.magnitudeData = magnitudeData;
-        tile.width = numTimeSlices;
-        tile.height = frequencyBinCount;
-        // Map FFT column indices back to real time.
-        // tileSamples may be in resampled space, so convert via proportion of the
-        // known time span (startSample..endSample in original space = known seconds).
-        const tileOriginSec = startSample / sampleRate;
-        const tileSpanSec = (endSample - startSample) / sampleRate;
-        const secPerResampledSample = tileSpanSec / tileSamples.length;
+        tile.width = width;
+        tile.height = height;
+
+        // Map FFT column indices back to real time
+        const tileOriginSec = meta.startSample / sampleRate;
+        const tileSpanSec = (meta.endSample - meta.startSample) / sampleRate;
+        const secPerResampledSample = tileSpanSec / meta.tileSamplesLength;
         tile.actualFirstColSec = tileOriginSec + halfFFT * secPerResampledSample;
-        tile.actualLastColSec = tileOriginSec + ((numTimeSlices - 1) * hopSize + halfFFT) * secPerResampledSample;
+        tile.actualLastColSec = tileOriginSec + ((meta.numTimeSlices - 1) * meta.hopSize + halfFFT) * secPerResampledSample;
         tile.ready = true;
         tile.rendering = false;
         tilesComplete++;
 
-        // Log progress every 10% instead of every tile
-        const step = Math.max(1, Math.floor(baseTiles.length / 10));
-        if (tilesComplete % step === 0 || tilesComplete === baseTiles.length) {
-            console.log(`🔺 Tiles: ${tilesComplete}/${baseTiles.length} (${((tilesComplete / baseTiles.length) * 100).toFixed(0)}%)`);
+        // Log progress every 10%
+        const step = Math.max(1, Math.floor(totalTiles / 10));
+        if (tilesComplete % step === 0 || tilesComplete === totalTiles) {
+            console.log(`🔺 Tiles: ${tilesComplete}/${totalTiles} (${((tilesComplete / totalTiles) * 100).toFixed(0)}%)`);
         }
 
         if (onProgress) {
-            onProgress(tilesComplete, baseTiles.length);
+            onProgress(tilesComplete, totalTiles);
         }
 
-        // Notify that a tile is ready (triggers viewport update + pyramid cascade)
         if (onTileReady) {
             onTileReady(0, tileIdx);
         }
 
-        // Try to build upper level tiles
         cascadeUpward(0, tileIdx);
+    }, signal);
 
-        // Yield to main thread periodically
-        if (tilesComplete % 4 === 0) {
-            await new Promise(r => setTimeout(r, 0));
-        }
+    if (!signal.aborted) {
+        pyramidReady = true;
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+        console.log(`🔺 All ${tileJobs.length} base tiles rendered in ${elapsed}s (${workerPool.numWorkers} workers)`);
     }
-
-    pyramidReady = true;
-    console.log(`🔺 Base tiles complete: ${tilesComplete}/${baseTiles.length}`);
 }
 
 // ─── Pyramid Builder (Upward Cascade) ───────────────────────────────────────
