@@ -27,11 +27,12 @@ export function detectBC4Support() {}
 
 function createUint8MagnitudeTexture(data, width, height) {
     const tex = new THREE.DataTexture(data, width, height, THREE.RedFormat, THREE.UnsignedByteType);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
+    // minFilter set by currentMinFilter — respects shader mode (box/nearest use Nearest, linear uses Linear)
+    tex.minFilter = currentMinFilter;
+    tex.magFilter = THREE.LinearFilter;  // Linear for magnification (zoom in) — looks smoother
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = false; // We handle LOD via pyramid levels
+    tex.generateMipmaps = false;
     tex.needsUpdate = true;
     return tex;
 }
@@ -550,6 +551,23 @@ function evictLRU() {
         const entry = tileTextureCache.get(oldestKey);
         if (entry.texture?.dispose) entry.texture.dispose();
         tileTextureCache.delete(oldestKey);
+    }
+}
+
+// ─── Texture Filter Update ──────────────────────────────────────────────────
+
+let currentMinFilter = THREE.NearestFilter;  // tracks shader mode for new textures
+
+/**
+ * Update minFilter on all cached tile textures AND set default for new ones.
+ */
+export function updateAllTileTextureFilters(minFilter) {
+    currentMinFilter = minFilter;
+    for (const [, entry] of tileTextureCache) {
+        if (entry.texture) {
+            entry.texture.minFilter = minFilter;
+            entry.texture.needsUpdate = true;
+        }
     }
 }
 

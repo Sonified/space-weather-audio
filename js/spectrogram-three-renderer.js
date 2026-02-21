@@ -17,7 +17,7 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { isStudyMode } from './master-modes.js';
 import { getColorLUT } from './colormaps.js';
-import { initPyramid, renderBaseTiles, pickLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers } from './spectrogram-pyramid.js';
+import { initPyramid, renderBaseTiles, pickLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters } from './spectrogram-pyramid.js';
 
 // ─── Module state ───────────────────────────────────────────────────────────
 
@@ -119,7 +119,7 @@ function positionMeshWorldSpace(mesh, startX, endX) {
 }
 
 // ─── Tile rendering (pyramid LOD system) ─────────────────────────────────────
-const TILE_CROSSFADE_MS = 300; // crossfade duration when tiles appear (ms)
+const TILE_CROSSFADE_MS = 0; // disabled — tiles appear instantly
 let tileMeshes = [];            // Array of { mesh, material } — up to 32 slots for pyramid tiles
 let tileReadyTimes = new Map(); // key -> performance.now() when tile became ready (for crossfade)
 let lastDisplayedLevel = -1;    // Track which level was displayed last frame (for re-fade prevention)
@@ -235,6 +235,8 @@ uniform float uMinFreq;
 uniform float uMaxFreq;
 uniform vec3 uBackgroundColor;
 uniform float uOpacity;
+uniform float uTexWidth;
+uniform float uSamplesPerPixel;
 
 varying vec2 vUv;
 
@@ -261,7 +263,25 @@ void main() {
     float texV = clamp(freq / uMaxFreq, 0.0, 1.0);
     float texU = vUv.x;  // World-space camera handles viewport — UV is always 0→1
 
-    float normalized = texture2D(uMagnitudes, vec2(texU, texV)).r;  // Already 0-1 from Uint8
+    // Box filter: average N texels per pixel to eliminate shimmer during downsampling.
+    // When uSamplesPerPixel <= 1.0 (zoomed in), just do a single read.
+    float normalized;
+    if (uSamplesPerPixel <= 1.0) {
+        normalized = texture2D(uMagnitudes, vec2(texU, texV)).r;
+    } else {
+        float texelSize = 1.0 / uTexWidth;
+        int samples = int(ceil(uSamplesPerPixel));
+        float span = uSamplesPerPixel * texelSize;
+        float start = texU - span * 0.5;
+        float sum = 0.0;
+        for (int i = 0; i < 32; i++) {
+            if (i >= samples) break;
+            float t = start + (float(i) + 0.5) / float(samples) * span;
+            sum += texture2D(uMagnitudes, vec2(t, texV)).r;
+        }
+        normalized = sum / float(samples);
+    }
+
     vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
 
     gl_FragColor = vec4(color, uOpacity);
@@ -476,7 +496,9 @@ function initThreeScene() {
                 uMinFreq: { value: 0.1 },
                 uMaxFreq: { value: 50.0 },
                 uBackgroundColor: { value: new THREE.Vector3(0, 0, 0) },
-                uOpacity: { value: 1.0 }
+                uOpacity: { value: 1.0 },
+                uTexWidth: { value: 1024.0 },
+                uSamplesPerPixel: { value: 1.0 }
             },
             vertexShader: vertexShaderSource,
             fragmentShader: tileFragmentShaderSource,
@@ -1270,6 +1292,18 @@ function updateTileMeshPositions(visibleTiles) {
 
             // Set texture (UV is always 0→1 now — shader uses vUv.x directly)
             tm.material.uniforms.uMagnitudes.value = texture;
+
+            // Box filter uniforms: texture width + samples-per-pixel for anti-aliased downsampling
+            tm.material.uniforms.uTexWidth.value = vt.tile.width || 1024;
+            if (tileShaderMode === 'box') {
+                const canvasW = threeRenderer?.domElement?.width || 1200;
+                const viewDurationSec = (camera.right - camera.left) || 1;
+                const tileDurationSec = vt.tile.endSec - vt.tile.startSec;
+                const tilePixels = (tileDurationSec / viewDurationSec) * canvasW;
+                tm.material.uniforms.uSamplesPerPixel.value = (vt.tile.width || 1024) / Math.max(1, tilePixels);
+            } else {
+                tm.material.uniforms.uSamplesPerPixel.value = 1.0;  // bypass box filter (linear or nearest)
+            }
 
             // Crossfade: compute opacity based on time since tile became ready
             const readyTime = tileReadyTimes.get(vt.key) || 0;
@@ -2210,6 +2244,28 @@ export function getSpectrogramParams() {
 }
 
 // ─── Colormap change support ────────────────────────────────────────────────
+
+// ─── Tile Shader Mode Control ───────────────────────────────────────────────
+// 'box' = NearestFilter + box filter shader (anti-shimmer, default)
+// 'linear' = LinearFilter, no box filter (original GPU bilinear — shimmers)
+// 'nearest' = NearestFilter, no box filter (raw pixels)
+
+let tileShaderMode = 'box';
+
+export function setTileShaderMode(mode) {
+    if (mode !== 'box' && mode !== 'linear' && mode !== 'nearest') return;
+    tileShaderMode = mode;
+    // Update minFilter on all cached tile textures
+    const filter = mode === 'linear' ? THREE.LinearFilter : THREE.NearestFilter;
+    updateAllTileTextureFilters(filter);
+    updateSpectrogramViewportFromZoom();
+    renderFrame();
+}
+
+export function getTileShaderMode() {
+    return tileShaderMode;
+}
+
 
 // ─── Tile Compression Control ───────────────────────────────────────────────
 

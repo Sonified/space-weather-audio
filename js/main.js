@@ -9,7 +9,7 @@ import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, aggressiveCleanup } from './spectrogram-three-renderer.js';
+import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, aggressiveCleanup, setTileShaderMode } from './spectrogram-three-renderer.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
@@ -990,6 +990,7 @@ async function initializeEmicStudyMode() {
         { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
         { id: 'arrowZoomStep', key: 'emic_arrow_zoom_step', type: 'select' },
         { id: 'arrowPanStep', key: 'emic_arrow_pan_step', type: 'select' },
+        { id: 'mainWindowBoxFilter', key: 'emic_main_box_filter', type: 'select' },
     ];
     for (const ctrl of navControls) {
         const el = document.getElementById(ctrl.id);
@@ -1224,6 +1225,13 @@ async function initializeEmicStudyMode() {
     const mainWindowNumbersLocEl = document.getElementById('mainWindowNumbersLoc');
     if (mainWindowNumbersEl) mainWindowNumbersEl.addEventListener('change', () => redrawAllCanvasFeatureBoxes());
     if (mainWindowNumbersLocEl) mainWindowNumbersLocEl.addEventListener('change', () => redrawAllCanvasFeatureBoxes());
+
+    // Wire box filter shader mode dropdown + apply persisted value
+    const boxFilterEl = document.getElementById('mainWindowBoxFilter');
+    if (boxFilterEl) {
+        boxFilterEl.addEventListener('change', () => setTileShaderMode(boxFilterEl.value));
+        setTileShaderMode(boxFilterEl.value);
+    }
 
     // Toggle regions panel + top bar controls visibility based on viewing mode
     function updateRegionsPanelVisibility() {
