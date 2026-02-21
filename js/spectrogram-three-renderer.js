@@ -1724,8 +1724,9 @@ function tryUseTiles(viewStartSec, viewEndSec) {
     const optimalLevel = pickLevel(viewStartSec, viewEndSec, canvasWidth);
     const maxSlots = tileMeshes.length; // 32
 
-    // "Park and fill" strategy:
-    // Find the LOWEST level that fits in 32 mesh slots — that's the display level.
+    // Walk UP from L0 to optimalLevel — the highest level where colsPerPixel ≥ 1
+    // (no upsampling). Pick the highest level with ready tiles that fits in 32 slots.
+    // This minimizes downsampling (less flickering) without crossing into upsampling.
     let visibleTiles = [];
     let usedLevel = -1;
 
@@ -1734,7 +1735,7 @@ function tryUseTiles(viewStartSec, viewEndSec) {
         if (tiles.length > 0 && tiles.length <= maxSlots) {
             visibleTiles = tiles;
             usedLevel = level;
-            break;
+            // Don't break — keep going up to find the coarsest that still has ≥1 col/pixel
         }
     }
 
