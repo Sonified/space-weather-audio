@@ -320,8 +320,12 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         }
 
         const maxTimeSlices = TILE_COLS;
-        const hopSize = Math.max(1, Math.floor((tileSamples.length - fftSize) / maxTimeSlices));
-        const numTimeSlices = Math.min(maxTimeSlices, Math.floor((tileSamples.length - fftSize) / hopSize));
+        // Hop so that maxTimeSlices columns span edge-to-edge across the nominal tile
+        // (divide by maxTimeSlices-1 so first col centers at tile start, last at tile end)
+        const nominalSamples = tileSamples.length - fftSize; // core tile without overlap padding
+        const hopSize = Math.max(1, Math.floor(nominalSamples / (maxTimeSlices - 1)));
+        // +1 because we need (n-1)*hop + fftSize ≤ buffer, not n*hop ≤ buffer-fftSize
+        const numTimeSlices = Math.min(maxTimeSlices, Math.floor(nominalSamples / hopSize) + 1);
 
         // Store metadata for when results come back
         tileMeta.set(tileIdx, {
