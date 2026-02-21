@@ -4,18 +4,9 @@
  */
 
 import {
-    calculateHourlyTicks,
-    calculateSixHourTicks,
-    calculateFourHourTicks,
-    calculateTwoHourTicks,
-    calculateOneMinuteTicks,
-    calculateFiveMinuteTicks,
-    calculateThirtyMinuteTicks,
+    chooseTicks,
     getInterpolatedTimeRange
 } from './waveform-x-axis-renderer.js';
-
-// Track maximum canvas width for responsive tick spacing
-let maxCanvasWidth = null;
 
 /**
  * Draw time axis for spectrogram (main window)
@@ -36,11 +27,6 @@ export function drawSpectrogramXAxis() {
     if (!spectrogramCanvas) return;
 
     const displayWidth = spectrogramCanvas.offsetWidth;
-
-    // Track maximum width seen so far
-    if (maxCanvasWidth === null || displayWidth > maxCanvasWidth) {
-        maxCanvasWidth = displayWidth;
-    }
 
     // Only resize if dimensions changed
     if (canvas.width !== displayWidth || canvas.height !== 40) {
@@ -87,28 +73,8 @@ export function drawSpectrogramXAxis() {
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
 
-    // Calculate ticks based on time span and canvas width
-    const timeSpanHours = actualTimeSpanSeconds / 3600;
-    let ticks;
-
-    const isVeryNarrowCanvas = maxCanvasWidth !== null && canvasWidth <= (maxCanvasWidth * 1 / 2);
-    const isNarrowCanvas = maxCanvasWidth !== null && canvasWidth <= (maxCanvasWidth * 3 / 4);
-
-    if (isVeryNarrowCanvas) {
-        ticks = calculateFourHourTicks(startTimeUTC, endTimeUTC);
-    } else if (isNarrowCanvas) {
-        ticks = calculateTwoHourTicks(startTimeUTC, endTimeUTC);
-    } else if (timeSpanHours < 1/3) {
-        ticks = calculateOneMinuteTicks(startTimeUTC, endTimeUTC);
-    } else if (timeSpanHours < 2) {
-        ticks = calculateFiveMinuteTicks(startTimeUTC, endTimeUTC);
-    } else if (timeSpanHours < 6) {
-        ticks = calculateThirtyMinuteTicks(startTimeUTC, endTimeUTC);
-    } else if (timeSpanHours > 24) {
-        ticks = calculateSixHourTicks(startTimeUTC, endTimeUTC);
-    } else {
-        ticks = calculateHourlyTicks(startTimeUTC, endTimeUTC);
-    }
+    // Choose ticks adaptively based on both time span AND pixel density
+    const ticks = chooseTicks(startTimeUTC, endTimeUTC, canvasWidth);
 
     // Draw each tick
     ticks.forEach((tick) => {
@@ -191,11 +157,6 @@ export function resizeSpectrogramXAxisCanvas() {
     if (!spectrogramCanvas || !xAxisCanvas) return;
 
     const currentWidth = spectrogramCanvas.offsetWidth;
-
-    // Track maximum width
-    if (maxCanvasWidth === null || currentWidth > maxCanvasWidth) {
-        maxCanvasWidth = currentWidth;
-    }
 
     if (xAxisCanvas.width !== currentWidth || xAxisCanvas.height !== 40) {
         xAxisCanvas.width = currentWidth;

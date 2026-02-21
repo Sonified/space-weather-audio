@@ -24,21 +24,11 @@ let zoomTransitionRAF = null;
 let isZoomingToRegion = false; // Track if we're zooming TO a region (true) or FROM a region (false)
 let zoomTransitionCleanupTimeout = null; // Safety timeout — must be cancelled on new transition
 
-// Track maximum canvas width for responsive tick spacing
-let maxCanvasWidth = null;
-
 /**
- * Initialize maxCanvasWidth baseline on page load
- * Sets baseline to 1200px or actual canvas width if larger
+ * No-op — kept for backwards compatibility with main.js import.
+ * Tick spacing is now computed dynamically by chooseTicks() based on actual canvas width.
  */
-export function initializeMaxCanvasWidth() {
-    const waveformCanvas = document.getElementById('waveform');
-    if (!waveformCanvas) return;
-    
-    const currentWidth = waveformCanvas.offsetWidth;
-    // Set baseline to 1200px minimum, or actual width if larger
-    maxCanvasWidth = Math.max(1200, currentWidth);
-}
+export function initializeMaxCanvasWidth() {}
 
 /**
  * Draw time axis for waveform
@@ -53,12 +43,7 @@ export function drawWaveformXAxis() {
     
     // Use display width (offsetWidth) not internal canvas width
     const displayWidth = waveformCanvas.offsetWidth;
-    
-    // Track maximum width seen so far
-    if (maxCanvasWidth === null || displayWidth > maxCanvasWidth) {
-        maxCanvasWidth = displayWidth;
-    }
-    
+
     // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
     if (canvas.width !== displayWidth || canvas.height !== 40) {
         canvas.width = displayWidth;
@@ -153,42 +138,9 @@ export function drawWaveformXAxis() {
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
     
-    // Calculate ticks based on region size and canvas width
-    // If canvas is <= 1/2 of maximum width, use 4-hour ticks starting at midnight
-    // Else if canvas is <= 3/4 of maximum width, use 2-hour ticks starting at midnight
-    // Otherwise, if region is less than 20 minutes, use 1-minute intervals
-    // Else if region is less than 2 hours, use 5-minute intervals
-    // Else if region is less than 6 hours, use 30-minute intervals
-    // Otherwise use hourly intervals
-    const timeSpanHours = actualTimeSpanSeconds / 3600;
-    let ticks;
-    
-    // Check canvas width thresholds
-    const isVeryNarrowCanvas = maxCanvasWidth !== null && canvasWidth <= (maxCanvasWidth * 1 / 2);
-    const isNarrowCanvas = maxCanvasWidth !== null && canvasWidth <= (maxCanvasWidth * 3 / 4);
-    
-    if (isVeryNarrowCanvas) {
-        // Canvas is very narrow - use 4-hour ticks starting at midnight
-        ticks = calculateFourHourTicks(startTimeUTC, endTimeUTC);
-    } else if (isNarrowCanvas) {
-        // Canvas is narrow - use 2-hour ticks starting at midnight
-        ticks = calculateTwoHourTicks(startTimeUTC, endTimeUTC);
-    } else if (timeSpanHours < 1/3) {
-        // Region is less than 20 minutes - use 1-minute ticks
-        ticks = calculateOneMinuteTicks(startTimeUTC, endTimeUTC);
-    } else if (timeSpanHours < 2) {
-        // Region is less than 2 hours - use 5-minute ticks
-        ticks = calculateFiveMinuteTicks(startTimeUTC, endTimeUTC);
-    } else if (timeSpanHours < 6) {
-        // Region is less than 6 hours - use 30-minute ticks
-        ticks = calculateThirtyMinuteTicks(startTimeUTC, endTimeUTC);
-    } else if (timeSpanHours > 24) {
-        // Multi-day data - use 6-hour ticks (00:00, 06:00, 12:00, 18:00 UTC)
-        ticks = calculateSixHourTicks(startTimeUTC, endTimeUTC);
-    } else {
-        // Region is 6-24 hours - use hourly ticks
-        ticks = calculateHourlyTicks(startTimeUTC, endTimeUTC);
-    }
+    // Choose ticks adaptively based on both time span AND pixel density
+    // This prevents label clustering on narrow windows and sparse ticks on wide ones
+    const ticks = chooseTicks(startTimeUTC, endTimeUTC, canvasWidth);
     
     // Draw each tick
     ticks.forEach((tick, index) => {
@@ -546,9 +498,181 @@ export function calculateSixHourTicks(startUTC, endUTC) {
 }
 
 /**
+ * Calculate 8-hour tick positions starting at UTC midnight
+ * Quantizes at 8-hour boundaries (00:00, 08:00, 16:00 UTC)
+ * Binary subdivision: 2h → 4h → 8h → 24h
+ */
+export function calculateEightHourTicks(startUTC, endUTC) {
+    const ticks = [];
+    const startYear = startUTC.getUTCFullYear();
+    const startMonth = startUTC.getUTCMonth();
+    const startDay = startUTC.getUTCDate();
+    const startHours = startUTC.getUTCHours();
+
+    const hoursRoundedDown = Math.floor(startHours / 8) * 8;
+    let firstTickUTC = new Date(Date.UTC(startYear, startMonth, startDay, hoursRoundedDown, 0, 0, 0));
+
+    if (firstTickUTC.getTime() < startUTC.getTime()) {
+        firstTickUTC = new Date(firstTickUTC.getTime() + 8 * 60 * 60 * 1000);
+    }
+
+    let currentTickUTC = new Date(firstTickUTC);
+    let previousTickDateUTC = null;
+
+    while (currentTickUTC.getTime() <= endUTC.getTime()) {
+        const currentTickDateUTC = currentTickUTC.toISOString().split('T')[0];
+        const currentHourUTC = currentTickUTC.getUTCHours();
+        const currentMinutesUTC = currentTickUTC.getUTCMinutes();
+
+        const isDayCrossing = (previousTickDateUTC !== null && previousTickDateUTC !== currentTickDateUTC) ||
+                              (currentHourUTC === 0 && currentMinutesUTC === 0);
+
+        if (currentTickUTC.getTime() >= startUTC.getTime() && currentTickUTC.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: new Date(currentTickUTC),
+                localTime: new Date(currentTickUTC),
+                isDayCrossing: isDayCrossing
+            });
+        }
+
+        previousTickDateUTC = currentTickDateUTC;
+        currentTickUTC = new Date(currentTickUTC.getTime() + 8 * 60 * 60 * 1000);
+    }
+
+    return ticks;
+}
+
+/**
+ * Calculate 12-hour tick positions starting at UTC midnight
+ * Quantizes at 12-hour boundaries (00:00, 12:00 UTC)
+ * Used for multi-day data on narrow canvases
+ */
+export function calculateTwelveHourTicks(startUTC, endUTC) {
+    const ticks = [];
+    const startYear = startUTC.getUTCFullYear();
+    const startMonth = startUTC.getUTCMonth();
+    const startDay = startUTC.getUTCDate();
+    const startHours = startUTC.getUTCHours();
+
+    const hoursRoundedDown = Math.floor(startHours / 12) * 12;
+    let firstTickUTC = new Date(Date.UTC(startYear, startMonth, startDay, hoursRoundedDown, 0, 0, 0));
+
+    if (firstTickUTC.getTime() < startUTC.getTime()) {
+        firstTickUTC = new Date(firstTickUTC.getTime() + 12 * 60 * 60 * 1000);
+    }
+
+    let currentTickUTC = new Date(firstTickUTC);
+    let previousTickDateUTC = null;
+
+    while (currentTickUTC.getTime() <= endUTC.getTime()) {
+        const currentTickDateUTC = currentTickUTC.toISOString().split('T')[0];
+        const currentHourUTC = currentTickUTC.getUTCHours();
+        const currentMinutesUTC = currentTickUTC.getUTCMinutes();
+
+        const isDayCrossing = (previousTickDateUTC !== null && previousTickDateUTC !== currentTickDateUTC) ||
+                              (currentHourUTC === 0 && currentMinutesUTC === 0);
+
+        if (currentTickUTC.getTime() >= startUTC.getTime() && currentTickUTC.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: new Date(currentTickUTC),
+                localTime: new Date(currentTickUTC),
+                isDayCrossing: isDayCrossing
+            });
+        }
+
+        previousTickDateUTC = currentTickDateUTC;
+        currentTickUTC = new Date(currentTickUTC.getTime() + 12 * 60 * 60 * 1000);
+    }
+
+    return ticks;
+}
+
+/**
+ * Calculate daily tick positions at UTC midnight
+ * One tick per day at 00:00 UTC
+ * Used for multi-day data on very narrow canvases
+ */
+export function calculateDailyTicks(startUTC, endUTC) {
+    const ticks = [];
+    const startYear = startUTC.getUTCFullYear();
+    const startMonth = startUTC.getUTCMonth();
+    const startDay = startUTC.getUTCDate();
+
+    // Start at midnight of the start day
+    let firstTickUTC = new Date(Date.UTC(startYear, startMonth, startDay, 0, 0, 0, 0));
+
+    if (firstTickUTC.getTime() < startUTC.getTime()) {
+        firstTickUTC = new Date(firstTickUTC.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    let currentTickUTC = new Date(firstTickUTC);
+
+    while (currentTickUTC.getTime() <= endUTC.getTime()) {
+        if (currentTickUTC.getTime() >= startUTC.getTime() && currentTickUTC.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: new Date(currentTickUTC),
+                localTime: new Date(currentTickUTC),
+                isDayCrossing: true  // Every tick is at midnight = day crossing
+            });
+        }
+
+        currentTickUTC = new Date(currentTickUTC.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    return ticks;
+}
+
+/**
+ * Choose the best tick interval based on time span AND available pixel width.
+ * Tries intervals from finest to coarsest, picking the finest one where
+ * the average pixel spacing between ticks stays >= minPixelsPerTick.
+ *
+ * @param {Date} startUTC - Start time
+ * @param {Date} endUTC - End time
+ * @param {number} canvasWidth - Current canvas width in pixels
+ * @param {number} [minPixelsPerTick=44] - Minimum pixels between tick centers
+ * @returns {Array} Array of tick objects
+ */
+export function chooseTicks(startUTC, endUTC, canvasWidth, minPixelsPerTick = 44) {
+    const timeSpanSeconds = (endUTC.getTime() - startUTC.getTime()) / 1000;
+    const timeSpanHours = timeSpanSeconds / 3600;
+
+    // Ordered from finest to coarsest interval
+    // Each entry: [intervalSeconds, calculatorFn, minTimeSpanHours, maxTimeSpanHours]
+    // minTimeSpan/maxTimeSpan prevent nonsensical combos (e.g. daily ticks for 30min data)
+    const intervals = [
+        [60,        calculateOneMinuteTicks,      0,    1],
+        [300,       calculateFiveMinuteTicks,      0,    6],
+        [600,       calculateTenMinuteTicks,       0.15, 8],
+        [1800,      calculateThirtyMinuteTicks,    0.3,  24],
+        [3600,      calculateHourlyTicks,          1,    72],
+        [7200,      calculateTwoHourTicks,         2,    168],
+        [21600,     calculateSixHourTicks,         6,    Infinity],
+        [43200,     calculateTwelveHourTicks,      12,   Infinity],
+        [86400,     calculateDailyTicks,           24,   Infinity],
+    ];
+
+    // Try each interval from finest to coarsest
+    for (const [intervalSec, calcFn, minSpanH, maxSpanH] of intervals) {
+        // Skip intervals that don't make sense for this time span
+        if (timeSpanHours < minSpanH || timeSpanHours > maxSpanH) continue;
+
+        // Estimate how many ticks this interval would produce
+        const estTickCount = timeSpanSeconds / intervalSec;
+        const pixelsPerTick = canvasWidth / estTickCount;
+
+        if (pixelsPerTick >= minPixelsPerTick) {
+            return calcFn(startUTC, endUTC);
+        }
+    }
+
+    // Fallback: if even daily ticks are too dense, use daily (shouldn't happen in practice)
+    return calculateDailyTicks(startUTC, endUTC);
+}
+
+/**
  * Calculate 4-hour tick positions starting at UTC midnight
  * Quantizes at 4-hour boundaries (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
- * Used when canvas width is <= 1/2 of maximum width
  */
 export function calculateFourHourTicks(startUTC, endUTC) {
     const ticks = [];
@@ -781,6 +905,97 @@ export function calculateFiveMinuteTicks(startUTC, endUTC) {
 }
 
 /**
+ * Calculate 10-minute tick positions (UTC)
+ * Quantizes at 10-minute boundaries (00:00, 00:10, 00:20, 00:30, 00:40, 00:50 UTC)
+ */
+export function calculateTenMinuteTicks(startUTC, endUTC) {
+    const ticks = [];
+    const startYear = startUTC.getUTCFullYear();
+    const startMonth = startUTC.getUTCMonth();
+    const startDay = startUTC.getUTCDate();
+    const startHours = startUTC.getUTCHours();
+    const startMinutes = startUTC.getUTCMinutes();
+
+    const roundedMinutes = Math.floor(startMinutes / 10) * 10;
+    let firstTickUTC = new Date(Date.UTC(startYear, startMonth, startDay, startHours, roundedMinutes, 0, 0));
+
+    if (firstTickUTC.getTime() < startUTC.getTime()) {
+        firstTickUTC = new Date(firstTickUTC.getTime() + 10 * 60 * 1000);
+    }
+
+    let currentTickUTC = new Date(firstTickUTC);
+    let previousTickDateUTC = null;
+
+    while (currentTickUTC.getTime() <= endUTC.getTime()) {
+        const currentTickDateUTC = currentTickUTC.toISOString().split('T')[0];
+        const currentHourUTC = currentTickUTC.getUTCHours();
+        const currentMinutesUTC = currentTickUTC.getUTCMinutes();
+
+        const isDayCrossing = (previousTickDateUTC !== null && previousTickDateUTC !== currentTickDateUTC) ||
+                              (currentHourUTC === 0 && currentMinutesUTC === 0);
+
+        if (currentTickUTC.getTime() >= startUTC.getTime() && currentTickUTC.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: new Date(currentTickUTC),
+                localTime: new Date(currentTickUTC),
+                isDayCrossing: isDayCrossing
+            });
+        }
+
+        previousTickDateUTC = currentTickDateUTC;
+        currentTickUTC = new Date(currentTickUTC.getTime() + 10 * 60 * 1000);
+    }
+
+    return ticks;
+}
+
+/**
+ * Calculate 15-minute tick positions (UTC)
+ * Quantizes at 15-minute boundaries (00:00, 00:15, 00:30, 00:45, ..., 23:45 UTC)
+ * Fills the gap between 10-minute and 30-minute intervals
+ */
+export function calculateFifteenMinuteTicks(startUTC, endUTC) {
+    const ticks = [];
+    const startYear = startUTC.getUTCFullYear();
+    const startMonth = startUTC.getUTCMonth();
+    const startDay = startUTC.getUTCDate();
+    const startHours = startUTC.getUTCHours();
+    const startMinutes = startUTC.getUTCMinutes();
+
+    const roundedMinutes = Math.floor(startMinutes / 15) * 15;
+    let firstTickUTC = new Date(Date.UTC(startYear, startMonth, startDay, startHours, roundedMinutes, 0, 0));
+
+    if (firstTickUTC.getTime() < startUTC.getTime()) {
+        firstTickUTC = new Date(firstTickUTC.getTime() + 15 * 60 * 1000);
+    }
+
+    let currentTickUTC = new Date(firstTickUTC);
+    let previousTickDateUTC = null;
+
+    while (currentTickUTC.getTime() <= endUTC.getTime()) {
+        const currentTickDateUTC = currentTickUTC.toISOString().split('T')[0];
+        const currentHourUTC = currentTickUTC.getUTCHours();
+        const currentMinutesUTC = currentTickUTC.getUTCMinutes();
+
+        const isDayCrossing = (previousTickDateUTC !== null && previousTickDateUTC !== currentTickDateUTC) ||
+                              (currentHourUTC === 0 && currentMinutesUTC === 0);
+
+        if (currentTickUTC.getTime() >= startUTC.getTime() && currentTickUTC.getTime() <= endUTC.getTime()) {
+            ticks.push({
+                utcTime: new Date(currentTickUTC),
+                localTime: new Date(currentTickUTC),
+                isDayCrossing: isDayCrossing
+            });
+        }
+
+        previousTickDateUTC = currentTickDateUTC;
+        currentTickUTC = new Date(currentTickUTC.getTime() + 15 * 60 * 1000);
+    }
+
+    return ticks;
+}
+
+/**
  * Calculate 30-minute tick positions (UTC)
  * Quantizes at 30-minute boundaries (00:00, 00:30, 01:00, 01:30, ..., 23:30 UTC)
  * Used when region is less than 6 hours but 2+ hours
@@ -877,12 +1092,8 @@ export function resizeWaveformXAxisCanvas() {
     
     if (!waveformCanvas || !xAxisCanvas) return;
     
-    // Track maximum width seen so far
     const currentWidth = waveformCanvas.offsetWidth;
-    if (maxCanvasWidth === null || currentWidth > maxCanvasWidth) {
-        maxCanvasWidth = currentWidth;
-    }
-    
+
     // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
     if (xAxisCanvas.width !== currentWidth || xAxisCanvas.height !== 40) {
         xAxisCanvas.width = currentWidth;
