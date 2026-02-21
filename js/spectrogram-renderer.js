@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber, deleteRegion, deleteStandaloneFeature, renderStandaloneFeaturesList } from './region-tracker.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber, deleteRegion, deleteStandaloneFeature, renderStandaloneFeaturesList, updateFeature } from './region-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
@@ -222,7 +222,18 @@ function getClickedBox(x, y) {
         
         if (x_device >= boxX && x_device <= boxX + boxWidth &&
             y_device >= boxY && y_device <= boxY + boxHeight) {
-            return { regionIndex: box.regionIndex, featureIndex: box.featureIndex };
+            // Convert device-px box bounds back to CSS-px for screen positioning
+            const canvasRect = canvas.getBoundingClientRect();
+            return {
+                regionIndex: box.regionIndex,
+                featureIndex: box.featureIndex,
+                screenRect: {
+                    left:   canvasRect.left + boxX / scaleX,
+                    right:  canvasRect.left + (boxX + boxWidth) / scaleX,
+                    top:    canvasRect.top  + boxY / scaleY,
+                    bottom: canvasRect.top  + (boxY + boxHeight) / scaleY
+                }
+            };
         }
     }
     
@@ -297,6 +308,230 @@ function getClickedCloseButton(x, y) {
     }
 
     return null;
+}
+
+// ── Feature Info Popup (windowed mode) ──────────────────────────
+let featurePopupEl = null;
+let featurePopupCleanup = null; // stores outside-click / keydown listeners for teardown
+
+function formatTimeForPopup(isoString) {
+    if (!isoString) return '';
+    const d = new Date(isoString);
+    const h = d.getUTCHours();
+    const m = String(d.getUTCMinutes()).padStart(2, '0');
+    const s = String(d.getUTCSeconds()).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+}
+
+function closeFeaturePopup() {
+    if (featurePopupEl) {
+        featurePopupEl.remove();
+        featurePopupEl = null;
+    }
+    if (featurePopupCleanup) {
+        featurePopupCleanup();
+        featurePopupCleanup = null;
+    }
+}
+
+/**
+ * Show a popup to view/edit feature info (for windowed/standalone features).
+ * @param {{ regionIndex: number, featureIndex: number, screenRect?: {left,right,top,bottom} }} box
+ */
+function showFeaturePopup(box) {
+    // Close any existing popup first
+    closeFeaturePopup();
+
+    // Get feature data
+    let feature;
+    const isStandalone = box.regionIndex === -1;
+    if (isStandalone) {
+        const standalone = getStandaloneFeatures();
+        feature = standalone[box.featureIndex];
+    } else {
+        const regions = getCurrentRegions();
+        feature = regions[box.regionIndex]?.features?.[box.featureIndex];
+    }
+    if (!feature) return;
+
+    // Build popup DOM
+    const flatNum = getFlatFeatureNumber(box.regionIndex, box.featureIndex);
+    const popup = document.createElement('div');
+    popup.className = 'feature-popup';
+    popup.innerHTML = `
+        <div class="feature-popup-header">
+            <span class="feature-popup-title">Feature ${flatNum}</span>
+            <button class="feature-popup-close">&times;</button>
+        </div>
+        <div class="feature-popup-row">
+            <div class="feature-popup-field">
+                <label>Start Time (UTC)</label>
+                <input type="text" data-key="startTime" value="${formatTimeForPopup(feature.startTime)}" />
+            </div>
+            <div class="feature-popup-field">
+                <label>End Time (UTC)</label>
+                <input type="text" data-key="endTime" value="${formatTimeForPopup(feature.endTime)}" />
+            </div>
+        </div>
+        <div class="feature-popup-row">
+            <div class="feature-popup-field">
+                <label>Low Freq (Hz)</label>
+                <input type="text" data-key="lowFreq" value="${feature.lowFreq ? parseFloat(feature.lowFreq).toFixed(1) : ''}" />
+            </div>
+            <div class="feature-popup-field">
+                <label>High Freq (Hz)</label>
+                <input type="text" data-key="highFreq" value="${feature.highFreq ? parseFloat(feature.highFreq).toFixed(1) : ''}" />
+            </div>
+        </div>
+        <textarea class="feature-popup-notes" placeholder="Describe this feature...">${feature.notes || ''}</textarea>
+        <button class="feature-popup-save" disabled>Save</button>
+    `;
+
+    document.body.appendChild(popup);
+    featurePopupEl = popup;
+
+    // Position beside the feature box — whichever side has more room, vertically centered
+    const gap = 20;
+    const popupRect = popup.getBoundingClientRect();
+    const sr = box.screenRect;
+    let left, top;
+
+    if (sr) {
+        const spaceRight = window.innerWidth - sr.right;
+        const spaceLeft = sr.left;
+        const boxCenterY = (sr.top + sr.bottom) / 2;
+
+        if (spaceRight >= popupRect.width + gap || spaceRight >= spaceLeft) {
+            // Place to the right of the feature
+            left = sr.right + gap;
+        } else {
+            // Place to the left of the feature
+            left = sr.left - popupRect.width - gap;
+        }
+        top = boxCenterY - popupRect.height / 2;
+    } else {
+        // Fallback: center of viewport
+        left = (window.innerWidth - popupRect.width) / 2;
+        top = (window.innerHeight - popupRect.height) / 2;
+    }
+
+    // Clamp to viewport
+    const pad = 8;
+    left = Math.max(pad, Math.min(left, window.innerWidth - popupRect.width - pad));
+    top = Math.max(pad, Math.min(top, window.innerHeight - popupRect.height - pad));
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+
+    // Close button
+    popup.querySelector('.feature-popup-close').addEventListener('click', closeFeaturePopup);
+
+    // Draggable header
+    const header = popup.querySelector('.feature-popup-header');
+    let dragOffsetX = 0, dragOffsetY = 0, isDragging = false;
+    header.addEventListener('mousedown', (ev) => {
+        if (ev.target.closest('.feature-popup-close')) return; // don't drag from X button
+        isDragging = true;
+        dragOffsetX = ev.clientX - popup.offsetLeft;
+        dragOffsetY = ev.clientY - popup.offsetTop;
+        ev.preventDefault();
+    });
+    const onDragMove = (ev) => {
+        if (!isDragging) return;
+        popup.style.left = `${ev.clientX - dragOffsetX}px`;
+        popup.style.top = `${ev.clientY - dragOffsetY}px`;
+    };
+    const onDragUp = () => { isDragging = false; };
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragUp);
+
+    // Store drag cleanup so closeFeaturePopup removes them
+    const prevCleanup = featurePopupCleanup;
+    featurePopupCleanup = () => {
+        document.removeEventListener('mousemove', onDragMove);
+        document.removeEventListener('mouseup', onDragUp);
+        if (prevCleanup) prevCleanup();
+    };
+
+    // Grab references
+    const notesArea = popup.querySelector('.feature-popup-notes');
+    const saveBtn = popup.querySelector('.feature-popup-save');
+
+    // Auto-focus the notes textarea
+    requestAnimationFrame(() => {
+        notesArea.focus();
+        // Place cursor at end of existing text
+        notesArea.selectionStart = notesArea.selectionEnd = notesArea.value.length;
+    });
+
+    // Enable/disable save button based on notes content
+    function updateSaveState() {
+        const hasNotes = notesArea.value.trim().length > 0;
+        saveBtn.disabled = !hasNotes;
+    }
+    notesArea.addEventListener('input', updateSaveState);
+    updateSaveState();
+
+    // Save logic
+    function saveAndClose() {
+        if (isStandalone) {
+            const standalone = getStandaloneFeatures();
+            const f = standalone[box.featureIndex];
+            if (f) {
+                f.notes = notesArea.value.trim();
+                // Update editable fields if changed
+                popup.querySelectorAll('input[data-key]').forEach(input => {
+                    const key = input.dataset.key;
+                    const val = input.value.trim();
+                    if (val && key) f[key] = val;
+                });
+                saveStandaloneFeatures();
+                renderStandaloneFeaturesList();
+            }
+        } else {
+            updateFeature(box.regionIndex, box.featureIndex, 'notes', notesArea.value.trim());
+            popup.querySelectorAll('input[data-key]').forEach(input => {
+                const key = input.dataset.key;
+                const val = input.value.trim();
+                if (val && key) updateFeature(box.regionIndex, box.featureIndex, key, val);
+            });
+        }
+        closeFeaturePopup();
+    }
+
+    // Enter in notes → save
+    notesArea.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            saveAndClose();
+        }
+    });
+
+    saveBtn.addEventListener('click', saveAndClose);
+
+    // Close on Escape or click outside
+    function onKeyDown(e) {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            closeFeaturePopup();
+        }
+    }
+    function onClickOutside(e) {
+        if (featurePopupEl && !featurePopupEl.contains(e.target)) {
+            closeFeaturePopup();
+        }
+    }
+    // Delay attaching outside-click so the originating mousedown doesn't immediately close it
+    setTimeout(() => {
+        document.addEventListener('mousedown', onClickOutside, true);
+    }, 0);
+    document.addEventListener('keydown', onKeyDown, true);
+
+    const dragCleanup = featurePopupCleanup;
+    featurePopupCleanup = () => {
+        document.removeEventListener('mousedown', onClickOutside, true);
+        document.removeEventListener('keydown', onKeyDown, true);
+        if (dragCleanup) dragCleanup();
+    };
 }
 
 /**
@@ -1128,9 +1363,13 @@ export function setupSpectrogramSelection() {
         }
 
         const clickedBox = getClickedBox(clickX, clickY);
-        // In EMIC windowed modes, don't handle feature box clicks (click-to-seek instead)
+        // In EMIC windowed modes, show feature info popup on click
         const _modeSelectForBox = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
         const _isWindowedForBox = _modeSelectForBox && (_modeSelectForBox.value === 'static' || _modeSelectForBox.value === 'scroll' || _modeSelectForBox.value === 'pageTurn');
+        if (clickedBox && !spectrogramSelectionActive && _isWindowedForBox) {
+            showFeaturePopup(clickedBox);
+            return;
+        }
         if (clickedBox && !spectrogramSelectionActive && !_isWindowedForBox) {
             // Check if we're zoomed out - if so, zoom to the region
             if (!zoomState.isInRegion()) {

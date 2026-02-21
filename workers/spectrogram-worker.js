@@ -89,6 +89,39 @@ function fftInPlace(complex) {
     }
 }
 
+// ─── Magnitude → Uint8 lookup table (IEEE 754 bit trick) ────────────────────
+// Uses top 16 bits of float32 as index (sign + exponent + 7 mantissa bits).
+// This gives log-spaced coverage naturally — ~128 levels per octave.
+// Eliminates Math.log10, Math.max, Math.min, Math.round from the hot loop.
+const MAG_TO_UINT8 = new Uint8Array(65536);
+const _f32 = new Float32Array(1);
+const _u32 = new Uint32Array(_f32.buffer);
+let _lutDbFloor = NaN;
+let _lutDbRange = NaN;
+
+function buildMagLUT(dbFloor, dbRange) {
+    if (dbFloor === _lutDbFloor && dbRange === _lutDbRange) return;
+    _lutDbFloor = dbFloor;
+    _lutDbRange = dbRange;
+
+    for (let i = 0; i < 65536; i++) {
+        // Reconstruct float from top 16 bits
+        _u32[0] = i << 16;
+        const mag = _f32[0];
+
+        if (mag <= 0 || !isFinite(mag)) {
+            MAG_TO_UINT8[i] = 0;
+            continue;
+        }
+
+        const db = 20 * Math.log10(mag + 1e-10);
+        const normalized = (db - dbFloor) / dbRange;
+        if (normalized <= 0) { MAG_TO_UINT8[i] = 0; continue; }
+        if (normalized >= 1) { MAG_TO_UINT8[i] = 255; continue; }
+        MAG_TO_UINT8[i] = (normalized * 255 + 0.5) | 0;
+    }
+}
+
 // Pre-allocated FFT buffers (reused across calls to avoid GC pressure)
 let fftComplexBuf = null;   // Float32Array(N * 2)
 let fftMagnitudeBuf = null; // Float32Array(N / 2)
@@ -192,10 +225,16 @@ self.onmessage = function(e) {
             precomputeTwiddleFactors(fftSize);
         }
 
+        // Build magnitude → Uint8 lookup table (cached across tiles with same dB params)
+        buildMagLUT(dbFloor, dbRange);
+
         const frequencyBinCount = fftSize / 2;
         const segment = new Float32Array(fftSize);
-        // Pack directly into row-major Uint8: magnitudeData[bin * numTimeSlices + col]
         const magnitudeData = new Uint8Array(numTimeSlices * frequencyBinCount);
+
+        // Shared view for float→uint32 bit extraction
+        const lutF32 = new Float32Array(1);
+        const lutU32 = new Uint32Array(lutF32.buffer);
 
         for (let col = 0; col < numTimeSlices; col++) {
             const offset = col * hopSize;
@@ -207,11 +246,10 @@ self.onmessage = function(e) {
 
             const magnitudes = performFFT(segment);
 
-            // Convert to dB → Uint8 and pack row-major
+            // LUT-based magnitude → Uint8 (no log10, no branching)
             for (let bin = 0; bin < frequencyBinCount; bin++) {
-                const db = 20 * Math.log10(magnitudes[bin] + 1e-10);
-                const normalized = Math.max(0, Math.min(1, (db - dbFloor) / dbRange));
-                magnitudeData[bin * numTimeSlices + col] = Math.round(normalized * 255);
+                lutF32[0] = magnitudes[bin];
+                magnitudeData[bin * numTimeSlices + col] = MAG_TO_UINT8[lutU32[0] >>> 16];
             }
         }
 
@@ -226,31 +264,32 @@ self.onmessage = function(e) {
 
     if (type === 'compute-batch-uint8') {
         const { audioData, batchStart, batchEnd, fftSize, hopSize, window, dbFloor = -100, dbRange = 100 } = e.data;
-        
-        // Pre-compute twiddle factors once
+
         if (!twiddleCache || twiddleCacheSize !== fftSize) {
             precomputeTwiddleFactors(fftSize);
         }
-        
+
+        buildMagLUT(dbFloor, dbRange);
+
         const frequencyBinCount = fftSize / 2;
         const segment = new Float32Array(fftSize);
         const results = [];
-        
+        const lutF32 = new Float32Array(1);
+        const lutU32 = new Uint32Array(lutF32.buffer);
+
         for (let sliceIdx = batchStart; sliceIdx < batchEnd; sliceIdx++) {
             const relativeIdx = (sliceIdx - batchStart) * hopSize;
-            
+
             for (let i = 0; i < fftSize; i++) {
                 segment[i] = audioData[relativeIdx + i] * window[i];
             }
-            
+
             const magnitudes = performFFT(segment);
-            
-            // Convert to Uint8 normalized dB
+
             const uint8Magnitudes = new Uint8Array(frequencyBinCount);
             for (let k = 0; k < frequencyBinCount; k++) {
-                const db = 20 * Math.log10(magnitudes[k] + 1e-10);
-                const normalized = Math.max(0, Math.min(1, (db - dbFloor) / dbRange));
-                uint8Magnitudes[k] = Math.round(normalized * 255);
+                lutF32[0] = magnitudes[k];
+                uint8Magnitudes[k] = MAG_TO_UINT8[lutU32[0] >>> 16];
             }
             
             results.push({

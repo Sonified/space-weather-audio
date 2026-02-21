@@ -278,7 +278,7 @@ export function getStandaloneFeatures() {
 /**
  * Save standalone features and persist to localStorage
  */
-function saveStandaloneFeatures() {
+export function saveStandaloneFeatures() {
     try {
         const storageKey = getCurrentStorageKey();
         if (!storageKey) return;
