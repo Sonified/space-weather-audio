@@ -160,26 +160,8 @@ export function drawWaveformXAxis() {
         ctx.lineTo(x, 8); // Short line pointing up
         ctx.stroke();
         
-        // Format label based on whether it's a day crossing
-        // 🌍 ALWAYS display in UTC for space physics data
-        let label;
-        if (tick.isDayCrossing) {
-            // Show date in 11/12 format (mm/dd) - UTC date
-            const utcMonth = tick.utcTime.getUTCMonth() + 1; // 0-indexed
-            const utcDay = tick.utcTime.getUTCDate();
-            label = `${utcMonth}/${utcDay}`;
-        } else {
-            // Show time in international format (1:00 through 13:00 and 24:00) - UTC time
-            const utcHours = tick.utcTime.getUTCHours();
-            const utcMinutes = tick.utcTime.getUTCMinutes();
-
-            if (utcHours === 0 && utcMinutes === 0) {
-                label = '0:00'; // Midnight shown as 0:00 UTC
-            } else {
-                // 1:00 through 23:00 (no leading zero for single digits per international format)
-                label = `${utcHours}:${String(utcMinutes).padStart(2, '0')}`;
-            }
-        }
+        // Format label (handles H:MM, H:MM:SS, H:MM:SS.s, and date crossings)
+        const label = formatTickLabel(tick);
         
         // Draw label centered below the tick
         // Ensure text is visible (use CSS variable for consistent styling)
@@ -638,9 +620,16 @@ export function chooseTicks(startUTC, endUTC, canvasWidth, minPixelsPerTick = 44
     const timeSpanHours = timeSpanSeconds / 3600;
 
     // Ordered from finest to coarsest interval
-    // Each entry: [intervalSeconds, calculatorFn, minTimeSpanHours, maxTimeSpanHours]
+    // Each entry: [intervalSeconds, calculatorFn, minTimeSpanHours, maxTimeSpanHours, overrideMinPx]
     // minTimeSpan/maxTimeSpan prevent nonsensical combos (e.g. daily ticks for 30min data)
+    // overrideMinPx: wider labels (with seconds) need more spacing to avoid overlap
     const intervals = [
+        [0.1,       (s, e) => calculateSubMinuteTicks(s, e, 100),    0,    0.003,  100],  // 100ms ticks — labels like "12:30:00.1"
+        [0.5,       (s, e) => calculateSubMinuteTicks(s, e, 500),    0,    0.015,  100],  // 500ms ticks
+        [1,         (s, e) => calculateSubMinuteTicks(s, e, 1000),   0,    0.03,   80],   // 1s ticks — labels like "12:30:05"
+        [5,         (s, e) => calculateSubMinuteTicks(s, e, 5000),   0,    0.1,    80],   // 5s ticks
+        [10,        (s, e) => calculateSubMinuteTicks(s, e, 10000),  0,    0.2,    80],   // 10s ticks
+        [30,        (s, e) => calculateSubMinuteTicks(s, e, 30000),  0,    0.5,    80],   // 30s ticks
         [60,        calculateOneMinuteTicks,      0,    1],
         [300,       calculateFiveMinuteTicks,      0,    6],
         [600,       calculateTenMinuteTicks,       0.15, 8],
@@ -653,7 +642,7 @@ export function chooseTicks(startUTC, endUTC, canvasWidth, minPixelsPerTick = 44
     ];
 
     // Try each interval from finest to coarsest
-    for (const [intervalSec, calcFn, minSpanH, maxSpanH] of intervals) {
+    for (const [intervalSec, calcFn, minSpanH, maxSpanH, overrideMinPx] of intervals) {
         // Skip intervals that don't make sense for this time span
         if (timeSpanHours < minSpanH || timeSpanHours > maxSpanH) continue;
 
@@ -661,7 +650,9 @@ export function chooseTicks(startUTC, endUTC, canvasWidth, minPixelsPerTick = 44
         const estTickCount = timeSpanSeconds / intervalSec;
         const pixelsPerTick = canvasWidth / estTickCount;
 
-        if (pixelsPerTick >= minPixelsPerTick) {
+        // Sub-second/second labels are wider, so use overrideMinPx when specified
+        const effectiveMinPx = overrideMinPx || minPixelsPerTick;
+        if (pixelsPerTick >= effectiveMinPx) {
             return calcFn(startUTC, endUTC);
         }
     }
@@ -785,6 +776,104 @@ export function calculateTwoHourTicks(startUTC, endUTC) {
     }
 
     return ticks;
+}
+
+/**
+ * Generic sub-minute tick calculator (UTC)
+ * Works for any interval specified in milliseconds.
+ * Adds `showSeconds` and `showMilliseconds` flags to ticks for label formatting.
+ *
+ * @param {Date} startUTC - Start time
+ * @param {Date} endUTC - End time
+ * @param {number} intervalMs - Tick interval in milliseconds (e.g. 500 for half-second)
+ * @returns {Array} Array of tick objects
+ */
+export function calculateSubMinuteTicks(startUTC, endUTC, intervalMs) {
+    const ticks = [];
+
+    // Quantize start to the nearest interval boundary relative to the minute floor
+    const startMs = startUTC.getTime();
+    const endMs = endUTC.getTime();
+
+    // Floor to the start of the UTC minute, then align to interval boundary
+    const minuteFloorMs = startMs - (startMs % 60000);
+    // Find first interval boundary >= startMs
+    let firstTickMs = minuteFloorMs + Math.ceil((startMs - minuteFloorMs) / intervalMs) * intervalMs;
+
+    const needsSeconds = intervalMs < 60000;
+    const needsMilliseconds = intervalMs < 1000;
+
+    let previousTickDateUTC = null;
+    let currentMs = firstTickMs;
+
+    while (currentMs <= endMs) {
+        const tickTime = new Date(currentMs);
+        const currentTickDateUTC = tickTime.toISOString().split('T')[0];
+        const currentHourUTC = tickTime.getUTCHours();
+        const currentMinutesUTC = tickTime.getUTCMinutes();
+        const currentSecondsUTC = tickTime.getUTCSeconds();
+        const currentMillisUTC = tickTime.getUTCMilliseconds();
+
+        const isDayCrossing = (previousTickDateUTC !== null && previousTickDateUTC !== currentTickDateUTC) ||
+                              (currentHourUTC === 0 && currentMinutesUTC === 0 && currentSecondsUTC === 0 && currentMillisUTC === 0);
+
+        ticks.push({
+            utcTime: tickTime,
+            localTime: tickTime,
+            isDayCrossing,
+            showSeconds: needsSeconds,
+            showMilliseconds: needsMilliseconds
+        });
+
+        previousTickDateUTC = currentTickDateUTC;
+        currentMs += intervalMs;
+    }
+
+    return ticks;
+}
+
+/**
+ * Format a tick label for display on the x-axis.
+ * Handles hours:minutes, seconds, and sub-second precision based on tick properties.
+ *
+ * @param {Object} tick - Tick object with utcTime, isDayCrossing, showSeconds, showMilliseconds
+ * @returns {string} Formatted label string
+ */
+export function formatTickLabel(tick) {
+    if (tick.isDayCrossing) {
+        const utcMonth = tick.utcTime.getUTCMonth() + 1;
+        const utcDay = tick.utcTime.getUTCDate();
+        return `${utcMonth}/${utcDay}`;
+    }
+
+    const utcHours = tick.utcTime.getUTCHours();
+    const utcMinutes = tick.utcTime.getUTCMinutes();
+    const utcSeconds = tick.utcTime.getUTCSeconds();
+    const utcMillis = tick.utcTime.getUTCMilliseconds();
+
+    const hm = `${utcHours}:${String(utcMinutes).padStart(2, '0')}`;
+
+    if (tick.showMilliseconds) {
+        const ss = String(utcSeconds).padStart(2, '0');
+        if (utcMillis === 0) {
+            // On whole-second boundaries, just show H:MM:SS
+            return `${hm}:${ss}`;
+        }
+        // Show H:MM:SS.mmm with trailing zeros dropped
+        // e.g. 500 → ".5", 100 → ".1", 50 → ".05", 123 → ".123"
+        const msStr = String(utcMillis).padStart(3, '0').replace(/0+$/, '');
+        return `${hm}:${ss}.${msStr}`;
+    }
+
+    if (tick.showSeconds) {
+        return `${hm}:${String(utcSeconds).padStart(2, '0')}`;
+    }
+
+    // Default: H:MM
+    if (utcHours === 0 && utcMinutes === 0) {
+        return '0:00';
+    }
+    return hm;
 }
 
 /**

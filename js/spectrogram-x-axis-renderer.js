@@ -5,6 +5,7 @@
 
 import {
     chooseTicks,
+    formatTickLabel,
     getInterpolatedTimeRange
 } from './waveform-x-axis-renderer.js';
 
@@ -89,21 +90,8 @@ export function drawSpectrogramXAxis() {
         ctx.lineTo(x, 8);
         ctx.stroke();
 
-        // Format label
-        let label;
-        if (tick.isDayCrossing) {
-            const utcMonth = tick.utcTime.getUTCMonth() + 1;
-            const utcDay = tick.utcTime.getUTCDate();
-            label = `${utcMonth}/${utcDay}`;
-        } else {
-            const utcHours = tick.utcTime.getUTCHours();
-            const utcMinutes = tick.utcTime.getUTCMinutes();
-            if (utcHours === 0 && utcMinutes === 0) {
-                label = '0:00';
-            } else {
-                label = `${utcHours}:${String(utcMinutes).padStart(2, '0')}`;
-            }
-        }
+        // Format label (handles H:MM, H:MM:SS, H:MM:SS.s, and date crossings)
+        const label = formatTickLabel(tick);
 
         ctx.fillStyle = labelColor;
         if (tick.isDayCrossing) {

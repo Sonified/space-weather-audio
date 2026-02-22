@@ -23,7 +23,7 @@ import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgre
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
 import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumberFeatureBoxes } from './spectrogram-feature-boxes.js';
-import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, changeColormap, changeFftSize, changeFrequencyScale } from './spectrogram-renderer.js';
+import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, closeFeaturePopup, changeColormap, changeFftSize, changeFrequencyScale } from './spectrogram-renderer.js';
 import { switchComponent } from './component-selector.js';
 import { getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
 import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
@@ -325,6 +325,7 @@ function addStandaloneFeature(featureData) {
  */
 export function deleteStandaloneFeature(featureIndex) {
     if (featureIndex < 0 || featureIndex >= standaloneFeatures.length) return;
+    closeFeaturePopup();
     standaloneFeatures.splice(featureIndex, 1);
     saveStandaloneFeatures();
 }
@@ -605,9 +606,13 @@ export function loadRegionsAfterDataFetch() {
             console.log(`💾 Saved to localStorage for future sessions`);
         }
 
+        // Load standalone features BEFORE rebuilding canvas boxes
+        loadStandaloneFeatures();
+
         // 🔥 Render regions immediately (don't wait for crossfade)
         // Regions need to be visible as soon as data loads
         renderRegions();
+        renderStandaloneFeaturesList();
         redrawAllCanvasFeatureBoxes();
         drawWaveformWithSelection();
         console.log('✅ Rendered');
@@ -618,15 +623,17 @@ export function loadRegionsAfterDataFetch() {
     } else {
         console.log(`📂 No saved regions found`);
         if (regionGroupOpen) logGroupEnd();
+
+        // Load standalone features BEFORE rebuilding canvas boxes
+        loadStandaloneFeatures();
+
         // 🔧 CRITICAL: Still need to re-render to clear any old regions from display
         renderRegions();
+        renderStandaloneFeaturesList();
         redrawAllCanvasFeatureBoxes();
         drawWaveformWithSelection();
         updateCompleteButtonState();
     }
-
-    // Load standalone features (for windowed modes)
-    loadStandaloneFeatures();
 
     // Check for pending view settings (from shared links) and apply zoom after a delay
     const pendingViewSettings = sessionStorage.getItem('pendingSharedViewSettings');
@@ -1817,8 +1824,8 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         startY_device: Math.min(startY, endY).toFixed(1),
         endY_device: Math.max(startY, endY).toFixed(1),
         canvasHeight_device: canvasHeight,
-        lowFreq: lowFreq.toFixed(2),
-        highFreq: highFreq.toFixed(2),
+        lowFreq: lowFreq.toFixed(3),
+        highFreq: highFreq.toFixed(3),
         playbackRate: playbackRate.toFixed(2),
         frequencyScale: State.frequencyScale
     });
@@ -1886,8 +1893,8 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         const newFeature = {
             type: 'Impulsive',
             repetition: 'Unique',
-            lowFreq: lowFreq.toFixed(2),
-            highFreq: highFreq.toFixed(2),
+            lowFreq: lowFreq.toFixed(3),
+            highFreq: highFreq.toFixed(3),
             startTime: startTime || '',
             endTime: endTime || '',
             notes: '',
@@ -1895,7 +1902,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         };
         featureIndex = addStandaloneFeature(newFeature);
 
-        console.log('💾 SAVED standalone feature:', { featureIndex, lowFreq: lowFreq.toFixed(2), highFreq: highFreq.toFixed(2), startTime, endTime });
+        console.log('💾 SAVED standalone feature:', { featureIndex, lowFreq: lowFreq.toFixed(3), highFreq: highFreq.toFixed(3), startTime, endTime });
         console.log('🎯 ========== END Feature Selection ==========\n');
 
         // Rebuild canvas boxes (includes standalone features)
@@ -1929,8 +1936,8 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         console.log('💾 SAVED to feature data:', {
             regionIndex,
             featureIndex,
-            lowFreq: lowFreq.toFixed(2),
-            highFreq: highFreq.toFixed(2),
+            lowFreq: lowFreq.toFixed(3),
+            highFreq: highFreq.toFixed(3),
             startTime,
             endTime
         });
@@ -3320,7 +3327,7 @@ export function addFeature(regionIndex) {
 /**
  * Delete a specific feature
  */
-function deleteSpecificFeature(regionIndex, featureIndex) {
+export function deleteSpecificFeature(regionIndex, featureIndex) {
     const regions = getCurrentRegions();
     const region = regions[regionIndex];
 
@@ -3328,6 +3335,9 @@ function deleteSpecificFeature(regionIndex, featureIndex) {
         console.log('Cannot delete - minimum 1 feature required or attempting to delete first feature');
         return;
     }
+
+    // Close feature popup if it's open for this feature
+    closeFeaturePopup();
 
     // 🗑️ Remove the feature box from DOM
     removeFeatureBox(regionIndex, featureIndex);
@@ -3728,18 +3738,20 @@ export function zoomToRegion(regionIndex) {
     //     direction: zoomDirection,
     //     regionId: region.id
     // });
-    const renderPromise = renderCompleteSpectrogramForRegion(
-        regionStartSeconds,
-        regionEndSeconds,
-        true,  // renderInBackground = true
-        region.id,  // Pass region ID for tracking
-        {
-            // 🎯 Smart predictive rendering with quality zones
-            expandedStart: expandedStartSeconds,
-            expandedEnd: expandedEndSeconds,
-            direction: zoomDirection
-        }
-    );
+    // HIGH-RES RENDER DISABLED — using bottom pyramid level only
+    // const renderPromise = renderCompleteSpectrogramForRegion(
+    //     regionStartSeconds,
+    //     regionEndSeconds,
+    //     true,  // renderInBackground = true
+    //     region.id,  // Pass region ID for tracking
+    //     {
+    //         // 🎯 Smart predictive rendering with quality zones
+    //         expandedStart: expandedStartSeconds,
+    //         expandedEnd: expandedEndSeconds,
+    //         direction: zoomDirection
+    //     }
+    // );
+    const renderPromise = Promise.resolve();
     
     // 🎬 Animate with elastic friend - no waiting!
     // console.log('🎬 ⏱️ ZOOM ANIMATION START:', performance.now().toFixed(0) + 'ms');

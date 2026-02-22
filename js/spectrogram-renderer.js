@@ -5,8 +5,8 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber, deleteRegion, deleteStandaloneFeature, renderStandaloneFeaturesList, updateFeature } from './region-tracker.js';
+import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState, getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber, deleteRegion, deleteStandaloneFeature, deleteSpecificFeature, renderStandaloneFeaturesList, updateFeature } from './region-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
@@ -49,6 +49,16 @@ let spectrogramOverlayCtx = null;
 // Store completed boxes to redraw them all (replaces orange DOM boxes!)
 // NOTE: We rebuild this from actual feature data, so it stays in sync!
 let completedSelectionBoxes = [];
+
+// ── Feature box drag/resize state ──
+// Tracks in-progress move or edge/corner resize of an existing feature box.
+// Set on mousedown over a box, cleared on mouseup.
+let boxDragState = null;
+// { boxIndex, mode, startMouseX, startMouseY, origBox: {startTime, endTime, lowFreq, highFreq} }
+// mode: 'move' | 'edge-left' | 'edge-right' | 'edge-top' | 'edge-bottom'
+//       | 'corner-tl' | 'corner-tr' | 'corner-bl' | 'corner-br'
+let hoveredBoxInteraction = null; // current hover result for cursor + handle drawing
+let hoveredBoxKey = null; // "regionIndex-featureIndex" of mouse-hovered box (all modes)
 
 // Annotation fade timing (matches DOM approach)
 const ANNOTATION_FADE_IN_MS = 400;
@@ -310,9 +320,419 @@ function getClickedCloseButton(x, y) {
     return null;
 }
 
+/**
+ * Compute a box's device-pixel rect from its eternal coordinates.
+ * Returns { x, y, w, h } in device pixels, or null if state not ready.
+ */
+function getBoxDeviceRect(box) {
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas || !State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) return null;
+
+    const originalNyquist = State.originalDataFrequencyRange?.max || 50;
+    const playbackRate = State.currentPlaybackRate || 1.0;
+    const scaleTransition = getScaleTransitionState();
+    let lowY, highY;
+
+    if (scaleTransition.inProgress && scaleTransition.oldScaleType) {
+        const oL = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
+        const nL = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        const oH = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
+        const nH = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        lowY = oL + (nL - oL) * scaleTransition.interpolationFactor;
+        highY = oH + (nH - oH) * scaleTransition.interpolationFactor;
+    } else {
+        lowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        highY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+    }
+
+    const range = getInterpolatedTimeRange();
+    const dStartMs = range.startTime.getTime();
+    const dSpanMs = range.endTime.getTime() - dStartMs;
+    const sMs = new Date(box.startTime).getTime();
+    const eMs = new Date(box.endTime).getTime();
+    const sX = ((sMs - dStartMs) / dSpanMs) * canvas.width;
+    const eX = ((eMs - dStartMs) / dSpanMs) * canvas.width;
+
+    return {
+        x: Math.min(sX, eX),
+        y: Math.min(highY, lowY),
+        w: Math.abs(eX - sX),
+        h: Math.abs(lowY - highY),
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height
+    };
+}
+
+/**
+ * Determine what interaction a mouse position (CSS px) implies on a feature box.
+ * Returns { boxIndex, mode, screenRect } or null.
+ * mode: 'move' | 'edge-left' | 'edge-right' | 'edge-top' | 'edge-bottom'
+ *     | 'corner-tl' | 'corner-tr' | 'corner-bl' | 'corner-br'
+ */
+function getBoxInteraction(cssX, cssY) {
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return null;
+
+    const scaleX = canvas.width / canvas.offsetWidth;
+    const scaleY = canvas.height / canvas.offsetHeight;
+    const dx = cssX * scaleX;
+    const dy = cssY * scaleY;
+
+    const edgeTol = 4;
+    const cornerTol = 5;
+
+    for (let i = 0; i < completedSelectionBoxes.length; i++) {
+        const rect = getBoxDeviceRect(completedSelectionBoxes[i]);
+        if (!rect) continue;
+
+        const { x, y, w, h } = rect;
+        // Is mouse within the box (with edge tolerance extending outward)?
+        if (dx < x - edgeTol || dx > x + w + edgeTol || dy < y - edgeTol || dy > y + h + edgeTol) continue;
+
+        // Check corners first (higher priority)
+        const nearLeft = Math.abs(dx - x) <= cornerTol;
+        const nearRight = Math.abs(dx - (x + w)) <= cornerTol;
+        const nearTop = Math.abs(dy - y) <= cornerTol;
+        const nearBottom = Math.abs(dy - (y + h)) <= cornerTol;
+
+        let mode;
+        if (nearLeft && nearTop) mode = 'corner-tl';
+        else if (nearRight && nearTop) mode = 'corner-tr';
+        else if (nearLeft && nearBottom) mode = 'corner-bl';
+        else if (nearRight && nearBottom) mode = 'corner-br';
+        else if (nearLeft && dy > y && dy < y + h) mode = 'edge-left';
+        else if (nearRight && dy > y && dy < y + h) mode = 'edge-right';
+        else if (nearTop && dx > x && dx < x + w) mode = 'edge-top';
+        else if (nearBottom && dx > x && dx < x + w) mode = 'edge-bottom';
+        else if (dx >= x && dx <= x + w && dy >= y && dy <= y + h) mode = 'move';
+        else continue;
+
+        const canvasRect = canvas.getBoundingClientRect();
+        return {
+            boxIndex: i,
+            mode,
+            screenRect: {
+                left: canvasRect.left + x / scaleX,
+                right: canvasRect.left + (x + w) / scaleX,
+                top: canvasRect.top + y / scaleY,
+                bottom: canvasRect.top + (y + h) / scaleY
+            }
+        };
+    }
+    return null;
+}
+
+/**
+ * Get the CSS cursor for a box interaction mode.
+ */
+function getCursorForMode(mode) {
+    if (!mode) return null;
+    switch (mode) {
+        case 'move': return 'grab';
+        case 'edge-left': case 'edge-right': return 'ew-resize';
+        case 'edge-top': case 'edge-bottom': return 'ns-resize';
+        case 'corner-tl': case 'corner-br': return 'nwse-resize';
+        case 'corner-tr': case 'corner-bl': return 'nesw-resize';
+        default: return null;
+    }
+}
+
+/**
+ * Convert a device-pixel X position to an ISO timestamp string.
+ */
+function deviceXToTimestamp(deviceX, canvasWidth) {
+    const range = getInterpolatedTimeRange();
+    const dStartMs = range.startTime.getTime();
+    const dEndMs = range.endTime.getTime();
+    const progress = deviceX / canvasWidth;
+    return new Date(dStartMs + progress * (dEndMs - dStartMs)).toISOString();
+}
+
+/**
+ * Convert a device-pixel Y position to a frequency (Hz).
+ * Inverse of getYPositionForFrequencyScaled — inlined from region-tracker.js
+ */
+function deviceYToFrequency(deviceY, canvasHeight) {
+    const originalNyquist = State.originalDataFrequencyRange?.max || 50;
+    const playbackRate = State.currentPlaybackRate || 1.0;
+    const scaleType = State.frequencyScale;
+    const minFreq = getLogScaleMinFreq();
+
+    if (scaleType === 'logarithmic') {
+        // Exact inverse of getYPositionForFrequencyScaled log path:
+        // forward: heightFromBottom_scaled = (normalizedLog * canvasHeight) * stretchFactor
+        //          deviceY = canvasHeight - heightFromBottom_scaled
+        const logMin = Math.log10(minFreq);
+        const logMax = Math.log10(originalNyquist);
+        const logRange = logMax - logMin;
+
+        // Replicate calculateStretchFactorForLog inline (not exported)
+        const targetMaxFreq = originalNyquist / playbackRate;
+        const logTargetMax = Math.log10(Math.max(targetMaxFreq, minFreq));
+        const targetLogRange = logTargetMax - logMin;
+        const stretchFactor = 1 / (targetLogRange / logRange);
+
+        const heightFromBottom_scaled = canvasHeight - deviceY;
+        const heightFromBottom_1x = heightFromBottom_scaled / stretchFactor;
+        const normalizedLog = heightFromBottom_1x / canvasHeight;
+        const logFreq = logMin + normalizedLog * logRange;
+        return Math.pow(10, logFreq);
+    } else {
+        // Exact inverse of linear/sqrt path:
+        // forward: effectiveFreq = freq * playbackRate; normalized = (effectiveFreq - minFreq) / (nyquist - minFreq)
+        const normalizedFromBottom = (canvasHeight - deviceY) / canvasHeight;
+        if (scaleType === 'sqrt') {
+            const normalized = normalizedFromBottom * normalizedFromBottom; // undo sqrt
+            const effectiveFreq = normalized * (originalNyquist - minFreq) + minFreq;
+            return effectiveFreq / playbackRate;
+        } else {
+            const effectiveFreq = normalizedFromBottom * (originalNyquist - minFreq) + minFreq;
+            return effectiveFreq / playbackRate;
+        }
+    }
+}
+
+// ── Box Drag/Resize Handlers (self-contained, independent of selection system) ──
+
+let boxDragWasDrag = false;
+let boxDragStartX = null;
+let boxDragStartY = null;
+
+/**
+ * Mousedown handler for box drag/resize. Returns true if event was claimed.
+ */
+function handleBoxDragDown(e, canvas) {
+    const _mode = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+    const isWindowed = _mode && (_mode.value === 'static' || _mode.value === 'scroll' || _mode.value === 'pageTurn');
+    if (!isWindowed) return false;
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - canvasRect.left;
+    const clickY = e.clientY - canvasRect.top;
+
+    // Check interaction (edges, corners, interior) — this has tolerance that extends outside box
+    const interaction = getBoxInteraction(clickX, clickY);
+    const clickedBox = getClickedBox(clickX, clickY);
+
+    if (!interaction && !clickedBox) return false;
+
+    if (interaction) {
+        const box = completedSelectionBoxes[interaction.boxIndex];
+        boxDragState = {
+            boxIndex: interaction.boxIndex,
+            mode: interaction.mode,
+            startMouseX: clickX,
+            startMouseY: clickY,
+            origBox: { startTime: box.startTime, endTime: box.endTime, lowFreq: box.lowFreq, highFreq: box.highFreq },
+            clickedBox: clickedBox || { regionIndex: box.regionIndex, featureIndex: box.featureIndex }
+        };
+        boxDragWasDrag = false;
+        boxDragStartX = clickX;
+        boxDragStartY = clickY;
+    } else {
+        // Inside box but no interaction mode — toggle popup
+        if (featurePopupEl && popupFeatureBox &&
+            popupFeatureBox.regionIndex === clickedBox.regionIndex &&
+            popupFeatureBox.featureIndex === clickedBox.featureIndex) {
+            closeFeaturePopup();
+        } else {
+            showFeaturePopup(clickedBox);
+        }
+    }
+    return true; // claimed either way (don't start a selection on a box)
+}
+
+/**
+ * Mousemove handler for box drag/resize. Returns true if event was claimed.
+ * Also sets hover cursors for box edges/corners (even when not dragging).
+ */
+function handleBoxDragMove(e, canvas) {
+    const canvasRect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - canvasRect.left;
+    const mouseY = e.clientY - canvasRect.top;
+
+    // Active drag — apply movement
+    if (boxDragState) {
+        if (!boxDragWasDrag) {
+            const ddx = Math.abs(mouseX - boxDragStartX);
+            const ddy = Math.abs(mouseY - boxDragStartY);
+            if (Math.max(ddx, ddy) >= 5) {
+                boxDragWasDrag = true;
+            }
+        }
+
+        if (boxDragWasDrag) {
+            canvas.style.cursor = boxDragState.mode === 'move' ? 'grabbing' : getCursorForMode(boxDragState.mode);
+
+            const scaleX = canvas.width / canvas.offsetWidth;
+            const scaleY = canvas.height / canvas.offsetHeight;
+            const startDevX = boxDragState.startMouseX * scaleX;
+            const startDevY = boxDragState.startMouseY * scaleY;
+            const curDevX = mouseX * scaleX;
+            const curDevY = mouseY * scaleY;
+
+            const startTsMs = new Date(deviceXToTimestamp(startDevX, canvas.width)).getTime();
+            const curTsMs = new Date(deviceXToTimestamp(curDevX, canvas.width)).getTime();
+            const dtMs = curTsMs - startTsMs;
+
+            const pixelDeltaY = curDevY - startDevY;
+            const origNyquist = State.originalDataFrequencyRange?.max || 50;
+            const pr = State.currentPlaybackRate || 1.0;
+            const freqToPixY = (f) => getYPositionForFrequencyScaled(f, origNyquist, canvas.height, State.frequencyScale, pr);
+
+            const orig = boxDragState.origBox;
+            const box = completedSelectionBoxes[boxDragState.boxIndex];
+            const mode = boxDragState.mode;
+
+            if (mode === 'move') {
+                box.startTime = new Date(new Date(orig.startTime).getTime() + dtMs).toISOString();
+                box.endTime = new Date(new Date(orig.endTime).getTime() + dtMs).toISOString();
+                box.lowFreq = deviceYToFrequency(freqToPixY(orig.lowFreq) + pixelDeltaY, canvas.height);
+                box.highFreq = deviceYToFrequency(freqToPixY(orig.highFreq) + pixelDeltaY, canvas.height);
+            } else {
+                if (mode === 'edge-left' || mode === 'corner-tl' || mode === 'corner-bl')
+                    box.startTime = new Date(new Date(orig.startTime).getTime() + dtMs).toISOString();
+                if (mode === 'edge-right' || mode === 'corner-tr' || mode === 'corner-br')
+                    box.endTime = new Date(new Date(orig.endTime).getTime() + dtMs).toISOString();
+                if (mode === 'edge-top' || mode === 'corner-tl' || mode === 'corner-tr')
+                    box.highFreq = deviceYToFrequency(freqToPixY(orig.highFreq) + pixelDeltaY, canvas.height);
+                if (mode === 'edge-bottom' || mode === 'corner-bl' || mode === 'corner-br')
+                    box.lowFreq = deviceYToFrequency(freqToPixY(orig.lowFreq) + pixelDeltaY, canvas.height);
+            }
+
+            redrawCanvasBoxes();
+            syncPopupFieldsFromBox(box);
+        }
+        return true;
+    }
+
+    // Don't claim hover events during an active selection drag
+    if (spectrogramSelectionActive) return false;
+
+    // Not dragging — set hover cursor for box edges/corners (windowed mode only)
+    const _modeHover = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+    const isWindowed = _modeHover && (_modeHover.value === 'static' || _modeHover.value === 'scroll' || _modeHover.value === 'pageTurn');
+    const interaction = isWindowed ? getBoxInteraction(mouseX, mouseY) : null;
+    hoveredBoxInteraction = interaction;
+
+    // Track hovered box for brightness highlight (windowed mode)
+    if (interaction) {
+        const box = completedSelectionBoxes[interaction.boxIndex];
+        const newKey = box ? `${box.regionIndex}-${box.featureIndex}` : null;
+        if (newKey !== hoveredBoxKey) {
+            hoveredBoxKey = newKey;
+            redrawCanvasBoxes();
+        }
+        canvas.style.cursor = interaction.mode === 'move' ? 'pointer' : getCursorForMode(interaction.mode);
+        return true;
+    }
+    // Clear hover when mouse leaves all boxes
+    if (hoveredBoxKey !== null) {
+        hoveredBoxKey = null;
+        redrawCanvasBoxes();
+    }
+    return false;
+}
+
+/**
+ * Mouseup handler for box drag/resize. Returns true if event was claimed.
+ */
+function handleBoxDragUp(e, canvas) {
+    if (!boxDragState) return false;
+
+    const wasBoxDrag = boxDragWasDrag;
+    const savedClickedBox = boxDragState.clickedBox;
+
+    if (wasBoxDrag) {
+        const box = completedSelectionBoxes[boxDragState.boxIndex];
+        const isStandalone = box.regionIndex === -1;
+        if (isStandalone) {
+            const features = getStandaloneFeatures();
+            const feature = features[box.featureIndex];
+            if (feature) {
+                feature.startTime = box.startTime;
+                feature.endTime = box.endTime;
+                feature.lowFreq = box.lowFreq;
+                feature.highFreq = box.highFreq;
+                saveStandaloneFeatures();
+            }
+        } else {
+            const regions = getCurrentRegions();
+            const feature = regions[box.regionIndex]?.features?.[box.featureIndex];
+            if (feature) {
+                feature.startTime = box.startTime;
+                feature.endTime = box.endTime;
+                feature.lowFreq = box.lowFreq;
+                feature.highFreq = box.highFreq;
+                updateFeature(box.regionIndex, box.featureIndex, feature);
+            }
+        }
+        redrawAllCanvasFeatureBoxes();
+    } else {
+        // Toggle popup — close if same feature, open otherwise
+        if (featurePopupEl && popupFeatureBox &&
+            popupFeatureBox.regionIndex === savedClickedBox.regionIndex &&
+            popupFeatureBox.featureIndex === savedClickedBox.featureIndex) {
+            closeFeaturePopup();
+        } else {
+            showFeaturePopup(savedClickedBox);
+        }
+    }
+
+    boxDragState = null;
+    boxDragWasDrag = false;
+    boxDragStartX = null;
+    boxDragStartY = null;
+    canvas.style.cursor = 'default';
+    return true;
+}
+
+/** Cancel an in-progress box drag (restores original coordinates). */
+function cancelBoxDrag() {
+    if (!boxDragState) return;
+    const box = completedSelectionBoxes[boxDragState.boxIndex];
+    if (box) {
+        box.startTime = boxDragState.origBox.startTime;
+        box.endTime = boxDragState.origBox.endTime;
+        box.lowFreq = boxDragState.origBox.lowFreq;
+        box.highFreq = boxDragState.origBox.highFreq;
+    }
+    boxDragState = null;
+    boxDragWasDrag = false;
+    boxDragStartX = null;
+    boxDragStartY = null;
+    redrawCanvasBoxes();
+}
+
 // ── Feature Info Popup (windowed mode) ──────────────────────────
 let featurePopupEl = null;
 let featurePopupCleanup = null; // stores outside-click / keydown listeners for teardown
+let popupFeatureBox = null;     // { regionIndex, featureIndex } of the popup's feature
+let popupPinOffset = null;      // { dx, dy } drag offset from computed pinned position
+
+/**
+ * Update the popup's time/freq inputs to reflect the current box values (live drag).
+ * Skips any input that has focus so we don't fight user edits.
+ */
+function syncPopupFieldsFromBox(box) {
+    if (!featurePopupEl) return;
+    const inputs = featurePopupEl.querySelectorAll('.feature-popup-field input');
+    for (const input of inputs) {
+        if (document.activeElement === input) continue;
+        const key = input.dataset.key;
+        if (key === 'startTime') {
+            input.value = formatTimeForPopup(box.startTime);
+            input.dataset.original = box.startTime || '';
+        } else if (key === 'endTime') {
+            input.value = formatTimeForPopup(box.endTime);
+            input.dataset.original = box.endTime || '';
+        } else if (key === 'lowFreq') {
+            input.value = box.lowFreq ? parseFloat(box.lowFreq).toFixed(3) : '';
+        } else if (key === 'highFreq') {
+            input.value = box.highFreq ? parseFloat(box.highFreq).toFixed(3) : '';
+        }
+    }
+}
 
 function formatTimeForPopup(isoString) {
     if (!isoString) return '';
@@ -323,7 +743,21 @@ function formatTimeForPopup(isoString) {
     return `${h}:${m}:${s}`;
 }
 
-function closeFeaturePopup() {
+/**
+ * Convert a short time string (e.g. "3:15:00") back to a full ISO string,
+ * preserving the date from the original ISO value.
+ */
+function parsePopupTimeToISO(shortTime, originalISO) {
+    if (!shortTime || !originalISO) return shortTime;
+    const orig = new Date(originalISO);
+    if (isNaN(orig.getTime())) return shortTime;
+    const parts = shortTime.split(':').map(Number);
+    if (parts.length < 2 || parts.some(isNaN)) return shortTime;
+    orig.setUTCHours(parts[0], parts[1], parts[2] || 0, 0);
+    return orig.toISOString();
+}
+
+export function closeFeaturePopup() {
     if (featurePopupEl) {
         featurePopupEl.remove();
         featurePopupEl = null;
@@ -332,6 +766,73 @@ function closeFeaturePopup() {
         featurePopupCleanup();
         featurePopupCleanup = null;
     }
+    popupFeatureBox = null;
+    popupPinOffset = null;
+}
+
+/**
+ * Compute the screen rect for a feature box (CSS pixels).
+ * Returns { left, right, top, bottom } or null if off-screen / not ready.
+ */
+function getScreenRectForBox(box) {
+    const rect = getBoxDeviceRect(box);
+    if (!rect) return null;
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return null;
+    const canvasRect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / canvas.offsetWidth;
+    const scaleY = canvas.height / canvas.offsetHeight;
+    return {
+        left:   canvasRect.left + rect.x / scaleX,
+        right:  canvasRect.left + (rect.x + rect.w) / scaleX,
+        top:    canvasRect.top  + rect.y / scaleY,
+        bottom: canvasRect.top  + (rect.y + rect.h) / scaleY
+    };
+}
+
+/**
+ * Position a popup element beside a screen rect.
+ * Returns { left, top } — the computed anchor position (before any drag offset).
+ */
+function positionPopupBesideRect(popup, sr, offset) {
+    const gap = 20;
+    const popupRect = popup.getBoundingClientRect();
+    let left, top;
+
+    if (sr) {
+        const spaceRight = window.innerWidth - sr.right;
+        const spaceLeft = sr.left;
+        const boxCenterY = (sr.top + sr.bottom) / 2;
+
+        if (spaceRight >= popupRect.width + gap || spaceRight >= spaceLeft) {
+            left = sr.right + gap;
+        } else {
+            left = sr.left - popupRect.width - gap;
+        }
+        top = boxCenterY - popupRect.height / 2;
+    } else {
+        left = (window.innerWidth - popupRect.width) / 2;
+        top = (window.innerHeight - popupRect.height) / 2;
+    }
+
+    // Store anchor position before offset
+    const anchorLeft = left;
+    const anchorTop = top;
+
+    // Apply drag offset if any
+    if (offset) {
+        left += offset.dx;
+        top += offset.dy;
+    }
+
+    // Clamp to viewport
+    const pad = 8;
+    left = Math.max(pad, Math.min(left, window.innerWidth - popupRect.width - pad));
+    top = Math.max(pad, Math.min(top, window.innerHeight - popupRect.height - pad));
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+
+    return { left: anchorLeft, top: anchorTop };
 }
 
 /**
@@ -341,6 +842,10 @@ function closeFeaturePopup() {
 function showFeaturePopup(box) {
     // Close any existing popup first
     closeFeaturePopup();
+
+    // Track which feature this popup belongs to
+    popupFeatureBox = { regionIndex: box.regionIndex, featureIndex: box.featureIndex };
+    popupPinOffset = null;
 
     // Get feature data
     let feature;
@@ -356,31 +861,60 @@ function showFeaturePopup(box) {
 
     // Build popup DOM
     const flatNum = getFlatFeatureNumber(box.regionIndex, box.featureIndex);
+    const isAdvanced = document.getElementById('advancedMode')?.checked;
+    const canDelete = isStandalone || (box.featureIndex > 0 && getCurrentRegions()[box.regionIndex]?.features?.length > 1);
     const popup = document.createElement('div');
     popup.className = 'feature-popup';
     popup.innerHTML = `
         <div class="feature-popup-header">
-            <span class="feature-popup-title">Feature ${flatNum}</span>
-            <button class="feature-popup-close">&times;</button>
+            <span class="feature-popup-title">Feature <strong>${flatNum}</strong></span>
+            <div class="feature-popup-header-buttons">
+                <span class="feature-popup-gear" role="button" aria-label="Feature settings" style="display:${isAdvanced ? 'inline-flex' : 'none'}">&#9881;</span>
+                ${canDelete ? '<button class="feature-popup-delete" title="Delete this feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>' : ''}
+                <button class="feature-popup-close" title="Close">&times;</button>
+            </div>
+        </div>
+        <div class="feature-popup-settings">
+            <div class="feature-popup-settings-row">
+                <span class="feature-popup-settings-label">Color</span>
+                <div class="feature-popup-settings-options" data-setting="feature_popup_color">
+                    <button data-value="light-on-dark" class="active">Light on Dark</button>
+                    <button data-value="dark-on-light">Dark on Light</button>
+                </div>
+            </div>
+            <div class="feature-popup-settings-row">
+                <span class="feature-popup-settings-label">Theme</span>
+                <div class="feature-popup-settings-options" data-setting="feature_popup_theme">
+                    <button data-value="standard" class="active">Standard</button>
+                    <button data-value="match-colormap">Match Colormap</button>
+                </div>
+            </div>
+            <div class="feature-popup-settings-row">
+                <span class="feature-popup-settings-label">Pin</span>
+                <div class="feature-popup-settings-options" data-setting="feature_popup_pin">
+                    <button data-value="static" class="active">Static</button>
+                    <button data-value="to-feature">To Feature</button>
+                </div>
+            </div>
         </div>
         <div class="feature-popup-row">
             <div class="feature-popup-field">
                 <label>Start Time (UTC)</label>
-                <input type="text" data-key="startTime" value="${formatTimeForPopup(feature.startTime)}" />
+                <input type="text" data-key="startTime" data-original="${feature.startTime || ''}" value="${formatTimeForPopup(feature.startTime)}" />
             </div>
             <div class="feature-popup-field">
                 <label>End Time (UTC)</label>
-                <input type="text" data-key="endTime" value="${formatTimeForPopup(feature.endTime)}" />
+                <input type="text" data-key="endTime" data-original="${feature.endTime || ''}" value="${formatTimeForPopup(feature.endTime)}" />
             </div>
         </div>
         <div class="feature-popup-row">
             <div class="feature-popup-field">
                 <label>Low Freq (Hz)</label>
-                <input type="text" data-key="lowFreq" value="${feature.lowFreq ? parseFloat(feature.lowFreq).toFixed(1) : ''}" />
+                <input type="text" data-key="lowFreq" value="${feature.lowFreq ? parseFloat(feature.lowFreq).toFixed(3) : ''}" />
             </div>
             <div class="feature-popup-field">
                 <label>High Freq (Hz)</label>
-                <input type="text" data-key="highFreq" value="${feature.highFreq ? parseFloat(feature.highFreq).toFixed(1) : ''}" />
+                <input type="text" data-key="highFreq" value="${feature.highFreq ? parseFloat(feature.highFreq).toFixed(3) : ''}" />
             </div>
         </div>
         <textarea class="feature-popup-notes" placeholder="Describe this feature...">${feature.notes || ''}</textarea>
@@ -390,57 +924,118 @@ function showFeaturePopup(box) {
     document.body.appendChild(popup);
     featurePopupEl = popup;
 
-    // Position beside the feature box — whichever side has more room, vertically centered
-    const gap = 20;
-    const popupRect = popup.getBoundingClientRect();
-    const sr = box.screenRect;
-    let left, top;
+    // ── Gear settings logic ──
+    const gearBtn = popup.querySelector('.feature-popup-gear');
+    const settingsPanel = popup.querySelector('.feature-popup-settings');
 
-    if (sr) {
-        const spaceRight = window.innerWidth - sr.right;
-        const spaceLeft = sr.left;
-        const boxCenterY = (sr.top + sr.bottom) / 2;
+    gearBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        settingsPanel.classList.toggle('open');
+    });
 
-        if (spaceRight >= popupRect.width + gap || spaceRight >= spaceLeft) {
-            // Place to the right of the feature
-            left = sr.right + gap;
-        } else {
-            // Place to the left of the feature
-            left = sr.left - popupRect.width - gap;
-        }
-        top = boxCenterY - popupRect.height / 2;
-    } else {
-        // Fallback: center of viewport
-        left = (window.innerWidth - popupRect.width) / 2;
-        top = (window.innerHeight - popupRect.height) / 2;
+    // Apply saved settings and wire up buttons
+    function applyPopupSettings() {
+        const colorMode = localStorage.getItem('feature_popup_color') || 'light-on-dark';
+        const themeMode = localStorage.getItem('feature_popup_theme') || 'standard';
+
+        popup.classList.toggle('feature-popup--dark-on-light', colorMode === 'dark-on-light');
+        popup.classList.toggle('feature-popup--match-colormap', themeMode === 'match-colormap');
+
+        // Update active button states
+        settingsPanel.querySelectorAll('.feature-popup-settings-options').forEach(group => {
+            const setting = group.dataset.setting;
+            const currentVal = localStorage.getItem(setting) || group.querySelector('button').dataset.value;
+            group.querySelectorAll('button').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.value === currentVal);
+            });
+        });
     }
 
-    // Clamp to viewport
-    const pad = 8;
-    left = Math.max(pad, Math.min(left, window.innerWidth - popupRect.width - pad));
-    top = Math.max(pad, Math.min(top, window.innerHeight - popupRect.height - pad));
-    popup.style.left = `${left}px`;
-    popup.style.top = `${top}px`;
+    settingsPanel.querySelectorAll('.feature-popup-settings-options button').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const group = btn.closest('.feature-popup-settings-options');
+            const setting = group.dataset.setting;
+            localStorage.setItem(setting, btn.dataset.value);
+
+            // Handle pin mode transitions
+            if (setting === 'feature_popup_pin') {
+                if (btn.dataset.value === 'to-feature') {
+                    // Switching to pinned — reset offset and snap to feature
+                    popupPinOffset = null;
+                    updatePinnedPopupPosition();
+                }
+                // Switching to static — popup stays where it is, no action needed
+            }
+
+            applyPopupSettings();
+        });
+    });
+
+    applyPopupSettings();
+
+    // Position beside the feature box
+    positionPopupBesideRect(popup, box.screenRect, null);
+
+    // Forward wheel events to the spectrogram canvas so pan momentum isn't killed
+    popup.addEventListener('wheel', (e) => {
+        const canvas = document.getElementById('spectrogram');
+        if (canvas) {
+            canvas.dispatchEvent(new WheelEvent('wheel', e));
+            e.preventDefault();
+        }
+    }, { passive: false });
 
     // Close button
     popup.querySelector('.feature-popup-close').addEventListener('click', closeFeaturePopup);
 
+    // Delete button with confirmation
+    popup.querySelector('.feature-popup-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isStandalone = box.regionIndex === -1;
+        const label = `Feature ${getFlatFeatureNumber(box.regionIndex, box.featureIndex)}`;
+        if (confirm(`Delete ${label}? This cannot be undone.`)) {
+            if (isStandalone) {
+                deleteStandaloneFeature(box.featureIndex);
+                redrawAllCanvasFeatureBoxes();
+                renderStandaloneFeaturesList();
+            } else {
+                deleteSpecificFeature(box.regionIndex, box.featureIndex);
+            }
+        }
+    });
+
     // Draggable header
     const header = popup.querySelector('.feature-popup-header');
     let dragOffsetX = 0, dragOffsetY = 0, isDragging = false;
+    let dragStartLeft = 0, dragStartTop = 0;
     header.addEventListener('mousedown', (ev) => {
-        if (ev.target.closest('.feature-popup-close')) return; // don't drag from X button
+        if (ev.target.closest('.feature-popup-close') || ev.target.closest('.feature-popup-gear') || ev.target.closest('.feature-popup-delete')) return;
         isDragging = true;
         dragOffsetX = ev.clientX - popup.offsetLeft;
         dragOffsetY = ev.clientY - popup.offsetTop;
+        dragStartLeft = popup.offsetLeft;
+        dragStartTop = popup.offsetTop;
         ev.preventDefault();
     });
     const onDragMove = (ev) => {
         if (!isDragging) return;
-        popup.style.left = `${ev.clientX - dragOffsetX}px`;
-        popup.style.top = `${ev.clientY - dragOffsetY}px`;
+        const newLeft = ev.clientX - dragOffsetX;
+        const newTop = ev.clientY - dragOffsetY;
+        popup.style.left = `${newLeft}px`;
+        popup.style.top = `${newTop}px`;
     };
-    const onDragUp = () => { isDragging = false; };
+    const onDragUp = () => {
+        if (!isDragging) return;
+        // In pinned mode, store cumulative drag offset
+        const pinMode = localStorage.getItem('feature_popup_pin') || 'static';
+        if (pinMode === 'to-feature') {
+            const dx = (popupPinOffset?.dx || 0) + (popup.offsetLeft - dragStartLeft);
+            const dy = (popupPinOffset?.dy || 0) + (popup.offsetTop - dragStartTop);
+            popupPinOffset = { dx, dy };
+        }
+        isDragging = false;
+    };
     document.addEventListener('mousemove', onDragMove);
     document.addEventListener('mouseup', onDragUp);
 
@@ -471,6 +1066,38 @@ function showFeaturePopup(box) {
     notesArea.addEventListener('input', updateSaveState);
     updateSaveState();
 
+    // Resolve input value — for time fields, reconstruct full ISO string from short format
+    function resolveInputValue(input) {
+        const key = input.dataset.key;
+        const val = input.value.trim();
+        if (!val) return val;
+        if (key === 'startTime' || key === 'endTime') {
+            return parsePopupTimeToISO(val, input.dataset.original);
+        }
+        return val;
+    }
+
+    // Live-update feature box as user edits time/frequency fields
+    popup.querySelectorAll('input[data-key]').forEach(input => {
+        input.addEventListener('input', () => {
+            const key = input.dataset.key;
+            const val = resolveInputValue(input);
+            if (!val || !key) return;
+
+            // Write directly to the feature object
+            if (isStandalone) {
+                const standalone = getStandaloneFeatures();
+                const f = standalone[box.featureIndex];
+                if (f) f[key] = val;
+            } else {
+                updateFeature(box.regionIndex, box.featureIndex, key, val);
+            }
+
+            // Redraw the canvas boxes to reflect the change
+            redrawAllCanvasFeatureBoxes();
+        });
+    });
+
     // Save logic
     function saveAndClose() {
         if (isStandalone) {
@@ -481,7 +1108,7 @@ function showFeaturePopup(box) {
                 // Update editable fields if changed
                 popup.querySelectorAll('input[data-key]').forEach(input => {
                     const key = input.dataset.key;
-                    const val = input.value.trim();
+                    const val = resolveInputValue(input);
                     if (val && key) f[key] = val;
                 });
                 saveStandaloneFeatures();
@@ -491,10 +1118,11 @@ function showFeaturePopup(box) {
             updateFeature(box.regionIndex, box.featureIndex, 'notes', notesArea.value.trim());
             popup.querySelectorAll('input[data-key]').forEach(input => {
                 const key = input.dataset.key;
-                const val = input.value.trim();
+                const val = resolveInputValue(input);
                 if (val && key) updateFeature(box.regionIndex, box.featureIndex, key, val);
             });
         }
+        rebuildCanvasBoxesFromFeatures();
         closeFeaturePopup();
     }
 
@@ -517,6 +1145,16 @@ function showFeaturePopup(box) {
     }
     function onClickOutside(e) {
         if (featurePopupEl && !featurePopupEl.contains(e.target)) {
+            // If clicking on the canvas, only keep popup open if clicking on a feature box
+            const canvas = document.getElementById('spectrogram');
+            if (canvas && canvas.contains(e.target)) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const clickX = (e.clientX - rect.left) * scaleX;
+                const clickY = (e.clientY - rect.top) * scaleY;
+                if (getClickedBox(clickX, clickY)) return; // Let box click handler toggle
+            }
             closeFeaturePopup();
         }
     }
@@ -598,6 +1236,8 @@ function redrawCanvasBoxes() {
             drawSpectrogramSelectionBox(spectrogramOverlayCtx, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
         }
     }
+    // Also update pinned popup position when boxes are redrawn
+    updatePinnedPopupPosition();
 }
 
 /**
@@ -665,6 +1305,48 @@ export function updateCanvasAnnotations() {
             }
         }
     }
+
+    // PASS 4: Update pinned popup position
+    updatePinnedPopupPosition();
+}
+
+/**
+ * Reposition the feature popup if it's pinned to its feature box.
+ * Called per-frame from updateCanvasAnnotations and also from redrawCanvasBoxes.
+ */
+function updatePinnedPopupPosition() {
+    if (!featurePopupEl || !popupFeatureBox) return;
+    const pinMode = localStorage.getItem('feature_popup_pin') || 'static';
+    if (pinMode !== 'to-feature') return;
+
+    // Find the matching box in completedSelectionBoxes
+    const box = completedSelectionBoxes.find(b =>
+        b.regionIndex === popupFeatureBox.regionIndex &&
+        b.featureIndex === popupFeatureBox.featureIndex
+    );
+    if (!box) return;
+
+    const sr = getScreenRectForBox(box);
+    if (!sr) {
+        // Feature is off-screen — hide popup
+        featurePopupEl.classList.add('feature-popup--off-screen');
+        return;
+    }
+
+    // Check if feature box is fully off the canvas viewport
+    const canvas = document.getElementById('spectrogram');
+    if (canvas) {
+        const canvasRect = canvas.getBoundingClientRect();
+        if (sr.right < canvasRect.left || sr.left > canvasRect.right ||
+            sr.bottom < canvasRect.top || sr.top > canvasRect.bottom) {
+            featurePopupEl.classList.add('feature-popup--off-screen');
+            return;
+        }
+    }
+
+    // Feature is on-screen — show and reposition
+    featurePopupEl.classList.remove('feature-popup--off-screen');
+    positionPopupBesideRect(featurePopupEl, sr, popupPinOffset);
 }
 
 // 🔥 FIX: Track event listeners for cleanup to prevent memory leaks
@@ -1309,6 +1991,7 @@ export function setupSpectrogramSelection() {
     // This prevents stuck state when browser loses focus mid-drag (e.g., CMD+Tab)
     // Safe because it only cancels active drags, doesn't interfere with mousedown cleanup
     spectrogramBlurHandler = () => {
+        cancelBoxDrag();
         if (spectrogramSelectionActive) {
             console.log('👋 Window blurred - canceling active selection to prevent stuck state');
             cancelSpectrogramSelection();
@@ -1362,16 +2045,11 @@ export function setupSpectrogramSelection() {
             return;
         }
 
+        // Box drag/resize handler (self-contained — claims event if on a box)
+        if (!spectrogramSelectionActive && handleBoxDragDown(e, canvas)) return;
+
         const clickedBox = getClickedBox(clickX, clickY);
-        // In EMIC windowed modes, show feature info popup on click
-        const _modeSelectForBox = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
-        const _isWindowedForBox = _modeSelectForBox && (_modeSelectForBox.value === 'static' || _modeSelectForBox.value === 'scroll' || _modeSelectForBox.value === 'pageTurn');
-        if (clickedBox && !spectrogramSelectionActive && _isWindowedForBox) {
-            showFeaturePopup(clickedBox);
-            return;
-        }
-        if (clickedBox && !spectrogramSelectionActive && !_isWindowedForBox) {
-            // Check if we're zoomed out - if so, zoom to the region
+        if (clickedBox && !spectrogramSelectionActive) {
             if (!zoomState.isInRegion()) {
                 console.log(`🔍 Clicked feature box while zoomed out - zooming to region ${clickedBox.regionIndex + 1}`);
                 zoomToRegion(clickedBox.regionIndex);
@@ -1380,7 +2058,7 @@ export function setupSpectrogramSelection() {
             // Zoomed in - start frequency selection to re-draw the feature
             startFrequencySelection(clickedBox.regionIndex, clickedBox.featureIndex);
             console.log(`🎯 Clicked canvas box - starting reselection for region ${clickedBox.regionIndex + 1}, feature ${clickedBox.featureIndex + 1}`);
-            return; // Don't start new selection
+            return;
         }
 
         // Check main window Click dropdown (mousedown action)
@@ -1560,14 +2238,31 @@ export function setupSpectrogramSelection() {
     });
     
     canvas.addEventListener('mousemove', (e) => {
-        // 👆 Cursor change: pointer when hovering feature boxes (when zoomed out)
+        // Box drag/resize handler (self-contained — claims event if active or hovering a box)
+        if (handleBoxDragMove(e, canvas)) {
+            // If not actively dragging, also need to check close button cursor
+            if (!boxDragState) {
+                const canvasRect = canvas.getBoundingClientRect();
+                const hoveredClose = getClickedCloseButton(e.clientX - canvasRect.left, e.clientY - canvasRect.top);
+                if (hoveredClose) canvas.style.cursor = 'pointer';
+            }
+            return;
+        }
+
+        // Cursor hints for non-box areas
         const canvasRect = canvas.getBoundingClientRect();
         const hoverX = e.clientX - canvasRect.left;
         const hoverY = e.clientY - canvasRect.top;
         const hoveredBox = getClickedBox(hoverX, hoverY);
-
-        // Close button hover gets pointer cursor regardless of zoom state
         const hoveredClose = getClickedCloseButton(hoverX, hoverY);
+
+        // Track hovered box for brightness highlight
+        const newHoveredKey = hoveredBox ? `${hoveredBox.regionIndex}-${hoveredBox.featureIndex}` : null;
+        if (newHoveredKey !== hoveredBoxKey) {
+            hoveredBoxKey = newHoveredKey;
+            redrawCanvasBoxes();
+        }
+
         if (hoveredClose && !spectrogramSelectionActive) {
             canvas.style.cursor = 'pointer';
         } else if (hoveredBox && !zoomState.isInRegion() && !spectrogramSelectionActive) {
@@ -1582,7 +2277,6 @@ export function setupSpectrogramSelection() {
         if (spectrogramSelectionActive && !spectrogramOverlayCtx) {
             console.error('⚠️ [STUCK STATE DETECTED] Selection active but overlay context missing in mousemove!');
             showStuckStateMessage();
-            // Force reset state
             spectrogramSelectionActive = false;
             spectrogramStartX = null;
             spectrogramStartY = null;
@@ -1590,7 +2284,7 @@ export function setupSpectrogramSelection() {
             spectrogramCurrentY = null;
             return;
         }
-        
+
         if (!spectrogramSelectionActive || !spectrogramOverlayCtx) return;
 
         // Reuse canvasRect from above (already declared at line 1248)
@@ -1634,6 +2328,11 @@ export function setupSpectrogramSelection() {
     // 🔥 FIX: Add mouseleave handler to cancel selection when mouse leaves canvas
     // This prevents stuck state when mouseup never fires (e.g., mouse leaves window)
     canvas.addEventListener('mouseleave', () => {
+        cancelBoxDrag();
+        if (hoveredBoxKey !== null) {
+            hoveredBoxKey = null;
+            redrawCanvasBoxes();
+        }
         if (spectrogramSelectionActive) {
             console.log('🖱️ Mouse left spectrogram canvas during selection - canceling');
             cancelSpectrogramSelection();
@@ -1656,6 +2355,9 @@ export function setupSpectrogramSelection() {
     
     // 🔥 FIX: Store handler reference so it can be removed
     spectrogramMouseUpHandler = async (e) => {
+        // Box drag/resize handler (self-contained)
+        if (handleBoxDragUp(e, canvas)) return;
+
         if (!spectrogramSelectionActive) {
             return;
         }
@@ -1754,9 +2456,9 @@ export function setupSpectrogramSelection() {
     
     // 🔥 FIX: Store handler reference so it can be removed
     spectrogramKeyDownHandler = (e) => {
-        if (e.key === 'Escape' && spectrogramSelectionActive) {
-            // On escape, cancel the selection box
-            cancelSpectrogramSelection();
+        if (e.key === 'Escape') {
+            cancelBoxDrag();
+            if (spectrogramSelectionActive) cancelSpectrogramSelection();
         }
     };
     
@@ -1899,11 +2601,14 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
     
     // PASS 1: Draw the box (if not in annotations-only mode)
     if (!drawAnnotationsOnly) {
+        const boxKey = `${box.regionIndex}-${box.featureIndex}`;
+        const isBoxHovered = hoveredBoxKey === boxKey;
+
         ctx.strokeStyle = '#ff4444';
         ctx.lineWidth = 2;
         ctx.strokeRect(x, y, width, height);
 
-        ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
+        ctx.fillStyle = isBoxHovered ? 'rgba(255, 100, 100, 0.35)' : 'rgba(255, 68, 68, 0.2)';
         ctx.fillRect(x, y, width, height);
 
         // Draw close button (red ×) in top-right inside corner
@@ -1964,6 +2669,30 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
             // Reset shadow so it doesn't bleed into subsequent draws
             ctx.shadowBlur = 0;
             ctx.shadowColor = 'transparent';
+        }
+
+        // Draw resize handles when hovered or being dragged
+        const isHovered = hoveredBoxInteraction && completedSelectionBoxes[hoveredBoxInteraction.boxIndex] === box;
+        const isDragged = boxDragState && completedSelectionBoxes[boxDragState.boxIndex] === box;
+        if (isHovered || isDragged) {
+            const hs = 2.5; // handle half-size (device px)
+            ctx.fillStyle = '#ff4444';
+            // Corner handles
+            const corners = [
+                [x, y], [x + width, y],
+                [x, y + height], [x + width, y + height]
+            ];
+            for (const [cx, cy] of corners) {
+                ctx.fillRect(cx - hs, cy - hs, hs * 2, hs * 2);
+            }
+            // Edge midpoint handles
+            const midpoints = [
+                [x + width / 2, y], [x + width / 2, y + height],
+                [x, y + height / 2], [x + width, y + height / 2]
+            ];
+            for (const [mx, my] of midpoints) {
+                ctx.fillRect(mx - hs, my - hs, hs * 2, hs * 2);
+            }
         }
     }
 

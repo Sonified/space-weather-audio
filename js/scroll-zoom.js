@@ -98,6 +98,16 @@ async function renderHiResViewport() {
         return;
     }
 
+    // Don't attempt FFT if viewport is too narrow — the on-screen texture IS the data
+    const fftSize = State.fftSize || 2048;
+    const sampleRate = zoomState.sampleRate || 1;
+    const expandedDurationEst = viewDurationSec * 1.6; // rough estimate with 30% padding each side
+    const estimatedSamples = expandedDurationEst * sampleRate;
+    if (estimatedSamples <= fftSize) {
+        console.log(`🔺 Viewport too narrow for FFT (${estimatedSamples.toFixed(0)} samples < ${fftSize}) — showing existing texture`);
+        return;
+    }
+
     const viewSpanSeconds = endSeconds - startSeconds;
 
     // Add 30% padding so minor scrolling stays within hi-res bounds
