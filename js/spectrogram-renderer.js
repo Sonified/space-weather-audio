@@ -890,10 +890,17 @@ function showFeaturePopup(box) {
                 </div>
             </div>
             <div class="feature-popup-settings-row">
-                <span class="feature-popup-settings-label">Pin</span>
+                <span class="feature-popup-settings-label">Location</span>
                 <div class="feature-popup-settings-options" data-setting="feature_popup_pin">
-                    <button data-value="static" class="active">Static</button>
-                    <button data-value="to-feature">To Feature</button>
+                    <button data-value="static" class="active">Drag & Drop</button>
+                    <button data-value="to-feature">Pin to Feature</button>
+                </div>
+            </div>
+            <div class="feature-popup-settings-row">
+                <span class="feature-popup-settings-label">Click Outside</span>
+                <div class="feature-popup-settings-options" data-setting="feature_popup_canvas_click">
+                    <button data-value="stay-open" class="active">Stay Open</button>
+                    <button data-value="close">Close</button>
                 </div>
             </div>
         </div>
@@ -940,6 +947,7 @@ function showFeaturePopup(box) {
 
         popup.classList.toggle('feature-popup--dark-on-light', colorMode === 'dark-on-light');
         popup.classList.toggle('feature-popup--match-colormap', themeMode === 'match-colormap');
+        popup.classList.toggle('feature-popup--pinned', (localStorage.getItem('feature_popup_pin') || 'static') === 'to-feature');
 
         // Update active button states
         settingsPanel.querySelectorAll('.feature-popup-settings-options').forEach(group => {
@@ -1011,6 +1019,8 @@ function showFeaturePopup(box) {
     let dragStartLeft = 0, dragStartTop = 0;
     header.addEventListener('mousedown', (ev) => {
         if (ev.target.closest('.feature-popup-close') || ev.target.closest('.feature-popup-gear') || ev.target.closest('.feature-popup-delete')) return;
+        // No dragging in pin-to-feature mode
+        if ((localStorage.getItem('feature_popup_pin') || 'static') === 'to-feature') return;
         isDragging = true;
         dragOffsetX = ev.clientX - popup.offsetLeft;
         dragOffsetY = ev.clientY - popup.offsetTop;
@@ -1145,7 +1155,7 @@ function showFeaturePopup(box) {
     }
     function onClickOutside(e) {
         if (featurePopupEl && !featurePopupEl.contains(e.target)) {
-            // If clicking on the canvas, only keep popup open if clicking on a feature box
+            // If clicking on a feature box on the canvas, let box click handler toggle
             const canvas = document.getElementById('spectrogram');
             if (canvas && canvas.contains(e.target)) {
                 const rect = canvas.getBoundingClientRect();
@@ -1153,8 +1163,10 @@ function showFeaturePopup(box) {
                 const scaleY = canvas.height / rect.height;
                 const clickX = (e.clientX - rect.left) * scaleX;
                 const clickY = (e.clientY - rect.top) * scaleY;
-                if (getClickedBox(clickX, clickY)) return; // Let box click handler toggle
+                if (getClickedBox(clickX, clickY)) return;
             }
+            // "Stay open" mode: only close via X button or Save
+            if ((localStorage.getItem('feature_popup_canvas_click') || 'stay-open') === 'stay-open') return;
             closeFeaturePopup();
         }
     }

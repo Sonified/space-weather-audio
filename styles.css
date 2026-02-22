@@ -3470,6 +3470,10 @@ input[type="range"]:disabled {
 .feature-popup-header:active {
     cursor: grabbing;
 }
+.feature-popup--pinned .feature-popup-header,
+.feature-popup--pinned .feature-popup-header:active {
+    cursor: default;
+}
 .feature-popup-title {
     font-size: 14px;
     font-weight: 600;

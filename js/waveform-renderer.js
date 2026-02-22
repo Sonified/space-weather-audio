@@ -5,7 +5,7 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState, isTouchDevice } from './audio-state.js';
-import { seekToPosition, updateWorkletSelection, getCurrentPosition } from './audio-player.js';
+import { seekToPosition, updateWorkletSelection, getCurrentPosition, pausePlayback } from './audio-player.js';
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
@@ -2381,6 +2381,51 @@ let lastDiagnosticTime = 0;
 let pageTurnUserDragged = false; // set when user manually moves viewport
 let pageTurnPlayheadWasInView = false; // tracks if playhead entered viewport after user drag
 
+/**
+ * Feature-box playback edge check.
+ * When standalone features exist on screen and the playhead reaches the
+ * right edge of the current viewport, honour the Master Settings choice:
+ *   "continue" → do nothing (default)
+ *   "stop"     → pause playback
+ *   "clamp"    → prevent the viewport from scrolling past the current page
+ * Returns true if the RAF loop should stop (i.e. playback was paused).
+ */
+function checkFeaturePlaybackEdge() {
+    const modeEl = document.getElementById('featurePlaybackMode');
+    if (!modeEl || modeEl.value === 'continue') return false;
+
+    // Only act when features are actually present
+    const features = getStandaloneFeatures();
+    if (features.length === 0) return false;
+
+    if (!zoomState.isInitialized() || !State.dataStartTime || !State.dataEndTime) return false;
+    if (State.totalAudioDuration <= 0) return false;
+
+    const playheadMs = State.dataStartTime.getTime() +
+        (State.currentAudioPosition / State.totalAudioDuration) *
+        (State.dataEndTime.getTime() - State.dataStartTime.getTime());
+    const viewEndMs = zoomState.currentViewEndTime.getTime();
+
+    if (playheadMs < viewEndMs) return false;  // not at edge yet
+
+    if (modeEl.value === 'stop') {
+        pausePlayback();
+        // Final render so playhead shows at the edge
+        drawWaveformWithSelection();
+        drawSpectrogramPlayhead();
+        updateCanvasAnnotations();
+        return true;  // stop RAF loop
+    }
+
+    if (modeEl.value === 'clamp') {
+        // Keep audio playing but prevent page-turn from advancing the viewport.
+        // The playhead will move off-screen while the display stays on this page.
+        return 'clamp';
+    }
+
+    return false;
+}
+
 function checkPageTurnAdvance() {
     const modeEl = document.getElementById('viewingMode');
     if (!modeEl || modeEl.value !== 'pageTurn') return;
@@ -2522,8 +2567,14 @@ export function updatePlaybackIndicator() {
             State.setCurrentAudioPosition(getCurrentPosition());
         }
 
+        // Feature box playback mode: stop or clamp when playhead reaches page edge
+        // Must run BEFORE checkPageTurnAdvance so it can intercept before the viewport advances
+        const featureEdge = checkFeaturePlaybackEdge();
+        if (featureEdge === true) return;  // 'stop' mode — halt RAF loop
+
         // Page Turn mode: advance viewport when playhead reaches window edge
-        checkPageTurnAdvance();
+        // Skip if 'clamp' mode is active — keep display locked, let playhead keep going
+        if (featureEdge !== 'clamp') checkPageTurnAdvance();
 
         drawWaveformWithSelection();
         drawSpectrogramPlayhead();  // Draw playhead on spectrogram too

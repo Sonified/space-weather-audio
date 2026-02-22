@@ -233,7 +233,7 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 290px;
+            width: 240px;
             height: 100%;
             background: #1e1e1e;
             border-right: 1px solid #444;
@@ -580,8 +580,8 @@
                         <span class="gear-label">Show:</span>
                         <select id="mainWindowView" class="gear-select">
                             <option value="spectrogram" selected>Spectrogram</option>
-                            <option value="timeSeries">Time Series</option>
                             <option value="both">Combination</option>
+                            <option value="timeSeries">Time Series</option>
                         </select>
                     </div>
                     <div class="gear-popover-row">
@@ -775,9 +775,6 @@
                         <option value="bc4">BC4</option>
                     </select>
                 </div>
-                <div class="drawer-row">
-                    <span id="tileCompressionInfo" style="font-size: 11px; color: #888;"></span>
-                </div>
             </div>
             <div class="drawer-section">
                 <div class="drawer-section-title">Zoom Out Mode</div>
@@ -790,16 +787,20 @@
                     </select>
                 </div>
                 <div class="drawer-row">
-                    <label for="levelTransition" class="drawer-label">Level Transition</label>
+                    <label for="levelTransition" class="drawer-label">Transition</label>
                     <select id="levelTransition" class="drawer-input" style="width: 120px; text-align: left;">
-                        <option value="stepped" selected>Stepped</option>
-                        <option value="crossfade">Crossfade</option>
+                        <option value="stepped">Stepped</option>
+                        <option value="crossfade" selected>Crossfade</option>
                     </select>
                 </div>
-                <div class="drawer-row" id="crossfadePowerRow" style="display: none;">
-                    <label for="crossfadePower" class="drawer-label">Power</label>
-                    <input type="range" id="crossfadePower" class="drawer-input" min="0.5" max="6" step="0.5" value="2" style="width: 100px;">
-                    <span id="crossfadePowerLabel" style="font-size: 11px; color: #888; margin-left: 6px;">2.0</span>
+                <div id="crossfadePowerRow" style="display: none; flex-direction: column; gap: 10px; padding: 4px 0;">
+                    <span class="drawer-label">Blend curve:</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">smooth</span>
+                        <input type="range" id="crossfadePower" class="drawer-input" min="0.5" max="6" step="0.5" value="1" style="flex: 1; margin: 0; padding: 0;">
+                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">sharp</span>
+                        <span id="crossfadePowerLabel" style="font-size: 11px; color: #888; margin-left: 2px; min-width: 24px;">2.0</span>
+                    </div>
                 </div>
             </div>
             <div class="drawer-section">
@@ -1070,17 +1071,12 @@
         if (tileCompressionSelect) {
             window.addEventListener('spectrogram-ready', async () => {
                 const { isTileBC4Supported, getTileCompression, setTileCompression } = await import('./js/spectrogram-three-renderer.js');
-                const infoEl = document.getElementById('tileCompressionInfo');
-                
                 if (!isTileBC4Supported()) {
                     const bc4Option = tileCompressionSelect.querySelector('option[value="bc4"]');
                     if (bc4Option) {
                         bc4Option.disabled = true;
                         bc4Option.textContent = 'BC4 (not supported)';
                     }
-                    if (infoEl) infoEl.textContent = 'BC4 requires EXT_texture_compression_rgtc';
-                } else {
-                    if (infoEl) infoEl.textContent = 'BC4: 0.5 bytes/texel — Uint8: 1 byte/texel';
                 }
                 
                 tileCompressionSelect.value = getTileCompression();
