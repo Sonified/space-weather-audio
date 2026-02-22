@@ -681,6 +681,21 @@ function calculateStretchFactor(playbackRate, frequencyScale) {
     return playbackRate;
 }
 
+// ─── Resize renderer to match current canvas display size ───────────────────
+export function resizeRendererToDisplaySize() {
+    if (!threeRenderer) return;
+    const canvas = document.getElementById('spectrogram');
+    if (!canvas) return;
+    const displayHeight = canvas.offsetHeight;
+    const displayWidth = canvas.offsetWidth;
+    if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+        canvas.width = displayWidth;
+        canvas.height = displayHeight;
+        threeRenderer.setSize(displayWidth, displayHeight, false);
+        renderFrame();
+    }
+}
+
 // ─── Helper: render one frame ───────────────────────────────────────────────
 
 function renderFrame() {
@@ -696,6 +711,9 @@ function renderFrame() {
     if (!showSpectrogram) {
         if (mesh) mesh.visible = false;
         for (const tm of tileMeshes) tm.mesh.visible = false;
+    } else {
+        // Re-evaluate tile/mesh visibility when switching back to spectrogram
+        tryUseTiles(camera.left, camera.right);
     }
 
     // Toggle waveform mesh visibility (only if samples uploaded)

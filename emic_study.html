@@ -52,7 +52,7 @@
         }
         
         /* EMIC: taller spectrogram, shorter minimap (14px transferred) */
-        #spectrogram { height: 554px; }
+        #spectrogram { height: var(--spec-height, 554px); }
         #waveform { height: 121px; }
 
         /* EMIC Study specific styles */
@@ -567,8 +567,8 @@
                 </div>
             </div>
 
-            <canvas id="spectrogram" width="1200" height="554"></canvas>
-            <canvas id="spectrogram-axis" width="60" height="554"></canvas>
+            <canvas id="spectrogram" width="1200" height="600"></canvas>
+            <canvas id="spectrogram-axis" width="60" height="600"></canvas>
             <canvas id="spectrogram-x-axis" width="1200" height="40"></canvas>
 
             <!-- Main Window gear icon + popover -->
@@ -1063,6 +1063,60 @@
                 }
             });
         }
+    </script>
+
+    <!-- Responsive spectrogram height: fill viewport so bottom panel sits at window edge -->
+    <script>
+    (function() {
+        const MIN_HEIGHT = 250;
+        const MAX_HEIGHT = 600;
+        let rafPending = false;
+        let fitting = false;
+
+        function fitSpectrogram() {
+            if (fitting) return;
+            fitting = true;
+
+            const spec = document.getElementById('spectrogram');
+            if (!spec) { fitting = false; return; }
+
+            // Bottom anchor: questionnaires panel if visible, else the viz panel
+            const qPanel = document.getElementById('questionnairesPanel');
+            const vizPanel = spec.closest('.panel-visualization');
+            const anchor = (qPanel && qPanel.offsetHeight > 0) ? qPanel : vizPanel;
+            if (!anchor) { fitting = false; return; }
+
+            // How far the anchor's bottom is from the viewport bottom
+            const bodyPadBottom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+            const anchorRect = anchor.getBoundingClientRect();
+            const gap = window.innerHeight - anchorRect.bottom - bodyPadBottom;
+
+            // Adjust spectrogram by the gap (positive = room to grow, negative = overflowing)
+            const currentH = spec.offsetHeight;
+            const newH = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, currentH + gap)));
+
+            if (newH !== currentH) {
+                spec.style.setProperty('--spec-height', newH + 'px');
+                // Sync canvas buffer via the Three.js resize helper
+                window.dispatchEvent(new Event('resize'));
+            }
+
+            fitting = false;
+        }
+
+        // Run after layout settles
+        window.addEventListener('load', () => setTimeout(fitSpectrogram, 100));
+        window.addEventListener('resize', () => {
+            if (rafPending || fitting) return;
+            rafPending = true;
+            requestAnimationFrame(() => { rafPending = false; fitSpectrogram(); });
+        });
+
+        // Re-fit when questionnaires panel toggles visibility
+        const observer = new MutationObserver(() => setTimeout(fitSpectrogram, 50));
+        const qp = document.getElementById('questionnairesPanel');
+        if (qp) observer.observe(qp, { attributes: true, attributeFilter: ['style'] });
+    })();
     </script>
 </body>
 </html>

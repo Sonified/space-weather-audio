@@ -9,7 +9,7 @@ import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, aggressiveCleanup, setTileShaderMode } from './spectrogram-three-renderer.js';
+import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize } from './spectrogram-three-renderer.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
@@ -2160,15 +2160,20 @@ async function initializeMainApp() {
             const waveformCanvas = document.getElementById('waveform');
             const waveformAxisCanvas = document.getElementById('waveform-axis');
             
+            // Sync spectrogram canvas buffer to CSS display size (responsive vh height)
+            if (spectrogramCanvas) {
+                resizeRendererToDisplaySize();
+            }
+
             // Handle spectrogram axis
             if (spectrogramCanvas && spectrogramAxisCanvas) {
                 // Always reposition during resize (fast - no redraw)
                 positionAxisCanvas();
-                
+
                 // Only redraw if canvas dimensions actually changed (expensive operation)
                 const currentWidth = spectrogramCanvas.width;
                 const currentHeight = spectrogramCanvas.height;
-                
+
                 if (currentWidth !== lastSpectrogramWidth || currentHeight !== lastSpectrogramHeight) {
                     spectrogramAxisCanvas.width = 60; // Always 60px width
                     spectrogramAxisCanvas.height = currentHeight;
