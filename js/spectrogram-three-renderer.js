@@ -123,10 +123,11 @@ const TILE_CROSSFADE_MS = 0; // disabled — tiles appear instantly
 let tileMeshes = [];            // Array of { mesh, material } — up to 32 slots for pyramid tiles
 let tileReadyTimes = new Map(); // key -> performance.now() when tile became ready (for crossfade)
 let lastDisplayedLevel = -1;    // Track which level was displayed last frame (for re-fade prevention)
+let tileFadeRAF = null;         // Coalescing guard for tile fade-in animation RAF
 
 // ─── Level transition (crossfade between pyramid levels) ─────────────────────
-let levelTransitionMode = 'stepped';  // 'stepped' | 'crossfade'
-let crossfadePower = 2.0;             // S-curve steepness (1=linear, 2=smooth, 4+=sharp)
+let levelTransitionMode = 'crossfade';  // 'stepped' | 'crossfade'
+let crossfadePower = 1.0;             // 1=linear (trilinear), 2=S-curve, 4+=sharp
 
 export function setLevelTransitionMode(mode) { levelTransitionMode = mode; }
 export function setCrossfadePower(power) { crossfadePower = power; }
@@ -245,6 +246,12 @@ uniform float uOpacity;
 uniform float uTexWidth;
 uniform float uSamplesPerPixel;
 
+// Crossfade: blend floor (uMagnitudes) with ceil level texture
+uniform sampler2D uCeilMagnitudes;
+uniform float uBlendFrac;      // 0 = 100% floor, 1 = 100% ceil
+uniform float uCeilUvStart;    // ceil texture U range start
+uniform float uCeilUvEnd;      // ceil texture U range end
+
 varying vec2 vUv;
 
 void main() {
@@ -287,6 +294,13 @@ void main() {
             sum += texture2D(uMagnitudes, vec2(t, texV)).r;
         }
         normalized = sum / float(samples);
+    }
+
+    // Crossfade: blend with ceil-level texture in magnitude space
+    if (uBlendFrac > 0.001) {
+        float ceilTexU = mix(uCeilUvStart, uCeilUvEnd, vUv.x);
+        float ceilNorm = texture2D(uCeilMagnitudes, vec2(ceilTexU, texV)).r;
+        normalized = mix(normalized, ceilNorm, uBlendFrac);
     }
 
     vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
@@ -505,7 +519,11 @@ function initThreeScene() {
                 uBackgroundColor: { value: new THREE.Vector3(0, 0, 0) },
                 uOpacity: { value: 1.0 },
                 uTexWidth: { value: 1024.0 },
-                uSamplesPerPixel: { value: 1.0 }
+                uSamplesPerPixel: { value: 1.0 },
+                uCeilMagnitudes: { value: null },
+                uBlendFrac: { value: 0.0 },
+                uCeilUvStart: { value: 0.0 },
+                uCeilUvEnd: { value: 1.0 }
             },
             vertexShader: vertexShaderSource,
             fragmentShader: tileFragmentShaderSource,
@@ -1299,10 +1317,9 @@ export function tilesOutresolveRegion(viewStartSec, viewEndSec) {
  * Each tile mesh is a 2×2 quad in NDC space (-1 to 1).
  * Scale and translate X to cover only the tile's screen fraction.
  * 
- * visibleTiles: array of { tile, key, targetOpacity? }
- * isCrossfading: true when two levels are blending (triggers continuous re-render)
+ * visibleTiles: array of { tile, key, blendFrac?, ceilTile?, ceilKey?, ceilUvStart?, ceilUvEnd? }
  */
-function updateTileMeshPositions(visibleTiles, isCrossfading = false) {
+function updateTileMeshPositions(visibleTiles) {
     let anyFading = false;
     const now = performance.now();
 
@@ -1333,13 +1350,23 @@ function updateTileMeshPositions(visibleTiles, isCrossfading = false) {
                 tm.material.uniforms.uSamplesPerPixel.value = 1.0;  // bypass box filter (linear or nearest)
             }
 
-            // Opacity: combine tile fade-in with level crossfade
+            // Tile fade-in opacity (time-based, for newly loaded tiles)
             const readyTime = tileReadyTimes.get(vt.key) || 0;
             const elapsed = now - readyTime;
             const fadeInOpacity = TILE_CROSSFADE_MS > 0 ? Math.min(1, elapsed / TILE_CROSSFADE_MS) : 1;
-            const opacity = vt.targetOpacity !== undefined ? vt.targetOpacity * fadeInOpacity : fadeInOpacity;
-            tm.material.uniforms.uOpacity.value = opacity;
+            tm.material.uniforms.uOpacity.value = fadeInOpacity;
             if (fadeInOpacity < 1) anyFading = true;
+
+            // Shader-level crossfade: set ceil texture + blend fraction
+            if (vt.ceilTile && vt.blendFrac > 0.001) {
+                const ceilTex = getTileTexture(vt.ceilTile, vt.ceilKey);
+                tm.material.uniforms.uCeilMagnitudes.value = ceilTex;
+                tm.material.uniforms.uBlendFrac.value = ceilTex ? vt.blendFrac : 0;
+                tm.material.uniforms.uCeilUvStart.value = vt.ceilUvStart;
+                tm.material.uniforms.uCeilUvEnd.value = vt.ceilUvEnd;
+            } else {
+                tm.material.uniforms.uBlendFrac.value = 0;
+            }
 
             // Sync frequency/stretch uniforms with main material
             if (material) {
@@ -1358,11 +1385,13 @@ function updateTileMeshPositions(visibleTiles, isCrossfading = false) {
         }
     }
 
-    // If any tile is still fading in, or two levels are actively crossfading,
-    // schedule another frame so opacity updates stay smooth
-    if (anyFading || isCrossfading) {
-        requestAnimationFrame(() => {
-            updateTileMeshPositions(visibleTiles, isCrossfading);
+    // If any tile is still fading in, schedule another frame for opacity animation.
+    // Note: crossfade between levels is driven by viewport changes (not time),
+    // so it does NOT need a continuous rAF loop here.
+    if (anyFading && !tileFadeRAF) {
+        tileFadeRAF = requestAnimationFrame(() => {
+            tileFadeRAF = null;
+            updateTileMeshPositions(visibleTiles);
             renderFrame();
         });
     }
@@ -1754,48 +1783,67 @@ function tryUseTiles(viewStartSec, viewEndSec) {
 
     let visibleTiles = [];
     let usedLevel = -1;
-    let isCrossfading = false;
+    let blendFrac = 0; // shader-level crossfade fraction
 
     if (levelTransitionMode === 'crossfade') {
-        // ── Crossfade mode: blend two adjacent pyramid levels ──
+        // ── Crossfade mode: floor-level tiles blend with ceil in shader ──
         const continuous = pickContinuousLevel(viewStartSec, viewEndSec, canvasWidth);
         const floorLevel = Math.floor(continuous);
         const ceilLevel = Math.min(floorLevel + 1, Math.ceil(continuous));
         const frac = continuous - floorLevel;
 
-        // Normalized power curve: s = t^p / (t^p + (1-t)^p)  — always sums to 1.0
-        let ceilOpacity, floorOpacity;
+        // Normalized power curve: s = t^p / (t^p + (1-t)^p)
         if (frac < 0.001) {
-            floorOpacity = 1; ceilOpacity = 0;
+            blendFrac = 0;
         } else if (frac > 0.999) {
-            floorOpacity = 0; ceilOpacity = 1;
+            blendFrac = 1;
         } else {
             const tp = Math.pow(frac, crossfadePower);
             const tp1 = Math.pow(1 - frac, crossfadePower);
-            ceilOpacity = tp / (tp + tp1);
-            floorOpacity = 1 - ceilOpacity;
+            blendFrac = tp / (tp + tp1);
         }
 
-        // Get visible tiles from both levels
-        const floorTiles = floorOpacity > 0.001 ? getPyramidVisibleTiles(floorLevel, viewStartSec, viewEndSec) : [];
-        const ceilTiles = (ceilLevel !== floorLevel && ceilOpacity > 0.001) ? getPyramidVisibleTiles(ceilLevel, viewStartSec, viewEndSec) : [];
+        // Use floor level's tile grid as the mesh basis
+        const floorTiles = getPyramidVisibleTiles(floorLevel, viewStartSec, viewEndSec);
+        // Get ceil tiles for matching (only if actually blending)
+        const ceilTiles = (blendFrac > 0.001 && ceilLevel !== floorLevel)
+            ? getPyramidVisibleTiles(ceilLevel, viewStartSec, viewEndSec) : [];
 
-        const combinedCount = floorTiles.length + ceilTiles.length;
+        if (floorTiles.length > 0 && floorTiles.length <= maxSlots) {
+            // For each floor tile, find the matching ceil tile and compute UV remapping
+            for (const vt of floorTiles) {
+                vt.blendFrac = blendFrac;
+                vt.ceilTile = null;
+                vt.ceilKey = null;
+                vt.ceilUvStart = 0;
+                vt.ceilUvEnd = 1;
 
-        if (combinedCount > 0 && combinedCount <= maxSlots) {
-            // Tag each tile with its target opacity
-            for (const vt of floorTiles) vt.targetOpacity = floorOpacity;
-            for (const vt of ceilTiles) vt.targetOpacity = ceilOpacity;
-            visibleTiles = [...floorTiles, ...ceilTiles];
+                if (blendFrac > 0.001) {
+                    // Find the ceil tile whose time range contains this floor tile
+                    for (const ct of ceilTiles) {
+                        if (ct.tile.startSec <= vt.tile.startSec && ct.tile.endSec >= vt.tile.endSec) {
+                            vt.ceilTile = ct.tile;
+                            vt.ceilKey = ct.key;
+                            // UV remapping: floor tile maps to a sub-region of ceil tile
+                            const ceilDur = ct.tile.endSec - ct.tile.startSec;
+                            vt.ceilUvStart = (vt.tile.startSec - ct.tile.startSec) / ceilDur;
+                            vt.ceilUvEnd = (vt.tile.endSec - ct.tile.startSec) / ceilDur;
+                            break;
+                        }
+                    }
+                    // No matching ceil tile? Fall back to no blend for this tile
+                    if (!vt.ceilTile) vt.blendFrac = 0;
+                }
+            }
+            visibleTiles = floorTiles;
             usedLevel = floorLevel;
-            isCrossfading = floorOpacity > 0.001 && ceilOpacity > 0.001;
 
             // Stamp new tile keys with instant opacity (prevent re-fade)
             for (const vt of visibleTiles) {
                 if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0);
             }
         }
-        // Fall through to stepped if combined doesn't fit
+        // Fall through to stepped if floor tiles don't fit
     }
 
     if (visibleTiles.length === 0) {
@@ -1827,7 +1875,7 @@ function tryUseTiles(viewStartSec, viewEndSec) {
                 if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0);
             }
         }
-        updateTileMeshPositions(visibleTiles, isCrossfading);
+        updateTileMeshPositions(visibleTiles);
     } else {
         for (const tm of tileMeshes) tm.mesh.visible = false;
     }
@@ -2227,15 +2275,20 @@ function createSpectrogramOverlay() {
         parent.appendChild(spectrogramOverlay);
 
         if (spectrogramOverlayResizeObserver) spectrogramOverlayResizeObserver.disconnect();
+        let overlayResizeRAF = null;
         spectrogramOverlayResizeObserver = new ResizeObserver(() => {
-            if (spectrogramOverlay && canvas) {
-                const canvasRect = canvas.getBoundingClientRect();
-                const parentRect = parent.getBoundingClientRect();
-                spectrogramOverlay.style.top = (canvasRect.top - parentRect.top) + 'px';
-                spectrogramOverlay.style.left = (canvasRect.left - parentRect.left) + 'px';
-                spectrogramOverlay.style.width = canvasRect.width + 'px';
-                spectrogramOverlay.style.height = canvasRect.height + 'px';
-            }
+            if (overlayResizeRAF) return; // coalesce into one RAF
+            overlayResizeRAF = requestAnimationFrame(() => {
+                overlayResizeRAF = null;
+                if (spectrogramOverlay && canvas) {
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const parentRect = parent.getBoundingClientRect();
+                    spectrogramOverlay.style.top = (canvasRect.top - parentRect.top) + 'px';
+                    spectrogramOverlay.style.left = (canvasRect.left - parentRect.left) + 'px';
+                    spectrogramOverlay.style.width = canvasRect.width + 'px';
+                    spectrogramOverlay.style.height = canvasRect.height + 'px';
+                }
+            });
         });
         spectrogramOverlayResizeObserver.observe(canvas);
     }

@@ -1127,8 +1127,7 @@
 
             if (newH !== currentH) {
                 spec.style.setProperty('--spec-height', newH + 'px');
-                // Sync canvas buffer via the Three.js resize helper
-                window.dispatchEvent(new Event('resize'));
+                // Canvas resize is picked up by ResizeObserver — no manual dispatch needed
             }
 
             fitting = false;
@@ -1142,8 +1141,12 @@
             requestAnimationFrame(() => { rafPending = false; fitSpectrogram(); });
         });
 
-        // Re-fit when questionnaires panel toggles visibility
-        const observer = new MutationObserver(() => setTimeout(fitSpectrogram, 50));
+        // Re-fit when questionnaires panel toggles visibility (debounced via RAF)
+        const observer = new MutationObserver(() => {
+            if (rafPending || fitting) return;
+            rafPending = true;
+            requestAnimationFrame(() => { rafPending = false; fitSpectrogram(); });
+        });
         const qp = document.getElementById('questionnairesPanel');
         if (qp) observer.observe(qp, { attributes: true, attributeFilter: ['style'] });
     })();
