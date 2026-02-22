@@ -199,6 +199,25 @@ export function pickLevel(viewStartSec, viewEndSec, canvasWidth) {
 }
 
 /**
+ * Pick a continuous (fractional) pyramid level for crossfade blending.
+ * Returns a float: integer part = coarser level, fractional part = blend position.
+ * e.g., 2.6 means 40% L2 + 60% L3.
+ */
+export function pickContinuousLevel(viewStartSec, viewEndSec, canvasWidth) {
+    const viewDuration = viewEndSec - viewStartSec;
+    if (viewDuration <= 0 || canvasWidth <= 0) return 0;
+    if (pyramidLevels.length === 0) return 0;
+
+    const baseTileDuration = pyramidLevels[0][0]?.duration || BASE_TILE_DURATION_SEC;
+    const l0ColsPerPixel = (viewDuration / baseTileDuration) * TILE_COLS / canvasWidth;
+
+    if (l0ColsPerPixel <= 1.0) return 0;
+
+    const continuous = Math.log2(l0ColsPerPixel);
+    return Math.min(continuous, pyramidLevels.length - 1);
+}
+
+/**
  * Get visible tiles at a given level for a viewport.
  * Returns only tiles that overlap [viewStartSec, viewEndSec].
  * World-space camera handles all viewport mapping — no UV or screen fraction math needed.

@@ -9,7 +9,7 @@ import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize } from './spectrogram-three-renderer.js';
+import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower } from './spectrogram-three-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
@@ -993,6 +993,9 @@ async function initializeEmicStudyMode() {
         { id: 'arrowPanStep', key: 'emic_arrow_pan_step', type: 'select' },
         { id: 'mainWindowBoxFilter', key: 'emic_main_box_filter', type: 'select' },
         { id: 'mainWindowZoomOut', key: 'emic_zoom_out_mode', type: 'select' },
+        { id: 'levelTransition', key: 'emic_level_transition', type: 'select' },
+        { id: 'crossfadePower', key: 'emic_crossfade_power', type: 'range' },
+        { id: 'featurePlaybackMode', key: 'emic_feature_playback_mode', type: 'select' },
     ];
     for (const ctrl of navControls) {
         const el = document.getElementById(ctrl.id);
@@ -1244,6 +1247,35 @@ async function initializeEmicStudyMode() {
             zoomOutEl.blur();
         });
         setPyramidReduceMode(zoomOutEl.value);
+    }
+
+    // Wire level transition mode (stepped vs crossfade)
+    const levelTransEl = document.getElementById('levelTransition');
+    const powerRow = document.getElementById('crossfadePowerRow');
+    const powerSlider = document.getElementById('crossfadePower');
+    const powerLabel = document.getElementById('crossfadePowerLabel');
+
+    function updateCrossfadeUI() {
+        if (powerRow) powerRow.style.display = levelTransEl?.value === 'crossfade' ? 'flex' : 'none';
+    }
+
+    if (levelTransEl) {
+        levelTransEl.addEventListener('change', () => {
+            setLevelTransitionMode(levelTransEl.value);
+            updateCrossfadeUI();
+            levelTransEl.blur();
+        });
+        setLevelTransitionMode(levelTransEl.value);
+        updateCrossfadeUI();
+    }
+
+    if (powerSlider) {
+        powerSlider.addEventListener('input', () => {
+            setCrossfadePower(parseFloat(powerSlider.value));
+            if (powerLabel) powerLabel.textContent = parseFloat(powerSlider.value).toFixed(1);
+        });
+        setCrossfadePower(parseFloat(powerSlider.value));
+        if (powerLabel) powerLabel.textContent = parseFloat(powerSlider.value).toFixed(1);
     }
 
     // Toggle regions panel + top bar controls visibility based on viewing mode

@@ -789,6 +789,18 @@
                         <option value="peak">Show Peak</option>
                     </select>
                 </div>
+                <div class="drawer-row">
+                    <label for="levelTransition" class="drawer-label">Level Transition</label>
+                    <select id="levelTransition" class="drawer-input" style="width: 120px; text-align: left;">
+                        <option value="stepped" selected>Stepped</option>
+                        <option value="crossfade">Crossfade</option>
+                    </select>
+                </div>
+                <div class="drawer-row" id="crossfadePowerRow" style="display: none;">
+                    <label for="crossfadePower" class="drawer-label">Power</label>
+                    <input type="range" id="crossfadePower" class="drawer-input" min="0.5" max="6" step="0.5" value="2" style="width: 100px;">
+                    <span id="crossfadePowerLabel" style="font-size: 11px; color: #888; margin-left: 6px;">2.0</span>
+                </div>
             </div>
             <div class="drawer-section">
                 <div class="drawer-section-title">Arrow Key Navigation</div>
@@ -812,6 +824,17 @@
                         <option value="20">20%</option>
                         <option value="25">25%</option>
                         <option value="30">30%</option>
+                    </select>
+                </div>
+            </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Feature Box Playback</div>
+                <div class="drawer-row">
+                    <label for="featurePlaybackMode" class="drawer-label">At page edge</label>
+                    <select id="featurePlaybackMode" class="drawer-input" style="width: 130px; text-align: left;">
+                        <option value="continue" selected>No change</option>
+                        <option value="stop">Stop audio</option>
+                        <option value="clamp">Clamp view</option>
                     </select>
                 </div>
             </div>

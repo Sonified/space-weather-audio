@@ -17,7 +17,7 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { isStudyMode } from './master-modes.js';
 import { getColorLUT } from './colormaps.js';
-import { initPyramid, renderBaseTiles, pickLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters, setPyramidReduceMode } from './spectrogram-pyramid.js';
+import { initPyramid, renderBaseTiles, pickLevel, pickContinuousLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters, setPyramidReduceMode } from './spectrogram-pyramid.js';
 
 // ─── Module state ───────────────────────────────────────────────────────────
 
@@ -123,6 +123,13 @@ const TILE_CROSSFADE_MS = 0; // disabled — tiles appear instantly
 let tileMeshes = [];            // Array of { mesh, material } — up to 32 slots for pyramid tiles
 let tileReadyTimes = new Map(); // key -> performance.now() when tile became ready (for crossfade)
 let lastDisplayedLevel = -1;    // Track which level was displayed last frame (for re-fade prevention)
+
+// ─── Level transition (crossfade between pyramid levels) ─────────────────────
+let levelTransitionMode = 'stepped';  // 'stepped' | 'crossfade'
+let crossfadePower = 2.0;             // S-curve steepness (1=linear, 2=smooth, 4+=sharp)
+
+export function setLevelTransitionMode(mode) { levelTransitionMode = mode; }
+export function setCrossfadePower(power) { crossfadePower = power; }
 
 // Waveform (time series) overlay mesh for main window view modes
 let waveformMesh = null;
@@ -1292,9 +1299,10 @@ export function tilesOutresolveRegion(viewStartSec, viewEndSec) {
  * Each tile mesh is a 2×2 quad in NDC space (-1 to 1).
  * Scale and translate X to cover only the tile's screen fraction.
  * 
- * visibleTiles: array of { tile, key }
+ * visibleTiles: array of { tile, key, targetOpacity? }
+ * isCrossfading: true when two levels are blending (triggers continuous re-render)
  */
-function updateTileMeshPositions(visibleTiles) {
+function updateTileMeshPositions(visibleTiles, isCrossfading = false) {
     let anyFading = false;
     const now = performance.now();
 
@@ -1325,12 +1333,13 @@ function updateTileMeshPositions(visibleTiles) {
                 tm.material.uniforms.uSamplesPerPixel.value = 1.0;  // bypass box filter (linear or nearest)
             }
 
-            // Crossfade: compute opacity based on time since tile became ready
+            // Opacity: combine tile fade-in with level crossfade
             const readyTime = tileReadyTimes.get(vt.key) || 0;
             const elapsed = now - readyTime;
-            const opacity = TILE_CROSSFADE_MS > 0 ? Math.min(1, elapsed / TILE_CROSSFADE_MS) : 1;
+            const fadeInOpacity = TILE_CROSSFADE_MS > 0 ? Math.min(1, elapsed / TILE_CROSSFADE_MS) : 1;
+            const opacity = vt.targetOpacity !== undefined ? vt.targetOpacity * fadeInOpacity : fadeInOpacity;
             tm.material.uniforms.uOpacity.value = opacity;
-            if (opacity < 1) anyFading = true;
+            if (fadeInOpacity < 1) anyFading = true;
 
             // Sync frequency/stretch uniforms with main material
             if (material) {
@@ -1349,11 +1358,11 @@ function updateTileMeshPositions(visibleTiles) {
         }
     }
 
-    // If any tile is still fading in, schedule another frame that
-    // updates opacities (positions are fixed, only opacity changes)
-    if (anyFading) {
+    // If any tile is still fading in, or two levels are actively crossfading,
+    // schedule another frame so opacity updates stay smooth
+    if (anyFading || isCrossfading) {
         requestAnimationFrame(() => {
-            updateTileMeshPositions(visibleTiles);
+            updateTileMeshPositions(visibleTiles, isCrossfading);
             renderFrame();
         });
     }
@@ -1741,61 +1750,97 @@ export function updateSpectrogramViewportFromZoom() {
  */
 function tryUseTiles(viewStartSec, viewEndSec) {
     const canvasWidth = threeRenderer?.domElement?.width || 1200;
-    const optimalLevel = pickLevel(viewStartSec, viewEndSec, canvasWidth);
     const maxSlots = tileMeshes.length; // 32
 
-    // Walk UP from L0 to optimalLevel — the highest level where colsPerPixel ≥ 1
-    // (no upsampling). Pick the highest level with ready tiles that fits in 32 slots.
-    // This minimizes downsampling (less flickering) without crossing into upsampling.
     let visibleTiles = [];
     let usedLevel = -1;
+    let isCrossfading = false;
 
-    for (let level = 0; level <= optimalLevel; level++) {
-        const tiles = getPyramidVisibleTiles(level, viewStartSec, viewEndSec);
-        if (tiles.length > 0 && tiles.length <= maxSlots) {
-            visibleTiles = tiles;
-            usedLevel = level;
-            // Don't break — keep going up to find the coarsest that still has ≥1 col/pixel
+    if (levelTransitionMode === 'crossfade') {
+        // ── Crossfade mode: blend two adjacent pyramid levels ──
+        const continuous = pickContinuousLevel(viewStartSec, viewEndSec, canvasWidth);
+        const floorLevel = Math.floor(continuous);
+        const ceilLevel = Math.min(floorLevel + 1, Math.ceil(continuous));
+        const frac = continuous - floorLevel;
+
+        // Normalized power curve: s = t^p / (t^p + (1-t)^p)  — always sums to 1.0
+        let ceilOpacity, floorOpacity;
+        if (frac < 0.001) {
+            floorOpacity = 1; ceilOpacity = 0;
+        } else if (frac > 0.999) {
+            floorOpacity = 0; ceilOpacity = 1;
+        } else {
+            const tp = Math.pow(frac, crossfadePower);
+            const tp1 = Math.pow(1 - frac, crossfadePower);
+            ceilOpacity = tp / (tp + tp1);
+            floorOpacity = 1 - ceilOpacity;
         }
-    }
 
-    // When displayed level changes, stamp new tile keys with instant opacity
-    // so they don't re-fade from 0%. Only fade-in tiles that are genuinely new.
-    if (usedLevel >= 0 && usedLevel !== lastDisplayedLevel) {
-        for (const vt of visibleTiles) {
-            if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0);
-        }
-        lastDisplayedLevel = usedLevel;
-    }
+        // Get visible tiles from both levels
+        const floorTiles = floorOpacity > 0.001 ? getPyramidVisibleTiles(floorLevel, viewStartSec, viewEndSec) : [];
+        const ceilTiles = (ceilLevel !== floorLevel && ceilOpacity > 0.001) ? getPyramidVisibleTiles(ceilLevel, viewStartSec, viewEndSec) : [];
 
-    // Diagnostic
-    if (visibleTiles.length > 0) {
-        console.log(`🎯 L${usedLevel}, ${visibleTiles.length} tiles, backdrop=${fullMagnitudeTexture ? 'YES' : 'NULL'}`);
-    }
+        const combinedCount = floorTiles.length + ceilTiles.length;
 
-    // Place tile meshes at fixed world-space positions (slots beyond visibleTiles.length get hidden)
-    if (visibleTiles.length > 0) {
-        if (activeTexture !== 'tiles') {
-            // Transitioning TO tiles: existing tiles appear at full opacity (no flash)
+        if (combinedCount > 0 && combinedCount <= maxSlots) {
+            // Tag each tile with its target opacity
+            for (const vt of floorTiles) vt.targetOpacity = floorOpacity;
+            for (const vt of ceilTiles) vt.targetOpacity = ceilOpacity;
+            visibleTiles = [...floorTiles, ...ceilTiles];
+            usedLevel = floorLevel;
+            isCrossfading = floorOpacity > 0.001 && ceilOpacity > 0.001;
+
+            // Stamp new tile keys with instant opacity (prevent re-fade)
             for (const vt of visibleTiles) {
                 if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0);
             }
         }
-        updateTileMeshPositions(visibleTiles);
+        // Fall through to stepped if combined doesn't fit
+    }
+
+    if (visibleTiles.length === 0) {
+        // ── Stepped mode (or crossfade fallback) ──
+        const optimalLevel = pickLevel(viewStartSec, viewEndSec, canvasWidth);
+
+        for (let level = 0; level <= optimalLevel; level++) {
+            const tiles = getPyramidVisibleTiles(level, viewStartSec, viewEndSec);
+            if (tiles.length > 0 && tiles.length <= maxSlots) {
+                visibleTiles = tiles;
+                usedLevel = level;
+            }
+        }
+
+        // When displayed level changes, stamp new tile keys with instant opacity
+        if (usedLevel >= 0 && usedLevel !== lastDisplayedLevel) {
+            for (const vt of visibleTiles) {
+                if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0);
+            }
+        }
+    }
+
+    if (usedLevel >= 0) lastDisplayedLevel = usedLevel;
+
+    // Place tile meshes at fixed world-space positions
+    if (visibleTiles.length > 0) {
+        if (activeTexture !== 'tiles') {
+            for (const vt of visibleTiles) {
+                if (!tileReadyTimes.has(vt.key)) tileReadyTimes.set(vt.key, 0);
+            }
+        }
+        updateTileMeshPositions(visibleTiles, isCrossfading);
     } else {
         for (const tm of tileMeshes) tm.mesh.visible = false;
     }
 
     // Full texture backdrop: always visible unless tiles fully cover the viewport.
-    // Mesh is already positioned in world space (set once when texture was uploaded).
-    const tilesFullyCover = usedLevel >= 0 && tilesReady(usedLevel, viewStartSec, viewEndSec);
+    const primaryLevel = usedLevel >= 0 ? usedLevel : -1;
+    const tilesFullyCover = primaryLevel >= 0 && tilesReady(primaryLevel, viewStartSec, viewEndSec);
 
     if (tilesFullyCover) {
         if (mesh) mesh.visible = false;
     } else if (fullMagnitudeTexture) {
         material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
         if (mesh) {
-            // Ensure mesh is at full-texture world position (may have been moved for region)
             positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
             mesh.visible = true;
         }
