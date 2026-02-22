@@ -745,7 +745,7 @@
         <!-- Settings drawer (slides in from left, pushes content) -->
         <div id="settingsDrawer" class="settings-drawer">
             <div class="drawer-header">
-                <span class="drawer-title">Settings</span>
+                <span class="drawer-title">Master Settings</span>
                 <span id="drawerClose" class="drawer-close" title="Close">&times;</span>
             </div>
             <div class="drawer-section">
@@ -777,6 +777,17 @@
                 </div>
                 <div class="drawer-row">
                     <span id="tileCompressionInfo" style="font-size: 11px; color: #888;"></span>
+                </div>
+            </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Zoom Out Mode</div>
+                <div class="drawer-row">
+                    <label for="mainWindowZoomOut" class="drawer-label">Reduction</label>
+                    <select id="mainWindowZoomOut" class="drawer-input" style="width: 120px; text-align: left;">
+                        <option value="average">Show Average</option>
+                        <option value="balanced" selected>Balanced</option>
+                        <option value="peak">Show Peak</option>
+                    </select>
                 </div>
             </div>
             <div class="drawer-section">

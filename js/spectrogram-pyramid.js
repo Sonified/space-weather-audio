@@ -50,6 +50,14 @@ function getMaxCachedTiles() {
     return 64;
 }
 
+// ─── Pyramid Reduce Mode ─────────────────────────────────────────────────────
+// 'average' — (v0 + v1) / 2  (default, smooth zoom-out)
+// 'peak'    — Math.max(v0, v1) (preserves features that averaging hides)
+let pyramidReduceMode = 'average';
+
+export function setPyramidReduceMode(mode) { pyramidReduceMode = mode; }
+export function getPyramidReduceMode() { return pyramidReduceMode; }
+
 // ─── Pyramid State ──────────────────────────────────────────────────────────
 
 let pyramidLevels = [];        // Array of levels, each an array of tile descriptors
@@ -430,9 +438,14 @@ function cascadeUpward(level, tileIndex) {
     // child1 might not exist (odd number of tiles at this level)
     if (child1 && !child1.ready) return;
 
-    // Build parent by averaging children
+    // Build parent by reducing children (average or peak)
     const parent = parentTiles[parentIndex];
     const freqBins = child0.height;
+    const reduce = pyramidReduceMode === 'peak'
+        ? (a, b) => Math.max(a, b)
+        : pyramidReduceMode === 'balanced'
+        ? (a, b) => Math.round((Math.max(a, b) + (a + b) / 2) / 2)
+        : (a, b) => Math.round((a + b) / 2);
 
     if (child1) {
         // Average two tiles into one (Uint8)
@@ -441,18 +454,18 @@ function cascadeUpward(level, tileIndex) {
         const parentCols = halfCols + halfCols1;
         const parentData = new Uint8Array(parentCols * freqBins);
 
-        // Downsample child0: take pairs, average
+        // Downsample child0: take pairs, reduce
         for (let col = 0; col < halfCols; col++) {
             const srcCol0 = col * 2;
             const srcCol1 = col * 2 + 1;
             for (let bin = 0; bin < freqBins; bin++) {
                 const v0 = child0.magnitudeData[bin * child0.width + srcCol0];
                 const v1 = srcCol1 < child0.width ? child0.magnitudeData[bin * child0.width + srcCol1] : v0;
-                parentData[bin * parentCols + col] = Math.round((v0 + v1) / 2);
+                parentData[bin * parentCols + col] = reduce(v0, v1);
             }
         }
 
-        // Downsample child1: take pairs, average
+        // Downsample child1: take pairs, reduce
         for (let col = 0; col < halfCols1; col++) {
             const srcCol0 = col * 2;
             const srcCol1 = col * 2 + 1;
@@ -460,7 +473,7 @@ function cascadeUpward(level, tileIndex) {
             for (let bin = 0; bin < freqBins; bin++) {
                 const v0 = child1.magnitudeData[bin * child1.width + srcCol0];
                 const v1 = srcCol1 < child1.width ? child1.magnitudeData[bin * child1.width + srcCol1] : v0;
-                parentData[bin * parentCols + destCol] = Math.round((v0 + v1) / 2);
+                parentData[bin * parentCols + destCol] = reduce(v0, v1);
             }
         }
 
@@ -480,7 +493,7 @@ function cascadeUpward(level, tileIndex) {
             for (let bin = 0; bin < freqBins; bin++) {
                 const v0 = child0.magnitudeData[bin * child0.width + srcCol0];
                 const v1 = srcCol1 < child0.width ? child0.magnitudeData[bin * child0.width + srcCol1] : v0;
-                parentData[bin * halfCols + col] = Math.round((v0 + v1) / 2);
+                parentData[bin * halfCols + col] = reduce(v0, v1);
             }
         }
 
@@ -628,6 +641,38 @@ export function disposePyramid() {
     pyramidLevels = [];
     pyramidReady = false;
     console.log('🔺 Pyramid disposed');
+}
+
+/**
+ * Rebuild L1+ pyramid levels from existing L0 tiles.
+ * Called when reduce mode changes (average ↔ peak) — avoids re-running FFT.
+ */
+export function rebuildUpperLevels() {
+    if (pyramidLevels.length < 2) return;
+
+    // 1. Clear L1+ tiles and their cached textures
+    for (let lvl = 1; lvl < pyramidLevels.length; lvl++) {
+        for (let i = 0; i < pyramidLevels[lvl].length; i++) {
+            const tile = pyramidLevels[lvl][i];
+            tile.magnitudeData = null;
+            tile.ready = false;
+
+            const key = tileKey(lvl, i);
+            const cached = tileTextureCache.get(key);
+            if (cached?.texture?.dispose) cached.texture.dispose();
+            tileTextureCache.delete(key);
+        }
+    }
+
+    // 2. Re-cascade from all ready L0 tiles
+    const l0 = pyramidLevels[0];
+    for (let i = 0; i < l0.length; i++) {
+        if (l0[i].ready) {
+            cascadeUpward(0, i);
+        }
+    }
+
+    console.log(`🔺 Rebuilt upper levels (mode: ${pyramidReduceMode})`);
 }
 
 /**
