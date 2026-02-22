@@ -1284,7 +1284,7 @@ async function initializeEmicStudyMode() {
         const isWindowed = mode === 'static' || mode === 'scroll' || mode === 'pageTurn';
         const panel = document.getElementById('trackedRegionsPanel');
         if (panel) {
-            panel.style.display = isWindowed ? 'none' : '';
+            panel.style.display = (isWindowed || window.__EMIC_STUDY_MODE) ? 'none' : '';
         }
         // Hide Component and De-trend controls in windowed modes (unless Advanced is on)
         // Use visibility:hidden (not display:none) so they still occupy space and the status bar stays put
