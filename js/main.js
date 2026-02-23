@@ -996,6 +996,10 @@ async function initializeEmicStudyMode() {
         { id: 'levelTransition', key: 'emic_level_transition', type: 'select' },
         { id: 'crossfadePower', key: 'emic_crossfade_power', type: 'range' },
         { id: 'featurePlaybackMode', key: 'emic_feature_playback_mode', type: 'select' },
+        { id: 'tickFadeInTime', key: 'emic_tick_fade_in', type: 'range' },
+        { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
+        { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
+        { id: 'tickFadeOutCurve', key: 'emic_tick_fade_out_curve', type: 'select' },
     ];
     for (const ctrl of navControls) {
         const el = document.getElementById(ctrl.id);
@@ -1276,6 +1280,22 @@ async function initializeEmicStudyMode() {
         });
         setCrossfadePower(parseFloat(powerSlider.value));
         if (powerLabel) powerLabel.textContent = parseFloat(powerSlider.value).toFixed(1);
+    }
+
+    // Tick fade slider labels
+    for (const { sliderId, labelId, storageKey } of [
+        { sliderId: 'tickFadeInTime', labelId: 'tickFadeInLabel', storageKey: 'emic_tick_fade_in' },
+        { sliderId: 'tickFadeOutTime', labelId: 'tickFadeOutLabel', storageKey: 'emic_tick_fade_out' },
+    ]) {
+        const slider = document.getElementById(sliderId);
+        const label = document.getElementById(labelId);
+        if (!slider) continue;
+        const update = () => { if (label) label.textContent = parseFloat(slider.value).toFixed(2) + 's'; };
+        slider.addEventListener('input', () => {
+            update();
+            localStorage.setItem(storageKey, slider.value);
+        });
+        update();
     }
 
     // Toggle regions panel + top bar controls visibility based on viewing mode

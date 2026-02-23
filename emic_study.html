@@ -109,7 +109,7 @@
             display: flex;
             gap: 8px;
             align-items: center;
-            padding: 8px 12px;
+            padding: 0 4px;
             flex-wrap: wrap;
         }
         
@@ -829,6 +829,45 @@
                 </div>
             </div>
             <div class="drawer-section">
+                <div class="drawer-section-title">X-Axis Ticks</div>
+                <div style="display: flex; flex-direction: column; gap: 10px; padding: 4px 0;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="drawer-label" style="min-width: 56px;">Fade in:</span>
+                            <select id="tickFadeInCurve" class="drawer-input" style="width: 100px; text-align: left;">
+                                <option value="linear">Linear</option>
+                                <option value="easeIn">Ease In</option>
+                                <option value="easeOut" selected>Ease Out</option>
+                                <option value="easeInOut">Ease In-Out</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                            <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0s</span>
+                            <input type="range" id="tickFadeInTime" class="drawer-input" min="0" max="2" step="0.05" value="0.9" style="flex: 1; margin: 0; padding: 0;">
+                            <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">2s</span>
+                            <span id="tickFadeInLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.90s</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="drawer-label" style="min-width: 56px;">Fade out:</span>
+                            <select id="tickFadeOutCurve" class="drawer-input" style="width: 100px; text-align: left;">
+                                <option value="linear">Linear</option>
+                                <option value="easeIn">Ease In</option>
+                                <option value="easeOut" selected>Ease Out</option>
+                                <option value="easeInOut">Ease In-Out</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                            <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0s</span>
+                            <input type="range" id="tickFadeOutTime" class="drawer-input" min="0" max="2" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
+                            <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">2s</span>
+                            <span id="tickFadeOutLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.30s</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="drawer-section">
                 <div class="drawer-section-title">Feature Box Playback</div>
                 <div class="drawer-row">
                     <label for="featurePlaybackMode" class="drawer-label">At page edge</label>
@@ -1099,7 +1138,7 @@
     <script>
     (function() {
         const MIN_HEIGHT = 250;
-        const MAX_HEIGHT = 600;
+        const MAX_HEIGHT = 1200;
         let rafPending = false;
         let fitting = false;
 
@@ -1127,7 +1166,9 @@
 
             if (newH !== currentH) {
                 spec.style.setProperty('--spec-height', newH + 'px');
-                // Canvas resize is picked up by ResizeObserver — no manual dispatch needed
+                // Defer resize dispatch to next frame so layout settles first
+                // (ResizeObserver is RAF-debounced so no feedback loop)
+                requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
             }
 
             fitting = false;
