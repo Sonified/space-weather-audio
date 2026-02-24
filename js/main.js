@@ -1096,8 +1096,8 @@ function injectSettingsDrawer() {
             <div class="drawer-row">
                 <label for="renderOrder" class="drawer-label">Pipeline</label>
                 <select id="renderOrder" class="drawer-input" style="width: 120px; text-align: left;">
-                    <option value="all-then-pyramid" selected>All → Pyramid</option>
-                    <option value="pyramid-only">Pyramid Only</option>
+                    <option value="all-then-pyramid">All → Pyramid</option>
+                    <option value="pyramid-only" selected>Pyramid Only</option>
                 </select>
             </div>
         </div>
