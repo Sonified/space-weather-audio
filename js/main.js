@@ -1001,18 +1001,9 @@ function injectSettingsDrawer() {
             <div class="drawer-section-title">FFT Tile Edge Mode</div>
             <div class="drawer-row">
                 <label for="tileEdgeMode" class="drawer-label">Stitching</label>
-                <select id="tileEdgeMode" class="drawer-input" style="width: 120px; text-align: left;">
+                <select id="tileEdgeMode" class="drawer-input" style="width: 130px; text-align: left;">
                     <option value="standard" selected>Standard</option>
-                    <option value="crossfade">Crossfade</option>
-                </select>
-            </div>
-            <div class="drawer-row" id="tileOverlapRow" style="display: none;">
-                <label for="tileOverlapSize" class="drawer-label">Overlap</label>
-                <select id="tileOverlapSize" class="drawer-input" style="width: 120px; text-align: left;">
-                    <option value="4">4 columns</option>
-                    <option value="8" selected>8 columns</option>
-                    <option value="16">16 columns</option>
-                    <option value="32">32 columns</option>
+                    <option value="crossfade" disabled>Crossfade (coming soon)</option>
                 </select>
             </div>
         </div>
@@ -1360,8 +1351,6 @@ function initializeAdvancedControls() {
         { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
         { id: 'tickFadeOutCurve', key: 'emic_tick_fade_out_curve', type: 'select' },
-        { id: 'tileEdgeMode', key: 'emic_tile_edge_mode', type: 'select' },
-        { id: 'tileOverlapSize', key: 'emic_tile_overlap_size', type: 'select' },
     ];
     for (const ctrl of navControls) {
         const el = document.getElementById(ctrl.id);
@@ -1593,36 +1582,6 @@ function initializeAdvancedControls() {
             zoomOutEl.blur();
         });
         setPyramidReduceMode(zoomOutEl.value);
-    }
-
-    // Wire tile edge mode (standard vs crossfade) — requires full pyramid rebuild
-    const tileEdgeModeEl = document.getElementById('tileEdgeMode');
-    const tileOverlapRow = document.getElementById('tileOverlapRow');
-    const tileOverlapEl = document.getElementById('tileOverlapSize');
-    function updateOverlapRowVisibility() {
-        if (tileOverlapRow) {
-            tileOverlapRow.style.display = tileEdgeModeEl?.value === 'crossfade' ? '' : 'none';
-        }
-    }
-    function triggerTileRebuild() {
-        import('./spectrogram-three-renderer.js').then(module => {
-            module.resetSpectrogramState();
-            module.renderCompleteSpectrogram();
-        });
-    }
-    if (tileEdgeModeEl) {
-        tileEdgeModeEl.addEventListener('change', () => {
-            updateOverlapRowVisibility();
-            triggerTileRebuild();
-            tileEdgeModeEl.blur();
-        });
-        updateOverlapRowVisibility(); // initial state
-    }
-    if (tileOverlapEl) {
-        tileOverlapEl.addEventListener('change', () => {
-            triggerTileRebuild();
-            tileOverlapEl.blur();
-        });
     }
 
     // Wire level transition mode (stepped vs crossfade)

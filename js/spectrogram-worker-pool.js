@@ -231,7 +231,7 @@ export class SpectrogramWorkerPool {
      * Process whole tiles in parallel — one tile per worker, work-stealing.
      * Each tile is computed entirely within a single worker (all FFT columns).
      *
-     * @param {Array} tiles - Array of { audioData, fftSize, hopSize, numTimeSlices, hannWindow, dbFloor, dbRange, tileIndex }
+     * @param {Array} tiles - Array of { audioData, fftSize, exactHop, numTimeSlices, hannWindow, dbFloor, dbRange, tileIndex }
      * @param {Function} onTileComplete - Callback(tileIndex, magnitudeData, width, height) called as each tile finishes
      * @param {AbortSignal} signal - Optional abort signal
      * @returns {Promise} Resolves when all tiles are complete or aborted
@@ -291,7 +291,7 @@ export class SpectrogramWorkerPool {
                     type: 'compute-tile',
                     audioData: tile.audioData,
                     fftSize: tile.fftSize,
-                    hopSize: tile.hopSize,
+                    exactHop: tile.exactHop,
                     numTimeSlices: tile.numTimeSlices,
                     window: tile.hannWindow,
                     dbFloor: tile.dbFloor,

@@ -430,7 +430,7 @@ async function initThreeScene() {
             tsl: {
                 magTex: tileMagTex,      // .value to swap magnitude texture
                 cmapTex: tileCmapTex,    // .value to swap colormap texture
-                opacity: tileOpacity     // .value to set opacity
+                opacity: tileOpacity,    // .value to set opacity
             }
         });
     }
@@ -1200,7 +1200,6 @@ function updateTileMeshPositions(visibleTiles) {
 
             // Shared TSL uniform nodes — no per-tile sync needed
 
-            // Position tile at fixed world-space location (seconds)
             positionMeshWorldSpace(tm.mesh, vt.tile.startSec, vt.tile.endSec);
             tm.mesh.visible = true;
         } else {

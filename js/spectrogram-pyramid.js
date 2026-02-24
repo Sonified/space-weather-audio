@@ -373,19 +373,17 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         }
 
         const maxTimeSlices = TILE_COLS;
-        // Hop so that maxTimeSlices columns span edge-to-edge across the nominal tile
-        // (divide by maxTimeSlices-1 so first col centers at tile start, last at tile end)
-        const nominalSamples = tileSamples.length - fftSize; // core tile without overlap padding
-        const hopSize = Math.max(1, Math.floor(nominalSamples / (maxTimeSlices - 1)));
-        // +1 because we need (n-1)*hop + fftSize ≤ buffer, not n*hop ≤ buffer-fftSize
-        const numTimeSlices = Math.min(maxTimeSlices, Math.floor(nominalSamples / hopSize) + 1);
+        // Float hop so columns span edge-to-edge across the nominal tile
+        const nominalSamples = tileSamples.length - fftSize;
+        const exactHop = Math.max(1, nominalSamples / (maxTimeSlices - 1));
+        const numTimeSlices = maxTimeSlices;
 
         // Store metadata for when results come back
         tileMeta.set(tileIdx, {
             startSample,
             endSample,
             tileSamplesLength: tileSamples.length,
-            hopSize,
+            exactHop,
             numTimeSlices,
         });
 
@@ -393,7 +391,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         tileJobs.push({
             audioData: tileSamples,
             fftSize,
-            hopSize,
+            exactHop,
             numTimeSlices,
             hannWindow: new Float32Array(hannWindow),
             dbFloor: -100,
@@ -426,7 +424,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         const tileSpanSec = (meta.endSample - meta.startSample) / sampleRate;
         const secPerResampledSample = tileSpanSec / meta.tileSamplesLength;
         tile.actualFirstColSec = tileOriginSec + halfFFT * secPerResampledSample;
-        tile.actualLastColSec = tileOriginSec + ((meta.numTimeSlices - 1) * meta.hopSize + halfFFT) * secPerResampledSample;
+        tile.actualLastColSec = tileOriginSec + ((meta.numTimeSlices - 1) * meta.exactHop + halfFFT) * secPerResampledSample;
     }
 
     function reportProgress(tileIdx) {
@@ -849,6 +847,11 @@ export function rebuildUpperLevels() {
     for (const k in cascadeLevelBuilt) delete cascadeLevelBuilt[k];
 
     // 2. Re-cascade from all ready L0 tiles
+    // Suppress onTileReady during rebuild — partial cascades would trigger
+    // premature renders that see incomplete tiles and show black.
+    const savedCallback = onTileReady;
+    onTileReady = null;
+
     const l0 = pyramidLevels[0];
     for (let i = 0; i < l0.length; i++) {
         if (l0[i].ready) {
@@ -856,6 +859,7 @@ export function rebuildUpperLevels() {
         }
     }
 
+    onTileReady = savedCallback;
     console.log(`🔺 Rebuilt upper levels (mode: ${pyramidReduceMode})`);
 }
 

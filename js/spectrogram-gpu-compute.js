@@ -24,7 +24,7 @@ const FFT_WGSL_SHADER = /* wgsl */ `
 
 struct Params {
     fftSize:      u32,
-    hopSize:      u32,
+    hopSize:      f32,
     numSlices:    u32,
     freqBins:     u32,
     dbFloor:      f32,
@@ -62,7 +62,7 @@ fn fft_main(
     let audioBase: u32 = tileDescs[tileIdx * 2u];
     let outputBase: u32 = tileDescs[tileIdx * 2u + 1u];
 
-    let baseOffset: u32 = audioBase + col * params.hopSize;
+    let baseOffset: u32 = audioBase + u32(round(f32(col) * params.hopSize));
 
     // ── Load audio into shared memory with Hann windowing ──
     for (var k: u32 = 0u; k < elemsPerThread; k++) {
@@ -146,7 +146,7 @@ fn fft_main(
         let uint8Val: u32 = u32(clamped * 255.0 + 0.5);
 
         // Pack bytes: 4 uint8 values per u32 via atomicOr
-        // Column-major layout: output byte[outputBase + bin * numSlices + col]
+        // Column-major layout with aligned stride for GPU texture copy
         let linearIdx: u32 = outputBase + bin * params.numSlices + col;
         let wordIdx: u32 = linearIdx / 4u;
         let byteShift: u32 = (linearIdx % 4u) * 8u;
@@ -375,7 +375,7 @@ export class SpectrogramGPUCompute {
         const t0 = performance.now();
 
         // All tiles must share the same FFT params (they do in pyramid)
-        const { fftSize, hopSize, dbFloor, dbRange, hannWindow } = tiles[0];
+        const { fftSize, exactHop, dbFloor, dbRange, hannWindow } = tiles[0];
         const freqBins = fftSize / 2;
         const logStages = Math.log2(fftSize);
         const numSlices = tiles[0].numTimeSlices;
@@ -397,7 +397,7 @@ export class SpectrogramGPUCompute {
         const uniforms = new Uint32Array(8);
         const uniformsF32 = new Float32Array(uniforms.buffer);
         uniforms[0] = fftSize;
-        uniforms[1] = hopSize;
+        uniformsF32[1] = exactHop;
         uniforms[2] = numSlices;
         uniforms[3] = freqBins;
         uniformsF32[4] = dbFloor;
@@ -534,7 +534,6 @@ export class SpectrogramGPUCompute {
             const tileOutput = new Uint8Array(valuesPerTile);
             const byteBase = outputOffsets[i]; // already a byte offset
 
-            // Contiguous copy — bytes are packed in the shader, no striding needed
             tileOutput.set(rawBytes.subarray(byteBase, byteBase + valuesPerTile));
 
             onTileComplete(batchTiles[i].tileIndex, tileOutput, numSlices, freqBins);
@@ -585,7 +584,7 @@ export class SpectrogramGPUCompute {
 
         const t0 = performance.now();
 
-        const { fftSize, hopSize, dbFloor, dbRange, hannWindow } = tiles[0];
+        const { fftSize, exactHop, dbFloor, dbRange, hannWindow } = tiles[0];
         const freqBins = fftSize / 2;
         const logStages = Math.log2(fftSize);
         const numSlices = tiles[0].numTimeSlices;
@@ -607,7 +606,7 @@ export class SpectrogramGPUCompute {
         const uniforms = new Uint32Array(8);
         const uniformsF32 = new Float32Array(uniforms.buffer);
         uniforms[0] = fftSize;
-        uniforms[1] = hopSize;
+        uniformsF32[1] = exactHop;
         uniforms[2] = numSlices;
         uniforms[3] = freqBins;
         uniformsF32[4] = dbFloor;
@@ -712,8 +711,8 @@ export class SpectrogramGPUCompute {
         });
         this.device.queue.writeBuffer(tileDescsBuffer, 0, tileDescsData);
 
-        const totalOutputValues = numTiles * numSlices * freqBins;
-        const outputByteSize = Math.ceil(totalOutputValues / 4) * 4;
+        const totalOutputBytes = numTiles * numSlices * freqBins;
+        const outputByteSize = Math.ceil(totalOutputBytes / 4) * 4;
 
         const outputBuffer = this.device.createBuffer({
             size: outputByteSize,

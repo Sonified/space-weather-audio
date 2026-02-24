@@ -219,7 +219,7 @@ self.onmessage = function(e) {
     }
     
     if (type === 'compute-tile') {
-        const { audioData, fftSize, hopSize, numTimeSlices, window: hannWindow, dbFloor = -100, dbRange = 100, tileIndex } = e.data;
+        const { audioData, fftSize, exactHop, numTimeSlices, window: hannWindow, dbFloor = -100, dbRange = 100, tileIndex } = e.data;
 
         if (!twiddleCache || twiddleCacheSize !== fftSize) {
             precomputeTwiddleFactors(fftSize);
@@ -237,7 +237,7 @@ self.onmessage = function(e) {
         const lutU32 = new Uint32Array(lutF32.buffer);
 
         for (let col = 0; col < numTimeSlices; col++) {
-            const offset = col * hopSize;
+            const offset = Math.round(col * exactHop);
 
             // Window the segment
             for (let i = 0; i < fftSize; i++) {
