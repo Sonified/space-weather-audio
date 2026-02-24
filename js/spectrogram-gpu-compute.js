@@ -576,7 +576,7 @@ export class SpectrogramGPUCompute {
      * @param {Function} onTileGPUTexture - (tileIndex, gpuTexture, width, height) called immediately
      * @param {AbortSignal} signal - Optional abort signal
      */
-    async processTilesZeroCopy(tiles, onTileGPUTexture, signal = null) {
+    async processTilesZeroCopy(tiles, onTileGPUTexture, signal = null, onBatchGPUDone = null) {
         if (!this.initialized) {
             await this.initialize();
         }
@@ -639,6 +639,9 @@ export class SpectrogramGPUCompute {
             const { gpuDonePromise, encodeMs } = this._processBatchZeroCopy(
                 batchTiles, batchTiles.length, numSlices, freqBins, onTileGPUTexture, signal
             );
+            if (onBatchGPUDone) {
+                gpuDonePromise.then(() => onBatchGPUDone(batchCount));
+            }
             allGpuDonePromises.push(gpuDonePromise);
             batchEncodeTimes.push(encodeMs);
             batchCount++;
@@ -652,8 +655,8 @@ export class SpectrogramGPUCompute {
             'color: #FF9800; font-weight: bold'
         );
 
-        // ── Diagnostic: log when GPU finishes ALL batches ──
-        Promise.all(allGpuDonePromises).then(gpuTimes => {
+        // Return promise that resolves when GPU finishes ALL batches
+        return Promise.all(allGpuDonePromises).then(gpuTimes => {
             const maxGpu = Math.max(...gpuTimes).toFixed(1);
             const minGpu = Math.min(...gpuTimes).toFixed(1);
             console.log(

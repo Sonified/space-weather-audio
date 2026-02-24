@@ -290,8 +290,11 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
     const signal = buildAbortController.signal;
 
     // Initialize compute backend (GPU → WASM worker pool fallback)
+    // Respects capability detection from main.js (window.__gpuCapability)
     if (!computeBackend) {
-        if (SpectrogramGPUCompute.isSupported()) {
+        const gpuCap = window.__gpuCapability;
+        const gpuAllowed = gpuCap ? gpuCap.useGPU : true;  // default to trying GPU if no detection ran
+        if (gpuAllowed && SpectrogramGPUCompute.isSupported()) {
             try {
                 gpuCompute = new SpectrogramGPUCompute();
                 // Share device with WebGPU renderer if available (enables zero-readback)
@@ -454,7 +457,12 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
                 reportProgress(tileIdx);
                 // GPU cascade: build parent levels via render passes
                 cascadeUpward(0, tileIdx);
-            }, signal);
+            }, signal,
+            // onBatchGPUDone: trigger re-render as each batch finishes on GPU
+            // (tiles display progressively, just like the old CPU worker path)
+            () => {
+                if (!signal.aborted && onTileReady) onTileReady(-1, -1);
+            });
 
         if (!signal.aborted) {
             pyramidReady = true;
