@@ -49,6 +49,9 @@ let regionMagnitudeHeight = 0;
 // Track which texture the shader is currently using
 let activeTexture = 'full'; // 'full' or 'region'
 
+// Pyramid-only mode: full texture exists for mini-map but is never shown in main view
+let pyramidOnlyMode = false;
+
 // Actual time coverage (FFT column center times, in seconds from data start)
 // Full texture:
 let fullTextureFirstColSec = 0;
@@ -951,34 +954,35 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         const fftSize = State.fftSize || 2048;
         const renderOrderEl = document.getElementById('renderOrder');
         const pyramidOnly = renderOrderEl?.value === 'pyramid-only';
+        pyramidOnlyMode = pyramidOnly;
+
+        // Always compute full FFT texture (needed by mini-map regardless of render mode)
+        const maxTimeSlices = width;
+        const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
+        const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+
+        const result = await computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize);
+        if (!result) {
+            renderingInProgress = false;
+            if (!isStudyMode()) console.groupEnd();
+            return;
+        }
+
+        fullMagnitudeWidth = result.width;
+        fullMagnitudeHeight = result.height;
+
+        // Store actual FFT column center times (seconds from data start)
+        const sr = zoomState.sampleRate;
+        fullTextureFirstColSec = (fftSize / 2) / sr;
+        fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
+        console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
+
+        // Create GPU texture
+        if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
+        fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
 
         if (!pyramidOnly) {
-            const maxTimeSlices = width;
-            const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
-            const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
-
-            // Compute FFT and pack into magnitude texture
-            const result = await computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize);
-            if (!result) {
-                renderingInProgress = false;
-                if (!isStudyMode()) console.groupEnd();
-                return;
-            }
-
-            fullMagnitudeWidth = result.width;
-            fullMagnitudeHeight = result.height;
-
-            // Store actual FFT column center times (seconds from data start)
-            const sr = zoomState.sampleRate;
-            fullTextureFirstColSec = (fftSize / 2) / sr;
-            fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
-            console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
-
-            // Create GPU texture
-            if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
-            fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
-
-            // Set as active texture
+            // Set as active texture for main view
             mainMagTexNode.value = fullMagnitudeTexture;
             activeTexture = 'full';
 
@@ -987,14 +991,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
                 positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
             }
         } else {
-            // Pyramid-only: skip full texture, compute time bounds from data
-            const sr = zoomState.sampleRate;
-            const dataDurationSec = totalSamples / sr;
-            fullTextureFirstColSec = 0;
-            fullTextureLastColSec = dataDurationSec;
-            // Hide the full-texture mesh since we have no texture for it
+            // Pyramid-only: hide the full-texture mesh in main view (mini-map still uses the texture)
             if (mesh) mesh.visible = false;
-            console.log(`🔺 Pyramid-only mode: skipping full-screen FFT render`);
+            console.log(`🔺 Pyramid-only mode: full FFT computed for mini-map, main mesh hidden`);
         }
 
         // Update frequency-related uniforms
@@ -1700,11 +1699,12 @@ function tryUseTiles(viewStartSec, viewEndSec) {
         for (const tm of tileMeshes) tm.mesh.visible = false;
     }
 
-    // Full texture backdrop: always visible unless tiles fully cover the viewport.
+    // Full texture backdrop: visible unless tiles fully cover the viewport
+    // or we're in pyramid-only mode (full texture reserved for mini-map only).
     const primaryLevel = usedLevel >= 0 ? usedLevel : -1;
     const tilesFullyCover = primaryLevel >= 0 && tilesReady(primaryLevel, viewStartSec, viewEndSec);
 
-    if (tilesFullyCover) {
+    if (tilesFullyCover || pyramidOnlyMode) {
         if (mesh) mesh.visible = false;
     } else if (fullMagnitudeTexture) {
         mainMagTexNode.value =fullMagnitudeTexture;

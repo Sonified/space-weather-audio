@@ -1609,7 +1609,7 @@ function initializeAdvancedControls() {
 
         // Bottom bar viz controls (everything right of Display dropdown): hidden in participant
         const vizControls = document.querySelector('.viz-controls');
-        if (vizControls) vizControls.style.display = isParticipant ? 'none' : '';
+        if (vizControls) vizControls.style.display = isParticipant ? 'none' : 'flex';
 
         // Participant ID display (top right): hidden in participant mode
         const pidDisplay = document.getElementById('participantIdDisplay');
