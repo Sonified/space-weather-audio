@@ -19,6 +19,7 @@ import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, 
 import { isStudyMode } from './master-modes.js';
 import { getColorLUT } from './colormaps.js';
 import { initPyramid, renderBaseTiles, pickLevel, pickContinuousLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters, setPyramidReduceMode, setTileDuration, getBaseTileDuration } from './spectrogram-pyramid.js';
+import { uploadMainWaveformData, renderMainWaveform, hideMainWaveform, rebuildMainWaveformColormap, disposeMainWaveform } from './waveform-renderer.js';
 
 // ─── Module state ───────────────────────────────────────────────────────────
 
@@ -226,17 +227,9 @@ let crossfadePower = 1.0;             // 1=linear (trilinear), 2=S-curve, 4+=sha
 export function setLevelTransitionMode(mode) { levelTransitionMode = mode; }
 export function setCrossfadePower(power) { crossfadePower = power; }
 
-// Waveform (time series) overlay mesh for main window view modes
+// Waveform (time series) — TSL mesh kept for scene structure, rendering done via WebGL overlay
 let waveformMesh = null;
 let waveformMaterial = null;
-let wfSampleTexture = null;
-let wfMipTexture = null;
-let wfColormapTexture = null;
-let wfTotalSamples = 0;
-let wfTextureWidth = 1;
-let wfTextureHeight = 1;
-let wfLastUploadedSamples = null;
-const WF_MIP_BIN_SIZE = 256;
 
 // Grey overlay for zoomed-out mode
 let spectrogramOverlay = null;
@@ -385,8 +378,7 @@ async function initThreeScene() {
     mesh.renderOrder = 0;
     scene.add(mesh);
 
-    // ─── Waveform (hidden Phase 1 — TSL conversion Phase 3) ──────────
-    wfColormapTexture = buildWaveformColormapTexture();
+    // ─── Waveform placeholder mesh (rendering done via WebGL overlay) ──────────
     waveformMaterial = new THREE.MeshBasicNodeMaterial();
     waveformMaterial.transparent = true;
     waveformMaterial.colorNode = vec4(0, 0, 0, 0);
@@ -480,51 +472,8 @@ function rebuildColormapTexture() {
         if (tm.tsl?.cmapTex) tm.tsl.cmapTex.value = colormapTexture;
     }
 
-    // Waveform colormap (Phase 3)
-    if (wfColormapTexture) wfColormapTexture.dispose();
-    wfColormapTexture = buildWaveformColormapTexture();
-}
-
-/**
- * Build brightness-boosted colormap for waveform rendering.
- * Makes waveform visible on dark backgrounds and when overlaid on spectrogram.
- */
-function buildWaveformColormapTexture() {
-    const spectrogramLUT = getColorLUT();
-    if (!spectrogramLUT) return null;
-
-    const data = new Uint8Array(256 * 4);
-    for (let i = 0; i < 256; i++) {
-        let r = spectrogramLUT[i * 3];
-        let g = spectrogramLUT[i * 3 + 1];
-        let b = spectrogramLUT[i * 3 + 2];
-
-        // Brightness boost (same algorithm as waveform-renderer)
-        const boost = 0.4;
-        const minBrightness = 150;
-        r = Math.min(255, Math.round(r + (255 - r) * boost));
-        g = Math.min(255, Math.round(g + (255 - g) * boost));
-        b = Math.min(255, Math.round(b + (255 - b) * boost));
-
-        const brightness = (r + g + b) / 3;
-        if (brightness < minBrightness) {
-            const factor = minBrightness / Math.max(brightness, 1);
-            r = Math.min(255, Math.round(r * factor));
-            g = Math.min(255, Math.round(g * factor));
-            b = Math.min(255, Math.round(b * factor));
-        }
-
-        data[i * 4]     = r;
-        data[i * 4 + 1] = g;
-        data[i * 4 + 2] = b;
-        data[i * 4 + 3] = 255;
-    }
-
-    const tex = new THREE.DataTexture(data, 256, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
-    return tex;
+    // Main window waveform overlay colormap
+    rebuildMainWaveformColormap();
 }
 
 // ─── Helper: create magnitude texture from Float32Array ─────────────────────
@@ -621,17 +570,27 @@ async function renderFrame() {
             tryUseTiles(camera.left, camera.right);
         }
 
-        // Waveform hidden in Phase 1
+        // TSL waveform mesh always hidden (waveform rendered via WebGL overlay)
         if (waveformMesh) waveformMesh.visible = false;
 
         await threeRenderer.renderAsync(scene, camera);
 
         // Process GPU texture swaps (zero-readback pipeline)
-        // After first render, Three.js has created internal GPU textures for new DataTexture shells.
-        // We swap them with our compute GPUTextures so the next frame shows real data.
         if (processPendingGPUTextureSwaps()) {
-            // Swaps happened — re-render to display real texture data
             await threeRenderer.renderAsync(scene, camera);
+        }
+
+        // Main window waveform overlay (WebGL, independent from WebGPU spectrogram)
+        const showWaveform = (mode === 'timeSeries' || mode === 'both');
+        if (showWaveform && State.dataStartTime && State.dataEndTime) {
+            const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
+            if (dataDurationSec > 0) {
+                const vpStart = Math.max(0, camera.left / dataDurationSec);
+                const vpEnd = Math.min(1, camera.right / dataDurationSec);
+                renderMainWaveform(vpStart, vpEnd, mode === 'both');
+            }
+        } else {
+            hideMainWaveform();
         }
     } finally {
         renderPending = false;
@@ -641,77 +600,13 @@ async function renderFrame() {
 // ─── Waveform sample upload (for time series mode) ──────────────────────────
 
 /**
- * Upload audio waveform samples to GPU textures for time series rendering.
- * Called after spectrogram render completes (same sample data, separate textures).
+ * Upload audio waveform samples for time series rendering.
+ * Delegates to WebGL overlay in waveform-renderer.js (same shader as minimap).
  */
 function uploadMainWaveformSamples() {
     const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
     if (!samples || samples.length === 0) return;
-    if (!waveformMaterial) return;
-
-    // Skip re-upload if same data
-    if (samples === wfLastUploadedSamples && wfSampleTexture) return;
-
-    wfTotalSamples = samples.length;
-    wfTextureWidth = 4096;
-    wfTextureHeight = Math.ceil(wfTotalSamples / wfTextureWidth);
-
-    // Pad to fill texture rectangle
-    const paddedLength = wfTextureWidth * wfTextureHeight;
-    const data = new Float32Array(paddedLength);
-    data.set(samples);
-
-    if (wfSampleTexture) wfSampleTexture.dispose();
-    wfSampleTexture = new THREE.DataTexture(data, wfTextureWidth, wfTextureHeight, THREE.RedFormat, THREE.FloatType);
-    wfSampleTexture.minFilter = THREE.NearestFilter;
-    wfSampleTexture.magFilter = THREE.NearestFilter;
-    wfSampleTexture.wrapS = THREE.ClampToEdgeWrapping;
-    wfSampleTexture.wrapT = THREE.ClampToEdgeWrapping;
-    wfSampleTexture.needsUpdate = true;
-
-    // Phase 1: waveform uniform uploads deferred (TSL conversion in Phase 3)
-
-    // Build min/max mip texture
-    const mipBins = Math.ceil(wfTotalSamples / WF_MIP_BIN_SIZE);
-    const mipTexWidth = 4096;
-    const mipTexHeight = Math.ceil(mipBins / mipTexWidth);
-    const mipPadded = mipTexWidth * mipTexHeight;
-    const mipData = new Float32Array(mipPadded * 2);
-
-    for (let bin = 0; bin < mipBins; bin++) {
-        const start = bin * WF_MIP_BIN_SIZE;
-        const end = Math.min(start + WF_MIP_BIN_SIZE, wfTotalSamples);
-        let mn = Infinity, mx = -Infinity;
-        for (let j = start; j < end; j++) {
-            const v = samples[j];
-            if (v < mn) mn = v;
-            if (v > mx) mx = v;
-        }
-        mipData[bin * 2]     = mn;
-        mipData[bin * 2 + 1] = mx;
-    }
-
-    if (wfMipTexture) wfMipTexture.dispose();
-    wfMipTexture = new THREE.DataTexture(mipData, mipTexWidth, mipTexHeight, THREE.RGFormat, THREE.FloatType);
-    wfMipTexture.minFilter = THREE.NearestFilter;
-    wfMipTexture.magFilter = THREE.NearestFilter;
-    wfMipTexture.wrapS = THREE.ClampToEdgeWrapping;
-    wfMipTexture.wrapT = THREE.ClampToEdgeWrapping;
-    wfMipTexture.needsUpdate = true;
-
-    // Phase 1: waveform mip uniform uploads deferred (TSL conversion in Phase 3)
-
-    wfLastUploadedSamples = samples;
-
-    // Position waveform mesh in world space (covers full data duration)
-    if (waveformMesh && State.dataStartTime && State.dataEndTime) {
-        const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
-        if (dataDurationSec > 0) {
-            positionMeshWorldSpace(waveformMesh, 0, dataDurationSec);
-        }
-    }
-
-    console.log(`Main window waveform uploaded: ${wfTotalSamples.toLocaleString()} samples`);
+    uploadMainWaveformData(samples);
 }
 
 // ─── Diagnostic functions ───────────────────────────────────────────────────
@@ -1837,10 +1732,8 @@ export function clearCompleteSpectrogram() {
         waveformMaterial.dispose();
         waveformMaterial = null;
     }
-    if (wfSampleTexture) { wfSampleTexture.dispose(); wfSampleTexture = null; }
-    if (wfMipTexture) { wfMipTexture.dispose(); wfMipTexture = null; }
-    if (wfColormapTexture) { wfColormapTexture.dispose(); wfColormapTexture = null; }
-    wfLastUploadedSamples = null;
+    // Dispose main window waveform WebGL overlay
+    disposeMainWaveform();
 
     // Dispose pyramid and tile meshes
     disposePyramid();

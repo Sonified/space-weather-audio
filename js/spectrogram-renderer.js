@@ -1435,6 +1435,11 @@ function rebuildCanvasBoxesFromFeatures() {
 function redrawCanvasBoxes() {
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+
+        // Skip drawing if feature boxes are hidden
+        const fbCheckbox = document.getElementById('featureBoxesVisible');
+        if (fbCheckbox && !fbCheckbox.checked) return;
+
         // PASS 1: Draw all boxes (without annotations)
         for (const savedBox of completedSelectionBoxes) {
             drawSavedBox(spectrogramOverlayCtx, savedBox, false);
@@ -1490,15 +1495,21 @@ export function updateCanvasAnnotations() {
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
 
-        // PASS 1: Draw all boxes (without annotations)
-        for (const savedBox of completedSelectionBoxes) {
-            drawSavedBox(spectrogramOverlayCtx, savedBox, false); // false = don't draw annotations yet
-        }
+        // Skip drawing if feature boxes are hidden
+        const fbCheckbox = document.getElementById('featureBoxesVisible');
+        const boxesHidden = fbCheckbox && !fbCheckbox.checked;
 
-        // PASS 2: Draw all annotations on top (with collision detection)
-        const placedAnnotations = []; // Track placed annotations for collision detection
-        for (const savedBox of completedSelectionBoxes) {
-            drawSavedBox(spectrogramOverlayCtx, savedBox, true, placedAnnotations); // true = only draw annotations
+        if (!boxesHidden) {
+            // PASS 1: Draw all boxes (without annotations)
+            for (const savedBox of completedSelectionBoxes) {
+                drawSavedBox(spectrogramOverlayCtx, savedBox, false); // false = don't draw annotations yet
+            }
+
+            // PASS 2: Draw all annotations on top (with collision detection)
+            const placedAnnotations = []; // Track placed annotations for collision detection
+            for (const savedBox of completedSelectionBoxes) {
+                drawSavedBox(spectrogramOverlayCtx, savedBox, true, placedAnnotations); // true = only draw annotations
+            }
         }
 
         // PASS 3: Draw in-progress selection box (if user is currently dragging)

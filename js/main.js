@@ -1003,6 +1003,13 @@ function injectSettingsDrawer() {
             </div>
         </div>
         <div class="drawer-section">
+            <div class="drawer-section-title">Feature Boxes</div>
+            <div class="drawer-row">
+                <label for="featureBoxesVisible" class="drawer-label">Show Boxes</label>
+                <input type="checkbox" id="featureBoxesVisible" class="drawer-checkbox" checked>
+            </div>
+        </div>
+        <div class="drawer-section">
             <div class="drawer-section-title">Display on Load</div>
             <div class="drawer-row">
                 <label for="displayOnLoad" class="drawer-label">Initial View</label>
@@ -1463,6 +1470,7 @@ function initializeAdvancedControls() {
         { id: 'mainWindowNumbersWeight', key: 'emic_main_numbers_weight', type: 'select' },
         { id: 'mainWindowNumbersSize', key: 'emic_main_numbers_size', type: 'select' },
         { id: 'mainWindowNumbersShadow', key: 'emic_main_numbers_shadow', type: 'select' },
+        { id: 'featureBoxesVisible', key: 'emic_feature_boxes_visible', type: 'checkbox' },
         { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
         { id: 'displayOnLoad', key: 'emic_display_on_load', type: 'select' },
         { id: 'initialHours', key: 'emic_initial_hours', type: 'select' },
@@ -1501,6 +1509,15 @@ function initializeAdvancedControls() {
                 el.blur();
             });
         }
+    }
+
+    // Toggle feature boxes visibility immediately on change
+    const fbVisCheckbox = document.getElementById('featureBoxesVisible');
+    if (fbVisCheckbox) {
+        fbVisCheckbox.addEventListener('change', () => {
+            redrawAllCanvasFeatureBoxes();
+            drawWaveformFromMinMax();
+        });
     }
 
     // Sync mainWindowMode with viewingMode (both share the same localStorage key)
@@ -1621,6 +1638,12 @@ function initializeAdvancedControls() {
         const speedGroup = document.getElementById('speedGroup');
         if (speedGroup) speedGroup.style.display = isParticipant ? 'none' : '';
 
+        // Paulstretch + Wavelet buttons: advanced only
+        const paulstretchBtn = document.querySelector('[data-stretch="paulstretch"]');
+        const waveletBtn = document.querySelector('[data-stretch="wavelet"]');
+        if (paulstretchBtn) paulstretchBtn.style.display = isAdvanced ? '' : 'none';
+        if (waveletBtn) waveletBtn.style.display = isAdvanced ? '' : 'none';
+
         // Participant ID display (top right): hidden in participant mode
         const pidDisplay = document.getElementById('participantIdDisplay');
         if (pidDisplay) pidDisplay.style.display = isParticipant ? 'none' : '';
@@ -1632,7 +1655,7 @@ function initializeAdvancedControls() {
     }
 
     if (displayModeSelect) {
-        // Restore saved preference
+        // Restore saved preference, default to 'standard' for new users
         const savedMode = localStorage.getItem('emic_display_mode');
         if (savedMode && ['participant', 'standard', 'advanced'].includes(savedMode)) {
             displayModeSelect.value = savedMode;

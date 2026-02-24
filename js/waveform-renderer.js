@@ -1074,6 +1074,8 @@ function getWaveformViewport() {
  * Maps feature time/frequency coordinates to minimap pixel space.
  */
 function drawMinimapFeatureBoxes(ctx, width, height) {
+    const fbCheckbox = document.getElementById('featureBoxesVisible');
+    if (fbCheckbox && !fbCheckbox.checked) return;
     if (!State.dataStartTime || !State.dataEndTime) return;
 
     const regions = getRegions() || [];
