@@ -202,11 +202,12 @@ export function notifyInteractionEnd() {
 
 // ─── World-space positioning helper ──────────────────────────────────────────
 // PlaneGeometry(2,2) spans [-1,1]. Scale + translate to cover [startX, endX] × [0, 1].
-function positionMeshWorldSpace(mesh, startX, endX) {
+function positionMeshWorldSpace(targetMesh, startX, endX) {
     const width = endX - startX;
     const centerX = startX + width / 2;
-    mesh.scale.set(width / 2, 0.5, 1);  // half-extents (geometry is 2 wide, 2 tall)
-    mesh.position.set(centerX, 0.5, 0);  // center Y at 0.5 for [0,1] range
+    targetMesh.scale.set(width / 2, 0.5, 1);  // half-extents (geometry is 2 wide, 2 tall)
+    targetMesh.position.set(centerX, 0.5, 0);  // center Y at 0.5 for [0,1] range
+    console.log(`📐 [MESH] pos: ${startX.toFixed(3)}s → ${endX.toFixed(3)}s (w: ${width.toFixed(3)}s, cx: ${centerX.toFixed(3)}s) | name: ${targetMesh.name || 'unnamed'}`);
 }
 
 // ─── Tile rendering (pyramid LOD system) ─────────────────────────────────────
@@ -968,6 +969,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         const sr = zoomState.sampleRate;
         fullTextureFirstColSec = (fftSize / 2) / sr;
         fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
+        console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
 
         // Create GPU texture
         if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
@@ -1523,6 +1525,7 @@ export function updateSpectrogramViewportFromZoom() {
     const viewEndSec = (viewEndMs - dataStartMs) / 1000;
 
     // ─── World-space camera: just move the camera ───
+    console.log(`📷 [VIEWPORT] camera: ${viewStartSec.toFixed(3)}s → ${viewEndSec.toFixed(3)}s (dur: ${(viewEndSec-viewStartSec).toFixed(3)}s) | zoomInit: ${zoomState.isInitialized()} | canvas: ${threeRenderer.domElement.width}x${threeRenderer.domElement.height}`);
     camera.left = viewStartSec;
     camera.right = viewEndSec;
     camera.updateProjectionMatrix();
