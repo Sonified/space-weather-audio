@@ -1882,8 +1882,9 @@ function initializeAdvancedControls() {
         if (panel) {
             panel.style.display = isWindowed ? 'none' : '';
         }
-        const advanced = document.getElementById('advancedMode')?.checked;
-        const hideControls = isWindowed && !advanced;
+        const displayMode = document.getElementById('displayMode')?.value || 'standard';
+        const advanced = displayMode === 'advanced' || document.getElementById('advancedMode')?.checked;
+        const hideControls = isWindowed && !advanced && displayMode === 'participant';
         const comp = document.getElementById('componentSelectorContainer');
         const detrend = document.getElementById('detrendContainer');
         if (comp) comp.style.visibility = hideControls ? 'hidden' : '';
