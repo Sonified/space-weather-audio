@@ -1520,7 +1520,7 @@ input[type="checkbox"] {
     min-height: 36px;
     border-radius: 50%;
     font-size: 24px;
-    line-height: 36px;
+    line-height: 1;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -3318,6 +3318,129 @@ input[type="range"]:disabled {
         opacity: 1;
         transform: translate(-50%, -50%) scale(1.05);
     }
+}
+
+/* ─── Hamburger Button & Settings Drawer ─── */
+.hamburger-btn {
+    display: none; /* shown by Advanced mode */
+    position: fixed;
+    top: 10px;
+    left: 12px;
+    z-index: 1100;
+    font-size: 22px;
+    color: #999;
+    cursor: pointer;
+    user-select: none;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background-color 0.15s, left 0.25s ease;
+}
+.hamburger-btn:hover {
+    color: #ddd;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.settings-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 240px;
+    height: 100%;
+    background: #1e1e1e;
+    border-right: 1px solid #444;
+    z-index: 1100;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+    font-size: 13px;
+    color: #ddd;
+}
+.settings-drawer.open { transform: translateX(0); }
+
+.container {
+    transition: margin-left 0.25s ease;
+}
+body.drawer-open .container {
+    margin-left: 290px;
+}
+body.drawer-open .hamburger-btn {
+    left: 302px;
+}
+
+.drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid #333;
+}
+.drawer-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #eee;
+}
+.drawer-close {
+    font-size: 22px;
+    color: #888;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background-color 0.15s;
+    user-select: none;
+}
+.drawer-close:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.drawer-section {
+    padding: 14px 16px;
+    border-bottom: 1px solid #2a2a2a;
+}
+.drawer-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #777;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+}
+.drawer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 0;
+}
+.drawer-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #bbb;
+    cursor: pointer;
+    user-select: none;
+}
+.drawer-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #80d0ff;
+}
+.drawer-input {
+    width: 70px;
+    padding: 4px 8px;
+    background: #2a2a2a;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #ddd;
+    font-size: 13px;
+    font-family: monospace;
+    text-align: right;
+}
+.drawer-input:focus {
+    outline: none;
+    border-color: #80d0ff;
 }
 
 /* ─── Panel Gear Icons & Popovers ─── */
