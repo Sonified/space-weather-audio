@@ -1024,6 +1024,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             updateSpectrogramOverlay(progress);
         }
 
+        // One-shot render state diagnostic (fires once per render cycle)
+        console.log(`🔎 [RENDER-STATE] camera: ${camera.left.toFixed(1)}→${camera.right.toFixed(1)} | mesh: ${mesh?.visible} pos=(${mesh?.position.x.toFixed(1)},${mesh?.scale.x.toFixed(1)}) | canvas: ${canvas.width}x${canvas.height} → ${canvas.offsetWidth}x${canvas.offsetHeight} | texture: ${activeTexture} ${fullMagnitudeTexture ? fullMagnitudeWidth+'x'+fullMagnitudeHeight : 'NONE'} | scene.children: ${scene?.children.length}`);
+
         // Initialize pyramid and render base tiles
         const zoomOutEl = document.getElementById('mainWindowZoomOut');
         if (zoomOutEl) setPyramidReduceMode(zoomOutEl.value);
@@ -1055,7 +1058,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         // Render base tiles (fire-and-forget, progressive)
         const tileStartTime = performance.now();
         renderBaseTiles(State.completeSamplesArray, pyramidSampleRate, fftSize, viewCenterSec, (done, total) => {
-            if (!isStudyMode()) console.log(`🔺 Tiles: ${done}/${total}`);
+            // Progress logged in pyramid (every 10%) — only log completion here
             // All base tiles rendered — compress audio buffer to save memory
             if (done === total) {
                 const elapsed = ((performance.now() - tileStartTime) / 1000).toFixed(1);

@@ -375,19 +375,30 @@ export async function initAudioWorklet() {
     }
     
     if (!State.audioContext) {
-        const ctx = new AudioContext({
-            latencyHint: 'playback'  // 30ms buffer for stable playback (prevents dropouts)
-        });
-        State.setAudioContext(ctx);
-        await ctx.audioWorklet.addModule('workers/audio-worklet.js');
-        // Load stretch processor worklets for sub-1x speed time-stretching
-        await ctx.audioWorklet.addModule('workers/resample-stretch-processor.js');
-        await ctx.audioWorklet.addModule('workers/paul-stretch-processor.js');
-        await ctx.audioWorklet.addModule('workers/granular-stretch-processor.js');
+        // Guard against double-entry: if modules are already loading, wait for that
+        if (window._audioWorkletLoading) {
+            await window._audioWorkletLoading;
+        } else {
+            const ctx = new AudioContext({
+                latencyHint: 'playback'  // 30ms buffer for stable playback (prevents dropouts)
+            });
+            window._audioWorkletLoading = (async () => {
+                await ctx.audioWorklet.addModule('workers/audio-worklet.js');
+                // Load stretch processor worklets for sub-1x speed time-stretching
+                await ctx.audioWorklet.addModule('workers/resample-stretch-processor.js');
+                await ctx.audioWorklet.addModule('workers/paul-stretch-processor.js');
+                await ctx.audioWorklet.addModule('workers/granular-stretch-processor.js');
+            })();
+            await window._audioWorkletLoading;
+            window._audioWorkletLoading = null;
+            // Set audioContext only AFTER modules are loaded — prevents race where
+            // a second call sees the context, skips addModule, and fails
+            State.setAudioContext(ctx);
+        }
 
         if (!isStudyMode()) {
             console.groupCollapsed('🎵 [AUDIO] Audio Context Setup');
-            console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: ${ctx.sampleRate} Hz, latency: playback)`);
+            console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: ${State.audioContext.sampleRate} Hz, latency: playback)`);
         }
     } else {
         if (!isStudyMode()) {
@@ -697,13 +708,18 @@ export async function startStreaming(event, config = null) {
         window.playbackDurationSeconds = null;
         window.streamingStartTime = null;
         
-        // 🔧 FIX: Reset zoom state to full view when loading new data
+        // 🔧 FIX: Reset zoom state fully when loading new data
+        // Must null out timestamps so isInitialized() returns false —
+        // otherwise the old dataset's timestamps persist and the camera
+        // ends up at (oldTime - newDataStart) = millions of seconds off-screen
         if (zoomState.isInitialized()) {
             zoomState.mode = 'full';
             zoomState.currentViewStartSample = 0;
+            zoomState.currentViewStartTime = null;
+            zoomState.currentViewEndTime = null;
             zoomState.activeRegionId = null;
             if (!safeIsStudyMode()) {
-                console.log('🔄 Reset zoom state to full view for new data');
+                console.log('🔄 Reset zoom state for new data');
             }
         }
         
