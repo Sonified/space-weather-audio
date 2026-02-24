@@ -24,6 +24,7 @@ import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { updateCanvasAnnotations } from './spectrogram-renderer.js';
 import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
 import { drawDayMarkers } from './day-markers.js';
+import { getBaseTileDuration, TILE_COLS } from './spectrogram-pyramid.js';
 
 let initialized = false;
 let rafPending = false;     // true while a render frame is scheduled
@@ -92,7 +93,7 @@ async function renderHiResViewport() {
     // At 15-min base tiles with 1024 cols each, pyramid handles down to ~17 min zoom.
     const viewDurationSec = (endMs - startMs) / 1000;
     const canvasWidth = document.getElementById('spectrogram')?.width || 1200;
-    const baseTileColsInView = (viewDurationSec / (15 * 60)) * 1024; // TILE_COLS per 15min
+    const baseTileColsInView = (viewDurationSec / getBaseTileDuration()) * TILE_COLS;
     if (baseTileColsInView >= canvasWidth * 0.8) {
         console.log(`🔺 Pyramid handles this zoom level — skipping hi-res render`);
         return;

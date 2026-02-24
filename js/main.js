@@ -1034,6 +1034,19 @@ function injectSettingsDrawer() {
                     <option value="crossfade" disabled>Crossfade (coming soon)</option>
                 </select>
             </div>
+            <div class="drawer-row">
+                <label for="tileChunkSize" class="drawer-label">Chunk size</label>
+                <select id="tileChunkSize" class="drawer-input" style="width: 130px; text-align: left;">
+                    ${(() => {
+                        const def = window.__DEFAULT_TILE_CHUNK || 'adaptive';
+                        const opts = [`<option value="adaptive"${def === 'adaptive' ? ' selected' : ''}>Adaptive</option>`];
+                        for (const m of [5,10,15,20,25,30,35,40,45,50,55,60]) {
+                            opts.push(`<option value="${m * 60}"${def === String(m * 60) ? ' selected' : ''}>${m} min</option>`);
+                        }
+                        return opts.join('');
+                    })()}
+                </select>
+            </div>
         </div>
         <div class="drawer-section">
             <div class="drawer-section-title">Zoom Out Mode</div>
@@ -1395,6 +1408,7 @@ function initializeAdvancedControls() {
         { id: 'mainWindowZoomOut', key: 'emic_zoom_out_mode', type: 'select' },
         { id: 'levelTransition', key: 'emic_level_transition', type: 'select' },
         { id: 'crossfadePower', key: 'emic_crossfade_power', type: 'range' },
+        { id: 'tileChunkSize', key: 'emic_tile_chunk_size', type: 'select' },
         { id: 'featurePlaybackMode', key: 'emic_feature_playback_mode', type: 'select' },
         { id: 'dataSource', key: 'emic_data_source', type: 'select' },
         { id: 'tickFadeInTime', key: 'emic_tick_fade_in', type: 'range' },
@@ -1643,6 +1657,21 @@ function initializeAdvancedControls() {
             zoomOutEl.blur();
         });
         setPyramidReduceMode(zoomOutEl.value);
+    }
+
+    // Wire tile chunk size (adaptive vs fixed duration)
+    const tileChunkEl = document.getElementById('tileChunkSize');
+    if (tileChunkEl) {
+        tileChunkEl.addEventListener('change', () => {
+            tileChunkEl.blur();
+            // Re-render spectrogram with new tile duration if data is loaded
+            import('./spectrogram-three-renderer.js').then(module => {
+                if (module.isCompleteSpectrogramRendered()) {
+                    module.clearCompleteSpectrogram();
+                    module.renderCompleteSpectrogram();
+                }
+            });
+        });
     }
 
     // Wire level transition mode (stepped vs crossfade)

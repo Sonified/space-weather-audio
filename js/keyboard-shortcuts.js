@@ -13,6 +13,7 @@ import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
 import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes, notifyInteractionStart, notifyInteractionEnd } from './spectrogram-three-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
+import { getBaseTileDuration, TILE_COLS } from './spectrogram-pyramid.js';
 import { updateCanvasAnnotations } from './spectrogram-renderer.js';
 import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
 import { drawDayMarkers } from './day-markers.js';
@@ -551,7 +552,7 @@ async function scheduleHiResAfterNav() {
 
         const viewDurationSec = (endMs - startMs) / 1000;
         const canvasWidth = document.getElementById('spectrogram')?.width || 1200;
-        const baseTileColsInView = (viewDurationSec / (15 * 60)) * 1024;
+        const baseTileColsInView = (viewDurationSec / getBaseTileDuration()) * TILE_COLS;
         if (baseTileColsInView >= canvasWidth * 0.8) return;
 
         const viewSpanSeconds = endSeconds - startSeconds;

@@ -18,7 +18,7 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { isStudyMode } from './master-modes.js';
 import { getColorLUT } from './colormaps.js';
-import { initPyramid, renderBaseTiles, pickLevel, pickContinuousLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters, setPyramidReduceMode } from './spectrogram-pyramid.js';
+import { initPyramid, renderBaseTiles, pickLevel, pickContinuousLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters, setPyramidReduceMode, setTileDuration, getBaseTileDuration } from './spectrogram-pyramid.js';
 
 // ─── Module state ───────────────────────────────────────────────────────────
 
@@ -1029,6 +1029,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         if (zoomOutEl) setPyramidReduceMode(zoomOutEl.value);
         const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
         const pyramidSampleRate = zoomState.sampleRate;
+        const chunkEl = document.getElementById('tileChunkSize');
+        const chunkMode = chunkEl?.value || 'adaptive';
+        setTileDuration(chunkMode === 'adaptive' ? 'adaptive' : parseInt(chunkMode), dataDurationSec, totalSamples);
         initPyramid(dataDurationSec, pyramidSampleRate);
 
         // Set callback for tile readiness → triggers viewport update

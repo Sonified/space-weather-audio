@@ -41,8 +41,26 @@ function createUint8MagnitudeTexture(data, width, height) {
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
-const BASE_TILE_DURATION_SEC = 15 * 60;  // 15 minutes
+const TARGET_SAMPLES_PER_TILE = 9000;    // ~15 min of GOES at 10 Hz
+let baseTileDurationSec = 15 * 60;       // current tile duration (set before initPyramid)
 const TILE_COLS = 1024;                   // FFT columns per tile
+
+/**
+ * Compute and set the base tile duration.
+ * @param {'adaptive'|number} mode - 'adaptive' or fixed duration in seconds
+ * @param {number} dataDurationSec - total data duration
+ * @param {number} totalSamples - total audio sample count
+ */
+export function setTileDuration(mode, dataDurationSec, totalSamples) {
+    if (mode === 'adaptive') {
+        const tileCount = Math.max(1, Math.round(totalSamples / TARGET_SAMPLES_PER_TILE));
+        baseTileDurationSec = dataDurationSec / tileCount;
+    } else {
+        baseTileDurationSec = Number(mode);
+    }
+}
+
+export function getBaseTileDuration() { return baseTileDurationSec; }
 
 // Adaptive texture cache: scale with available device memory
 function getMaxCachedTiles() {
@@ -93,8 +111,8 @@ export function initPyramid(dataDurationSec, sampleRate) {
 
     if (dataDurationSec <= 0) return 0;
 
-    // Level 0: base tiles at BASE_TILE_DURATION_SEC
-    let tileDuration = BASE_TILE_DURATION_SEC;
+    // Level 0: use current baseTileDurationSec (set by setTileDuration before this call)
+    let tileDuration = baseTileDurationSec;
     let level = 0;
 
     while (true) {
@@ -132,7 +150,7 @@ export function initPyramid(dataDurationSec, sampleRate) {
     }
 
     const totalTiles = pyramidLevels.reduce((sum, lvl) => sum + lvl.length, 0);
-    console.log(`🔺 Pyramid initialized: ${pyramidLevels.length} levels, ${totalTiles} total tiles, base=${BASE_TILE_DURATION_SEC}s`);
+    console.log(`🔺 Pyramid initialized: ${pyramidLevels.length} levels, ${totalTiles} total tiles, base=${baseTileDurationSec.toFixed(1)}s (${(baseTileDurationSec/60).toFixed(1)}min)`);
     for (let i = 0; i < pyramidLevels.length; i++) {
         const lvl = pyramidLevels[i];
         const dur = lvl[0]?.duration || 0;
@@ -212,7 +230,7 @@ export function pickContinuousLevel(viewStartSec, viewEndSec, canvasWidth) {
     if (viewDuration <= 0 || canvasWidth <= 0) return 0;
     if (pyramidLevels.length === 0) return 0;
 
-    const baseTileDuration = pyramidLevels[0][0]?.duration || BASE_TILE_DURATION_SEC;
+    const baseTileDuration = pyramidLevels[0][0]?.duration || baseTileDurationSec;
     const l0ColsPerPixel = (viewDuration / baseTileDuration) * TILE_COLS / canvasWidth;
 
     if (l0ColsPerPixel <= 1.0) return 0;
@@ -868,7 +886,7 @@ export function rebuildUpperLevels() {
  * Call periodically to reduce JS heap usage.
  */
 export function trimMagnitudeData(viewStartSec, viewEndSec) {
-    const keepPadding = BASE_TILE_DURATION_SEC * 4; // Keep 4 tiles of padding
+    const keepPadding = baseTileDurationSec * 4; // Keep 4 tiles of padding
 
     for (const level of pyramidLevels) {
         for (const tile of level) {
@@ -901,4 +919,4 @@ export function getStatus() {
     };
 }
 
-export { TILE_COLS, BASE_TILE_DURATION_SEC };
+export { TILE_COLS };
