@@ -930,6 +930,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
     // Initialize Three.js scene if needed
     await initThreeScene();
 
+    // Sync canvas buffer to CSS display size before reading dimensions
+    resizeRendererToDisplaySize();
+
     const canvas = threeRenderer?.domElement;
     if (!canvas) {
         console.error('Three.js renderer not initialized');
