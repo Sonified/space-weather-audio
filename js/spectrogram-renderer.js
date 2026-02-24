@@ -101,6 +101,85 @@ const annotationTimingState = new Map();
 let debugFrameCounter = 0;
 
 /**
+ * Lightweight confirm dialog — no backdrop dimming, centered popup, defaults to OK.
+ * Returns a Promise<boolean>.
+ */
+function confirmDelete(message, clientX, clientY) {
+    return new Promise(resolve => {
+        const dialog = document.createElement('div');
+        // Position to the right of click, vertically centered on it; fallback to screen center
+        const posStyle = (clientX != null && clientY != null)
+            ? `position: fixed; left: ${clientX + 40}px; top: ${clientY}px; transform: translateY(-50%);`
+            : `position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);`;
+        dialog.style.cssText = `
+            ${posStyle}
+            z-index: 100000; background: #1e1e2e; color: #e0e0e0;
+            border: 1px solid rgba(102, 126, 234, 0.4); border-radius: 8px;
+            padding: 20px 28px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            font-family: Arial, sans-serif; font-size: 14px; text-align: center;
+            min-width: 240px;
+        `;
+        const msg = document.createElement('div');
+        msg.textContent = message;
+        msg.style.marginBottom = '16px';
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display: flex; gap: 10px; justify-content: center;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.style.cssText = `
+            padding: 6px 20px; font-size: 13px; font-weight: 600; border: none;
+            border-radius: 4px; cursor: pointer;
+            background: rgba(100, 100, 120, 0.6); color: #ccc;
+        `;
+        const okBtn = document.createElement('button');
+        okBtn.textContent = 'OK \u21B5';
+        okBtn.style.cssText = `
+            padding: 6px 20px; font-size: 13px; font-weight: 600; border: none;
+            border-radius: 4px; cursor: pointer;
+            background: rgba(70, 120, 230, 0.9); color: #fff;
+        `;
+
+        const cleanup = (result) => {
+            document.removeEventListener('keydown', onKey);
+            dialog.remove();
+            resolve(result);
+        };
+        const onKey = (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); cleanup(true); }
+            else if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+        };
+        okBtn.addEventListener('click', () => cleanup(true));
+        cancelBtn.addEventListener('click', () => cleanup(false));
+        document.addEventListener('keydown', onKey);
+
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(okBtn);
+        dialog.appendChild(msg);
+        dialog.appendChild(btnRow);
+        document.body.appendChild(dialog);
+
+        // If it goes off the right edge, flip to the left of the click
+        const rect = dialog.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+            dialog.style.left = (clientX - 16 - rect.width) + 'px';
+        }
+        // Clamp vertically
+        if (rect.bottom > window.innerHeight) {
+            dialog.style.top = (window.innerHeight - rect.height - 8) + 'px';
+            dialog.style.transform = 'none';
+        }
+        if (rect.top < 0) {
+            dialog.style.top = '8px';
+            dialog.style.transform = 'none';
+        }
+
+        okBtn.focus();
+    });
+}
+
+/**
  * Wrap text to fit within a maximum width
  * @param {CanvasRenderingContext2D} ctx - Canvas context with font already set
  * @param {string} text - Text to wrap
@@ -838,6 +917,11 @@ export function isFeaturePopupOpen() {
     return popupFeatureBox !== null;
 }
 
+/** Returns "regionIndex-featureIndex" key of mouse-hovered box, or null */
+export function getHoveredBoxKey() {
+    return hoveredBoxKey;
+}
+
 export function closeFeaturePopup() {
     if (featurePopupEl) {
         featurePopupEl.remove();
@@ -1093,11 +1177,11 @@ function showFeaturePopup(box) {
     });
 
     // Delete button with confirmation (only present when canDelete is true)
-    popup.querySelector('.feature-popup-delete')?.addEventListener('click', (e) => {
+    popup.querySelector('.feature-popup-delete')?.addEventListener('click', async (e) => {
         e.stopPropagation();
         const isStandalone = box.regionIndex === -1;
         const label = `Feature ${getFlatFeatureNumber(box.regionIndex, box.featureIndex)}`;
-        if (confirm(`Delete ${label}? This cannot be undone.`)) {
+        if (await confirmDelete(`Delete ${label}? This cannot be undone.`, e.clientX, e.clientY)) {
             if (isStandalone) {
                 deleteStandaloneFeature(box.featureIndex);
                 redrawAllCanvasFeatureBoxes();
@@ -1373,7 +1457,20 @@ function redrawCanvasBoxes() {
  * Redraw all canvas feature boxes (called after zoom, speed change, deletion, etc.)
  * Rebuilds from source of truth to stay in sync!
  */
+let featureBoxPendingUntilSpectrogram = false;
+
 export function redrawAllCanvasFeatureBoxes() {
+    // Don't draw feature boxes before the spectrogram is visible
+    if (!State.spectrogramInitialized) {
+        if (!featureBoxPendingUntilSpectrogram) {
+            featureBoxPendingUntilSpectrogram = true;
+            window.addEventListener('spectrogram-ready', () => {
+                featureBoxPendingUntilSpectrogram = false;
+                rebuildCanvasBoxesFromFeatures();
+            }, { once: true });
+        }
+        return;
+    }
     rebuildCanvasBoxesFromFeatures();
 }
 
@@ -2162,11 +2259,13 @@ export function setupSpectrogramSelection() {
         if (closedBox) {
             if (closedBox.regionIndex === -1) {
                 // Standalone feature
-                if (confirm('Delete this feature?')) {
-                    deleteStandaloneFeature(closedBox.featureIndex);
-                    redrawAllCanvasFeatureBoxes();
-                    renderStandaloneFeaturesList();
-                }
+                confirmDelete('Delete this feature?', e.clientX, e.clientY).then(ok => {
+                    if (ok) {
+                        deleteStandaloneFeature(closedBox.featureIndex);
+                        redrawAllCanvasFeatureBoxes();
+                        renderStandaloneFeaturesList();
+                    }
+                });
             } else {
                 deleteRegion(closedBox.regionIndex);
             }
@@ -2941,17 +3040,21 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
             const leadTimeSamples = Math.floor(LEAD_SAMPLES_OUTPUT * playbackRate);
 
             // WORKLET-STYLE: Trigger when samplesToFeature <= leadTimeSamples
-            const shouldShow = samplesToFeature <= leadTimeSamples && samplesToFeature > -featureDurationSamples;
+            // Also show when mouse hovers over this feature box
+            const playheadNear = samplesToFeature <= leadTimeSamples && samplesToFeature > -featureDurationSamples;
+            const shouldShow = playheadNear || hoveredBoxKey === key;
 
+            const isHovered = hoveredBoxKey === key;
             if (shouldShow && timing.state !== 'fading-in' && timing.state !== 'visible') {
                 // Start showing
                 timing.showTime = now;
                 timing.hideTime = null;
                 timing.state = 'fading-in';
+                timing.hoveredOnly = isHovered && !playheadNear;
             } else if (!shouldShow && timing.state !== 'fading-out' && timing.state !== 'hidden') {
-                // Start hiding (if past min display time)
+                // Start hiding — skip min display time for hover-only annotations
                 const timeSinceShow = now - timing.showTime;
-                if (timeSinceShow > ANNOTATION_MIN_DISPLAY_MS) {
+                if (timing.hoveredOnly || timeSinceShow > ANNOTATION_MIN_DISPLAY_MS) {
                     timing.state = 'fading-out';
                     timing.hideTime = now;
                 }

@@ -174,9 +174,13 @@ export function drawWaveformXAxis() {
             ctx.font = `${fontSize} Arial, sans-serif`;
         }
         
-        ctx.fillText(label, x, 10);
+        // Hide label if tick is right at the far right edge; nudge inward at left edge
+        if (canvasWidth - x < 5) return;
+        const halfW = ctx.measureText(label).width / 2;
+        const labelX = Math.max(halfW, x);
+        ctx.fillText(label, labelX, 10);
     });
-    
+
     // 🏛️ Continue animation if in progress
     if (zoomTransitionInProgress) {
         // 🔥 SAFETY: Ensure zoomTransitionStartTime is valid

@@ -8,9 +8,10 @@
 
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
-import { getCurrentRegions } from './region-tracker.js';
+import { getCurrentRegions, getStandaloneFeatures } from './region-tracker.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 import { getYPositionForFrequencyScaled } from './spectrogram-axis-renderer.js';
+import { getHoveredBoxKey } from './spectrogram-renderer.js';
 
 // Container for annotation overlays
 let annotationContainer = null;

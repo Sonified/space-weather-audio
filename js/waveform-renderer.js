@@ -622,6 +622,8 @@ export function rebuildWaveformColormapTexture() {
         wfSpectroColormapTexture = buildSpectroColormapTexture();
         wfSpectroMaterial.uniforms.uColormap.value = wfSpectroColormapTexture;
     }
+    // Also rebuild main window waveform overlay colormap
+    rebuildMainWaveformColormap();
 }
 
 /**
@@ -690,6 +692,9 @@ export function clearWaveformRenderer() {
     wfLastUploadedSamples = null;
     // Null renderer so initWaveformThreeScene can re-create on next load
     wfRenderer = null;
+
+    // Also dispose main window waveform overlay
+    disposeMainWaveform();
 }
 
 /**
@@ -704,6 +709,272 @@ export function getWaveformOverlayCtx() {
  */
 export function getWaveformOverlayCanvas() {
     return wfOverlayCanvas;
+}
+
+// ─── Main window waveform WebGL overlay ──────────────────────────────────────
+// Separate WebGL canvas overlaid on the spectrogram, using the same GLSL shader
+// as the minimap waveform. Independent from the WebGPU spectrogram renderer.
+
+let mwRenderer = null;
+let mwScene = null;
+let mwCamera = null;
+let mwMaterial = null;
+let mwMesh = null;
+let mwSampleTexture = null;
+let mwMipTexture = null;
+let mwColormapTexture = null;
+let mwCanvas = null;
+let mwTotalSamples = 0;
+let mwTextureWidth = 0;
+let mwTextureHeight = 0;
+let mwResizeObserver = null;
+let mwCachedWidth = 0;
+let mwCachedHeight = 0;
+
+function initMainWaveformOverlay() {
+    if (mwRenderer) return;
+
+    const spectrogramCanvas = document.getElementById('spectrogram');
+    if (!spectrogramCanvas) return;
+
+    // Create overlay canvas
+    mwCanvas = document.createElement('canvas');
+    mwCanvas.id = 'main-waveform-overlay';
+    mwCanvas.style.position = 'absolute';
+    mwCanvas.style.pointerEvents = 'none';
+    mwCanvas.style.zIndex = '2';
+    mwCanvas.style.background = 'transparent';
+    mwCanvas.style.display = 'none'; // Hidden until needed
+
+    const dpr = window.devicePixelRatio || 1;
+    mwCanvas.style.left = (spectrogramCanvas.offsetLeft + spectrogramCanvas.clientLeft) + 'px';
+    mwCanvas.style.top = (spectrogramCanvas.offsetTop + spectrogramCanvas.clientTop) + 'px';
+    mwCanvas.style.width = spectrogramCanvas.clientWidth + 'px';
+    mwCanvas.style.height = spectrogramCanvas.clientHeight + 'px';
+    mwCachedWidth = Math.round(spectrogramCanvas.clientWidth * dpr);
+    mwCachedHeight = Math.round(spectrogramCanvas.clientHeight * dpr);
+    mwCanvas.width = mwCachedWidth;
+    mwCanvas.height = mwCachedHeight;
+
+    spectrogramCanvas.parentElement.appendChild(mwCanvas);
+
+    // Create WebGL renderer with transparent background
+    mwRenderer = new THREE.WebGLRenderer({
+        canvas: mwCanvas,
+        antialias: false,
+        alpha: true,
+        premultipliedAlpha: false,
+        preserveDrawingBuffer: true
+    });
+    mwRenderer.setSize(mwCachedWidth, mwCachedHeight, false);
+    mwRenderer.setClearColor(0x000000, 0);
+
+    mwCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
+    mwCamera.position.z = 1;
+
+    mwScene = new THREE.Scene();
+
+    // Build colormap texture (brightness-boosted)
+    mwColormapTexture = buildWaveformColormapTexture();
+
+    const lut = getColorLUT();
+    const bgR = lut ? lut[0] / 255 : 0;
+    const bgG = lut ? lut[1] / 255 : 0;
+    const bgB = lut ? lut[2] / 255 : 0;
+
+    // Same GLSL shader as minimap waveform
+    mwMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uSamples: { value: null },
+            uMipMinMax: { value: null },
+            uColormap: { value: mwColormapTexture },
+            uTotalSamples: { value: 0.0 },
+            uTextureWidth: { value: 1.0 },
+            uTextureHeight: { value: 1.0 },
+            uMipTextureWidth: { value: 1.0 },
+            uMipTextureHeight: { value: 1.0 },
+            uMipTotalBins: { value: 0.0 },
+            uMipBinSize: { value: parseFloat(WF_MIP_BIN_SIZE) },
+            uViewportStart: { value: 0.0 },
+            uViewportEnd: { value: 1.0 },
+            uCanvasWidth: { value: parseFloat(mwCachedWidth) },
+            uCanvasHeight: { value: parseFloat(mwCachedHeight) },
+            uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) },
+            uTransparentBg: { value: 0.0 }
+        },
+        vertexShader: wfVertexShader,
+        fragmentShader: wfFragmentShader,
+        transparent: true
+    });
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    mwMesh = new THREE.Mesh(geometry, mwMaterial);
+    mwScene.add(mwMesh);
+
+    // Track spectrogram canvas resizes
+    mwResizeObserver = new ResizeObserver(() => {
+        if (!mwCanvas || !spectrogramCanvas) return;
+        const rdpr = window.devicePixelRatio || 1;
+        mwCanvas.style.left = (spectrogramCanvas.offsetLeft + spectrogramCanvas.clientLeft) + 'px';
+        mwCanvas.style.top = (spectrogramCanvas.offsetTop + spectrogramCanvas.clientTop) + 'px';
+        mwCanvas.style.width = spectrogramCanvas.clientWidth + 'px';
+        mwCanvas.style.height = spectrogramCanvas.clientHeight + 'px';
+        const w = Math.round(spectrogramCanvas.clientWidth * rdpr);
+        const h = Math.round(spectrogramCanvas.clientHeight * rdpr);
+        if (w > 0 && h > 0) {
+            mwCachedWidth = w;
+            mwCachedHeight = h;
+        }
+    });
+    mwResizeObserver.observe(spectrogramCanvas);
+
+    console.log(`Main window waveform overlay initialized (${mwCachedWidth}x${mwCachedHeight})`);
+}
+
+/**
+ * Upload audio samples to the main window waveform overlay (WebGL).
+ * Creates sample texture and mip min/max texture, same as minimap.
+ */
+export function uploadMainWaveformData(samples) {
+    if (!samples || samples.length === 0) return;
+
+    initMainWaveformOverlay();
+    if (!mwMaterial) return;
+
+    mwTotalSamples = samples.length;
+    mwTextureWidth = 4096;
+    mwTextureHeight = Math.ceil(mwTotalSamples / mwTextureWidth);
+
+    const paddedLength = mwTextureWidth * mwTextureHeight;
+    const data = new Float32Array(paddedLength);
+    data.set(samples);
+
+    if (mwSampleTexture) mwSampleTexture.dispose();
+    mwSampleTexture = new THREE.DataTexture(data, mwTextureWidth, mwTextureHeight, THREE.RedFormat, THREE.FloatType);
+    mwSampleTexture.minFilter = THREE.NearestFilter;
+    mwSampleTexture.magFilter = THREE.NearestFilter;
+    mwSampleTexture.wrapS = THREE.ClampToEdgeWrapping;
+    mwSampleTexture.wrapT = THREE.ClampToEdgeWrapping;
+    mwSampleTexture.needsUpdate = true;
+
+    mwMaterial.uniforms.uSamples.value = mwSampleTexture;
+    mwMaterial.uniforms.uTotalSamples.value = parseFloat(mwTotalSamples);
+    mwMaterial.uniforms.uTextureWidth.value = parseFloat(mwTextureWidth);
+    mwMaterial.uniforms.uTextureHeight.value = parseFloat(mwTextureHeight);
+
+    // Build min/max mip texture
+    const mipBins = Math.ceil(mwTotalSamples / WF_MIP_BIN_SIZE);
+    const mipTexWidth = 4096;
+    const mipTexHeight = Math.ceil(mipBins / mipTexWidth);
+    const mipPadded = mipTexWidth * mipTexHeight;
+    const mipData = new Float32Array(mipPadded * 2);
+
+    for (let bin = 0; bin < mipBins; bin++) {
+        const start = bin * WF_MIP_BIN_SIZE;
+        const end = Math.min(start + WF_MIP_BIN_SIZE, mwTotalSamples);
+        let mn = Infinity, mx = -Infinity;
+        for (let j = start; j < end; j++) {
+            const v = samples[j];
+            if (v < mn) mn = v;
+            if (v > mx) mx = v;
+        }
+        mipData[bin * 2]     = mn;
+        mipData[bin * 2 + 1] = mx;
+    }
+
+    if (mwMipTexture) mwMipTexture.dispose();
+    mwMipTexture = new THREE.DataTexture(mipData, mipTexWidth, mipTexHeight, THREE.RGFormat, THREE.FloatType);
+    mwMipTexture.minFilter = THREE.NearestFilter;
+    mwMipTexture.magFilter = THREE.NearestFilter;
+    mwMipTexture.wrapS = THREE.ClampToEdgeWrapping;
+    mwMipTexture.wrapT = THREE.ClampToEdgeWrapping;
+    mwMipTexture.needsUpdate = true;
+
+    mwMaterial.uniforms.uMipMinMax.value = mwMipTexture;
+    mwMaterial.uniforms.uMipTextureWidth.value = parseFloat(mipTexWidth);
+    mwMaterial.uniforms.uMipTextureHeight.value = parseFloat(mipTexHeight);
+    mwMaterial.uniforms.uMipTotalBins.value = parseFloat(mipBins);
+
+    console.log(`Main waveform overlay uploaded: ${mwTotalSamples.toLocaleString()} samples, mip: ${mipBins.toLocaleString()} bins`);
+}
+
+/**
+ * Render the main window waveform overlay.
+ * @param {number} viewportStart - Normalized 0-1 start of visible range
+ * @param {number} viewportEnd - Normalized 0-1 end of visible range
+ * @param {boolean} transparentBg - true for combination mode (overlay on spectrogram)
+ */
+export function renderMainWaveform(viewportStart, viewportEnd, transparentBg = false) {
+    if (!mwRenderer || !mwScene || !mwCamera || !mwSampleTexture) return;
+
+    // Handle resize
+    const canvas = mwRenderer.domElement;
+    if (mwCachedWidth > 0 && mwCachedHeight > 0 &&
+        (canvas.width !== mwCachedWidth || canvas.height !== mwCachedHeight)) {
+        canvas.width = mwCachedWidth;
+        canvas.height = mwCachedHeight;
+        mwRenderer.setSize(mwCachedWidth, mwCachedHeight, false);
+    }
+
+    mwMaterial.uniforms.uViewportStart.value = viewportStart;
+    mwMaterial.uniforms.uViewportEnd.value = viewportEnd;
+    mwMaterial.uniforms.uCanvasWidth.value = parseFloat(mwCachedWidth);
+    mwMaterial.uniforms.uCanvasHeight.value = parseFloat(mwCachedHeight);
+    mwMaterial.uniforms.uTransparentBg.value = transparentBg ? 1.0 : 0.0;
+
+    const lut = getColorLUT();
+    if (lut) {
+        mwMaterial.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
+    }
+
+    // Show canvas and render
+    if (mwCanvas) mwCanvas.style.display = '';
+    mwRenderer.render(mwScene, mwCamera);
+}
+
+/**
+ * Hide the main window waveform overlay (spectrogram-only mode).
+ */
+export function hideMainWaveform() {
+    if (mwCanvas) mwCanvas.style.display = 'none';
+}
+
+/**
+ * Rebuild main waveform colormap (call after colormap change).
+ */
+export function rebuildMainWaveformColormap() {
+    if (!mwMaterial) return;
+    if (mwColormapTexture) mwColormapTexture.dispose();
+    mwColormapTexture = buildWaveformColormapTexture();
+    mwMaterial.uniforms.uColormap.value = mwColormapTexture;
+}
+
+/**
+ * Dispose all main window waveform overlay resources.
+ */
+export function disposeMainWaveform() {
+    if (mwSampleTexture) { mwSampleTexture.dispose(); mwSampleTexture = null; }
+    if (mwMipTexture) { mwMipTexture.dispose(); mwMipTexture = null; }
+    if (mwColormapTexture) { mwColormapTexture.dispose(); mwColormapTexture = null; }
+    if (mwMesh) { mwMesh.geometry.dispose(); if (mwScene) mwScene.remove(mwMesh); mwMesh = null; }
+    if (mwMaterial) { mwMaterial.dispose(); mwMaterial = null; }
+    if (mwResizeObserver) { mwResizeObserver.disconnect(); mwResizeObserver = null; }
+    if (mwCanvas) { mwCanvas.remove(); mwCanvas = null; }
+    if (mwRenderer) { mwRenderer.dispose(); mwRenderer = null; }
+    mwScene = null;
+    mwCamera = null;
+    mwTotalSamples = 0;
+    mwTextureWidth = 0;
+    mwTextureHeight = 0;
+    mwCachedWidth = 0;
+    mwCachedHeight = 0;
+}
+
+/**
+ * Check if main window waveform has data uploaded.
+ */
+export function isMainWaveformReady() {
+    return !!(mwRenderer && mwSampleTexture);
 }
 
 /**
@@ -2700,6 +2971,19 @@ export function changeWaveformFilter() {
 
         console.log(`  🎨 Redrawing waveform...`);
         drawWaveform();
+
+        // Re-render spectrogram pyramid tiles from de-trended samples
+        // Only if spectrogram was already rendered (avoid interfering with initial load)
+        if (State.spectrogramInitialized) {
+            console.log(`  🔺 Rebuilding spectrogram from de-trended data...`);
+            import('./spectrogram-pyramid.js').then(({ disposePyramid }) => {
+                import('./spectrogram-three-renderer.js').then(({ resetSpectrogramState, renderCompleteSpectrogram }) => {
+                    disposePyramid();
+                    resetSpectrogramState();
+                    renderCompleteSpectrogram();
+                });
+            });
+        }
     } else if (State.waveformWorker) {
         // Data still loading progressively — tell the worker to rebuild with current settings
         const removeDC = document.getElementById('removeDCOffset').checked;
