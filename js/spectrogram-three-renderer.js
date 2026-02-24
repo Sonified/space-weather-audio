@@ -1055,9 +1055,9 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             if (done === total) {
                 const elapsed = ((performance.now() - tileStartTime) / 1000).toFixed(1);
                 console.log(`🔺 All ${total} base tiles rendered in ${elapsed}s`);
-                requestIdleCallback(() => {
+                (window.requestIdleCallback || (cb => setTimeout(cb, 200)))(() => {
                     State.compressSamplesArray();
-                }, { timeout: 5000 });
+                });
             }
         });
 
