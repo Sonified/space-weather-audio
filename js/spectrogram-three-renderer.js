@@ -308,13 +308,8 @@ async function initThreeScene() {
         return;
     }
 
-    // Use CSS display size, not HTML buffer attributes (which default to 1200x450)
-    const width = canvas.offsetWidth || canvas.width;
-    const height = canvas.offsetHeight || canvas.height;
-
-    // Sync the canvas buffer to match CSS display size
-    canvas.width = width;
-    canvas.height = height;
+    const width = canvas.width;
+    const height = canvas.height;
 
     // Reuse existing renderer if available, otherwise create new one
     if (!threeRenderer) {
@@ -933,9 +928,6 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
 
     // Initialize Three.js scene if needed
     await initThreeScene();
-
-    // Sync canvas buffer to CSS display size before reading dimensions
-    resizeRendererToDisplaySize();
 
     const canvas = threeRenderer?.domElement;
     if (!canvas) {
