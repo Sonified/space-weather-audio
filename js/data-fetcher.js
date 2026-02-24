@@ -662,7 +662,14 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             State.workletNode.port.postMessage({
                 type: 'set-first-play-flag'
             });
-            console.log(`🎚️ PIPELINE: Set first-play flag BEFORE sending samples (for long fade-in)`);
+
+            // Mute sourceGainNode before audio arrives, then ramp up over 250ms
+            // Belt-and-suspenders with worklet's internal fade to prevent first-play click
+            if (State.sourceGainNode) {
+                const now = State.audioContext.currentTime;
+                State.sourceGainNode.gain.setValueAtTime(0.0001, now);
+                State.sourceGainNode.gain.exponentialRampToValueAtTime(1.0, now + 0.25);
+            }
             
             const WORKLET_CHUNK_SIZE = 1024;
             State.setAllReceivedData([]);

@@ -2755,7 +2755,7 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         const closeY = y + closePad;
         const numbersMode = document.getElementById('mainWindowNumbers')?.value || 'red';
         // Only draw × when box is wide enough that it won't look like "6×"
-        // 250ms fade in/out based on crossing the size threshold
+        // 250ms fade in / 150ms fade out based on crossing the size threshold
         const xMinW = closeSize * 2.5 + closePad * 2;
         const xMinH = closeSize + closePad * 3;
         const shouldShowX = width > xMinW && height > xMinH;
@@ -2772,7 +2772,7 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         }
         const elapsed = now - fadeState.transitionStart;
         const fadeAlpha = shouldShowX
-            ? Math.min(1, elapsed / 500)      // fade in
+            ? Math.min(1, elapsed / 250)      // fade in
             : Math.max(0, 1 - elapsed / 150); // fade out
         if (fadeAlpha > 0) {
             const inset = 2;

@@ -956,131 +956,141 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         const pyramidOnly = renderOrderEl?.value === 'pyramid-only';
         pyramidOnlyMode = pyramidOnly;
 
-        // Always compute full FFT texture (needed by mini-map regardless of render mode)
-        const maxTimeSlices = width;
-        const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
-        const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+        // Helper: compute full FFT texture and wire it up
+        const computeFullFFT = async () => {
+            const maxTimeSlices = width;
+            const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
+            const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
 
-        const result = await computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize);
-        if (!result) {
-            renderingInProgress = false;
-            if (!isStudyMode()) console.groupEnd();
-            return;
-        }
+            const result = await computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize);
+            if (!result) return false;
 
-        fullMagnitudeWidth = result.width;
-        fullMagnitudeHeight = result.height;
+            fullMagnitudeWidth = result.width;
+            fullMagnitudeHeight = result.height;
 
-        // Store actual FFT column center times (seconds from data start)
-        const sr = zoomState.sampleRate;
-        fullTextureFirstColSec = (fftSize / 2) / sr;
-        fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
-        console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
+            const sr = zoomState.sampleRate;
+            fullTextureFirstColSec = (fftSize / 2) / sr;
+            fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
+            console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
 
-        // Create GPU texture
-        if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
-        fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
+            if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
+            fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
+            return true;
+        };
 
-        if (!pyramidOnly) {
-            // Set as active texture for main view
+        // Helper: initialize pyramid and start rendering base tiles
+        const startPyramid = () => {
+            const zoomOutEl = document.getElementById('mainWindowZoomOut');
+            if (zoomOutEl) setPyramidReduceMode(zoomOutEl.value);
+            const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
+            const pyramidSampleRate = zoomState.sampleRate;
+            const chunkEl = document.getElementById('tileChunkSize');
+            const chunkMode = chunkEl?.value || 'adaptive';
+            setTileDuration(chunkMode === 'adaptive' ? 'adaptive' : parseInt(chunkMode), dataDurationSec, totalSamples);
+            initPyramid(dataDurationSec, pyramidSampleRate);
+
+            setOnTileReady((level, tileIndex) => {
+                const key = `L${level}:${tileIndex}`;
+                if (!tileReadyTimes.has(key)) tileReadyTimes.set(key, performance.now());
+                if (interactionActive) {
+                    pendingTileUpdates = true;
+                    return;
+                }
+                updateSpectrogramViewportFromZoom();
+                renderFrame();
+            });
+
+            const viewCenterSec = zoomState.isInitialized()
+                ? ((zoomState.currentViewStartTime.getTime() + zoomState.currentViewEndTime.getTime()) / 2 - State.dataStartTime.getTime()) / 1000
+                : dataDurationSec / 2;
+
+            const tileStartTime = performance.now();
+            renderBaseTiles(State.completeSamplesArray, pyramidSampleRate, fftSize, viewCenterSec, (done, total) => {
+                if (done === total) {
+                    const elapsed = ((performance.now() - tileStartTime) / 1000).toFixed(1);
+                    console.log(`🔺 All ${total} base tiles rendered in ${elapsed}s`);
+                    (window.requestIdleCallback || (cb => setTimeout(cb, 200)))(() => {
+                        State.compressSamplesArray();
+                    });
+                }
+            });
+        };
+
+        // Helper: finalize render state (axes, viewport, monitoring)
+        const finalizeRender = () => {
+            updateFrequencyUniforms();
+            renderContext = {
+                startSample: 0,
+                endSample: totalSamples,
+                frequencyScale: State.frequencyScale
+            };
+
+            completeSpectrogramRendered = true;
+            State.setSpectrogramInitialized(true);
+            uploadMainWaveformSamples();
+            startMemoryMonitoring();
+            positionAxisCanvas();
+            initializeAxisPlaybackRate();
+            drawFrequencyAxis();
+
+            if (!skipViewportUpdate) {
+                updateSpectrogramViewportFromZoom();
+                createSpectrogramOverlay();
+                const progress = getZoomTransitionProgress();
+                updateSpectrogramOverlay(progress);
+            }
+
+            console.log(`🔎 [RENDER-STATE] camera: ${camera.left.toFixed(1)}→${camera.right.toFixed(1)} | mesh: ${mesh?.visible} pos=(${mesh?.position.x.toFixed(1)},${mesh?.scale.x.toFixed(1)}) | canvas: ${canvas.width}x${canvas.height} → ${canvas.offsetWidth}x${canvas.offsetHeight} | texture: ${activeTexture} ${fullMagnitudeTexture ? fullMagnitudeWidth+'x'+fullMagnitudeHeight : 'NONE'} | scene.children: ${scene?.children.length}`);
+        };
+
+        if (pyramidOnly) {
+            // Pyramid-only: set time bounds, start pyramid first, then compute FFT for mini-map
+            const sr = zoomState.sampleRate;
+            const dataDurationSec = totalSamples / sr;
+            fullTextureFirstColSec = 0;
+            fullTextureLastColSec = dataDurationSec;
+            if (mesh) mesh.visible = false;
+
+            finalizeRender();
+            startPyramid();
+
+            console.log(`🔺 Pyramid-only mode: pyramid started, computing full FFT for mini-map...`);
+            const elapsed = performance.now() - startTime;
+            if (!isStudyMode()) {
+                console.log(`Spectrogram (pyramid init) in ${elapsed.toFixed(0)}ms`);
+            }
+
+            // Compute full FFT in background for the mini-map
+            computeFullFFT().then(ok => {
+                if (ok) {
+                    console.log(`🔺 Pyramid-only: mini-map FFT ready`);
+                    window.dispatchEvent(new Event('spectrogram-ready'));
+                }
+            });
+        } else {
+            // All → Pyramid: compute full FFT first, show as backdrop, then start pyramid
+            const ok = await computeFullFFT();
+            if (!ok) {
+                renderingInProgress = false;
+                if (!isStudyMode()) console.groupEnd();
+                return;
+            }
+
             mainMagTexNode.value = fullMagnitudeTexture;
             activeTexture = 'full';
-
-            // Position full-texture mesh at fixed world-space location (set once, never moved)
             if (mesh) {
                 positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
             }
-        } else {
-            // Pyramid-only: hide the full-texture mesh in main view (mini-map still uses the texture)
-            if (mesh) mesh.visible = false;
-            console.log(`🔺 Pyramid-only mode: full FFT computed for mini-map, main mesh hidden`);
-        }
 
-        // Update frequency-related uniforms
-        updateFrequencyUniforms();
-
-        // Record context
-        renderContext = {
-            startSample: 0,
-            endSample: totalSamples,
-            frequencyScale: State.frequencyScale
-        };
-
-        const elapsed = performance.now() - startTime;
-        if (!isStudyMode()) {
-            console.log(`Spectrogram rendered in ${elapsed.toFixed(0)}ms (Three.js GPU)`);
-        }
-
-        completeSpectrogramRendered = true;
-        State.setSpectrogramInitialized(true);
-
-        // Upload waveform samples for time series mode
-        uploadMainWaveformSamples();
-
-        // Notify minimap that spectrogram texture is ready
-        window.dispatchEvent(new Event('spectrogram-ready'));
-
-        // Restart memory monitoring (stopped during cleanup)
-        startMemoryMonitoring();
-
-        // Draw frequency axis
-        positionAxisCanvas();
-        initializeAxisPlaybackRate();
-        drawFrequencyAxis();
-
-        // Update display — position camera from zoomState so the initial view
-        // reflects the user's "Display on Load" setting (or full range by default)
-        if (!skipViewportUpdate) {
-            updateSpectrogramViewportFromZoom();
-            createSpectrogramOverlay();
-            const progress = getZoomTransitionProgress();
-            updateSpectrogramOverlay(progress);
-        }
-
-        // One-shot render state diagnostic (fires once per render cycle)
-        console.log(`🔎 [RENDER-STATE] camera: ${camera.left.toFixed(1)}→${camera.right.toFixed(1)} | mesh: ${mesh?.visible} pos=(${mesh?.position.x.toFixed(1)},${mesh?.scale.x.toFixed(1)}) | canvas: ${canvas.width}x${canvas.height} → ${canvas.offsetWidth}x${canvas.offsetHeight} | texture: ${activeTexture} ${fullMagnitudeTexture ? fullMagnitudeWidth+'x'+fullMagnitudeHeight : 'NONE'} | scene.children: ${scene?.children.length}`);
-
-        // Initialize pyramid and render base tiles
-        const zoomOutEl = document.getElementById('mainWindowZoomOut');
-        if (zoomOutEl) setPyramidReduceMode(zoomOutEl.value);
-        const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
-        const pyramidSampleRate = zoomState.sampleRate;
-        const chunkEl = document.getElementById('tileChunkSize');
-        const chunkMode = chunkEl?.value || 'adaptive';
-        setTileDuration(chunkMode === 'adaptive' ? 'adaptive' : parseInt(chunkMode), dataDurationSec, totalSamples);
-        initPyramid(dataDurationSec, pyramidSampleRate);
-
-        // Set callback for tile readiness → triggers viewport update
-        // During active zoom/pan, defer expensive updates to avoid jank
-        setOnTileReady((level, tileIndex) => {
-            const key = `L${level}:${tileIndex}`;
-            if (!tileReadyTimes.has(key)) tileReadyTimes.set(key, performance.now());
-            if (interactionActive) {
-                pendingTileUpdates = true;
-                return;
+            const elapsed = performance.now() - startTime;
+            if (!isStudyMode()) {
+                console.log(`Spectrogram rendered in ${elapsed.toFixed(0)}ms (Three.js GPU)`);
             }
-            updateSpectrogramViewportFromZoom();
-            renderFrame();
-        });
 
-        // Get current viewport center for render priority
-        const viewCenterSec = zoomState.isInitialized()
-            ? ((zoomState.currentViewStartTime.getTime() + zoomState.currentViewEndTime.getTime()) / 2 - State.dataStartTime.getTime()) / 1000
-            : dataDurationSec / 2;
-
-        // Render base tiles (fire-and-forget, progressive)
-        const tileStartTime = performance.now();
-        renderBaseTiles(State.completeSamplesArray, pyramidSampleRate, fftSize, viewCenterSec, (done, total) => {
-            // Progress logged in pyramid (every 10%) — only log completion here
-            // All base tiles rendered — compress audio buffer to save memory
-            if (done === total) {
-                const elapsed = ((performance.now() - tileStartTime) / 1000).toFixed(1);
-                console.log(`🔺 All ${total} base tiles rendered in ${elapsed}s`);
-                (window.requestIdleCallback || (cb => setTimeout(cb, 200)))(() => {
-                    State.compressSamplesArray();
-                });
-            }
-        });
+            finalizeRender();
+            window.dispatchEvent(new Event('spectrogram-ready'));
+            startPyramid();
+        }
 
     } catch (error) {
         console.error('Error rendering spectrogram:', error);

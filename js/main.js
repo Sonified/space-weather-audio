@@ -1608,8 +1608,18 @@ function initializeAdvancedControls() {
         if (detrendContainer) detrendContainer.style.display = isParticipant ? 'none' : '';
 
         // Bottom bar viz controls (everything right of Display dropdown): hidden in participant
+        // Use visibility instead of display so the Display dropdown doesn't shift position
         const vizControls = document.querySelector('.viz-controls');
-        if (vizControls) vizControls.style.display = isParticipant ? 'none' : 'flex';
+        if (vizControls) {
+            vizControls.style.visibility = isParticipant ? 'hidden' : 'visible';
+            vizControls.style.pointerEvents = isParticipant ? 'none' : '';
+        }
+
+        // Stretch + Speed button groups: hidden in participant mode
+        const stretchGroup = document.getElementById('stretchGroup');
+        if (stretchGroup) stretchGroup.style.display = isParticipant ? 'none' : '';
+        const speedGroup = document.getElementById('speedGroup');
+        if (speedGroup) speedGroup.style.display = isParticipant ? 'none' : '';
 
         // Participant ID display (top right): hidden in participant mode
         const pidDisplay = document.getElementById('participantIdDisplay');
@@ -1938,6 +1948,20 @@ async function initializeEmicStudyMode() {
         // Hide overlay, go straight to app
         const overlay = document.getElementById('permanentOverlay');
         if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
+
+        // Show "click Fetch Data to begin" prompt (same as Solar Portal)
+        const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+        if (!isSharedSession) {
+            setTimeout(async () => {
+                const { typeText } = await import('./tutorial-effects.js');
+                const statusEl = document.getElementById('status');
+                if (statusEl) {
+                    statusEl.className = 'status info';
+                    const msg = State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin';
+                    typeText(statusEl, msg, 30, 10);
+                }
+            }, 500);
+        }
     }
 
     console.log('🔬 EMIC Study mode initialized (skipLogin:', skipLogin, ')');
