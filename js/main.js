@@ -835,7 +835,7 @@ export async function startStreaming(event, config = null) {
                 statusDiv.textContent = '🎧 Ready! Click PLAY or press the SPACE BAR to start playback.';
                 statusDiv.className = 'status';
             } else if (userHasClickedWaveformOnce) {
-                statusDiv.textContent = 'Click and drag to create a region, type a region # to zoom in, or click 🔍';
+                statusDiv.textContent = 'Scroll to zoom, drag to pan, arrow keys to navigate';
                 statusDiv.className = 'status info';
             } else {
                 statusDiv.textContent = 'Click the waveform to jump to a new location.';

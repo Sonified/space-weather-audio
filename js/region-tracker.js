@@ -4046,7 +4046,7 @@ export function zoomToFull() {
                 const regions = getCurrentRegions();
                 if (regions.length > 0) {
                     statusEl.className = 'status info';
-                    statusEl.textContent = `Click and drag to create a region, type a region # to zoom in, or click 🔍`;
+                    statusEl.textContent = `Scroll to zoom, drag to pan, arrow keys to navigate`;
                 }
             }
         }
