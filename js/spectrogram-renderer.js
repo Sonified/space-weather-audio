@@ -973,8 +973,8 @@ function showFeaturePopup(box) {
             <div class="feature-popup-settings-row">
                 <span class="feature-popup-settings-label">Location</span>
                 <div class="feature-popup-settings-options" data-setting="feature_popup_pin">
-                    <button data-value="static" class="active">Drag & Drop</button>
-                    <button data-value="to-feature">Pin to Feature</button>
+                    <button data-value="static">Drag & Drop</button>
+                    <button data-value="to-feature" class="active">Pin to Feature</button>
                 </div>
             </div>
             <div class="feature-popup-settings-row">
@@ -1035,7 +1035,7 @@ function showFeaturePopup(box) {
 
         popup.classList.toggle('feature-popup--dark-on-light', colorMode === 'dark-on-light');
         popup.classList.toggle('feature-popup--match-colormap', themeMode === 'match-colormap');
-        popup.classList.toggle('feature-popup--pinned', (localStorage.getItem('feature_popup_pin') || 'static') === 'to-feature');
+        popup.classList.toggle('feature-popup--pinned', (localStorage.getItem('feature_popup_pin') || 'to-feature') === 'to-feature');
 
         // Update active button states
         settingsPanel.querySelectorAll('.feature-popup-settings-options').forEach(group => {
@@ -1115,7 +1115,7 @@ function showFeaturePopup(box) {
     header.addEventListener('mousedown', (ev) => {
         if (ev.target.closest('.feature-popup-close') || ev.target.closest('.feature-popup-gear') || ev.target.closest('.feature-popup-delete') || ev.target.closest('.feature-popup-play')) return;
         // No dragging in pin-to-feature mode
-        if ((localStorage.getItem('feature_popup_pin') || 'static') === 'to-feature') return;
+        if ((localStorage.getItem('feature_popup_pin') || 'to-feature') === 'to-feature') return;
         isDragging = true;
         dragOffsetX = ev.clientX - popup.offsetLeft;
         dragOffsetY = ev.clientY - popup.offsetTop;
@@ -1133,7 +1133,7 @@ function showFeaturePopup(box) {
     const onDragUp = () => {
         if (!isDragging) return;
         // In pinned mode, store cumulative drag offset
-        const pinMode = localStorage.getItem('feature_popup_pin') || 'static';
+        const pinMode = localStorage.getItem('feature_popup_pin') || 'to-feature';
         if (pinMode === 'to-feature') {
             const dx = (popupPinOffset?.dx || 0) + (popup.offsetLeft - dragStartLeft);
             const dy = (popupPinOffset?.dy || 0) + (popup.offsetTop - dragStartTop);
@@ -1445,7 +1445,7 @@ export function updateCanvasAnnotations() {
  */
 function updatePinnedPopupPosition() {
     if (!featurePopupEl || !popupFeatureBox) return;
-    const pinMode = localStorage.getItem('feature_popup_pin') || 'static';
+    const pinMode = localStorage.getItem('feature_popup_pin') || 'to-feature';
     if (pinMode !== 'to-feature') return;
 
     // Find the matching box in completedSelectionBoxes
@@ -1457,25 +1457,24 @@ function updatePinnedPopupPosition() {
 
     const sr = getScreenRectForBox(box);
     if (!sr) {
-        // Feature is off-screen — hide popup
+        // Can't compute position at all — hide popup
         featurePopupEl.classList.add('feature-popup--off-screen');
         return;
     }
 
-    // Check if feature box is fully off the canvas viewport
+    // Always reposition to follow the box (even off-canvas)
+    positionPopupBesideRect(featurePopupEl, sr, popupPinOffset);
+
+    // Fade out when feature box is fully off the canvas viewport
     const canvas = document.getElementById('spectrogram');
     if (canvas) {
         const canvasRect = canvas.getBoundingClientRect();
-        if (sr.right < canvasRect.left || sr.left > canvasRect.right ||
-            sr.bottom < canvasRect.top || sr.top > canvasRect.bottom) {
-            featurePopupEl.classList.add('feature-popup--off-screen');
-            return;
-        }
+        const offScreen = sr.right < canvasRect.left || sr.left > canvasRect.right ||
+            sr.bottom < canvasRect.top || sr.top > canvasRect.bottom;
+        featurePopupEl.classList.toggle('feature-popup--off-screen', offScreen);
+    } else {
+        featurePopupEl.classList.remove('feature-popup--off-screen');
     }
-
-    // Feature is on-screen — show and reposition
-    featurePopupEl.classList.remove('feature-popup--off-screen');
-    positionPopupBesideRect(featurePopupEl, sr, popupPinOffset);
 }
 
 // 🔥 FIX: Track event listeners for cleanup to prevent memory leaks
