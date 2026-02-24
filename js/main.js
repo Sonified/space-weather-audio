@@ -1063,9 +1063,15 @@ function injectSettingsDrawer() {
                     ${(() => {
                         const def = window.__DEFAULT_TILE_CHUNK || 'adaptive';
                         const opts = [`<option value="adaptive"${def === 'adaptive' ? ' selected' : ''}>Adaptive</option>`];
-                        for (const m of [5,10,15,20,25,30,35,40,45,50,55,60]) {
+                        for (const m of [1,2,5,10,15,20,25,30,35,40,45,50,55]) {
                             opts.push(`<option value="${m * 60}"${def === String(m * 60) ? ' selected' : ''}>${m} min</option>`);
                         }
+                        for (const h of [1,2,3,4,5,6,12]) {
+                            const s = h * 3600;
+                            opts.push(`<option value="${s}"${def === String(s) ? ' selected' : ''}>${h} hr</option>`);
+                        }
+                        const dayS = 86400;
+                        opts.push(`<option value="${dayS}"${def === String(dayS) ? ' selected' : ''}>1 day</option>`);
                         return opts.join('');
                     })()}
                 </select>

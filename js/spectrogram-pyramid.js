@@ -41,9 +41,39 @@ function createUint8MagnitudeTexture(data, width, height) {
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
-const TARGET_SAMPLES_PER_TILE = 9000;    // ~15 min of GOES at 10 Hz
+const TARGET_SAMPLES_PER_TILE = 35000;   // ~2 min PSP@293Hz, ~1 hr GOES@10Hz
 let baseTileDurationSec = 15 * 60;       // current tile duration (set before initPyramid)
 const TILE_COLS = 1024;                   // FFT columns per tile
+
+// Nice time boundaries for adaptive snapping (seconds), preferred in order.
+const SNAP_BOUNDARIES = [
+    // minutes
+    1*60, 2*60, 3*60, 5*60, 10*60, 15*60, 20*60, 30*60,
+    // hours
+    60*60, 2*3600, 3*3600, 4*3600, 5*3600, 6*3600, 12*3600, 24*3600,
+];
+
+/**
+ * Snap a raw duration (seconds) to the nearest nice minute boundary.
+ * If data is short enough for one tile, just use the full duration.
+ */
+function snapToNiceBoundary(rawSec, dataDurationSec) {
+    // Short data? Just one tile.
+    if (rawSec >= dataDurationSec) return dataDurationSec;
+
+    let best = rawSec;
+    let bestScore = Infinity;
+
+    for (const snap of SNAP_BOUNDARIES) {
+        if (snap > dataDurationSec) continue;
+        const score = Math.abs(rawSec - snap);
+        if (score < bestScore) {
+            bestScore = score;
+            best = snap;
+        }
+    }
+    return best;
+}
 
 /**
  * Compute and set the base tile duration.
@@ -54,7 +84,9 @@ const TILE_COLS = 1024;                   // FFT columns per tile
 export function setTileDuration(mode, dataDurationSec, totalSamples) {
     if (mode === 'adaptive') {
         const tileCount = Math.max(1, Math.round(totalSamples / TARGET_SAMPLES_PER_TILE));
-        baseTileDurationSec = dataDurationSec / tileCount;
+        const rawDuration = dataDurationSec / tileCount;
+        baseTileDurationSec = snapToNiceBoundary(rawDuration, dataDurationSec);
+        console.log(`🧩 Adaptive tile: ${rawDuration.toFixed(1)}s raw → ${baseTileDurationSec}s snapped (${(baseTileDurationSec/60).toFixed(1)} min)`);
     } else {
         baseTileDurationSec = Number(mode);
     }

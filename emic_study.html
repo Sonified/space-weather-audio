@@ -8,7 +8,7 @@
     <script>
         // Force EMIC_STUDY mode before any modules load
         window.__EMIC_STUDY_MODE = true;
-        window.__DEFAULT_TILE_CHUNK = '900'; // 15 min fixed for GOES 7-day data
+        window.__DEFAULT_TILE_CHUNK = '3600'; // 1 hr for GOES 7-day data (4x faster, same visual quality)
 
         // Single source of truth for EMIC study time range
         window.__EMIC_CONFIG = {
