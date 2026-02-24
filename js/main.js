@@ -1489,23 +1489,26 @@ function initializeAdvancedControls() {
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
         { id: 'tickFadeOutCurve', key: 'emic_tick_fade_out_curve', type: 'select' },
     ];
+    // Page-specific localStorage: emic_study keeps 'emic_*' keys, index.html uses 'main_*'
+    const settingsPrefix = isStudyMode() ? 'emic_' : 'main_';
     for (const ctrl of navControls) {
         const el = document.getElementById(ctrl.id);
         if (!el) continue;
-        const saved = localStorage.getItem(ctrl.key);
+        const storageKey = ctrl.key.replace(/^emic_/, settingsPrefix);
+        const saved = localStorage.getItem(storageKey);
         if (ctrl.type === 'checkbox') {
             if (saved !== null) el.checked = saved === 'true';
-            el.addEventListener('change', () => localStorage.setItem(ctrl.key, el.checked));
+            el.addEventListener('change', () => localStorage.setItem(storageKey, el.checked));
         } else {
             if (saved !== null) {
                 el.value = saved;
                 if (el.value !== saved) {
-                    localStorage.removeItem(ctrl.key);
+                    localStorage.removeItem(storageKey);
                     el.selectedIndex = 0;
                 }
             }
             el.addEventListener('change', () => {
-                localStorage.setItem(ctrl.key, el.value);
+                localStorage.setItem(storageKey, el.value);
                 el.blur();
             });
         }
