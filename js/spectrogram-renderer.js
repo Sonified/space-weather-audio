@@ -14,6 +14,7 @@ import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { animateScaleTransition } from './spectrogram-axis-renderer.js';
 import { startPlaybackIndicator, buildWaveformColorLUT, drawWaveformFromMinMax, rebuildWaveformColormapTexture } from './waveform-renderer.js';
+import { seekToPosition, pausePlayback, getCurrentPosition } from './audio-player.js';
 import { setColormap, getCurrentColormap, updateAccentColors } from './colormaps.js';
 
 // RAF loop to keep feature boxes in sync with the axis scale transition animation
@@ -710,6 +711,56 @@ let featurePopupCleanup = null; // stores outside-click / keydown listeners for 
 let popupFeatureBox = null;     // { regionIndex, featureIndex } of the popup's feature
 let popupPinOffset = null;      // { dx, dy } drag offset from computed pinned position
 
+// ── Feature play button state ──
+let featurePlaybackRAF = null;
+let featurePlaybackEndTime = null; // audio seconds at which to auto-stop
+
+/**
+ * Play a feature: seek to just before it, play through, auto-stop just after.
+ * Always restarts from the beginning (not a toggle).
+ */
+function playFeature(startTimeISO, endTimeISO) {
+    if (!State.dataStartTime || !State.totalAudioDuration) return;
+
+    // Cancel any existing feature playback monitor
+    if (featurePlaybackRAF) {
+        cancelAnimationFrame(featurePlaybackRAF);
+        featurePlaybackRAF = null;
+    }
+
+    const dataStartMs = State.dataStartTime.getTime();
+    const featureStartSec = (new Date(startTimeISO).getTime() - dataStartMs) / 1000;
+    const featureEndSec = (new Date(endTimeISO).getTime() - dataStartMs) / 1000;
+
+    // Add padding (0.5s before/after), clamped to audio bounds
+    const padding = 0.5;
+    const paddedStart = Math.max(0, featureStartSec - padding);
+    const paddedEnd = Math.min(State.totalAudioDuration, featureEndSec + padding);
+
+    featurePlaybackEndTime = paddedEnd;
+
+    // Seek and start playing
+    seekToPosition(paddedStart, true);
+
+    // Monitor playback position and auto-stop when we reach the end
+    function monitorPlayback() {
+        if (State.playbackState !== PlaybackState.PLAYING) {
+            featurePlaybackRAF = null;
+            featurePlaybackEndTime = null;
+            return;
+        }
+        const pos = getCurrentPosition();
+        if (pos >= featurePlaybackEndTime) {
+            pausePlayback();
+            featurePlaybackRAF = null;
+            featurePlaybackEndTime = null;
+            return;
+        }
+        featurePlaybackRAF = requestAnimationFrame(monitorPlayback);
+    }
+    featurePlaybackRAF = requestAnimationFrame(monitorPlayback);
+}
+
 /**
  * Update the popup's time/freq inputs to reflect the current box values (live drag).
  * Skips any input that has focus so we don't fight user edits.
@@ -755,6 +806,10 @@ function parsePopupTimeToISO(shortTime, originalISO) {
     if (parts.length < 2 || parts.some(isNaN)) return shortTime;
     orig.setUTCHours(parts[0], parts[1], parts[2] || 0, 0);
     return orig.toISOString();
+}
+
+export function isFeaturePopupOpen() {
+    return popupFeatureBox !== null;
 }
 
 export function closeFeaturePopup() {
@@ -867,7 +922,7 @@ function showFeaturePopup(box) {
     popup.className = 'feature-popup';
     popup.innerHTML = `
         <div class="feature-popup-header">
-            <span class="feature-popup-title">Feature <strong>${flatNum}</strong></span>
+            <span class="feature-popup-title">Feature <strong>${flatNum}</strong> <button class="feature-popup-play" title="Play this feature from the beginning" data-start="${feature.startTime}" data-end="${feature.endTime}">&#9654;</button></span>
             <div class="feature-popup-header-buttons">
                 <span class="feature-popup-gear" role="button" aria-label="Feature settings" style="display:${isAdvanced ? 'inline-flex' : 'none'}">&#9881;</span>
                 ${canDelete ? '<button class="feature-popup-delete" title="Delete this feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>' : ''}
@@ -997,6 +1052,13 @@ function showFeaturePopup(box) {
     // Close button
     popup.querySelector('.feature-popup-close').addEventListener('click', closeFeaturePopup);
 
+    // Play button
+    popup.querySelector('.feature-popup-play').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        playFeature(btn.dataset.start, btn.dataset.end);
+    });
+
     // Delete button with confirmation
     popup.querySelector('.feature-popup-delete').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1018,7 +1080,7 @@ function showFeaturePopup(box) {
     let dragOffsetX = 0, dragOffsetY = 0, isDragging = false;
     let dragStartLeft = 0, dragStartTop = 0;
     header.addEventListener('mousedown', (ev) => {
-        if (ev.target.closest('.feature-popup-close') || ev.target.closest('.feature-popup-gear') || ev.target.closest('.feature-popup-delete')) return;
+        if (ev.target.closest('.feature-popup-close') || ev.target.closest('.feature-popup-gear') || ev.target.closest('.feature-popup-delete') || ev.target.closest('.feature-popup-play')) return;
         // No dragging in pin-to-feature mode
         if ((localStorage.getItem('feature_popup_pin') || 'static') === 'to-feature') return;
         isDragging = true;

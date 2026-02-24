@@ -788,10 +788,15 @@ export async function startStreaming(event, config = null) {
         
         console.log(`🛰️ ${logTime()} Fetching: ${spacecraft} ${dataset} from ${startTimeISO} to ${endTimeISO}`);
         
+        // Check data source selection
+        const dataSourceEl = document.getElementById('dataSource');
+        const dataSource = dataSourceEl ? dataSourceEl.value : 'cdaweb';
+
         // Update status with animated loading indicator
         const statusDiv = document.getElementById('status');
         let dotCount = 0;
-        const baseMessage = `Fetching ${spacecraft} ${dataset} from CDAWeb`;
+        const sourceName = dataSource === 'cloudflare' ? 'Cloudflare' : 'CDAWeb';
+        const baseMessage = `Fetching ${spacecraft} ${dataset} from ${sourceName}`;
         let loadingInterval = null;
         if (statusDiv) {
             // Cancel any active typing/pulse animations that could fight with our interval
@@ -807,11 +812,16 @@ export async function startStreaming(event, config = null) {
                 statusDiv.textContent = baseMessage + '.'.repeat(dotCount);
             }, 500);
         }
-        
-        // Fetch and load the CDAWeb audio data
+
+        // Fetch and load data from selected source
         try {
-        const { fetchAndLoadCDAWebData } = await import('./data-fetcher.js');
-        await fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO);
+        if (dataSource === 'cloudflare') {
+            const { fetchAndLoadCloudflareData } = await import('./goes-cloudflare-fetcher.js');
+            await fetchAndLoadCloudflareData(spacecraft, dataset, startTimeISO, endTimeISO);
+        } else {
+            const { fetchAndLoadCDAWebData } = await import('./data-fetcher.js');
+            await fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO);
+        }
         } finally {
             if (loadingInterval) clearInterval(loadingInterval);
             if (statusDiv) statusDiv.classList.remove('loading');
@@ -977,6 +987,24 @@ function injectSettingsDrawer() {
             </div>
         </div>
         <div class="drawer-section">
+            <div class="drawer-section-title">Display on Load</div>
+            <div class="drawer-row">
+                <label for="displayOnLoad" class="drawer-label">Initial View</label>
+                <select id="displayOnLoad" class="drawer-input" style="width: 130px; text-align: left;">
+                    <option value="all" selected>All Data</option>
+                    <option value="beginning">Start at Beginning</option>
+                </select>
+            </div>
+            <div id="initialHoursRow" class="drawer-row" style="display: none;">
+                <label for="initialHours" class="drawer-label">Show first</label>
+                <select id="initialHours" class="drawer-input" style="width: 70px; text-align: left;">
+                    ${Array.from({length: 24}, (_, i) => i + 1).map(h =>
+                        `<option value="${h}"${h === 12 ? ' selected' : ''}>${h}h</option>`
+                    ).join('')}
+                </select>
+            </div>
+        </div>
+        <div class="drawer-section">
             <div class="drawer-section-title">Panel Heights (px)</div>
             <div class="drawer-row">
                 <label for="heightMinimap" class="drawer-label">Minimap</label>
@@ -1109,6 +1137,16 @@ function injectSettingsDrawer() {
                 </select>
             </div>
         </div>
+        <div class="drawer-section">
+            <div class="drawer-section-title">Data Loading</div>
+            <div class="drawer-row">
+                <label for="dataSource" class="drawer-label">Source</label>
+                <select id="dataSource" class="drawer-input" style="width: 150px; text-align: left;">
+                    <option value="cdaweb" selected>GOES CDAWeb</option>
+                    <option value="cloudflare">GOES Cloudflare</option>
+                </select>
+            </div>
+        </div>
     `;
     document.body.appendChild(drawer);
 }
@@ -1207,6 +1245,15 @@ function injectGearPopovers() {
                         <option value="spectrogram" selected>Spectrogram</option>
                         <option value="both">Combination</option>
                         <option value="timeSeries">Time Series</option>
+                    </select>
+                </div>
+                <div class="gear-popover-row">
+                    <span class="gear-label">Mode:</span>
+                    <select id="mainWindowMode" class="gear-select">
+                        <option value="full">Region Creation</option>
+                        <option value="pageTurn" selected>Windowed Page Turn</option>
+                        <option value="scroll">Windowed Scroll</option>
+                        <option value="static">Windowed Static</option>
                     </select>
                 </div>
                 <div class="gear-popover-row">
@@ -1340,6 +1387,8 @@ function initializeAdvancedControls() {
         { id: 'mainWindowNumbers', key: 'emic_main_numbers', type: 'select' },
         { id: 'mainWindowNumbersLoc', key: 'emic_main_numbers_loc', type: 'select' },
         { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
+        { id: 'displayOnLoad', key: 'emic_display_on_load', type: 'select' },
+        { id: 'initialHours', key: 'emic_initial_hours', type: 'select' },
         { id: 'arrowZoomStep', key: 'emic_arrow_zoom_step', type: 'select' },
         { id: 'arrowPanStep', key: 'emic_arrow_pan_step', type: 'select' },
         { id: 'mainWindowBoxFilter', key: 'emic_main_box_filter', type: 'select' },
@@ -1347,6 +1396,7 @@ function initializeAdvancedControls() {
         { id: 'levelTransition', key: 'emic_level_transition', type: 'select' },
         { id: 'crossfadePower', key: 'emic_crossfade_power', type: 'range' },
         { id: 'featurePlaybackMode', key: 'emic_feature_playback_mode', type: 'select' },
+        { id: 'dataSource', key: 'emic_data_source', type: 'select' },
         { id: 'tickFadeInTime', key: 'emic_tick_fade_in', type: 'range' },
         { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
@@ -1372,6 +1422,18 @@ function initializeAdvancedControls() {
                 el.blur();
             });
         }
+    }
+
+    // Sync mainWindowMode with viewingMode (both share the same localStorage key)
+    const _mwMode = document.getElementById('mainWindowMode');
+    const _vmMode = document.getElementById('viewingMode');
+    if (_mwMode && _vmMode) {
+        // On load, sync mainWindowMode to match viewingMode's restored value
+        _mwMode.value = _vmMode.value;
+        // On change of either, persist and sync
+        _mwMode.addEventListener('change', () => {
+            localStorage.setItem('emic_viewing_mode', _mwMode.value);
+        });
     }
 
     // Wire up sensitivity selects: disable when paired scroll setting is off
@@ -1613,6 +1675,20 @@ function initializeAdvancedControls() {
         if (powerLabel) powerLabel.textContent = parseFloat(powerSlider.value).toFixed(1);
     }
 
+    // Wire Display on Load: show/hide hours row
+    const displayOnLoadEl = document.getElementById('displayOnLoad');
+    const initialHoursRow = document.getElementById('initialHoursRow');
+    function updateInitialHoursVisibility() {
+        if (initialHoursRow) initialHoursRow.style.display = displayOnLoadEl?.value === 'beginning' ? 'flex' : 'none';
+    }
+    if (displayOnLoadEl) {
+        displayOnLoadEl.addEventListener('change', () => {
+            updateInitialHoursVisibility();
+            displayOnLoadEl.blur();
+        });
+        updateInitialHoursVisibility();
+    }
+
     // Tick fade slider labels
     for (const { sliderId, labelId, storageKey } of [
         { sliderId: 'tickFadeInTime', labelId: 'tickFadeInLabel', storageKey: 'emic_tick_fade_in' },
@@ -1652,22 +1728,36 @@ function initializeAdvancedControls() {
         }
     }
 
-    // When switching to a windowed mode, reset waveform to full view and re-render
+    // When switching viewing mode, reset waveform to full view and re-render
+    // Both selects (nav bar "viewingMode" and main window "mainWindowMode") stay in sync
     const viewingModeSelect = document.getElementById('viewingMode');
+    const mainWindowModeSelect = document.getElementById('mainWindowMode');
+
+    function applyViewingMode(mode, sourceSelect) {
+        if (mode === 'static' || mode === 'scroll' || mode === 'pageTurn') {
+            zoomState.setViewportToFull();
+        }
+        // Sync the other select
+        if (viewingModeSelect && viewingModeSelect !== sourceSelect) viewingModeSelect.value = mode;
+        if (mainWindowModeSelect && mainWindowModeSelect !== sourceSelect) mainWindowModeSelect.value = mode;
+        updateRegionsPanelVisibility();
+        drawWaveformFromMinMax();
+        drawWaveformXAxis();
+        drawSpectrogramXAxis();
+        drawRegionButtons();
+        drawDayMarkers();
+        sourceSelect?.blur();
+    }
+
     if (viewingModeSelect) {
         updateRegionsPanelVisibility();
         viewingModeSelect.addEventListener('change', () => {
-            const mode = viewingModeSelect.value;
-            if (mode === 'static' || mode === 'scroll' || mode === 'pageTurn') {
-                zoomState.setViewportToFull();
-            }
-            updateRegionsPanelVisibility();
-            drawWaveformFromMinMax();
-            drawWaveformXAxis();
-            drawSpectrogramXAxis();
-            drawRegionButtons();
-            drawDayMarkers();
-            viewingModeSelect.blur();
+            applyViewingMode(viewingModeSelect.value, viewingModeSelect);
+        });
+    }
+    if (mainWindowModeSelect) {
+        mainWindowModeSelect.addEventListener('change', () => {
+            applyViewingMode(mainWindowModeSelect.value, mainWindowModeSelect);
         });
     }
 }

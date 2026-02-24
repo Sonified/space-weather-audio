@@ -1014,9 +1014,10 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         initializeAxisPlaybackRate();
         drawFrequencyAxis();
 
-        // Update display
+        // Update display — position camera from zoomState so the initial view
+        // reflects the user's "Display on Load" setting (or full range by default)
         if (!skipViewportUpdate) {
-            updateSpectrogramViewport(State.currentPlaybackRate || 1.0);
+            updateSpectrogramViewportFromZoom();
             createSpectrogramOverlay();
             const progress = getZoomTransitionProgress();
             updateSpectrogramOverlay(progress);

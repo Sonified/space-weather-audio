@@ -3602,6 +3602,37 @@ body.drawer-open .hamburger-btn {
     font-weight: 600;
     color: rgba(255, 255, 255, 0.85);
 }
+.feature-popup-play {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    box-shadow: none;
+    color: #4a9;
+    font-size: 14px;
+    cursor: pointer;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    margin-left: 4px;
+    line-height: 22px;
+    text-align: center;
+    vertical-align: middle;
+    border-radius: 3px;
+    transition: background 0.15s, transform 0.15s;
+}
+.feature-popup-play:focus,
+.feature-popup-play:focus-visible {
+    outline: 0;
+    box-shadow: none;
+}
+.feature-popup-play:hover {
+    transform: scale(1.15);
+}
+.feature-popup-play:active {
+    transform: scale(0.9);
+}
 .feature-popup-close {
     background: none;
     border: none;

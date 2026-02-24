@@ -21,7 +21,7 @@ import { restoreViewportState, updateSpectrogramViewportFromZoom, getFullMagnitu
 import { drawDayMarkers } from './day-markers.js';
 import { getColorLUT } from './colormaps.js';
 import { updateLiveAnnotations } from './spectrogram-live-annotations.js';
-import { updateCanvasAnnotations } from './spectrogram-renderer.js';
+import { updateCanvasAnnotations, isFeaturePopupOpen } from './spectrogram-renderer.js';
 import { getYPositionForFrequencyScaled } from './spectrogram-axis-renderer.js';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
@@ -2392,9 +2392,8 @@ function checkFeaturePlaybackEdge() {
     const modeEl = document.getElementById('featurePlaybackMode');
     if (!modeEl || modeEl.value === 'continue') return false;
 
-    // Only act when features are actually present
-    const features = getStandaloneFeatures();
-    if (features.length === 0) return false;
+    // Only act when a feature info popup is actively open
+    if (!isFeaturePopupOpen()) return false;
 
     if (!zoomState.isInitialized() || !State.dataStartTime || !State.dataEndTime) return false;
     if (State.totalAudioDuration <= 0) return false;

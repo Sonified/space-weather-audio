@@ -625,12 +625,17 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             // console.error(`❌ [PIPELINE] Cannot send samples: State.waveformWorker is null!`);
         }
         
+        // Initialize zoom coordinate system BEFORE any rendering
+        // so axes and spectrogram see the correct viewport from the start
+        zoomState.initialize(audioData.playback.totalSamples);
+        zoomState.applyInitialViewport();
+
         // Draw waveform
         console.log(`🎨 ${logTime()} Drawing waveform...`);
         positionWaveformAxisCanvas();
         drawWaveformAxis();
         drawWaveform();
-        
+
         // Draw x-axis
         positionWaveformXAxisCanvas();
         drawWaveformXAxis();
@@ -640,14 +645,10 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         // Draw frequency axis with new frequency range
         positionAxisCanvas();
         drawFrequencyAxis();
-        
+
         // Start complete visualization (spectrogram)
         console.log(`📊 ${logTime()} Starting spectrogram visualization...`);
         await startCompleteVisualization();
-
-        // 🔧 CRITICAL: Initialize zoomState BEFORE loading regions
-        // Regions need zoomState to recalculate sample indices from timestamps
-        zoomState.initialize(audioData.playback.totalSamples);
 
         // Load regions after data fetch (if any)
         await loadRegionsAfterDataFetch();
@@ -703,12 +704,6 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             console.log(`totalSamples: ${audioData.playback.totalSamples.toLocaleString()}`);
             console.log(`sampleRate: ${audioData.playback.samplesPerRealSecond.toFixed(2)} (playback samples per real second)`);
             console.groupEnd();
-            
-            // ============================================
-            // INITIALIZE ZOOM STATE (Playback domain)
-            // ============================================
-            // Use playback sample count - this is what the coordinate system uses
-            zoomState.initialize(audioData.playback.totalSamples);
             
             // Update playback speed (needed for worklet)
             updatePlaybackSpeed();

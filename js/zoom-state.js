@@ -96,21 +96,33 @@ class ZoomState {
             return;
         }
         this.totalSamples = totalSamples;
-        // Set viewport timestamps to full data range
-        this.currentViewStartTime = State.dataStartTime ? new Date(State.dataStartTime) : null;
-        this.currentViewEndTime = State.dataEndTime ? new Date(State.dataEndTime) : null;
-        // console.log(`🏛️ ZoomState initialized:`);
-        // console.log(`   Total samples: ${totalSamples.toLocaleString()} (playback domain)`);
-        // console.log(`   Sample rate: ${this.sampleRate.toFixed(2)} (samples per real second)`);
 
-        // if (this.currentViewStartTime && this.currentViewEndTime) {
-        //     const spanSeconds = (this.currentViewEndTime - this.currentViewStartTime) / 1000;
-        //     console.log(`   Time span: ${spanSeconds.toLocaleString()} seconds`);
-        //
-        //     // Verify the math
-        //     const calculatedRate = totalSamples / spanSeconds;
-        //     console.log(`   Verification: ${totalSamples} / ${spanSeconds.toFixed(0)} = ${calculatedRate.toFixed(2)} ✓`);
-        // }
+        // Only set viewport on first initialization — subsequent calls
+        // refine totalSamples without disturbing the user's current view
+        if (!this.isInitialized()) {
+            this.currentViewStartTime = State.dataStartTime ? new Date(State.dataStartTime) : null;
+            this.currentViewEndTime = State.dataEndTime ? new Date(State.dataEndTime) : null;
+        }
+    }
+
+    /**
+     * Narrow the viewport to the first N hours (called once after data is fully loaded).
+     * This is a UI-level concern, separate from coordinate system initialization.
+     */
+    applyInitialViewport() {
+        const displayMode = localStorage.getItem('emic_display_on_load');
+        if (displayMode !== 'beginning') return;
+        if (!this.currentViewStartTime || !State.dataEndTime) return;
+
+        const hours = parseInt(localStorage.getItem('emic_initial_hours') || '12', 10);
+        const startMs = this.currentViewStartTime.getTime();
+        const endMs = State.dataEndTime.getTime();
+        const desiredEndMs = startMs + hours * 60 * 60 * 1000;
+
+        // Only narrow if the data span is longer than the requested hours
+        if (desiredEndMs < endMs) {
+            this.currentViewEndTime = new Date(desiredEndMs);
+        }
     }
     
     /**

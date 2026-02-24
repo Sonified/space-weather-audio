@@ -660,7 +660,7 @@ export class SpectrogramGPUCompute {
             const minGpu = Math.min(...gpuTimes).toFixed(1);
             console.log(
                 `%c[GPU Zero-Copy] GPU compute done: ${maxGpu}ms (range: ${minGpu}–${maxGpu}ms across ${batchCount} batches)`,
-                'color: #E91E63; font-weight: bold'
+                'color: #80d0ff; font-weight: bold'
             );
         });
     }
