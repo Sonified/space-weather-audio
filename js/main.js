@@ -1571,17 +1571,61 @@ function initializeAdvancedControls() {
 
     // --- Advanced mode toggle: controls visibility of gear icons ---
     const advancedCheckbox = document.getElementById('advancedMode');
-    function applyAdvancedMode(enabled) {
+    const displayModeSelect = document.getElementById('displayMode');
+
+    // Display mode: 'participant' | 'standard' | 'advanced'
+    function applyDisplayMode(mode) {
+        const isAdvanced = mode === 'advanced';
+        const isParticipant = mode === 'participant';
+
+        // Sync hidden checkbox for any code that reads advancedMode
+        if (advancedCheckbox) advancedCheckbox.checked = isAdvanced;
+
+        // Gears, hamburger, questionnaires: advanced only
         const gearContainers = document.querySelectorAll('.panel-gear');
-        gearContainers.forEach(g => g.style.display = enabled ? 'block' : 'none');
+        gearContainers.forEach(g => g.style.display = isAdvanced ? 'block' : 'none');
         const hBtn = document.getElementById('hamburgerBtn');
-        if (hBtn) hBtn.style.display = enabled ? 'block' : 'none';
+        if (hBtn) hBtn.style.display = isAdvanced ? 'block' : 'none';
         const questionnairesPanel = document.getElementById('questionnairesPanel');
-        if (questionnairesPanel) questionnairesPanel.style.display = enabled ? '' : 'none';
-        if (!enabled) closeSettingsDrawer();
+        if (questionnairesPanel) questionnairesPanel.style.display = isAdvanced ? '' : 'none';
+        if (!isAdvanced) closeSettingsDrawer();
+
+        // Component selector + de-trend: hidden in participant mode
+        const compContainer = document.getElementById('componentSelectorContainer');
+        if (compContainer) compContainer.style.display = isParticipant ? 'none' : '';
+        const detrendContainer = document.getElementById('detrendContainer');
+        if (detrendContainer) detrendContainer.style.display = isParticipant ? 'none' : '';
+
+        // Bottom bar viz controls (everything right of Display dropdown): hidden in participant
+        const vizControls = document.querySelector('.viz-controls');
+        if (vizControls) vizControls.style.display = isParticipant ? 'none' : '';
+
+        // Participant ID display (top right): hidden in participant mode
+        const pidDisplay = document.getElementById('participantIdDisplay');
+        if (pidDisplay) pidDisplay.style.display = isParticipant ? 'none' : '';
     }
-    if (advancedCheckbox) {
-        // Checkbox state already restored from localStorage early in initializeMainApp()
+
+    // Legacy compat: applyAdvancedMode still works for any external callers
+    function applyAdvancedMode(enabled) {
+        applyDisplayMode(enabled ? 'advanced' : 'standard');
+    }
+
+    if (displayModeSelect) {
+        // Restore saved preference
+        const savedMode = localStorage.getItem('emic_display_mode');
+        if (savedMode && ['participant', 'standard', 'advanced'].includes(savedMode)) {
+            displayModeSelect.value = savedMode;
+        }
+        applyDisplayMode(displayModeSelect.value);
+
+        displayModeSelect.addEventListener('change', () => {
+            const mode = displayModeSelect.value;
+            localStorage.setItem('emic_display_mode', mode);
+            applyDisplayMode(mode);
+            updateRegionsPanelVisibility();
+        });
+    } else if (advancedCheckbox) {
+        // Fallback for pages without displayMode dropdown (e.g. index.html)
         applyAdvancedMode(advancedCheckbox.checked);
         advancedCheckbox.addEventListener('change', () => {
             localStorage.setItem('emic_advanced_mode', advancedCheckbox.checked);
