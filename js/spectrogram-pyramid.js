@@ -10,11 +10,13 @@
  * Upper levels are built lazily as pairs complete.
  */
 
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
 import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
+import { SpectrogramGPUCompute } from './spectrogram-gpu-compute.js';
 import { isStudyMode } from './master-modes.js';
+import { getWebGPUDevice, isWebGPURenderer, queueGPUTextureSwap } from './spectrogram-three-renderer.js';
 
 // ─── Compression stubs (BC4 removed — Three.js lacks RGTC format support) ──
 
@@ -63,6 +65,8 @@ export function getPyramidReduceMode() { return pyramidReduceMode; }
 let pyramidLevels = [];        // Array of levels, each an array of tile descriptors
 let tileTextureCache = new Map(); // key -> { texture, lastUsed }
 let workerPool = null;
+let gpuCompute = null;
+let computeBackend = null;  // 'gpu' | 'cpu'
 let buildAbortController = null;
 let pyramidReady = false;
 let onTileReady = null;        // Callback when a tile becomes ready
@@ -285,10 +289,29 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
     buildAbortController = new AbortController();
     const signal = buildAbortController.signal;
 
-    // Initialize worker pool
-    if (!workerPool) {
-        workerPool = new SpectrogramWorkerPool();
-        await workerPool.initialize();
+    // Initialize compute backend (GPU → WASM worker pool fallback)
+    if (!computeBackend) {
+        if (SpectrogramGPUCompute.isSupported()) {
+            try {
+                gpuCompute = new SpectrogramGPUCompute();
+                // Share device with WebGPU renderer if available (enables zero-readback)
+                const sharedDevice = getWebGPUDevice();
+                await gpuCompute.initialize(sharedDevice);
+                computeBackend = 'gpu';
+            } catch (e) {
+                console.warn('[Pyramid] WebGPU init failed, falling back to CPU workers:', e.message);
+                gpuCompute = null;
+                computeBackend = 'cpu';
+            }
+        } else {
+            computeBackend = 'cpu';
+        }
+        if (computeBackend === 'cpu' && !workerPool) {
+            workerPool = new SpectrogramWorkerPool();
+            await workerPool.initialize();
+        }
+        const zeroCopy = computeBackend === 'gpu' && isWebGPURenderer();
+        console.log(`[Pyramid] Compute backend: ${computeBackend === 'gpu' ? 'WebGPU' : `CPU worker pool (${workerPool?.numWorkers} workers)`}${zeroCopy ? ' (zero-readback)' : ''}`);
     }
 
     const halfFFT = Math.floor(fftSize / 2);
@@ -382,51 +405,81 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         return;
     }
 
-    console.log(`🔺 Dispatching ${tileJobs.length} tiles to ${workerPool.numWorkers} workers in parallel`);
+    const useZeroCopy = computeBackend === 'gpu' && isWebGPURenderer();
+    const processor = computeBackend === 'gpu' ? gpuCompute : workerPool;
+    const backendLabel = useZeroCopy ? 'GPU zero-copy' : (computeBackend === 'gpu' ? 'GPU' : `${workerPool?.numWorkers} workers`);
+    console.log(`🔺 Dispatching ${tileJobs.length} tiles via ${backendLabel}`);
     const startTime = performance.now();
     let tilesComplete = alreadyReady;
     const totalTiles = baseTiles.length;
 
-    // ── Fire all tiles in parallel via work-stealing pool ──
-    await workerPool.processTiles(tileJobs, (tileIdx, magnitudeData, width, height) => {
+    // Helper: populate tile metadata from compute results
+    function finalizeTileMeta(tileIdx, width, height) {
         const tile = baseTiles[tileIdx];
         const meta = tileMeta.get(tileIdx);
-
-        tile.magnitudeData = magnitudeData;
         tile.width = width;
         tile.height = height;
-
-        // Map FFT column indices back to real time
         const tileOriginSec = meta.startSample / sampleRate;
         const tileSpanSec = (meta.endSample - meta.startSample) / sampleRate;
         const secPerResampledSample = tileSpanSec / meta.tileSamplesLength;
         tile.actualFirstColSec = tileOriginSec + halfFFT * secPerResampledSample;
         tile.actualLastColSec = tileOriginSec + ((meta.numTimeSlices - 1) * meta.hopSize + halfFFT) * secPerResampledSample;
-        tile.ready = true;
-        tile.rendering = false;
-        tilesComplete++;
+    }
 
-        // Log progress every 10%
+    function reportProgress(tileIdx) {
+        tilesComplete++;
         const step = Math.max(1, Math.floor(totalTiles / 10));
         if (tilesComplete % step === 0 || tilesComplete === totalTiles) {
             console.log(`🔺 Tiles: ${tilesComplete}/${totalTiles} (${((tilesComplete / totalTiles) * 100).toFixed(0)}%)`);
         }
+        if (onProgress) onProgress(tilesComplete, totalTiles);
+        if (onTileReady) onTileReady(0, tileIdx);
+    }
 
-        if (onProgress) {
-            onProgress(tilesComplete, totalTiles);
+    if (useZeroCopy) {
+        // ── ZERO-READBACK PATH: GPU textures + GPU cascade (no CPU readback!) ──
+        // Callbacks fire synchronously as batches are submitted.
+        // Cascade builds via GPU render passes in onTileGPUTexture callback.
+        const cascadeStartTime = performance.now();
+        // Reset cascade timing accumulators
+        for (const k in cascadeLevelTime) delete cascadeLevelTime[k];
+        for (const k in cascadeLevelBuilt) delete cascadeLevelBuilt[k];
+        gpuCompute.processTilesZeroCopy(tileJobs,
+            (tileIdx, gpuTexture, width, height) => {
+                const tile = baseTiles[tileIdx];
+                finalizeTileMeta(tileIdx, width, height);
+                tile.gpuTexture = gpuTexture;
+                tile.ready = true;
+                tile.rendering = false;
+                reportProgress(tileIdx);
+                // GPU cascade: build parent levels via render passes
+                cascadeUpward(0, tileIdx);
+            }, signal);
+
+        if (!signal.aborted) {
+            pyramidReady = true;
+            const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+            const cascadeMs = (performance.now() - cascadeStartTime).toFixed(1);
+            const builtLevels = pyramidLevels.filter(lvl => lvl.some(t => t.ready)).length;
+            console.log(`🔺 All ${tileJobs.length} base tiles + ${builtLevels} pyramid levels in ${elapsed}s (${backendLabel}, cascade: ${cascadeMs}ms)`);
         }
+    } else {
+        // ── STANDARD PATH: CPU readback, cascade inline ──
+        await processor.processTiles(tileJobs, (tileIdx, magnitudeData, width, height) => {
+            const tile = baseTiles[tileIdx];
+            finalizeTileMeta(tileIdx, width, height);
+            tile.magnitudeData = magnitudeData;
+            tile.ready = true;
+            tile.rendering = false;
+            reportProgress(tileIdx);
+            cascadeUpward(0, tileIdx);
+        }, signal);
 
-        if (onTileReady) {
-            onTileReady(0, tileIdx);
+        if (!signal.aborted) {
+            pyramidReady = true;
+            const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+            console.log(`🔺 All ${tileJobs.length} base tiles rendered in ${elapsed}s (${backendLabel})`);
         }
-
-        cascadeUpward(0, tileIdx);
-    }, signal);
-
-    if (!signal.aborted) {
-        pyramidReady = true;
-        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-        console.log(`🔺 All ${tileJobs.length} base tiles rendered in ${elapsed}s (${workerPool.numWorkers} workers)`);
     }
 }
 
@@ -434,30 +487,106 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
 
 /**
  * After a tile at `level` becomes ready, check if we can build the parent.
- * Parent at level+1 covers two adjacent tiles at level.
+ * Dispatches to GPU render passes when available, falls back to CPU.
  */
 function cascadeUpward(level, tileIndex) {
+    // GPU path: build entire chain upward in one submission
+    if (gpuCompute?.cascadePipeline) {
+        cascadeUpwardGPU(level, tileIndex);
+        return;
+    }
+    // CPU fallback
+    cascadeUpwardCPU(level, tileIndex);
+}
+
+// Per-level timing accumulators for GPU cascade logging
+const cascadeLevelTime = {};  // level → cumulative ms
+const cascadeLevelBuilt = {}; // level → count of tiles built so far
+
+/**
+ * GPU cascade: build one parent via render pass, then recurse upward.
+ * Each call is one render pass (microseconds). Recursion chains L1→L2→L3→...
+ */
+function cascadeUpwardGPU(level, tileIndex) {
     const nextLevel = level + 1;
     if (nextLevel >= pyramidLevels.length) return;
 
     const parentIndex = Math.floor(tileIndex / 2);
-    const siblingIndex = (tileIndex % 2 === 0) ? tileIndex + 1 : tileIndex - 1;
+    const currentTiles = pyramidLevels[level];
+    const parentTiles = pyramidLevels[nextLevel];
+
+    if (!parentTiles[parentIndex]) return;
+    if (parentTiles[parentIndex].ready) return;
+
+    const child0 = currentTiles[parentIndex * 2];
+    const child1 = currentTiles[parentIndex * 2 + 1];
+
+    // Need child0 with gpuTexture
+    if (!child0?.ready || !child0?.gpuTexture) return;
+    // child1 might not exist (odd tile count)
+    if (child1 && (!child1.ready || !child1.gpuTexture)) return;
+
+    const freqBins = child0.height;
+    const halfCols0 = Math.floor(child0.width / 2);
+    const halfCols1 = child1 ? Math.floor(child1.width / 2) : 0;
+    const parentWidth = halfCols0 + halfCols1;
+
+    // Single render pass for this parent
+    const t0 = performance.now();
+    const [parentTex] = gpuCompute.buildCascadeChain([{
+        child0Tex: child0.gpuTexture,
+        child1Tex: child1?.gpuTexture || null,
+        parentWidth,
+        freqBins,
+    }], pyramidReduceMode);
+    const elapsed = performance.now() - t0;
+
+    const parent = parentTiles[parentIndex];
+    parent.gpuTexture = parentTex;
+    parent.width = parentWidth;
+    parent.height = freqBins;
+    parent.actualFirstColSec = child0.actualFirstColSec;
+    parent.actualLastColSec = (child1 || child0).actualLastColSec;
+    parent.ready = true;
+
+    // Track per-level timing, log when level completes
+    cascadeLevelTime[nextLevel] = (cascadeLevelTime[nextLevel] || 0) + elapsed;
+    cascadeLevelBuilt[nextLevel] = (cascadeLevelBuilt[nextLevel] || 0) + 1;
+    const totalInLevel = parentTiles.length;
+    const readyInLevel = cascadeLevelBuilt[nextLevel];
+    if (readyInLevel >= totalInLevel) {
+        console.log(`🔺 L${nextLevel} complete: ${totalInLevel} tiles, ${parent.width}×${freqBins}, ${cascadeLevelTime[nextLevel].toFixed(2)}ms`);
+    }
+
+    if (onTileReady) {
+        onTileReady(nextLevel, parentIndex);
+    }
+
+    // Continue cascading upward
+    cascadeUpwardGPU(nextLevel, parentIndex);
+}
+
+/**
+ * CPU cascade fallback: original reduce logic using magnitudeData Uint8Arrays.
+ */
+function cascadeUpwardCPU(level, tileIndex) {
+    const nextLevel = level + 1;
+    if (nextLevel >= pyramidLevels.length) return;
+
+    const parentIndex = Math.floor(tileIndex / 2);
 
     const currentTiles = pyramidLevels[level];
     const parentTiles = pyramidLevels[nextLevel];
 
     if (!parentTiles[parentIndex]) return;
-    if (parentTiles[parentIndex].ready) return; // Already built
+    if (parentTiles[parentIndex].ready) return;
 
-    // Check if both children are ready
     const child0 = currentTiles[parentIndex * 2];
     const child1 = currentTiles[parentIndex * 2 + 1];
 
-    if (!child0?.ready) return;
-    // child1 might not exist (odd number of tiles at this level)
-    if (child1 && !child1.ready) return;
+    if (!child0?.ready || !child0?.magnitudeData) return;
+    if (child1 && (!child1.ready || !child1.magnitudeData)) return;
 
-    // Build parent by reducing children (average or peak)
     const parent = parentTiles[parentIndex];
     const freqBins = child0.height;
     const reduce = pyramidReduceMode === 'peak'
@@ -467,13 +596,11 @@ function cascadeUpward(level, tileIndex) {
         : (a, b) => Math.round((a + b) / 2);
 
     if (child1) {
-        // Average two tiles into one (Uint8)
         const halfCols = Math.floor(child0.width / 2);
         const halfCols1 = Math.floor(child1.width / 2);
         const parentCols = halfCols + halfCols1;
         const parentData = new Uint8Array(parentCols * freqBins);
 
-        // Downsample child0: take pairs, reduce
         for (let col = 0; col < halfCols; col++) {
             const srcCol0 = col * 2;
             const srcCol1 = col * 2 + 1;
@@ -484,7 +611,6 @@ function cascadeUpward(level, tileIndex) {
             }
         }
 
-        // Downsample child1: take pairs, reduce
         for (let col = 0; col < halfCols1; col++) {
             const srcCol0 = col * 2;
             const srcCol1 = col * 2 + 1;
@@ -502,7 +628,6 @@ function cascadeUpward(level, tileIndex) {
         parent.actualFirstColSec = child0.actualFirstColSec;
         parent.actualLastColSec = child1.actualLastColSec;
     } else {
-        // Only one child (odd count) — just downsample it (Uint8)
         const halfCols = Math.floor(child0.width / 2);
         const parentData = new Uint8Array(halfCols * freqBins);
 
@@ -525,16 +650,13 @@ function cascadeUpward(level, tileIndex) {
 
     parent.ready = true;
 
-    if (!isStudyMode()) {
-        console.log(`🔺 Built L${nextLevel} tile ${parentIndex}: ${parent.width} cols, ${(parent.duration / 60).toFixed(1)}min`);
-    }
+    console.log(`🔺 Built L${nextLevel} tile ${parentIndex}: ${parent.width} cols, ${(parent.duration / 60).toFixed(1)}min`);
 
     if (onTileReady) {
         onTileReady(nextLevel, parentIndex);
     }
 
-    // Continue cascading
-    cascadeUpward(nextLevel, parentIndex);
+    cascadeUpwardCPU(nextLevel, parentIndex);
 }
 
 // ─── Texture Management (LRU) ──────────────────────────────────────────────
@@ -549,7 +671,9 @@ function cascadeUpward(level, tileIndex) {
  * @returns {THREE.DataTexture|null}
  */
 export function getTileTexture(tile, key) {
-    if (!tile.ready || !tile.magnitudeData) return null;
+    if (!tile.ready) return null;
+    // Need either CPU data or GPU texture
+    if (!tile.magnitudeData && !tile.gpuTexture) return null;
 
     let entry = tileTextureCache.get(key);
     if (entry) {
@@ -562,8 +686,18 @@ export function getTileTexture(tile, key) {
         evictLRU();
     }
 
-    const texture = createUint8MagnitudeTexture(tile.magnitudeData, tile.width, tile.height);
-    
+    let texture;
+    if (tile.gpuTexture && !tile.magnitudeData) {
+        // Zero-readback path: create DataTexture shell with empty data.
+        // The renderer will swap its internal GPU texture on the next frame.
+        const shellData = new Uint8Array(tile.width * tile.height);
+        texture = createUint8MagnitudeTexture(shellData, tile.width, tile.height);
+        queueGPUTextureSwap(texture, tile.gpuTexture);
+    } else {
+        // Standard path: create texture from CPU data
+        texture = createUint8MagnitudeTexture(tile.magnitudeData, tile.width, tile.height);
+    }
+
     tileTextureCache.set(key, {
         texture,
         lastUsed: performance.now()
@@ -622,6 +756,7 @@ export function setOnTileReady(callback) {
  * In-flight workers finish naturally, freeing CPU cores for smooth rendering.
  */
 export function throttleWorkers() {
+    if (gpuCompute) gpuCompute.throttle();
     if (workerPool) workerPool.throttle();
 }
 
@@ -629,6 +764,7 @@ export function throttleWorkers() {
  * Resume worker pool: kick idle workers back into tile processing.
  */
 export function resumeWorkers() {
+    if (gpuCompute) gpuCompute.resume();
     if (workerPool) workerPool.resume();
 }
 
@@ -648,10 +784,14 @@ export function disposePyramid() {
     }
     tileTextureCache.clear();
 
-    // Free magnitude data
+    // Free magnitude data and GPU textures
     for (const level of pyramidLevels) {
         for (const tile of level) {
             tile.magnitudeData = null;
+            if (tile.gpuTexture?.destroy) {
+                tile.gpuTexture.destroy();
+                tile.gpuTexture = null;
+            }
             tile.ready = false;
             tile.rendering = false;
         }
@@ -659,21 +799,34 @@ export function disposePyramid() {
 
     pyramidLevels = [];
     pyramidReady = false;
+
+    // Release GPU compute resources
+    if (gpuCompute) {
+        gpuCompute.terminate();
+        gpuCompute = null;
+    }
+    computeBackend = null;
+
     console.log('🔺 Pyramid disposed');
 }
 
 /**
  * Rebuild L1+ pyramid levels from existing L0 tiles.
  * Called when reduce mode changes (average ↔ peak) — avoids re-running FFT.
+ * Uses GPU render passes when available, CPU fallback otherwise.
  */
 export function rebuildUpperLevels() {
     if (pyramidLevels.length < 2) return;
 
-    // 1. Clear L1+ tiles and their cached textures
+    // 1. Clear L1+ tiles, their GPU textures, and cached Three.js textures
     for (let lvl = 1; lvl < pyramidLevels.length; lvl++) {
         for (let i = 0; i < pyramidLevels[lvl].length; i++) {
             const tile = pyramidLevels[lvl][i];
             tile.magnitudeData = null;
+            if (tile.gpuTexture?.destroy) {
+                tile.gpuTexture.destroy();
+                tile.gpuTexture = null;
+            }
             tile.ready = false;
 
             const key = tileKey(lvl, i);
@@ -682,6 +835,10 @@ export function rebuildUpperLevels() {
             tileTextureCache.delete(key);
         }
     }
+
+    // Reset cascade timing accumulators
+    for (const k in cascadeLevelTime) delete cascadeLevelTime[k];
+    for (const k in cascadeLevelBuilt) delete cascadeLevelBuilt[k];
 
     // 2. Re-cascade from all ready L0 tiles
     const l0 = pyramidLevels[0];

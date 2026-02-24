@@ -1,6 +1,6 @@
 /**
  * spectrogram-three-renderer.js - THREE.JS GPU RENDERER
- * Replaces Canvas 2D spectrogram rendering with WebGL via Three.js.
+ * Replaces Canvas 2D spectrogram rendering with WebGPU via Three.js.
  * One quad, one shader, zero temp canvases.
  *
  * The fragment shader handles: FFT magnitude → dB → colormap lookup,
@@ -8,7 +8,8 @@
  * playback rate stretching — all in a single GPU pass.
  */
 
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
+import { texture as tslTexture, vec2, vec4, uniform, float, select, uv, log2 as tslLog2, pow as tslPow } from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
 
 import * as State from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate, getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
@@ -78,6 +79,96 @@ let scrollZoomHiRes = {
     endSeconds: null,    // expanded render end (with padding)
     ready: false
 };
+
+// ─── TSL shared uniform nodes ────────────────────────────────────────────────
+// Shared between main material + all 32 tile materials.
+// Updating .value on these affects every material simultaneously.
+let uStretchFactor = null;   // playback rate stretch
+let uFreqScale = null;       // 0=linear, 1=sqrt, 2=log
+let uMinFreq = null;
+let uMaxFreq = null;
+let uDbFloor = null;
+let uDbRange = null;
+let uBgR = null, uBgG = null, uBgB = null;  // background color components
+
+// Per-material swappable texture node references
+let mainMagTexNode = null;   // TextureNode for main spectrogram (swap via .value)
+let cmapTexNode = null;      // TextureNode for main colormap (swap via .value)
+
+// ─── GPU texture swap queue (Phase 2: zero-readback pipeline) ────────────────
+// Tiles arrive as raw GPUTextures from compute. After Three.js creates its internal
+// backend entry (first render), we swap the internal texture pointer to our GPUTexture.
+let pendingGPUTextureSwaps = [];
+
+/**
+ * Get the WebGPU device from the Three.js renderer (shared with compute).
+ * Returns null if renderer not initialized or not WebGPU.
+ */
+export function getWebGPUDevice() {
+    return threeRenderer?.backend?.device || null;
+}
+
+/**
+ * Check if the renderer is a WebGPU renderer with backend access.
+ */
+export function isWebGPURenderer() {
+    return !!(threeRenderer?.backend?.device);
+}
+
+/**
+ * Queue a GPU texture copy: after Three.js creates its internal GPUTexture from the
+ * DataTexture shell, we copy our compute data into it via copyTextureToTexture.
+ * No internal swapping — Three.js keeps its own texture, we just fill it with our data.
+ */
+export function queueGPUTextureSwap(threeTexture, gpuTexture) {
+    pendingGPUTextureSwaps.push({ threeTexture, gpuTexture });
+}
+
+/**
+ * Process pending GPU texture copies. Called after renderAsync() uploads shells.
+ * Copies compute GPUTexture contents into Three.js's own GPUTexture via GPU copy.
+ * Returns true if any copies were performed (caller should re-render).
+ */
+function processPendingGPUTextureSwaps() {
+    if (pendingGPUTextureSwaps.length === 0 || !threeRenderer?.backend?.get) return false;
+
+    const device = threeRenderer.backend.device;
+    if (!device) return false;
+
+    let copied = 0;
+    const remaining = [];
+    const encoder = device.createCommandEncoder({ label: 'gpu-texture-copy' });
+
+    for (const swap of pendingGPUTextureSwaps) {
+        const props = threeRenderer.backend.get(swap.threeTexture);
+        if (props?.texture) {
+            // GPU-to-GPU copy: our compute texture → Three.js's own texture.
+            // Three.js keeps its bind groups, views, everything intact.
+            const src = swap.gpuTexture;
+            const dst = props.texture;
+            const w = Math.min(src.width, dst.width);
+            const h = Math.min(src.height, dst.height);
+            encoder.copyTextureToTexture(
+                { texture: src },
+                { texture: dst },
+                [w, h]
+            );
+            swap.threeTexture.needsUpdate = false;
+            copied++;
+        } else {
+            // Not yet uploaded by Three.js — keep in queue for next frame
+            remaining.push(swap);
+        }
+    }
+
+    if (copied > 0) {
+        device.queue.submit([encoder.finish()]);
+        console.log(`%c[GPU Copy] ${copied} textures filled from compute GPUTextures`, 'color: #4CAF50');
+    }
+
+    pendingGPUTextureSwaps = remaining;
+    return copied > 0;
+}
 
 // ─── Interaction throttle (defer tile-ready updates during zoom/pan) ─────────
 let interactionActive = false;
@@ -149,9 +240,7 @@ let spectrogramOverlay = null;
 let spectrogramOverlayResizeObserver = null;
 const MAX_PLAYBACK_RATE = 15.0;
 
-// WebGL context event handler refs (for removal)
-let onContextLost = null;
-let onContextRestored = null;
+// WebGPU device loss handled via device.lost promise in initThreeScene
 
 // Track frequency scale for zoomed cache validation
 let cachedZoomedFrequencyScale = null;
@@ -162,252 +251,44 @@ let memoryBaseline = null;
 let memoryHistory = [];
 const MEMORY_HISTORY_SIZE = 20;
 
-// ─── Shader source ──────────────────────────────────────────────────────────
+// ─── TSL shader builders ────────────────────────────────────────────────────
+// WebGPURenderer requires TSL node materials — GLSL ShaderMaterial is not supported.
+// These functions build node graphs for colorNode on MeshBasicNodeMaterial.
 
-const vertexShaderSource = /* glsl */ `
-varying vec2 vUv;
-void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
+/**
+ * Build frequency-remapped texV from screen UV.y.
+ * Supports linear (0), sqrt (1), and logarithmic (2) frequency scales.
+ * References the shared TSL uniform nodes (uStretchFactor, uFreqScale, etc.).
+ */
+function buildFreqRemapNodes() {
+    const vuv = uv();
+    const effectiveY = vuv.y.div(uStretchFactor);
+    const freqRange = uMaxFreq.sub(uMinFreq);
 
-const fragmentShaderSource = /* glsl */ `
-uniform sampler2D uMagnitudes;
-uniform sampler2D uColormap;
-uniform float uStretchFactor;
-uniform int uFrequencyScale;
-uniform float uMinFreq;
-uniform float uMaxFreq;
-uniform float uDbFloor;
-uniform float uDbRange;
-uniform vec3 uBackgroundColor;
+    // Linear: freq = minFreq + y * range
+    const texVLinear = uMinFreq.add(effectiveY.mul(freqRange))
+        .div(uMaxFreq).clamp(0, 1);
 
-varying vec2 vUv;
+    // Sqrt: freq = minFreq + y² * range
+    const texVSqrt = uMinFreq.add(effectiveY.mul(effectiveY).mul(freqRange))
+        .div(uMaxFreq).clamp(0, 1);
 
-void main() {
-    // Apply playback rate stretch: effectiveY maps screen position to frequency space
-    float effectiveY = vUv.y / uStretchFactor;
+    // Log: freq = 10^(logMin + y * (logMax - logMin))
+    const LOG2_10 = float(Math.log2(10));
+    const logMin = tslLog2(uMinFreq.max(0.001)).div(LOG2_10);
+    const logMax = tslLog2(uMaxFreq).div(LOG2_10);
+    const logFreq = logMin.add(effectiveY.mul(logMax.sub(logMin)));
+    const texVLog = tslPow(float(10.0), logFreq).div(uMaxFreq).clamp(0, 1);
 
-    // If above content (stretchFactor < 1), show background padding
-    if (effectiveY > 1.0) {
-        gl_FragColor = vec4(uBackgroundColor, 1.0);
-        return;
-    }
+    const texV = select(uFreqScale.lessThan(0.5), texVLinear,
+                 select(uFreqScale.lessThan(1.5), texVSqrt, texVLog));
 
-    // Map screen Y through frequency scale to get texture V coordinate
-    float freq;
-    if (uFrequencyScale == 0) {
-        // LINEAR: screen Y maps linearly from minFreq to maxFreq
-        freq = uMinFreq + effectiveY * (uMaxFreq - uMinFreq);
-    } else if (uFrequencyScale == 1) {
-        // SQRT: screen Y = sqrt(normalized), so invert: normalized = Y^2
-        float normalized = effectiveY * effectiveY;
-        freq = uMinFreq + normalized * (uMaxFreq - uMinFreq);
-    } else {
-        // LOGARITHMIC: screen Y = (log(freq) - log(min)) / (log(max) - log(min))
-        float logMin = log2(max(uMinFreq, 0.001)) / log2(10.0);
-        float logMax = log2(uMaxFreq) / log2(10.0);
-        float logFreq = logMin + effectiveY * (logMax - logMin);
-        freq = pow(10.0, logFreq);
-    }
-
-    // Convert frequency to texture V coordinate (bin position)
-    float texV = clamp(freq / uMaxFreq, 0.0, 1.0);
-
-    // World-space camera handles viewport — UV is always 0→1
-    float texU = vUv.x;
-
-    // Sample magnitude from FFT texture
-    float magnitude = texture2D(uMagnitudes, vec2(texU, texV)).r;
-
-    // Convert to dB and normalize to [0, 1]
-    float db = 20.0 * log(magnitude + 1.0e-10) / log(10.0);
-    float normalized = clamp((db - uDbFloor) / uDbRange, 0.0, 1.0);
-
-    // Look up color from colormap LUT texture
-    vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
-
-    gl_FragColor = vec4(color, 1.0);
-}
-`;
-
-// ─── Tile fragment shader (same as spectrogram but with opacity for crossfade) ─
-
-const tileFragmentShaderSource = /* glsl */ `
-uniform sampler2D uMagnitudes;
-uniform sampler2D uColormap;
-uniform float uStretchFactor;
-uniform int uFrequencyScale;
-uniform float uMinFreq;
-uniform float uMaxFreq;
-uniform vec3 uBackgroundColor;
-uniform float uOpacity;
-uniform float uTexWidth;
-uniform float uSamplesPerPixel;
-
-// Crossfade: blend floor (uMagnitudes) with ceil level texture
-uniform sampler2D uCeilMagnitudes;
-uniform float uBlendFrac;      // 0 = 100% floor, 1 = 100% ceil
-uniform float uCeilUvStart;    // ceil texture U range start
-uniform float uCeilUvEnd;      // ceil texture U range end
-
-varying vec2 vUv;
-
-void main() {
-    float effectiveY = vUv.y / uStretchFactor;
-    if (effectiveY > 1.0) {
-        gl_FragColor = vec4(uBackgroundColor, uOpacity);
-        return;
-    }
-
-    float freq;
-    if (uFrequencyScale == 0) {
-        freq = uMinFreq + effectiveY * (uMaxFreq - uMinFreq);
-    } else if (uFrequencyScale == 1) {
-        float normalized = effectiveY * effectiveY;
-        freq = uMinFreq + normalized * (uMaxFreq - uMinFreq);
-    } else {
-        float logMin = log2(max(uMinFreq, 0.001)) / log2(10.0);
-        float logMax = log2(uMaxFreq) / log2(10.0);
-        float logFreq = logMin + effectiveY * (logMax - logMin);
-        freq = pow(10.0, logFreq);
-    }
-
-    float texV = clamp(freq / uMaxFreq, 0.0, 1.0);
-    float texU = vUv.x;  // World-space camera handles viewport — UV is always 0→1
-
-    // Box filter: average N texels per pixel to eliminate shimmer during downsampling.
-    // When uSamplesPerPixel <= 1.0 (zoomed in), just do a single read.
-    float normalized;
-    if (uSamplesPerPixel <= 1.0) {
-        normalized = texture2D(uMagnitudes, vec2(texU, texV)).r;
-    } else {
-        float texelSize = 1.0 / uTexWidth;
-        int samples = int(ceil(uSamplesPerPixel));
-        float span = uSamplesPerPixel * texelSize;
-        float start = texU - span * 0.5;
-        float sum = 0.0;
-        for (int i = 0; i < 32; i++) {
-            if (i >= samples) break;
-            float t = start + (float(i) + 0.5) / float(samples) * span;
-            sum += texture2D(uMagnitudes, vec2(t, texV)).r;
-        }
-        normalized = sum / float(samples);
-    }
-
-    // Crossfade: blend with ceil-level texture in magnitude space
-    if (uBlendFrac > 0.001) {
-        float ceilTexU = mix(uCeilUvStart, uCeilUvEnd, vUv.x);
-        float ceilNorm = texture2D(uCeilMagnitudes, vec2(ceilTexU, texV)).r;
-        normalized = mix(normalized, ceilNorm, uBlendFrac);
-    }
-
-    vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
-
-    gl_FragColor = vec4(color, uOpacity);
-}
-`;
-
-// ─── Waveform (time series) shader ──────────────────────────────────────────
-
-const wfFragmentShaderSource = /* glsl */ `
-uniform sampler2D uSamples;
-uniform sampler2D uMipMinMax;
-uniform sampler2D uColormap;
-uniform float uTotalSamples;
-uniform float uTextureWidth;
-uniform float uTextureHeight;
-uniform float uMipTextureWidth;
-uniform float uMipTextureHeight;
-uniform float uMipTotalBins;
-uniform float uMipBinSize;
-uniform float uSamplesPerPixel;
-uniform float uCanvasWidth;
-uniform float uCanvasHeight;
-uniform vec3 uBackgroundColor;
-uniform float uTransparentBg;
-
-varying vec2 vUv;
-
-float getSample(float index) {
-    float row = floor(index / uTextureWidth);
-    float col = index - row * uTextureWidth;
-    vec2 uv = vec2(
-        (col + 0.5) / uTextureWidth,
-        (row + 0.5) / uTextureHeight
-    );
-    return texture2D(uSamples, uv).r;
+    return { texU: vuv.x, texV, effectiveY };
 }
 
-vec2 getMipBin(float index) {
-    float row = floor(index / uMipTextureWidth);
-    float col = index - row * uMipTextureWidth;
-    vec2 uv = vec2(
-        (col + 0.5) / uMipTextureWidth,
-        (row + 0.5) / uMipTextureHeight
-    );
-    return texture2D(uMipMinMax, uv).rg;
-}
-
-void main() {
-    // World-space camera: vUv.x maps 0→1 across full data range
-    float pixelStart = vUv.x * uTotalSamples;
-    float samplesPerPixel = uSamplesPerPixel;
-    float pixelEnd = pixelStart + samplesPerPixel;
-
-    float minVal = 1.0;
-    float maxVal = -1.0;
-
-    if (samplesPerPixel > uMipBinSize && uMipTotalBins > 0.0) {
-        float binStart = floor(max(pixelStart / uMipBinSize, 0.0));
-        float binEnd = ceil(min(pixelEnd / uMipBinSize, uMipTotalBins));
-        float binCount = binEnd - binStart;
-        for (int i = 0; i < 512; i++) {
-            if (float(i) >= binCount) break;
-            vec2 mm = getMipBin(binStart + float(i));
-            minVal = min(minVal, mm.r);
-            maxVal = max(maxVal, mm.g);
-        }
-    } else {
-        float startIdx = floor(max(pixelStart, 0.0));
-        float endIdx = ceil(min(pixelEnd, uTotalSamples));
-        float count = endIdx - startIdx;
-        for (int i = 0; i < 8192; i++) {
-            if (float(i) >= count) break;
-            float s = getSample(startIdx + float(i));
-            minVal = min(minVal, s);
-            maxVal = max(maxVal, s);
-        }
-    }
-
-    float amplitude = (vUv.y - 0.5) * 2.0;
-    float yMin = minVal * 0.9;
-    float yMax = maxVal * 0.9;
-
-    float minThickness = 2.0 / uCanvasHeight;
-    if (yMax - yMin < minThickness) {
-        float center = (yMin + yMax) * 0.5;
-        yMin = center - minThickness * 0.5;
-        yMax = center + minThickness * 0.5;
-    }
-
-    float centerThickness = 1.0 / uCanvasHeight;
-    if (abs(vUv.y - 0.5) < centerThickness) {
-        gl_FragColor = vec4(0.4, 0.4, 0.4, uTransparentBg > 0.5 ? 0.6 : 1.0);
-        return;
-    }
-
-    if (amplitude >= yMin && amplitude <= yMax) {
-        float peakAmplitude = max(abs(minVal), abs(maxVal));
-        float normalized = clamp(peakAmplitude, 0.0, 1.0);
-        vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
-        gl_FragColor = vec4(color, 1.0);
-    } else {
-        gl_FragColor = vec4(uBackgroundColor, uTransparentBg > 0.5 ? 0.0 : 1.0);
-    }
-}
-`;
+// ─── GLSL shaders removed — TSL node materials used instead ─────────────────
+// Tile shader: built inline in initThreeScene (TSL MeshBasicNodeMaterial)
+// Waveform shader: deferred to Phase 3 (TSL conversion)
 
 // ─── Main window view mode ──────────────────────────────────────────────────
 
@@ -418,7 +299,7 @@ function getMainWindowMode() {
 
 // ─── Three.js initialization ────────────────────────────────────────────────
 
-function initThreeScene() {
+async function initThreeScene() {
     if (material) return; // Already initialized (renderer may persist across cleanup cycles)
 
     const canvas = document.getElementById('spectrogram');
@@ -432,7 +313,20 @@ function initThreeScene() {
 
     // Reuse existing renderer if available, otherwise create new one
     if (!threeRenderer) {
-        threeRenderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+        threeRenderer = new THREE.WebGPURenderer({
+            canvas,
+            antialias: false,
+            alpha: false,
+            preserveDrawingBuffer: true,
+            // Request higher compute limits for shared device with GPU FFT compute
+            // Stockham FFT needs two shared arrays for ping-pong: 2 × 4096 f32 = 32768 bytes
+            requiredLimits: {
+                maxComputeWorkgroupStorageSize: 32768,
+                maxComputeWorkgroupSizeX: 256,
+                maxComputeInvocationsPerWorkgroup: 256,
+            }
+        });
+        await threeRenderer.init();
     }
     threeRenderer.setSize(width, height, false);
 
@@ -440,125 +334,115 @@ function initThreeScene() {
     detectBC4Support(threeRenderer);
 
     // Orthographic camera in world-space: X = seconds, Y = 0→1
-    // camera.left/right are updated by updateSpectrogramViewportFromZoom() before each render
     camera = new THREE.OrthographicCamera(0, 1, 1, 0, 0, 10);
     camera.position.z = 1;
 
     scene = new THREE.Scene();
-
-    // Build colormap texture
     colormapTexture = buildColormapTexture();
 
-    // Create shader material with default uniforms
-    material = new THREE.ShaderMaterial({
-        uniforms: {
-            uMagnitudes: { value: null },
-            uColormap: { value: colormapTexture },
-            uStretchFactor: { value: 1.0 },
-            uFrequencyScale: { value: 0 }, // 0=linear, 1=sqrt, 2=log
-            uMinFreq: { value: 0.1 },
-            uMaxFreq: { value: 50.0 },
-            uDbFloor: { value: -100.0 },
-            uDbRange: { value: 100.0 },
-            uBackgroundColor: { value: new THREE.Vector3(0, 0, 0) }
-        },
-        vertexShader: vertexShaderSource,
-        fragmentShader: fragmentShaderSource
-    });
+    // ─── Create shared TSL uniform nodes ─────────────────────────────
+    uStretchFactor = uniform(1.0);
+    uFreqScale = uniform(0.0);
+    uMinFreq = uniform(0.1);
+    uMaxFreq = uniform(50.0);
+    uDbFloor = uniform(-100.0);
+    uDbRange = uniform(100.0);
+    uBgR = uniform(0.0);
+    uBgG = uniform(0.0);
+    uBgB = uniform(0.0);
 
-    // Full-screen quad (spectrogram)
+    // ─── Main spectrogram material (Float32 → dB → colormap) ─────────
+    material = new THREE.MeshBasicNodeMaterial();
+    {
+        const { texU, texV, effectiveY } = buildFreqRemapNodes();
+        const magUV = vec2(texU, texV);
+
+        const placeholderMag = new THREE.DataTexture(
+            new Float32Array(1), 1, 1, THREE.RedFormat, THREE.FloatType
+        );
+        placeholderMag.needsUpdate = true;
+        mainMagTexNode = tslTexture(placeholderMag, magUV);
+
+        const LOG2_10 = float(Math.log2(10));
+        const mag = mainMagTexNode.r;
+        const db = tslLog2(mag.add(1e-10)).div(LOG2_10).mul(20.0);
+        const normalized = db.sub(uDbFloor).div(uDbRange).clamp(0, 1);
+
+        cmapTexNode = tslTexture(colormapTexture, vec2(normalized, float(0.5)));
+        const bgColor = vec4(uBgR, uBgG, uBgB, 1.0);
+
+        material.colorNode = select(
+            effectiveY.greaterThan(1.0), bgColor,
+            vec4(cmapTexNode.r, cmapTexNode.g, cmapTexNode.b, float(1.0))
+        );
+    }
+
     const geometry = new THREE.PlaneGeometry(2, 2);
     mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = 0;
     scene.add(mesh);
 
-    // Waveform (time series) mesh — overlaid on spectrogram for combination mode
+    // ─── Waveform (hidden Phase 1 — TSL conversion Phase 3) ──────────
     wfColormapTexture = buildWaveformColormapTexture();
-
-    const bgR = 0, bgG = 0, bgB = 0;
-    waveformMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            uSamples: { value: null },
-            uMipMinMax: { value: null },
-            uColormap: { value: wfColormapTexture },
-            uTotalSamples: { value: 0.0 },
-            uTextureWidth: { value: 1.0 },
-            uTextureHeight: { value: 1.0 },
-            uMipTextureWidth: { value: 1.0 },
-            uMipTextureHeight: { value: 1.0 },
-            uMipTotalBins: { value: 0.0 },
-            uMipBinSize: { value: parseFloat(WF_MIP_BIN_SIZE) },
-            uSamplesPerPixel: { value: 1.0 },
-            uCanvasWidth: { value: parseFloat(width) },
-            uCanvasHeight: { value: parseFloat(height) },
-            uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) },
-            uTransparentBg: { value: 0.0 }
-        },
-        vertexShader: vertexShaderSource,
-        fragmentShader: wfFragmentShaderSource,
-        transparent: true
-    });
+    waveformMaterial = new THREE.MeshBasicNodeMaterial();
+    waveformMaterial.transparent = true;
+    waveformMaterial.colorNode = vec4(0, 0, 0, 0);
     waveformMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), waveformMaterial);
     waveformMesh.renderOrder = 1;
     waveformMesh.visible = false;
     scene.add(waveformMesh);
 
-    // Tile meshes — up to 32 slots for pyramid LOD tiles
-    // Rendered IN FRONT of the main spectrogram mesh so tiles progressively replace
-    // the low-res full texture as they complete (with crossfade via uOpacity)
+    // ─── 32 tile meshes (Uint8 pre-normalized → colormap) ────────────
     tileMeshes = [];
     for (let i = 0; i < 32; i++) {
-        const tileMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uMagnitudes: { value: null },
-                uColormap: { value: colormapTexture },
-                uStretchFactor: { value: 1.0 },
-                uFrequencyScale: { value: 0 },
-                uMinFreq: { value: 0.1 },
-                uMaxFreq: { value: 50.0 },
-                uBackgroundColor: { value: new THREE.Vector3(0, 0, 0) },
-                uOpacity: { value: 1.0 },
-                uTexWidth: { value: 1024.0 },
-                uSamplesPerPixel: { value: 1.0 },
-                uCeilMagnitudes: { value: null },
-                uBlendFrac: { value: 0.0 },
-                uCeilUvStart: { value: 0.0 },
-                uCeilUvEnd: { value: 1.0 }
-            },
-            vertexShader: vertexShaderSource,
-            fragmentShader: tileFragmentShaderSource,
-            transparent: true
-        });
+        const tileMat = new THREE.MeshBasicNodeMaterial();
+        tileMat.transparent = true;
+
+        const tileOpacity = uniform(1.0);
+        const { texU: tTexU, texV: tTexV, effectiveY: tEffY } = buildFreqRemapNodes();
+        const tileMagUV = vec2(tTexU, tTexV);
+
+        const tilePlaceholder = new THREE.DataTexture(
+            new Uint8Array(1), 1, 1, THREE.RedFormat, THREE.UnsignedByteType
+        );
+        tilePlaceholder.needsUpdate = true;
+        const tileMagTex = tslTexture(tilePlaceholder, tileMagUV);
+
+        // Uint8 tiles: R channel IS the normalized value → direct colormap
+        const tileNormalized = tileMagTex.r;
+        const tileCmapTex = tslTexture(colormapTexture, vec2(tileNormalized, float(0.5)));
+
+        const tileBgColor = vec4(uBgR, uBgG, uBgB, tileOpacity);
+        tileMat.colorNode = select(
+            tEffY.greaterThan(1.0), tileBgColor,
+            vec4(tileCmapTex.r, tileCmapTex.g, tileCmapTex.b, tileOpacity)
+        );
+
         const tileGeom = new THREE.PlaneGeometry(2, 2);
         const tileMesh = new THREE.Mesh(tileGeom, tileMat);
-        tileMesh.renderOrder = 0.5;  // in front of full texture (0), behind waveform (1)
+        tileMesh.renderOrder = 0.5;
         tileMesh.visible = false;
         scene.add(tileMesh);
-        tileMeshes.push({ mesh: tileMesh, material: tileMat });
+
+        tileMeshes.push({
+            mesh: tileMesh,
+            material: tileMat,
+            tsl: {
+                magTex: tileMagTex,      // .value to swap magnitude texture
+                cmapTex: tileCmapTex,    // .value to swap colormap texture
+                opacity: tileOpacity     // .value to set opacity
+            }
+        });
     }
 
-    // WebGL context loss/restore handlers (Chromium can drop contexts under GPU pressure)
-    // Remove previous handlers if any (defensive against double-init)
-    if (onContextLost) canvas.removeEventListener('webglcontextlost', onContextLost);
-    if (onContextRestored) canvas.removeEventListener('webglcontextrestored', onContextRestored);
+    // WebGPU device loss handler
+    if (threeRenderer.backend?.device) {
+        threeRenderer.backend.device.lost.then((info) => {
+            console.warn(`WebGPU device lost: ${info.message} (reason: ${info.reason})`);
+        });
+    }
 
-    onContextLost = (e) => {
-        e.preventDefault();
-        console.warn('Spectrogram WebGL context lost — will restore on next render');
-    };
-    onContextRestored = () => {
-        console.log('Spectrogram WebGL context restored — re-uploading textures');
-        rebuildColormapTexture();
-        if (fullMagnitudeTexture) fullMagnitudeTexture.needsUpdate = true;
-        if (regionMagnitudeTexture) regionMagnitudeTexture.needsUpdate = true;
-        if (wfSampleTexture) wfSampleTexture.needsUpdate = true;
-        if (wfMipTexture) wfMipTexture.needsUpdate = true;
-        // Tile textures managed by pyramid LRU cache — will recreate on demand
-    };
-    canvas.addEventListener('webglcontextlost', onContextLost);
-    canvas.addEventListener('webglcontextrestored', onContextRestored);
-
-    console.log(`Three.js spectrogram renderer initialized (${width}x${height})`);
+    console.log(`Three.js WebGPU spectrogram renderer initialized (${width}x${height})`);
 }
 
 function buildColormapTexture() {
@@ -582,23 +466,20 @@ function buildColormapTexture() {
 }
 
 function rebuildColormapTexture() {
-    if (colormapTexture) {
-        colormapTexture.dispose();
-    }
+    if (colormapTexture) colormapTexture.dispose();
     colormapTexture = buildColormapTexture();
-    if (material) {
-        material.uniforms.uColormap.value = colormapTexture;
-    }
-    // Rebuild tile mesh colormaps
+
+    // Swap on main material
+    if (cmapTexNode) cmapTexNode.value = colormapTexture;
+
+    // Swap on all tile materials
     for (const tm of tileMeshes) {
-        tm.material.uniforms.uColormap.value = colormapTexture;
+        if (tm.tsl?.cmapTex) tm.tsl.cmapTex.value = colormapTexture;
     }
-    // Rebuild waveform colormap too
-    if (waveformMaterial) {
-        if (wfColormapTexture) wfColormapTexture.dispose();
-        wfColormapTexture = buildWaveformColormapTexture();
-        waveformMaterial.uniforms.uColormap.value = wfColormapTexture;
-    }
+
+    // Waveform colormap (Phase 3)
+    if (wfColormapTexture) wfColormapTexture.dispose();
+    wfColormapTexture = buildWaveformColormapTexture();
 }
 
 /**
@@ -658,27 +539,23 @@ function createMagnitudeTexture(data, width, height) {
 // ─── Helper: update shader uniforms for current state ───────────────────────
 
 function updateFrequencyUniforms() {
-    if (!material) return;
-
+    if (!uFreqScale) return;
     const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
     const originalNyquist = originalSampleRate / 2;
     const minFreq = getLogScaleMinFreq();
 
-    material.uniforms.uMaxFreq.value = originalNyquist;
-    material.uniforms.uMinFreq.value = minFreq;
+    uMaxFreq.value = originalNyquist;
+    uMinFreq.value = minFreq;
 
-    if (State.frequencyScale === 'logarithmic') {
-        material.uniforms.uFrequencyScale.value = 2;
-    } else if (State.frequencyScale === 'sqrt') {
-        material.uniforms.uFrequencyScale.value = 1;
-    } else {
-        material.uniforms.uFrequencyScale.value = 0;
-    }
+    if (State.frequencyScale === 'logarithmic') uFreqScale.value = 2.0;
+    else if (State.frequencyScale === 'sqrt') uFreqScale.value = 1.0;
+    else uFreqScale.value = 0.0;
 
-    // Background color from colormap floor
     const lut = getColorLUT();
     if (lut) {
-        material.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
+        uBgR.value = lut[0] / 255;
+        uBgG.value = lut[1] / 255;
+        uBgB.value = lut[2] / 255;
     }
 }
 
@@ -723,59 +600,39 @@ export function resizeRendererToDisplaySize() {
 
 // ─── Helper: render one frame ───────────────────────────────────────────────
 
-function renderFrame() {
+let renderPending = false;
+
+async function renderFrame() {
     if (!threeRenderer || !scene || !camera) return;
+    if (renderPending) return;
+    renderPending = true;
 
-    const mode = getMainWindowMode();
-    const showSpectrogram = (mode === 'spectrogram' || mode === 'both');
-    const showWaveform = (mode === 'timeSeries' || mode === 'both');
+    try {
+        const mode = getMainWindowMode();
+        const showSpectrogram = (mode === 'spectrogram' || mode === 'both');
 
-    // Mode gating only — hide everything when spectrogram isn't shown.
-    // Visibility of main mesh vs tile meshes is controlled by tryUseTiles/useInterpFallback.
-    // renderFrame never overrides those decisions.
-    if (!showSpectrogram) {
-        if (mesh) mesh.visible = false;
-        for (const tm of tileMeshes) tm.mesh.visible = false;
-    } else {
-        // Re-evaluate tile/mesh visibility when switching back to spectrogram
-        tryUseTiles(camera.left, camera.right);
-    }
-
-    // Toggle waveform mesh visibility (only if samples uploaded)
-    if (waveformMesh) {
-        waveformMesh.visible = showWaveform && !!wfSampleTexture;
-        if (waveformMaterial) {
-            waveformMaterial.uniforms.uTransparentBg.value = mode === 'both' ? 1.0 : 0.0;
-        }
-    }
-
-    // Update waveform uniforms (mesh is positioned in world space, camera handles viewport)
-    if (showWaveform && waveformMaterial) {
-        // Compute samplesPerPixel from camera view width
-        const canvas = threeRenderer.domElement;
-        const viewDurationSec = camera.right - camera.left;
-        const totalSamples = waveformMaterial.uniforms.uTotalSamples.value;
-        if (viewDurationSec > 0 && State.dataStartTime && State.dataEndTime) {
-            const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
-            if (dataDurationSec > 0) {
-                const viewFrac = viewDurationSec / dataDurationSec;
-                const viewSamples = viewFrac * totalSamples;
-                waveformMaterial.uniforms.uSamplesPerPixel.value = viewSamples / canvas.width;
-            }
+        if (!showSpectrogram) {
+            if (mesh) mesh.visible = false;
+            for (const tm of tileMeshes) tm.mesh.visible = false;
+        } else {
+            tryUseTiles(camera.left, camera.right);
         }
 
-        // Update background color
-        const lut = getColorLUT();
-        if (lut) {
-            waveformMaterial.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
+        // Waveform hidden in Phase 1
+        if (waveformMesh) waveformMesh.visible = false;
+
+        await threeRenderer.renderAsync(scene, camera);
+
+        // Process GPU texture swaps (zero-readback pipeline)
+        // After first render, Three.js has created internal GPU textures for new DataTexture shells.
+        // We swap them with our compute GPUTextures so the next frame shows real data.
+        if (processPendingGPUTextureSwaps()) {
+            // Swaps happened — re-render to display real texture data
+            await threeRenderer.renderAsync(scene, camera);
         }
-
-        // Handle canvas resize
-        waveformMaterial.uniforms.uCanvasWidth.value = parseFloat(canvas.width);
-        waveformMaterial.uniforms.uCanvasHeight.value = parseFloat(canvas.height);
+    } finally {
+        renderPending = false;
     }
-
-    threeRenderer.render(scene, camera);
 }
 
 // ─── Waveform sample upload (for time series mode) ──────────────────────────
@@ -809,10 +666,7 @@ function uploadMainWaveformSamples() {
     wfSampleTexture.wrapT = THREE.ClampToEdgeWrapping;
     wfSampleTexture.needsUpdate = true;
 
-    waveformMaterial.uniforms.uSamples.value = wfSampleTexture;
-    waveformMaterial.uniforms.uTotalSamples.value = parseFloat(wfTotalSamples);
-    waveformMaterial.uniforms.uTextureWidth.value = parseFloat(wfTextureWidth);
-    waveformMaterial.uniforms.uTextureHeight.value = parseFloat(wfTextureHeight);
+    // Phase 1: waveform uniform uploads deferred (TSL conversion in Phase 3)
 
     // Build min/max mip texture
     const mipBins = Math.ceil(wfTotalSamples / WF_MIP_BIN_SIZE);
@@ -842,10 +696,7 @@ function uploadMainWaveformSamples() {
     wfMipTexture.wrapT = THREE.ClampToEdgeWrapping;
     wfMipTexture.needsUpdate = true;
 
-    waveformMaterial.uniforms.uMipMinMax.value = wfMipTexture;
-    waveformMaterial.uniforms.uMipTextureWidth.value = parseFloat(mipTexWidth);
-    waveformMaterial.uniforms.uMipTextureHeight.value = parseFloat(mipTexHeight);
-    waveformMaterial.uniforms.uMipTotalBins.value = parseFloat(mipBins);
+    // Phase 1: waveform mip uniform uploads deferred (TSL conversion in Phase 3)
 
     wfLastUploadedSamples = samples;
 
@@ -1076,7 +927,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
     logMemory('Before FFT computation');
 
     // Initialize Three.js scene if needed
-    initThreeScene();
+    await initThreeScene();
 
     const canvas = threeRenderer?.domElement;
     if (!canvas) {
@@ -1123,7 +974,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
 
         // Set as active texture
-        material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+        mainMagTexNode.value =fullMagnitudeTexture;
         activeTexture = 'full';
 
         // Update frequency-related uniforms
@@ -1279,7 +1130,7 @@ export async function upgradeFullTextureToHiRes(multiplier = 4) {
 
         // Only activate if the full texture is currently in use.
         if (activeTexture === 'full') {
-            material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+            mainMagTexNode.value =fullMagnitudeTexture;
             renderFrame();
         }
     } catch (error) {
@@ -1335,47 +1186,19 @@ function updateTileMeshPositions(visibleTiles) {
                 continue;
             }
 
-            // Set texture (UV is always 0→1 now — shader uses vUv.x directly)
-            tm.material.uniforms.uMagnitudes.value = texture;
+            // Set tile magnitude texture via TSL node swap
+            tm.tsl.magTex.value = texture;
 
-            // Box filter uniforms: texture width + samples-per-pixel for anti-aliased downsampling
-            tm.material.uniforms.uTexWidth.value = vt.tile.width || 1024;
-            if (tileShaderMode === 'box') {
-                const canvasW = threeRenderer?.domElement?.width || 1200;
-                const viewDurationSec = (camera.right - camera.left) || 1;
-                const tileDurationSec = vt.tile.endSec - vt.tile.startSec;
-                const tilePixels = (tileDurationSec / viewDurationSec) * canvasW;
-                tm.material.uniforms.uSamplesPerPixel.value = (vt.tile.width || 1024) / Math.max(1, tilePixels);
-            } else {
-                tm.material.uniforms.uSamplesPerPixel.value = 1.0;  // bypass box filter (linear or nearest)
-            }
+            // Box filter + crossfade deferred to Phase 3 (uniforms not present in TSL material)
 
             // Tile fade-in opacity (time-based, for newly loaded tiles)
             const readyTime = tileReadyTimes.get(vt.key) || 0;
             const elapsed = now - readyTime;
             const fadeInOpacity = TILE_CROSSFADE_MS > 0 ? Math.min(1, elapsed / TILE_CROSSFADE_MS) : 1;
-            tm.material.uniforms.uOpacity.value = fadeInOpacity;
+            tm.tsl.opacity.value = fadeInOpacity;
             if (fadeInOpacity < 1) anyFading = true;
 
-            // Shader-level crossfade: set ceil texture + blend fraction
-            if (vt.ceilTile && vt.blendFrac > 0.001) {
-                const ceilTex = getTileTexture(vt.ceilTile, vt.ceilKey);
-                tm.material.uniforms.uCeilMagnitudes.value = ceilTex;
-                tm.material.uniforms.uBlendFrac.value = ceilTex ? vt.blendFrac : 0;
-                tm.material.uniforms.uCeilUvStart.value = vt.ceilUvStart;
-                tm.material.uniforms.uCeilUvEnd.value = vt.ceilUvEnd;
-            } else {
-                tm.material.uniforms.uBlendFrac.value = 0;
-            }
-
-            // Sync frequency/stretch uniforms with main material
-            if (material) {
-                tm.material.uniforms.uStretchFactor.value = material.uniforms.uStretchFactor.value;
-                tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
-                tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
-                tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
-                tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
-            }
+            // Shared TSL uniform nodes — no per-tile sync needed
 
             // Position tile at fixed world-space location (seconds)
             positionMeshWorldSpace(tm.mesh, vt.tile.startSec, vt.tile.endSec);
@@ -1415,7 +1238,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
     const signal = activeRenderAbortController.signal;
     let renderSucceeded = false;
 
-    initThreeScene();
+    await initThreeScene();
     const canvas = threeRenderer?.domElement;
     if (!canvas) {
         renderingInProgress = false;
@@ -1517,7 +1340,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
 
         if (!renderInBackground) {
             // Switch to region texture for display
-            material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
+            mainMagTexNode.value =regionMagnitudeTexture;
             activeTexture = 'region';
 
             // Position region mesh in world space
@@ -1582,7 +1405,7 @@ export function updateSpectrogramViewport(playbackRate) {
 
     // Update stretch factor
     const stretchFactor = calculateStretchFactor(playbackRate, State.frequencyScale);
-    material.uniforms.uStretchFactor.value = stretchFactor;
+    uStretchFactor.value =stretchFactor;
 
     // Update frequency uniforms (in case scale changed)
     updateFrequencyUniforms();
@@ -1645,7 +1468,7 @@ export function drawInterpolatedSpectrogram() {
         if (interpStartSec >= expandedStartSec && interpEndSec <= expandedEndSec) {
             // Switch to high-res region texture — position mesh at its world-space location
             if (activeTexture !== 'region') {
-                material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
+                mainMagTexNode.value =regionMagnitudeTexture;
                 activeTexture = 'region';
             }
             if (mesh) {
@@ -1660,23 +1483,10 @@ export function drawInterpolatedSpectrogram() {
         useInterpFallback(interpStartSec, interpEndSec);
     }
 
-    // Update stretch
+    // Update stretch + frequency (shared TSL uniforms — affects all materials)
     const playbackRate = State.currentPlaybackRate || 1.0;
-    material.uniforms.uStretchFactor.value = calculateStretchFactor(playbackRate, State.frequencyScale);
-
-    // Update frequency uniforms
+    uStretchFactor.value = calculateStretchFactor(playbackRate, State.frequencyScale);
     updateFrequencyUniforms();
-
-    // Sync tile mesh uniforms
-    for (const tm of tileMeshes) {
-        if (tm.mesh.visible) {
-            tm.material.uniforms.uStretchFactor.value = material.uniforms.uStretchFactor.value;
-            tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
-            tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
-            tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
-            tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
-        }
-    }
 
     // Update overlay
     updateSpectrogramOverlay();
@@ -1727,7 +1537,7 @@ export function updateSpectrogramViewportFromZoom() {
 
         if (fitsInBounds) {
             // Use hi-res region texture — position its mesh in world space
-            material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
+            mainMagTexNode.value =regionMagnitudeTexture;
             activeTexture = 'region';
             if (mesh) {
                 positionMeshWorldSpace(mesh, regionTextureActualStartSec, regionTextureActualEndSec);
@@ -1741,21 +1551,10 @@ export function updateSpectrogramViewportFromZoom() {
         tryUseTiles(viewStartSec, viewEndSec);
     }
 
-    // Update stretch + frequency
+    // Update stretch + frequency (shared TSL uniforms — affects all materials)
     const playbackRate = State.currentPlaybackRate || 1.0;
-    material.uniforms.uStretchFactor.value = calculateStretchFactor(playbackRate, State.frequencyScale);
+    uStretchFactor.value = calculateStretchFactor(playbackRate, State.frequencyScale);
     updateFrequencyUniforms();
-
-    // Sync tile mesh frequency uniforms
-    for (const tm of tileMeshes) {
-        if (tm.mesh.visible) {
-            tm.material.uniforms.uStretchFactor.value = material.uniforms.uStretchFactor.value;
-            tm.material.uniforms.uFrequencyScale.value = material.uniforms.uFrequencyScale.value;
-            tm.material.uniforms.uMinFreq.value = material.uniforms.uMinFreq.value;
-            tm.material.uniforms.uMaxFreq.value = material.uniforms.uMaxFreq.value;
-            tm.material.uniforms.uBackgroundColor.value.copy(material.uniforms.uBackgroundColor.value);
-        }
-    }
 
     // Hide the dimming overlay during scroll zoom
     if (spectrogramOverlay) {
@@ -1887,7 +1686,7 @@ function tryUseTiles(viewStartSec, viewEndSec) {
     if (tilesFullyCover) {
         if (mesh) mesh.visible = false;
     } else if (fullMagnitudeTexture) {
-        material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+        mainMagTexNode.value =fullMagnitudeTexture;
         if (mesh) {
             positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
             mesh.visible = true;
@@ -1942,7 +1741,7 @@ export function restoreInfiniteCanvasFromCache() {
     }
 
     // Switch back to full texture
-    material.uniforms.uMagnitudes.value = fullMagnitudeTexture;
+    mainMagTexNode.value =fullMagnitudeTexture;
     activeTexture = 'full';
 
     // Restore full-texture world-space position
@@ -1986,6 +1785,17 @@ export function clearCompleteSpectrogram() {
         material = null;
     }
 
+    // Null out TSL uniform/texture node references
+    uStretchFactor = null;
+    uFreqScale = null;
+    uMinFreq = null;
+    uMaxFreq = null;
+    uDbFloor = null;
+    uDbRange = null;
+    uBgR = null; uBgG = null; uBgB = null;
+    mainMagTexNode = null;
+    cmapTexNode = null;
+
     // Dispose waveform mesh/material/textures
     if (waveformMesh) {
         waveformMesh.geometry.dispose();
@@ -2027,13 +1837,7 @@ export function clearCompleteSpectrogram() {
         spectrogramOverlay = null;
     }
 
-    // Remove WebGL context handlers from canvas
-    if (threeRenderer && onContextLost) {
-        threeRenderer.domElement.removeEventListener('webglcontextlost', onContextLost);
-        threeRenderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
-        onContextLost = null;
-        onContextRestored = null;
-    }
+    // WebGPU device loss handled via device.lost promise in initThreeScene
 
     // Stop memory monitoring
     stopMemoryMonitoring();
@@ -2119,7 +1923,7 @@ export async function updateElasticFriendInBackground() {
     } finally {
         // Restore previous display if we were showing region or tiles
         if (savedActiveTexture === 'region' && savedRegionTexture && material) {
-            material.uniforms.uMagnitudes.value = savedRegionTexture;
+            mainMagTexNode.value =savedRegionTexture;
             activeTexture = 'region';
         } else if (savedActiveTexture === 'tiles') {
             activeTexture = 'tiles';
@@ -2136,7 +1940,7 @@ export function activateRegionTexture(playbackRate) {
     if (!regionMagnitudeTexture || !material) return;
 
     // Switch to high-res region texture
-    material.uniforms.uMagnitudes.value = regionMagnitudeTexture;
+    mainMagTexNode.value =regionMagnitudeTexture;
     activeTexture = 'region';
 
     // Position mesh at region's world-space location
@@ -2147,7 +1951,7 @@ export function activateRegionTexture(playbackRate) {
     updateFrequencyUniforms();
 
     const stretchFactor = calculateStretchFactor(playbackRate, State.frequencyScale);
-    material.uniforms.uStretchFactor.value = stretchFactor;
+    uStretchFactor.value =stretchFactor;
 
     updateSpectrogramOverlay();
     renderFrame();
@@ -2173,43 +1977,10 @@ export function restoreViewportState() {
 }
 
 export function getSpectrogramViewport(playbackRate) {
-    if (!material || !threeRenderer) return null;
-
-    const canvas = threeRenderer.domElement;
-    const width = canvas.width;
-    const height = canvas.height;
-
-    // Set up stretch for this viewport
-    const stretchFactor = calculateStretchFactor(playbackRate, State.frequencyScale);
-    material.uniforms.uStretchFactor.value = stretchFactor;
-    updateFrequencyUniforms();
-
-    // Render to a render target
-    const renderTarget = new THREE.WebGLRenderTarget(width, height);
-    threeRenderer.setRenderTarget(renderTarget);
-    threeRenderer.render(scene, camera);
-
-    // Read pixels back
-    const pixels = new Uint8Array(width * height * 4);
-    threeRenderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, pixels);
-    threeRenderer.setRenderTarget(null);
-    renderTarget.dispose();
-
-    // Create a 2d canvas (WebGL pixels are bottom-to-top, flip for canvas)
-    const viewportCanvas = document.createElement('canvas');
-    viewportCanvas.width = width;
-    viewportCanvas.height = height;
-    const ctx = viewportCanvas.getContext('2d');
-    const imageData = ctx.createImageData(width, height);
-
-    for (let y = 0; y < height; y++) {
-        const srcRow = (height - 1 - y) * width * 4;
-        const dstRow = y * width * 4;
-        imageData.data.set(pixels.subarray(srcRow, srcRow + width * 4), dstRow);
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-    return viewportCanvas;
+    // Phase 1: WebGLRenderTarget readback not available with WebGPU.
+    // Zoom transitions use tile LOD system instead.
+    console.warn('getSpectrogramViewport: WebGPU readback not yet implemented');
+    return null;
 }
 
 // ─── Render control ─────────────────────────────────────────────────────────
