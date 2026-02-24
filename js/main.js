@@ -1664,11 +1664,10 @@ function initializeAdvancedControls() {
     if (tileChunkEl) {
         tileChunkEl.addEventListener('change', () => {
             tileChunkEl.blur();
-            // Re-render spectrogram with new tile duration if data is loaded
+            // Re-render spectrogram with new tile duration (old stays visible during compute)
             import('./spectrogram-three-renderer.js').then(module => {
                 if (module.isCompleteSpectrogramRendered()) {
-                    module.clearCompleteSpectrogram();
-                    module.renderCompleteSpectrogram();
+                    module.renderCompleteSpectrogram(false, true);
                 }
             });
         });

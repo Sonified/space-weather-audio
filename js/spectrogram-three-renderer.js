@@ -2016,25 +2016,7 @@ export function isRegionRenderComplete(regionId) {
 // ─── Overlay management ─────────────────────────────────────────────────────
 
 function createSpectrogramOverlay() {
-    if (spectrogramOverlay) return;
-
-    const canvas = threeRenderer?.domElement || document.getElementById('spectrogram');
-    if (!canvas) return;
-
-    spectrogramOverlay = document.createElement('div');
-    spectrogramOverlay.id = 'spectrogram-overlay';
-    spectrogramOverlay.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.3);
-        pointer-events: none;
-        z-index: 10;
-        transition: none;
-        will-change: opacity;
-    `;
+    return; // Overlay removed — no dimming needed
 
     const parent = canvas.parentElement;
     if (parent) {
