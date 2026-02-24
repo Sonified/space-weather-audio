@@ -710,7 +710,6 @@ export function getWaveformOverlayCanvas() {
  * Check if we're in an EMIC windowed mode (scroll or page-turn, NOT region creation)
  */
 function isEmicWindowedMode() {
-    if (!window.__EMIC_STUDY_MODE) return false;
     const modeSelect = document.getElementById('viewingMode');
     return modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
 }
@@ -804,7 +803,6 @@ function getWaveformViewport() {
  * Maps feature time/frequency coordinates to minimap pixel space.
  */
 function drawMinimapFeatureBoxes(ctx, width, height) {
-    if (!window.__EMIC_STUDY_MODE) return;
     if (!State.dataStartTime || !State.dataEndTime) return;
 
     const regions = getRegions() || [];

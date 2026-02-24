@@ -502,7 +502,7 @@ let boxDragStartY = null;
  * Mousedown handler for box drag/resize. Returns true if event was claimed.
  */
 function handleBoxDragDown(e, canvas) {
-    const _mode = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+    const _mode = document.getElementById('viewingMode');
     const isWindowed = _mode && (_mode.value === 'static' || _mode.value === 'scroll' || _mode.value === 'pageTurn');
     if (!isWindowed) return false;
 
@@ -610,7 +610,7 @@ function handleBoxDragMove(e, canvas) {
     if (spectrogramSelectionActive) return false;
 
     // Not dragging — set hover cursor for box edges/corners (windowed mode only)
-    const _modeHover = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+    const _modeHover = document.getElementById('viewingMode');
     const isWindowed = _modeHover && (_modeHover.value === 'static' || _modeHover.value === 'scroll' || _modeHover.value === 'pageTurn');
     const interaction = isWindowed ? getBoxInteraction(mouseX, mouseY) : null;
     hoveredBoxInteraction = interaction;
@@ -2077,7 +2077,7 @@ export function setupSpectrogramSelection() {
         const mainClickMode = document.getElementById('mainWindowClick');
         if (mainClickMode && mainClickMode.value === 'playAudio' && !zoomState.isInRegion()) {
             // Click=Play audio: seek immediately on mousedown
-            const modeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+            const modeSelect = document.getElementById('viewingMode');
             const isWindowed = modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
             if (isWindowed && State.getCompleteSamplesLength() > 0 && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
                 const timestamp = zoomState.pixelToTimestamp(clickX, canvasRect.width);
@@ -2392,7 +2392,7 @@ export function setupSpectrogramSelection() {
             if (mainReleaseMode && mainReleaseMode.value === 'playAudio' && !zoomState.isInRegion()) {
                 const canvasRect = canvas.getBoundingClientRect();
                 const releaseX = e.clientX - canvasRect.left;
-                const modeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+                const modeSelect = document.getElementById('viewingMode');
                 const isWindowed = modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn');
                 if (isWindowed && State.getCompleteSamplesLength() > 0 && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
                     const timestamp = zoomState.pixelToTimestamp(releaseX, canvasRect.width);
@@ -2710,20 +2710,29 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
 
     // PASS 2: Draw annotation text above the box (if in annotations-only mode)
     if (drawAnnotationsOnly && box.notes && box.startTime && box.endTime) {
-        // Check if live annotations are enabled
-        const checkbox = document.getElementById('liveAnnotation');
-        if (!checkbox || !checkbox.checked) {
-            // Clear any existing timing state for this box
-            const key = `${box.regionIndex}-${box.featureIndex}`;
+        const key = `${box.regionIndex}-${box.featureIndex}`;
+        const now = performance.now();
+
+        // Annotation mode: "none" | "persistent" | "live"
+        const modeSelect = document.getElementById('annotationMode');
+        const annotationMode = modeSelect ? modeSelect.value : 'persistent';
+
+        if (annotationMode === 'none') {
             annotationTimingState.delete(key);
             return;
         }
 
-        const key = `${box.regionIndex}-${box.featureIndex}`;
-        const now = performance.now();
+        const liveMode = annotationMode === 'live';
+        let opacity = 1;
 
-        // Calculate time until feature IN AUDIO TIME, not real-world time!
-        if (State.totalAudioDuration && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
+        // Ensure a timing/cache entry exists for text measurement caching
+        let timing = annotationTimingState.get(key);
+        if (!timing) {
+            timing = { showTime: now, hideTime: null, state: 'visible' };
+            annotationTimingState.set(key, timing);
+        }
+
+        if (liveMode && State.totalAudioDuration && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
             // Convert timestamps to sample indices (progress through dataset)
             const dataStartMs = State.dataStartTime.getTime();
             const dataEndMs = State.dataEndTime.getTime();
@@ -2754,13 +2763,12 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
             // WORKLET-STYLE: Trigger when samplesToFeature <= leadTimeSamples
             const shouldShow = samplesToFeature <= leadTimeSamples && samplesToFeature > -featureDurationSamples;
 
-            let timing = annotationTimingState.get(key);
-
-            if (shouldShow && !timing) {
+            if (shouldShow && timing.state !== 'fading-in' && timing.state !== 'visible') {
                 // Start showing
-                timing = { showTime: now, hideTime: null, state: 'fading-in' };
-                annotationTimingState.set(key, timing);
-            } else if (!shouldShow && timing && timing.state !== 'fading-out' && timing.state !== 'hidden') {
+                timing.showTime = now;
+                timing.hideTime = null;
+                timing.state = 'fading-in';
+            } else if (!shouldShow && timing.state !== 'fading-out' && timing.state !== 'hidden') {
                 // Start hiding (if past min display time)
                 const timeSinceShow = now - timing.showTime;
                 if (timeSinceShow > ANNOTATION_MIN_DISPLAY_MS) {
@@ -2769,154 +2777,152 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
                 }
             }
 
-            if (timing) {
-                let opacity = 0;
+            opacity = 0;
 
-                if (timing.state === 'fading-in') {
-                    const elapsed = now - timing.showTime;
-                    const progress = Math.min(1, elapsed / ANNOTATION_FADE_IN_MS);
-                    opacity = progress;
+            if (timing.state === 'fading-in') {
+                const elapsed = now - timing.showTime;
+                const progress = Math.min(1, elapsed / ANNOTATION_FADE_IN_MS);
+                opacity = progress;
 
-                    if (progress >= 1) timing.state = 'visible';
-                } else if (timing.state === 'visible') {
-                    opacity = 1;
-                } else if (timing.state === 'fading-out') {
-                    const elapsed = now - timing.hideTime;
-                    const progress = Math.min(1, elapsed / ANNOTATION_FADE_OUT_MS);
-                    opacity = 1 - progress;
+                if (progress >= 1) timing.state = 'visible';
+            } else if (timing.state === 'visible') {
+                opacity = 1;
+            } else if (timing.state === 'fading-out') {
+                const elapsed = now - timing.hideTime;
+                const progress = Math.min(1, elapsed / ANNOTATION_FADE_OUT_MS);
+                opacity = 1 - progress;
 
-                    if (progress >= 1) {
-                        timing.state = 'hidden';
-                        annotationTimingState.delete(key);
-                    }
-                }
-
-                if (opacity > 0) {
-                    const scaleX = canvas.offsetWidth / canvas.width;
-                    const scaleY = canvas.offsetHeight / canvas.height;
-                    const xStretchFactor = scaleX / scaleY;
-
-                    ctx.save();
-
-                    // Set font first for measurement
-                    ctx.font = '600 13px Arial, sans-serif';
-
-                    // Check if text has changed - only re-wrap if needed
-                    const lineHeight = 16; // Define BEFORE if/else
-                    let lines, textWidth, halfWidth, totalHeight;
-                    if (timing.cachedText !== box.notes) {
-                        // Text changed! Re-wrap and recalculate dimensions
-                        const maxWidth = 325;
-                        lines = wrapText(ctx, box.notes, maxWidth);
-                        textWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
-                        halfWidth = textWidth / 2;
-                        totalHeight = lines.length * lineHeight;
-
-                        // Cache for next frame
-                        timing.cachedText = box.notes;
-                        timing.cachedLines = lines;
-                        timing.cachedHalfWidth = halfWidth;
-                        timing.cachedTotalHeight = totalHeight;
-                    } else {
-                        // Text unchanged - reuse cached values
-                        lines = timing.cachedLines;
-                        halfWidth = timing.cachedHalfWidth;
-                        totalHeight = timing.cachedTotalHeight;
-                    }
-
-                    // Calculate text position (centered above box)
-                    let textX = x + width / 2;
-                    let textY = y - 20 - totalHeight;
-
-                    // Check left edge
-                    if (textX - halfWidth < 10) {
-                        textX = 10 + halfWidth;
-                    }
-                    // Check right edge
-                    if (textX + halfWidth > canvas.width - 10) {
-                        textX = canvas.width - 10 - halfWidth;
-                    }
-
-                    // Collision detection: check against already-placed annotations
-                    // ONLY run on first frame - then lock Y position to prevent dropping when others fade out
-                    const padding = 10;
-                    let finalTextY;
-
-                    if (timing.lockedY !== undefined) {
-                        // Use stored Y position (annotation stays at its height)
-                        finalTextY = timing.lockedY;
-                    } else {
-                        // First frame: calculate collision-free Y position
-                        finalTextY = textY;
-                        let collisionDetected = true;
-
-                        while (collisionDetected && placedAnnotations.length > 0) {
-                            collisionDetected = false;
-
-                            for (const placed of placedAnnotations) {
-                                // Check X overlap (horizontal collision) - 25% wider bounding area
-                                const xOverlap = Math.abs(textX - placed.x) < ((halfWidth + placed.halfWidth) * 1.25 + padding);
-
-                                // Check Y overlap (vertical collision)
-                                const yOverlap = Math.abs(finalTextY - placed.y) < (totalHeight / 2 + placed.height / 2 + padding);
-
-                                if (xOverlap && yOverlap) {
-                                    // Collision! Move up
-                                    finalTextY = placed.y - (placed.height / 2 + totalHeight / 2 + padding);
-                                    collisionDetected = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Lock this Y position for all future frames
-                        timing.lockedY = finalTextY;
-                    }
-
-                    // Record this annotation's position
-                    placedAnnotations.push({
-                        x: textX,
-                        y: finalTextY,
-                        halfWidth: halfWidth,
-                        height: totalHeight
-                    });
-
-                    // Draw connecting line from text to box
-                    ctx.save();
-                    ctx.globalAlpha = opacity;
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-                    ctx.lineWidth = 2;
-                    ctx.setLineDash([3, 3]);
-                    ctx.beginPath();
-                    ctx.moveTo(textX, finalTextY + totalHeight); // Bottom of text
-                    ctx.lineTo(x + width / 2, y); // Top of box
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                    ctx.restore();
-
-                    // Now draw the text at finalTextY
-                    textY = finalTextY;
-
-                    ctx.translate(textX, textY);
-                    ctx.scale(1 / xStretchFactor, 1);
-                    ctx.translate(-textX, -textY);
-
-                    ctx.globalAlpha = opacity;
-                    ctx.fillStyle = '#fff';
-                    ctx.textAlign = 'center';
-                    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-                    ctx.shadowBlur = 6;
-                    ctx.shadowOffsetX = 1;
-                    ctx.shadowOffsetY = 1;
-
-                    // Draw each line
-                    lines.forEach((line, i) => {
-                        ctx.fillText(line, textX, textY + (i * lineHeight));
-                    });
-
-                    ctx.restore();
+                if (progress >= 1) {
+                    timing.state = 'hidden';
+                    annotationTimingState.delete(key);
                 }
             }
+        }
+
+        if (opacity > 0) {
+            const scaleX = canvas.offsetWidth / canvas.width;
+            const scaleY = canvas.offsetHeight / canvas.height;
+            const xStretchFactor = scaleX / scaleY;
+
+            ctx.save();
+
+            // Set font first for measurement
+            ctx.font = '600 13px Arial, sans-serif';
+
+            // Check if text has changed - only re-wrap if needed
+            const lineHeight = 16; // Define BEFORE if/else
+            let lines, textWidth, halfWidth, totalHeight;
+            if (timing.cachedText !== box.notes) {
+                // Text changed! Re-wrap and recalculate dimensions
+                const maxWidth = 325;
+                lines = wrapText(ctx, box.notes, maxWidth);
+                textWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
+                halfWidth = textWidth / 2;
+                totalHeight = lines.length * lineHeight;
+
+                // Cache for next frame
+                timing.cachedText = box.notes;
+                timing.cachedLines = lines;
+                timing.cachedHalfWidth = halfWidth;
+                timing.cachedTotalHeight = totalHeight;
+            } else {
+                // Text unchanged - reuse cached values
+                lines = timing.cachedLines;
+                halfWidth = timing.cachedHalfWidth;
+                totalHeight = timing.cachedTotalHeight;
+            }
+
+            // Calculate text position (centered above box)
+            let textX = x + width / 2;
+            let textY = y - 20 - totalHeight;
+
+            // Check left edge
+            if (textX - halfWidth < 10) {
+                textX = 10 + halfWidth;
+            }
+            // Check right edge
+            if (textX + halfWidth > canvas.width - 10) {
+                textX = canvas.width - 10 - halfWidth;
+            }
+
+            // Collision detection: check against already-placed annotations
+            // ONLY run on first frame - then lock Y position to prevent dropping when others fade out
+            const padding = 10;
+            let finalTextY;
+
+            if (liveMode && timing.lockedY !== undefined) {
+                // Live mode: use stored Y position (annotation stays at its height during fade)
+                finalTextY = timing.lockedY;
+            } else {
+                // First frame: calculate collision-free Y position
+                finalTextY = textY;
+                let collisionDetected = true;
+
+                while (collisionDetected && placedAnnotations.length > 0) {
+                    collisionDetected = false;
+
+                    for (const placed of placedAnnotations) {
+                        // Check X overlap (horizontal collision) - 25% wider bounding area
+                        const xOverlap = Math.abs(textX - placed.x) < ((halfWidth + placed.halfWidth) * 1.25 + padding);
+
+                        // Check Y overlap (vertical collision)
+                        const yOverlap = Math.abs(finalTextY - placed.y) < (totalHeight / 2 + placed.height / 2 + padding);
+
+                        if (xOverlap && yOverlap) {
+                            // Collision! Move up
+                            finalTextY = placed.y - (placed.height / 2 + totalHeight / 2 + padding);
+                            collisionDetected = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Lock this Y position for future frames (live mode only, persistent recalculates)
+                if (liveMode) timing.lockedY = finalTextY;
+            }
+
+            // Record this annotation's position
+            placedAnnotations.push({
+                x: textX,
+                y: finalTextY,
+                halfWidth: halfWidth,
+                height: totalHeight
+            });
+
+            // Draw connecting line from text to box
+            ctx.save();
+            ctx.globalAlpha = opacity;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(textX, finalTextY + totalHeight); // Bottom of text
+            ctx.lineTo(x + width / 2, y); // Top of box
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+
+            // Now draw the text at finalTextY
+            textY = finalTextY;
+
+            ctx.translate(textX, textY);
+            ctx.scale(1 / xStretchFactor, 1);
+            ctx.translate(-textX, -textY);
+
+            ctx.globalAlpha = opacity;
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+            ctx.shadowBlur = 6;
+            ctx.shadowOffsetX = 1;
+            ctx.shadowOffsetY = 1;
+
+            // Draw each line
+            lines.forEach((line, i) => {
+                ctx.fillText(line, textX, textY + (i * lineHeight));
+            });
+
+            ctx.restore();
         }
     }
 

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CDAWeb Audification Artifact Demo</title>
+    <style>
+        body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 20px; max-width: 900px; margin: 0 auto; }
+        h1 { color: #00d4ff; font-size: 1.4em; }
+        h2 { color: #aaa; font-size: 1em; font-weight: normal; margin-top: -10px; }
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0; align-items: center; }
+        select, input, button { font-family: monospace; font-size: 14px; padding: 8px 12px; background: #16213e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 4px; cursor: pointer; }
+        input { width: 200px; }
+        button { background: #0f3460; }
+        button:hover { background: #1a4a8a; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        button.playing { background: #e94560; }
+        #log { background: #0d1117; border: 1px solid #333; border-radius: 4px; padding: 12px; max-height: 300px; overflow-y: auto; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+        canvas { width: 100%; height: 150px; background: #0d1117; border: 1px solid #333; border-radius: 4px; margin: 10px 0; display: block; }
+        .section { margin: 20px 0; padding: 15px; background: #16213e; border-radius: 6px; }
+        .success { color: #4caf50; }
+        .error { color: #e94560; }
+        .info { color: #00d4ff; }
+        .warn { color: #ffab40; }
+        label { color: #888; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <h1>CDAWeb Audification — Artifact Demo</h1>
+    <h2>Fetches audio directly from CDAWeb API, plays in browser, shows waveform</h2>
+
+    <div class="section">
+        <div class="controls">
+            <div>
+                <label>Dataset</label><br>
+                <select id="dataset">
+                    <option value="PSP_FLD_L2_MAG_RTN">PSP MAG RTN (Full Cadence)</option>
+                    <option value="PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC">PSP MAG RTN (4 SA/cyc)</option>
+                    <option value="DN_MAGN-L2-HIRES_G16">GOES-16 HIRES</option>
+                    <option value="WI_H2_MFI">Wind MFI</option>
+                    <option value="MMS1_FGM_SRVY_L2">MMS1 FGM Survey</option>
+                </select>
+            </div>
+            <div>
+                <label>Start</label><br>
+                <input type="text" id="startTime" value="2024-09-30T14:20:00.000Z">
+            </div>
+            <div>
+                <label>End</label><br>
+                <input type="text" id="endTime" value="2024-09-30T15:00:00.000Z">
+            </div>
+            <div>
+                <label>Component</label><br>
+                <select id="component">
+                    <option value="0">1st (R / Bx)</option>
+                    <option value="1">2nd (T / By)</option>
+                    <option value="2">3rd (N / Bz)</option>
+                </select>
+            </div>
+        </div>
+        <div class="controls">
+            <button id="btnFetch" onclick="fetchAudio()">📡 Fetch from CDAWeb</button>
+            <button id="btnPlay" onclick="togglePlay()" disabled>▶ Play</button>
+            <button id="btnDownload" onclick="downloadWav()" disabled>💾 Download WAV</button>
+        </div>
+    </div>
+
+    <canvas id="waveform"></canvas>
+
+    <div class="section">
+        <div id="log"></div>
+    </div>
+
+<script>
+const CDASWS_BASE = 'https://cdaweb.gsfc.nasa.gov/WS/cdasr/1';
+const DATAVIEW = 'sp_phys';
+
+const DATASET_VARIABLES = {
+    'PSP_FLD_L2_MAG_RTN': 'psp_fld_l2_mag_RTN',
+    'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC': 'psp_fld_l2_mag_RTN_4_Sa_per_Cyc',
+    'DN_MAGN-L2-HIRES_G16': 'b_gse',
+    'WI_H2_MFI': 'BGSE',
+    'MMS1_FGM_SRVY_L2': 'mms1_fgm_b_gse_srvy_l2',
+};
+
+let audioContext = null;
+let sourceNode = null;
+let audioBuffer = null;
+let wavBlob = null;
+let isPlaying = false;
+let startedAt = 0;
+let pausedAt = 0;
+
+function log(msg, cls = '') {
+    const el = document.getElementById('log');
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = msg + '\n';
+    el.appendChild(span);
+    el.scrollTop = el.scrollHeight;
+}
+
+function toBasicISO(iso) {
+    return iso.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+async function fetchAudio() {
+    const dataset = document.getElementById('dataset').value;
+    const variable = DATASET_VARIABLES[dataset];
+    const start = document.getElementById('startTime').value;
+    const end = document.getElementById('endTime').value;
+    const compIdx = parseInt(document.getElementById('component').value);
+
+    if (!variable) { log('Unknown dataset variable mapping', 'error'); return; }
+
+    const startBasic = toBasicISO(start);
+    const endBasic = toBasicISO(end);
+
+    const apiUrl = `${CDASWS_BASE}/dataviews/${DATAVIEW}/datasets/${dataset}/data/${startBasic},${endBasic}/${variable}?format=audio&_=${Date.now()}`;
+
+    log(`Fetching: ${dataset}`, 'info');
+    log(`  ${start} → ${end}`, 'info');
+    log(`  Component index: ${compIdx}`);
+    log(`  API: ${apiUrl}`, '');
+
+    document.getElementById('btnFetch').disabled = true;
+    document.getElementById('btnFetch').textContent = '⏳ Fetching...';
+
+    try {
+        // Step 1: Get file URLs
+        const resp = await fetch(apiUrl, { headers: { 'Accept': 'application/json' } });
+        if (!resp.ok) throw new Error(`API returned ${resp.status}`);
+        const result = await resp.json();
+
+        const files = result.FileDescription;
+        if (!files || files.length === 0) throw new Error('No files returned');
+
+        log(`Got ${files.length} component file(s)`, 'success');
+        files.forEach((f, i) => log(`  [${i}] ${f.Name.split('/').pop()} (${(f.Length/1024).toFixed(0)} KB)`));
+
+        if (compIdx >= files.length) {
+            log(`Component ${compIdx} not available (only ${files.length} components)`, 'error');
+            return;
+        }
+
+        // Step 2: Download the WAV
+        const wavUrl = files[compIdx].Name;
+        log(`Downloading WAV: ${wavUrl.split('/').pop()}...`);
+        const wavResp = await fetch(wavUrl);
+        wavBlob = await wavResp.blob();
+        log(`WAV downloaded: ${(wavBlob.size/1024).toFixed(0)} KB`, 'success');
+
+        // Step 3: Decode audio
+        if (!audioContext) audioContext = new AudioContext();
+        const arrayBuffer = await wavBlob.arrayBuffer();
+        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+        log(`Decoded: ${audioBuffer.numberOfChannels}ch, ${audioBuffer.sampleRate}Hz, ${audioBuffer.duration.toFixed(1)}s, ${audioBuffer.length} samples`, 'success');
+
+        // Step 4: Analyze for artifacts
+        const samples = audioBuffer.getChannelData(0);
+        analyzeArtifacts(samples);
+
+        // Step 5: Draw waveform
+        drawWaveform(samples);
+
+        document.getElementById('btnPlay').disabled = false;
+        document.getElementById('btnDownload').disabled = false;
+        pausedAt = 0;
+
+    } catch (e) {
+        log(`Error: ${e.message}`, 'error');
+    } finally {
+        document.getElementById('btnFetch').disabled = false;
+        document.getElementById('btnFetch').textContent = '📡 Fetch from CDAWeb';
+    }
+}
+
+function analyzeArtifacts(samples) {
+    let spikeCount = 0;
+    let maxSpike = 0;
+    const spikes = [];
+
+    for (let i = 2; i < samples.length - 2; i++) {
+        const prev = samples[i - 1];
+        const curr = samples[i];
+        const next = samples[i + 1];
+        const expected = (prev + next) / 2;
+        const deviation = Math.abs(curr - expected);
+        const localRange = Math.abs(next - prev);
+
+        // Spike: deviates significantly from neighbors and reverses
+        if (deviation > 0.01 && localRange < deviation * 0.5) {
+            const jumpIn = Math.abs(curr - prev);
+            const jumpOut = Math.abs(next - curr);
+            if (jumpIn > 0.005 && jumpOut > 0.005) {
+                spikeCount++;
+                if (deviation > maxSpike) maxSpike = deviation;
+                if (spikes.length < 20) {
+                    const timeSec = i / audioBuffer.sampleRate;
+                    spikes.push({ i, timeSec, prev, curr, next, deviation });
+                }
+            }
+        }
+    }
+
+    if (spikeCount > 0) {
+        log(`⚠️  Found ${spikeCount} potential single-sample artifacts (max deviation: ${maxSpike.toFixed(4)})`, 'warn');
+        spikes.forEach(s => {
+            const m = Math.floor(s.timeSec / 60);
+            const sec = (s.timeSec % 60).toFixed(2);
+            log(`  ${m}m${sec}s [${s.i}]: ${s.prev.toFixed(4)} → ${s.curr.toFixed(4)} → ${s.next.toFixed(4)} (dev=${s.deviation.toFixed(4)})`, 'warn');
+        });
+    } else {
+        log('✅ No obvious single-sample artifacts detected', 'success');
+    }
+}
+
+function drawWaveform(samples) {
+    const canvas = document.getElementById('waveform');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth * 2;
+    canvas.height = canvas.offsetHeight * 2;
+    const w = canvas.width, h = canvas.height;
+
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+
+    // Draw zero line
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h/2);
+    ctx.lineTo(w, h/2);
+    ctx.stroke();
+
+    // Draw waveform
+    ctx.strokeStyle = '#00d4ff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+
+    const step = Math.max(1, Math.floor(samples.length / w));
+    for (let x = 0; x < w; x++) {
+        const idx = Math.floor(x / w * samples.length);
+        let min = Infinity, max = -Infinity;
+        for (let j = idx; j < Math.min(idx + step, samples.length); j++) {
+            if (samples[j] < min) min = samples[j];
+            if (samples[j] > max) max = samples[j];
+        }
+        const yMin = h/2 - min * h/2;
+        const yMax = h/2 - max * h/2;
+        if (x === 0) ctx.moveTo(x, yMin);
+        ctx.lineTo(x, yMax);
+        ctx.lineTo(x, yMin);
+    }
+    ctx.stroke();
+}
+
+function togglePlay() {
+    if (isPlaying) {
+        stopPlay();
+    } else {
+        startPlay();
+    }
+}
+
+function startPlay() {
+    if (!audioBuffer || !audioContext) return;
+    if (audioContext.state === 'suspended') audioContext.resume();
+
+    sourceNode = audioContext.createBufferSource();
+    sourceNode.buffer = audioBuffer;
+    sourceNode.connect(audioContext.destination);
+    sourceNode.onended = () => {
+        if (isPlaying) { isPlaying = false; document.getElementById('btnPlay').textContent = '▶ Play'; pausedAt = 0; }
+    };
+
+    sourceNode.start(0, pausedAt);
+    startedAt = audioContext.currentTime - pausedAt;
+    isPlaying = true;
+    document.getElementById('btnPlay').textContent = '⏸ Pause';
+    document.getElementById('btnPlay').classList.add('playing');
+}
+
+function stopPlay() {
+    if (sourceNode) {
+        sourceNode.onended = null;
+        sourceNode.stop();
+        pausedAt = audioContext.currentTime - startedAt;
+    }
+    isPlaying = false;
+    document.getElementById('btnPlay').textContent = '▶ Play';
+    document.getElementById('btnPlay').classList.remove('playing');
+}
+
+function downloadWav() {
+    if (!wavBlob) return;
+    const dataset = document.getElementById('dataset').value;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(wavBlob);
+    a.download = `${dataset}_component${document.getElementById('component').value}.wav`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    log('💾 WAV downloaded', 'success');
+}
+
+// Load from URL params if present
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('dataset')) document.getElementById('dataset').value = params.get('dataset');
+    if (params.get('start')) document.getElementById('startTime').value = params.get('start');
+    if (params.get('end')) document.getElementById('endTime').value = params.get('end');
+    if (params.get('component')) document.getElementById('component').value = params.get('component');
+    if (params.get('auto')) fetchAudio();
+})();
+</script>
+</body>
+</html>

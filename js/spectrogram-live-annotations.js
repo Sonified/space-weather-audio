@@ -28,8 +28,9 @@ const LEAD_TIME_MS = 1000;
  * Check if live annotation is enabled
  */
 export function isLiveAnnotationEnabled() {
-    const checkbox = document.getElementById('liveAnnotation');
-    return checkbox && checkbox.checked;
+    const modeSelect = document.getElementById('annotationMode');
+    const mode = modeSelect ? modeSelect.value : 'persistent';
+    return mode === 'live' || mode === 'persistent';
 }
 
 /**

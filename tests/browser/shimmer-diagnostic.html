@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Shimmer Diagnostic — TRUE Downsampling (GOES-16 Real Data)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; color: #eee; font-family: monospace; padding: 10px; padding-top: 90px; }
+h1 { font-size: 16px; margin-bottom: 8px; color: #8cf; }
+.top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: #111; padding: 8px 10px 4px; border-bottom: 1px solid #333; }
+.status-bar { margin-bottom: 6px; padding: 6px 10px; background: #1a1a2a; border: 1px solid #333; border-radius: 4px; font-size: 12px; }
+.controls { margin-bottom: 4px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.controls button { background: #333; color: #eee; border: 1px solid #555; padding: 4px 12px; cursor: pointer; font-family: monospace; }
+.controls button:hover { background: #444; }
+.controls button.active { background: #28a; border-color: #5cf; }
+.controls label { font-size: 12px; }
+.grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.cell { border: 1px solid #333; border-radius: 4px; overflow: hidden; }
+.cell.shimmer { border-color: #f44; }
+.cell.smooth { border-color: #4f4; }
+.cell-header { padding: 4px 8px; font-size: 11px; background: #1a1a1a; display: flex; justify-content: space-between; gap: 8px; }
+.cell-header .label { font-weight: bold; color: #ff0; flex: 1; }
+.cell-header .info { color: #888; }
+canvas { width: 100%; height: 500px; display: block; }
+.legend { margin-top: 8px; font-size: 11px; color: #888; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+    <h1>Shimmer Diagnostic — TRUE Downsampling (GOES-16 Magnetometer 2022-08-17)</h1>
+    <div class="status-bar" id="statusBar">Click "Fetch & Compute" to load real GOES-16 data from CDAWeb and compute FFT.</div>
+    <div class="controls">
+        <button id="btnFetch" onclick="fetchAndCompute()" autofocus>Fetch & Compute (or press Enter)</button>
+        <button id="btnPlay" class="active" onclick="togglePan()" disabled>Panning</button>
+        <label>Speed: <input type="range" id="speedSlider" min="0.2" max="8" step="0.2" value="1" style="width:100px"></label>
+        <span id="speedLabel">1.0 px/frame</span>
+    </div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="legend">
+    Each panel tiles the SAME GOES-16 spectrogram texture N times end-to-end, then pans a ~700px camera window across it.
+    At 8 repeats with a 4096-wide texture, that's ~47:1 texels/pixel — real GPU downsampling.
+    Click a panel header to toggle border color (green=smooth, red=shimmer).
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+</script>
+
+<script>
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        const btn = document.getElementById('btnFetch');
+        if (btn && !btn.disabled) btn.click();
+    }
+});
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ─── Config ─────────────────────────────────────────────────────────────────
+const DATASET = 'DN_MAGN-L2-HIRES_G16';
+const VARIABLE = 'b_gse';
+const START_TIME = '2022-08-17T12:00:00.000Z';
+const END_TIME = '2022-08-18T00:00:00.000Z';
+const CDASWS_BASE = 'https://cdaweb.gsfc.nasa.gov/WS/cdasr/1';
+const FFT_SIZE = 2048;
+const NUM_TIME_SLICES = 4096;
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let texData = null;   // Uint8Array (freqBins × NUM_TIME_SLICES), row-major
+let texWidth = 0;
+let texHeight = 0;
+let panels = [];
+let panning = false;
+
+const statusBar = document.getElementById('statusBar');
+function setStatus(msg) { statusBar.textContent = msg; console.log(msg); }
+
+// ─── CDAWeb Fetch → WAV Decode → FFT ───────────────────────────────────────
+
+window.fetchAndCompute = async function() {
+    const btn = document.getElementById('btnFetch');
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+
+    try {
+        const startBasic = START_TIME.replace(/[-:]/g, '').replace('.000Z', 'Z');
+        const endBasic = END_TIME.replace(/[-:]/g, '').replace('.000Z', 'Z');
+        const apiUrl = `${CDASWS_BASE}/dataviews/sp_phys/datasets/${DATASET}/data/${startBasic},${endBasic}/${VARIABLE}?format=audio`;
+        setStatus(`Fetching CDAWeb API: ${DATASET} ...`);
+
+        const apiResp = await fetch(apiUrl, { headers: { 'Accept': 'application/json' } });
+        if (!apiResp.ok) throw new Error(`CDAWeb API HTTP ${apiResp.status}`);
+        const apiResult = await apiResp.json();
+        if (!apiResult?.FileDescription?.length) throw new Error('No files returned from CDAWeb');
+
+        const wavUrl = apiResult.FileDescription[0].Name;
+        setStatus(`Downloading WAV: ${wavUrl.split('/').pop()} ...`);
+
+        const wavResp = await fetch(wavUrl);
+        if (!wavResp.ok) throw new Error(`WAV download HTTP ${wavResp.status}`);
+        const wavBlob = await wavResp.blob();
+        const wavArrayBuffer = await wavBlob.arrayBuffer();
+        setStatus(`WAV downloaded: ${(wavBlob.size / 1024 / 1024).toFixed(1)} MB. Decoding audio...`);
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffer = await audioCtx.decodeAudioData(wavArrayBuffer);
+        const samples = audioBuffer.getChannelData(0);
+        const sampleRate = audioBuffer.sampleRate;
+        audioCtx.close();
+        setStatus(`Decoded: ${samples.length.toLocaleString()} samples @ ${sampleRate} Hz. Computing FFT...`);
+
+        const magnitudeResult = await computeFFTViaWorker(samples, sampleRate);
+        texData = magnitudeResult.data;
+        texWidth = magnitudeResult.width;
+        texHeight = magnitudeResult.height;
+
+        setStatus(`FFT complete: ${texWidth} x ${texHeight} texture. Building panels...`);
+
+        buildPanels();
+        document.getElementById('btnPlay').disabled = false;
+        panning = true;
+        animate();
+
+        setStatus(`Ready! ${texWidth}x${texHeight} spectrogram. Panning with true downsampling...`);
+
+    } catch (err) {
+        setStatus(`Error: ${err.message}`);
+        console.error(err);
+        btn.disabled = false;
+        btn.textContent = 'Fetch & Compute';
+    }
+};
+
+function computeFFTViaWorker(samples, sampleRate) {
+    return new Promise((resolve, reject) => {
+        const worker = new Worker('../../workers/spectrogram-worker.js');
+
+        worker.addEventListener('message', (e) => {
+            if (e.data.type === 'ready') {
+                const hopSize = Math.max(1, Math.floor((samples.length - FFT_SIZE) / NUM_TIME_SLICES));
+                const numSlices = Math.min(NUM_TIME_SLICES, Math.floor((samples.length - FFT_SIZE) / hopSize));
+
+                const hannWindow = new Float32Array(FFT_SIZE);
+                for (let i = 0; i < FFT_SIZE; i++) {
+                    hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / FFT_SIZE));
+                }
+
+                worker.postMessage({
+                    type: 'compute-tile',
+                    audioData: samples,
+                    fftSize: FFT_SIZE,
+                    hopSize,
+                    numTimeSlices: numSlices,
+                    window: hannWindow,
+                    dbFloor: -100,
+                    dbRange: 100,
+                    tileIndex: 0,
+                }, [samples.buffer, hannWindow.buffer]);
+            }
+
+            if (e.data.type === 'tile-complete') {
+                worker.terminate();
+                resolve({
+                    data: e.data.magnitudeData,
+                    width: e.data.width,
+                    height: e.data.height,
+                });
+            }
+        });
+
+        worker.addEventListener('error', (err) => {
+            worker.terminate();
+            reject(new Error(`Worker error: ${err.message}`));
+        });
+    });
+}
+
+// ─── Texture creation helpers ────────────────────────────────────────────────
+function makeTexture(data, w, h, opts = {}) {
+    const tex = new THREE.DataTexture(data, w, h, THREE.RedFormat, THREE.UnsignedByteType);
+    tex.minFilter = opts.minFilter ?? THREE.LinearFilter;
+    tex.magFilter = opts.magFilter ?? THREE.LinearFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = opts.mipmaps ?? false;
+    if (opts.mipmaps) {
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+    }
+    tex.needsUpdate = true;
+    return tex;
+}
+
+// ─── Shared colormap texture (inferno-ish) ──────────────────────────────────
+function makeColormapTexture() {
+    const size = 256;
+    const data = new Uint8Array(size * 4);
+    for (let i = 0; i < size; i++) {
+        const t = i / 255;
+        let r, g, b;
+        if (t < 0.25) {
+            const s = t / 0.25;
+            r = Math.round(10 + 50 * s); g = Math.round(2 + 10 * s); b = Math.round(20 + 60 * s);
+        } else if (t < 0.5) {
+            const s = (t - 0.25) / 0.25;
+            r = Math.round(60 + 120 * s); g = Math.round(12 + 20 * s); b = Math.round(80 - 30 * s);
+        } else if (t < 0.75) {
+            const s = (t - 0.5) / 0.25;
+            r = Math.round(180 + 55 * s); g = Math.round(32 + 100 * s); b = Math.round(50 - 40 * s);
+        } else {
+            const s = (t - 0.75) / 0.25;
+            r = Math.round(235 + 20 * s); g = Math.round(132 + 120 * s); b = Math.round(10 + 50 * s);
+        }
+        data[i * 4 + 0] = r;
+        data[i * 4 + 1] = g;
+        data[i * 4 + 2] = b;
+        data[i * 4 + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(data, size, 1, THREE.RGBAFormat);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+}
+
+// ─── Shaders ─────────────────────────────────────────────────────────────────
+const vertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+// Log frequency remapping: screen Y (0→1 bottom-to-top) → texture Y
+// Maps linear screen position to log-scaled texture lookup
+// This matches the main app's frequency display
+const logFreqGLSL = `
+float logFreqY(float screenY) {
+    // Remap: bottom of screen = low freq (small texY), top = high freq (large texY)
+    // Log scale: texY = (exp(screenY * logRange) - 1) / (exp(logRange) - 1)
+    float logRange = 4.0; // controls how "stretched" the low frequencies are
+    return (exp(screenY * logRange) - 1.0) / (exp(logRange) - 1.0);
+}
+`;
+
+const fragStandard = `
+uniform sampler2D uData;
+uniform sampler2D uColormap;
+varying vec2 vUv;
+${logFreqGLSL}
+void main() {
+    float texY = logFreqY(vUv.y);
+    float val = texture2D(uData, vec2(vUv.x, texY)).r;
+    vec3 color = texture2D(uColormap, vec2(val, 0.5)).rgb;
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+const fragBoxFilter = `
+uniform sampler2D uData;
+uniform sampler2D uColormap;
+uniform float uTexWidth;
+uniform float uSamplesPerPixel;
+varying vec2 vUv;
+${logFreqGLSL}
+void main() {
+    float texY = logFreqY(vUv.y);
+    float texelSize = 1.0 / uTexWidth;
+    int samples = max(1, int(ceil(uSamplesPerPixel)));
+    float sum = 0.0;
+    float texCenter = vUv.x;
+    float span = uSamplesPerPixel * texelSize;
+    float start = texCenter - span * 0.5;
+    for (int i = 0; i < 16; i++) {
+        if (i >= samples) break;
+        float t = start + (float(i) + 0.5) / float(samples) * span;
+        sum += texture2D(uData, vec2(t, texY)).r;
+    }
+    float val = sum / float(samples);
+    vec3 color = texture2D(uColormap, vec2(val, 0.5)).rgb;
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+// ─── Hypothesis definitions ─────────────────────────────────────────────────
+// "repeats" = how many times the texture is tiled end-to-end.
+// At repeats=1 with 4096-wide tex and ~700px canvas: ~6:1 texels/pixel
+// At repeats=8: ~47:1 texels/pixel — extreme GPU downsampling
+// "tiles" = sub-tiles per repeat (splits each repeat into N meshes — for tile boundary test)
+// Every panel always uses 1 mesh per repeat minimum (never builds oversized textures).
+// Panel with repeats=8, tiles=1 → 8 meshes (one per repeat, full texture each)
+// Panel with repeats=8, tiles=2 → 16 meshes (each repeat split into 2 half-texture tiles)
+const hypotheses = [
+    { id: 1,  label: "1. 1x repeat (baseline ~6:1)",      desc: "1 mesh, slight downsample — control",                             repeats: 1,  tiles: 1, filter: "linear", mipmaps: false, mode: "camera" },
+    { id: 2,  label: "2. 4x repeat (~23:1) Linear",       desc: "4 meshes, moderate downsample",                                   repeats: 4,  tiles: 1, filter: "linear", mipmaps: false, mode: "camera" },
+    { id: 3,  label: "3. 8x repeat (~47:1) Linear",       desc: "8 meshes — heavy downsample",                                     repeats: 8,  tiles: 1, filter: "linear", mipmaps: false, mode: "camera" },
+    { id: 4,  label: "4. 8x repeat Nearest",              desc: "8 meshes, NearestFilter — no interpolation",                      repeats: 8,  tiles: 1, filter: "nearest", mipmaps: false, mode: "camera" },
+    { id: 5,  label: "5. 8x repeat + Mipmaps",            desc: "8 meshes, LinearMipmapLinear — GPU LODs",                          repeats: 8,  tiles: 1, filter: "linear", mipmaps: true, mode: "camera" },
+    { id: 6,  label: "6. 8x, 2 tiles/repeat (16 meshes)", desc: "Each repeat split into 2 tile meshes — boundary test",             repeats: 8,  tiles: 2, filter: "linear", mipmaps: false, mode: "camera" },
+    { id: 7,  label: "7. 8x, 2 tiles/rep + Mipmaps",      desc: "16 meshes + mipmaps — tiled + LOD combo",                         repeats: 8,  tiles: 2, filter: "linear", mipmaps: true, mode: "camera" },
+    { id: 8,  label: "8. 8x repeat, Box Filter shader",   desc: "8 meshes, manual N-sample avg in frag shader",                    repeats: 8,  tiles: 1, filter: "nearest", mipmaps: false, mode: "boxfilter" },
+    { id: 9,  label: "9. 16x repeat (~94:1) Linear",      desc: "16 meshes, extreme downsample",                                   repeats: 16, tiles: 1, filter: "linear", mipmaps: false, mode: "camera" },
+    { id: 10, label: "10. 16x repeat + Mipmaps",          desc: "16 meshes + mipmaps — extreme + GPU LOD",                          repeats: 16, tiles: 1, filter: "linear", mipmaps: true, mode: "camera" },
+];
+
+// ─── Build the grid (empty canvases, populated after data loads) ────────────
+const gridEl = document.getElementById('grid');
+const canvasMap = {};
+
+for (const hyp of hypotheses) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = `
+        <div class="cell-header" style="cursor:pointer" data-id="${hyp.id}">
+            <span class="label">${hyp.label}</span>
+            <span class="info">${hyp.desc}</span>
+        </div>
+        <canvas id="canvas${hyp.id}"></canvas>
+    `;
+    gridEl.appendChild(cell);
+
+    cell.querySelector('.cell-header').addEventListener('click', () => {
+        if (cell.classList.contains('shimmer')) {
+            cell.classList.remove('shimmer');
+            cell.classList.add('smooth');
+        } else if (cell.classList.contains('smooth')) {
+            cell.classList.remove('smooth');
+        } else {
+            cell.classList.add('shimmer');
+        }
+    });
+
+    canvasMap[hyp.id] = document.getElementById(`canvas${hyp.id}`);
+}
+
+// ─── Build panels after data is ready ───────────────────────────────────────
+let colormapTex = null;
+
+function buildPanels() {
+    colormapTex = makeColormapTexture();
+    panels = [];
+
+    for (const hyp of hypotheses) {
+        const canvas = canvasMap[hyp.id];
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = Math.round(rect.width * window.devicePixelRatio);
+        canvas.height = Math.round(rect.height * window.devicePixelRatio);
+
+        const panel = setupPanel(canvas, hyp);
+        panels.push(panel);
+    }
+}
+
+function setupPanel(canvas, hyp) {
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+    renderer.setSize(canvas.width, canvas.height, false);
+
+    const scene = new THREE.Scene();
+
+    const repeats = hyp.repeats || 1;
+    const tilesPerRepeat = hyp.tiles || 1; // how many meshes per repeat (for tile boundary test)
+    const totalMeshes = repeats * tilesPerRepeat;
+    // Total world width = texture width * repeats
+    const worldWidth = texWidth * repeats;
+
+    const camera = new THREE.OrthographicCamera(0, worldWidth, 1, 0, 0, 10);
+    camera.position.z = 1;
+
+    const meshes = [];
+
+    const minF = hyp.filter === 'nearest' ? THREE.NearestFilter :
+                 (hyp.mipmaps ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter);
+    const magF = hyp.filter === 'nearest' ? THREE.NearestFilter : THREE.LinearFilter;
+
+    // Always one mesh per repeat (or per tile-within-repeat).
+    // Each mesh gets the ORIGINAL texture — never build oversized textures.
+    // The mesh is placed at its world position; the camera pans over them.
+    const meshWorldWidth = worldWidth / totalMeshes;
+
+    for (let m = 0; m < totalMeshes; m++) {
+        // Which repeat and sub-tile is this?
+        const repeatIdx = Math.floor(m / tilesPerRepeat);
+        const subTile = m % tilesPerRepeat;
+
+        let tileTex, tileTexWidth;
+
+        if (tilesPerRepeat === 1) {
+            // One mesh per repeat — full original texture
+            tileTex = makeTexture(texData, texWidth, texHeight, {
+                minFilter: minF, magFilter: magF, mipmaps: hyp.mipmaps,
+            });
+            tileTexWidth = texWidth;
+        } else {
+            // Split original texture into sub-tiles within this repeat
+            const sliceW = Math.floor(texWidth / tilesPerRepeat);
+            const startCol = subTile * sliceW;
+            const sliceData = new Uint8Array(sliceW * texHeight);
+            for (let y = 0; y < texHeight; y++) {
+                for (let x = 0; x < sliceW; x++) {
+                    sliceData[y * sliceW + x] = texData[y * texWidth + (startCol + x)];
+                }
+            }
+            tileTex = makeTexture(sliceData, sliceW, texHeight, {
+                minFilter: minF, magFilter: magF, mipmaps: hyp.mipmaps,
+            });
+            tileTexWidth = sliceW;
+        }
+
+        let material;
+        if (hyp.mode === 'boxfilter') {
+            const cssWidth = canvas.getBoundingClientRect().width;
+            const texelsPerPixel = worldWidth / cssWidth;
+            material = new THREE.ShaderMaterial({
+                vertexShader, fragmentShader: fragBoxFilter,
+                uniforms: {
+                    uData: { value: tileTex }, uColormap: { value: colormapTex },
+                    uTexWidth: { value: tileTexWidth }, uSamplesPerPixel: { value: texelsPerPixel },
+                },
+            });
+        } else {
+            material = new THREE.ShaderMaterial({
+                vertexShader, fragmentShader: fragStandard,
+                uniforms: { uData: { value: tileTex }, uColormap: { value: colormapTex } },
+            });
+        }
+
+        const geom = new THREE.PlaneGeometry(2, 2);
+        const mesh = new THREE.Mesh(geom, material);
+        const startX = m * meshWorldWidth;
+        mesh.scale.set(meshWorldWidth / 2, 0.5, 1);
+        mesh.position.set(startX + meshWorldWidth / 2, 0.5, 0);
+        scene.add(mesh);
+        meshes.push({ mesh, material, tex: tileTex, tileTexWidth });
+    }
+
+    // Compute effective texels-per-pixel for the info display
+    const cssWidth = canvas.getBoundingClientRect().width;
+    const viewWidth = worldWidth * 0.7;
+    const texelsPerPixel = (viewWidth / cssWidth).toFixed(1);
+    // Update the info span
+    const infoEl = document.querySelector(`[data-id="${hyp.id}"]`)?.querySelector('.info');
+    if (infoEl) {
+        infoEl.textContent = `${hyp.desc} [${texelsPerPixel}:1 tex/px]`;
+    }
+
+    return { renderer, scene, camera, meshes, hyp, canvas, offset: 0, worldWidth };
+}
+
+// ─── Animation loop ──────────────────────────────────────────────────────────
+const speedSlider = document.getElementById('speedSlider');
+const speedLabel = document.getElementById('speedLabel');
+
+speedSlider.addEventListener('input', () => {
+    speedLabel.textContent = `${speedSlider.value} px/frame`;
+});
+
+window.togglePan = function() {
+    panning = !panning;
+    document.getElementById('btnPlay').textContent = panning ? 'Panning' : 'Paused';
+    document.getElementById('btnPlay').classList.toggle('active', panning);
+};
+
+function animate() {
+    requestAnimationFrame(animate);
+    if (!texData || panels.length === 0) return;
+
+    const speed = parseFloat(speedSlider.value);
+
+    for (const panel of panels) {
+        const { renderer, scene, camera, meshes, hyp, canvas, worldWidth } = panel;
+
+        const cssWidth = canvas.getBoundingClientRect().width;
+        // Camera shows 70% of the world — the remaining 30% is panning room.
+        // This means the actual texels-per-pixel = (viewWidth / cssWidth).
+        // At 1 repeat: viewWidth=2867, cssWidth~700 → ~4:1
+        // At 8 repeats: viewWidth=22938, cssWidth~700 → ~33:1
+        // At 16 repeats: viewWidth=45875, cssWidth~700 → ~66:1
+        const viewWidth = worldWidth * 0.7;
+        const maxOffset = Math.max(0, worldWidth - viewWidth);
+
+        if (panning) {
+            panel.offset += speed;
+            if (panel.offset > maxOffset) {
+                panel.offset = 0;
+            }
+        }
+
+        camera.left = panel.offset;
+        camera.right = panel.offset + viewWidth;
+        camera.updateProjectionMatrix();
+
+        // Update box filter samples-per-pixel if applicable
+        if (hyp.mode === 'boxfilter') {
+            const texelsPerPixel = viewWidth / cssWidth;
+            for (const m of meshes) {
+                m.material.uniforms.uSamplesPerPixel.value = texelsPerPixel;
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+}
+
+animate();
+</script>
+</body>
+</html>

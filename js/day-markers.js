@@ -73,7 +73,6 @@ function initSpectrogramOverlay() {
  * Check if day markers should be drawn on a specific panel
  */
 function shouldDrawMarkersForPanel(panel) {
-    if (!window.__EMIC_STUDY_MODE) return false;
     const id = panel === 'navBar' ? 'navBarMarkers' : 'mainWindowMarkers';
     const select = document.getElementById(id);
     return select ? select.value !== 'none' : false;
@@ -248,7 +247,7 @@ export function drawDayMarkers() {
 
         if (showWaveform) {
             // In EMIC windowed mode, waveform is a minimap — always use full data range
-            const emicMode = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+            const emicMode = document.getElementById('viewingMode');
             const isEmicWindowed = emicMode && (emicMode.value === 'static' || emicMode.value === 'scroll' || emicMode.value === 'pageTurn');
             const wfStartMs = isEmicWindowed && State.dataStartTime
                 ? State.dataStartTime.getTime() : startMs;

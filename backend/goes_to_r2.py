@@ -59,7 +59,8 @@ CHUNK_DEFS = {
     "10m": 10 * 60,    # 600 seconds
     "15m": 15 * 60,    # 900 seconds  (matches pyramid L0 tile size)
     "1h":  60 * 60,    # 3600 seconds
-    "6h":  6 * 60 * 60 # 21600 seconds
+    "6h":  6 * 60 * 60, # 21600 seconds
+    "24h": 24 * 60 * 60, # 86400 seconds (1 full day)
 }
 
 ZSTD_LEVEL = 3

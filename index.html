@@ -51,6 +51,131 @@
         #shareBtn:not(:disabled):hover {
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.7);
         }
+
+        /* Hamburger button */
+        .hamburger-btn {
+            display: none; /* shown by Advanced mode */
+            position: fixed;
+            top: 10px;
+            left: 12px;
+            z-index: 1100;
+            font-size: 22px;
+            color: #999;
+            cursor: pointer;
+            user-select: none;
+            line-height: 1;
+            padding: 4px 6px;
+            border-radius: 4px;
+            transition: color 0.15s, background-color 0.15s, left 0.25s ease;
+        }
+        .hamburger-btn:hover {
+            color: #ddd;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        /* Settings drawer — push layout */
+        .settings-drawer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 240px;
+            height: 100%;
+            background: #1e1e1e;
+            border-right: 1px solid #444;
+            z-index: 1100;
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            overflow-y: auto;
+            font-size: 13px;
+            color: #ddd;
+        }
+        .settings-drawer.open { transform: translateX(0); }
+
+        /* Push main content when drawer is open */
+        .container {
+            transition: margin-left 0.25s ease;
+        }
+        body.drawer-open .container {
+            margin-left: 290px;
+        }
+        body.drawer-open .hamburger-btn {
+            left: 302px;
+        }
+
+        .drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px 10px;
+            border-bottom: 1px solid #333;
+        }
+        .drawer-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #eee;
+        }
+        .drawer-close {
+            font-size: 22px;
+            color: #888;
+            cursor: pointer;
+            line-height: 1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: color 0.15s, background-color 0.15s;
+            user-select: none;
+        }
+        .drawer-close:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .drawer-section {
+            padding: 14px 16px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .drawer-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #777;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+        }
+        .drawer-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 4px 0;
+        }
+        .drawer-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #bbb;
+            cursor: pointer;
+            user-select: none;
+        }
+        .drawer-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #80d0ff;
+        }
+        .drawer-input {
+            width: 70px;
+            padding: 4px 8px;
+            background: #2a2a2a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #ddd;
+            font-size: 13px;
+            font-family: monospace;
+            text-align: right;
+        }
+        .drawer-input:focus {
+            outline: none;
+            border-color: #80d0ff;
+        }
     </style>
 </head>
 <body>
@@ -95,7 +220,6 @@
     </script>
     <div class="container">
         <div class="top-header-bar" style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001;">
-            <select id="viewingMode" style="display:none;"><option value="pageTurn" selected>Windowed Page Turn</option><option value="full">Region Creation</option><option value="scroll">Windowed Scroll</option><option value="static">Windowed Static</option></select>
             <div id="modeSelectorContainer" style="flex: 1; display: flex; align-items: center; gap: 8px; visibility: hidden; opacity: 0; transition: opacity 0.3s;">
                 <label for="modeSelector" style="font-size: 13px; font-weight: 600; color: #aaa; white-space: nowrap; user-select: none;">Mode:</label>
                 <select id="modeSelector" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer; min-width: 120px;">
@@ -299,8 +423,200 @@
             <canvas id="waveform-axis" width="60" height="135"></canvas>
             <canvas id="waveform-x-axis" width="1200" height="40"></canvas>
             <canvas id="waveform-buttons" width="1200" height="135"></canvas>
+
+            <!-- Navigation Bar gear icon + popover -->
+            <div class="panel-gear" id="navBarGear">
+                <span class="gear-btn" role="button" aria-label="Navigation bar settings">&#9881;</span>
+                <div class="gear-popover" id="navBarPopover">
+                    <div class="gear-popover-title">Navigation Bar</div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Show:</span>
+                        <select id="miniMapView" class="gear-select">
+                            <option value="linePlot">Line Plot</option>
+                            <option value="spectrogram" selected>Spectrogram</option>
+                            <option value="both">Combination</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Mode:</span>
+                        <select id="viewingMode" class="gear-select">
+                            <option value="full">Region Creation</option>
+                            <option value="pageTurn" selected>Windowed Page Turn</option>
+                            <option value="scroll">Windowed Scroll</option>
+                            <option value="static">Windowed Static</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Click:</span>
+                        <select id="navBarClick" class="gear-select">
+                            <option value="moveWindow" selected>Move window</option>
+                            <option value="moveAndPlay">Move & play</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Markers:</span>
+                        <select id="navBarMarkers" class="gear-select">
+                            <option value="daily" selected>Daily</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-title">Scroll</div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">V-Scroll:</span>
+                        <select id="navBarScroll" class="gear-select">
+                            <option value="zoom" selected>Zoom</option>
+                            <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">V-Sens:</span>
+                        <select id="navBarVSens" class="gear-select" data-paired="navBarScroll">
+                            <option value="25">25%</option>
+                            <option value="50">50%</option>
+                            <option value="75">75%</option>
+                            <option value="100" selected>100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">H-Scroll:</span>
+                        <select id="navBarHScroll" class="gear-select">
+                            <option value="pan" selected>Pan</option>
+                            <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">H-Sens:</span>
+                        <select id="navBarHSens" class="gear-select" data-paired="navBarHScroll">
+                            <option value="10">10%</option>
+                            <option value="25">25%</option>
+                            <option value="50">50%</option>
+                            <option value="75">75%</option>
+                            <option value="100" selected>100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
             <canvas id="spectrogram" width="1200" height="450"></canvas>
             <canvas id="spectrogram-axis" width="60" height="450"></canvas>
+            <canvas id="spectrogram-x-axis" width="1200" height="40"></canvas>
+
+            <!-- Main Window gear icon + popover -->
+            <div class="panel-gear" id="mainWindowGear">
+                <span class="gear-btn" role="button" aria-label="Main window settings">&#9881;</span>
+                <div class="gear-popover" id="mainWindowPopover">
+                    <div class="gear-popover-title">Main Window</div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Show:</span>
+                        <select id="mainWindowView" class="gear-select">
+                            <option value="spectrogram" selected>Spectrogram</option>
+                            <option value="both">Combination</option>
+                            <option value="timeSeries">Time Series</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Click:</span>
+                        <select id="mainWindowClick" class="gear-select">
+                            <option value="noAction" selected>No action</option>
+                            <option value="playAudio">Play audio</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Release:</span>
+                        <select id="mainWindowRelease" class="gear-select">
+                            <option value="playAudio" selected>Play audio</option>
+                            <option value="noAction">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Drag:</span>
+                        <select id="mainWindowDrag" class="gear-select">
+                            <option value="drawFeature" selected>Draw feature</option>
+                            <option value="noAction">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Markers:</span>
+                        <select id="mainWindowMarkers" class="gear-select">
+                            <option value="daily" selected>Daily</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">X-Axis:</span>
+                        <select id="mainWindowXAxis" class="gear-select">
+                            <option value="show" selected>Show Ticks</option>
+                            <option value="hide">Hide Ticks</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Shader:</span>
+                        <select id="mainWindowBoxFilter" class="gear-select">
+                            <option value="linear" selected>Linear</option>
+                            <option value="box">Box</option>
+                            <option value="nearest">Nearest</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-title">Scroll</div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">V-Scroll:</span>
+                        <select id="mainWindowScroll" class="gear-select">
+                            <option value="zoom" selected>Zoom</option>
+                            <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">V-Sens:</span>
+                        <select id="mainWindowVSens" class="gear-select" data-paired="mainWindowScroll">
+                            <option value="25">25%</option>
+                            <option value="50">50%</option>
+                            <option value="75">75%</option>
+                            <option value="100" selected>100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">H-Scroll:</span>
+                        <select id="mainWindowHScroll" class="gear-select">
+                            <option value="pan" selected>Pan</option>
+                            <option value="none">No action</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">H-Sens:</span>
+                        <select id="mainWindowHSens" class="gear-select" data-paired="mainWindowHScroll">
+                            <option value="10">10%</option>
+                            <option value="25">25%</option>
+                            <option value="50">50%</option>
+                            <option value="75">75%</option>
+                            <option value="100" selected>100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-title">Feature Numbers</div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Color:</span>
+                        <select id="mainWindowNumbers" class="gear-select">
+                            <option value="hide">Hide</option>
+                            <option value="white">White</option>
+                            <option value="red" selected>Red</option>
+                        </select>
+                    </div>
+                    <div class="gear-popover-row">
+                        <span class="gear-label">Location:</span>
+                        <select id="mainWindowNumbersLoc" class="gear-select">
+                            <option value="above">Above box</option>
+                            <option value="inside" selected>Inside box</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px;">
                 <!-- Realtime Oscilloscope - Small glass enclosure on the left -->
                 <div id="oscilloscope-panel" style="display: block; pointer-events: none;">
@@ -318,14 +634,22 @@
                         </div>
                     </div>
                 </div>
+                <label id="advancedToggle" style="display: none; align-items: center; gap: 5px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 700; color: #ffe8d0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">
+                    Advanced
+                    <input type="checkbox" id="advancedMode" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                </label>
                 <div class="viz-controls" style="display: flex; align-items: center; gap: 30px; margin-left: auto;">
                     <div style="display: none;">
                         <input type="checkbox" id="playOnClick" checked style="width: 20px; height: 20px; cursor: pointer;">
                         <label for="playOnClick" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">Play on Click</label>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <label for="liveAnnotation" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8d0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; user-select: none;">Live Annotation</label>
-                        <input type="checkbox" id="liveAnnotation" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label for="annotationMode" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8d0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Annotations:</label>
+                        <select id="annotationMode" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                            <option value="none">None</option>
+                            <option value="persistent" selected>Persistent</option>
+                            <option value="live">Live</option>
+                        </select>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                     <label for="fftSize" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">FFT:</label>
@@ -364,7 +688,102 @@
                 </div>
             </div>
         </div>
-        
+
+        <!-- Hamburger menu button (top-left, Advanced mode only) -->
+        <div id="hamburgerBtn" class="hamburger-btn" title="Settings drawer">&#9776;</div>
+
+        <!-- Settings drawer (slides in from left, pushes content) -->
+        <div id="settingsDrawer" class="settings-drawer">
+            <div class="drawer-header">
+                <span class="drawer-title">Master Settings</span>
+                <span id="drawerClose" class="drawer-close" title="Close">&times;</span>
+            </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Panel Heights (px)</div>
+                <div class="drawer-row">
+                    <label for="heightMinimap" class="drawer-label">Minimap</label>
+                    <input type="number" id="heightMinimap" class="drawer-input" min="50" max="400" step="1">
+                </div>
+                <div class="drawer-row">
+                    <label for="heightSpectrogram" class="drawer-label">Spectrogram</label>
+                    <input type="number" id="heightSpectrogram" class="drawer-input" min="200" max="1200" step="1">
+                </div>
+            </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Tile Compression</div>
+                <div class="drawer-row">
+                    <label for="tileCompression" class="drawer-label">Format</label>
+                    <select id="tileCompression" class="drawer-input" style="width: 100px; text-align: left;">
+                        <option value="uint8">Uint8</option>
+                        <option value="bc4">BC4</option>
+                    </select>
+                </div>
+            </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Zoom Out Mode</div>
+                <div class="drawer-row">
+                    <label for="mainWindowZoomOut" class="drawer-label">Reduction</label>
+                    <select id="mainWindowZoomOut" class="drawer-input" style="width: 120px; text-align: left;">
+                        <option value="average">Show Average</option>
+                        <option value="balanced" selected>Balanced</option>
+                        <option value="peak">Show Peak</option>
+                    </select>
+                </div>
+                <div class="drawer-row">
+                    <label for="levelTransition" class="drawer-label">Transition</label>
+                    <select id="levelTransition" class="drawer-input" style="width: 120px; text-align: left;">
+                        <option value="stepped">Stepped</option>
+                        <option value="crossfade" selected>Crossfade</option>
+                    </select>
+                </div>
+                <div id="crossfadePowerRow" style="display: none; flex-direction: column; gap: 10px; padding: 4px 0;">
+                    <span class="drawer-label">Blend curve:</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">smooth</span>
+                        <input type="range" id="crossfadePower" class="drawer-input" min="0.5" max="6" step="0.5" value="1" style="flex: 1; margin: 0; padding: 0;">
+                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">sharp</span>
+                        <span id="crossfadePowerLabel" style="font-size: 11px; color: #888; margin-left: 2px; min-width: 24px;">2.0</span>
+                    </div>
+                </div>
+            </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Arrow Key Navigation</div>
+                <div class="drawer-row">
+                    <label for="arrowZoomStep" class="drawer-label">Zoom Step</label>
+                    <select id="arrowZoomStep" class="drawer-input" style="width: 70px; text-align: left;">
+                        <option value="5">5%</option>
+                        <option value="10">10%</option>
+                        <option value="15" selected>15%</option>
+                        <option value="20">20%</option>
+                        <option value="25">25%</option>
+                        <option value="30">30%</option>
+                    </select>
+                </div>
+                <div class="drawer-row">
+                    <label for="arrowPanStep" class="drawer-label">Pan Step</label>
+                    <select id="arrowPanStep" class="drawer-input" style="width: 70px; text-align: left;">
+                        <option value="5">5%</option>
+                        <option value="10" selected>10%</option>
+                        <option value="15">15%</option>
+                        <option value="20">20%</option>
+                        <option value="25">25%</option>
+                        <option value="30">30%</option>
+                    </select>
+                </div>
+            </div>
+            <div class="drawer-section">
+                <div class="drawer-section-title">Feature Box Playback</div>
+                <div class="drawer-row">
+                    <label for="featurePlaybackMode" class="drawer-label">At page edge</label>
+                    <select id="featurePlaybackMode" class="drawer-input" style="width: 130px; text-align: left;">
+                        <option value="continue" selected>No change</option>
+                        <option value="stop">Stop audio</option>
+                        <option value="clamp">Clamp view</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
                 <!-- Tracked Regions Panel -->
         <div class="panel panel-regions" id="trackedRegionsPanel" style="position: relative;">
             <h2 style="margin-bottom: 12px; font-size: 1.3em;">Selected Regions</h2>

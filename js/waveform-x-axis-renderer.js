@@ -63,7 +63,7 @@ export function drawWaveformXAxis() {
     
     // 🏛️ Inside the temple: show the temple's time range
     // 🙏 Timestamps as source of truth: Use timestamps directly from region range
-    const emicModeSelect = window.__EMIC_STUDY_MODE ? document.getElementById('viewingMode') : null;
+    const emicModeSelect = document.getElementById('viewingMode');
     const isEmicWindowed = emicModeSelect && (emicModeSelect.value === 'static' || emicModeSelect.value === 'scroll' || emicModeSelect.value === 'pageTurn');
     if (isEmicWindowed) {
         // EMIC windowed mode (scroll/page-turn): waveform x-axis always shows full data range

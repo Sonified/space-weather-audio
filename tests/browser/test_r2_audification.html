@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>R2 GOES Data Audification Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.min.js"></script>
+    <style>
+        body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 20px; max-width: 900px; margin: 0 auto; }
+        h1 { color: #00d4ff; }
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0; }
+        select, button { font-family: monospace; font-size: 14px; padding: 8px 12px; background: #16213e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 4px; cursor: pointer; }
+        button { background: #0f3460; }
+        button:hover { background: #1a4a8a; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        button.playing { background: #e94560; }
+        #log { background: #0d1117; border: 1px solid #333; border-radius: 4px; padding: 12px; max-height: 400px; overflow-y: auto; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+        .success { color: #4caf50; }
+        .error { color: #e94560; }
+        .info { color: #00d4ff; }
+        .warn { color: #ffab40; }
+        canvas { width: 100%; height: 120px; background: #0d1117; border: 1px solid #333; border-radius: 4px; margin: 10px 0; }
+        .section { margin: 20px 0; padding: 15px; background: #16213e; border-radius: 6px; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0; }
+        .stat { background: #0d1117; padding: 8px; border-radius: 4px; text-align: center; }
+        .stat-value { font-size: 18px; color: #00d4ff; }
+        .stat-label { font-size: 11px; color: #888; }
+    </style>
+</head>
+<body>
+    <h1>R2 GOES Audification Test</h1>
+    <p>Tests the full pipeline: Worker → fetch → zstd decompress → Float32 → normalize → Web Audio playback</p>
+
+    <div class="section">
+        <div class="controls">
+            <select id="component">
+                <option value="bx">Bx (GSE)</option>
+                <option value="by">By (GSE)</option>
+                <option value="bz" selected>Bz (GSE)</option>
+            </select>
+            <select id="chunkType">
+                <option value="10m">10-minute chunk (~18 KB)</option>
+                <option value="1h">1-hour chunk (~110 KB)</option>
+                <option value="6h">6-hour chunk (~650 KB)</option>
+            </select>
+            <select id="chunkIndex">
+                <option value="">-- Load metadata first --</option>
+            </select>
+            <button id="btnLoad" onclick="loadMetadata()">Load Chunks</button>
+            <button id="btnFetch" onclick="fetchAndPlay()" disabled>Fetch & Play</button>
+            <button id="btnStop" onclick="stopPlayback()" disabled>Stop</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat"><div class="stat-value" id="statDownload">-</div><div class="stat-label">Download (KB)</div></div>
+            <div class="stat"><div class="stat-value" id="statDecompress">-</div><div class="stat-label">Decompress (ms)</div></div>
+            <div class="stat"><div class="stat-value" id="statSamples">-</div><div class="stat-label">Samples</div></div>
+        </div>
+    </div>
+
+    <canvas id="waveform"></canvas>
+    <div id="log"></div>
+
+    <script>
+        // =================================================================
+        // Config — data served via Cloudflare Worker with R2 binding
+        // =================================================================
+        const WORKER_BASE = 'https://spaceweather.now.audio/emic';
+        const DATE = '2022-01-21';
+        const SATELLITE = 'GOES-16';
+        const SAMPLE_RATE = 10; // Hz (instrument rate)
+        const PLAYBACK_RATE = 44100; // Hz (audio output)
+
+        let audioCtx = null;
+        let currentSource = null;
+        let cachedMetadata = null;
+
+        // =================================================================
+        // Logging
+        // =================================================================
+        function log(msg, cls = '') {
+            const el = document.getElementById('log');
+            const time = new Date().toISOString().slice(11, 23);
+            el.innerHTML += `<span class="${cls}">[${time}] ${msg}</span>\n`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        // =================================================================
+        // Metadata loading — populates chunk selector
+        // =================================================================
+        async function loadMetadata() {
+            const component = document.getElementById('component').value;
+            const chunkType = document.getElementById('chunkType').value;
+            const select = document.getElementById('chunkIndex');
+            const btnFetch = document.getElementById('btnFetch');
+
+            select.innerHTML = '<option value="">Loading...</option>';
+            btnFetch.disabled = true;
+
+            try {
+                const metaUrl = `${WORKER_BASE}/data/${DATE.split('-').join('/')}/${SATELLITE}/mag/${component}/metadata.json`;
+                log(`Fetching ${component} metadata...`, 'info');
+
+                cachedMetadata = await (await fetch(metaUrl)).json();
+                const chunks = cachedMetadata.chunks[chunkType];
+                log(`Loaded: ${chunks.length} ${chunkType} chunks for ${component}`, 'success');
+
+                select.innerHTML = '';
+                chunks.forEach((chunk, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    // Show time range as label
+                    const start = chunk.start.replace('T', ' ').slice(0, 16);
+                    const end = chunk.end.replace('T', ' ').slice(11, 16);
+                    opt.textContent = `#${i}: ${start}–${end} UTC`;
+                    select.appendChild(opt);
+                });
+
+                btnFetch.disabled = false;
+            } catch (err) {
+                log(`ERROR loading metadata: ${err.message}`, 'error');
+                select.innerHTML = '<option value="">Error — try again</option>';
+            }
+        }
+
+        // Auto-reload chunks when component or chunk type changes
+        document.getElementById('component').addEventListener('change', () => { if (cachedMetadata) loadMetadata(); });
+        document.getElementById('chunkType').addEventListener('change', () => { if (cachedMetadata) loadMetadata(); });
+
+        // =================================================================
+        // Main pipeline
+        // =================================================================
+        async function fetchAndPlay() {
+            const component = document.getElementById('component').value;
+            const chunkType = document.getElementById('chunkType').value;
+            const chunkIndex = parseInt(document.getElementById('chunkIndex').value);
+
+            if (!cachedMetadata || isNaN(chunkIndex)) {
+                log('Load metadata first!', 'warn');
+                return;
+            }
+
+            const chunk = cachedMetadata.chunks[chunkType][chunkIndex];
+            const url = `${WORKER_BASE}/data/${DATE.split('-').join('/')}/${SATELLITE}/mag/${component}/${chunkType}/${chunk.filename}`;
+
+            document.getElementById('btnFetch').disabled = true;
+            log(`\n${'='.repeat(50)}`, 'info');
+            log(`Fetching ${SATELLITE} ${component} chunk #${chunkIndex}: ${chunk.start} → ${chunk.end}`, 'info');
+
+            try {
+
+                // 1. Download compressed data
+                const t0 = performance.now();
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+                const compressed = new Uint8Array(await response.arrayBuffer());
+                const downloadTime = performance.now() - t0;
+                const downloadKB = (compressed.length / 1024).toFixed(1);
+                log(`Downloaded: ${downloadKB} KB in ${downloadTime.toFixed(0)}ms`, 'success');
+                document.getElementById('statDownload').textContent = downloadKB;
+
+                // 3. Decompress with fzstd
+                const t1 = performance.now();
+                const decompressed = fzstd.decompress(compressed);
+                const decompressTime = performance.now() - t1;
+                log(`Decompressed: ${(decompressed.length / 1024).toFixed(1)} KB in ${decompressTime.toFixed(1)}ms`, 'success');
+                document.getElementById('statDecompress').textContent = decompressTime.toFixed(1);
+
+                // 4. Convert to Float32Array
+                const float32 = new Float32Array(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength / 4);
+                log(`Float32Array: ${float32.length.toLocaleString()} samples (${(float32.length / SAMPLE_RATE / 60).toFixed(1)} min at ${SAMPLE_RATE} Hz)`, 'info');
+                document.getElementById('statSamples').textContent = float32.length.toLocaleString();
+
+                // 5. Normalize to [-1, 1]
+                // Use per-chunk min/max from metadata for normalization
+                const normMin = chunk.min;
+                const normMax = chunk.max;
+                const range = Math.max(Math.abs(normMin), Math.abs(normMax));
+                const normalized = new Float32Array(float32.length);
+
+                // Detrend (remove mean) then normalize
+                let sum = 0;
+                for (let i = 0; i < float32.length; i++) sum += float32[i];
+                const mean = sum / float32.length;
+
+                let maxAbs = 0;
+                for (let i = 0; i < float32.length; i++) {
+                    normalized[i] = float32[i] - mean;
+                    const abs = Math.abs(normalized[i]);
+                    if (abs > maxAbs) maxAbs = abs;
+                }
+                for (let i = 0; i < normalized.length; i++) {
+                    normalized[i] /= maxAbs;
+                }
+
+                log(`Normalized: mean=${mean.toFixed(2)}, maxAbs=${maxAbs.toFixed(2)}, range=[-1, 1]`, 'info');
+
+                // 6. Draw waveform
+                drawWaveform(normalized);
+
+                // 7. Play audio
+                await playAudio(normalized);
+
+                const totalTime = performance.now() - t0;
+                log(`Total pipeline: ${totalTime.toFixed(0)}ms`, 'success');
+
+            } catch (err) {
+                log(`ERROR: ${err.message}`, 'error');
+                console.error(err);
+            } finally {
+                document.getElementById('btnFetch').disabled = false;
+            }
+        }
+
+        // =================================================================
+        // Waveform drawing
+        // =================================================================
+        function drawWaveform(samples) {
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.offsetWidth * dpr;
+            canvas.height = canvas.offsetHeight * dpr;
+
+            const w = canvas.width;
+            const h = canvas.height;
+            const mid = h / 2;
+
+            ctx.fillStyle = '#0d1117';
+            ctx.fillRect(0, 0, w, h);
+
+            // Zero line
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, mid);
+            ctx.lineTo(w, mid);
+            ctx.stroke();
+
+            // Waveform (min/max per pixel column)
+            ctx.fillStyle = '#00d4ff';
+            const samplesPerPixel = samples.length / w;
+
+            for (let x = 0; x < w; x++) {
+                const start = Math.floor(x * samplesPerPixel);
+                const end = Math.min(Math.floor((x + 1) * samplesPerPixel), samples.length);
+
+                let min = Infinity, max = -Infinity;
+                for (let i = start; i < end; i++) {
+                    if (samples[i] < min) min = samples[i];
+                    if (samples[i] > max) max = samples[i];
+                }
+
+                const y1 = mid - max * mid;
+                const y2 = mid - min * mid;
+                ctx.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+            }
+
+            log(`Waveform drawn: ${w}x${h} px`, 'info');
+        }
+
+        // =================================================================
+        // Audio playback
+        // =================================================================
+        async function playAudio(samples) {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+            stopPlayback();
+
+            // Create audio buffer at playback sample rate
+            const buffer = audioCtx.createBuffer(1, samples.length, PLAYBACK_RATE);
+            buffer.copyToChannel(samples, 0);
+
+            currentSource = audioCtx.createBufferSource();
+            currentSource.buffer = buffer;
+            currentSource.connect(audioCtx.destination);
+
+            // The speedup ratio: 10 Hz instrument data played at 44100 Hz = 4410x speedup
+            // A 10-minute chunk (6000 samples) plays in 6000/44100 = 0.136 seconds
+            const durationSec = samples.length / PLAYBACK_RATE;
+            const realWorldMinutes = samples.length / SAMPLE_RATE / 60;
+            log(`Playing: ${realWorldMinutes.toFixed(1)} min of data in ${durationSec.toFixed(2)}s (${(realWorldMinutes * 60 / durationSec).toFixed(0)}x speedup)`, 'success');
+
+            document.getElementById('btnStop').disabled = false;
+            document.getElementById('btnFetch').classList.add('playing');
+
+            currentSource.onended = () => {
+                document.getElementById('btnStop').disabled = true;
+                document.getElementById('btnFetch').classList.remove('playing');
+                log('Playback finished', 'info');
+            };
+
+            currentSource.start();
+        }
+
+        function stopPlayback() {
+            if (currentSource) {
+                try { currentSource.stop(); } catch (e) {}
+                currentSource = null;
+            }
+            document.getElementById('btnStop').disabled = true;
+            document.getElementById('btnFetch').classList.remove('playing');
+        }
+
+        log('Ready. Data served via Cloudflare Worker (spaceweather.now.audio/emic/data/...)', 'info');
+        log('Click "Fetch & Play" to test the pipeline.', 'info');
+    </script>
+</body>
+</html>

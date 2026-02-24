@@ -39,6 +39,7 @@ import {
     isDevMode,
     isStudyMode,
     isEmicStudyMode,
+    isLocalEnvironment,
     initializeMasterMode
 } from './master-modes.js';
 import { initShareModal, openShareModal, checkAndLoadSharedSession, applySharedSession, updateShareButtonState } from './share-modal.js';
@@ -944,28 +945,10 @@ async function initializeDevMode() {
 }
 
 /**
- * EMIC STUDY MODE: Clean research interface, no modals, no tutorial
+ * SHARED ADVANCED CONTROLS: Gear popovers, settings drawer, localStorage persistence.
+ * Called from both EMIC Study and Solar Portal modes.
  */
-async function initializeEmicStudyMode() {
-    // Hide unnecessary UI elements
-    const completeBtn = document.getElementById('completeBtn');
-    if (completeBtn) completeBtn.style.display = 'none';
-    const simulatePanel = document.querySelector('.panel-simulate');
-    if (simulatePanel) simulatePanel.style.display = 'none';
-
-    // Skip tutorial entirely
-    localStorage.setItem('study_tutorial_in_progress', 'false');
-    localStorage.setItem('study_tutorial_completed', 'true');
-    localStorage.setItem('study_has_seen_tutorial', 'true');
-
-    // Enable all features immediately
-    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-    enableAllTutorialRestrictedFeatures();
-
-    // Enable region creation (normally gated behind "Begin Analysis")
-    const { setRegionCreationEnabled } = await import('./audio-state.js');
-    setRegionCreationEnabled(true);
-
+function initializeAdvancedControls() {
     // Persist all navigation panel controls to localStorage
     const navControls = [
         { id: 'viewingMode', key: 'emic_viewing_mode', type: 'select' },
@@ -1007,7 +990,6 @@ async function initializeEmicStudyMode() {
         } else {
             if (saved !== null) {
                 el.value = saved;
-                // If stored value doesn't match any option (e.g. options changed), reset to default
                 if (el.value !== saved) {
                     localStorage.removeItem(ctrl.key);
                     el.selectedIndex = 0;
@@ -1015,7 +997,7 @@ async function initializeEmicStudyMode() {
             }
             el.addEventListener('change', () => {
                 localStorage.setItem(ctrl.key, el.value);
-                el.blur(); // Remove focus so dropdown doesn't stay highlighted
+                el.blur();
             });
         }
     }
@@ -1031,7 +1013,6 @@ async function initializeEmicStudyMode() {
             sensEl.style.opacity = isOff ? '0.4' : '1';
         });
     }
-    // Run once on init, then on any scroll setting change
     updateSensPaired();
     ['navBarScroll', 'navBarHScroll', 'mainWindowScroll', 'mainWindowHScroll'].forEach(id => {
         const el = document.getElementById(id);
@@ -1068,7 +1049,7 @@ async function initializeEmicStudyMode() {
                 drawSpectrogramXAxis();
             }
         };
-        applyXAxisVisibility(); // Apply on load
+        applyXAxisVisibility();
         mainWindowXAxisEl.addEventListener('change', applyXAxisVisibility);
     }
 
@@ -1091,11 +1072,10 @@ async function initializeEmicStudyMode() {
     function applyAdvancedMode(enabled) {
         const gearContainers = document.querySelectorAll('.panel-gear');
         gearContainers.forEach(g => g.style.display = enabled ? 'block' : 'none');
-        const hamburgerBtn = document.getElementById('hamburgerBtn');
-        if (hamburgerBtn) hamburgerBtn.style.display = enabled ? 'block' : 'none';
+        const hBtn = document.getElementById('hamburgerBtn');
+        if (hBtn) hBtn.style.display = enabled ? 'block' : 'none';
         const questionnairesPanel = document.getElementById('questionnairesPanel');
         if (questionnairesPanel) questionnairesPanel.style.display = enabled ? '' : 'none';
-        // Close drawer if Advanced is turned off while drawer is open
         if (!enabled) closeSettingsDrawer();
     }
     if (advancedCheckbox) {
@@ -1117,8 +1097,6 @@ async function initializeEmicStudyMode() {
     // --- Panel height inputs in settings drawer ---
     const heightMinimapInput = document.getElementById('heightMinimap');
     const heightSpectrogramInput = document.getElementById('heightSpectrogram');
-
-    // Pre-load current heights
     const wfEl_ = document.getElementById('waveform');
     const specEl_ = document.getElementById('spectrogram');
     if (heightMinimapInput && wfEl_) heightMinimapInput.value = wfEl_.offsetHeight;
@@ -1131,7 +1109,6 @@ async function initializeEmicStudyMode() {
         if (!canvas) return;
         canvas.style.height = h + 'px';
         canvas.height = h;
-        // Update companion canvases (axis, buttons) buffer height
         const companions = [axisId, buttonsId].filter(Boolean);
         for (const id of companions) {
             const el = document.getElementById(id);
@@ -1149,7 +1126,7 @@ async function initializeEmicStudyMode() {
             applyPanelHeight(heightSpectrogramInput, 'spectrogram', 'spectrogram-axis', null));
     }
 
-    // Position gear icons over their respective canvases (top-right corner, inside the canvas)
+    // Position gear icons over their respective canvases (top-right corner)
     function positionGearIcons() {
         const wfCanvas = document.getElementById('waveform');
         const navGear = document.getElementById('navBarGear');
@@ -1178,14 +1155,12 @@ async function initializeEmicStudyMode() {
             e.stopPropagation();
             const popover = btn.nextElementSibling;
             const wasOpen = popover.classList.contains('open');
-            // Close all popovers first & reset z-index
             document.querySelectorAll('.gear-popover').forEach(p => {
                 p.classList.remove('open');
                 p.closest('.panel-gear').style.zIndex = '30';
             });
             if (!wasOpen) {
                 popover.classList.add('open');
-                // Boost this gear above others so popover isn't covered
                 popover.closest('.panel-gear').style.zIndex = '35';
             }
         });
@@ -1198,28 +1173,15 @@ async function initializeEmicStudyMode() {
             });
         }
     });
-    // Blur selects after change so the native focus highlight drops immediately
     document.querySelectorAll('.gear-select').forEach(sel => {
         sel.addEventListener('change', () => sel.blur());
     });
-
-    const skipLogin = localStorage.getItem('emic_skip_login_welcome') === 'true';
-
-    if (!skipLogin) {
-        // Show participant setup immediately
-        openParticipantModal();
-    } else {
-        // Hide overlay, go straight to app
-        const overlay = document.getElementById('permanentOverlay');
-        if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
-    }
 
     // Wire per-panel day markers dropdowns to redraw
     const navBarMarkersEl = document.getElementById('navBarMarkers');
     const mainWindowMarkersEl = document.getElementById('mainWindowMarkers');
     if (navBarMarkersEl) navBarMarkersEl.addEventListener('change', () => drawDayMarkers());
     if (mainWindowMarkersEl) mainWindowMarkersEl.addEventListener('change', () => drawDayMarkers());
-    // Draw immediately if either panel has markers enabled
     if ((navBarMarkersEl && navBarMarkersEl.value !== 'none') ||
         (mainWindowMarkersEl && mainWindowMarkersEl.value !== 'none')) {
         drawDayMarkers();
@@ -1284,17 +1246,14 @@ async function initializeEmicStudyMode() {
         const isWindowed = mode === 'static' || mode === 'scroll' || mode === 'pageTurn';
         const panel = document.getElementById('trackedRegionsPanel');
         if (panel) {
-            panel.style.display = (isWindowed || window.__EMIC_STUDY_MODE) ? 'none' : '';
+            panel.style.display = isWindowed ? 'none' : '';
         }
-        // Hide Component and De-trend controls in windowed modes (unless Advanced is on)
-        // Use visibility:hidden (not display:none) so they still occupy space and the status bar stays put
         const advanced = document.getElementById('advancedMode')?.checked;
         const hideControls = isWindowed && !advanced;
         const comp = document.getElementById('componentSelectorContainer');
         const detrend = document.getElementById('detrendContainer');
         if (comp) comp.style.visibility = hideControls ? 'hidden' : '';
         if (detrend) detrend.style.visibility = hideControls ? 'hidden' : '';
-        // Hide the spacer divs between controls (siblings before/after comp and detrend)
         if (comp?.previousElementSibling) comp.previousElementSibling.style.visibility = hideControls ? 'hidden' : '';
         if (comp?.nextElementSibling && comp.nextElementSibling.id !== 'detrendContainer') {
             comp.nextElementSibling.style.visibility = hideControls ? 'hidden' : '';
@@ -1307,17 +1266,13 @@ async function initializeEmicStudyMode() {
     // When switching to a windowed mode, reset waveform to full view and re-render
     const viewingModeSelect = document.getElementById('viewingMode');
     if (viewingModeSelect) {
-        // Set initial visibility after localStorage restore
         updateRegionsPanelVisibility();
-
         viewingModeSelect.addEventListener('change', () => {
             const mode = viewingModeSelect.value;
             if (mode === 'static' || mode === 'scroll' || mode === 'pageTurn') {
-                // Reset zoom to full view so waveform minimap shows everything
                 zoomState.setViewportToFull();
             }
             updateRegionsPanelVisibility();
-            // Re-render waveform, x-axis, buttons, and day markers for the new mode
             drawWaveformFromMinMax();
             drawWaveformXAxis();
             drawSpectrogramXAxis();
@@ -1325,6 +1280,44 @@ async function initializeEmicStudyMode() {
             drawDayMarkers();
             viewingModeSelect.blur();
         });
+    }
+}
+
+/**
+ * EMIC STUDY MODE: Clean research interface, no modals, no tutorial
+ */
+async function initializeEmicStudyMode() {
+    // Hide unnecessary UI elements
+    const completeBtn = document.getElementById('completeBtn');
+    if (completeBtn) completeBtn.style.display = 'none';
+    const simulatePanel = document.querySelector('.panel-simulate');
+    if (simulatePanel) simulatePanel.style.display = 'none';
+
+    // Skip tutorial entirely
+    localStorage.setItem('study_tutorial_in_progress', 'false');
+    localStorage.setItem('study_tutorial_completed', 'true');
+    localStorage.setItem('study_has_seen_tutorial', 'true');
+
+    // Enable all features immediately
+    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+    enableAllTutorialRestrictedFeatures();
+
+    // Enable region creation (normally gated behind "Begin Analysis")
+    const { setRegionCreationEnabled } = await import('./audio-state.js');
+    setRegionCreationEnabled(true);
+
+    // Initialize shared advanced controls (gear popovers, drawer, etc.)
+    initializeAdvancedControls();
+
+    const skipLogin = localStorage.getItem('emic_skip_login_welcome') === 'true';
+
+    if (!skipLogin) {
+        // Show participant setup immediately
+        openParticipantModal();
+    } else {
+        // Hide overlay, go straight to app
+        const overlay = document.getElementById('permanentOverlay');
+        if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
     }
 
     console.log('🔬 EMIC Study mode initialized (skipLogin:', skipLogin, ')');
@@ -1334,7 +1327,16 @@ async function initializeEmicStudyMode() {
  * SOLAR PORTAL MODE: Participant setup only, no study workflow
  */
 async function initializeSolarPortalMode() {
-    
+
+    // Initialize shared advanced controls (gear popovers, drawer, etc.)
+    initializeAdvancedControls();
+
+    // Show Advanced checkbox only on localhost
+    const advToggle = document.getElementById('advancedToggle');
+    if (advToggle) {
+        advToggle.style.display = isLocalEnvironment() ? 'flex' : 'none';
+    }
+
     // Hide Begin Analysis button permanently
     const completeBtn = document.getElementById('completeBtn');
     if (completeBtn) {
