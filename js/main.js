@@ -1514,6 +1514,12 @@ function initializeAdvancedControls() {
         }
     }
 
+    // Page-specific defaults (applied only when no saved value exists)
+    if (!isStudyMode()) {
+        const miniMapEl = document.getElementById('miniMapView');
+        if (miniMapEl && !localStorage.getItem('main_minimap_view')) miniMapEl.value = 'both';
+    }
+
     // Toggle feature boxes visibility immediately on change
     const fbVisCheckbox = document.getElementById('featureBoxesVisible');
     if (fbVisCheckbox) {
