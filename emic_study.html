@@ -1178,8 +1178,13 @@
             fitting = false;
         }
 
-        // Run after layout settles
-        window.addEventListener('load', () => setTimeout(fitSpectrogram, 100));
+        // Run as soon as DOM is ready (don't wait for load + 100ms delay)
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', fitSpectrogram);
+        } else {
+            fitSpectrogram();  // DOM already parsed (script is at bottom of body)
+        }
+        window.addEventListener('load', fitSpectrogram);  // re-fit after all resources
         window.addEventListener('resize', () => {
             if (rafPending || fitting) return;
             rafPending = true;
