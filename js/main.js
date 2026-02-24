@@ -1732,16 +1732,10 @@ function initializeAdvancedControls() {
     const viewingModeSelect = document.getElementById('viewingMode');
     const mainWindowModeSelect = document.getElementById('mainWindowMode');
 
-    let lastViewingMode = viewingModeSelect?.value || 'pageTurn';
-
     function applyViewingMode(mode, sourceSelect) {
-        const wasWindowed = lastViewingMode === 'static' || lastViewingMode === 'scroll' || lastViewingMode === 'pageTurn';
-        const isWindowed = mode === 'static' || mode === 'scroll' || mode === 'pageTurn';
-        // Only reset viewport when entering windowed mode from Region Creation
-        if (isWindowed && !wasWindowed) {
+        if (mode === 'static' || mode === 'scroll' || mode === 'pageTurn') {
             zoomState.setViewportToFull();
         }
-        lastViewingMode = mode;
         // Sync the other select
         if (viewingModeSelect && viewingModeSelect !== sourceSelect) viewingModeSelect.value = mode;
         if (mainWindowModeSelect && mainWindowModeSelect !== sourceSelect) mainWindowModeSelect.value = mode;
