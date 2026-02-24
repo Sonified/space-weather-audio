@@ -1632,17 +1632,11 @@ function initializeAdvancedControls() {
             vizControls.style.pointerEvents = isParticipant ? 'none' : '';
         }
 
-        // Stretch + Speed button groups: hidden in participant mode
+        // Stretch + Speed button groups: advanced only (hidden in participant + standard)
         const stretchGroup = document.getElementById('stretchGroup');
-        if (stretchGroup) stretchGroup.style.display = isParticipant ? 'none' : '';
+        if (stretchGroup) stretchGroup.style.display = isAdvanced ? '' : 'none';
         const speedGroup = document.getElementById('speedGroup');
         if (speedGroup) speedGroup.style.display = isParticipant ? 'none' : '';
-
-        // Paulstretch + Wavelet buttons: advanced only
-        const paulstretchBtn = document.querySelector('[data-stretch="paulstretch"]');
-        const waveletBtn = document.querySelector('[data-stretch="wavelet"]');
-        if (paulstretchBtn) paulstretchBtn.style.display = isAdvanced ? '' : 'none';
-        if (waveletBtn) waveletBtn.style.display = isAdvanced ? '' : 'none';
 
         // Participant ID display (top right): hidden in participant mode
         const pidDisplay = document.getElementById('participantIdDisplay');
