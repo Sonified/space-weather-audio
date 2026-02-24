@@ -51,6 +51,29 @@ let spectrogramOverlayCtx = null;
 // NOTE: We rebuild this from actual feature data, so it stays in sync!
 let completedSelectionBoxes = [];
 
+// ── Feature box colors (colormap-aware) ──
+// Colormaps with hot reds/oranges (like inferno) need a shifted hue to stay visible
+function getFeatureBoxColors() {
+    const cmap = getCurrentColormap();
+    const hotMaps = ['inferno', 'magma', 'hot', 'plasma'];
+    if (hotMaps.includes(cmap)) {
+        return {
+            stroke: '#ff2266',
+            fill: 'rgba(255, 34, 102, 0.2)',
+            fillHover: 'rgba(255, 34, 102, 0.35)',
+            label: '#ff2266',
+            labelShadow: 'rgba(255, 255, 255, 0.4)',
+        };
+    }
+    return {
+        stroke: '#ff4444',
+        fill: 'rgba(255, 68, 68, 0.2)',
+        fillHover: 'rgba(255, 100, 100, 0.35)',
+        label: '#ff4444',
+        labelShadow: 'rgba(255, 255, 255, 0.3)',
+    };
+}
+
 // ── Feature box drag/resize state ──
 // Tracks in-progress move or edge/corner resize of an existing feature box.
 // Set on mousedown over a box, cleared on mouseup.
@@ -1059,8 +1082,8 @@ function showFeaturePopup(box) {
         playFeature(btn.dataset.start, btn.dataset.end);
     });
 
-    // Delete button with confirmation
-    popup.querySelector('.feature-popup-delete').addEventListener('click', (e) => {
+    // Delete button with confirmation (only present when canDelete is true)
+    popup.querySelector('.feature-popup-delete')?.addEventListener('click', (e) => {
         e.stopPropagation();
         const isStandalone = box.regionIndex === -1;
         const label = `Feature ${getFlatFeatureNumber(box.regionIndex, box.featureIndex)}`;
@@ -1130,10 +1153,25 @@ function showFeaturePopup(box) {
         notesArea.selectionStart = notesArea.selectionEnd = notesArea.value.length;
     });
 
-    // Enable/disable save button based on notes content
+    // Track whether user has modified anything
+    const originalNotes = notesArea.value;
+    const originalFields = {};
+    popup.querySelectorAll('input[data-key]').forEach(input => {
+        originalFields[input.dataset.key] = input.value;
+    });
+    let isDirty = false;
+
     function updateSaveState() {
-        const hasNotes = notesArea.value.trim().length > 0;
-        saveBtn.disabled = !hasNotes;
+        const hasContent = notesArea.value.trim().length > 0;
+        // Check if anything changed from the original
+        isDirty = notesArea.value !== originalNotes;
+        if (!isDirty) {
+            popup.querySelectorAll('input[data-key]').forEach(input => {
+                if (input.value !== originalFields[input.dataset.key]) isDirty = true;
+            });
+        }
+        saveBtn.textContent = (hasContent && !isDirty) ? 'Done' : 'Save';
+        saveBtn.disabled = !hasContent;
     }
     notesArea.addEventListener('input', updateSaveState);
     updateSaveState();
@@ -1167,6 +1205,7 @@ function showFeaturePopup(box) {
 
             // Redraw the canvas boxes to reflect the change
             redrawAllCanvasFeatureBoxes();
+            updateSaveState();
         });
     });
 
@@ -1302,8 +1341,14 @@ function rebuildCanvasBoxesFromFeatures() {
 function redrawCanvasBoxes() {
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+        // PASS 1: Draw all boxes (without annotations)
         for (const savedBox of completedSelectionBoxes) {
-            drawSavedBox(spectrogramOverlayCtx, savedBox);
+            drawSavedBox(spectrogramOverlayCtx, savedBox, false);
+        }
+        // PASS 2: Draw all annotations on top (with collision detection)
+        const placedAnnotations = [];
+        for (const savedBox of completedSelectionBoxes) {
+            drawSavedBox(spectrogramOverlayCtx, savedBox, true, placedAnnotations);
         }
         // Preserve in-progress selection box if user is currently dragging
         if (spectrogramSelectionActive) {
@@ -2677,24 +2722,29 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
     if (!drawAnnotationsOnly) {
         const boxKey = `${box.regionIndex}-${box.featureIndex}`;
         const isBoxHovered = hoveredBoxKey === boxKey;
+        const fbc = getFeatureBoxColors();
 
-        ctx.strokeStyle = '#ff4444';
+        ctx.strokeStyle = fbc.stroke;
         ctx.lineWidth = 2;
         ctx.strokeRect(x, y, width, height);
 
-        ctx.fillStyle = isBoxHovered ? 'rgba(255, 100, 100, 0.35)' : 'rgba(255, 68, 68, 0.2)';
+        ctx.fillStyle = isBoxHovered ? fbc.fillHover : fbc.fill;
         ctx.fillRect(x, y, width, height);
 
-        // Draw close button (red ×) in top-right inside corner
-        const closeSize = 12;
-        const closePad = 6;
+        // Draw close button (× ) in top-right inside corner — scales with font size
+        const userFontSize = parseInt(document.getElementById('mainWindowNumbersSize')?.value || '15', 10);
+        const closeSize = Math.round(userFontSize * 0.8);
+        const closePad = Math.round(userFontSize * 0.4);
         const closeX = x + width - closeSize - closePad;
         const closeY = y + closePad;
+        const numbersMode = document.getElementById('mainWindowNumbers')?.value || 'red';
         // Only draw if box is large enough to fit the button
         if (width > closeSize + closePad * 3 && height > closeSize + closePad * 3) {
             // Draw × lines (no background circle)
             const inset = 2;
-            ctx.strokeStyle = '#ff4444';
+            const xColor = numbersMode === 'white' ? 'rgba(255, 255, 255, 0.8)'
+                : numbersMode === 'black' ? 'rgba(0, 0, 0, 0.85)' : fbc.stroke;
+            ctx.strokeStyle = xColor;
             ctx.lineWidth = 2;
             ctx.lineCap = 'round';
             ctx.beginPath();
@@ -2707,42 +2757,74 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         }
 
         // Add flat sequential feature number label (gated by Numbers dropdown)
-        const numbersMode = document.getElementById('mainWindowNumbers')?.value || 'red';
         if (numbersMode !== 'hide') {
             const numbersLoc = document.getElementById('mainWindowNumbersLoc')?.value || 'above';
+            const fontWeight = document.getElementById('mainWindowNumbersWeight')?.value || '500';
+            const fontSize = document.getElementById('mainWindowNumbersSize')?.value || '15';
+            const shadowOn = (document.getElementById('mainWindowNumbersShadow')?.value || 'on') === 'on';
             const flatNum = getFlatFeatureNumber(box.regionIndex, box.featureIndex);
             const numberText = `${flatNum}`;
-            const isRed = numbersMode === 'red';
-            ctx.font = '15px Arial, sans-serif';
-            ctx.fillStyle = isRed ? '#ff4444' : 'rgba(255, 255, 255, 0.8)';
+            ctx.font = `${fontWeight} ${fontSize}px Arial, sans-serif`;
 
-            // Red labels get a light shadow for contrast, white labels get dark shadow
-            if (isRed) {
-                ctx.shadowBlur = 4;
-                ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
-            } else {
-                ctx.shadowBlur = 3;
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-            }
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
+            // Upper-left normally; slides toward center as box narrows
+            // textAlign=center — browser centers around the X we give, no measureText math
+            ctx.textAlign = 'center';
+            const pad = numbersLoc === 'inside' ? closePad : 2;
+            const fSize = parseInt(fontSize, 10);
+            // Fixed anchor near upper-left (pad + half a font-size-ish offset)
+            // vs box midpoint — whichever is smaller wins
+            const leftAnchor = pad + fSize * 0.45;
+            const anchorX = Math.min(leftAnchor, width / 2);
 
-            // Smooth slide: centered when narrow, left-aligned when wide
-            const textWidth = ctx.measureText(numberText).width;
-            const centeredX = (width - textWidth) / 2;
-            ctx.textAlign = 'left';
-
+            let labelX, labelY;
             if (numbersLoc === 'inside') {
                 ctx.textBaseline = 'top';
-                ctx.fillText(numberText, x + closePad, y + closePad);
+                labelX = x + anchorX;
+                labelY = y + closePad;
             } else {
                 ctx.textBaseline = 'bottom';
-                ctx.fillText(numberText, x + Math.min(2, centeredX), y - 3);
+                labelX = x + anchorX;
+                labelY = y - 3;
             }
 
-            // Reset shadow so it doesn't bleed into subsequent draws
-            ctx.shadowBlur = 0;
-            ctx.shadowColor = 'transparent';
+            if (numbersMode === 'outline') {
+                ctx.fillStyle = fbc.label;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 2.5;
+                ctx.lineJoin = 'round';
+                if (shadowOn) ctx.strokeText(numberText, labelX, labelY);
+                ctx.fillText(numberText, labelX, labelY);
+            } else if (numbersMode === 'black') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+                if (shadowOn) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                    ctx.lineWidth = 2.5;
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(numberText, labelX, labelY);
+                }
+                ctx.fillText(numberText, labelX, labelY);
+            } else if (numbersMode === 'white') {
+                // White text with dark stroke underneath for contrast
+                if (shadowOn) {
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+                    ctx.lineWidth = 2.5;
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(numberText, labelX, labelY);
+                }
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.83)';
+                ctx.fillText(numberText, labelX, labelY);
+            } else {
+                // Red
+                ctx.fillStyle = fbc.label;
+                if (shadowOn) {
+                    ctx.strokeStyle = fbc.labelShadow;
+                    ctx.lineWidth = 2.5;
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(numberText, labelX, labelY);
+                }
+                ctx.fillText(numberText, labelX, labelY);
+            }
+            ctx.textAlign = 'left'; // reset
         }
 
         // Draw resize handles when hovered or being dragged
@@ -2750,7 +2832,7 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         const isDragged = boxDragState && completedSelectionBoxes[boxDragState.boxIndex] === box;
         if (isHovered || isDragged) {
             const hs = 2.5; // handle half-size (device px)
-            ctx.fillStyle = '#ff4444';
+            ctx.fillStyle = fbc.stroke;
             // Corner handles
             const corners = [
                 [x, y], [x + width, y],
@@ -2785,12 +2867,12 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         }
 
         const liveMode = annotationMode === 'live';
-        let opacity = 1;
+        let opacity = liveMode ? 0 : 1;
 
         // Ensure a timing/cache entry exists for text measurement caching
         let timing = annotationTimingState.get(key);
         if (!timing) {
-            timing = { showTime: now, hideTime: null, state: 'visible' };
+            timing = { showTime: now, hideTime: null, state: liveMode ? 'hidden' : 'visible' };
             annotationTimingState.set(key, timing);
         }
 
@@ -3038,12 +3120,13 @@ export function drawSpectrogramSelectionBox(ctx, canvasWidth, canvasHeight) {
     const height = Math.abs(currentY_device - startY_device);
     
     // Draw selection box on canvas (matches the old DOM style)
-    ctx.strokeStyle = '#ff4444';
+    const fbc = getFeatureBoxColors();
+    ctx.strokeStyle = fbc.stroke;
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, width, height);
-    
+
     // Semi-transparent fill
-    ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
+    ctx.fillStyle = fbc.fill;
     ctx.fillRect(x, y, width, height);
 }
 

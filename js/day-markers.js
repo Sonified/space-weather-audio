@@ -135,10 +135,10 @@ function drawMarkerLine(ctx, x, height, dateLabel, labelPosition = 'top') {
     ctx.lineTo(x, height);
     ctx.stroke();
 
-    // Date label, left-aligned to the dashed line
+    // Date label
     if (dateLabel) {
         ctx.setLineDash([]);
-        ctx.font = 'bold 11px Arial, sans-serif';
+        ctx.font = 'bold 12px Arial, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = labelPosition === 'bottom' ? 'bottom' : 'top';
         ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
@@ -148,7 +148,7 @@ function drawMarkerLine(ctx, x, height, dateLabel, labelPosition = 'top') {
 
         const textX = x + 6;
         const textY = labelPosition === 'bottom' ? height - 6 : 6;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
         ctx.fillText(dateLabel, textX, textY);
     }
 

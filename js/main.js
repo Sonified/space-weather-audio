@@ -1371,8 +1371,10 @@ function injectGearPopovers() {
                     <span class="gear-label">Color:</span>
                     <select id="mainWindowNumbers" class="gear-select">
                         <option value="hide">Hide</option>
-                        <option value="white">White</option>
-                        <option value="red" selected>Red</option>
+                        <option value="white" selected>White</option>
+                        <option value="black">Black</option>
+                        <option value="red">Red</option>
+                        <option value="outline">Outline</option>
                     </select>
                 </div>
                 <div class="gear-popover-row">
@@ -1380,6 +1382,39 @@ function injectGearPopovers() {
                     <select id="mainWindowNumbersLoc" class="gear-select">
                         <option value="above">Above box</option>
                         <option value="inside" selected>Inside box</option>
+                    </select>
+                </div>
+                <div class="gear-popover-row">
+                    <span class="gear-label">Weight:</span>
+                    <select id="mainWindowNumbersWeight" class="gear-select">
+                        <option value="normal" selected>Normal</option>
+                        <option value="500">Medium</option>
+                        <option value="bold">Bold</option>
+                    </select>
+                </div>
+                <div class="gear-popover-row">
+                    <span class="gear-label">Size:</span>
+                    <select id="mainWindowNumbersSize" class="gear-select">
+                        <option value="8">8px</option>
+                        <option value="9">9px</option>
+                        <option value="10">10px</option>
+                        <option value="11">11px</option>
+                        <option value="12">12px</option>
+                        <option value="13" selected>13px</option>
+                        <option value="14">14px</option>
+                        <option value="15">15px</option>
+                        <option value="16">16px</option>
+                        <option value="17">17px</option>
+                        <option value="18">18px</option>
+                        <option value="19">19px</option>
+                        <option value="20">20px</option>
+                    </select>
+                </div>
+                <div class="gear-popover-row">
+                    <span class="gear-label">Shadow:</span>
+                    <select id="mainWindowNumbersShadow" class="gear-select">
+                        <option value="on" selected>On</option>
+                        <option value="off">Off</option>
                     </select>
                 </div>
             </div>
@@ -1415,6 +1450,9 @@ function initializeAdvancedControls() {
         { id: 'mainWindowXAxis', key: 'emic_main_xaxis', type: 'select' },
         { id: 'mainWindowNumbers', key: 'emic_main_numbers', type: 'select' },
         { id: 'mainWindowNumbersLoc', key: 'emic_main_numbers_loc', type: 'select' },
+        { id: 'mainWindowNumbersWeight', key: 'emic_main_numbers_weight', type: 'select' },
+        { id: 'mainWindowNumbersSize', key: 'emic_main_numbers_size', type: 'select' },
+        { id: 'mainWindowNumbersShadow', key: 'emic_main_numbers_shadow', type: 'select' },
         { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
         { id: 'displayOnLoad', key: 'emic_display_on_load', type: 'select' },
         { id: 'initialHours', key: 'emic_initial_hours', type: 'select' },
@@ -1655,6 +1693,12 @@ function initializeAdvancedControls() {
     const mainWindowNumbersLocEl = document.getElementById('mainWindowNumbersLoc');
     if (mainWindowNumbersEl) mainWindowNumbersEl.addEventListener('change', () => redrawAllCanvasFeatureBoxes());
     if (mainWindowNumbersLocEl) mainWindowNumbersLocEl.addEventListener('change', () => redrawAllCanvasFeatureBoxes());
+    const mainWindowNumbersWeightEl = document.getElementById('mainWindowNumbersWeight');
+    const mainWindowNumbersShadowEl = document.getElementById('mainWindowNumbersShadow');
+    const mainWindowNumbersSizeEl = document.getElementById('mainWindowNumbersSize');
+    if (mainWindowNumbersWeightEl) mainWindowNumbersWeightEl.addEventListener('change', () => redrawAllCanvasFeatureBoxes());
+    if (mainWindowNumbersShadowEl) mainWindowNumbersShadowEl.addEventListener('change', () => redrawAllCanvasFeatureBoxes());
+    if (mainWindowNumbersSizeEl) mainWindowNumbersSizeEl.addEventListener('change', () => redrawAllCanvasFeatureBoxes());
 
     // Wire box filter shader mode dropdown + apply persisted value
     const boxFilterEl = document.getElementById('mainWindowBoxFilter');
