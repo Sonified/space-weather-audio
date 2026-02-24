@@ -74,6 +74,9 @@ function getFeatureBoxColors() {
     };
 }
 
+// ── Close button (×) fade timing per box ──
+const closeButtonFadeState = new Map(); // key → { visible: bool, startTime: number }
+
 // ── Feature box drag/resize state ──
 // Tracks in-progress move or edge/corner resize of an existing feature box.
 // Set on mousedown over a box, cleared on mouseup.
@@ -979,6 +982,13 @@ function showFeaturePopup(box) {
                 <div class="feature-popup-settings-options" data-setting="feature_popup_canvas_click">
                     <button data-value="stay-open" class="active">Stay Open</button>
                     <button data-value="close">Close</button>
+                </div>
+            </div>
+            <div class="feature-popup-settings-row">
+                <span class="feature-popup-settings-label">New Feature Info</span>
+                <div class="feature-popup-settings-options" data-setting="feature_new_info">
+                    <button data-value="auto" class="active">Appear Automatically</button>
+                    <button data-value="click">Appear on Click</button>
                 </div>
             </div>
         </div>
@@ -2562,6 +2572,13 @@ export function setupSpectrogramSelection() {
         // Rebuild canvas boxes from feature data (ensures sync with array!)
         rebuildCanvasBoxesFromFeatures();
 
+        // Auto-show feature info popup for newly created feature
+        const autoShow = (localStorage.getItem('feature_new_info') || 'auto') === 'auto';
+        if (autoShow && completedSelectionBoxes.length > 0) {
+            const newBox = completedSelectionBoxes[completedSelectionBoxes.length - 1];
+            showFeaturePopup(newBox);
+        }
+
         // Reset coordinate state for next box
         spectrogramStartX = null;
         spectrogramStartY = null;
@@ -2738,12 +2755,32 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         const closeX = x + width - closeSize - closePad;
         const closeY = y + closePad;
         const numbersMode = document.getElementById('mainWindowNumbers')?.value || 'red';
-        // Only draw if box is large enough to fit the button
-        if (width > closeSize + closePad * 3 && height > closeSize + closePad * 3) {
-            // Draw × lines (no background circle)
+        // Only draw × when box is wide enough that it won't look like "6×"
+        // 250ms fade in/out based on crossing the size threshold
+        const xMinW = closeSize * 2.5 + closePad * 2;
+        const xMinH = closeSize + closePad * 3;
+        const shouldShowX = width > xMinW && height > xMinH;
+        const now = performance.now();
+        const fadeKey = `${box.regionIndex}-${box.featureIndex}-close`;
+        let fadeState = closeButtonFadeState.get(fadeKey);
+        if (!fadeState) {
+            fadeState = { visible: shouldShowX, transitionStart: now - 250 };
+            closeButtonFadeState.set(fadeKey, fadeState);
+        }
+        if (shouldShowX !== fadeState.visible) {
+            fadeState.visible = shouldShowX;
+            fadeState.transitionStart = now;
+        }
+        const elapsed = now - fadeState.transitionStart;
+        const fadeAlpha = shouldShowX
+            ? Math.min(1, elapsed / 500)      // fade in
+            : Math.max(0, 1 - elapsed / 150); // fade out
+        if (fadeAlpha > 0) {
             const inset = 2;
             const xColor = numbersMode === 'white' ? 'rgba(255, 255, 255, 0.8)'
                 : numbersMode === 'black' ? 'rgba(0, 0, 0, 0.85)' : fbc.stroke;
+            ctx.save();
+            ctx.globalAlpha = fadeAlpha;
             ctx.strokeStyle = xColor;
             ctx.lineWidth = 2;
             ctx.lineCap = 'round';
@@ -2753,7 +2790,7 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
             ctx.moveTo(closeX + closeSize - inset, closeY + inset);
             ctx.lineTo(closeX + inset, closeY + closeSize - inset);
             ctx.stroke();
-            ctx.lineCap = 'butt';
+            ctx.restore();
         }
 
         // Add flat sequential feature number label (gated by Numbers dropdown)
