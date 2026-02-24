@@ -207,7 +207,6 @@ function positionMeshWorldSpace(targetMesh, startX, endX) {
     const centerX = startX + width / 2;
     targetMesh.scale.set(width / 2, 0.5, 1);  // half-extents (geometry is 2 wide, 2 tall)
     targetMesh.position.set(centerX, 0.5, 0);  // center Y at 0.5 for [0,1] range
-    console.log(`📐 [MESH] pos: ${startX.toFixed(3)}s → ${endX.toFixed(3)}s (w: ${width.toFixed(3)}s, cx: ${centerX.toFixed(3)}s) | name: ${targetMesh.name || 'unnamed'}`);
 }
 
 // ─── Tile rendering (pyramid LOD system) ─────────────────────────────────────
@@ -309,8 +308,13 @@ async function initThreeScene() {
         return;
     }
 
-    const width = canvas.width;
-    const height = canvas.height;
+    // Use CSS display size, not HTML buffer attributes (which default to 1200x450)
+    const width = canvas.offsetWidth || canvas.width;
+    const height = canvas.offsetHeight || canvas.height;
+
+    // Sync the canvas buffer to match CSS display size
+    canvas.width = width;
+    canvas.height = height;
 
     // Reuse existing renderer if available, otherwise create new one
     if (!threeRenderer) {
@@ -1528,7 +1532,6 @@ export function updateSpectrogramViewportFromZoom() {
     const viewEndSec = (viewEndMs - dataStartMs) / 1000;
 
     // ─── World-space camera: just move the camera ───
-    console.log(`📷 [VIEWPORT] camera: ${viewStartSec.toFixed(3)}s → ${viewEndSec.toFixed(3)}s (dur: ${(viewEndSec-viewStartSec).toFixed(3)}s) | zoomInit: ${zoomState.isInitialized()} | canvas: ${threeRenderer.domElement.width}x${threeRenderer.domElement.height}`);
     camera.left = viewStartSec;
     camera.right = viewEndSec;
     camera.updateProjectionMatrix();
