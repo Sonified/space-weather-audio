@@ -266,7 +266,7 @@ export function drawDayMarkers() {
                 const x = Math.round(frac * cssW);
                 if (x < 0 || x > cssW) continue;
                 const label = `${MONTHS[midnight.getUTCMonth()]} ${midnight.getUTCDate()}`;
-                drawMarkerLine(wfCtx, x, cssH, label, 'bottom');
+                drawMarkerLine(wfCtx, x, cssH, label, 'top');
             }
             wfCtx.restore();
         }

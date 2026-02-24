@@ -1091,7 +1091,7 @@ function injectSettingsDrawer() {
             <div class="drawer-section-title">X-Axis Ticks</div>
             <div style="display: flex; flex-direction: column; gap: 10px; padding: 4px 0;">
                 <div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <span class="drawer-label" style="min-width: 56px;">Fade in:</span>
                         <select id="tickFadeInCurve" class="drawer-input" style="width: 100px; text-align: left;">
                             <option value="linear">Linear</option>
@@ -1108,7 +1108,7 @@ function injectSettingsDrawer() {
                     </div>
                 </div>
                 <div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <span class="drawer-label" style="min-width: 56px;">Fade out:</span>
                         <select id="tickFadeOutCurve" class="drawer-input" style="width: 100px; text-align: left;">
                             <option value="linear">Linear</option>
@@ -1130,7 +1130,7 @@ function injectSettingsDrawer() {
             <div class="drawer-section-title">Feature Box Playback</div>
             <div class="drawer-row">
                 <label for="featurePlaybackMode" class="drawer-label">At page edge</label>
-                <select id="featurePlaybackMode" class="drawer-input" style="width: 130px; text-align: left;">
+                <select id="featurePlaybackMode" class="drawer-input" style="width: 105px; text-align: left;">
                     <option value="continue" selected>No change</option>
                     <option value="stop">Stop audio</option>
                     <option value="clamp">Clamp view</option>
@@ -1513,8 +1513,7 @@ function initializeAdvancedControls() {
         if (!enabled) closeSettingsDrawer();
     }
     if (advancedCheckbox) {
-        const savedAdvanced = localStorage.getItem('emic_advanced_mode');
-        if (savedAdvanced !== null) advancedCheckbox.checked = savedAdvanced === 'true';
+        // Checkbox state already restored from localStorage early in initializeMainApp()
         applyAdvancedMode(advancedCheckbox.checked);
         advancedCheckbox.addEventListener('change', () => {
             localStorage.setItem('emic_advanced_mode', advancedCheckbox.checked);
@@ -1733,10 +1732,16 @@ function initializeAdvancedControls() {
     const viewingModeSelect = document.getElementById('viewingMode');
     const mainWindowModeSelect = document.getElementById('mainWindowMode');
 
+    let lastViewingMode = viewingModeSelect?.value || 'pageTurn';
+
     function applyViewingMode(mode, sourceSelect) {
-        if (mode === 'static' || mode === 'scroll' || mode === 'pageTurn') {
+        const wasWindowed = lastViewingMode === 'static' || lastViewingMode === 'scroll' || lastViewingMode === 'pageTurn';
+        const isWindowed = mode === 'static' || mode === 'scroll' || mode === 'pageTurn';
+        // Only reset viewport when entering windowed mode from Region Creation
+        if (isWindowed && !wasWindowed) {
             zoomState.setViewportToFull();
         }
+        lastViewingMode = mode;
         // Sync the other select
         if (viewingModeSelect && viewingModeSelect !== sourceSelect) viewingModeSelect.value = mode;
         if (mainWindowModeSelect && mainWindowModeSelect !== sourceSelect) mainWindowModeSelect.value = mode;
@@ -1785,8 +1790,7 @@ async function initializeEmicStudyMode() {
     const { setRegionCreationEnabled } = await import('./audio-state.js');
     setRegionCreationEnabled(true);
 
-    // Initialize shared advanced controls (gear popovers, drawer, etc.)
-    initializeAdvancedControls();
+    // Advanced controls already initialized early in initializeMainApp()
 
     const skipLogin = localStorage.getItem('emic_skip_login_welcome') === 'true';
 
@@ -1807,8 +1811,7 @@ async function initializeEmicStudyMode() {
  */
 async function initializeSolarPortalMode() {
 
-    // Initialize shared advanced controls (gear popovers, drawer, etc.)
-    initializeAdvancedControls();
+    // Advanced controls already initialized early in initializeMainApp()
 
     // Show Advanced checkbox only on localhost
     const advToggle = document.getElementById('advancedToggle');
@@ -2128,6 +2131,19 @@ async function initializeMainApp() {
     
     // Group UI setup
     console.groupCollapsed('🎨 [INIT] UI Setup');
+
+    // ─── Advanced mode: restore state + inject controls EARLY ──────────
+    // Advanced mode affects layout decisions throughout init (gear icons,
+    // hamburger, control visibility in windowed mode), so set it up before
+    // anything else reads it or renders dependent UI.
+    const advancedCheckboxEarly = document.getElementById('advancedMode');
+    if (advancedCheckboxEarly) {
+        const savedAdvanced = localStorage.getItem('emic_advanced_mode');
+        if (savedAdvanced !== null) advancedCheckboxEarly.checked = savedAdvanced === 'true';
+    }
+    if (CURRENT_MODE === AppMode.EMIC_STUDY || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
+        initializeAdvancedControls();
+    }
 
     // Don't hide Begin Analysis button initially - let updateCompleteButtonState() handle visibility
     // Tutorial will hide it when needed, returning visits will keep it visible

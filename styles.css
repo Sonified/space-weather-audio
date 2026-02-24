@@ -3345,7 +3345,7 @@ input[type="range"]:disabled {
     position: fixed;
     top: 0;
     left: 0;
-    width: 240px;
+    width: 260px;
     height: 100%;
     background: #1e1e1e;
     border-right: 1px solid #444;
@@ -3355,6 +3355,24 @@ input[type="range"]:disabled {
     overflow-y: auto;
     font-size: 13px;
     color: #ddd;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.settings-drawer:hover {
+    scrollbar-color: rgba(255,255,255,0.3) transparent;
+}
+.settings-drawer::-webkit-scrollbar {
+    width: 5px;
+}
+.settings-drawer::-webkit-scrollbar-track {
+    background: transparent;
+}
+.settings-drawer::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+    border-radius: 3px;
+}
+.settings-drawer:hover::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.3);
 }
 .settings-drawer.open { transform: translateX(0); }
 
@@ -3362,10 +3380,10 @@ input[type="range"]:disabled {
     transition: margin-left 0.25s ease;
 }
 body.drawer-open .container {
-    margin-left: 290px;
+    margin-left: 260px;
 }
 body.drawer-open .hamburger-btn {
-    left: 302px;
+    left: 260px;
 }
 
 .drawer-header {

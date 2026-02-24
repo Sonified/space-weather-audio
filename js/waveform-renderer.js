@@ -852,10 +852,10 @@ function drawMinimapFeatureBoxes(ctx, width, height) {
         if (w < 2) { x -= 1; w = 2; }
         if (h < 2) { const cy = y + h / 2; y = cy - 1; h = 2; }
 
-        ctx.strokeStyle = '#ff4444';
+        ctx.strokeStyle = 'rgba(200, 50, 50, 0.8)';
         ctx.lineWidth = 1.5;
         ctx.strokeRect(x, y, w, h);
-        ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
+        ctx.fillStyle = 'rgba(220, 60, 60, 0.15)';
         ctx.fillRect(x, y, w, h);
 
         // No number labels on minimap — too small to be useful

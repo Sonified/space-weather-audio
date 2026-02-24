@@ -52,7 +52,7 @@
         }
         
         /* EMIC: taller spectrogram, shorter minimap (14px transferred) */
-        #spectrogram { height: var(--spec-height, 554px); }
+        #spectrogram { height: var(--spec-height, clamp(250px, 62vh, 600px)); }
         #waveform { height: 121px; }
 
         /* EMIC Study specific styles */
@@ -731,12 +731,9 @@
             fitting = false;
         }
 
-        // Run as soon as DOM is ready (don't wait for load + 100ms delay)
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', fitSpectrogram);
-        } else {
-            fitSpectrogram();  // DOM already parsed (script is at bottom of body)
-        }
+        // Run immediately — this script is at the bottom of the body so all
+        // DOM elements above it exist. Running now prevents the first-paint jump.
+        fitSpectrogram();
         window.addEventListener('load', fitSpectrogram);  // re-fit after all resources
         window.addEventListener('resize', () => {
             if (rafPending || fitting) return;

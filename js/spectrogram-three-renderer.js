@@ -442,7 +442,16 @@ async function initThreeScene() {
         });
     }
 
-    console.log(`Three.js WebGPU spectrogram renderer initialized (${width}x${height})`);
+    // Sync canvas buffer to actual CSS display size immediately so first render is correct
+    const displayWidth = canvas.offsetWidth;
+    const displayHeight = canvas.offsetHeight;
+    if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+        canvas.width = displayWidth;
+        canvas.height = displayHeight;
+        threeRenderer.setSize(displayWidth, displayHeight, false);
+    }
+
+    console.log(`Three.js WebGPU spectrogram renderer initialized (${displayWidth}x${displayHeight})`);
 }
 
 function buildColormapTexture() {
