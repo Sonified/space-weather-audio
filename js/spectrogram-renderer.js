@@ -51,6 +51,34 @@ let spectrogramOverlayCtx = null;
 // NOTE: We rebuild this from actual feature data, so it stays in sync!
 let completedSelectionBoxes = [];
 
+// ── Feature box dimension helpers (single source of truth) ──
+// All feature box drawing, hit-testing, and coordinate conversion uses these
+// instead of reading canvas.width/height directly (which can be stale after resize).
+
+/**
+ * Get the device-pixel dimensions for feature box coordinate math.
+ * Uses the overlay canvas (sized from CSS truth via ResizeObserver).
+ * Falls back to the main canvas CSS dimensions if overlay isn't ready.
+ */
+function getOverlayDimensions() {
+    if (spectrogramOverlayCanvas && spectrogramOverlayCanvas.width > 0) {
+        return { width: spectrogramOverlayCanvas.width, height: spectrogramOverlayCanvas.height };
+    }
+    const c = document.getElementById('spectrogram');
+    return { width: c?.offsetWidth || 0, height: c?.offsetHeight || 0 };
+}
+
+/**
+ * Get scale factors for converting CSS pixels → device pixels.
+ * Uses overlay dimensions (always current) divided by CSS layout size.
+ */
+function getCSSToDeviceScale() {
+    const c = document.getElementById('spectrogram');
+    if (!c || !c.offsetWidth || !c.offsetHeight) return { x: 1, y: 1 };
+    const dim = getOverlayDimensions();
+    return { x: dim.width / c.offsetWidth, y: dim.height / c.offsetHeight };
+}
+
 // ── Feature box colors (colormap-aware) ──
 // Colormaps with hot reds/oranges (like inferno) need a shifted hue to stay visible
 function getFeatureBoxColors() {
@@ -276,83 +304,40 @@ function hideStuckStateMessage() {
  * Returns {regionIndex, featureIndex} if clicked, null otherwise
  */
 function getClickedBox(x, y) {
-    if (!State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) {
+    if (!spectrogramOverlayCanvas || !State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) {
         return null;
     }
-    
+
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return null;
-    
-    // Convert click coordinates to device pixels
-    const scaleX = canvas.width / canvas.offsetWidth;
-    const scaleY = canvas.height / canvas.offsetHeight;
-    const x_device = x * scaleX;
-    const y_device = y * scaleY;
-    
-    // Check each box
-    for (const box of completedSelectionBoxes) {
-        // Convert box coordinates to device pixels (same logic as drawSavedBox)
-        // 🔥 FIX: Use same source as drawSavedBox for consistent Y calculation
-        const originalNyquist = State.originalDataFrequencyRange?.max || 50;
-        const playbackRate = State.currentPlaybackRate || 1.0;
-        
-        // Get Y positions
-        const scaleTransition = getScaleTransitionState();
-        let lowFreqY_device, highFreqY_device;
-        
-        if (scaleTransition.inProgress && scaleTransition.oldScaleType) {
-            const oldLowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
-            const newLowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-            const oldHighY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
-            const newHighY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-            
-            lowFreqY_device = oldLowY + (newLowY - oldLowY) * scaleTransition.interpolationFactor;
-            highFreqY_device = oldHighY + (newHighY - oldHighY) * scaleTransition.interpolationFactor;
-        } else {
-            lowFreqY_device = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-            highFreqY_device = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-        }
-        
-        // Get X positions
-        const interpolatedRange = getInterpolatedTimeRange();
-        const displayStartMs = interpolatedRange.startTime.getTime();
-        const displayEndMs = interpolatedRange.endTime.getTime();
-        const displaySpanMs = displayEndMs - displayStartMs;
-        
-        const startTimestamp = new Date(box.startTime);
-        const endTimestamp = new Date(box.endTime);
-        const startMs = startTimestamp.getTime();
-        const endMs = endTimestamp.getTime();
-        
-        const startProgress = (startMs - displayStartMs) / displaySpanMs;
-        const endProgress = (endMs - displayStartMs) / displaySpanMs;
-        
-        const startX_device = startProgress * canvas.width;
-        const endX_device = endProgress * canvas.width;
-        
-        // Check if click is within box bounds
-        const boxX = Math.min(startX_device, endX_device);
-        const boxY = Math.min(highFreqY_device, lowFreqY_device);
-        const boxWidth = Math.abs(endX_device - startX_device);
-        const boxHeight = Math.abs(lowFreqY_device - highFreqY_device);
-        
-        if (x_device >= boxX && x_device <= boxX + boxWidth &&
-            y_device >= boxY && y_device <= boxY + boxHeight) {
-            // Convert device-px box bounds back to CSS-px for screen positioning
+
+    // Convert click coordinates (CSS px) to overlay device pixels
+    const scale = getCSSToDeviceScale();
+    const x_device = x * scale.x;
+    const y_device = y * scale.y;
+
+    // Check each box using getBoxDeviceRect (single source of truth)
+    for (let i = 0; i < completedSelectionBoxes.length; i++) {
+        const box = completedSelectionBoxes[i];
+        const rect = getBoxDeviceRect(box);
+        if (!rect) continue;
+
+        if (x_device >= rect.x && x_device <= rect.x + rect.w &&
+            y_device >= rect.y && y_device <= rect.y + rect.h) {
             const canvasRect = canvas.getBoundingClientRect();
             return {
                 regionIndex: box.regionIndex,
                 featureIndex: box.featureIndex,
                 screenRect: {
-                    left:   canvasRect.left + boxX / scaleX,
-                    right:  canvasRect.left + (boxX + boxWidth) / scaleX,
-                    top:    canvasRect.top  + boxY / scaleY,
-                    bottom: canvasRect.top  + (boxY + boxHeight) / scaleY
+                    left:   canvasRect.left + rect.x / scale.x,
+                    right:  canvasRect.left + (rect.x + rect.w) / scale.x,
+                    top:    canvasRect.top  + rect.y / scale.y,
+                    bottom: canvasRect.top  + (rect.y + rect.h) / scale.y
                 }
             };
         }
     }
-    
+
     return null;
 }
 
@@ -361,53 +346,21 @@ function getClickedBox(x, y) {
  * Returns { regionIndex, featureIndex } or null.
  */
 function getClickedCloseButton(x, y) {
-    if (!State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) return null;
+    if (!spectrogramOverlayCanvas || !State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) return null;
 
-    const canvas = document.getElementById('spectrogram');
-    if (!canvas) return null;
-
-    const scaleX = canvas.width / canvas.offsetWidth;
-    const scaleY = canvas.height / canvas.offsetHeight;
-    const x_device = x * scaleX;
-    const y_device = y * scaleY;
+    const scale = getCSSToDeviceScale();
+    const x_device = x * scale.x;
+    const y_device = y * scale.y;
 
     const closeSize = 12;
     const closePad = 6;
     const hitRadius = closeSize / 2 + 4; // generous hit target
 
     for (const box of completedSelectionBoxes) {
-        const originalNyquist = State.originalDataFrequencyRange?.max || 50;
-        const playbackRate = State.currentPlaybackRate || 1.0;
+        const rect = getBoxDeviceRect(box);
+        if (!rect) continue;
 
-        const scaleTransition = getScaleTransitionState();
-        let lowFreqY_device, highFreqY_device;
-
-        if (scaleTransition.inProgress && scaleTransition.oldScaleType) {
-            const oldLowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
-            const newLowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-            const oldHighY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
-            const newHighY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-            lowFreqY_device = oldLowY + (newLowY - oldLowY) * scaleTransition.interpolationFactor;
-            highFreqY_device = oldHighY + (newHighY - oldHighY) * scaleTransition.interpolationFactor;
-        } else {
-            lowFreqY_device = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-            highFreqY_device = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-        }
-
-        const interpolatedRange = getInterpolatedTimeRange();
-        const displayStartMs = interpolatedRange.startTime.getTime();
-        const displayEndMs = interpolatedRange.endTime.getTime();
-        const displaySpanMs = displayEndMs - displayStartMs;
-
-        const startMs = new Date(box.startTime).getTime();
-        const endMs = new Date(box.endTime).getTime();
-        const startX_device = ((startMs - displayStartMs) / displaySpanMs) * canvas.width;
-        const endX_device = ((endMs - displayStartMs) / displaySpanMs) * canvas.width;
-
-        const bx = Math.min(startX_device, endX_device);
-        const by = Math.min(highFreqY_device, lowFreqY_device);
-        const bw = Math.abs(endX_device - startX_device);
-        const bh = Math.abs(lowFreqY_device - highFreqY_device);
+        const { x: bx, y: by, w: bw, h: bh } = rect;
 
         // Skip if box too small for close button
         if (bw <= closeSize + closePad * 3 || bh <= closeSize + closePad * 3) continue;
@@ -416,9 +369,9 @@ function getClickedCloseButton(x, y) {
         const cx = bx + bw - closeSize / 2 - closePad;
         const cy = by + closePad + closeSize / 2;
 
-        const dx = x_device - cx;
-        const dy = y_device - cy;
-        if (dx * dx + dy * dy <= hitRadius * hitRadius) {
+        const ddx = x_device - cx;
+        const ddy = y_device - cy;
+        if (ddx * ddx + ddy * ddy <= hitRadius * hitRadius) {
             return { regionIndex: box.regionIndex, featureIndex: box.featureIndex };
         }
     }
@@ -431,8 +384,11 @@ function getClickedCloseButton(x, y) {
  * Returns { x, y, w, h } in device pixels, or null if state not ready.
  */
 function getBoxDeviceRect(box) {
-    const canvas = document.getElementById('spectrogram');
-    if (!canvas || !State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) return null;
+    if (!spectrogramOverlayCanvas || !State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) return null;
+
+    // Use overlay canvas dimensions — always current (tracks CSS layout)
+    const drawWidth = spectrogramOverlayCanvas.width;
+    const drawHeight = spectrogramOverlayCanvas.height;
 
     const originalNyquist = State.originalDataFrequencyRange?.max || 50;
     const playbackRate = State.currentPlaybackRate || 1.0;
@@ -440,15 +396,15 @@ function getBoxDeviceRect(box) {
     let lowY, highY;
 
     if (scaleTransition.inProgress && scaleTransition.oldScaleType) {
-        const oL = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
-        const nL = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-        const oH = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
-        const nH = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        const oL = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, drawHeight, scaleTransition.oldScaleType, playbackRate);
+        const nL = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, drawHeight, State.frequencyScale, playbackRate);
+        const oH = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, drawHeight, scaleTransition.oldScaleType, playbackRate);
+        const nH = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, drawHeight, State.frequencyScale, playbackRate);
         lowY = oL + (nL - oL) * scaleTransition.interpolationFactor;
         highY = oH + (nH - oH) * scaleTransition.interpolationFactor;
     } else {
-        lowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-        highY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        lowY = getYPositionForFrequencyScaled(box.lowFreq, originalNyquist, drawHeight, State.frequencyScale, playbackRate);
+        highY = getYPositionForFrequencyScaled(box.highFreq, originalNyquist, drawHeight, State.frequencyScale, playbackRate);
     }
 
     const range = getInterpolatedTimeRange();
@@ -456,16 +412,16 @@ function getBoxDeviceRect(box) {
     const dSpanMs = range.endTime.getTime() - dStartMs;
     const sMs = new Date(box.startTime).getTime();
     const eMs = new Date(box.endTime).getTime();
-    const sX = ((sMs - dStartMs) / dSpanMs) * canvas.width;
-    const eX = ((eMs - dStartMs) / dSpanMs) * canvas.width;
+    const sX = ((sMs - dStartMs) / dSpanMs) * drawWidth;
+    const eX = ((eMs - dStartMs) / dSpanMs) * drawWidth;
 
     return {
         x: Math.min(sX, eX),
         y: Math.min(highY, lowY),
         w: Math.abs(eX - sX),
         h: Math.abs(lowY - highY),
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height
+        canvasWidth: drawWidth,
+        canvasHeight: drawHeight
     };
 }
 
@@ -477,12 +433,11 @@ function getBoxDeviceRect(box) {
  */
 function getBoxInteraction(cssX, cssY) {
     const canvas = document.getElementById('spectrogram');
-    if (!canvas) return null;
+    if (!canvas || !spectrogramOverlayCanvas) return null;
 
-    const scaleX = canvas.width / canvas.offsetWidth;
-    const scaleY = canvas.height / canvas.offsetHeight;
-    const dx = cssX * scaleX;
-    const dy = cssY * scaleY;
+    const scale = getCSSToDeviceScale();
+    const dx = cssX * scale.x;
+    const dy = cssY * scale.y;
 
     const edgeTol = 4;
     const cornerTol = 5;
@@ -492,10 +447,8 @@ function getBoxInteraction(cssX, cssY) {
         if (!rect) continue;
 
         const { x, y, w, h } = rect;
-        // Is mouse within the box (with edge tolerance extending outward)?
         if (dx < x - edgeTol || dx > x + w + edgeTol || dy < y - edgeTol || dy > y + h + edgeTol) continue;
 
-        // Check corners first (higher priority)
         const nearLeft = Math.abs(dx - x) <= cornerTol;
         const nearRight = Math.abs(dx - (x + w)) <= cornerTol;
         const nearTop = Math.abs(dy - y) <= cornerTol;
@@ -518,10 +471,10 @@ function getBoxInteraction(cssX, cssY) {
             boxIndex: i,
             mode,
             screenRect: {
-                left: canvasRect.left + x / scaleX,
-                right: canvasRect.left + (x + w) / scaleX,
-                top: canvasRect.top + y / scaleY,
-                bottom: canvasRect.top + (y + h) / scaleY
+                left: canvasRect.left + x / scale.x,
+                right: canvasRect.left + (x + w) / scale.x,
+                top: canvasRect.top + y / scale.y,
+                bottom: canvasRect.top + (y + h) / scale.y
             }
         };
     }
@@ -670,21 +623,21 @@ function handleBoxDragMove(e, canvas) {
         if (boxDragWasDrag) {
             canvas.style.cursor = boxDragState.mode === 'move' ? 'grabbing' : getCursorForMode(boxDragState.mode);
 
-            const scaleX = canvas.width / canvas.offsetWidth;
-            const scaleY = canvas.height / canvas.offsetHeight;
-            const startDevX = boxDragState.startMouseX * scaleX;
-            const startDevY = boxDragState.startMouseY * scaleY;
-            const curDevX = mouseX * scaleX;
-            const curDevY = mouseY * scaleY;
+            const scale = getCSSToDeviceScale();
+            const dim = getOverlayDimensions();
+            const startDevX = boxDragState.startMouseX * scale.x;
+            const startDevY = boxDragState.startMouseY * scale.y;
+            const curDevX = mouseX * scale.x;
+            const curDevY = mouseY * scale.y;
 
-            const startTsMs = new Date(deviceXToTimestamp(startDevX, canvas.width)).getTime();
-            const curTsMs = new Date(deviceXToTimestamp(curDevX, canvas.width)).getTime();
+            const startTsMs = new Date(deviceXToTimestamp(startDevX, dim.width)).getTime();
+            const curTsMs = new Date(deviceXToTimestamp(curDevX, dim.width)).getTime();
             const dtMs = curTsMs - startTsMs;
 
             const pixelDeltaY = curDevY - startDevY;
             const origNyquist = State.originalDataFrequencyRange?.max || 50;
             const pr = State.currentPlaybackRate || 1.0;
-            const freqToPixY = (f) => getYPositionForFrequencyScaled(f, origNyquist, canvas.height, State.frequencyScale, pr);
+            const freqToPixY = (f) => getYPositionForFrequencyScaled(f, origNyquist, dim.height, State.frequencyScale, pr);
 
             const orig = boxDragState.origBox;
             const box = completedSelectionBoxes[boxDragState.boxIndex];
@@ -693,17 +646,17 @@ function handleBoxDragMove(e, canvas) {
             if (mode === 'move') {
                 box.startTime = new Date(new Date(orig.startTime).getTime() + dtMs).toISOString();
                 box.endTime = new Date(new Date(orig.endTime).getTime() + dtMs).toISOString();
-                box.lowFreq = deviceYToFrequency(freqToPixY(orig.lowFreq) + pixelDeltaY, canvas.height);
-                box.highFreq = deviceYToFrequency(freqToPixY(orig.highFreq) + pixelDeltaY, canvas.height);
+                box.lowFreq = deviceYToFrequency(freqToPixY(orig.lowFreq) + pixelDeltaY, dim.height);
+                box.highFreq = deviceYToFrequency(freqToPixY(orig.highFreq) + pixelDeltaY, dim.height);
             } else {
                 if (mode === 'edge-left' || mode === 'corner-tl' || mode === 'corner-bl')
                     box.startTime = new Date(new Date(orig.startTime).getTime() + dtMs).toISOString();
                 if (mode === 'edge-right' || mode === 'corner-tr' || mode === 'corner-br')
                     box.endTime = new Date(new Date(orig.endTime).getTime() + dtMs).toISOString();
                 if (mode === 'edge-top' || mode === 'corner-tl' || mode === 'corner-tr')
-                    box.highFreq = deviceYToFrequency(freqToPixY(orig.highFreq) + pixelDeltaY, canvas.height);
+                    box.highFreq = deviceYToFrequency(freqToPixY(orig.highFreq) + pixelDeltaY, dim.height);
                 if (mode === 'edge-bottom' || mode === 'corner-bl' || mode === 'corner-br')
-                    box.lowFreq = deviceYToFrequency(freqToPixY(orig.lowFreq) + pixelDeltaY, canvas.height);
+                    box.lowFreq = deviceYToFrequency(freqToPixY(orig.lowFreq) + pixelDeltaY, dim.height);
             }
 
             redrawCanvasBoxes();
@@ -945,13 +898,12 @@ function getScreenRectForBox(box) {
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return null;
     const canvasRect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / canvas.offsetWidth;
-    const scaleY = canvas.height / canvas.offsetHeight;
+    const scale = getCSSToDeviceScale();
     return {
-        left:   canvasRect.left + rect.x / scaleX,
-        right:  canvasRect.left + (rect.x + rect.w) / scaleX,
-        top:    canvasRect.top  + rect.y / scaleY,
-        bottom: canvasRect.top  + (rect.y + rect.h) / scaleY
+        left:   canvasRect.left + rect.x / scale.x,
+        right:  canvasRect.left + (rect.x + rect.w) / scale.x,
+        top:    canvasRect.top  + rect.y / scale.y,
+        bottom: canvasRect.top  + (rect.y + rect.h) / scale.y
     };
 }
 
@@ -1354,10 +1306,9 @@ function showFeaturePopup(box) {
             const canvas = document.getElementById('spectrogram');
             if (canvas && canvas.contains(e.target)) {
                 const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
-                const clickX = (e.clientX - rect.left) * scaleX;
-                const clickY = (e.clientY - rect.top) * scaleY;
+                // getClickedBox expects CSS pixels (it scales internally)
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
                 if (getClickedBox(clickX, clickY)) return;
             }
             // "Stay open" mode: only close via X button or Save
@@ -2101,14 +2052,13 @@ export function setupSpectrogramSelection() {
     spectrogramOverlayCanvas.style.background = 'transparent';  // See through to spectrogram
     
     // Match main canvas size and position EXACTLY
-    const canvasRect = canvas.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
-    spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
+    // Use offsetLeft/offsetTop (relative to offset parent) — robust across layout changes
+    spectrogramOverlayCanvas.style.left = (canvas.offsetLeft + canvas.clientLeft) + 'px';
+    spectrogramOverlayCanvas.style.top = (canvas.offsetTop + canvas.clientTop) + 'px';
     
-    // Use SAME dimensions as main canvas
-    spectrogramOverlayCanvas.width = canvas.width;
-    spectrogramOverlayCanvas.height = canvas.height;
+    // Size overlay from CSS truth (offsetWidth/offsetHeight) — always current
+    spectrogramOverlayCanvas.width = canvas.offsetWidth;
+    spectrogramOverlayCanvas.height = canvas.offsetHeight;
     spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
     spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
     
@@ -2120,17 +2070,19 @@ export function setupSpectrogramSelection() {
     // This ResizeObserver keeps overlay aligned with main canvas (like playhead overlay does)
     spectrogramResizeObserver = new ResizeObserver(() => {
         if (spectrogramOverlayCanvas && canvas) {
-            const canvasRect = canvas.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
-            spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
-            // Only resize if dimensions changed (resizing clears the canvas, causing flicker)
-            if (spectrogramOverlayCanvas.width !== canvas.width || spectrogramOverlayCanvas.height !== canvas.height) {
-                spectrogramOverlayCanvas.width = canvas.width;
-                spectrogramOverlayCanvas.height = canvas.height;
+            spectrogramOverlayCanvas.style.left = (canvas.offsetLeft + canvas.clientLeft) + 'px';
+            spectrogramOverlayCanvas.style.top = (canvas.offsetTop + canvas.clientTop) + 'px';
+            // Size overlay buffer from CSS layout dimensions (offsetWidth/offsetHeight).
+            // canvas.width/height may be stale if Three.js resizeRendererToDisplaySize
+            // hasn't run yet — offsetWidth/offsetHeight is the CSS truth.
+            const w = canvas.offsetWidth;
+            const h = canvas.offsetHeight;
+            if (spectrogramOverlayCanvas.width !== w || spectrogramOverlayCanvas.height !== h) {
+                spectrogramOverlayCanvas.width = w;
+                spectrogramOverlayCanvas.height = h;
             }
-            spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
-            spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
+            spectrogramOverlayCanvas.style.width = w + 'px';
+            spectrogramOverlayCanvas.style.height = h + 'px';
 
             // Redraw boxes after repositioning to ensure they're still visible
             if (spectrogramOverlayCtx) {
@@ -2143,17 +2095,16 @@ export function setupSpectrogramSelection() {
     // Also reposition on visibility change (catches sleep/wake)
     spectrogramRepositionOnVisibility = () => {
         if (document.visibilityState === 'visible' && spectrogramOverlayCanvas && canvas) {
-            const canvasRect = canvas.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
-            spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
-            // Only resize if dimensions changed (resizing clears the canvas, causing flicker)
-            if (spectrogramOverlayCanvas.width !== canvas.width || spectrogramOverlayCanvas.height !== canvas.height) {
-                spectrogramOverlayCanvas.width = canvas.width;
-                spectrogramOverlayCanvas.height = canvas.height;
+            spectrogramOverlayCanvas.style.left = (canvas.offsetLeft + canvas.clientLeft) + 'px';
+            spectrogramOverlayCanvas.style.top = (canvas.offsetTop + canvas.clientTop) + 'px';
+            const w = canvas.offsetWidth;
+            const h = canvas.offsetHeight;
+            if (spectrogramOverlayCanvas.width !== w || spectrogramOverlayCanvas.height !== h) {
+                spectrogramOverlayCanvas.width = w;
+                spectrogramOverlayCanvas.height = h;
             }
-            spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
-            spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
+            spectrogramOverlayCanvas.style.width = w + 'px';
+            spectrogramOverlayCanvas.style.height = h + 'px';
 
             // Redraw boxes after repositioning
             if (spectrogramOverlayCtx) {
@@ -2371,18 +2322,16 @@ export function setupSpectrogramSelection() {
                     spectrogramOverlayCanvas.style.zIndex = '20';  // Above spectrogram glow and other panels
                     spectrogramOverlayCanvas.style.background = 'transparent';
                     
-                    const canvasRect = canvas.getBoundingClientRect();
-                    const containerRect = container.getBoundingClientRect();
-                    spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
-                    spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
-                    spectrogramOverlayCanvas.width = canvas.width;
-                    spectrogramOverlayCanvas.height = canvas.height;
+                    spectrogramOverlayCanvas.style.left = (canvas.offsetLeft + canvas.clientLeft) + 'px';
+                    spectrogramOverlayCanvas.style.top = (canvas.offsetTop + canvas.clientTop) + 'px';
+                    spectrogramOverlayCanvas.width = canvas.offsetWidth;
+                    spectrogramOverlayCanvas.height = canvas.offsetHeight;
                     spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
                     spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
-                    
+
                     container.appendChild(spectrogramOverlayCanvas);
                     spectrogramOverlayCtx = spectrogramOverlayCanvas.getContext('2d');
-                    
+
                     if (spectrogramOverlayCtx) {
                         console.log('✅ Overlay canvas reinitialized successfully');
                         hideStuckStateMessage();
@@ -2422,18 +2371,16 @@ export function setupSpectrogramSelection() {
                 spectrogramOverlayCanvas.style.zIndex = '20';
                 spectrogramOverlayCanvas.style.background = 'transparent';
                 
-                const canvasRect = canvas.getBoundingClientRect();
-                const containerRect = container.getBoundingClientRect();
-                spectrogramOverlayCanvas.style.left = (canvasRect.left - containerRect.left) + 'px';
-                spectrogramOverlayCanvas.style.top = (canvasRect.top - containerRect.top) + 'px';
-                spectrogramOverlayCanvas.width = canvas.width;
-                spectrogramOverlayCanvas.height = canvas.height;
+                spectrogramOverlayCanvas.style.left = (canvas.offsetLeft + canvas.clientLeft) + 'px';
+                spectrogramOverlayCanvas.style.top = (canvas.offsetTop + canvas.clientTop) + 'px';
+                spectrogramOverlayCanvas.width = canvas.offsetWidth;
+                spectrogramOverlayCanvas.height = canvas.offsetHeight;
                 spectrogramOverlayCanvas.style.width = canvas.offsetWidth + 'px';
                 spectrogramOverlayCanvas.style.height = canvas.offsetHeight + 'px';
-                
+
                 container.appendChild(spectrogramOverlayCanvas);
                 spectrogramOverlayCtx = spectrogramOverlayCanvas.getContext('2d');
-                
+
                 if (spectrogramOverlayCtx) {
                     console.log('✅ Emergency overlay canvas reinitialization successful!');
                     hideStuckStateMessage();
@@ -2660,12 +2607,12 @@ export function setupSpectrogramSelection() {
         const endX_css = spectrogramCurrentX;
 
         // Convert CSS pixels to DEVICE pixels (same coordinate system as axis!)
-        const scaleX = canvas.width / canvas.offsetWidth;
-        const scaleY = canvas.height / canvas.offsetHeight;
-        const startY_device = spectrogramStartY * scaleY;
-        const endY_device = endY_css * scaleY;
-        const startX_device = spectrogramStartX * scaleX;
-        const endX_device = endX_css * scaleX;
+        const scale = getCSSToDeviceScale();
+        const dim = getOverlayDimensions();
+        const startY_device = spectrogramStartY * scale.y;
+        const endY_device = endY_css * scale.y;
+        const startX_device = spectrogramStartX * scale.x;
+        const endX_device = endX_css * scale.x;
 
         // Stop accepting new mouse moves first
         spectrogramSelectionActive = false;
@@ -2673,9 +2620,9 @@ export function setupSpectrogramSelection() {
         // Call the handler (this creates the data for the feature and returns region/feature indices)
         const result = await handleSpectrogramSelection(
             startY_device, endY_device,
-            canvas.height,  // ← DEVICE PIXELS (like axis)!
+            dim.height,
             startX_device, endX_device,
-            canvas.width    // ← DEVICE PIXELS!
+            dim.width
         );
 
         // Rebuild canvas boxes from feature data (ensures sync with array!)
@@ -2767,74 +2714,74 @@ export function cancelSpectrogramSelection() {
  * @param {Array} placedAnnotations - Array of already-placed annotations for collision detection
  */
 function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations = []) {
-    const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
-    
+    if (!spectrogramOverlayCanvas) return;
+
     // Need zoom state and data times
     if (!State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) {
         return;
     }
-    
+
+    // Use overlay canvas dimensions — these track CSS layout (offsetWidth/offsetHeight)
+    // and are always current, even when canvas.width/height buffer lags behind.
+    const drawWidth = spectrogramOverlayCanvas.width;
+    const drawHeight = spectrogramOverlayCanvas.height;
+
     // Convert eternal coordinates (time/frequency) to pixel positions
     const lowFreq = box.lowFreq;
     const highFreq = box.highFreq;
-    
+
     // Use same source as Y-axis for consistency
     const originalNyquist = State.originalDataFrequencyRange?.max || 50;
-    
+
     // Get current playback rate (CRITICAL for stretching!)
     const playbackRate = State.currentPlaybackRate || 1.0;
-    
-    // Convert frequencies to Y positions (DEVICE PIXELS) - WITH SCALE INTERPOLATION! 🎯
-    // Use exact same interpolation logic as Y-axis ticks during scale transitions
+
+    // Convert frequencies to Y positions (DEVICE PIXELS) - WITH SCALE INTERPOLATION!
     const scaleTransition = getScaleTransitionState();
-    
+
     let lowFreqY_device, highFreqY_device;
-    
+
     if (scaleTransition.inProgress && scaleTransition.oldScaleType) {
-        // Interpolate between old and new scale positions (like axis ticks!)
-        const oldLowY = getYPositionForFrequencyScaled(lowFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
-        const newLowY = getYPositionForFrequencyScaled(lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-        const oldHighY = getYPositionForFrequencyScaled(highFreq, originalNyquist, canvas.height, scaleTransition.oldScaleType, playbackRate);
-        const newHighY = getYPositionForFrequencyScaled(highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-        
+        const oldLowY = getYPositionForFrequencyScaled(lowFreq, originalNyquist, drawHeight, scaleTransition.oldScaleType, playbackRate);
+        const newLowY = getYPositionForFrequencyScaled(lowFreq, originalNyquist, drawHeight, State.frequencyScale, playbackRate);
+        const oldHighY = getYPositionForFrequencyScaled(highFreq, originalNyquist, drawHeight, scaleTransition.oldScaleType, playbackRate);
+        const newHighY = getYPositionForFrequencyScaled(highFreq, originalNyquist, drawHeight, State.frequencyScale, playbackRate);
+
         lowFreqY_device = oldLowY + (newLowY - oldLowY) * scaleTransition.interpolationFactor;
         highFreqY_device = oldHighY + (newHighY - oldHighY) * scaleTransition.interpolationFactor;
     } else {
-        // No transition - use current scale directly
-        lowFreqY_device = getYPositionForFrequencyScaled(lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
-        highFreqY_device = getYPositionForFrequencyScaled(highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
+        lowFreqY_device = getYPositionForFrequencyScaled(lowFreq, originalNyquist, drawHeight, State.frequencyScale, playbackRate);
+        highFreqY_device = getYPositionForFrequencyScaled(highFreq, originalNyquist, drawHeight, State.frequencyScale, playbackRate);
     }
-    
-    // Convert times to X positions (DEVICE PIXELS) - EXACT COPY of orange box logic!
+
+    // Convert times to X positions (DEVICE PIXELS)
     const startTimestamp = new Date(box.startTime);
     const endTimestamp = new Date(box.endTime);
-    
+
     // Use EXACT same interpolated time range as spectrogram elastic stretching!
     const interpolatedRange = getInterpolatedTimeRange();
     const displayStartMs = interpolatedRange.startTime.getTime();
     const displayEndMs = interpolatedRange.endTime.getTime();
     const displaySpanMs = displayEndMs - displayStartMs;
-    
+
     const startMs = startTimestamp.getTime();
     const endMs = endTimestamp.getTime();
-    
+
     const startProgress = (startMs - displayStartMs) / displaySpanMs;
     const endProgress = (endMs - displayStartMs) / displaySpanMs;
-    
-    // Convert to DEVICE pixels (orange boxes use CSS pixels with canvas.offsetWidth)
-    const startX_device = startProgress * canvas.width;
-    const endX_device = endProgress * canvas.width;
-    
+
+    const startX_device = startProgress * drawWidth;
+    const endX_device = endProgress * drawWidth;
+
     // Check if completely off-screen horizontally (don't draw)
-    if (endX_device < 0 || startX_device > canvas.width) {
+    if (endX_device < 0 || startX_device > drawWidth) {
         return;
     }
-    
+
     // Check if completely off-screen vertically (don't draw)
     const topY = Math.min(highFreqY_device, lowFreqY_device);
     const bottomY = Math.max(highFreqY_device, lowFreqY_device);
-    if (bottomY < 0 || topY > canvas.height) {
+    if (bottomY < 0 || topY > drawHeight) {
         return;
     }
     
@@ -3094,9 +3041,13 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         }
 
         if (opacity > 0) {
-            const scaleX = canvas.offsetWidth / canvas.width;
-            const scaleY = canvas.offsetHeight / canvas.height;
-            const xStretchFactor = scaleX / scaleY;
+            // Inverse scale: device→CSS (for text stretch correction)
+            const dim = getOverlayDimensions();
+            const specCanvas = document.getElementById('spectrogram');
+            const cssW = specCanvas?.offsetWidth || dim.width;
+            const cssH = specCanvas?.offsetHeight || dim.height;
+            const xStretchFactor = (dim.width > 0 && dim.height > 0)
+                ? (cssW / dim.width) / (cssH / dim.height) : 1;
 
             ctx.save();
 
@@ -3135,8 +3086,8 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
                 textX = 10 + halfWidth;
             }
             // Check right edge
-            if (textX + halfWidth > canvas.width - 10) {
-                textX = canvas.width - 10 - halfWidth;
+            if (textX + halfWidth > dim.width - 10) {
+                textX = dim.width - 10 - halfWidth;
             }
 
             // Collision detection: check against already-placed annotations
@@ -3252,16 +3203,12 @@ export function drawSpectrogramSelectionBox(ctx, canvasWidth, canvasHeight) {
     }
     
     // Convert CSS pixels to device pixels for rendering
-    const canvas = document.getElementById('spectrogram');
-    if (!canvas) return;
-    
-    const scaleX = canvas.width / canvas.offsetWidth;
-    const scaleY = canvas.height / canvas.offsetHeight;
-    
-    const startX_device = spectrogramStartX * scaleX;
-    const startY_device = spectrogramStartY * scaleY;
-    const currentX_device = spectrogramCurrentX * scaleX;
-    const currentY_device = spectrogramCurrentY * scaleY;
+    const scale = getCSSToDeviceScale();
+
+    const startX_device = spectrogramStartX * scale.x;
+    const startY_device = spectrogramStartY * scale.y;
+    const currentX_device = spectrogramCurrentX * scale.x;
+    const currentY_device = spectrogramCurrentY * scale.y;
     
     // Calculate normalized rectangle
     const x = Math.min(startX_device, currentX_device);

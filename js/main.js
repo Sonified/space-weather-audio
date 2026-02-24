@@ -11,7 +11,7 @@ import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWavefor
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower } from './spectrogram-three-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
-import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal } from './ui-controls.js';
+import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal, openParticipantInfoModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
@@ -1661,6 +1661,8 @@ function initializeAdvancedControls() {
             localStorage.setItem('emic_display_mode', mode);
             applyDisplayMode(mode);
             updateRegionsPanelVisibility();
+            // Reposition overlay + redraw feature boxes after layout settles
+            requestAnimationFrame(() => redrawAllCanvasFeatureBoxes());
         });
     } else if (advancedCheckbox) {
         // Fallback for pages without displayMode dropdown (e.g. index.html)
@@ -3481,8 +3483,8 @@ async function initializeMainApp() {
         participantIdText.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('👤 Participant ID display clicked - opening modal');
-            openParticipantModal();
+            console.log('👤 Participant ID display clicked - opening info modal');
+            openParticipantInfoModal();
         });
         // Add hover effect - keep dark background theme with reddish tint
         participantIdText.addEventListener('mouseenter', function() {
