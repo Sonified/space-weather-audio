@@ -1092,6 +1092,16 @@ function injectSettingsDrawer() {
             </div>
         </div>
         <div class="drawer-section">
+            <div class="drawer-section-title">Render Order</div>
+            <div class="drawer-row">
+                <label for="renderOrder" class="drawer-label">Pipeline</label>
+                <select id="renderOrder" class="drawer-input" style="width: 120px; text-align: left;">
+                    <option value="all-then-pyramid" selected>All → Pyramid</option>
+                    <option value="pyramid-only">Pyramid Only</option>
+                </select>
+            </div>
+        </div>
+        <div class="drawer-section">
             <div class="drawer-section-title">Arrow Key Navigation</div>
             <div class="drawer-row">
                 <label for="arrowZoomStep" class="drawer-label">Zoom Step</label>
@@ -1462,6 +1472,7 @@ function initializeAdvancedControls() {
         { id: 'mainWindowZoomOut', key: 'emic_zoom_out_mode', type: 'select' },
         { id: 'levelTransition', key: 'emic_level_transition', type: 'select' },
         { id: 'crossfadePower', key: 'emic_crossfade_power', type: 'range' },
+        { id: 'renderOrder', key: 'emic_render_order', type: 'select' },
         { id: 'tileChunkSize', key: 'emic_tile_chunk_size', type: 'select' },
         { id: 'featurePlaybackMode', key: 'emic_feature_playback_mode', type: 'select' },
         { id: 'dataSource', key: 'emic_data_source', type: 'select' },

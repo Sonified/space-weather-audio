@@ -949,42 +949,56 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         }
 
         const fftSize = State.fftSize || 2048;
-        const maxTimeSlices = width;
-        const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
-        const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+        const renderOrderEl = document.getElementById('renderOrder');
+        const pyramidOnly = renderOrderEl?.value === 'pyramid-only';
 
-        // Compute FFT and pack into magnitude texture
-        const result = await computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize);
-        if (!result) {
-            renderingInProgress = false;
-            if (!isStudyMode()) console.groupEnd();
-            return;
+        if (!pyramidOnly) {
+            const maxTimeSlices = width;
+            const hopSize = Math.floor((totalSamples - fftSize) / maxTimeSlices);
+            const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+
+            // Compute FFT and pack into magnitude texture
+            const result = await computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize);
+            if (!result) {
+                renderingInProgress = false;
+                if (!isStudyMode()) console.groupEnd();
+                return;
+            }
+
+            fullMagnitudeWidth = result.width;
+            fullMagnitudeHeight = result.height;
+
+            // Store actual FFT column center times (seconds from data start)
+            const sr = zoomState.sampleRate;
+            fullTextureFirstColSec = (fftSize / 2) / sr;
+            fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
+            console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
+
+            // Create GPU texture
+            if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
+            fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
+
+            // Set as active texture
+            mainMagTexNode.value = fullMagnitudeTexture;
+            activeTexture = 'full';
+
+            // Position full-texture mesh at fixed world-space location (set once, never moved)
+            if (mesh) {
+                positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
+            }
+        } else {
+            // Pyramid-only: skip full texture, compute time bounds from data
+            const sr = zoomState.sampleRate;
+            const dataDurationSec = totalSamples / sr;
+            fullTextureFirstColSec = 0;
+            fullTextureLastColSec = dataDurationSec;
+            // Hide the full-texture mesh since we have no texture for it
+            if (mesh) mesh.visible = false;
+            console.log(`🔺 Pyramid-only mode: skipping full-screen FFT render`);
         }
-
-        fullMagnitudeWidth = result.width;
-        fullMagnitudeHeight = result.height;
-
-        // Store actual FFT column center times (seconds from data start)
-        const sr = zoomState.sampleRate;
-        fullTextureFirstColSec = (fftSize / 2) / sr;
-        fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
-        console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
-
-        // Create GPU texture
-        if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
-        fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
-
-        // Set as active texture
-        mainMagTexNode.value =fullMagnitudeTexture;
-        activeTexture = 'full';
 
         // Update frequency-related uniforms
         updateFrequencyUniforms();
-
-        // Position full-texture mesh at fixed world-space location (set once, never moved)
-        if (mesh) {
-            positionMeshWorldSpace(mesh, fullTextureFirstColSec, fullTextureLastColSec);
-        }
 
         // Record context
         renderContext = {
