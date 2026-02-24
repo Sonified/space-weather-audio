@@ -2296,6 +2296,46 @@ export async function closeParticipantModal(keepOverlay = null) {
     console.log(`👤 Participant Setup modal closed (keepOverlay: ${keepOverlay})`);
 }
 
+// Participant Info Modal (read-only display when clicking participant ID)
+export async function openParticipantInfoModal() {
+    const modal = document.getElementById('participantInfoModal');
+    if (!modal) {
+        console.warn('⚠️ Participant info modal not found');
+        return;
+    }
+
+    closeAllModals();
+
+    // Populate the current participant ID
+    const { getParticipantId } = await import('./qualtrics-api.js');
+    const participantId = getParticipantId();
+    const idDisplay = document.getElementById('participantInfoId');
+    if (idDisplay) {
+        idDisplay.textContent = participantId || '--';
+    }
+
+    // Update title based on welcome mode
+    const { getCurrentModeConfig } = await import('./master-modes.js');
+    const modeConfig = getCurrentModeConfig();
+    const welcomeMode = modeConfig.welcomeMode || 'user';
+    const modalTitle = modal.querySelector('.modal-title');
+    if (modalTitle) {
+        modalTitle.textContent = welcomeMode === 'participant' ? 'Your Participant ID' : 'Your User Name';
+    }
+
+    // Wire close button
+    const closeBtn = modal.querySelector('.modal-close');
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            hideModal(modal);
+            fadeOutOverlay();
+        };
+    }
+
+    fadeInOverlay();
+    showModal(modal);
+}
+
 // Welcome Modal Functions
 export async function openWelcomeModal() {
     // In Study Mode, ONLY allow welcome modal through the workflow - NEVER allow manual opening

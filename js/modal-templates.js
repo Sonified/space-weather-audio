@@ -875,6 +875,35 @@ export function createEmicAboutModal() {
     return modal;
 }
 
+export function createParticipantInfoModal() {
+    const modal = document.createElement('div');
+    modal.id = 'participantInfoModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Your Participant ID</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: left;">
+                <p style="margin-bottom: 16px; color: #333; font-size: 16px; line-height: 1.6;">
+                    You are currently logged in as:
+                </p>
+                <p id="participantInfoId" style="margin-bottom: 20px; color: #550000; font-size: 20px; font-weight: 700; text-align: center; padding: 12px; background: rgba(85, 0, 0, 0.05); border-radius: 8px;">
+                    --
+                </p>
+                <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+                <p style="margin-bottom: 0; color: #555; font-size: 15px; line-height: 1.6;">
+                    If you have any questions or need assistance, please contact the study coordinator, Lucy Williams, at
+                    <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>.
+                </p>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
 export function createAboutModal() {
     const modal = document.createElement('div');
     modal.id = 'aboutModal';
@@ -1075,6 +1104,7 @@ export async function initializeModals() {
     const tutorialRevisitModal = createTutorialRevisitModal();
     const welcomeBackModal = createWelcomeBackModal();
     const aboutModal = createAboutModal();
+    const participantInfoModal = createParticipantInfoModal();
     const emicAboutModal = createEmicAboutModal();
     const backgroundQuestionModal = createBackgroundQuestionModal();
     const dataAnalysisQuestionModal = createDataAnalysisQuestionModal();
@@ -1097,6 +1127,7 @@ export async function initializeModals() {
     overlay.appendChild(tutorialRevisitModal);
     overlay.appendChild(welcomeBackModal);
     overlay.appendChild(aboutModal);
+    overlay.appendChild(participantInfoModal);
     overlay.appendChild(emicAboutModal);
     overlay.appendChild(backgroundQuestionModal);
     overlay.appendChild(dataAnalysisQuestionModal);
