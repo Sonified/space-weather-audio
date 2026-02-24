@@ -2,6 +2,7 @@
 *.mseed
 *.wav
 !stretch_test_audio/*.wav
+!emic_audio/*.wav
 *.bin
 *.gz
 *.zst
@@ -25,5 +26,8 @@ __pycache__/
 *.bak
 # Auto-generated
 .deploy_time
+# Nested git repos
+harp/
+wavelets/
 # Claude instructions
 claude_instructions/
