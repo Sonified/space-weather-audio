@@ -328,11 +328,7 @@ export function updatePlaybackSpeed() {
     // Store final speed for worklet and loop logic
     State.setCurrentPlaybackRate(finalSpeed);
 
-    // Show/hide stretch algorithm dropdown based on speed
-    const stretchContainer = document.getElementById('stretchAlgorithmContainer');
-    if (stretchContainer) {
-        stretchContainer.style.display = baseSpeed < 1.0 ? 'flex' : 'none';
-    }
+    // Stretch algorithm dropdown is always visible in standard mode
 
     // Stretch switching: sub-1x speed uses stretch processor (unless algorithm is 'resample')
     const useStretch = baseSpeed < 1.0 && State.getCompleteSamplesLength() > 0 && State.stretchAlgorithm !== 'resample';
@@ -562,14 +558,15 @@ function getBaseSpeed() {
 
 /**
  * Convert real-world seconds to audio-buffer seconds.
- * Stretch processors work in audio-buffer time (44100 Hz), but the app
- * tracks position in real-world seconds (e.g. 604,799s for a full day).
+ * Stretch processors work in audio-buffer time (AudioContext sample rate),
+ * but the app tracks position in real-world seconds (e.g. 604,799s for a full day).
  */
 function realWorldToAudioSeconds(realWorldSeconds) {
     const samplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second
                                 || State.currentMetadata?.original_sample_rate
                                 || 1200;
-    return realWorldSeconds * samplesPerRealSecond / 44100;
+    const ctxRate = State.audioContext?.sampleRate || 44100;
+    return realWorldSeconds * samplesPerRealSecond / ctxRate;
 }
 
 /**
@@ -579,7 +576,8 @@ function audioSecondsToRealWorld(audioSeconds) {
     const samplesPerRealSecond = State.currentMetadata?.playback_samples_per_real_second
                                 || State.currentMetadata?.original_sample_rate
                                 || 1200;
-    return audioSeconds * 44100 / samplesPerRealSecond;
+    const ctxRate = State.audioContext?.sampleRate || 44100;
+    return audioSeconds * ctxRate / samplesPerRealSecond;
 }
 
 /**
