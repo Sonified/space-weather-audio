@@ -453,6 +453,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
     if (tileJobs.length === 0) {
         pyramidReady = true;
         console.log(`🔺 All ${baseTiles.length} tiles already ready`);
+        window.dispatchEvent(new Event('pyramid-ready'));
         return;
     }
 
@@ -518,6 +519,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             const cascadeMs = (performance.now() - cascadeStartTime).toFixed(1);
             const builtLevels = pyramidLevels.filter(lvl => lvl.some(t => t.ready)).length;
             console.log(`🔺 All ${tileJobs.length} base tiles + ${builtLevels} pyramid levels in ${elapsed}s (${backendLabel}, cascade: ${cascadeMs}ms)`);
+            window.dispatchEvent(new Event('pyramid-ready'));
         }
     } else {
         // ── STANDARD PATH: CPU readback, cascade inline ──
@@ -535,6 +537,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             pyramidReady = true;
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
             console.log(`🔺 All ${tileJobs.length} base tiles rendered in ${elapsed}s (${backendLabel})`);
+            window.dispatchEvent(new Event('pyramid-ready'));
         }
     }
 }

@@ -160,6 +160,9 @@ function drawMarkerLine(ctx, x, height, dateLabel, labelPosition = 'top') {
  * Call this after renders and on zoom changes.
  */
 export function drawDayMarkers() {
+    // Don't draw markers before data has loaded
+    if (State.getCompleteSamplesLength() === 0) return;
+
     const showSpectrogram = shouldDrawMarkersForPanel('mainWindow');
     const showWaveform = shouldDrawMarkersForPanel('navBar');
 

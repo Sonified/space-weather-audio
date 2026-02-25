@@ -8,7 +8,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
-import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
+import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes, clearAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower } from './spectrogram-three-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal, openParticipantInfoModal } from './ui-controls.js';
@@ -476,7 +476,7 @@ export async function initAudioWorklet() {
             // The playhead should show where the audio actually is, matching the coordinate system used for clicks
             State.setCurrentAudioPosition(positionSeconds);
             State.setLastWorkletPosition(positionSeconds);
-            State.setLastWorkletUpdateTime(State.audioContext.currentTime);
+            if (State.audioContext) State.setLastWorkletUpdateTime(State.audioContext.currentTime);
         } else if (type === 'selection-end-reached') {
             // CRITICAL: Ignore stale 'selection-end-reached' messages after a seek
             if (State.justSeeked) {
@@ -679,7 +679,7 @@ export async function startStreaming(event, config = null) {
             event.preventDefault();
             event.stopPropagation();
         }
-        
+
         // Mark that first fetch has been performed (disables Enter key shortcut)
         hasPerformedFirstFetch = true;
         
@@ -697,6 +697,7 @@ export async function startStreaming(event, config = null) {
         // Clear complete spectrogram and waveform renderers when loading new data
         clearCompleteSpectrogram();
         clearWaveformRenderer();
+        clearAllCanvasFeatureBoxes();
 
         // Close old AudioContext to release OS audio threads and internal buffers (~10-50MB)
         if (State.audioContext) {
@@ -1242,6 +1243,13 @@ function injectGearPopovers() {
                         <option value="none">None</option>
                     </select>
                 </div>
+                <div class="gear-popover-row">
+                    <span class="gear-label">Feat Boxes:</span>
+                    <select id="navBarFeatureBoxes" class="gear-select">
+                        <option value="show" selected>Show</option>
+                        <option value="hide">Hide</option>
+                    </select>
+                </div>
                 <div class="gear-popover-title">Scroll</div>
                 <div class="gear-popover-row">
                     <span class="gear-label">V-Scroll:</span>
@@ -1469,6 +1477,7 @@ function initializeAdvancedControls() {
         { id: 'miniMapView', key: 'emic_minimap_view', type: 'select' },
         { id: 'mainWindowView', key: 'emic_main_view', type: 'select' },
         { id: 'navBarMarkers', key: 'emic_navbar_markers', type: 'select' },
+        { id: 'navBarFeatureBoxes', key: 'emic_navbar_feature_boxes', type: 'select' },
         { id: 'mainWindowMarkers', key: 'emic_main_markers', type: 'select' },
         { id: 'mainWindowXAxis', key: 'emic_main_xaxis', type: 'select' },
         { id: 'mainWindowNumbers', key: 'emic_main_numbers', type: 'select' },
@@ -1781,6 +1790,8 @@ function initializeAdvancedControls() {
     const navBarMarkersEl = document.getElementById('navBarMarkers');
     const mainWindowMarkersEl = document.getElementById('mainWindowMarkers');
     if (navBarMarkersEl) navBarMarkersEl.addEventListener('change', () => drawDayMarkers());
+    const navBarFeatBoxesEl = document.getElementById('navBarFeatureBoxes');
+    if (navBarFeatBoxesEl) navBarFeatBoxesEl.addEventListener('change', () => drawWaveformFromMinMax());
     if (mainWindowMarkersEl) mainWindowMarkersEl.addEventListener('change', () => drawDayMarkers());
     if ((navBarMarkersEl && navBarMarkersEl.value !== 'none') ||
         (mainWindowMarkersEl && mainWindowMarkersEl.value !== 'none')) {

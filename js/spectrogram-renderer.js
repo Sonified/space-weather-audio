@@ -51,6 +51,11 @@ let spectrogramOverlayCtx = null;
 // NOTE: We rebuild this from actual feature data, so it stays in sync!
 let completedSelectionBoxes = [];
 
+// Feature box fade-in: boxes stay hidden until spectrogram-ready, then fade up
+let featureBoxOpacity = 0;
+let featureBoxReadyToShow = false;
+export function isFeatureBoxReadyToShow() { return featureBoxReadyToShow; }
+
 // ── Feature box dimension helpers (single source of truth) ──
 // All feature box drawing, hit-testing, and coordinate conversion uses these
 // instead of reading canvas.width/height directly (which can be stale after resize).
@@ -262,6 +267,9 @@ export function removeCanvasFeatureBox(regionIndex, featureIndex) {
 export function clearAllCanvasFeatureBoxes() {
     completedSelectionBoxes = [];
     annotationTimingState.clear();
+    featureBoxReadyToShow = false;
+    featureBoxOpacity = 0;
+    featureBoxPendingUntilSpectrogram = false;
 
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
@@ -767,6 +775,7 @@ function cancelBoxDrag() {
 let featurePopupEl = null;
 let featurePopupCleanup = null; // stores outside-click / keydown listeners for teardown
 let popupFeatureBox = null;     // { regionIndex, featureIndex } of the popup's feature
+let popupLastSide = null;       // 'left' or 'right' — tracks which side popup is on
 let popupPinOffset = null;      // { dx, dy } drag offset from computed pinned position
 
 // ── Feature play button state ──
@@ -886,6 +895,7 @@ export function closeFeaturePopup() {
     }
     popupFeatureBox = null;
     popupPinOffset = null;
+    popupLastSide = null;
 }
 
 /**
@@ -915,6 +925,7 @@ function positionPopupBesideRect(popup, sr, offset) {
     const gap = 20;
     const popupRect = popup.getBoundingClientRect();
     let left, top;
+    let side = null;
 
     if (sr) {
         const spaceRight = window.innerWidth - sr.right;
@@ -923,14 +934,29 @@ function positionPopupBesideRect(popup, sr, offset) {
 
         if (spaceRight >= popupRect.width + gap || spaceRight >= spaceLeft) {
             left = sr.right + gap;
+            side = 'right';
         } else {
             left = sr.left - popupRect.width - gap;
+            side = 'left';
         }
         top = boxCenterY - popupRect.height / 2;
     } else {
         left = (window.innerWidth - popupRect.width) / 2;
         top = (window.innerHeight - popupRect.height) / 2;
     }
+
+    // Fade out and back in when the popup switches sides
+    if (side && popupLastSide && side !== popupLastSide) {
+        popup.style.transition = 'none';
+        popup.style.opacity = '0';
+        requestAnimationFrame(() => {
+            popup.style.transition = 'opacity 200ms ease';
+            popup.style.opacity = '1';
+            // Clear inline transition after fade so CSS classes (--off-screen) work again
+            setTimeout(() => { popup.style.transition = ''; popup.style.opacity = ''; }, 220);
+        });
+    }
+    popupLastSide = side;
 
     // Store anchor position before offset
     const anchorLeft = left;
@@ -1027,6 +1053,13 @@ function showFeaturePopup(box) {
                     <button data-value="click">Appear on Click</button>
                 </div>
             </div>
+            <div class="feature-popup-settings-row">
+                <span class="feature-popup-settings-label">Text Input</span>
+                <div class="feature-popup-settings-options" data-setting="feature_text_required">
+                    <button data-value="optional" class="active">Optional</button>
+                    <button data-value="required">Required</button>
+                </div>
+            </div>
         </div>
         <div class="feature-popup-row">
             <div class="feature-popup-field">
@@ -1099,6 +1132,9 @@ function showFeaturePopup(box) {
                 }
                 // Switching to static — popup stays where it is, no action needed
             }
+
+            // Re-evaluate save button when text requirement changes
+            if (setting === 'feature_text_required') updateSaveState();
 
             applyPopupSettings();
         });
@@ -1209,6 +1245,7 @@ function showFeaturePopup(box) {
 
     function updateSaveState() {
         const hasContent = notesArea.value.trim().length > 0;
+        const textRequired = (localStorage.getItem('feature_text_required') || 'optional') === 'required';
         // Check if anything changed from the original
         isDirty = notesArea.value !== originalNotes;
         if (!isDirty) {
@@ -1216,8 +1253,8 @@ function showFeaturePopup(box) {
                 if (input.value !== originalFields[input.dataset.key]) isDirty = true;
             });
         }
-        saveBtn.textContent = (hasContent && !isDirty) ? 'Done' : 'Save';
-        saveBtn.disabled = !hasContent;
+        saveBtn.disabled = textRequired && !hasContent;
+        saveBtn.textContent = isDirty ? 'Save' : 'Done';
     }
     notesArea.addEventListener('input', updateSaveState);
     updateSaveState();
@@ -1416,13 +1453,20 @@ function redrawCanvasBoxes() {
 let featureBoxPendingUntilSpectrogram = false;
 
 export function redrawAllCanvasFeatureBoxes() {
-    // Don't draw feature boxes before the spectrogram is visible
-    if (!State.spectrogramInitialized) {
+    // Don't draw feature boxes until pyramid tiles have rendered
+    if (!featureBoxReadyToShow) {
+        console.log(`📦 [FEAT-BOX] redrawAll called but NOT ready (pending=${featureBoxPendingUntilSpectrogram})`);
         if (!featureBoxPendingUntilSpectrogram) {
             featureBoxPendingUntilSpectrogram = true;
-            window.addEventListener('spectrogram-ready', () => {
+            console.log(`📦 [FEAT-BOX] Registering pyramid-ready listener`);
+            window.addEventListener('pyramid-ready', () => {
+                console.log(`📦 [FEAT-BOX] pyramid-ready FIRED! Starting fade-in`);
                 featureBoxPendingUntilSpectrogram = false;
+                featureBoxReadyToShow = true;
+                featureBoxOpacity = 0; // start fade from zero
                 rebuildCanvasBoxesFromFeatures();
+                // Redraw minimap so its feature boxes appear at the same time
+                drawWaveformFromMinMax();
             }, { once: true });
         }
         return;
@@ -1446,21 +1490,35 @@ export function updateCanvasAnnotations() {
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
 
+        // Fade in feature boxes after spectrogram is ready
+        if (featureBoxReadyToShow && featureBoxOpacity < 1) {
+            featureBoxOpacity = Math.min(1, featureBoxOpacity + 0.02); // ~0.8s fade at 60fps
+        }
+
         // Skip drawing if feature boxes are hidden
         const fbCheckbox = document.getElementById('featureBoxesVisible');
         const boxesHidden = fbCheckbox && !fbCheckbox.checked;
 
-        if (!boxesHidden) {
+        if (!boxesHidden && featureBoxReadyToShow) {
+            spectrogramOverlayCtx.save();
+            spectrogramOverlayCtx.globalAlpha = featureBoxOpacity;
+
             // PASS 1: Draw all boxes (without annotations)
             for (const savedBox of completedSelectionBoxes) {
                 drawSavedBox(spectrogramOverlayCtx, savedBox, false); // false = don't draw annotations yet
             }
 
             // PASS 2: Draw all annotations on top (with collision detection)
+            // Skip annotation for the feature whose popup is open
             const placedAnnotations = []; // Track placed annotations for collision detection
             for (const savedBox of completedSelectionBoxes) {
+                if (featurePopupEl && popupFeatureBox &&
+                    savedBox.regionIndex === popupFeatureBox.regionIndex &&
+                    savedBox.featureIndex === popupFeatureBox.featureIndex) continue;
                 drawSavedBox(spectrogramOverlayCtx, savedBox, true, placedAnnotations); // true = only draw annotations
             }
+
+            spectrogramOverlayCtx.restore();
         }
 
         // PASS 3: Draw in-progress selection box (if user is currently dragging)

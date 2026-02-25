@@ -3588,11 +3588,10 @@ body.drawer-open .hamburger-btn {
 }
 /* Pinned popup: smooth position tracking + off-screen hide */
 .feature-popup {
-    transition: opacity 250ms ease, transform 250ms ease;
+    transition: opacity 250ms ease;
 }
 .feature-popup--off-screen {
     opacity: 0;
-    transform: translateY(8px);
     pointer-events: none;
 }
 

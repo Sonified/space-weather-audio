@@ -21,7 +21,7 @@ import { restoreViewportState, updateSpectrogramViewportFromZoom, getFullMagnitu
 import { drawDayMarkers } from './day-markers.js';
 import { getColorLUT } from './colormaps.js';
 import { updateLiveAnnotations } from './spectrogram-live-annotations.js';
-import { updateCanvasAnnotations, isFeaturePopupOpen } from './spectrogram-renderer.js';
+import { updateCanvasAnnotations, isFeaturePopupOpen, isFeatureBoxReadyToShow } from './spectrogram-renderer.js';
 import { getYPositionForFrequencyScaled } from './spectrogram-axis-renderer.js';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
@@ -1212,7 +1212,11 @@ function drawWaveformOverlays() {
     }
 
     // Feature boxes on minimap (red boxes duplicated from spectrogram)
-    drawMinimapFeatureBoxes(wfOverlayCtx, width, height);
+    // Gate behind featureBoxReadyToShow so minimap and spectrogram boxes appear together
+    const navFeatBoxes = document.getElementById('navBarFeatureBoxes');
+    if (isFeatureBoxReadyToShow() && (!navFeatBoxes || navFeatBoxes.value !== 'hide')) {
+        drawMinimapFeatureBoxes(wfOverlayCtx, width, height);
+    }
 
     // Region highlights: hide entirely in windowed modes (scroll/pageTurn), show in region creation mode
     if (!isEmicWindowedMode()) {
