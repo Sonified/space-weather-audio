@@ -1829,6 +1829,11 @@ input[type="checkbox"] {
     min-width: 400px;
 }
 
+#musicalExperienceQuestionModal .modal-content {
+    max-width: 950px;
+    min-width: 600px;
+}
+
 #beginAnalysisModal .modal-content {
     max-width: 500px;
     min-width: 350px;

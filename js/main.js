@@ -3633,6 +3633,31 @@ async function initializeMainApp() {
         });
     }
 
+    // Post-study questionnaire: Musical experience button + modal
+    const musicalExperienceQuestionBtn = document.getElementById('musicalExperienceQuestionBtn');
+    const meModal = document.getElementById('musicalExperienceQuestionModal');
+    if (musicalExperienceQuestionBtn && meModal) {
+        musicalExperienceQuestionBtn.addEventListener('click', async () => {
+            await modalManager.openModal('musicalExperienceQuestionModal');
+        });
+
+        const meSubmit = meModal.querySelector('.modal-submit');
+        meModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', () => { meSubmit.disabled = false; });
+        });
+
+        const meClose = meModal.querySelector('.modal-close');
+        if (meClose) {
+            meClose.addEventListener('click', () => modalManager.closeModal('musicalExperienceQuestionModal'));
+        }
+
+        meSubmit.addEventListener('click', () => {
+            const value = document.querySelector('input[name="musicalExperienceLevel"]:checked')?.value;
+            console.log('📋 Musical experience level:', value);
+            modalManager.closeModal('musicalExperienceQuestionModal');
+        });
+    }
+
     // Post-study questionnaire: Feedback (free response) button + modal
     const feedbackQuestionBtn = document.getElementById('feedbackQuestionBtn');
     const fbModal = document.getElementById('feedbackQuestionModal');

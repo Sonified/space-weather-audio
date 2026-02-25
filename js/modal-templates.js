@@ -1031,6 +1031,52 @@ export function createDataAnalysisQuestionModal() {
     return modal;
 }
 
+export function createMusicalExperienceQuestionModal() {
+    const modal = document.createElement('div');
+    modal.id = 'musicalExperienceQuestionModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 950px;">
+            <div class="modal-header">
+                <h3 class="modal-title">📋 Questionnaire</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
+                    3. What is your level of musical experience?
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="musicalExperienceLevel" value="1" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>None</strong> <span style="color: #444;">: No musical training or experience</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="musicalExperienceLevel" value="2" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Minimal</strong> <span style="color: #444;">: Some informal exposure (e.g., casual listening, basic music classes in school)</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="musicalExperienceLevel" value="3" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Some</strong> <span style="color: #444;">: 1–3 years of musical training or playing an instrument</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="musicalExperienceLevel" value="4" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Considerable</strong> <span style="color: #444;">: 4+ years of training, active musician or regular performer</span></div>
+                    </label>
+                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
+                        <input type="radio" name="musicalExperienceLevel" value="5" style="width: 18px; height: 18px; accent-color: #007bff;">
+                        <div><strong>Extensive</strong> <span style="color: #444;">: Professional musician, music degree, or lifelong serious practice</span></div>
+                    </label>
+                </div>
+
+                <button type="button" class="modal-submit" disabled>✓ Submit</button>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
 export function createFeedbackQuestionModal() {
     const modal = document.createElement('div');
     modal.id = 'feedbackQuestionModal';
@@ -1108,6 +1154,7 @@ export async function initializeModals() {
     const emicAboutModal = createEmicAboutModal();
     const backgroundQuestionModal = createBackgroundQuestionModal();
     const dataAnalysisQuestionModal = createDataAnalysisQuestionModal();
+    const musicalExperienceQuestionModal = createMusicalExperienceQuestionModal();
     const feedbackQuestionModal = createFeedbackQuestionModal();
     const referralQuestionModal = createReferralQuestionModal();
 
@@ -1131,6 +1178,7 @@ export async function initializeModals() {
     overlay.appendChild(emicAboutModal);
     overlay.appendChild(backgroundQuestionModal);
     overlay.appendChild(dataAnalysisQuestionModal);
+    overlay.appendChild(musicalExperienceQuestionModal);
     overlay.appendChild(feedbackQuestionModal);
     overlay.appendChild(referralQuestionModal);
 
