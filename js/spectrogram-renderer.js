@@ -855,20 +855,34 @@ function syncPopupFieldsFromBox(box) {
 function formatTimeForPopup(isoString) {
     if (!isoString) return '';
     const d = new Date(isoString);
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const yyyy = d.getUTCFullYear();
     const h = d.getUTCHours();
-    const m = String(d.getUTCMinutes()).padStart(2, '0');
+    const min = String(d.getUTCMinutes()).padStart(2, '0');
     const s = String(d.getUTCSeconds()).padStart(2, '0');
-    return `${h}:${m}:${s}`;
+    return `${mm}/${dd}/${yyyy} ${h}:${min}:${s}`;
 }
 
 /**
- * Convert a short time string (e.g. "3:15:00") back to a full ISO string,
- * preserving the date from the original ISO value.
+ * Convert a popup time string back to a full ISO string.
+ * Accepts "MM/DD/YYYY H:MM:SS" or legacy "H:MM:SS" (date from originalISO).
  */
 function parsePopupTimeToISO(shortTime, originalISO) {
     if (!shortTime || !originalISO) return shortTime;
     const orig = new Date(originalISO);
     if (isNaN(orig.getTime())) return shortTime;
+
+    // Try MM/DD/YYYY H:MM:SS format first
+    const dateTimeMatch = shortTime.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+    if (dateTimeMatch) {
+        const [, mo, dy, yr, hr, mn, sc] = dateTimeMatch.map(Number);
+        orig.setUTCFullYear(yr, mo - 1, dy);
+        orig.setUTCHours(hr, mn, sc, 0);
+        return orig.toISOString();
+    }
+
+    // Fallback: time-only (H:MM:SS)
     const parts = shortTime.split(':').map(Number);
     if (parts.length < 2 || parts.some(isNaN)) return shortTime;
     orig.setUTCHours(parts[0], parts[1], parts[2] || 0, 0);
