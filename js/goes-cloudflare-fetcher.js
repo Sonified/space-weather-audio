@@ -399,9 +399,9 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     let totalBytesDownloaded = 0;
     const progressiveT0 = performance.now();
     let lastRenderTime = 0;
-    const RENDER_THROTTLE_MS = 500; // Don't render tiles more often than this
+    const RENDER_THROTTLE_MS = 100;
     let lastMinimapFFTTime = 0;
-    const MINIMAP_FFT_THROTTLE_MS = 5000; // Minimap FFT is expensive — rebuild at most every 5s
+    const MINIMAP_FFT_THROTTLE_MS = 100;
 
     // Running buffer: grows as chunks arrive, avoids full rebuild every render
     let progressiveSamplesBuffer = null;
