@@ -266,7 +266,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     console.log(`☁️ Satellite: ${satellite}, Component: ${component}`);
 
     // Step 1: Load fzstd for zstd decompression
-    if (statusEl) statusEl.textContent = 'Loading decompression library...';
+    const silentEarly = document.getElementById('silentDownload')?.checked;
+    if (statusEl && !silentEarly) statusEl.textContent = 'Loading decompression library...';
     const zstd = await ensureFzstd();
     console.log(`✅ ${logTime()} fzstd loaded`);
 
@@ -274,7 +275,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     const startDate = new Date(startTimeISO);
     const endDate = new Date(endTimeISO);
 
-    if (statusEl) statusEl.textContent = 'Fetching chunk metadata...';
+    if (statusEl && !silentEarly) statusEl.textContent = 'Fetching chunk metadata...';
     const allDayMetadata = await fetchAllDayMetadata(
         startTimeISO, endTimeISO, satellite, component
     );
@@ -629,12 +630,20 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     // Step 6: Sequential chunk download loop
     // =========================================================================
 
+    // Kill the dot-animation interval from main.js so it doesn't fight with chunk status
+    if (State.loadingInterval) {
+        clearInterval(State.loadingInterval);
+        State.setLoadingInterval(null);
+    }
+
+    const silentDownload = document.getElementById('silentDownload')?.checked;
+
     for (let i = 0; i < chunkSchedule.length; i++) {
         const chunk = chunkSchedule[i];
         const progress = `${i + 1}/${chunkSchedule.length}`;
 
-        if (statusEl) {
-            statusEl.textContent = `Downloading ${chunk.type} chunk ${progress} (${chunk.date} ${chunk.startTime})...`;
+        if (statusEl && !silentDownload) {
+            statusEl.textContent = `Fetching chunk ${progress} from Cloudflare (${chunk.date} ${chunk.startTime})...`;
         }
 
         let samples, rawSamples;
@@ -715,9 +724,11 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         }
 
         // Update download size display
-        const downloadSizeEl = document.getElementById('downloadSize');
-        if (downloadSizeEl) {
-            downloadSizeEl.textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+        if (!silentDownload) {
+            const downloadSizeEl = document.getElementById('downloadSize');
+            if (downloadSizeEl) {
+                downloadSizeEl.textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+            }
         }
 
         // Yield to browser event loop so UI stays responsive (playhead drags, clicks, etc.)

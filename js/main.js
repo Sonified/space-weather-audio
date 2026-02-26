@@ -813,11 +813,12 @@ export async function startStreaming(event, config = null) {
 
         // Update status with animated loading indicator
         const statusDiv = document.getElementById('status');
+        const silentDownload = document.getElementById('silentDownload')?.checked;
         let dotCount = 0;
         const sourceName = dataSource === 'cloudflare' ? 'Cloudflare' : 'CDAWeb';
         const baseMessage = `Fetching ${spacecraft} ${dataset} from ${sourceName}`;
         let loadingInterval = null;
-        if (statusDiv) {
+        if (statusDiv && !silentDownload) {
             // Cancel any active typing/pulse animations that could fight with our interval
             import('./tutorial-effects.js').then(m => m.cancelTyping && m.cancelTyping()).catch(() => {});
             statusDiv.textContent = baseMessage + '...';
@@ -830,6 +831,8 @@ export async function startStreaming(event, config = null) {
                 }
                 statusDiv.textContent = baseMessage + '.'.repeat(dotCount);
             }, 500);
+            // Store so the fetcher can kill this animation once chunk downloads begin
+            State.setLoadingInterval(loadingInterval);
         }
 
         // Fetch and load data from selected source
@@ -1207,6 +1210,12 @@ function injectSettingsDrawer() {
                     Do not use cache
                 </label>
             </div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="silentDownload" style="width: 16px; height: 16px; cursor: pointer;">
+                    Silent download
+                </label>
+            </div>
         </div>
     `;
     document.body.appendChild(drawer);
@@ -1508,6 +1517,7 @@ function initializeAdvancedControls() {
         { id: 'featurePlaybackMode', key: 'emic_feature_playback_mode', type: 'select' },
         { id: 'dataSource', key: 'emic_data_source', type: 'select' },
         { id: 'drawerBypassCache', key: 'emic_bypass_cache', type: 'checkbox' },
+        { id: 'silentDownload', key: 'emic_silent_download', type: 'checkbox' },
         { id: 'tickFadeInTime', key: 'emic_tick_fade_in', type: 'range' },
         { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
