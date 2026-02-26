@@ -374,6 +374,74 @@ export function buildMorletLUT(scales, N, dt, w0) {
     return lut;
 }
 
+// ─── CQT (Constant-Q Transform) Scale/Filter Generation ─────────────────────
+
+/**
+ * Generate CQT frequency bins, bandwidths, and equivalent scales.
+ * @param {number} sampleRate - Audio sample rate in Hz
+ * @param {number} binsPerOctave - Frequency resolution (12 = semitone)
+ * @param {number} fMin - Lowest frequency in Hz
+ * @returns {object} { frequencies, bandwidths, scales, numBins, Q }
+ */
+export function generateCQTScales(sampleRate, binsPerOctave = 12, fMin = 20, minBW = 0) {
+    const fMax = sampleRate / 2;
+    const Q = 1 / (Math.pow(2, 1 / binsPerOctave) - 1);
+    const numBins = Math.ceil(binsPerOctave * Math.log2(fMax / fMin));
+
+    const frequencies = new Float32Array(numBins);
+    const bandwidths = new Float32Array(numBins);
+    const scales = new Float32Array(numBins);
+
+    for (let k = 0; k < numBins; k++) {
+        frequencies[k] = fMin * Math.pow(2, k / binsPerOctave);
+        const naturalBW = frequencies[k] / Q;
+        bandwidths[k] = Math.max(naturalBW, minBW); // floor prevents bass smearing
+
+        // Bandwidth normalization: wider filters capture more energy.
+        // Weight = naturalBW / actualBW (< 1.0 for clamped bins).
+        // Stretch shader reads 1/sqrt(scales[si]), so store 1/w² to get weight w.
+        const w = naturalBW / bandwidths[k];
+        scales[k] = 1.0 / (w * w);
+    }
+    return { frequencies, bandwidths, scales, numBins, Q };
+}
+
+/**
+ * Build CQT frequency-domain filter bank.
+ * Same layout as Morlet LUT: lut[binIdx * halfN + freqBin], one f32 per entry.
+ * Uses raised cosine (Hann) windows for smooth spectral tiling —
+ * adjacent filters sum to ~1.0 at crossover points.
+ *
+ * @param {Float32Array} frequencies - Center frequencies per bin
+ * @param {Float32Array} bandwidths - Bandwidth per bin (f/Q)
+ * @param {number} N - Full FFT size
+ * @param {number} dt - Sample spacing (1/sampleRate)
+ * @returns {Float32Array}
+ */
+export function buildCQTFilterBank(frequencies, bandwidths, N, dt) {
+    const halfN = N / 2;
+    const numBins = frequencies.length;
+    const lut = new Float32Array(numBins * halfN);
+
+    for (let k = 0; k < numBins; k++) {
+        const fCenter = frequencies[k];
+        const bw = bandwidths[k];
+        const base = k * halfN;
+
+        for (let bin = 0; bin < halfN; bin++) {
+            const f = bin / (N * dt); // frequency in Hz
+            const dist = Math.abs(f - fCenter);
+
+            if (dist < bw / 2) {
+                // Raised cosine (Hann) window: 1.0 at center, 0.0 at edges
+                lut[base + bin] = 0.5 * (1 + Math.cos(2 * Math.PI * dist / bw));
+            }
+            // else: 0 (default Float32Array initialization)
+        }
+    }
+    return lut;
+}
+
 // ─── WaveletGPUCompute Class ─────────────────────────────────────────────────
 
 export class WaveletGPUCompute {
@@ -637,7 +705,7 @@ export class WaveletGPUCompute {
      * @param {object} params - { dt, w0, dj }
      * @returns {object} { numScales, signalLength, scales }
      */
-    async computeCWT(audioData, { dt, w0 = 6, dj = 0.1 } = {}) {
+    async computeCWT(audioData, { dt, w0 = 6, dj = 0.1, transform = 'cwt', binsPerOctave = 12, fMin = 20, minBW = 0 } = {}) {
         if (!this.initialized) throw new Error('WaveletGPUCompute not initialized');
 
         const t0 = performance.now();
@@ -646,12 +714,22 @@ export class WaveletGPUCompute {
         const logN = Math.round(Math.log2(Npad));
         const halfN = Npad / 2;
 
-        // Generate scales
-        const scales = generateScales(signalLength, dt, w0, dj);
-        const numScales = scales.length;
+        // Generate scales/bins and frequency-domain filter LUT
+        let scales, morletLUT, numScales, effectiveDj;
 
-        // Build Morlet LUT (for full FFT size)
-        const morletLUT = buildMorletLUT(scales, Npad, dt, w0);
+        if (transform === 'cqt') {
+            const cqt = generateCQTScales(1 / dt, binsPerOctave, fMin, minBW);
+            scales = cqt.scales;       // all 1.0 (uniform weight for stretch shader)
+            numScales = cqt.numBins;
+            morletLUT = buildCQTFilterBank(cqt.frequencies, cqt.bandwidths, Npad, dt);
+            // Set dj so that dj * sqrt(dt) / (C_d * psi0) = 1.0 (neutralize CWT normalization)
+            effectiveDj = 0.776 * 0.7511255 / Math.sqrt(dt);
+        } else {
+            scales = generateScales(signalLength, dt, w0, dj);
+            numScales = scales.length;
+            morletLUT = buildMorletLUT(scales, Npad, dt, w0);
+            effectiveDj = dj;
+        }
 
         const tSetup = performance.now();
 
@@ -710,7 +788,7 @@ export class WaveletGPUCompute {
         // ═══════════════════════════════════════════════════════════════════
         const cwtBufA = this.device.createBuffer({
             size: cwtBufferBytes,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
             label: 'cwt-buf-a'
         });
 
@@ -757,7 +835,7 @@ export class WaveletGPUCompute {
         // ═══════════════════════════════════════════════════════════════════
         const cwtBufB = this.device.createBuffer({
             size: cwtBufferBytes,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
             label: 'cwt-buf-b'
         });
 
@@ -781,7 +859,7 @@ export class WaveletGPUCompute {
         this.cachedSignalLength = Npad;
         this.cachedNumScales = numScales;
         this.cachedDt = dt;
-        this.cachedDj = dj;
+        this.cachedDj = effectiveDj;
         this.cachedW0 = w0;
         this.cachedScales = scales;
 
@@ -793,7 +871,7 @@ export class WaveletGPUCompute {
         const totalMs = (tInvFFT - t0).toFixed(1);
 
         console.log(
-            `%c[Wavelet GPU] CWT: ${numScales} scales, Npad=${Npad} (${logN} stages) in ${totalMs}ms ` +
+            `%c[Wavelet GPU] ${transform.toUpperCase()}: ${numScales} ${transform === 'cqt' ? 'bins' : 'scales'}, Npad=${Npad} (${logN} stages) in ${totalMs}ms ` +
             `(setup: ${setupMs}, upload: ${uploadMs}, fwdFFT: ${fwdMs}, morlet: ${mulMs}, invFFT: ${invMs}ms) ` +
             `[${(cwtBufferBytes / 1024 / 1024).toFixed(1)}MB coefficients, ~${totalGpuMB.toFixed(0)}MB peak GPU]`,
             'color: #E040FB; font-weight: bold'
@@ -902,10 +980,105 @@ export class WaveletGPUCompute {
     }
 
     /**
+     * CPU phase accumulation stretch — reads back CWT coefficients and does
+     * synthesis on CPU. Avoids the harmonic distortion of cos(phase*stretchFactor)
+     * by accumulating phase from instantaneous frequency estimates.
+     *
+     * @param {number} stretchFactor
+     * @param {object} [options]
+     * @returns {Float32Array}
+     */
+    async stretchAudioCPU(stretchFactor, { phaseRand = 0 } = {}) {
+        if (!this.cachedCwtBuffer) throw new Error('No cached CWT — call computeCWT first');
+
+        const t0 = performance.now();
+        const signalLength = this.cachedSignalLength;
+        const numScales = this.cachedNumScales;
+        const scales = this.cachedScales;
+        const dt = this.cachedDt;
+        const dj = this.cachedDj;
+        const outputLength = Math.round(signalLength * stretchFactor);
+
+        // Read back CWT coefficients from GPU
+        const tRead0 = performance.now();
+        const cwt = await this.readbackBuffer(this.cachedCwtBuffer);
+        const tRead1 = performance.now();
+
+        const output = new Float32Array(outputLength);
+        const accPhase = new Float64Array(numScales);
+
+        // Initialize accumulated phase from the first input sample
+        for (let si = 0; si < numScales; si++) {
+            const base = si * signalLength * 2;
+            accPhase[si] = Math.atan2(cwt[base + 1], cwt[base]);
+        }
+
+        const C_d = 0.776;
+        const psi0 = 0.7511255; // pi^(-0.25)
+        const icwtScale = dj * Math.sqrt(dt) / (C_d * psi0);
+        const TWO_PI = 2 * Math.PI;
+        const maxIdx = signalLength - 1;
+
+        for (let m = 0; m < outputLength; m++) {
+            const inputPos = m / stretchFactor;
+            const idx = Math.min(Math.floor(inputPos), maxIdx);
+            const frac = inputPos - idx;
+            const i0 = Math.min(idx, maxIdx);
+            const i1 = Math.min(idx + 1, maxIdx);
+
+            let sample = 0;
+
+            for (let si = 0; si < numScales; si++) {
+                const base = si * signalLength * 2;
+
+                // Read two adjacent complex CWT coefficients
+                const re0 = cwt[base + i0 * 2];
+                const im0 = cwt[base + i0 * 2 + 1];
+                const re1 = cwt[base + i1 * 2];
+                const im1 = cwt[base + i1 * 2 + 1];
+
+                // Interpolated magnitude
+                const mag0 = Math.sqrt(re0 * re0 + im0 * im0);
+                const mag1 = Math.sqrt(re1 * re1 + im1 * im1);
+                const mag = mag0 + frac * (mag1 - mag0);
+
+                // Instantaneous frequency: unwrapped phase difference between adjacent samples
+                const phase0 = Math.atan2(im0, re0);
+                const phase1 = Math.atan2(im1, re1);
+                let dPhase = phase1 - phase0;
+                dPhase -= Math.round(dPhase / TWO_PI) * TWO_PI; // unwrap
+
+                // Accumulate phase at the local instantaneous rate
+                // (no multiply by stretchFactor — that's the whole point)
+                accPhase[si] += dPhase;
+
+                const scaleWeight = 1.0 / Math.sqrt(scales[si]);
+                sample += scaleWeight * mag * Math.cos(accPhase[si]);
+            }
+
+            output[m] = sample * icwtScale;
+        }
+
+        const totalMs = (performance.now() - t0).toFixed(1);
+        const readMs = (tRead1 - tRead0).toFixed(1);
+        console.log(
+            `%c[Wavelet CPU] Phase accumulation stretch: ${stretchFactor}x -> ` +
+            `${outputLength.toLocaleString()} samples in ${totalMs}ms ` +
+            `(readback: ${readMs}ms, compute: ${(performance.now() - tRead1).toFixed(1)}ms)`,
+            'color: #4CAF50; font-weight: bold'
+        );
+
+        return output;
+    }
+
+    /**
      * Convenience: full pipeline (CWT + stretch) in one call.
      */
     async waveletStretch(audioData, stretchFactor, params) {
         await this.computeCWT(audioData, params);
+        if (params.phaseMode === 'accumulate') {
+            return this.stretchAudioCPU(stretchFactor, { phaseRand: params.phaseRand || 0 });
+        }
         return this.stretchAudio(stretchFactor, {
             phaseRand: params.phaseRand || 0,
             interpMode: params.interpMode || 0
@@ -916,7 +1089,7 @@ export class WaveletGPUCompute {
      * Auto-calculate the largest chunk size (power of 2) that fits in GPU memory.
      * Accounts for: 2× CWT ping-pong buffers + Morlet LUT + FFT working buffers.
      */
-    calculateMaxChunkSamples(dt, w0 = 6, dj = 0.1) {
+    calculateMaxChunkSamples(dt, w0 = 6, dj = 0.1, transform = 'cwt', binsPerOctave = 12, fMin = 20, minBW = 0) {
         // Reserve 1/3 of max buffer for headroom (ping-pong needs 2× CWT buffer)
         const targetCwtBytes = Math.floor(this.maxOutputBytes / 3);
         let bestNpad = 1024; // minimum
@@ -924,8 +1097,10 @@ export class WaveletGPUCompute {
         // Binary search: find largest power of 2 that fits
         for (let logN = 10; logN <= 24; logN++) {
             const npad = 1 << logN;
-            const scales = generateScales(npad, dt, w0, dj);
-            const cwtBytes = scales.length * npad * 2 * 4;
+            const numBins = transform === 'cqt'
+                ? generateCQTScales(1 / dt, binsPerOctave, fMin, minBW).numBins
+                : generateScales(npad, dt, w0, dj).length;
+            const cwtBytes = numBins * npad * 2 * 4;
             if (cwtBytes <= targetCwtBytes) {
                 bestNpad = npad;
             } else {
@@ -952,8 +1127,10 @@ export class WaveletGPUCompute {
      */
     async waveletStretchChunked(audioData, stretchFactor, {
         dt, w0 = 6, dj = 0.1,
+        transform = 'cwt', binsPerOctave = 12, fMin = 20, minBW = 0,
         phaseRand = 0,
         interpMode = 0,
+        phaseMode = 'multiply',
         maxChunkSamples,
         overlapSamples,
         onChunkDone
@@ -964,7 +1141,7 @@ export class WaveletGPUCompute {
 
         // Auto-calculate chunk size if not provided
         if (!maxChunkSamples) {
-            maxChunkSamples = this.calculateMaxChunkSamples(dt, w0, dj);
+            maxChunkSamples = this.calculateMaxChunkSamples(dt, w0, dj, transform, binsPerOctave, fMin, minBW);
         }
 
         // Default overlap: 0.5 seconds
@@ -974,7 +1151,7 @@ export class WaveletGPUCompute {
 
         // If signal fits in one chunk, use the fast path
         if (audioData.length <= maxChunkSamples) {
-            const result = await this.waveletStretch(audioData, stretchFactor, { dt, w0, dj, phaseRand, interpMode });
+            const result = await this.waveletStretch(audioData, stretchFactor, { dt, w0, dj, transform, binsPerOctave, fMin, minBW, phaseRand, interpMode, phaseMode });
             // Trim to exact expected output length (remove padding)
             const expectedLen = Math.round(audioData.length * stretchFactor);
             if (onChunkDone) onChunkDone(0, 1, performance.now() - t0);
@@ -1002,8 +1179,10 @@ export class WaveletGPUCompute {
             const chunk = audioData.subarray(inputStart, inputEnd);
 
             // CWT + stretch this chunk
-            await this.computeCWT(chunk, { dt, w0, dj });
-            const stretched = await this.stretchAudio(stretchFactor, { phaseRand, interpMode });
+            await this.computeCWT(chunk, { dt, w0, dj, transform, binsPerOctave, fMin, minBW });
+            const stretched = phaseMode === 'accumulate'
+                ? await this.stretchAudioCPU(stretchFactor, { phaseRand })
+                : await this.stretchAudio(stretchFactor, { phaseRand, interpMode });
 
             // Trim stretched output to match actual chunk duration (not padding)
             const chunkOutputLen = Math.round(chunk.length * stretchFactor);
@@ -1069,7 +1248,7 @@ export class WaveletGPUCompute {
      * Diagnostic version of computeCWT that captures intermediate buffers.
      * Returns everything needed to validate the pipeline stage by stage.
      */
-    async computeCWT_diagnostic(audioData, { dt, w0 = 6, dj = 0.1 } = {}) {
+    async computeCWT_diagnostic(audioData, { dt, w0 = 6, dj = 0.1, transform = 'cwt', binsPerOctave = 12, fMin = 20, minBW = 0 } = {}) {
         if (!this.initialized) throw new Error('WaveletGPUCompute not initialized');
 
         const diag = {}; // diagnostic output
@@ -1078,9 +1257,20 @@ export class WaveletGPUCompute {
         const logN = Math.round(Math.log2(Npad));
         const halfN = Npad / 2;
 
-        const scales = generateScales(signalLength, dt, w0, dj);
-        const numScales = scales.length;
-        const morletLUT = buildMorletLUT(scales, Npad, dt, w0);
+        let scales, morletLUT, numScales, effectiveDj;
+
+        if (transform === 'cqt') {
+            const cqt = generateCQTScales(1 / dt, binsPerOctave, fMin, minBW);
+            scales = cqt.scales;
+            numScales = cqt.numBins;
+            morletLUT = buildCQTFilterBank(cqt.frequencies, cqt.bandwidths, Npad, dt);
+            effectiveDj = 0.776 * 0.7511255 / Math.sqrt(dt);
+        } else {
+            scales = generateScales(signalLength, dt, w0, dj);
+            numScales = scales.length;
+            morletLUT = buildMorletLUT(scales, Npad, dt, w0);
+            effectiveDj = dj;
+        }
 
         diag.Npad = Npad;
         diag.logN = logN;
@@ -1196,7 +1386,7 @@ export class WaveletGPUCompute {
         this.cachedSignalLength = Npad;
         this.cachedNumScales = numScales;
         this.cachedDt = dt;
-        this.cachedDj = dj;
+        this.cachedDj = effectiveDj;
         this.cachedW0 = w0;
         this.cachedScales = scales;
 

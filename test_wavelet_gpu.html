@@ -70,6 +70,12 @@
 <div class="panel">
     <h2>2. Parameters</h2>
     <div class="controls">
+        <label>Transform
+            <select id="transform">
+                <option value="cwt">CWT (Morlet)</option>
+                <option value="cqt" selected>CQT (Constant-Q)</option>
+            </select>
+        </label>
         <label>Stretch factor
             <select id="stretchFactor">
                 <option value="0.25">0.25x (quarter length)</option>
@@ -87,6 +93,7 @@
                 <option value="10">10x</option>
             </select>
         </label>
+        <span id="cwtControls" style="display:none">
         <label>w0
             <select id="w0">
                 <option value="4">4 (impulsive)</option>
@@ -105,18 +112,55 @@
                 <option value="0.1">0.1 (fine)</option>
                 <option value="0.125" selected>0.125 (default)</option>
                 <option value="0.25">0.25 (coarse)</option>
+                <option value="0.5">0.5 (half-octave)</option>
+                <option value="1.0">1.0 (octave)</option>
+                <option value="2.0">2.0 (2-octave)</option>
             </select>
         </label>
+        </span>
+        <span id="cqtControls">
+        <label>Bins/octave
+            <select id="binsPerOctave">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="4">4</option>
+                <option value="6">6</option>
+                <option value="12" selected>12 (semitone)</option>
+                <option value="24">24 (quarter-tone)</option>
+                <option value="36">36</option>
+                <option value="48">48 (fine)</option>
+            </select>
+        </label>
+        <label>Min BW
+            <select id="minBW">
+                <option value="0" selected>0 (pure CQT)</option>
+                <option value="25">25 Hz</option>
+                <option value="50">50 Hz</option>
+                <option value="100">100 Hz</option>
+                <option value="200">200 Hz</option>
+            </select>
+        </label>
+        </span>
+    </div>
+    <div class="controls" style="margin-top: 8px;">
         <label>Interpolation
             <select id="interpMode">
                 <option value="0" selected>Cubic spline</option>
                 <option value="1">Linear</option>
             </select>
         </label>
+        <label>Phase mode
+            <select id="phaseMode">
+                <option value="multiply" selected>Multiply (GPU)</option>
+                <option value="accumulate">Accumulate (CPU)</option>
+            </select>
+        </label>
         <label>Phase rand
             <input type="range" id="phaseRand" min="0" max="1" step="0.05" value="0" style="width:100px; vertical-align:middle;">
             <span id="phaseRandVal" style="color:#E040FB; min-width:32px; display:inline-block;">0%</span>
         </label>
+    </div>
+    <div class="controls" style="margin-top: 8px;">
         <button id="runBtn" onclick="runStretch()" disabled>Run GPU Wavelet Stretch</button>
         <button id="diagBtn" onclick="runDiagnostic()" disabled style="background:#FF9800; color:#000;">Run Diagnostic (400+800Hz)</button>
     </div>
@@ -169,7 +213,7 @@
 </div>
 
 <script type="module">
-import { WaveletGPUCompute, generateScales, buildMorletLUT } from './js/wavelet-gpu-compute.js';
+import { WaveletGPUCompute, generateScales, buildMorletLUT, generateCQTScales, buildCQTFilterBank } from './js/wavelet-gpu-compute.js';
 
 // ─── Globals ─────────────────────────────────────────────────────────────────
 let waveletGPU = null;
@@ -257,6 +301,7 @@ function populateFileSelect() {
 }
 
 populateFileSelect();
+document.getElementById('fileSelect').value = 'stretch_test_tracks/GOLDEN HOUR - TRIM.wav';
 
 // File picker
 document.getElementById('filePicker').addEventListener('change', async (e) => {
@@ -377,9 +422,16 @@ window.runStretch = async function() {
         const sampleRate = originalBuffer.sampleRate;
         const dt = 1.0 / sampleRate;
 
+        const transform = document.getElementById('transform').value;
+        const binsPerOctave = parseInt(document.getElementById('binsPerOctave').value);
+        const minBW = parseFloat(document.getElementById('minBW').value);
         const interpMode = parseInt(document.getElementById('interpMode').value);
         const interpLabel = interpMode === 0 ? 'cubic' : 'linear';
-        log(`Parameters: stretch=${stretchFactor}x, w0=${w0}, dj=${dj}, interp=${interpLabel}, phaseRand=${Math.round(parseFloat(document.getElementById('phaseRand').value) * 100)}%`, 'log-info');
+        const phaseMode = document.getElementById('phaseMode').value;
+        const transformLabel = transform === 'cqt'
+            ? `CQT (${binsPerOctave} bins/oct${minBW > 0 ? `, minBW=${minBW}Hz` : ''})`
+            : `CWT (w0=${w0}, dj=${dj})`;
+        log(`Parameters: ${transformLabel}, stretch=${stretchFactor}x, interp=${interpLabel}, phase=${phaseMode}, phaseRand=${Math.round(parseFloat(document.getElementById('phaseRand').value) * 100)}%`, 'log-info');
 
         // ── GPU Init ──
         const t1 = performance.now();
@@ -391,7 +443,7 @@ window.runStretch = async function() {
         logPerf('GPU init', timings.init);
 
         // ── Preview: chunk info ──
-        const maxChunk = waveletGPU.calculateMaxChunkSamples(dt, w0, dj);
+        const maxChunk = waveletGPU.calculateMaxChunkSamples(dt, w0, dj, transform, binsPerOctave, 20, minBW);
         const numChunks = originalMono.length <= maxChunk ? 1
             : Math.ceil((originalMono.length - Math.round(0.5 / dt)) / (maxChunk - Math.round(0.5 / dt)));
         log(`Max chunk: ${maxChunk.toLocaleString()} samples (${(maxChunk/sampleRate).toFixed(1)}s), ${numChunks} chunk${numChunks > 1 ? 's' : ''}`, 'log-info');
@@ -401,7 +453,7 @@ window.runStretch = async function() {
         const phaseRand = parseFloat(document.getElementById('phaseRand').value);
         stretchedAudio = await waveletGPU.waveletStretchChunked(
             originalMono, stretchFactor,
-            { dt, w0, dj, phaseRand, interpMode,
+            { dt, w0, dj, transform, binsPerOctave, minBW, phaseRand, interpMode, phaseMode,
               onChunkDone: (ci, total, elapsed) => {
                   if (total > 1) log(`  Chunk ${ci + 1}/${total} (${elapsed.toFixed(0)}ms)`, 'log-dim');
               }
@@ -447,7 +499,10 @@ window.runStretch = async function() {
         setStat('statInput', `${originalBuffer.duration.toFixed(1)}s / ${(originalMono.length/1024).toFixed(0)}K`);
         setStat('statOutput', `${(stretchedAudio.length / sampleRate).toFixed(1)}s / ${(stretchedAudio.length/1024).toFixed(0)}K`);
         setStat('statScales', numChunks > 1 ? `${numChunks} chunks` : `${waveletGPU.cachedNumScales}`);
-        setStat('statMem', `${(maxChunk * generateScales(maxChunk, dt, w0, dj).length * 8 / 1024 / 1024).toFixed(0)} MB/chunk`);
+        const chunkBins = transform === 'cqt'
+            ? generateCQTScales(sampleRate, binsPerOctave, 20, minBW).numBins
+            : generateScales(maxChunk, dt, w0, dj).length;
+        setStat('statMem', `${(maxChunk * chunkBins * 8 / 1024 / 1024).toFixed(0)} MB/chunk`);
 
         // ── Build AudioBuffer for playback ──
         stretchedBuffer = audioCtx.createBuffer(1, stretchedAudio.length, sampleRate);
@@ -461,13 +516,14 @@ window.runStretch = async function() {
 
         // ── Summary block (easy copy-paste) ──
         logHeader('Summary (copy-paste friendly)');
-        const scales = generateScales(maxChunk, dt, w0, dj);
-        const cwtMemPerChunk = scales.length * maxChunk * 2 * 4;
+        const summaryBins = chunkBins;
+        const cwtMemPerChunk = summaryBins * maxChunk * 2 * 4;
         const summary = [
             `File:       ${document.getElementById('fileSelect').value.split('/').pop() || 'local file'}`,
             `Input:      ${originalBuffer.duration.toFixed(2)}s, ${sampleRate}Hz, ${originalBuffer.numberOfChannels}ch`,
-            `Stretch:    ${stretchFactor}x  (w0=${w0}, dj=${dj})`,
-            `Scales:     ${scales.length} per chunk, ${numChunks} chunk${numChunks > 1 ? 's' : ''}`,
+            `Transform:  ${transformLabel}`,
+            `Stretch:    ${stretchFactor}x`,
+            `Bins:       ${summaryBins} per chunk, ${numChunks} chunk${numChunks > 1 ? 's' : ''}`,
             `CWT mem:    ${(cwtMemPerChunk / 1024 / 1024).toFixed(1)} MB/chunk`,
             `Output:     ${(stretchedAudio.length / sampleRate).toFixed(2)}s (${stretchedAudio.length.toLocaleString()} samples)`,
             ``,
@@ -758,7 +814,10 @@ window.runDiagnostic = async function() {
     const stretchFactor = parseFloat(document.getElementById('stretchFactor').value);
 
     try {
-        logHeader('DIAGNOSTIC: Two-tone 400Hz (1.0) + 800Hz (0.5)');
+        const diagTransform = document.getElementById('transform').value;
+        const diagBinsPerOctave = parseInt(document.getElementById('binsPerOctave').value);
+        const diagMinBW = parseFloat(document.getElementById('minBW').value);
+        logHeader(`DIAGNOSTIC: Two-tone 400Hz + 800Hz (${diagTransform.toUpperCase()}${diagMinBW > 0 ? ` minBW=${diagMinBW}Hz` : ''})`);
 
         // ── Generate test signal ──
         const SR = 48000;
@@ -800,7 +859,7 @@ window.runDiagnostic = async function() {
 
         // ── Run diagnostic CWT ──
         logHeader('Stage 1: Forward FFT (GPU)');
-        const diag = await waveletGPU.computeCWT_diagnostic(signal, { dt, w0, dj });
+        const diag = await waveletGPU.computeCWT_diagnostic(signal, { dt, w0, dj, transform: diagTransform, binsPerOctave: diagBinsPerOctave, minBW: diagMinBW });
 
         // Analyze FFT output
         const fft = diag.signalFFT; // complex pairs: [re0, im0, re1, im1, ...]
@@ -959,7 +1018,10 @@ window.runDiagnostic = async function() {
                 icwtCPU[t] += cwtTime[base + t * 2]; // sum of .real across scales
             }
         }
-        const icwtScale = dj * Math.sqrt(dt);
+        const diagEffDj = diagTransform === 'cqt'
+            ? 0.776 * 0.7511255 / Math.sqrt(dt)
+            : dj;
+        const icwtScale = diagEffDj * Math.sqrt(dt) / (0.776 * 0.7511255);
         for (let t = 0; t < N; t++) icwtCPU[t] *= icwtScale;
 
         // Compare to original
@@ -997,7 +1059,10 @@ window.runDiagnostic = async function() {
         // ── GPU Stretch ──
         logHeader('Stage 6: GPU Stretch');
         const diagInterpMode = parseInt(document.getElementById('interpMode').value);
-        const stretched = await waveletGPU.stretchAudio(stretchFactor, { interpMode: diagInterpMode });
+        const diagPhaseMode = document.getElementById('phaseMode').value;
+        const stretched = diagPhaseMode === 'accumulate'
+            ? await waveletGPU.stretchAudioCPU(stretchFactor, {})
+            : await waveletGPU.stretchAudio(stretchFactor, { interpMode: diagInterpMode });
         let strRMS = 0, strPeak = 0, nanCount = 0, infCount = 0;
         let firstNanIdx = -1;
         for (let i = 0; i < stretched.length; i++) {
@@ -1078,6 +1143,13 @@ document.getElementById('fileSelect').addEventListener('change', () => {
     stretchedBuffer = null;
     document.getElementById('statsPanel').style.display = 'none';
     document.getElementById('playerPanel').style.display = 'none';
+});
+
+// ─── Transform selector: show/hide CWT vs CQT controls ──────────────────────
+document.getElementById('transform').addEventListener('change', (e) => {
+    const isCQT = e.target.value === 'cqt';
+    document.getElementById('cwtControls').style.display = isCQT ? 'none' : '';
+    document.getElementById('cqtControls').style.display = isCQT ? '' : 'none';
 });
 
 // ─── Phase rand slider label ─────────────────────────────────────────────────
