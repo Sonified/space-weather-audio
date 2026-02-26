@@ -3167,6 +3167,12 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
             const padding = 10;
             let finalTextY;
 
+            const isDragging = boxDragState && completedSelectionBoxes[boxDragState.boxIndex] === box;
+            if (isDragging) {
+                // Box is being dragged — recalculate from current box position
+                delete timing.lockedY;
+            }
+
             if (liveMode && timing.lockedY !== undefined) {
                 // Live mode: use stored Y position (annotation stays at its height during fade)
                 finalTextY = timing.lockedY;
