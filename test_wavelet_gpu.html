@@ -107,6 +107,12 @@
                 <option value="0.25">0.25 (coarse)</option>
             </select>
         </label>
+        <label>Interpolation
+            <select id="interpMode">
+                <option value="0" selected>Cubic spline</option>
+                <option value="1">Linear</option>
+            </select>
+        </label>
         <label>Phase rand
             <input type="range" id="phaseRand" min="0" max="1" step="0.05" value="0" style="width:100px; vertical-align:middle;">
             <span id="phaseRandVal" style="color:#E040FB; min-width:32px; display:inline-block;">0%</span>
@@ -371,7 +377,9 @@ window.runStretch = async function() {
         const sampleRate = originalBuffer.sampleRate;
         const dt = 1.0 / sampleRate;
 
-        log(`Parameters: stretch=${stretchFactor}x, w0=${w0}, dj=${dj}, phaseRand=${Math.round(parseFloat(document.getElementById('phaseRand').value) * 100)}%`, 'log-info');
+        const interpMode = parseInt(document.getElementById('interpMode').value);
+        const interpLabel = interpMode === 0 ? 'cubic' : 'linear';
+        log(`Parameters: stretch=${stretchFactor}x, w0=${w0}, dj=${dj}, interp=${interpLabel}, phaseRand=${Math.round(parseFloat(document.getElementById('phaseRand').value) * 100)}%`, 'log-info');
 
         // ── GPU Init ──
         const t1 = performance.now();
@@ -393,7 +401,7 @@ window.runStretch = async function() {
         const phaseRand = parseFloat(document.getElementById('phaseRand').value);
         stretchedAudio = await waveletGPU.waveletStretchChunked(
             originalMono, stretchFactor,
-            { dt, w0, dj, phaseRand,
+            { dt, w0, dj, phaseRand, interpMode,
               onChunkDone: (ci, total, elapsed) => {
                   if (total > 1) log(`  Chunk ${ci + 1}/${total} (${elapsed.toFixed(0)}ms)`, 'log-dim');
               }
@@ -988,7 +996,8 @@ window.runDiagnostic = async function() {
 
         // ── GPU Stretch ──
         logHeader('Stage 6: GPU Stretch');
-        const stretched = await waveletGPU.stretchAudio(stretchFactor);
+        const diagInterpMode = parseInt(document.getElementById('interpMode').value);
+        const stretched = await waveletGPU.stretchAudio(stretchFactor, { interpMode: diagInterpMode });
         let strRMS = 0, strPeak = 0, nanCount = 0, infCount = 0;
         let firstNanIdx = -1;
         for (let i = 0; i < stretched.length; i++) {
@@ -1080,6 +1089,14 @@ document.getElementById('phaseRand').addEventListener('input', (e) => {
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !document.getElementById('runBtn').disabled) {
         window.runStretch();
+    }
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') {
+        e.preventDefault();
+        if (currentSource) {
+            window.stopPlayback();
+        } else if (stretchedBuffer) {
+            window.playStretched();
+        }
     }
 });
 </script>

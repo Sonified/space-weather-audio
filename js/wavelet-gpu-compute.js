@@ -152,6 +152,10 @@ struct StretchParams {
     dt:              f32,
     w0:              f32,
     phaseRand:       f32,    // 0.0 = phase vocoder, 1.0 = full random (paulstretch-style)
+    interpMode:      u32,    // 0 = cubic (Catmull-Rom), 1 = linear
+    _pad0:           u32,
+    _pad1:           u32,
+    _pad2:           u32,
 };
 
 // Deterministic hash for pseudo-random phase per (block, scale) pair
@@ -203,9 +207,12 @@ fn stretch_main(
     let idx0: u32 = u32(floor(inputPos));
     let frac: f32 = inputPos - f32(idx0);
 
-    // Clamp to valid range
-    let idx1: u32 = min(idx0 + 1u, params.signalLength - 1u);
-    let safeIdx0: u32 = min(idx0, params.signalLength - 1u);
+    // Clamp indices for 4-point access (Catmull-Rom needs p_-1, p_0, p_1, p_2)
+    let maxIdx: u32 = params.signalLength - 1u;
+    let i1: u32 = min(idx0, maxIdx);                    // p0
+    let i0: u32 = select(0u, i1 - 1u, i1 > 0u);        // p_-1 (clamp at 0)
+    let i2: u32 = min(i1 + 1u, maxIdx);                 // p1
+    let i3: u32 = min(i1 + 2u, maxIdx);                 // p2
 
     var accumulator: f32 = 0.0;
 
@@ -213,31 +220,69 @@ fn stretch_main(
     for (var si: u32 = 0u; si < params.numScales; si++) {
         let baseAddr: u32 = si * params.signalLength * 2u;
 
-        // Read complex coefficients at two adjacent time positions
-        let re0: f32 = cwtCoeffs[baseAddr + safeIdx0 * 2u];
-        let im0: f32 = cwtCoeffs[baseAddr + safeIdx0 * 2u + 1u];
-        let re1: f32 = cwtCoeffs[baseAddr + idx1 * 2u];
-        let im1: f32 = cwtCoeffs[baseAddr + idx1 * 2u + 1u];
+        // Read 4 complex coefficients for cubic interpolation
+        let re_m1: f32 = cwtCoeffs[baseAddr + i0 * 2u];
+        let im_m1: f32 = cwtCoeffs[baseAddr + i0 * 2u + 1u];
+        let re_0: f32  = cwtCoeffs[baseAddr + i1 * 2u];
+        let im_0: f32  = cwtCoeffs[baseAddr + i1 * 2u + 1u];
+        let re_1: f32  = cwtCoeffs[baseAddr + i2 * 2u];
+        let im_1: f32  = cwtCoeffs[baseAddr + i2 * 2u + 1u];
+        let re_2: f32  = cwtCoeffs[baseAddr + i3 * 2u];
+        let im_2: f32  = cwtCoeffs[baseAddr + i3 * 2u + 1u];
 
-        // Interpolate magnitude (linear)
-        let mag0: f32 = sqrt(re0 * re0 + im0 * im0);
-        let mag1: f32 = sqrt(re1 * re1 + im1 * im1);
-        let mag: f32 = mix(mag0, mag1, frac);
+        // Magnitudes at 4 points
+        let m0: f32 = sqrt(re_m1 * re_m1 + im_m1 * im_m1);
+        let m1: f32 = sqrt(re_0 * re_0 + im_0 * im_0);
+        let m2: f32 = sqrt(re_1 * re_1 + im_1 * im_1);
+        let m3: f32 = sqrt(re_2 * re_2 + im_2 * im_2);
 
-        // Pairwise phase unwrap + interpolation
-        let phase0: f32 = atan2(im0, re0);
-        let phase1: f32 = atan2(im1, re1);
-        var phaseDiff: f32 = phase1 - phase0;
-        phaseDiff = phaseDiff - round(phaseDiff * 0.159154943) * 6.283185307;
-        let phase: f32 = phase0 + frac * phaseDiff;
+        // Phases at 4 points, unwrapped relative to p0
+        let p1: f32 = atan2(im_0, re_0);
+
+        var dp0: f32 = atan2(im_m1, re_m1) - p1;
+        dp0 = dp0 - round(dp0 * 0.159154943) * 6.283185307;
+        let p0: f32 = p1 + dp0;
+
+        var dp2: f32 = atan2(im_1, re_1) - p1;
+        dp2 = dp2 - round(dp2 * 0.159154943) * 6.283185307;
+        let p2: f32 = p1 + dp2;
+
+        var dp3: f32 = atan2(im_2, re_2) - p2;
+        dp3 = dp3 - round(dp3 * 0.159154943) * 6.283185307;
+        let p3: f32 = p2 + dp3;
+
+        var mag: f32;
+        var phase: f32;
+
+        if (params.interpMode == 1u) {
+            // Linear interpolation
+            mag = mix(m1, m2, frac);
+            phase = p1 + frac * (p2 - p1);
+        } else {
+            // Catmull-Rom cubic spline interpolation
+            let t: f32 = frac;
+            let t2: f32 = t * t;
+            let t3: f32 = t2 * t;
+
+            mag = 0.5 * ((2.0 * m1) + (-m0 + m2) * t
+                + (2.0 * m0 - 5.0 * m1 + 4.0 * m2 - m3) * t2
+                + (-m0 + 3.0 * m1 - 3.0 * m2 + m3) * t3);
+            mag = max(mag, 0.0); // clamp negative from overshoot
+
+            phase = 0.5 * ((2.0 * p1) + (-p0 + p2) * t
+                + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3);
+        }
+
+        // Weight by 1/sqrt(s) — required for frequency-domain CWT normalization
+        // (forward CWT has sqrt(2*pi*s/dt) which grows with scale; this compensates)
+        let scaleWeight: f32 = 1.0 / sqrt(scales[si]);
 
         if (params.phaseRand > 0.0) {
-            // Add smooth random phase offset per (block, scale) for diffusion
             let randAngle: f32 = smoothRandomPhase(outIdx, si) * params.phaseRand;
-            accumulator += mag * cos(phase * params.stretchFactor + randAngle);
+            accumulator += scaleWeight * mag * cos(phase * params.stretchFactor + randAngle);
         } else {
-            // Original phase vocoder reconstruction
-            accumulator += mag * cos(phase * params.stretchFactor);
+            accumulator += scaleWeight * mag * cos(phase * params.stretchFactor);
         }
     }
 
@@ -503,7 +548,7 @@ export class WaveletGPUCompute {
         });
 
         this.stretchUniformBuffer = this.device.createBuffer({
-            size: 32,
+            size: 48,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: 'stretch-params'
         });
@@ -767,14 +812,14 @@ export class WaveletGPUCompute {
      * @param {number} [options.phaseRand=0] - Phase randomization (0=vocoder, 1=full random)
      * @returns {Float32Array} Stretched audio samples
      */
-    async stretchAudio(stretchFactor, { phaseRand = 0 } = {}) {
+    async stretchAudio(stretchFactor, { phaseRand = 0, interpMode = 0 } = {}) {
         if (!this.cachedCwtBuffer) throw new Error('No cached CWT — call computeCWT first');
 
         const t0 = performance.now();
         const outputLength = Math.round(this.cachedSignalLength * stretchFactor);
 
-        // Write stretch uniforms
-        const uniforms = new ArrayBuffer(32);
+        // Write stretch uniforms (48 bytes: 8 f32/u32 fields + interpMode + 3 padding)
+        const uniforms = new ArrayBuffer(48);
         const f32View = new Float32Array(uniforms);
         const u32View = new Uint32Array(uniforms);
         f32View[0] = stretchFactor;
@@ -785,6 +830,8 @@ export class WaveletGPUCompute {
         f32View[5] = this.cachedDt;
         f32View[6] = this.cachedW0;
         f32View[7] = phaseRand;
+        u32View[8] = interpMode;  // 0 = cubic, 1 = linear
+        // [9..11] = padding
         this.device.queue.writeBuffer(this.stretchUniformBuffer, 0, new Uint8Array(uniforms));
 
         // Upload scales array
@@ -859,7 +906,10 @@ export class WaveletGPUCompute {
      */
     async waveletStretch(audioData, stretchFactor, params) {
         await this.computeCWT(audioData, params);
-        return this.stretchAudio(stretchFactor, { phaseRand: params.phaseRand || 0 });
+        return this.stretchAudio(stretchFactor, {
+            phaseRand: params.phaseRand || 0,
+            interpMode: params.interpMode || 0
+        });
     }
 
     /**
@@ -903,6 +953,7 @@ export class WaveletGPUCompute {
     async waveletStretchChunked(audioData, stretchFactor, {
         dt, w0 = 6, dj = 0.1,
         phaseRand = 0,
+        interpMode = 0,
         maxChunkSamples,
         overlapSamples,
         onChunkDone
@@ -923,7 +974,7 @@ export class WaveletGPUCompute {
 
         // If signal fits in one chunk, use the fast path
         if (audioData.length <= maxChunkSamples) {
-            const result = await this.waveletStretch(audioData, stretchFactor, { dt, w0, dj, phaseRand });
+            const result = await this.waveletStretch(audioData, stretchFactor, { dt, w0, dj, phaseRand, interpMode });
             // Trim to exact expected output length (remove padding)
             const expectedLen = Math.round(audioData.length * stretchFactor);
             if (onChunkDone) onChunkDone(0, 1, performance.now() - t0);
@@ -952,7 +1003,7 @@ export class WaveletGPUCompute {
 
             // CWT + stretch this chunk
             await this.computeCWT(chunk, { dt, w0, dj });
-            const stretched = await this.stretchAudio(stretchFactor, { phaseRand });
+            const stretched = await this.stretchAudio(stretchFactor, { phaseRand, interpMode });
 
             // Trim stretched output to match actual chunk duration (not padding)
             const chunkOutputLen = Math.round(chunk.length * stretchFactor);
