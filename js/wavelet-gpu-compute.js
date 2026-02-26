@@ -241,8 +241,12 @@ fn stretch_main(
         }
     }
 
-    // Apply ICWT scaling: dj * sqrt(dt)
-    stretchedAudio[outIdx] = accumulator * params.dj * sqrt(params.dt);
+    // Apply ICWT scaling: dj * sqrt(dt) / (C_d * psi(0))
+    // C_d ≈ 0.776 for Morlet w0=6 (Torrence & Compo '98)
+    // psi(0) = pi^(-0.25) ≈ 0.7511 for all Morlet wavelets
+    let C_d: f32 = 0.776;
+    let psi0: f32 = 0.7511255;
+    stretchedAudio[outIdx] = accumulator * params.dj * sqrt(params.dt) / (C_d * psi0);
 }
 `;
 
