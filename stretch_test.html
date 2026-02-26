@@ -5,28 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
     <title>Stretch Algorithm Comparison</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         * {
             box-sizing: border-box;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0D0D0F;
+            color: #E0E0E0;
             margin: 0;
-            padding: 20px;
+            padding: 16px;
             min-height: 100vh;
-        }
-
-        h1 {
-            color: #00d4ff;
-            margin-bottom: 10px;
-        }
-
-        .subtitle {
-            color: #888;
-            margin-bottom: 30px;
         }
 
         .container {
@@ -34,33 +27,49 @@
             margin: 0 auto;
         }
 
-        .panel {
-            background: #252540;
-            border-radius: 12px;
-            padding: 20px;
+        h1 {
+            color: #E0E0E0;
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-bottom: 4px;
+            letter-spacing: -0.01em;
+        }
+
+        .subtitle {
+            color: #555;
             margin-bottom: 20px;
+            font-size: 0.85em;
+        }
+
+        .panel {
+            background: #1A1A1E;
+            border-radius: 6px;
+            border: 1px solid #2A2A2E;
+            padding: 12px 14px;
+            margin-bottom: 8px;
         }
 
         .panel h2 {
-            margin-top: 0;
-            color: #00d4ff;
-            font-size: 1.1em;
+            margin: 0 0 10px 0;
+            color: #555;
+            font-size: 0.7em;
+            font-weight: 500;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
         }
 
         .file-drop {
-            border: 2px dashed #444;
-            border-radius: 8px;
-            padding: 40px;
+            border: 1px dashed #333;
+            border-radius: 4px;
+            padding: 12px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
         }
 
         .file-drop:hover, .file-drop.dragover {
-            border-color: #00d4ff;
-            background: rgba(0, 212, 255, 0.05);
+            border-color: #4A9E9E;
+            background: rgba(74, 158, 158, 0.04);
         }
 
         .file-drop input {
@@ -69,159 +78,217 @@
 
         .controls {
             display: flex;
-            gap: 15px;
+            gap: 12px;
             align-items: center;
             flex-wrap: wrap;
         }
 
-        button {
-            background: #00d4ff;
-            color: #1a1a2e;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: 600;
+        /* Playback transport buttons */
+        .transport-btn {
+            background: none;
+            border: 1px solid #333;
+            color: #E0E0E0;
+            width: 36px;
+            height: 36px;
+            border-radius: 4px;
+            font-size: 14px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.15s;
         }
 
-        button:hover {
-            background: #00b8e6;
-            transform: translateY(-1px);
+        .transport-btn:hover {
+            border-color: #4A9E9E;
+            color: #fff;
+            background: rgba(74, 158, 158, 0.08);
         }
 
-        button:disabled {
-            background: #444;
-            color: #888;
+        .transport-btn:disabled {
+            border-color: #222;
+            color: #444;
             cursor: not-allowed;
-            transform: none;
+        }
+
+        .transport-btn.active {
+            border-color: #4A9E9E;
+            color: #4A9E9E;
+            background: rgba(74, 158, 158, 0.1);
         }
 
         @keyframes pulse-glow {
             0%, 100% {
-                box-shadow: 0 0 5px #00d4ff, 0 0 10px #00d4ff;
-                background: #00d4ff;
+                box-shadow: 0 0 4px rgba(74, 158, 158, 0.3);
+                border-color: #4A9E9E;
             }
             50% {
-                box-shadow: 0 0 20px #00d4ff, 0 0 35px #00d4ff;
-                background: #40e0ff;
+                box-shadow: 0 0 12px rgba(74, 158, 158, 0.5);
+                border-color: #5CB8B8;
             }
         }
 
-        button.pulse {
-            animation: pulse-glow 1.5s ease-in-out infinite;
+        .transport-btn.pulse {
+            animation: pulse-glow 2s ease-in-out infinite;
+            color: #4A9E9E;
         }
 
-        #playBtn {
-            width: 110px;
-            height: 44px;
+        /* General buttons (download, etc) */
+        button {
+            background: none;
+            color: #E0E0E0;
+            border: 1px solid #333;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.15s;
         }
 
-        .loop-btn {
-            background: #333;
-            color: #888;
+        button:hover {
+            border-color: #4A9E9E;
+            color: #fff;
         }
 
-        .loop-btn:hover {
-            background: #444;
-            color: #aaa;
-        }
-
-        .loop-btn.active {
-            background: #00d4ff;
-            color: #1a1a2e;
+        button:disabled {
+            border-color: #222;
+            color: #444;
+            cursor: not-allowed;
         }
 
         .slider-group {
             flex: 1;
-            min-width: 200px;
+            min-width: 180px;
         }
 
         .slider-group label {
             display: block;
-            margin-bottom: 8px;
-            color: #aaa;
+            margin-bottom: 5px;
+            color: #777;
+            font-size: 0.8em;
         }
 
         .slider-group label span {
-            color: #00d4ff;
+            color: #4A9E9E;
             font-weight: 600;
         }
 
         input[type="range"] {
             width: 100%;
-            height: 8px;
-            border-radius: 4px;
-            background: #333;
+            height: 4px;
+            border-radius: 2px;
+            background: #2A2A2E;
             outline: none;
             -webkit-appearance: none;
         }
 
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 20px;
-            height: 20px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
-            background: #00d4ff;
+            background: #4A9E9E;
             cursor: pointer;
+            border: 2px solid #0D0D0F;
         }
 
         select {
-            background: #333;
-            color: #eee;
-            border: 1px solid #444;
-            padding: 10px 15px;
-            border-radius: 6px;
-            font-size: 14px;
+            background: #141416;
+            color: #ccc;
+            border: none;
+            border-bottom: 1px solid #333;
+            padding: 6px 8px;
+            border-radius: 2px;
+            font-size: 13px;
+            font-family: inherit;
             cursor: pointer;
+            outline: none;
+        }
+
+        select:focus {
+            border-bottom-color: #4A9E9E;
         }
 
         .status {
-            background: #1a1a2e;
-            padding: 15px;
-            border-radius: 6px;
-            font-family: monospace;
-            color: #888;
-            min-height: 60px;
+            background: transparent;
+            padding: 0 8px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.75em;
+            color: #555;
+            min-height: auto;
+            line-height: 36px;
         }
 
         .status.active {
-            color: #00ff88;
+            color: #5A8A5A;
         }
 
         .status.error {
-            color: #ff4444;
+            color: #A04040;
+        }
+
+        .stats-grid {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .stat-box {
+            background: #141416;
+            border: 1px solid #2A2A2E;
+            border-radius: 3px;
+            padding: 6px 10px;
+            flex: 1;
+            min-width: 80px;
+        }
+
+        .stat-label {
+            font-size: 0.65em;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 1em;
+            font-weight: 600;
+            color: #777;
+            margin-top: 1px;
+        }
+
+        .stat-value.green {
+            color: #5A8A5A;
         }
 
         .track-list {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 6px;
         }
 
         .track-item {
-            background: #333355;
-            padding: 12px 20px;
-            border-radius: 6px;
+            background: transparent;
+            padding: 5px 12px;
+            border-radius: 3px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.15s;
             display: inline-block;
-            border: 1px solid #444;
-            margin-right: 10px;
-            margin-bottom: 5px;
+            border: 1px solid #333;
+            font-size: 0.82em;
         }
 
         .track-item:hover {
-            background: #00d4ff;
-            color: #1a1a2e;
-            border-color: #00d4ff;
+            border-color: #4A9E9E;
+            color: #fff;
         }
 
         .track-item.active {
-            background: #00d4ff;
-            color: #1a1a2e;
-            border-color: #00d4ff;
+            background: rgba(74, 158, 158, 0.12);
+            color: #4A9E9E;
+            border-color: #4A9E9E;
         }
 
         .track-name {
@@ -229,14 +296,14 @@
         }
 
         .track-size {
-            color: #666;
-            font-size: 0.9em;
+            color: #555;
+            font-size: 0.85em;
         }
 
         .waveform-container {
             height: 100px;
-            background: #1a1a2e;
-            border-radius: 6px;
+            background: #000;
+            border-radius: 3px;
             overflow: hidden;
             position: relative;
         }
@@ -250,9 +317,49 @@
             position: absolute;
             top: 0;
             bottom: 0;
-            width: 2px;
-            background: #ff4444;
+            width: 1px;
+            background: #D4943A;
             pointer-events: none;
+            box-shadow: 0 0 6px rgba(212, 148, 58, 0.4);
+        }
+
+        #waveformTime {
+            position: absolute;
+            bottom: 4px;
+            right: 8px;
+            color: rgba(255,255,255,0.5);
+            font-size: 10px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* Download row — inline, not its own section */
+        .download-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 0;
+        }
+
+        .download-row button {
+            font-size: 12px;
+            padding: 4px 10px;
+        }
+
+        .download-row .status {
+            font-size: 0.7em;
+            line-height: 1.4;
+        }
+
+        #gpuBadge {
+            color: #5A8A5A;
+            font-size: 0.7em;
+            font-weight: 500;
+            background: rgba(90, 138, 90, 0.1);
+            padding: 2px 8px;
+            border-radius: 3px;
+            border: 1px solid rgba(90, 138, 90, 0.25);
         }
     </style>
 </head>
@@ -260,21 +367,21 @@
     <div class="container">
         <h1>Stretch Algorithm Comparison</h1>
 
-        <!-- 1. Load Audio -->
+        <!-- Load Audio -->
         <div class="panel">
-            <h2>1. Load Audio</h2>
+            <h2>Load Audio</h2>
             <div class="track-list" id="trackList">
                 <!-- Test tracks will be listed here -->
             </div>
-            <div class="file-drop" id="fileDrop" style="margin-top: 15px; padding: 15px;">
-                <p style="margin: 0; font-size: 14px;">Or drop/browse for a file</p>
+            <div class="file-drop" id="fileDrop" style="margin-top: 10px;">
+                <p style="margin: 0; font-size: 12px; color: #555;">Drop or browse for a file</p>
                 <input type="file" id="fileInput" accept=".wav,audio/*">
             </div>
         </div>
 
-        <!-- 2. Stretch -->
+        <!-- Stretch -->
         <div class="panel">
-            <h2>2. Stretch Settings</h2>
+            <h2>Stretch Settings</h2>
             <div class="controls" style="margin-bottom: 15px;">
                 <div class="slider-group">
                     <label>Algorithm</label>
@@ -283,10 +390,14 @@
                         <!-- <option value="spectral">FFT (Spectral)</option> -->
                         <option value="paul" selected>Paul Stretch (STFT)</option>
                         <option value="granular">Granular</option>
+                        <option value="cwt">CWT (Original Morlet Wavelet)</option>
+                        <option value="cqt">CQT (Constant-Q)</option>
+                        <option value="rtpghi">RTPGHI (Phase Gradient)</option>
                     </select>
+                    <span id="gpuBadge" style="display:none;">GPU</span>
                 </div>
 
-                <div class="slider-group">
+                <div class="slider-group" id="windowGroup">
                     <label><span id="windowLabel">Window Size</span>: <span id="windowValue">4096</span></label>
                     <select id="windowSelect">
                         <option value="1024">1024 (crisp)</option>
@@ -296,45 +407,447 @@
                         <option value="16384">16384 (smooth)</option>
                     </select>
                 </div>
-            </div>
-            <div class="controls">
-                <div class="slider-group" style="flex: 1;">
-                    <label>Stretch: <span id="stretchValue">2.0</span>x</label>
-                    <input type="range" id="stretchSlider" min="0" max="100" step="1" value="30">
-                </div>
 
-                <div class="slider-group" style="flex: 1;">
+                <div class="slider-group" id="overlapGroup" style="flex: 0 0 150px; min-width: 120px;">
                     <label>Overlap: <span id="overlapValue">90</span>%</label>
                     <input type="range" id="overlapSlider" min="50" max="95" step="2.5" value="90">
                 </div>
             </div>
+            <div class="controls">
+                <div class="slider-group" style="flex: 1;">
+                    <label>Stretch: <span id="stretchValue">1.0</span>x</label>
+                    <input type="range" id="stretchSlider" min="0" max="100" step="1" value="50">
+                </div>
+            </div>
+
+            <!-- GPU shared controls (phase mode + interpolation, hidden by default) -->
+            <div id="gpuPhaseControls" class="controls" style="display:none; margin-top:15px;">
+                <div class="slider-group">
+                    <label>Phase Mode</label>
+                    <select id="phaseModeSelect">
+                        <option value="accumulate" selected>Unwrapped (pitch-accurate)</option>
+                        <option value="multiply">Multiply (fast, integer factors only)</option>
+                    </select>
+                </div>
+                <div class="slider-group">
+                    <label>Interpolation</label>
+                    <select id="interpModeSelect">
+                        <option value="0" selected>Cubic (Catmull-Rom)</option>
+                        <option value="1">Linear</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- CWT parameters (hidden by default) -->
+            <div id="cwtControls" class="controls" style="display:none; margin-top:15px;">
+                <div class="slider-group">
+                    <label>w0 (Center Frequency)</label>
+                    <select id="w0Select">
+                        <option value="4">4 (impulsive)</option>
+                        <option value="5">5</option>
+                        <option value="6">6 (original)</option>
+                        <option value="8">8</option>
+                        <option value="10" selected>10 (recommended)</option>
+                        <option value="12">12</option>
+                        <option value="14">14</option>
+                        <option value="16">16</option>
+                        <option value="20">20 (resonant)</option>
+                    </select>
+                </div>
+                <div class="slider-group">
+                    <label>dj (Scale Spacing)</label>
+                    <select id="djSelect">
+                        <option value="0.1">0.1 (fine)</option>
+                        <option value="0.125" selected>0.125 (default)</option>
+                        <option value="0.25">0.25 (coarse)</option>
+                        <option value="0.5">0.5 (half-octave)</option>
+                        <option value="1.0">1.0 (octave)</option>
+                        <option value="2.0">2.0 (2-octave)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- CQT parameters (hidden by default) -->
+            <div id="cqtControls" class="controls" style="display:none; margin-top:15px;">
+                <div class="slider-group">
+                    <label>Bins / Octave</label>
+                    <select id="binsPerOctaveSelect">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="4">4</option>
+                        <option value="6">6</option>
+                        <option value="12">12 (semitone)</option>
+                        <option value="24" selected>24 (quarter-tone)</option>
+                        <option value="36">36</option>
+                        <option value="48">48 (fine)</option>
+                    </select>
+                </div>
+                <div class="slider-group">
+                    <label>Min Bandwidth</label>
+                    <select id="minBWSelect">
+                        <option value="0">0 (pure CQT)</option>
+                        <option value="25">25 Hz</option>
+                        <option value="50">50 Hz</option>
+                        <option value="100" selected>100 Hz</option>
+                        <option value="200">200 Hz</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- RTPGHI parameters (hidden by default) -->
+            <div id="rtpghiControls" class="controls" style="display:none; margin-top:15px; flex-wrap:wrap;">
+                <div class="slider-group">
+                    <label>FFT Size (M)</label>
+                    <select id="rtpghiMSelect">
+                        <option value="512">512</option>
+                        <option value="1024">1024</option>
+                        <option value="2048" selected>2048</option>
+                        <option value="4096">4096</option>
+                        <option value="8192">8192</option>
+                    </select>
+                </div>
+                <div class="slider-group">
+                    <label>Hop Divisor</label>
+                    <select id="rtpghiHopSelect">
+                        <option value="4">M/4</option>
+                        <option value="8" selected>M/8</option>
+                        <option value="16">M/16</option>
+                        <option value="32">M/32</option>
+                    </select>
+                </div>
+                <div class="slider-group">
+                    <label>Window</label>
+                    <select id="rtpghiWindowSelect">
+                        <option value="gauss" selected>Gaussian</option>
+                        <option value="hann">Hann</option>
+                    </select>
+                </div>
+                <div class="slider-group">
+                    <label>Phase Mode</label>
+                    <select id="rtpghiPhaseSelect">
+                        <option value="time" selected>Time only</option>
+                        <option value="full">Full (time + freq)</option>
+                        <option value="freq">Frequency only</option>
+                    </select>
+                </div>
+                <div class="slider-group">
+                    <label>Tolerance (dB)</label>
+                    <select id="rtpghiTolSelect">
+                        <option value="20">20 dB</option>
+                        <option value="40" selected>40 dB</option>
+                        <option value="60">60 dB</option>
+                        <option value="80">80 dB</option>
+                        <option value="100">100 dB</option>
+                    </select>
+                </div>
+                <div class="slider-group">
+                    <label>Gamma (γ)</label>
+                    <select id="rtpghiGammaSelect">
+                        <option value="25000">25,000</option>
+                        <option value="100000">100,000</option>
+                        <option value="500000">500,000</option>
+                        <option value="1000000" selected>1,000,000</option>
+                        <option value="2000000">2,000,000</option>
+                        <option value="4000000">4,000,000</option>
+                    </select>
+                </div>
+            </div>
         </div>
 
-        <!-- 3. Playback -->
+        <!-- Playback -->
         <div class="panel">
-            <h2>3. Playback</h2>
-            <div class="controls" style="margin-bottom: 15px;">
-                <button id="playBtn" disabled>▶ Play</button>
-                <button id="stopBtn" disabled>■ Stop</button>
-                <button id="loopBtn" class="loop-btn">⟳ Loop</button>
-                <div class="status" id="status" style="flex: 1; margin: 0; min-height: auto; padding: 10px;">Ready. Load an audio file to begin.</div>
+            <h2>Playback</h2>
+            <div class="controls" style="margin-bottom: 10px;">
+                <button id="playBtn" class="transport-btn" disabled title="Play">▶</button>
+                <button id="stopBtn" class="transport-btn" disabled title="Stop">■</button>
+                <button id="loopBtn" class="transport-btn" title="Loop">⟳</button>
+                <div class="status" id="status">Ready</div>
             </div>
             <div class="waveform-container">
                 <canvas id="waveformCanvas"></canvas>
                 <div class="playhead" id="playhead" style="left: 0"></div>
+                <div id="waveformTime"></div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="panel" id="statsPanel" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-box"><div class="stat-label">Total</div><div class="stat-value green" id="statTotal">-</div></div>
+                <div class="stat-box"><div class="stat-label">Realtime</div><div class="stat-value green" id="statRealtime">-</div></div>
+                <div class="stat-box"><div class="stat-label">Output Length</div><div class="stat-value" id="statLength">-</div></div>
+                <div class="stat-box"><div class="stat-label">File Size</div><div class="stat-value" id="statSize">-</div></div>
+            </div>
+        </div>
+
+        <!-- Download -->
+        <div id="downloadPanel" style="display: none; padding: 4px 14px;">
+            <div class="download-row">
+                <button id="downloadBtn">⬇ WAV</button>
+                <div class="status" id="downloadStatus">Ready to export</div>
             </div>
         </div>
     </div>
 
     <script>
+    // RTPGHIStretcher — Real-Time Phase Gradient Heap Integration (Prusa et al.)
+    class RTPGHIStretcher {
+        constructor(opts = {}) {
+            this.M = opts.M || 2048;
+            this.hopDiv = opts.hopDiv || 8;
+            this.bins = this.M / 2 + 1;
+            this.aSyn = this.M / this.hopDiv;
+            this.tol = opts.tol || 10;
+            this.phaseMode = opts.phaseMode || 'full';
+            this.windowType = opts.windowType || 'gauss';
+            const M = this.M;
+
+            if (opts.gamma != null) {
+                this.gamma = opts.gamma;
+            } else {
+                this.gammaScale = opts.gammaScale || 1.0;
+                this.gamma = M * M * 0.006 * this.gammaScale;
+            }
+
+            this.window = new Float32Array(M);
+            if (this.windowType === 'hann') {
+                for (let i = 0; i < M; i++) {
+                    this.window[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / M));
+                }
+            } else {
+                for (let i = 0; i < M; i++) {
+                    const t = i - M / 2;
+                    this.window[i] = Math.exp(-Math.PI * t * t / this.gamma);
+                }
+            }
+
+            this.bitRev = this._computeBitReversal(M);
+            this.twRe = new Float32Array(M / 2);
+            this.twIm = new Float32Array(M / 2);
+            for (let i = 0; i < M / 2; i++) {
+                const angle = -2 * Math.PI * i / M;
+                this.twRe[i] = Math.cos(angle);
+                this.twIm[i] = Math.sin(angle);
+            }
+
+            this.fftRe = new Float32Array(M);
+            this.fftIm = new Float32Array(M);
+        }
+
+        _computeBitReversal(n) {
+            const bits = Math.log2(n);
+            const rev = new Uint32Array(n);
+            for (let i = 0; i < n; i++) {
+                let r = 0, x = i;
+                for (let j = 0; j < bits; j++) { r = (r << 1) | (x & 1); x >>= 1; }
+                rev[i] = r;
+            }
+            return rev;
+        }
+
+        _fft(re, im) {
+            const n = this.M;
+            for (let i = 0; i < n; i++) {
+                const j = this.bitRev[i];
+                if (i < j) {
+                    [re[i], re[j]] = [re[j], re[i]];
+                    [im[i], im[j]] = [im[j], im[i]];
+                }
+            }
+            for (let size = 2; size <= n; size *= 2) {
+                const half = size / 2, step = n / size;
+                for (let i = 0; i < n; i += size) {
+                    for (let j = 0; j < half; j++) {
+                        const tw = j * step;
+                        const wr = this.twRe[tw], wi = this.twIm[tw];
+                        const i2 = i + j + half;
+                        const tr = wr * re[i2] - wi * im[i2];
+                        const ti = wr * im[i2] + wi * re[i2];
+                        re[i2] = re[i + j] - tr;
+                        im[i2] = im[i + j] - ti;
+                        re[i + j] += tr;
+                        im[i + j] += ti;
+                    }
+                }
+            }
+        }
+
+        _ifft(re, im) {
+            const n = this.M;
+            for (let i = 0; i < n; i++) im[i] = -im[i];
+            this._fft(re, im);
+            for (let i = 0; i < n; i++) { re[i] /= n; im[i] = -im[i] / n; }
+        }
+
+        _analyzeFrame(source, pos, mag, logMag) {
+            const M = this.M, re = this.fftRe, im = this.fftIm;
+            for (let i = 0; i < M; i++) {
+                const p = pos + i;
+                const idx = Math.floor(p);
+                const frac = p - idx;
+                let sample = 0;
+                if (idx >= 0 && idx < source.length - 1) {
+                    sample = source[idx] * (1 - frac) + source[idx + 1] * frac;
+                } else if (idx >= 0 && idx < source.length) {
+                    sample = source[idx];
+                }
+                re[i] = sample * this.window[i];
+                im[i] = 0;
+            }
+            this._fft(re, im);
+            const EPS = 1e-20;
+            for (let m = 0; m < this.bins; m++) {
+                mag[m] = Math.sqrt(re[m] * re[m] + im[m] * im[m]);
+                logMag[m] = Math.log(mag[m] + EPS);
+            }
+        }
+
+        _rtpghiUpdate(logMagPrev, logMagCurr, phasePrev, phaseCurr) {
+            const bins = this.bins;
+            const M = this.M;
+            const aSyn = this.aSyn;
+            const lambda = this.gamma / (aSyn * M);
+            const TWO_PI = 2 * Math.PI;
+            const phaseMode = this.phaseMode;
+
+            let maxLog = -Infinity;
+            for (let m = 0; m < bins; m++) {
+                if (logMagCurr[m] > maxLog) maxLog = logMagCurr[m];
+            }
+            const threshold = maxLog - this.tol;
+
+            if (phaseMode === 'full' || phaseMode === 'time') {
+                for (let m = 0; m < bins; m++) {
+                    let dLogdW;
+                    if (m === 0) {
+                        dLogdW = logMagCurr[1] - logMagCurr[0];
+                    } else if (m === bins - 1) {
+                        dLogdW = logMagCurr[bins - 1] - logMagCurr[bins - 2];
+                    } else {
+                        dLogdW = (logMagCurr[m + 1] - logMagCurr[m - 1]) * 0.5;
+                    }
+                    const tgrad = dLogdW * lambda + TWO_PI * aSyn * m / M;
+                    phaseCurr[m] = phasePrev[m] + tgrad;
+                }
+            } else {
+                for (let m = 0; m < bins; m++) {
+                    phaseCurr[m] = TWO_PI * aSyn * m / M * 0;
+                }
+            }
+
+            if (phaseMode === 'full' || phaseMode === 'freq') {
+                for (let m = 1; m < bins; m++) {
+                    if (logMagCurr[m] > threshold && logMagCurr[m] > logMagCurr[m - 1]) {
+                        const dLogdT_m = logMagCurr[m] - logMagPrev[m];
+                        const dLogdT_m1 = logMagCurr[m - 1] - logMagPrev[m - 1];
+                        const fgrad = -(dLogdT_m + dLogdT_m1) * 0.5 * lambda;
+                        phaseCurr[m] = phaseCurr[m - 1] + fgrad;
+                    }
+                }
+                for (let m = bins - 2; m >= 0; m--) {
+                    if (logMagCurr[m] > threshold && logMagCurr[m] > logMagCurr[m + 1]) {
+                        const dLogdT_m = logMagCurr[m] - logMagPrev[m];
+                        const dLogdT_m1 = logMagCurr[m + 1] - logMagPrev[m + 1];
+                        const fgrad = -(dLogdT_m + dLogdT_m1) * 0.5 * lambda;
+                        phaseCurr[m] = phaseCurr[m + 1] - fgrad;
+                    }
+                }
+            }
+        }
+
+        _synthesizeFrame(mag, phase) {
+            const M = this.M, re = this.fftRe, im = this.fftIm;
+            for (let m = 0; m < this.bins; m++) {
+                re[m] = mag[m] * Math.cos(phase[m]);
+                im[m] = mag[m] * Math.sin(phase[m]);
+            }
+            for (let m = 1; m < M / 2; m++) {
+                re[M - m] = re[m];
+                im[M - m] = -im[m];
+            }
+            this._ifft(re, im);
+            const out = new Float32Array(M);
+            for (let i = 0; i < M; i++) out[i] = re[i] * this.window[i];
+            return out;
+        }
+
+        stretch(source, stretchFactor, onProgress = null) {
+            const M = this.M;
+            const aSyn = this.aSyn;
+            const aAna = aSyn / stretchFactor;
+            const bins = this.bins;
+
+            const numInputFrames = Math.floor((source.length - M) / aAna) + 1;
+            const outputLength = numInputFrames * aSyn + M;
+            const output = new Float32Array(outputLength);
+            const windowSum = new Float32Array(outputLength);
+
+            const mag = new Float32Array(bins);
+            const logMag = new Float32Array(bins);
+            const logMagPrev = new Float32Array(bins);
+            const phasePrev = new Float32Array(bins);
+            const phaseCurr = new Float32Array(bins);
+
+            this._analyzeFrame(source, 0, mag, logMag);
+            logMagPrev.set(logMag);
+
+            let sourcePos = 0;
+            let outputPos = 0;
+
+            for (let frame = 0; frame < numInputFrames; frame++) {
+                this._analyzeFrame(source, sourcePos, mag, logMag);
+                this._rtpghiUpdate(logMagPrev, logMag, phasePrev, phaseCurr);
+                const synFrame = this._synthesizeFrame(mag, phaseCurr);
+
+                for (let i = 0; i < M; i++) {
+                    if (outputPos + i < outputLength) {
+                        output[outputPos + i] += synFrame[i];
+                        windowSum[outputPos + i] += this.window[i] * this.window[i];
+                    }
+                }
+
+                logMagPrev.set(logMag);
+                phasePrev.set(phaseCurr);
+                sourcePos += aAna;
+                outputPos += aSyn;
+
+                if (onProgress && frame % 100 === 0) onProgress(frame, numInputFrames);
+            }
+
+            for (let i = 0; i < outputLength; i++) {
+                if (windowSum[i] > 1e-8) output[i] /= windowSum[i];
+            }
+
+            const trimStart = Math.floor(M / 2);
+            const trimEnd = Math.min(outputLength, outputPos + Math.floor(M / 2));
+            const trimmed = output.slice(trimStart, trimEnd);
+
+            if (onProgress) onProgress(numInputFrames, numInputFrames);
+            return trimmed;
+        }
+    }
+    </script>
+
+    <script type="module">
+        import { WaveletGPUCompute } from './js/wavelet-gpu-compute.js';
+
         // ===== GLOBAL STATE =====
         let audioContext = null;
         let stretchNode = null;
         let stretchGain = null; // GainNode for crossfade
         let sourceBuffer = null;
+        let sourceSampleRate = 48000; // native sample rate of loaded audio
         let isPlaying = false;
         let isLooping = false;
         let currentAlgorithm = 'paul';
+
+        // GPU wavelet state
+        let waveletGPU = null;
+        let gpuProcessedBuffer = null;  // AudioBuffer from GPU stretch
+        let gpuSource = null;           // AudioBufferSourceNode for GPU playback
+        let gpuGain = null;             // GainNode for GPU playback
+        let gpuIsProcessing = false;
+        let gpuPlayingStretch = null;   // stretch factor of currently-playing GPU buffer
 
         // Crossfade settings
         const CROSSFADE_DURATION = 0.15; // 150ms crossfade
@@ -368,13 +881,16 @@
         const waveformCanvas = document.getElementById('waveformCanvas');
         const playhead = document.getElementById('playhead');
         const status = document.getElementById('status');
+        const downloadPanel = document.getElementById('downloadPanel');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const downloadStatus = document.getElementById('downloadStatus');
 
         // ===== UTILITY FUNCTIONS =====
 
         // Exponential mapping for stretch slider: more resolution at low values
-        // slider 0-100 → stretch 1-10 exponentially
+        // slider 0-100 → stretch 0.1-10 exponentially (slider 50 = 1x)
         function sliderToStretch(sliderValue) {
-            return Math.pow(10, sliderValue / 100);
+            return Math.pow(10, sliderValue / 50 - 1);
         }
 
         // ===== INITIALIZATION =====
@@ -382,7 +898,7 @@
         async function initAudio() {
             if (audioContext) return;
 
-            audioContext = new AudioContext({ sampleRate: 44100 });
+            audioContext = new AudioContext();
 
             // Load all worklet modules
             await audioContext.audioWorklet.addModule('workers/resample-stretch-processor.js');
@@ -471,7 +987,7 @@
                         if (pendingResume.shouldPlay) {
                             stretchNode.port.postMessage({ type: 'play' });
                             isPlaying = true;
-                            playBtn.textContent = '⏸ Pause';
+                            playBtn.textContent = '⏸';
                             playBtn.classList.remove('pulse');
                             startPlayheadAnimation();
                             setStatus('Playing...', 'active');
@@ -492,7 +1008,7 @@
                     } else {
                         setStatus('Playback ended.', 'active');
                         isPlaying = false;
-                        playBtn.textContent = '▶ Play';
+                        playBtn.textContent = '▶';
                         stopPlayheadAnimation();
                     }
                 }
@@ -526,28 +1042,50 @@
                 }
 
                 sourceBuffer = samples;
+                sourceSampleRate = audioBuffer.sampleRate;
+                gpuProcessedBuffer = null; // invalidate any cached GPU result
+
+                // Stop any active GPU playback
+                if (gpuSource) stopGPUSource();
 
                 // Reset playhead and clear any pending resume from algorithm switch
                 playStartPosition = 0;
+                gpuPlayingStretch = null;
                 playStartTime = audioContext ? audioContext.currentTime : 0;
                 playhead.style.left = '0%';
                 pendingResume = null;
+                isPlaying = false;
+                playBtn.textContent = '▶';
+                stopPlayheadAnimation();
 
+                // Show duration in time overlay
+                const dur = sourceBuffer.length / sourceSampleRate;
+                document.getElementById('waveformTime').textContent = `00:00 / ${formatTime(dur)}`;
 
-                console.log(`📤 Sending ${samples.length} samples to worklet`);
-                console.log(`📤 First 10 samples:`, Array.from(samples.slice(0, 10)));
-                console.log(`📤 Max sample value:`, Math.max(...Array.from(samples.slice(0, 10000)).map(Math.abs)));
+                const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
 
-                // Send to worklet
-                stretchNode.port.postMessage({
-                    type: 'load-audio',
-                    data: { samples: Array.from(samples) } // Convert to regular array for transfer
-                });
+                if (isOffline) {
+                    // GPU mode: enable play button directly (no worklet needed)
+                    playBtn.disabled = false;
+                    stopBtn.disabled = false;
+                    playBtn.classList.add('pulse');
+                } else {
+                    // Send to worklet
+                    stretchNode.port.postMessage({
+                        type: 'load-audio',
+                        data: { samples: Array.from(samples) }
+                    });
+                }
 
                 // Draw waveform
                 drawWaveform(samples);
 
                 setStatus(`Loaded (${(samples.length / audioBuffer.sampleRate).toFixed(1)}s). Ready to play.`, 'active');
+
+                // Show download panel
+                downloadPanel.style.display = '';
+                downloadStatus.textContent = 'Ready to export.';
+                downloadStatus.className = 'status';
 
             } catch (err) {
                 setStatus(`Error loading file: ${err.message}`, 'error');
@@ -558,7 +1096,7 @@
         async function loadTestTrack(filename) {
             try {
                 setStatus('Loading...');
-                const response = await fetch(`stretch_test_audio/${filename}`);
+                const response = await fetch(filename);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const blob = await response.blob();
@@ -574,32 +1112,33 @@
         // ===== PLAYBACK CONTROLS =====
 
         function togglePlay() {
-            console.log(`🎮 togglePlay called, stretchNode=${!!stretchNode}, isPlaying=${isPlaying}`);
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+
+            if (isOffline) {
+                togglePlayGPU();
+                return;
+            }
+
+            console.log(`togglePlay called, stretchNode=${!!stretchNode}, isPlaying=${isPlaying}`);
             if (!stretchNode) return;
 
-            // Stop the pulsing animation once user interacts
             playBtn.classList.remove('pulse');
 
             if (audioContext.state === 'suspended') {
-                console.log('🎮 Resuming suspended AudioContext');
                 audioContext.resume();
             }
-            console.log(`🎮 AudioContext state: ${audioContext.state}`);
 
             if (isPlaying) {
-                console.log('🎮 Sending PAUSE');
                 stretchNode.port.postMessage({ type: 'pause' });
-                playBtn.textContent = '▶ Play';
+                playBtn.textContent = '▶';
                 stopPlayheadAnimation();
-                // Save current position for resume
                 const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
                 const elapsed = audioContext.currentTime - playStartTime;
                 playStartPosition += elapsed / stretchFactor;
                 setStatus('Paused.', 'active');
             } else {
-                console.log('🎮 Sending PLAY');
                 stretchNode.port.postMessage({ type: 'play' });
-                playBtn.textContent = '⏸ Pause';
+                playBtn.textContent = '⏸';
                 startPlayheadAnimation();
                 setStatus('Playing...', 'active');
             }
@@ -607,12 +1146,286 @@
             isPlaying = !isPlaying;
         }
 
-        function stop() {
-            if (!stretchNode) return;
+        // ===== GPU WAVELET PLAYBACK =====
 
-            stretchNode.port.postMessage({ type: 'pause' });
-            stretchNode.port.postMessage({ type: 'seek', data: { position: 0 } });
-            playBtn.textContent = '▶ Play';
+        async function runOfflineStretch() {
+            if (!sourceBuffer || gpuIsProcessing) return null;
+            gpuIsProcessing = true;
+
+            const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
+            const algo = currentAlgorithm; // 'cwt', 'cqt', or 'rtpghi'
+
+            try {
+                if (!audioContext) audioContext = new AudioContext();
+
+                const t0 = performance.now();
+                let stretched;
+
+                if (algo === 'rtpghi') {
+                    // RTPGHI — CPU-based STFT phase gradient stretch
+                    const M = parseInt(document.getElementById('rtpghiMSelect').value);
+                    const hopDiv = parseInt(document.getElementById('rtpghiHopSelect').value);
+                    const windowType = document.getElementById('rtpghiWindowSelect').value;
+                    const phaseMode = document.getElementById('rtpghiPhaseSelect').value;
+                    const tol = parseFloat(document.getElementById('rtpghiTolSelect').value);
+                    const gamma = parseFloat(document.getElementById('rtpghiGammaSelect').value);
+
+                    setStatus(`Processing RTPGHI stretch (${stretchFactor.toFixed(1)}x)...`, 'active');
+
+                    const stretcher = new RTPGHIStretcher({ M, hopDiv, windowType, phaseMode, tol, gamma });
+                    stretched = stretcher.stretch(sourceBuffer, stretchFactor);
+                } else {
+                    // CWT / CQT — GPU wavelet stretch
+                    const dt = 1.0 / sourceSampleRate;
+
+                    if (!waveletGPU) {
+                        setStatus('Initializing WebGPU...', 'active');
+                        waveletGPU = new WaveletGPUCompute();
+                        await waveletGPU.initialize();
+                    }
+
+                    const phaseMode = document.getElementById('phaseModeSelect').value;
+                    const interpMode = parseInt(document.getElementById('interpModeSelect').value);
+                    const opts = { dt, transform: algo, phaseMode, interpMode };
+                    if (algo === 'cwt') {
+                        opts.w0 = parseFloat(document.getElementById('w0Select').value);
+                        opts.dj = parseFloat(document.getElementById('djSelect').value);
+                    } else {
+                        opts.binsPerOctave = parseInt(document.getElementById('binsPerOctaveSelect').value);
+                        opts.minBW = parseFloat(document.getElementById('minBWSelect').value);
+                    }
+
+                    setStatus(`Processing ${algo.toUpperCase()} stretch (${stretchFactor.toFixed(1)}x)...`, 'active');
+
+                    stretched = await waveletGPU.waveletStretchChunked(
+                        sourceBuffer, stretchFactor, opts
+                    );
+                }
+
+                // Normalize
+                let peak = 0;
+                for (let i = 0; i < stretched.length; i++) {
+                    const abs = Math.abs(stretched[i]);
+                    if (abs > peak) peak = abs;
+                }
+                if (peak > 0) {
+                    const scale = 1.0 / peak;
+                    for (let i = 0; i < stretched.length; i++) stretched[i] *= scale;
+                }
+
+                const elapsed = performance.now() - t0;
+                const buf = audioContext.createBuffer(1, stretched.length, sourceSampleRate);
+                buf.getChannelData(0).set(stretched);
+                gpuProcessedBuffer = buf;
+
+                // Update stats panel
+                const inputDuration = sourceBuffer.length / sourceSampleRate;
+                const outputDuration = stretched.length / sourceSampleRate;
+                const realtimeRatio = (elapsed / 1000) / inputDuration;
+                const wavSize = 44 + stretched.length * 2; // 16-bit WAV header + PCM data
+
+                document.getElementById('statTotal').textContent = elapsed < 1000 ? elapsed.toFixed(0) + 'ms' : (elapsed/1000).toFixed(2) + 's';
+                document.getElementById('statRealtime').textContent = realtimeRatio.toFixed(2) + 'x';
+                document.getElementById('statLength').textContent = outputDuration.toFixed(1) + 's';
+                document.getElementById('statSize').textContent = wavSize > 1048576 ? (wavSize / 1048576).toFixed(1) + ' MB' : (wavSize / 1024).toFixed(0) + ' KB';
+                document.getElementById('statsPanel').style.display = '';
+
+                setStatus(`${algo.toUpperCase()} stretch done in ${elapsed < 1000 ? elapsed.toFixed(0) + 'ms' : (elapsed/1000).toFixed(2) + 's'}. Playing...`, 'active');
+                drawWaveform(stretched);
+                return buf;
+            } catch (err) {
+                setStatus(`Processing error: ${err.message}`, 'error');
+                console.error(err);
+                return null;
+            } finally {
+                gpuIsProcessing = false;
+            }
+        }
+
+        function playGPUBuffer(buffer, sourceOffset = 0, fadeIn = true) {
+            if (!audioContext || !buffer || !sourceBuffer) return;
+            if (audioContext.state === 'suspended') audioContext.resume();
+
+            // Stop previous GPU source (hard stop — use fadeOutGPUSource for crossfade)
+            stopGPUSource();
+
+            gpuGain = audioContext.createGain();
+            gpuGain.connect(audioContext.destination);
+
+            gpuSource = audioContext.createBufferSource();
+            gpuSource.buffer = buffer;
+            gpuSource.connect(gpuGain);
+            gpuSource.onended = () => {
+                if (!isPlaying) return;
+                if (isLooping) {
+                    playGPUBuffer(buffer, 0);
+                    isPlaying = true;
+                    playBtn.textContent = '⏸';
+                    startPlayheadAnimation();
+                } else {
+                    isPlaying = false;
+                    playBtn.textContent = '▶';
+                    stopPlayheadAnimation();
+                    playhead.style.left = '0%';
+                    playStartPosition = 0;
+                    setStatus('Playback ended.', 'active');
+                }
+            };
+
+            // All position tracking in source-time
+            const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
+            const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
+            playStartPosition = Math.max(0, Math.min(sourceOffset, sourceDuration - 0.01));
+            playStartTime = audioContext.currentTime;
+            gpuPlayingStretch = stretchFactor;
+
+            // Convert source position → output position for buffer seek
+            const outputOffset = Math.min(playStartPosition * stretchFactor, buffer.duration - 0.01);
+
+            if (fadeIn) {
+                gpuGain.gain.setValueAtTime(0, audioContext.currentTime);
+                gpuGain.gain.linearRampToValueAtTime(1, audioContext.currentTime + CROSSFADE_DURATION);
+            } else {
+                gpuGain.gain.setValueAtTime(1, audioContext.currentTime);
+            }
+            gpuSource.start(0, outputOffset);
+        }
+
+        function fadeOutGPUSource() {
+            const oldSrc = gpuSource;
+            const oldGain = gpuGain;
+            gpuSource = null;
+            gpuGain = null;
+            if (!oldSrc || !oldGain || !audioContext) return;
+            oldSrc.onended = null; // prevent stale ended event
+            const now = audioContext.currentTime;
+            oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+            oldGain.gain.linearRampToValueAtTime(0, now + CROSSFADE_DURATION);
+            setTimeout(() => {
+                try { oldSrc.stop(); } catch {}
+                try { oldSrc.disconnect(); } catch {}
+                try { oldGain.disconnect(); } catch {}
+            }, CROSSFADE_DURATION * 1000 + 50);
+        }
+
+        function stopGPUSource() {
+            if (gpuSource) {
+                gpuSource.onended = null; // prevent stale ended event from killing new playback
+                try { gpuSource.stop(); } catch {}
+                try { gpuSource.disconnect(); } catch {}
+                gpuSource = null;
+            }
+            if (gpuGain) {
+                try { gpuGain.disconnect(); } catch {}
+                gpuGain = null;
+            }
+        }
+
+        // Get current playback position in source-seconds (unified for both modes)
+        // For GPU: optionally pass the stretch factor of the currently-playing buffer
+        function getCurrentSourcePosition(overrideStretch) {
+            if (!audioContext) return 0;
+            const elapsed = audioContext.currentTime - playStartTime;
+            const rate = overrideStretch || sliderToStretch(parseFloat(stretchSlider.value));
+            return playStartPosition + elapsed / rate;
+        }
+
+        async function togglePlayGPU() {
+            if (!sourceBuffer) return;
+            playBtn.classList.remove('pulse');
+
+            if (isPlaying) {
+                // Pause — lock in source-time position
+                const stretchFactor = gpuPlayingStretch || sliderToStretch(parseFloat(stretchSlider.value));
+                const elapsed = audioContext.currentTime - playStartTime;
+                playStartPosition += elapsed / stretchFactor;
+                stopGPUSource();
+                isPlaying = false;
+                playBtn.textContent = '▶';
+                stopPlayheadAnimation();
+                setStatus('Paused.', 'active');
+                return;
+            }
+
+            // Need to process first?
+            if (!gpuProcessedBuffer) {
+                playBtn.disabled = true;
+                playBtn.textContent = 'Processing...';
+                const buf = await runOfflineStretch();
+                playBtn.disabled = false;
+                if (!buf) {
+                    playBtn.textContent = '▶';
+                    return;
+                }
+                playStartPosition = 0; // fresh process starts from beginning
+            }
+
+            // Play (sourceOffset in source-time)
+            playGPUBuffer(gpuProcessedBuffer, playStartPosition);
+            isPlaying = true;
+            playBtn.textContent = '⏸';
+            startPlayheadAnimation(); // unified animation works for both modes
+            setStatus('Playing...', 'active');
+        }
+
+        // Process GPU stretch in background, then crossfade from whatever is currently playing.
+        // playbackStretch: the stretch factor of the currently-playing audio (for correct position calc during await)
+        async function processAndCrossfadeGPU(playbackStretch) {
+            if (!sourceBuffer) return;
+
+            const buf = await runOfflineStretch();
+            if (!buf) return;
+
+            // If user switched away from offline algo while we were processing, don't crossfade
+            if (currentAlgorithm !== 'cwt' && currentAlgorithm !== 'cqt' && currentAlgorithm !== 'rtpghi') return;
+
+            if (!isPlaying) {
+                // Not playing — just cache the result, ready for next Play press
+                playStartPosition = 0;
+                return;
+            }
+
+            // Calculate current source position
+            // Use playbackStretch if provided (old buffer plays at different rate than current slider)
+            const sourcePos = getCurrentSourcePosition(playbackStretch);
+
+            // Fade out whatever is currently playing
+            if (gpuSource) {
+                fadeOutGPUSource();
+            } else if (stretchNode && stretchGain) {
+                // Fade out old worklet
+                const oldNode = stretchNode;
+                const oldGain = stretchGain;
+                const now = audioContext.currentTime;
+                oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+                oldGain.gain.linearRampToValueAtTime(0, now + CROSSFADE_DURATION);
+                setTimeout(() => {
+                    oldNode.port.postMessage({ type: 'pause' });
+                    // Don't disconnect the worklet — we may switch back to it
+                }, CROSSFADE_DURATION * 1000 + 50);
+            }
+
+            // Start new GPU buffer with crossfade (sourcePos is in source-time)
+            playGPUBuffer(buf, sourcePos, true);
+            startPlayheadAnimation();
+            setStatus('Playing...', 'active');
+        }
+
+        // GPU animation removed — unified startPlayheadAnimation() handles both modes
+        // since all position tracking is now in source-time
+
+        function stop() {
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+
+            if (isOffline) {
+                stopGPUSource();
+                gpuPlayingStretch = null;
+            } else if (stretchNode) {
+                stretchNode.port.postMessage({ type: 'pause' });
+                stretchNode.port.postMessage({ type: 'seek', data: { position: 0 } });
+            }
+
+            playBtn.textContent = '▶';
             isPlaying = false;
             stopPlayheadAnimation();
             playhead.style.left = '0%';
@@ -623,6 +1436,7 @@
         // ===== PLAYHEAD ANIMATION =====
 
         function startPlayheadAnimation() {
+            stopPlayheadAnimation();
             playStartTime = audioContext.currentTime;
             animationFrameId = requestAnimationFrame(updatePlayhead);
         }
@@ -632,6 +1446,12 @@
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
             }
+        }
+
+        function formatTime(seconds) {
+            const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+            const ss = String(Math.floor(seconds % 60)).padStart(2, '0');
+            return `${mm}:${ss}`;
         }
 
         function updatePlayhead() {
@@ -648,6 +1468,10 @@
             const ratio = Math.min(currentSourcePosition / sourceDuration, 1);
 
             playhead.style.left = `${ratio * 100}%`;
+
+            // Update time overlay
+            const timeEl = document.getElementById('waveformTime');
+            timeEl.textContent = `${formatTime(currentSourcePosition)} / ${formatTime(sourceDuration)}`;
 
             if (ratio < 1) {
                 animationFrameId = requestAnimationFrame(updatePlayhead);
@@ -757,10 +1581,33 @@
         // Track last stretch value for playhead calculation
         let lastStretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
 
+        let gpuRestretchTimeout = null;
+
         stretchSlider.addEventListener('input', (e) => {
             const sliderValue = parseFloat(e.target.value);
             const stretch = sliderToStretch(sliderValue);
             stretchValue.textContent = stretch.toFixed(1);
+
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+            if (isOffline) {
+                // Lock in source position using the PLAYING buffer's stretch rate
+                if (isPlaying && audioContext) {
+                    const rate = gpuPlayingStretch || lastStretchFactor;
+                    const elapsed = audioContext.currentTime - playStartTime;
+                    playStartPosition += elapsed / rate;
+                    playStartTime = audioContext.currentTime;
+                }
+                lastStretchFactor = stretch;
+                gpuProcessedBuffer = null; // invalidate — needs re-processing
+                if (isPlaying) {
+                    // Debounce: wait for slider to settle before GPU re-processing
+                    clearTimeout(gpuRestretchTimeout);
+                    gpuRestretchTimeout = setTimeout(() => {
+                        processAndCrossfadeGPU(gpuPlayingStretch);
+                    }, 300);
+                }
+                return;
+            }
 
             // Lock in current position before changing stretch factor
             if (isPlaying && audioContext) {
@@ -801,67 +1648,150 @@
             }
         });
 
-        // Algorithm switch
+        // GPU parameter changes — auto re-render when settings change
+        let gpuParamRestretchTimeout = null;
+        function onGPUParamChange() {
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+            if (!isOffline || !sourceBuffer) return;
+
+            gpuProcessedBuffer = null; // invalidate
+            clearTimeout(gpuParamRestretchTimeout);
+            gpuParamRestretchTimeout = setTimeout(() => {
+                if (isPlaying) {
+                    processAndCrossfadeGPU(gpuPlayingStretch);
+                } else {
+                    // Not playing — still re-render so it's ready when they press Play
+                    runOfflineStretch();
+                }
+            }, 150);
+        }
+
+        document.getElementById('phaseModeSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('w0Select').addEventListener('change', onGPUParamChange);
+        document.getElementById('djSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('binsPerOctaveSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('minBWSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('interpModeSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('rtpghiMSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('rtpghiHopSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('rtpghiWindowSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('rtpghiPhaseSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('rtpghiTolSelect').addEventListener('change', onGPUParamChange);
+        document.getElementById('rtpghiGammaSelect').addEventListener('change', onGPUParamChange);
+
+        // Algorithm switch — show only relevant controls per mode
+        const windowGroup = document.getElementById('windowGroup');
+        const overlapGroup = document.getElementById('overlapGroup');
+        const cwtControls = document.getElementById('cwtControls');
+        const cqtControls = document.getElementById('cqtControls');
+        const rtpghiControls = document.getElementById('rtpghiControls');
+        const gpuPhaseControls = document.getElementById('gpuPhaseControls');
+        const gpuBadge = document.getElementById('gpuBadge');
+
+        function updateControlVisibility(algo) {
+            const isOffline = (algo === 'cwt' || algo === 'cqt' || algo === 'rtpghi');
+
+            // Window size: paul, granular, spectral only
+            if (algo === 'paul' || algo === 'granular' || algo === 'spectral') {
+                windowGroup.style.display = '';
+                windowLabel.textContent = algo === 'granular' ? 'Grain Size' : 'Window Size';
+                windowSelect.disabled = false;
+                windowValue.textContent = windowSelect.value;
+            } else {
+                windowGroup.style.display = 'none';
+            }
+
+            // Overlap: granular only
+            if (algo === 'granular') {
+                overlapGroup.style.display = '';
+                overlapSlider.disabled = false;
+                overlapSlider.value = savedGranularOverlap;
+                overlapValue.textContent = savedGranularOverlap.toFixed(1);
+            } else {
+                overlapGroup.style.display = 'none';
+            }
+
+            // CWT params: cwt only
+            cwtControls.style.display = algo === 'cwt' ? 'flex' : 'none';
+
+            // CQT params: cqt only
+            cqtControls.style.display = algo === 'cqt' ? 'flex' : 'none';
+
+            // RTPGHI params: rtpghi only
+            rtpghiControls.style.display = algo === 'rtpghi' ? 'flex' : 'none';
+
+            // GPU phase mode: cwt or cqt
+            gpuPhaseControls.style.display = (algo === 'cwt' || algo === 'cqt') ? 'flex' : 'none';
+
+            // GPU badge
+            gpuBadge.style.display = (algo === 'cwt' || algo === 'cqt') ? 'inline' : 'none';
+        }
+
         algorithmSelect.addEventListener('change', (e) => {
             // Save granular overlap before switching away
             if (currentAlgorithm === 'granular') {
                 savedGranularOverlap = parseFloat(overlapSlider.value);
             }
 
-            // Update label text based on algorithm
-            if (e.target.value === 'resample') {
-                windowLabel.textContent = 'Window Size';
-                windowSelect.parentElement.style.opacity = '0.5';
-                windowSelect.disabled = true;
-                windowValue.textContent = 'N/A';
-                overlapSlider.parentElement.style.opacity = '0.5';
-                overlapSlider.disabled = true;
-                overlapSlider.value = 0;
-                overlapValue.textContent = '0.0';
-            } else if (e.target.value === 'paul') {
-                windowLabel.textContent = 'Window Size';
-                windowSelect.parentElement.style.opacity = '1';
-                windowSelect.disabled = false;
-                windowValue.textContent = windowSelect.value;
-                overlapSlider.parentElement.style.opacity = '0.5';
-                overlapSlider.disabled = true;
-                overlapSlider.value = 50;
-                overlapValue.textContent = '50.0'; // Paul uses fixed 50% overlap
-            } else {
-                windowLabel.textContent = e.target.value === 'spectral' ? 'Window Size' : 'Grain Size';
-                windowSelect.parentElement.style.opacity = '1';
-                windowSelect.disabled = false;
-                windowValue.textContent = windowSelect.value;
-                overlapSlider.parentElement.style.opacity = '1';
-                overlapSlider.disabled = false;
-                overlapSlider.value = savedGranularOverlap;
-                overlapValue.textContent = savedGranularOverlap.toFixed(1);
-            }
+            const algo = e.target.value;
+            const isOffline = (algo === 'cwt' || algo === 'cqt' || algo === 'rtpghi');
+            updateControlVisibility(algo);
 
-            if (audioContext) {
-                const wasPlaying = isPlaying;
+            const wasOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+            const wasPlaying = isPlaying;
 
-                // Calculate current position before switching
-                let currentPosition = playStartPosition;
+            if (isOffline && sourceBuffer) {
+                // Switching TO a GPU algorithm
+                gpuProcessedBuffer = null; // new algorithm = needs re-processing
+
+                // Lock in source position (unified — works from any mode)
+                const currentStretch = wasOffline ? gpuPlayingStretch : null;
+                const sourcePos = wasPlaying ? getCurrentSourcePosition(currentStretch) : playStartPosition;
+
                 if (wasPlaying) {
-                    const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
-                    const elapsed = audioContext.currentTime - playStartTime;
-                    currentPosition = playStartPosition + elapsed / stretchFactor;
+                    currentAlgorithm = algo;
+                    // Lock position before async processing
+                    playStartPosition = sourcePos;
+                    playStartTime = audioContext.currentTime;
+                    const algoNames = { cwt: 'CWT (Original Morlet Wavelet)', cqt: 'CQT (Constant-Q)', rtpghi: 'RTPGHI (Phase Gradient)' };
+                    setStatus(`Processing ${algoNames[algo]}...`, 'active');
+                    // Old audio keeps playing, crossfade when GPU is ready
+                    processAndCrossfadeGPU(wasOffline ? gpuPlayingStretch : sliderToStretch(parseFloat(stretchSlider.value)));
+                } else {
+                    currentAlgorithm = algo;
+                    // Auto-render in background so it's ready when they press Play
+                    runOfflineStretch();
+                }
+            } else if (!isOffline && audioContext) {
+                // Switching TO a worklet algorithm
+                // Get source position (unified — same calculation for both GPU and worklet source)
+                const currentStretch = wasOffline ? gpuPlayingStretch : null;
+                const currentPosition = wasPlaying ? getCurrentSourcePosition(currentStretch) : playStartPosition;
+
+                currentAlgorithm = algo;
+
+                // Fade out GPU source if it was playing
+                if (wasOffline && gpuSource) {
+                    fadeOutGPUSource();
+                }
+                // Free GPU buffer when leaving GPU mode
+                if (wasOffline) {
+                    gpuProcessedBuffer = null;
+                    gpuPlayingStretch = null;
+                    // Redraw waveform with source audio (GPU mode drew the stretched output)
+                    if (sourceBuffer) drawWaveform(sourceBuffer);
                 }
 
-                // Store old node/gain for crossfade
+                // Crossfade to new worklet
                 const oldNode = stretchNode;
                 const oldGain = stretchGain;
-
-                // Create new node with gain starting at 0, skip disconnect for crossfade
                 createStretchNode(0, true);
 
-                // Crossfade: fade out old, fade in new
                 const now = audioContext.currentTime;
-                if (oldGain) {
+                if (!wasOffline && oldGain) {
+                    // Fade out old worklet
                     oldGain.gain.setValueAtTime(oldGain.gain.value, now);
                     oldGain.gain.linearRampToValueAtTime(0, now + CROSSFADE_DURATION);
-                    // Disconnect old nodes after fade completes
                     setTimeout(() => {
                         oldNode.port.postMessage({ type: 'pause' });
                         oldNode.disconnect();
@@ -869,30 +1799,28 @@
                     }, CROSSFADE_DURATION * 1000 + 50);
                 }
 
-                // Fade in new node
                 stretchGain.gain.setValueAtTime(0, now);
                 stretchGain.gain.linearRampToValueAtTime(1, now + CROSSFADE_DURATION);
 
-                // Set up pending resume (will fire when new node reports 'loaded')
                 if (sourceBuffer) {
                     pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
                 }
 
                 const algoNames = { resample: 'Resample', spectral: 'FFT (Spectral)', paul: 'Paul Stretch (STFT)', granular: 'Granular' };
-                setStatus(`Switched to ${algoNames[e.target.value]} algorithm`, 'active');
+                setStatus(`Switched to ${algoNames[algo]} algorithm`, 'active');
+            } else {
+                currentAlgorithm = algo;
             }
-
-            // Update current algorithm tracking
-            currentAlgorithm = e.target.value;
         });
 
         // ===== LOAD TEST TRACKS LIST =====
 
         const testTracks = [
-            { file: 'FF_AS_bird_chirp_run_it_back_1.wav', name: 'Bird Chirp' },
-            { file: 'Julia_Run_8.wav', name: 'Vocal Run' },
-            { file: 'FF_CA_60_foley_ticking_clock_slight_variation.wav', name: 'Clock Tick' },
-            { file: '5_goesr_V_befilteredV_norm_20260119_20260119_paulstretch1_pre-arrival-boost_30kHz_Master.wav', name: 'GOES CME Shock' }
+            { file: 'stretch_test_audio/FF_AS_bird_chirp_run_it_back_1.wav', name: 'Bird Chirp' },
+            { file: 'stretch_test_audio/Julia_Run_8.wav', name: 'Vocal Run' },
+            { file: 'stretch_test_audio/FF_CA_60_foley_ticking_clock_slight_variation.wav', name: 'Clock Tick' },
+            { file: 'stretch_test_audio/5_goesr_V_befilteredV_norm_20260119_20260119_paulstretch1_pre-arrival-boost_30kHz_Master.wav', name: 'GOES CME Shock' },
+            { file: 'stretch_test_tracks/GOLDEN HOUR - TRIM.wav', name: 'Golden Hour Trimmed' }
         ];
 
         /* OLD LOCAL TEST TRACKS (commented out for later)
@@ -912,16 +1840,13 @@
             item.addEventListener('click', () => {
                 document.querySelectorAll('.track-item').forEach(el => el.classList.remove('active'));
                 item.classList.add('active');
-                loadTestTrack(track.file);
+                loadTestTrack(track.file, track.name);
             });
             trackList.appendChild(item);
         });
 
         // Set initial UI state for default algorithm (Paul Stretch)
-        overlapSlider.parentElement.style.opacity = '0.5';
-        overlapSlider.disabled = true;
-        overlapSlider.value = 50;
-        overlapValue.textContent = '50.0'; // Paul uses fixed 50%
+        updateControlVisibility('paul');
 
         // Handle window resize
         window.addEventListener('resize', () => {
@@ -932,37 +1857,49 @@
 
         // Click waveform to seek (and start playing if not already)
         waveformCanvas.addEventListener('click', (e) => {
-            if (!sourceBuffer || !stretchNode) return;
+            if (!sourceBuffer) return;
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
 
             const rect = waveformCanvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const ratio = x / rect.width;
-            const positionInSeconds = (sourceBuffer.length / audioContext.sampleRate) * ratio;
 
-            console.log(`🎯 Seek click: x=${x}, ratio=${ratio.toFixed(3)}, position=${positionInSeconds.toFixed(2)}s`);
-
-            // Resume AudioContext if suspended
-            if (audioContext.state === 'suspended') {
+            if (audioContext && audioContext.state === 'suspended') {
                 audioContext.resume();
             }
 
-            stretchNode.port.postMessage({ type: 'seek', data: { position: positionInSeconds } });
-
-            // Update playhead position tracking
-            playStartPosition = positionInSeconds;
-            playStartTime = audioContext.currentTime;
-
-            // Update playhead
-            playhead.style.left = `${ratio * 100}%`;
-
-            // Start playing if not already
-            if (!isPlaying) {
-                stretchNode.port.postMessage({ type: 'play' });
-                isPlaying = true;
-                playBtn.textContent = '⏸ Pause';
-                playBtn.classList.remove('pulse');
+            if (isOffline) {
+                // GPU seek: convert click ratio to source-time
+                if (!gpuProcessedBuffer) return;
+                const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
+                const sourcePos = ratio * sourceDuration;
+                playStartPosition = sourcePos;
+                playhead.style.left = `${ratio * 100}%`;
+                playGPUBuffer(gpuProcessedBuffer, sourcePos);
+                if (!isPlaying) {
+                    isPlaying = true;
+                    playBtn.textContent = '⏸';
+                    playBtn.classList.remove('pulse');
+                    setStatus('Playing...', 'active');
+                }
                 startPlayheadAnimation();
-                setStatus('Playing...', 'active');
+            } else {
+                if (!stretchNode) return;
+                const positionInSeconds = (sourceBuffer.length / audioContext.sampleRate) * ratio;
+
+                stretchNode.port.postMessage({ type: 'seek', data: { position: positionInSeconds } });
+                playStartPosition = positionInSeconds;
+                playStartTime = audioContext.currentTime;
+                playhead.style.left = `${ratio * 100}%`;
+
+                if (!isPlaying) {
+                    stretchNode.port.postMessage({ type: 'play' });
+                    isPlaying = true;
+                    playBtn.textContent = '⏸';
+                    playBtn.classList.remove('pulse');
+                    startPlayheadAnimation();
+                    setStatus('Playing...', 'active');
+                }
             }
         });
 
@@ -977,7 +1914,177 @@
                     togglePlay();
                 }
             }
+            // Enter: first press loads Golden Hour Trimmed, second press plays
+            if (e.code === 'Enter' && !e.target.matches('input, textarea, select')) {
+                e.preventDefault();
+                if (!sourceBuffer) {
+                    // Load Golden Hour Trimmed
+                    const goldenHourItem = trackList.querySelector('.track-item:last-child');
+                    if (goldenHourItem) goldenHourItem.click();
+                } else if (!isPlaying) {
+                    togglePlay();
+                }
+            }
         });
+
+        // ===== DOWNLOAD =====
+
+        function encodeWAV(samples, sampleRate) {
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const bytesPerSample = bitsPerSample / 8;
+            const dataLength = samples.length * bytesPerSample;
+            const buffer = new ArrayBuffer(44 + dataLength);
+            const view = new DataView(buffer);
+
+            const writeString = (offset, str) => {
+                for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+            };
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + dataLength, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * numChannels * bytesPerSample, true);
+            view.setUint16(32, numChannels * bytesPerSample, true);
+            view.setUint16(34, bitsPerSample, true);
+            writeString(36, 'data');
+            view.setUint32(40, dataLength, true);
+
+            let offset = 44;
+            for (let i = 0; i < samples.length; i++) {
+                const s = Math.max(-1, Math.min(1, samples[i]));
+                view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                offset += 2;
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        async function renderAndDownload() {
+            if (!sourceBuffer) return;
+
+            const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
+            const sampleRate = audioContext ? audioContext.sampleRate : 48000;
+            const outputLength = Math.ceil(sourceBuffer.length * stretchFactor);
+            const algo = algorithmSelect.value;
+
+            downloadBtn.disabled = true;
+            downloadStatus.textContent = `Rendering ${algo} at ${stretchFactor.toFixed(1)}x stretch...`;
+            downloadStatus.className = 'status active';
+
+            try {
+                const offlineCtx = new OfflineAudioContext(1, outputLength, sampleRate);
+
+                let processorName, processorOptions;
+                if (algo === 'resample') {
+                    await offlineCtx.audioWorklet.addModule('workers/resample-stretch-processor.js');
+                    processorName = 'resample-stretch-processor';
+                    processorOptions = { stretchFactor };
+                } else if (algo === 'spectral') {
+                    await offlineCtx.audioWorklet.addModule('workers/spectral-stretch-processor.js');
+                    processorName = 'spectral-stretch-processor';
+                    processorOptions = {
+                        windowSize: parseInt(windowSelect.value),
+                        stretchFactor,
+                        overlap: parseFloat(overlapSlider.value) / 100
+                    };
+                } else if (algo === 'paul') {
+                    await offlineCtx.audioWorklet.addModule('workers/paul-stretch-processor.js');
+                    processorName = 'paul-stretch-processor';
+                    processorOptions = {
+                        windowSize: parseInt(windowSelect.value),
+                        stretchFactor
+                    };
+                } else if (algo === 'granular') {
+                    await offlineCtx.audioWorklet.addModule('workers/granular-stretch-processor.js');
+                    processorName = 'granular-stretch-processor';
+                    processorOptions = {
+                        stretchFactor,
+                        grainSize: parseInt(windowSelect.value),
+                        overlap: parseFloat(overlapSlider.value) / 100,
+                        scatter: 0.1
+                    };
+                } else if (algo === 'cwt' || algo === 'cqt' || algo === 'rtpghi') {
+                    // Offline algorithms — process directly, skip OfflineAudioContext
+                    downloadStatus.textContent = `Processing ${algo.toUpperCase()} stretch...`;
+                    const buf = gpuProcessedBuffer || await runOfflineStretch();
+                    if (!buf) throw new Error('Processing failed');
+                    const outputSamples = buf.getChannelData(0);
+
+                    downloadStatus.textContent = 'Encoding WAV...';
+                    const blob = encodeWAV(outputSamples, sampleRate);
+
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `stretched_${algo}_${stretchFactor.toFixed(1)}x.wav`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+                    const durationSec = (outputSamples.length / sampleRate).toFixed(1);
+                    downloadStatus.textContent = `Downloaded! ${durationSec}s, ${sizeMB} MB`;
+                    downloadStatus.className = 'status active';
+                    downloadBtn.disabled = false;
+                    return;
+                } else {
+                    throw new Error(`Download not yet supported for ${algo} algorithm`);
+                }
+
+                const node = new AudioWorkletNode(offlineCtx, processorName, { processorOptions });
+                node.connect(offlineCtx.destination);
+
+                await new Promise((resolve, reject) => {
+                    node.port.onmessage = (event) => {
+                        if (event.data.type === 'loaded') resolve();
+                    };
+                    node.port.postMessage({
+                        type: 'load-audio',
+                        data: { samples: Array.from(sourceBuffer) }
+                    });
+                    setTimeout(() => reject(new Error('Worklet load timeout')), 10000);
+                });
+
+                node.port.postMessage({ type: 'play' });
+
+                downloadStatus.textContent = 'Rendering audio...';
+                const renderedBuffer = await offlineCtx.startRendering();
+                const outputSamples = renderedBuffer.getChannelData(0);
+
+                downloadStatus.textContent = 'Encoding WAV...';
+                const blob = encodeWAV(outputSamples, sampleRate);
+
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const algoNames = { resample: 'resample', spectral: 'spectral', paul: 'paulstretch', granular: 'granular', cwt: 'cwt', cqt: 'cqt' };
+                a.download = `stretched_${algoNames[algo] || algo}_${stretchFactor.toFixed(1)}x.wav`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+                const durationSec = (outputSamples.length / sampleRate).toFixed(1);
+                downloadStatus.textContent = `Downloaded! ${durationSec}s, ${sizeMB} MB`;
+                downloadStatus.className = 'status active';
+
+            } catch (err) {
+                downloadStatus.textContent = `Export error: ${err.message}`;
+                downloadStatus.className = 'status error';
+                console.error('Download error:', err);
+            } finally {
+                downloadBtn.disabled = false;
+            }
+        }
+
+        downloadBtn.addEventListener('click', renderAndDownload);
     </script>
 </body>
 </html>
