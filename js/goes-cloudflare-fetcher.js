@@ -18,7 +18,7 @@ import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } fro
 import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
-import { startCompleteVisualization, clearCompleteSpectrogram } from './spectrogram-three-renderer.js';
+import { renderProgressiveSpectrogram, resetProgressiveSpectrogram } from './spectrogram-three-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-tracker.js';
 import { isTutorialActive } from './tutorial-state.js';
@@ -392,9 +392,24 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
     const processedChunks = [];
     let chunksReceived = 0;
-    let firstChunkSent = false;
+    let playbackTriggered = false;
+    let totalSamplesSentToWorklet = 0;
+    const BUFFER_THRESHOLD = 44100; // ~1 second at 44.1kHz — enough buffer before starting playback
+    let spectrogramRenderInProgress = false;
     let totalBytesDownloaded = 0;
     const progressiveT0 = performance.now();
+    let lastRenderTime = 0;
+    const RENDER_THROTTLE_MS = 500; // Don't render tiles more often than this
+    let lastMinimapFFTTime = 0;
+    const MINIMAP_FFT_THROTTLE_MS = 5000; // Minimap FFT is expensive — rebuild at most every 5s
+
+    // Running buffer: grows as chunks arrive, avoids full rebuild every render
+    let progressiveSamplesBuffer = null;
+    let progressiveSamplesOffset = 0;
+    let progressiveBufferChunkIndex = 0;
+
+    // Reset progressive spectrogram state for new load
+    resetProgressiveSpectrogram();
 
     // Initialize worklet data tracking
     State.setAllReceivedData([]);
@@ -413,6 +428,42 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     // This ensures the worklet uses a long 250ms fade-in on first playback
     if (State.workletNode) {
         State.workletNode.port.postMessage({ type: 'set-first-play-flag' });
+        // CRITICAL: Set sample rate early so position reports are correct from the start.
+        // Default is 100 Hz — GOES uses playbackSamplesPerRealSecond (≈10 Hz).
+        // Without this, positionSeconds = totalSamplesConsumed/100 instead of /10,
+        // causing the playhead to move 10x too slowly during progressive loading.
+        State.workletNode.port.postMessage({
+            type: 'set-sample-rate',
+            sampleRate: playbackSamplesPerRealSecond,
+        });
+    }
+
+    /**
+     * Grow the running samples buffer with newly sent chunks.
+     * Instead of rebuilding from ALL chunks every render, we pre-allocate
+     * for totalExpectedSamples and append as chunks arrive.
+     */
+    function growProgressiveBuffer() {
+        if (!progressiveSamplesBuffer) {
+            progressiveSamplesBuffer = new Float32Array(totalExpectedSamples || 1024 * 1024);
+        }
+        // Append any new chunks from allReceivedData that we haven't copied yet
+        const chunks = State.allReceivedData;
+        while (progressiveBufferChunkIndex < chunks.length) {
+            const chunk = chunks[progressiveBufferChunkIndex];
+            if (chunk) {
+                if (progressiveSamplesOffset + chunk.length > progressiveSamplesBuffer.length) {
+                    // Rare: buffer too small, resize
+                    const newBuf = new Float32Array(Math.max(progressiveSamplesBuffer.length * 2, progressiveSamplesOffset + chunk.length));
+                    newBuf.set(progressiveSamplesBuffer);
+                    progressiveSamplesBuffer = newBuf;
+                }
+                progressiveSamplesBuffer.set(chunk, progressiveSamplesOffset);
+                progressiveSamplesOffset += chunk.length;
+            }
+            progressiveBufferChunkIndex++;
+        }
+        return progressiveSamplesOffset > 0 ? progressiveSamplesBuffer.subarray(0, progressiveSamplesOffset) : null;
     }
 
     /**
@@ -460,19 +511,25 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                 const size = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
                 const workletChunk = samples.slice(i, i + size);
 
+                // Don't auto-resume until we have enough buffer to prevent play/pause stuttering
+                // Also don't auto-resume if user has manually paused during download
+                const hasEnoughBuffer = playbackTriggered || totalSamplesSentToWorklet >= BUFFER_THRESHOLD;
+                const userPaused = playbackTriggered && State.playbackState === PlaybackState.PAUSED;
+
                 State.workletNode.port.postMessage({
                     type: 'audio-data',
                     data: workletChunk,
-                    autoResume: true,
+                    autoResume: hasEnoughBuffer && !userPaused,
                 });
 
                 State.allReceivedData.push(workletChunk);
+                totalSamplesSentToWorklet += size;
 
-                // First chunk = start playback immediately
-                if (!firstChunkSent && i === 0 && currentChunkIndex === 0) {
-                    firstChunkSent = true;
+                // Start playback when buffer threshold reached (not on first chunk)
+                if (!playbackTriggered && totalSamplesSentToWorklet >= BUFFER_THRESHOLD) {
+                    playbackTriggered = true;
                     const ttfa = performance.now() - progressiveT0;
-                    console.log(`⚡ FIRST CHUNK SENT in ${ttfa.toFixed(0)}ms — starting playback!`);
+                    console.log(`⚡ BUFFER THRESHOLD reached (${totalSamplesSentToWorklet.toLocaleString()} samples) in ${ttfa.toFixed(0)}ms — starting playback!`);
 
                     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
                     const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay')?.checked;
@@ -635,10 +692,90 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         // Feed to waveform worker in order (progressive waveform drawing)
         sendToWaveformInOrder();
 
+        // Throttle visual rendering so the audio worklet gets CPU/GPU breathing room
+        const now = performance.now();
+        const shouldRender = (now - lastRenderTime) >= RENDER_THROTTLE_MS;
+
+        if (shouldRender) {
+            lastRenderTime = now;
+
+            // Grow running buffer (cheap append, no full rebuild)
+            const partialSamples = growProgressiveBuffer();
+
+            // Minimap FFT is expensive (full rebuild from scratch) — throttle separately
+            const shouldDoMinimapFFT = (now - lastMinimapFFTTime) >= MINIMAP_FFT_THROTTLE_MS;
+            if (shouldDoMinimapFFT) lastMinimapFFTTime = now;
+
+            if (!spectrogramRenderInProgress && partialSamples) {
+                spectrogramRenderInProgress = true;
+                renderProgressiveSpectrogram(partialSamples, { skipMinimapFFT: !shouldDoMinimapFFT })
+                    .catch(e => console.warn('Progressive spectrogram failed:', e))
+                    .finally(() => { spectrogramRenderInProgress = false; });
+            }
+        }
+
         // Update download size display
         const downloadSizeEl = document.getElementById('downloadSize');
         if (downloadSizeEl) {
             downloadSizeEl.textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+        }
+
+        // Yield to browser event loop so UI stays responsive (playhead drags, clicks, etc.)
+        await new Promise(r => setTimeout(r, 0));
+    }
+
+    // =========================================================================
+    // Step 6b: Fallback playback trigger for short time ranges
+    // If total samples never reached the buffer threshold, start playback now
+    // =========================================================================
+
+    if (!playbackTriggered && totalSamplesSentToWorklet > 0) {
+        playbackTriggered = true;
+        console.log(`⚡ FALLBACK: All chunks received (${totalSamplesSentToWorklet.toLocaleString()} samples < threshold ${BUFFER_THRESHOLD}) — starting playback now`);
+
+        const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+        const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay')?.checked;
+
+        if (autoPlayEnabled) {
+            State.workletNode.port.postMessage({ type: 'start-immediately' });
+            State.setPlaybackState(PlaybackState.PLAYING);
+
+            if (State.gainNode && State.audioContext) {
+                const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
+                State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
+                State.gainNode.gain.exponentialRampToValueAtTime(
+                    Math.max(0.01, targetVolume),
+                    State.audioContext.currentTime + 0.05
+                );
+            }
+
+            State.setCurrentAudioPosition(0);
+            State.setLastWorkletPosition(0);
+            State.setLastWorkletUpdateTime(State.audioContext.currentTime);
+            State.setLastUpdateTime(State.audioContext.currentTime);
+
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            if (playPauseBtn) {
+                playPauseBtn.disabled = false;
+                playPauseBtn.textContent = '⏸️ Pause';
+                playPauseBtn.classList.remove('play-active', 'pulse-play', 'pulse-resume', 'pulse-attention');
+                playPauseBtn.classList.add('pause-active');
+            }
+
+            startPlaybackIndicator();
+        } else {
+            State.setPlaybackState(PlaybackState.STOPPED);
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            if (playPauseBtn) {
+                playPauseBtn.disabled = false;
+                playPauseBtn.textContent = '▶️ Play';
+                playPauseBtn.classList.remove('pause-active');
+                playPauseBtn.classList.add('play-active');
+            }
+            if (isSharedSession) {
+                playPauseBtn?.classList.add('pulse-attention');
+            }
         }
     }
 
@@ -646,6 +783,15 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     // Step 7: All chunks received — completion
     // Mirrors the volcano completion handler in data-fetcher.js
     // =========================================================================
+
+    // Wait for any in-progress progressive spectrogram render to finish
+    if (spectrogramRenderInProgress) {
+        await new Promise(resolve => {
+            const check = setInterval(() => {
+                if (!spectrogramRenderInProgress) { clearInterval(check); resolve(); }
+            }, 50);
+        });
+    }
 
     const totalTime = performance.now() - progressiveT0;
     console.log(`✅ All ${chunkSchedule.length} chunks processed in ${totalTime.toFixed(0)}ms total`);
@@ -660,7 +806,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     document.getElementById('sampleCount').textContent = totalWorkletSamples.toLocaleString();
     console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / originalSampleRate).toFixed(2)}s`);
 
-    // Initialize zoom with actual sample count
+    // Refine zoom with actual sample count (viewport already set during progressive init)
     zoomState.initialize(totalWorkletSamples);
 
     // Kill loading animation
@@ -697,14 +843,11 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     positionWaveformAxisCanvas();
     drawWaveformAxis();
 
-    // Stitch samples into completeSamplesArray for spectrogram + download
-    console.log(`📦 ${logTime()} Stitching ${State.allReceivedData.length} chunks...`);
-    const stitched = new Float32Array(totalWorkletSamples);
-    let offset = 0;
-    for (const c of State.allReceivedData) {
-        stitched.set(c, offset);
-        offset += c.length;
-    }
+    // Use running buffer for completeSamplesArray (already stitched during download)
+    growProgressiveBuffer(); // ensure any remaining chunks are appended
+    const stitched = progressiveSamplesBuffer
+        ? progressiveSamplesBuffer.subarray(0, progressiveSamplesOffset)
+        : new Float32Array(0);
     State.setCompleteSamplesArray(stitched);
     console.log(`📦 ${logTime()} completeSamplesArray ready: ${stitched.length.toLocaleString()} samples`);
 
@@ -722,6 +865,9 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         }
     }
     processedChunks.length = 0;
+    progressiveSamplesBuffer = null;
+    progressiveSamplesOffset = 0;
+    progressiveBufferChunkIndex = 0;
     console.log(`🧹 ${logTime()} Memory cleaned up`);
 
     // Enable download button
@@ -735,9 +881,9 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         updateCompleteButtonState();
     }
 
-    // Render complete spectrogram (progressive tile rendering via pyramid)
-    console.log(`🎨 ${logTime()} Triggering spectrogram rendering...`);
-    await startCompleteVisualization();
+    // Final spectrogram render with complete data
+    console.log(`🎨 ${logTime()} Final spectrogram render with complete data...`);
+    await renderProgressiveSpectrogram(State.completeSamplesArray, { isComplete: true });
 
     // Update playback controls
     updatePlaybackSpeed();

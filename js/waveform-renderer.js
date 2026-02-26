@@ -430,7 +430,7 @@ function createWaveformOverlay(waveformCanvas) {
  */
 let wfLastUploadedSamples = null; // Track last uploaded array to skip redundant uploads
 
-export function uploadWaveformSamples(samples) {
+export function uploadWaveformSamples(samples, expectedTotalSamples = 0) {
     if (!samples || samples.length === 0) return;
 
     // Skip re-upload if the same sample array is already on the GPU
@@ -439,11 +439,13 @@ export function uploadWaveformSamples(samples) {
     initWaveformThreeScene();
     if (!wfMaterial) return;
 
-    wfTotalSamples = samples.length;
+    // Use expected total if provided (progressive loading: allocate for full duration)
+    const effectiveTotal = expectedTotalSamples > samples.length ? expectedTotalSamples : samples.length;
+    wfTotalSamples = effectiveTotal;
     wfTextureWidth = 4096;
     wfTextureHeight = Math.ceil(wfTotalSamples / wfTextureWidth);
 
-    // Pad to fill the texture rectangle
+    // Pad to fill the texture rectangle (zeros = silence for unfilled right portion)
     const paddedLength = wfTextureWidth * wfTextureHeight;
     const data = new Float32Array(paddedLength);
     data.set(samples);
@@ -469,9 +471,16 @@ export function uploadWaveformSamples(samples) {
     const mipPadded = mipTexWidth * mipTexHeight;
     const mipData = new Float32Array(mipPadded * 2); // 2 channels: RG
 
+    const actualSampleCount = samples.length;
     for (let bin = 0; bin < mipBins; bin++) {
         const start = bin * WF_MIP_BIN_SIZE;
-        const end = Math.min(start + WF_MIP_BIN_SIZE, wfTotalSamples);
+        const end = Math.min(start + WF_MIP_BIN_SIZE, actualSampleCount);
+        if (start >= actualSampleCount) {
+            // Beyond actual data — leave as zero (silence)
+            mipData[bin * 2]     = 0;
+            mipData[bin * 2 + 1] = 0;
+            continue;
+        }
         let mn = Infinity, mx = -Infinity;
         for (let j = start; j < end; j++) {
             const v = samples[j];
@@ -835,18 +844,20 @@ function initMainWaveformOverlay() {
  * Upload audio samples to the main window waveform overlay (WebGL).
  * Creates sample texture and mip min/max texture, same as minimap.
  */
-export function uploadMainWaveformData(samples) {
+export function uploadMainWaveformData(samples, expectedTotalSamples = 0) {
     if (!samples || samples.length === 0) return;
 
     initMainWaveformOverlay();
     if (!mwMaterial) return;
 
-    mwTotalSamples = samples.length;
+    // Use expected total if provided (progressive loading: allocate for full duration)
+    const effectiveTotal = expectedTotalSamples > samples.length ? expectedTotalSamples : samples.length;
+    mwTotalSamples = effectiveTotal;
     mwTextureWidth = 4096;
     mwTextureHeight = Math.ceil(mwTotalSamples / mwTextureWidth);
 
     const paddedLength = mwTextureWidth * mwTextureHeight;
-    const data = new Float32Array(paddedLength);
+    const data = new Float32Array(paddedLength); // zeros = silence for unfilled portion
     data.set(samples);
 
     if (mwSampleTexture) mwSampleTexture.dispose();
@@ -869,9 +880,16 @@ export function uploadMainWaveformData(samples) {
     const mipPadded = mipTexWidth * mipTexHeight;
     const mipData = new Float32Array(mipPadded * 2);
 
+    const actualSampleCount = samples.length;
     for (let bin = 0; bin < mipBins; bin++) {
         const start = bin * WF_MIP_BIN_SIZE;
-        const end = Math.min(start + WF_MIP_BIN_SIZE, mwTotalSamples);
+        const end = Math.min(start + WF_MIP_BIN_SIZE, actualSampleCount);
+        if (start >= actualSampleCount) {
+            // Beyond actual data — leave as zero (silence)
+            mipData[bin * 2]     = 0;
+            mipData[bin * 2 + 1] = 0;
+            continue;
+        }
         let mn = Infinity, mx = -Infinity;
         for (let j = start; j < end; j++) {
             const v = samples[j];
@@ -1535,7 +1553,11 @@ export function drawWaveform() {
 
     // Use original sample rate from metadata, NOT AudioContext rate
     const sampleRate = State.currentMetadata?.original_sample_rate || 50;
-    State.setTotalAudioDuration(samplesLength / sampleRate);
+    // Only set duration if it hasn't been set yet (during progressive loading,
+    // the fetcher sets the correct expected duration early — don't override with partial data)
+    if (!State.totalAudioDuration || State.totalAudioDuration <= 0) {
+        State.setTotalAudioDuration(samplesLength / sampleRate);
+    }
 
     // Upload samples to GPU texture (the shader handles everything)
     const samples = State.completeSamplesArray || State.getCompleteSamplesArray();

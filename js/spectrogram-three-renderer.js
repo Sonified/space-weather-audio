@@ -18,8 +18,9 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './waveform-x-axis-renderer.js';
 import { isStudyMode } from './master-modes.js';
 import { getColorLUT } from './colormaps.js';
-import { initPyramid, renderBaseTiles, pickLevel, pickContinuousLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters, setPyramidReduceMode, setTileDuration, getBaseTileDuration } from './spectrogram-pyramid.js';
-import { uploadMainWaveformData, renderMainWaveform, hideMainWaveform, rebuildMainWaveformColormap, disposeMainWaveform } from './waveform-renderer.js';
+import { initPyramid, renderBaseTiles, pickLevel, pickContinuousLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters, setPyramidReduceMode, setTileDuration, getBaseTileDuration, setSuppressPyramidReady } from './spectrogram-pyramid.js';
+import { initScrollZoom } from './scroll-zoom.js';
+import { uploadMainWaveformData, uploadWaveformSamples, drawWaveformFromMinMax, renderMainWaveform, hideMainWaveform, rebuildMainWaveformColormap, disposeMainWaveform } from './waveform-renderer.js';
 
 // ─── Module state ───────────────────────────────────────────────────────────
 
@@ -603,10 +604,10 @@ async function renderFrame() {
  * Upload audio waveform samples for time series rendering.
  * Delegates to WebGL overlay in waveform-renderer.js (same shader as minimap).
  */
-function uploadMainWaveformSamples() {
+function uploadMainWaveformSamples(expectedTotalSamples = 0) {
     const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
     if (!samples || samples.length === 0) return;
-    uploadMainWaveformData(samples);
+    uploadMainWaveformData(samples, expectedTotalSamples);
 }
 
 // ─── Diagnostic functions ───────────────────────────────────────────────────
@@ -2007,6 +2008,177 @@ export async function startCompleteVisualization() {
 
     console.log('Starting Three.js spectrogram visualization');
     await renderCompleteSpectrogram();
+}
+
+// ─── Progressive spectrogram rendering (Cloudflare streaming) ───────────────
+//
+// Purpose-built for progressive loading: call with growing audioData each chunk.
+// First call initializes scene + pyramid structure (once).
+// Every call recomputes minimap FFT + renders new tiles (additive).
+// Standard path (renderCompleteSpectrogram) is completely untouched.
+
+let progressiveInitDone = false;
+let progressiveLastRenderedSamples = 0; // track to avoid reprocessing same data
+
+/**
+ * Render spectrogram progressively as audio data streams in.
+ * Handles its own initialization — caller just passes growing audio buffer.
+ *
+ * @param {Float32Array} audioData - The growing audio buffer (all samples so far)
+ * @param {Object} [opts]
+ * @param {boolean} [opts.isComplete=false] - True on final call when all data is loaded
+ */
+export async function renderProgressiveSpectrogram(audioData, { isComplete = false, skipMinimapFFT = false } = {}) {
+    if (!audioData || audioData.length === 0) return;
+
+    const fftSize = State.fftSize || 2048;
+    const totalSamples = audioData.length;
+
+    // ── First call: initialize scene, pyramid, viewport (once) ──
+    if (!progressiveInitDone) {
+        await initThreeScene();
+        if (!threeRenderer?.domElement) return;
+
+        const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
+        const sr = zoomState.sampleRate;
+
+        // Time bounds for the full data range (known before data arrives)
+        fullTextureFirstColSec = 0;
+        fullTextureLastColSec = dataDurationSec;
+        pyramidOnlyMode = true;
+        if (mesh) mesh.visible = false;
+
+        // Frequency uniforms, render context, state flags
+        updateFrequencyUniforms();
+        const expectedSamples = State.currentMetadata?.playback_total_samples || totalSamples;
+        renderContext = {
+            startSample: 0,
+            endSample: expectedSamples,
+            frequencyScale: State.frequencyScale,
+        };
+        completeSpectrogramRendered = true;
+        State.setSpectrogramInitialized(true);
+        startMemoryMonitoring();
+
+        // Initialize zoom with expected total samples BEFORE viewport setup
+        // so "start at beginning" and other zoom preferences take effect immediately
+        zoomState.initialize(expectedSamples);
+        zoomState.applyInitialViewport();
+
+        // Axes
+        positionAxisCanvas();
+        initializeAxisPlaybackRate();
+        drawFrequencyAxis();
+
+        // Viewport (now uses correct zoom state from above)
+        updateSpectrogramViewportFromZoom();
+        createSpectrogramOverlay();
+        const progress = getZoomTransitionProgress();
+        updateSpectrogramOverlay(progress);
+
+        // Pyramid structure — ONCE (never wiped)
+        const zoomOutEl = document.getElementById('mainWindowZoomOut');
+        if (zoomOutEl) setPyramidReduceMode(zoomOutEl.value);
+        const chunkEl = document.getElementById('tileChunkSize');
+        const chunkMode = chunkEl?.value || 'adaptive';
+        setTileDuration(chunkMode === 'adaptive' ? 'adaptive' : parseInt(chunkMode), dataDurationSec, expectedSamples);
+        initPyramid(dataDurationSec, sr);
+
+        setOnTileReady((level, tileIndex) => {
+            const key = `L${level}:${tileIndex}`;
+            if (!tileReadyTimes.has(key)) tileReadyTimes.set(key, performance.now());
+            if (interactionActive) {
+                pendingTileUpdates = true;
+                return;
+            }
+            updateSpectrogramViewportFromZoom();
+            renderFrame();
+        });
+
+        // Suppress pyramid-ready events during progressive loading
+        // (feature boxes should only appear after all data is loaded)
+        setSuppressPyramidReady(true);
+
+        // Enable scroll-zoom interaction immediately (normally deferred until after await completes)
+        initScrollZoom();
+
+        progressiveInitDone = true;
+        console.log(`🎨 [Progressive] Scene + pyramid initialized (${dataDurationSec.toFixed(0)}s, ${sr} sr)`);
+    }
+
+    // ── Every call: update minimap FFT, waveform, and pyramid tiles ──
+    State.setCompleteSamplesArraySilent(audioData);
+
+    const expectedTotalSamples = State.currentMetadata?.playback_total_samples || totalSamples;
+    const sr = zoomState.sampleRate;
+    const hasNewData = totalSamples > progressiveLastRenderedSamples;
+
+    // Minimap FFT + waveform — only recompute when new data has arrived
+    if (hasNewData && totalSamples > fftSize) {
+        progressiveLastRenderedSamples = totalSamples;
+
+        // Minimap FFT — expensive full rebuild, only run when caller allows it
+        // (throttled separately from tile rendering — every ~5s vs every ~500ms)
+        if (!skipMinimapFFT || isComplete) {
+            const canvas = threeRenderer.domElement;
+            const width = canvas.width;
+            const maxTimeSlices = width;
+            const hopSize = Math.max(1, Math.floor((expectedTotalSamples - fftSize) / maxTimeSlices));
+            const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+
+            if (numTimeSlices > 0) {
+                const result = await computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize);
+                if (result) {
+                    const freqBins = result.height;
+                    const fullData = new Float32Array(maxTimeSlices * freqBins);
+                    for (let bin = 0; bin < freqBins; bin++) {
+                        const srcOffset = bin * result.width;
+                        const dstOffset = bin * maxTimeSlices;
+                        fullData.set(result.data.subarray(srcOffset, srcOffset + result.width), dstOffset);
+                    }
+                    fullMagnitudeWidth = maxTimeSlices;
+                    fullMagnitudeHeight = freqBins;
+                    if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
+                    fullMagnitudeTexture = createMagnitudeTexture(fullData, maxTimeSlices, freqBins);
+                }
+            }
+        }
+
+        // Main window waveform overlay
+        uploadMainWaveformSamples(expectedTotalSamples);
+
+        // Minimap waveform GPU texture — must be uploaded so drawWaveformFromMinMax
+        // uses the GPU path (not the fallback drawWaveform which overrides totalAudioDuration)
+        uploadWaveformSamples(audioData, expectedTotalSamples);
+        drawWaveformFromMinMax();
+    }
+
+    // Yield to browser between minimap work and tile rendering
+    // This lets the event loop process scroll/click/playhead events
+    await new Promise(r => setTimeout(r, 0));
+
+    // Pyramid tiles — incremental (tile.ready flags preserved, only new tiles render)
+    await renderBaseTiles(audioData, sr, fftSize, 0);
+    renderFrame();
+
+    // ── Completion extras ──
+    if (isComplete) {
+        setSuppressPyramidReady(false);
+        window.dispatchEvent(new Event('spectrogram-ready'));
+        window.dispatchEvent(new Event('pyramid-ready'));
+        (window.requestIdleCallback || (cb => setTimeout(cb, 200)))(() => {
+            State.compressSamplesArray();
+        });
+        console.log(`🎨 [Progressive] Complete — minimap FFT + waveform + tiles rendered`);
+    }
+}
+
+/**
+ * Reset progressive rendering state (called when starting a new data load).
+ */
+export function resetProgressiveSpectrogram() {
+    progressiveInitDone = false;
+    progressiveLastRenderedSamples = 0;
 }
 
 // ─── Minimap spectrogram access ─────────────────────────────────────────────

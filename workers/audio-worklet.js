@@ -228,6 +228,12 @@ class AudioProcessor extends AudioWorkletProcessor {
                 this.firstPlayAfterDataLoad = true;
                 // console.log(`🎚️ WORKLET: First play flag set - next playback will use 250ms fade-in to prevent click`);
                 // console.log(`🎚️ WORKLET STATE: hasStarted=${this.hasStarted}, isPlaying=${this.isPlaying}, samplesInBuffer=${this.samplesInBuffer}`);
+            } else if (type === 'set-sample-rate') {
+                // Set sample rate early (before data-complete) so position reports are correct
+                if (event.data.sampleRate) {
+                    this.sampleRate = event.data.sampleRate;
+                    console.log(`🎵 WORKLET: Sample rate set to ${this.sampleRate} Hz (early, before data-complete)`);
+                }
             } else if (type === 'data-complete') {
                 // 🔥 CRITICAL: Set actual sample rate from metadata!
                 if (event.data.sampleRate) {
@@ -441,7 +447,10 @@ class AudioProcessor extends AudioWorkletProcessor {
             targetSample = Math.max(startSample, Math.min(targetSample, endSample));
         }
         
-        if (targetSample >= 0 && targetSample <= this.totalSamples) {
+        // During progressive loading, totalSamples is 0 (not yet set by data-complete).
+        // Use samplesInBuffer as the upper bound so seeking works with partial data.
+        const upperBound = this.totalSamples > 0 ? this.totalSamples : this.samplesInBuffer;
+        if (targetSample >= 0 && targetSample <= upperBound) {
             if (targetSample < this.samplesInBuffer) {
                 // Sample is in buffer - instant jump
                 this.readIndex = targetSample % this.maxBufferSize;

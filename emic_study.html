@@ -174,11 +174,17 @@
         }
         
         #backgroundQuestionModal .modal-content,
-        #dataAnalysisQuestionModal .modal-content,
-        #musicalExperienceQuestionModal .modal-content {
+        #dataAnalysisQuestionModal .modal-content {
             max-width: 612px !important;
             min-width: 320px !important;
             width: 85% !important;
+            padding: 24px 28px !important;
+        }
+
+        #musicalExperienceQuestionModal .modal-content {
+            max-width: 660px !important;
+            min-width: 320px !important;
+            width: 88% !important;
             padding: 24px 28px !important;
         }
 
@@ -246,6 +252,26 @@
             </div>
         </div>
         
+        <!-- Data Viewer Panel (localhost only, hidden by default) -->
+        <div id="dataViewerPanel" style="display: none; padding: 12px 16px; margin-bottom: 8px; background: linear-gradient(135deg, rgba(30,35,60,0.95), rgba(20,25,45,0.95)); border: 1px solid rgba(100,120,200,0.3); border-radius: 8px; color: #ddd; font-family: system-ui, sans-serif;">
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 10px; flex-wrap: wrap;">
+                <span style="font-weight: 700; font-size: 15px; color: #8af;">Data Viewer</span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <label for="dvUserSelect" style="font-size: 13px; font-weight: 600; color: #aaa;">User:</label>
+                    <select id="dvUserSelect" style="padding: 4px 8px; font-size: 13px; border-radius: 4px; border: 1px solid #555; background: rgba(40,40,60,0.9); color: #ddd; cursor: pointer; min-width: 180px;">
+                        <option value="">-- select user --</option>
+                    </select>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <label for="dvSessionSelect" style="font-size: 13px; font-weight: 600; color: #aaa;">Session:</label>
+                    <select id="dvSessionSelect" style="padding: 4px 8px; font-size: 13px; border-radius: 4px; border: 1px solid #555; background: rgba(40,40,60,0.9); color: #ddd; cursor: pointer; min-width: 280px;">
+                        <option value="">-- select session --</option>
+                    </select>
+                </div>
+            </div>
+            <div id="dvDataDisplay" style="max-height: 400px; overflow-y: auto;"></div>
+        </div>
+
         <!-- EMIC Study Controls: Stretch Algorithm + Speed -->
         <div class="panel" style="padding: 8px 15px;">
             <div class="emic-controls-bar">

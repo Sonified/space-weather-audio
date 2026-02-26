@@ -1054,7 +1054,7 @@ export function createMusicalExperienceQuestionModal() {
                     </label>
                     <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
                         <input type="radio" name="musicalExperienceLevel" value="2" style="width: 18px; height: 18px; accent-color: #007bff;">
-                        <div><strong>Minimal</strong> <span style="color: #444;">: Some informal exposure (e.g., casual listening, basic music classes in school)</span></div>
+                        <div><strong>Minimal</strong> <span style="color: #444;">: Some informal exposure (e.g., basic music classes in school)</span></div>
                     </label>
                     <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
                         <input type="radio" name="musicalExperienceLevel" value="3" style="width: 18px; height: 18px; accent-color: #007bff;">

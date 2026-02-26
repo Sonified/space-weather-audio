@@ -17,6 +17,7 @@ import { getCurrentPlaybackBoundaries, isAtBoundaryEnd, getRestartPosition, form
 import { setPlayingState } from './oscilloscope-renderer.js';
 import { updateSpectrogramViewport } from './spectrogram-three-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
+import { WaveletGPUCompute } from './wavelet-gpu-compute.js';
 
 // ===== RAF CLEANUP HELPER =====
 
@@ -351,6 +352,13 @@ export function updatePlaybackSpeed() {
             if (State.stretchNode) {
                 State.stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
             }
+
+            // Wavelet: re-run GPU stretch pass with new factor (CWT is cached)
+            if (State.stretchAlgorithm === 'wavelet') {
+                waveletStretchAndLoad(stretchFactor).catch(err => {
+                    console.error('🎛️ Wavelet re-stretch failed:', err);
+                });
+            }
         }
     } else if (State.stretchActive) {
         // Disengage stretch (speed >= 1.0, or switched to resample)
@@ -387,10 +395,120 @@ export function changePlaybackSpeed() {
 
 const STRETCH_CROSSFADE_DURATION = 0.15; // 150ms crossfade
 
+// ===== WAVELET GPU COMPUTE =====
+let waveletGPU = null;
+let waveletCWTReady = false;  // True after CWT pass completes (cached on GPU)
+let waveletAudioSamples = null;  // Raw audio for chunked fallback (long files)
+
+/**
+ * Initialize wavelet GPU compute (lazy — only when wavelet algorithm is first used).
+ * Shares device with spectrogram WebGPU renderer if available.
+ */
+async function ensureWaveletGPU() {
+    if (waveletGPU?.initialized) return waveletGPU;
+
+    if (!WaveletGPUCompute.isSupported()) {
+        console.warn('[Wavelet GPU] WebGPU not available');
+        return null;
+    }
+
+    waveletGPU = new WaveletGPUCompute();
+
+    // Try to share device with spectrogram renderer
+    let sharedDevice = null;
+    try {
+        const { getWebGPUDevice } = await import('./spectrogram-three-renderer.js');
+        sharedDevice = getWebGPUDevice();
+    } catch (e) { /* no renderer available */ }
+
+    await waveletGPU.initialize(sharedDevice);
+    return waveletGPU;
+}
+
+/**
+ * Run GPU wavelet CWT on audio data. Caches coefficients for fast re-stretch.
+ * Called once when audio loads (or when wavelet algorithm is first selected).
+ */
+async function waveletComputeCWT(samples) {
+    const gpu = await ensureWaveletGPU();
+    if (!gpu) return false;
+
+    // Always store samples for chunked fallback
+    waveletAudioSamples = samples;
+
+    // dt = 1/sampleRate in the audio buffer's sample rate
+    const sampleRate = State.audioContext?.sampleRate || 44100;
+    const dt = 1.0 / sampleRate;
+
+    // Try to pre-cache CWT on GPU (fast re-stretch path).
+    // Long files may exceed GPU memory — that's OK, we'll use chunked processing.
+    try {
+        await gpu.computeCWT(samples, { dt, w0: 6, dj: 0.1 });
+        waveletCWTReady = true;
+        return true;
+    } catch (err) {
+        console.warn(`[Wavelet GPU] CWT pre-cache failed (${samples.length} samples) — will use chunked processing:`, err.message);
+        waveletCWTReady = false;
+        return false;
+    }
+}
+
+/**
+ * Run GPU stretch pass and load result into wavelet AudioWorklet.
+ * Fast path: only re-runs Pass 2 (CWT coefficients are cached from Pass 1).
+ */
+async function waveletStretchAndLoad(stretchFactor) {
+    if (!waveletGPU) {
+        console.warn('[Wavelet GPU] Not initialized — cannot stretch');
+        return false;
+    }
+
+    const t0 = performance.now();
+    const sampleRate = State.audioContext?.sampleRate || 44100;
+    const dt = 1.0 / sampleRate;
+    let stretched;
+
+    if (waveletCWTReady) {
+        // Fast path: CWT is cached on GPU, just re-run the stretch pass
+        stretched = await waveletGPU.stretchAudio(stretchFactor);
+    } else if (waveletAudioSamples) {
+        // Chunked path: file too large for single CWT — process in chunks
+        console.log(`%c[Wavelet GPU] Using chunked processing for ${waveletAudioSamples.length} samples...`, 'color: #E040FB');
+        stretched = await waveletGPU.waveletStretchChunked(waveletAudioSamples, stretchFactor, {
+            dt, w0: 6, dj: 0.1,
+            onChunkDone(chunkIdx, numChunks, elapsedMs) {
+                console.log(`%c[Wavelet GPU] Chunk ${chunkIdx + 1}/${numChunks} done (${elapsedMs.toFixed(0)}ms)`, 'color: #E040FB');
+            }
+        });
+    } else {
+        console.warn('[Wavelet GPU] No audio data available — cannot stretch');
+        return false;
+    }
+
+    WaveletGPUCompute.normalize(stretched);
+
+    const node = State.stretchNodes?.wavelet;
+    if (node) {
+        const copy = new Float32Array(stretched);
+        node.port.postMessage(
+            { type: 'load-audio', data: { samples: copy } },
+            [copy.buffer]
+        );
+    }
+
+    const method = waveletCWTReady ? 'cached' : 'chunked';
+    console.log(
+        `%c[Wavelet GPU] Stretch + load (${method}): ${(performance.now() - t0).toFixed(1)}ms`,
+        'color: #E040FB; font-weight: bold'
+    );
+    return true;
+}
+
 const PROCESSOR_NAMES = {
     resample: 'resample-stretch-processor',
     paul: 'paul-stretch-processor',
-    granular: 'granular-stretch-processor'
+    granular: 'granular-stretch-processor',
+    wavelet: 'wavelet-stretch-processor'
 };
 
 /**
@@ -402,7 +520,7 @@ function createStretchNode(algorithm) {
     const windowSize = 4096;
 
     let options;
-    if (algorithm === 'resample') {
+    if (algorithm === 'resample' || algorithm === 'wavelet') {
         options = { processorOptions: { stretchFactor: 1.0 } };
     } else if (algorithm === 'paul') {
         options = { processorOptions: { windowSize, stretchFactor: 1.0 } };
@@ -485,8 +603,16 @@ export function primeStretchProcessors(samples) {
 
     const nodes = {};
 
-    for (const algo of ['resample', 'paul', 'granular']) {
+    for (const algo of ['resample', 'paul', 'granular', 'wavelet']) {
         const node = createStretchNode(algo);
+
+        if (algo === 'wavelet') {
+            // Wavelet node gets GPU-stretched audio, not raw samples.
+            // Mark as not ready — will be loaded when CWT + stretch completes.
+            nodes[algo] = node;
+            continue;
+        }
+
         // Each processor gets its own Float32Array copy via transferable buffer
         // This avoids: (1) Array.from() bottleneck, (2) structured clone overhead
         // The buffer ownership transfers to the worklet thread — zero main-thread GC pressure
@@ -507,6 +633,18 @@ export function primeStretchProcessors(samples) {
             State.setStretchNode(nodes[activeAlgo]);
         }
     }
+
+    // Kick off GPU CWT for wavelet algorithm (async, doesn't block priming)
+    // Long files will fail CWT pre-cache — that's OK, waveletStretchAndLoad falls back to chunked
+    waveletComputeCWT(samples).then(ok => {
+        if (ok) {
+            console.log('🎛️ Wavelet CWT cached on GPU — ready for instant stretch');
+        } else {
+            console.log('🎛️ Wavelet will use chunked GPU processing for this file');
+        }
+    }).catch(err => {
+        console.warn('🎛️ Wavelet GPU CWT failed:', err.message);
+    });
 }
 
 /**
@@ -623,6 +761,18 @@ function engageStretch(stretchFactor) {
 
     // Set stretch factor on the processor
     node.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
+
+    if (algorithm === 'wavelet') {
+        // Wavelet: run GPU stretch pass, then load result and engage
+        node._pendingResume = { position: currentPosition, shouldPlay: wasPlaying, doCrossfade: true };
+        waveletStretchAndLoad(stretchFactor).then(ok => {
+            if (!ok) return;
+            // node._ready will be set by the 'loaded' message handler
+        }).catch(err => {
+            console.error('🎛️ Wavelet GPU stretch failed:', err);
+        });
+        return;
+    }
 
     if (node._ready) {
         // Node is primed — seek, play, crossfade immediately

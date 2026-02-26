@@ -28,6 +28,7 @@ import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFe
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
+import { initDataViewer, fetchUsers } from './data-viewer.js';
 import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown, removeVolumeSliderGlow } from './tutorial.js';
 import { isTutorialActive } from './tutorial-state.js';
 import { drawDayMarkers, clearDayMarkers } from './day-markers.js';
@@ -388,6 +389,7 @@ export async function initAudioWorklet() {
                 await ctx.audioWorklet.addModule('workers/resample-stretch-processor.js');
                 await ctx.audioWorklet.addModule('workers/paul-stretch-processor.js');
                 await ctx.audioWorklet.addModule('workers/granular-stretch-processor.js');
+                await ctx.audioWorklet.addModule('workers/wavelet-stretch-processor.js');
             })();
             await window._audioWorkletLoading;
             window._audioWorkletLoading = null;
@@ -1199,6 +1201,12 @@ function injectSettingsDrawer() {
                     <option value="cloudflare">GOES Cloudflare</option>
                 </select>
             </div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="drawerBypassCache" style="width: 16px; height: 16px; cursor: pointer;">
+                    Do not use cache
+                </label>
+            </div>
         </div>
     `;
     document.body.appendChild(drawer);
@@ -1499,6 +1507,7 @@ function initializeAdvancedControls() {
         { id: 'tileChunkSize', key: 'emic_tile_chunk_size', type: 'select' },
         { id: 'featurePlaybackMode', key: 'emic_feature_playback_mode', type: 'select' },
         { id: 'dataSource', key: 'emic_data_source', type: 'select' },
+        { id: 'drawerBypassCache', key: 'emic_bypass_cache', type: 'checkbox' },
         { id: 'tickFadeInTime', key: 'emic_tick_fade_in', type: 'range' },
         { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
@@ -1625,10 +1634,11 @@ function initializeAdvancedControls() {
     const advancedCheckbox = document.getElementById('advancedMode');
     const displayModeSelect = document.getElementById('displayMode');
 
-    // Display mode: 'participant' | 'standard' | 'advanced'
+    // Display mode: 'participant' | 'standard' | 'advanced' | 'dataviewer'
     function applyDisplayMode(mode) {
         const isAdvanced = mode === 'advanced';
         const isParticipant = mode === 'participant';
+        const isDataViewer = mode === 'dataviewer';
 
         // Sync hidden checkbox for any code that reads advancedMode
         if (advancedCheckbox) advancedCheckbox.checked = isAdvanced;
@@ -1665,6 +1675,15 @@ function initializeAdvancedControls() {
         // Participant ID display (top right): hidden in participant mode
         const pidDisplay = document.getElementById('participantIdDisplay');
         if (pidDisplay) pidDisplay.style.display = isParticipant ? 'none' : '';
+
+        // Data Viewer panel: only visible in dataviewer mode
+        const dvPanel = document.getElementById('dataViewerPanel');
+        if (dvPanel) {
+            dvPanel.style.display = isDataViewer ? 'block' : 'none';
+            if (isDataViewer) {
+                fetchUsers();
+            }
+        }
     }
 
     // Legacy compat: applyAdvancedMode still works for any external callers
@@ -1673,9 +1692,20 @@ function initializeAdvancedControls() {
     }
 
     if (displayModeSelect) {
+        // Add Data Viewer option on localhost only
+        if (isLocalEnvironment()) {
+            const dvOption = document.createElement('option');
+            dvOption.value = 'dataviewer';
+            dvOption.textContent = 'Data Viewer';
+            displayModeSelect.appendChild(dvOption);
+            initDataViewer();
+        }
+
         // Restore saved preference, default to 'standard' for new users
         const savedMode = localStorage.getItem('emic_display_mode');
-        if (savedMode && ['participant', 'standard', 'advanced'].includes(savedMode)) {
+        const validModes = ['participant', 'standard', 'advanced'];
+        if (isLocalEnvironment()) validModes.push('dataviewer');
+        if (savedMode && validModes.includes(savedMode)) {
             displayModeSelect.value = savedMode;
         }
         applyDisplayMode(displayModeSelect.value);

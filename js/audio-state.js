@@ -191,6 +191,13 @@ export function setCompleteSamplesArray(value) {
         _onCompleteSamplesReady(value);
     }
 }
+/** Set completeSamplesArray WITHOUT triggering stretch processor priming. */
+export function setCompleteSamplesArraySilent(value) {
+    if (completeSamplesArray !== value) {
+        completeSamplesArray = null;
+    }
+    completeSamplesArray = value;
+}
 export function setCompressedSamplesBuffer(value) { compressedSamplesBuffer = value; }
 
 /**

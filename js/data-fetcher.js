@@ -120,9 +120,12 @@ const DATASET_VARIABLES = {
 export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) {
     console.log(`🛰️ Fetching CDAWeb audio: ${spacecraft} ${dataset} ${startTime} to ${endTime}`);
     
-    // Check cache first
-    console.log(`🔍 Checking cache for: ${spacecraft} ${dataset} ${startTime} → ${endTime}`);
-    const cached = await getAudioData(spacecraft, dataset, startTime, endTime);
+    // Check if user wants to bypass local cache
+    const bypassLocalCache = document.getElementById('drawerBypassCache')?.checked;
+
+    // Check cache first (unless bypass is enabled)
+    console.log(`🔍 Checking cache for: ${spacecraft} ${dataset} ${startTime} → ${endTime}${bypassLocalCache ? ' (BYPASSED)' : ''}`);
+    const cached = !bypassLocalCache ? await getAudioData(spacecraft, dataset, startTime, endTime) : null;
     if (cached) {
         const expectedComponents = cached.metadata?.allFileUrls?.length || 1;
         const cachedBlobsArray = cached.allComponentBlobs || [];
@@ -1058,8 +1061,8 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
     // CDN URL (direct R2 access via Cloudflare CDN - 7.8x faster than worker!)
     const CDN_BASE_URL = 'https://cdn.now.audio/data';
     
-    // Check if cache bypass is enabled
-    const bypassCache = document.getElementById('bypassCache').checked;
+    // Check if cache bypass is enabled (either the CDN checkbox or the drawer checkbox)
+    const bypassCache = document.getElementById('bypassCache')?.checked || document.getElementById('drawerBypassCache')?.checked;
     const cacheBuster = bypassCache ? `?t=${Date.now()}` : '';
     
     // Get high-pass filter setting from UI (same as Railway)

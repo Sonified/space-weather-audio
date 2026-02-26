@@ -109,6 +109,7 @@ let pyramidReduceMode = 'average';
 
 export function setPyramidReduceMode(mode) { pyramidReduceMode = mode; }
 export function getPyramidReduceMode() { return pyramidReduceMode; }
+export function setSuppressPyramidReady(suppress) { suppressPyramidReadyEvent = suppress; }
 
 // ─── Pyramid State ──────────────────────────────────────────────────────────
 
@@ -120,6 +121,7 @@ let computeBackend = null;  // 'gpu' | 'cpu'
 let buildAbortController = null;
 let pyramidReady = false;
 let onTileReady = null;        // Callback when a tile becomes ready
+let suppressPyramidReadyEvent = false; // Suppress pyramid-ready during progressive loading
 
 // Tile key format: "L{level}:{index}"
 function tileKey(level, index) {
@@ -416,9 +418,18 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         }
 
         if (tileSamples.length <= fftSize) {
-            console.warn(`🔺 L0 tile ${tileIdx} too small for FFT (${tileSamples.length} samples)`);
+            // Silently skip tiles with insufficient data (common during progressive loading)
             tile.rendering = false;
             alreadyReady++;
+            continue;
+        }
+
+        // During progressive loading, don't render a tile unless we have most of its data.
+        // Without this, a tile with partial data gets its few samples stretched across all
+        // 512 columns and then marked ready — so it's never re-rendered with complete data.
+        const expectedTileLen = resampledEnd - Math.max(0, resampledStart);
+        if (expectedTileLen > 0 && tileSamples.length < expectedTileLen * 0.75) {
+            tile.rendering = false;
             continue;
         }
 
@@ -453,7 +464,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
     if (tileJobs.length === 0) {
         pyramidReady = true;
         console.log(`🔺 All ${baseTiles.length} tiles already ready`);
-        window.dispatchEvent(new Event('pyramid-ready'));
+        if (!suppressPyramidReadyEvent) window.dispatchEvent(new Event('pyramid-ready'));
         return;
     }
 
@@ -519,7 +530,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             const cascadeMs = (performance.now() - cascadeStartTime).toFixed(1);
             const builtLevels = pyramidLevels.filter(lvl => lvl.some(t => t.ready)).length;
             console.log(`🔺 All ${tileJobs.length} base tiles + ${builtLevels} pyramid levels in ${elapsed}s (${backendLabel}, cascade: ${cascadeMs}ms)`);
-            window.dispatchEvent(new Event('pyramid-ready'));
+            if (!suppressPyramidReadyEvent) window.dispatchEvent(new Event('pyramid-ready'));
         }
     } else {
         // ── STANDARD PATH: CPU readback, cascade inline ──
@@ -537,7 +548,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             pyramidReady = true;
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
             console.log(`🔺 All ${tileJobs.length} base tiles rendered in ${elapsed}s (${backendLabel})`);
-            window.dispatchEvent(new Event('pyramid-ready'));
+            if (!suppressPyramidReadyEvent) window.dispatchEvent(new Event('pyramid-ready'));
         }
     }
 }
