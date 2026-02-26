@@ -144,6 +144,11 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
     spawnGrain() {
         if (!this.sourceBuffer) return false;
 
+        // Check if source position has reached the end
+        if (this.sourcePosition >= this.sourceBuffer.length - this.grainSize) {
+            return false; // End of source
+        }
+
         // Calculate grain read position with optional scatter
         let grainStart = Math.floor(this.sourcePosition);
 
@@ -154,13 +159,8 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
             grainStart = Math.floor(grainStart + scatterOffset);
         }
 
-        // Clamp to valid range
+        // Clamp to valid range (scatter may push outside bounds)
         grainStart = Math.max(0, Math.min(grainStart, this.sourceBuffer.length - this.grainSize));
-
-        // Check if we have enough source left
-        if (grainStart + this.grainSize > this.sourceBuffer.length) {
-            return false; // End of source
-        }
 
         // Add grain to output buffer with window and gain compensation
         const outputLen = this.outputBuffer.length;
