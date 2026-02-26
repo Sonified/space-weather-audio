@@ -34,7 +34,6 @@ const DEBUG_CHUNKS = false;
 // CDAWeb API Configuration
 const CDASWS_BASE_URL = 'https://cdaweb.gsfc.nasa.gov/WS/cdasr/1';
 const DATAVIEW = 'sp_phys';  // Space Physics dataview
-const CDAWEB_WAV_SAMPLE_RATE = 22000; // CDAWeb's WAV encoding rate (intermediate, we don't use this for math)
 
 // Debug flag for domain separation logging
 const DEBUG_DOMAINS = false;
@@ -349,13 +348,26 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
     
     const decodeStartTime = performance.now();
     const arrayBuffer = await wavBlob.arrayBuffer();
-    
+
+    // Patch WAV header: change sample rate from 22kHz to 44.1kHz so the browser
+    // won't resample (which would double the samples and halve all FFT frequencies).
+    // WAV format: sample rate is a uint32 LE at byte offset 24, byte rate at offset 28.
+    const headerView = new DataView(arrayBuffer);
+    const origSampleRate = headerView.getUint32(24, true);
+    const numChannels = headerView.getUint16(22, true);
+    const bitsPerSample = headerView.getUint16(34, true);
+    const targetSampleRate = 44100;
+    if (origSampleRate !== targetSampleRate) {
+        console.log(`🔧 Patching WAV header: ${origSampleRate} Hz → ${targetSampleRate} Hz (prevents browser resampling)`);
+        headerView.setUint32(24, targetSampleRate, true);  // sample rate
+        headerView.setUint32(28, targetSampleRate * numChannels * (bitsPerSample / 8), true);  // byte rate
+    }
+
     // Create AudioContext for decoding
     const offlineContext = new (window.AudioContext || window.webkitAudioContext)();
-    
+
     try {
-        // AudioContext RESAMPLES to its native rate (44.1kHz)
-        // This is GOOD - we embrace it!
+        // Browser sees 44.1kHz — no resampling, 1 data point = 1 sample
         const audioBuffer = await offlineContext.decodeAudioData(arrayBuffer);
         
         const decodeTime = performance.now() - decodeStartTime;
@@ -372,25 +384,22 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
         const realWorldTimeSpanSeconds = (endDate - startDate) / 1000;
         
         // ============================================
-        // PLAYBACK DOMAIN (44.1kHz - what we actually use)
+        // PLAYBACK DOMAIN
         // ============================================
-        const playbackSampleRate = audioBuffer.sampleRate;  // 44100 Hz
-        const totalPlaybackSamples = audioBuffer.length;    // Sample count at 44.1kHz
-        const audioDurationSeconds = audioBuffer.duration;  // How long the audio plays
-        
-        // THIS IS THE KEY INSIGHT:
-        // How many 44.1kHz samples represent one second of REAL WORLD time?
+        // With the WAV header patched to 44.1kHz, the browser doesn't resample.
+        // 1 instrument data point = 1 audio sample. Simple.
+        const playbackSampleRate = audioBuffer.sampleRate;  // 44100 Hz (tagged)
+        const totalPlaybackSamples = audioBuffer.length;    // = instrument sample count
+        const audioDurationSeconds = audioBuffer.duration;   // How long the audio plays
+
+        // Samples per real-world second = instrument sampling rate (no resampling!)
         const playbackSamplesPerRealSecond = totalPlaybackSamples / realWorldTimeSpanSeconds;
-        
+
         // ============================================
         // INSTRUMENT DOMAIN (for Y-axis frequency labels only)
         // ============================================
-        // CDAWeb takes N instrument samples and stretches them to audioDurationSeconds of audio
-        // The WAV has (audioDurationSeconds * 22000) original WAV samples
-        // Those represent realWorldTimeSpanSeconds of real time
-        // So: instrumentSamplesPerSecond = (audioDurationSeconds * 22000) / realWorldTimeSpanSeconds
-        const wavSampleCount = audioDurationSeconds * CDAWEB_WAV_SAMPLE_RATE;
-        const instrumentSamplingRate = wavSampleCount / realWorldTimeSpanSeconds;
+        // With no resampling, playback samples per real second IS the instrument rate
+        const instrumentSamplingRate = playbackSamplesPerRealSecond;
         const instrumentNyquist = instrumentSamplingRate / 2;
         
         // ============================================
@@ -414,8 +423,7 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
             console.log(`      (This is what the worklet uses for position tracking)`);
             
             console.log(`\n🛰️ INSTRUMENT DOMAIN (For Y-axis only):`);
-            console.log(`   WAV sample count:  ${wavSampleCount.toLocaleString()} (at ${CDAWEB_WAV_SAMPLE_RATE} Hz)`);
-            console.log(`   Instrument rate:   ${instrumentSamplingRate.toFixed(4)} Hz`);
+            console.log(`   Instrument rate:   ${instrumentSamplingRate.toFixed(4)} Hz (= samples per real second, no resampling)`);
             console.log(`   Nyquist (Y-max):   ${instrumentNyquist.toFixed(4)} Hz`);
             
             console.log(`\n📐 VERIFICATION:`);
@@ -429,7 +437,7 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
         await offlineContext.close();
         
         return {
-            // The actual audio samples (Float32Array at 44.1kHz)
+            // The actual audio samples (1 per instrument data point, tagged as 44.1kHz)
             samples: samples,
             
             // ============================================
