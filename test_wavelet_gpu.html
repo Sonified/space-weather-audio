@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Wavelet GPU Stretch Test</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧪</text></svg>">
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code', monospace; padding: 20px; }
@@ -38,6 +39,9 @@
 
         .player-row { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
         .player-row button { min-width: 70px; }
+        .player-row button.source-btn { background: #2a2a4a; color: #ccc; }
+        .player-row button.source-btn:hover { background: #3a3a5a; }
+        .player-row button.source-btn.active { background: #E040FB; color: #000; }
         #waveformContainer { position: relative; width: 100%; height: 80px; }
         #waveform { width: 100%; height: 100%; background: #0d0d15; border: 1px solid #2a2a3a; border-radius: 4px; cursor: pointer; }
         #playhead { position: absolute; top: 0; left: 0; width: 2px; height: 100%; background: #fff; pointer-events: none; opacity: 0.9; z-index: 1; }
@@ -72,8 +76,10 @@
     <div class="controls">
         <label>Transform
             <select id="transform">
+                <option value="rtpghi" selected>RTPGHI (Phase Gradient)</option>
                 <option value="cwt">CWT (Morlet)</option>
-                <option value="cqt" selected>CQT (Constant-Q)</option>
+                <option value="cqt">CQT (Constant-Q)</option>
+                <option value="nsgt">NSGT (Non-Stationary Gabor)</option>
             </select>
         </label>
         <label>Stretch factor
@@ -82,9 +88,13 @@
                 <option value="0.5">0.5x (half length)</option>
                 <option value="0.75">0.75x</option>
                 <option value="1">1x (no stretch)</option>
+                <option value="1.5">1.5x</option>
                 <option value="2" selected>2x</option>
+                <option value="2.5">2.5x</option>
                 <option value="3">3x</option>
+                <option value="3.5">3.5x</option>
                 <option value="4">4x</option>
+                <option value="4.5">4.5x</option>
                 <option value="5">5x</option>
                 <option value="6">6x</option>
                 <option value="7">7x</option>
@@ -118,7 +128,7 @@
             </select>
         </label>
         </span>
-        <span id="cqtControls">
+        <span id="cqtControls" style="display:none">
         <label>Bins/octave
             <select id="binsPerOctave">
                 <option value="1">1</option>
@@ -131,7 +141,7 @@
                 <option value="48">48 (fine)</option>
             </select>
         </label>
-        <label>Min BW
+        <label id="minBWLabel" style="display:none">Min BW
             <select id="minBW">
                 <option value="0" selected>0 (pure CQT)</option>
                 <option value="25">25 Hz</option>
@@ -141,8 +151,68 @@
             </select>
         </label>
         </span>
+        </span>
     </div>
-    <div class="controls" style="margin-top: 8px;">
+    <div class="controls" id="rtpghiRow1" style="margin-top: 8px;">
+        <label>FFT size
+            <select id="rtpghiFFTSize">
+                <option value="512">512</option>
+                <option value="1024">1024</option>
+                <option value="2048" selected>2048</option>
+                <option value="4096">4096</option>
+                <option value="8192">8192</option>
+            </select>
+        </label>
+        <label>Hop divisor
+            <select id="rtpghiHopDiv">
+                <option value="1">M/1 (0%)</option>
+                <option value="2">M/2 (50%)</option>
+                <option value="4">M/4 (75%)</option>
+                <option value="8" selected>M/8 (87.5%)</option>
+                <option value="16">M/16 (93.75%)</option>
+                <option value="32">M/32 (96.9%)</option>
+            </select>
+        </label>
+        <label>Window
+            <select id="rtpghiWindow">
+                <option value="gauss" selected>Gaussian</option>
+                <option value="hann">Hann</option>
+            </select>
+        </label>
+    </div>
+    <div class="controls" id="rtpghiRow2" style="margin-top: 8px;">
+        <label>Phase mode
+            <select id="rtpghiPhaseMode">
+                <option value="full">Full (time+freq)</option>
+                <option value="time" selected>Time only</option>
+                <option value="freq">Freq only</option>
+            </select>
+        </label>
+        <label>Tolerance
+            <select id="rtpghiTol">
+                <option value="6">6 dB</option>
+                <option value="10">10 dB</option>
+                <option value="20">20 dB</option>
+                <option value="40" selected>40 dB</option>
+                <option value="100">100 dB (all bins)</option>
+            </select>
+        </label>
+        <label>γ (gamma)
+            <select id="rtpghiGamma">
+                <option value="5000">5,000</option>
+                <option value="10000">10,000</option>
+                <option value="25000">25,000 (M²×0.006)</option>
+                <option value="50000">50,000</option>
+                <option value="100000">100,000</option>
+                <option value="200000">200,000</option>
+                <option value="500000">500,000</option>
+                <option value="1000000" selected>1,000,000</option>
+                <option value="2000000">2,000,000</option>
+                <option value="4000000">4,000,000</option>
+            </select>
+        </label>
+    </div>
+    <div class="controls" id="gpuParamsRow" style="margin-top: 8px; display:none;">
         <label>Interpolation
             <select id="interpMode">
                 <option value="0" selected>Cubic spline</option>
@@ -163,6 +233,7 @@
     <div class="controls" style="margin-top: 8px;">
         <button id="runBtn" onclick="runStretch()" disabled>Run GPU Wavelet Stretch</button>
         <button id="diagBtn" onclick="runDiagnostic()" disabled style="background:#FF9800; color:#000;">Run Diagnostic (400+800Hz)</button>
+        <button onclick="copyParams()" style="background:#607D8B; color:#fff; margin-left:8px;">Copy Params</button>
     </div>
 </div>
 
@@ -176,6 +247,7 @@
         <div class="stat-box"><div class="stat-label">Stretch (Pass 2)</div><div class="stat-value" id="statStretch">-</div></div>
         <div class="stat-box"><div class="stat-label">Normalize</div><div class="stat-value" id="statNorm">-</div></div>
         <div class="stat-box"><div class="stat-label">Total</div><div class="stat-value green" id="statTotal">-</div></div>
+        <div class="stat-box"><div class="stat-label">Realtime</div><div class="stat-value green" id="statRealtime">-</div></div>
         <div class="stat-box"><div class="stat-label">Input</div><div class="stat-value" id="statInput">-</div></div>
         <div class="stat-box"><div class="stat-label">Output</div><div class="stat-value" id="statOutput">-</div></div>
         <div class="stat-box"><div class="stat-label">Scales</div><div class="stat-value" id="statScales">-</div></div>
@@ -192,12 +264,12 @@
         <span id="waveformTime"></span>
     </div>
     <div class="player-row">
-        <button onclick="playOriginal()">Original</button>
-        <button onclick="playResampled()">Resampled</button>
-        <button onclick="playStretched()">Wavelet Stretched</button>
+        <button id="btnOriginal" class="source-btn" onclick="playOriginal()">Original</button>
+        <button id="btnResampled" class="source-btn" onclick="playResampled()">Resampled</button>
+        <button id="btnStretched" class="source-btn active" onclick="playStretched()">Stretched</button>
         <button onclick="stopPlayback()">Stop</button>
         <label style="display:flex; align-items:center; gap:4px; font-size:12px; color:#888; cursor:pointer;">
-            <input type="checkbox" id="loopToggle"> Loop
+            <input type="checkbox" id="loopToggle" checked> Loop
         </label>
         <button class="secondary" onclick="downloadWav()">Download WAV</button>
     </div>
@@ -213,7 +285,284 @@
 </div>
 
 <script type="module">
-import { WaveletGPUCompute, generateScales, buildMorletLUT, generateCQTScales, buildCQTFilterBank } from './js/wavelet-gpu-compute.js';
+import { WaveletGPUCompute, generateScales, buildMorletLUT, generateCQTScales, buildCQTFilterBank, generateNSGTBands } from './js/wavelet-gpu-compute.js';
+
+// ─── RTPGHI Engine ───────────────────────────────────────────────────────────
+
+class RTPGHIStretcher {
+    constructor(opts = {}) {
+        this.M = opts.M || 2048;
+        this.hopDiv = opts.hopDiv || 8;
+        this.bins = this.M / 2 + 1;
+        this.aSyn = this.M / this.hopDiv;
+        this.tol = opts.tol || 10;            // dB below peak to skip
+        this.phaseMode = opts.phaseMode || 'full';  // 'full', 'time', 'freq'
+        this.windowType = opts.windowType || 'gauss';
+        const M = this.M;
+
+        // Gamma: use explicit value if provided, otherwise M²×0.006×scale
+        if (opts.gamma != null) {
+            this.gamma = opts.gamma;
+        } else {
+            this.gammaScale = opts.gammaScale || 1.0;
+            this.gamma = M * M * 0.006 * this.gammaScale;
+        }
+
+        // Window
+        this.window = new Float32Array(M);
+        if (this.windowType === 'hann') {
+            for (let i = 0; i < M; i++) {
+                this.window[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / M));
+            }
+        } else {
+            // Gaussian
+            for (let i = 0; i < M; i++) {
+                const t = i - M / 2;
+                this.window[i] = Math.exp(-Math.PI * t * t / this.gamma);
+            }
+        }
+
+        // FFT infrastructure (Cooley-Tukey radix-2)
+        this.bitRev = this._computeBitReversal(M);
+        this.twRe = new Float32Array(M / 2);
+        this.twIm = new Float32Array(M / 2);
+        for (let i = 0; i < M / 2; i++) {
+            const angle = -2 * Math.PI * i / M;
+            this.twRe[i] = Math.cos(angle);
+            this.twIm[i] = Math.sin(angle);
+        }
+
+        // Scratch buffers
+        this.fftRe = new Float32Array(M);
+        this.fftIm = new Float32Array(M);
+    }
+
+    _computeBitReversal(n) {
+        const bits = Math.log2(n);
+        const rev = new Uint32Array(n);
+        for (let i = 0; i < n; i++) {
+            let r = 0, x = i;
+            for (let j = 0; j < bits; j++) { r = (r << 1) | (x & 1); x >>= 1; }
+            rev[i] = r;
+        }
+        return rev;
+    }
+
+    _fft(re, im) {
+        const n = this.M;
+        for (let i = 0; i < n; i++) {
+            const j = this.bitRev[i];
+            if (i < j) {
+                [re[i], re[j]] = [re[j], re[i]];
+                [im[i], im[j]] = [im[j], im[i]];
+            }
+        }
+        for (let size = 2; size <= n; size *= 2) {
+            const half = size / 2, step = n / size;
+            for (let i = 0; i < n; i += size) {
+                for (let j = 0; j < half; j++) {
+                    const tw = j * step;
+                    const wr = this.twRe[tw], wi = this.twIm[tw];
+                    const i2 = i + j + half;
+                    const tr = wr * re[i2] - wi * im[i2];
+                    const ti = wr * im[i2] + wi * re[i2];
+                    re[i2] = re[i + j] - tr;
+                    im[i2] = im[i + j] - ti;
+                    re[i + j] += tr;
+                    im[i + j] += ti;
+                }
+            }
+        }
+    }
+
+    _ifft(re, im) {
+        const n = this.M;
+        for (let i = 0; i < n; i++) im[i] = -im[i];
+        this._fft(re, im);
+        for (let i = 0; i < n; i++) { re[i] /= n; im[i] = -im[i] / n; }
+    }
+
+    /**
+     * Analyze one frame: window → FFT → magnitude + log-magnitude
+     */
+    _analyzeFrame(source, pos, mag, logMag) {
+        const M = this.M, re = this.fftRe, im = this.fftIm;
+        for (let i = 0; i < M; i++) {
+            const p = pos + i;
+            const idx = Math.floor(p);
+            const frac = p - idx;
+            let sample = 0;
+            if (idx >= 0 && idx < source.length - 1) {
+                sample = source[idx] * (1 - frac) + source[idx + 1] * frac;
+            } else if (idx >= 0 && idx < source.length) {
+                sample = source[idx];
+            }
+            re[i] = sample * this.window[i];
+            im[i] = 0;
+        }
+        this._fft(re, im);
+        const EPS = 1e-20;
+        for (let m = 0; m < this.bins; m++) {
+            mag[m] = Math.sqrt(re[m] * re[m] + im[m] * im[m]);
+            logMag[m] = Math.log(mag[m] + EPS);
+        }
+    }
+
+    /**
+     * RTPGHI phase update — CORRECTED gradient directions.
+     *
+     * Key insight from Prusa et al.:
+     *   ∂φ/∂t = (∂ log|S| / ∂ω) · γ/(a·M)  + 2πam/M   [FREQUENCY grad of log-mag]
+     *   ∂φ/∂ω = -(∂ log|S| / ∂t) · γ/(a·M)              [TIME grad of log-mag]
+     *
+     * So time propagation uses freq derivative of log-mag (across bins),
+     * and freq propagation uses time derivative of log-mag (across frames).
+     */
+    _rtpghiUpdate(logMagPrev, logMagCurr, phasePrev, phaseCurr) {
+        const bins = this.bins;
+        const M = this.M;
+        const aSyn = this.aSyn;
+        const lambda = this.gamma / (aSyn * M);
+        const TWO_PI = 2 * Math.PI;
+        const phaseMode = this.phaseMode;
+
+        // Threshold
+        let maxLog = -Infinity;
+        for (let m = 0; m < bins; m++) {
+            if (logMagCurr[m] > maxLog) maxLog = logMagCurr[m];
+        }
+        const threshold = maxLog - this.tol;
+
+        // ── Step 1: Time propagation (prev frame → curr frame) ──
+        // Uses FREQUENCY gradient of log-magnitude (central difference across bins)
+        if (phaseMode === 'full' || phaseMode === 'time') {
+            for (let m = 0; m < bins; m++) {
+                // Frequency gradient of log-mag (central difference, clamped at edges)
+                let dLogdW;
+                if (m === 0) {
+                    dLogdW = logMagCurr[1] - logMagCurr[0];
+                } else if (m === bins - 1) {
+                    dLogdW = logMagCurr[bins - 1] - logMagCurr[bins - 2];
+                } else {
+                    dLogdW = (logMagCurr[m + 1] - logMagCurr[m - 1]) * 0.5;
+                }
+                // Phase time gradient = freq_grad_of_log_mag * lambda + expected advance
+                const tgrad = dLogdW * lambda + TWO_PI * aSyn * m / M;
+                phaseCurr[m] = phasePrev[m] + tgrad;
+            }
+        } else {
+            // No time propagation — start from zero or random
+            for (let m = 0; m < bins; m++) {
+                phaseCurr[m] = TWO_PI * aSyn * m / M * 0; // will be filled by freq sweep
+            }
+        }
+
+        // ── Step 2: Frequency propagation (within current frame) ──
+        // Uses TIME gradient of log-magnitude (difference across frames)
+        if (phaseMode === 'full' || phaseMode === 'freq') {
+            // Forward sweep
+            for (let m = 1; m < bins; m++) {
+                if (logMagCurr[m] > threshold && logMagCurr[m] > logMagCurr[m - 1]) {
+                    // Time gradient of log-mag at bins m and m-1
+                    const dLogdT_m = logMagCurr[m] - logMagPrev[m];
+                    const dLogdT_m1 = logMagCurr[m - 1] - logMagPrev[m - 1];
+                    // Frequency phase gradient = -time_grad_of_log_mag * lambda
+                    // Use average (trapezoidal) for integration across one bin
+                    const fgrad = -(dLogdT_m + dLogdT_m1) * 0.5 * lambda;
+                    phaseCurr[m] = phaseCurr[m - 1] + fgrad;
+                }
+            }
+            // Backward sweep
+            for (let m = bins - 2; m >= 0; m--) {
+                if (logMagCurr[m] > threshold && logMagCurr[m] > logMagCurr[m + 1]) {
+                    const dLogdT_m = logMagCurr[m] - logMagPrev[m];
+                    const dLogdT_m1 = logMagCurr[m + 1] - logMagPrev[m + 1];
+                    const fgrad = -(dLogdT_m + dLogdT_m1) * 0.5 * lambda;
+                    phaseCurr[m] = phaseCurr[m + 1] - fgrad;
+                }
+            }
+        }
+    }
+
+    /**
+     * Synthesize: magnitude + phase → IFFT → windowed time-domain
+     */
+    _synthesizeFrame(mag, phase) {
+        const M = this.M, re = this.fftRe, im = this.fftIm;
+        for (let m = 0; m < this.bins; m++) {
+            re[m] = mag[m] * Math.cos(phase[m]);
+            im[m] = mag[m] * Math.sin(phase[m]);
+        }
+        for (let m = 1; m < M / 2; m++) {
+            re[M - m] = re[m];
+            im[M - m] = -im[m];
+        }
+        this._ifft(re, im);
+        const out = new Float32Array(M);
+        for (let i = 0; i < M; i++) out[i] = re[i] * this.window[i];
+        return out;
+    }
+
+    /**
+     * Stretch an entire audio buffer.
+     */
+    stretch(source, stretchFactor, onProgress = null) {
+        const M = this.M;
+        const aSyn = this.aSyn;
+        const aAna = aSyn / stretchFactor;
+        const bins = this.bins;
+
+        const numInputFrames = Math.floor((source.length - M) / aAna) + 1;
+        const outputLength = numInputFrames * aSyn + M;
+        const output = new Float32Array(outputLength);
+        const windowSum = new Float32Array(outputLength);
+
+        const mag = new Float32Array(bins);
+        const logMag = new Float32Array(bins);
+        const logMagPrev = new Float32Array(bins);
+        const phasePrev = new Float32Array(bins);
+        const phaseCurr = new Float32Array(bins);
+
+        // Seed logMagPrev from actual first frame (not a floor value)
+        this._analyzeFrame(source, 0, mag, logMag);
+        logMagPrev.set(logMag);
+
+        let sourcePos = 0;
+        let outputPos = 0;
+
+        for (let frame = 0; frame < numInputFrames; frame++) {
+            this._analyzeFrame(source, sourcePos, mag, logMag);
+            this._rtpghiUpdate(logMagPrev, logMag, phasePrev, phaseCurr);
+            const synFrame = this._synthesizeFrame(mag, phaseCurr);
+
+            for (let i = 0; i < M; i++) {
+                if (outputPos + i < outputLength) {
+                    output[outputPos + i] += synFrame[i];
+                    windowSum[outputPos + i] += this.window[i] * this.window[i];
+                }
+            }
+
+            logMagPrev.set(logMag);
+            phasePrev.set(phaseCurr);
+            sourcePos += aAna;
+            outputPos += aSyn;
+
+            if (onProgress && frame % 100 === 0) onProgress(frame, numInputFrames);
+        }
+
+        // COLA normalization
+        for (let i = 0; i < outputLength; i++) {
+            if (windowSum[i] > 1e-8) output[i] /= windowSum[i];
+        }
+
+        const trimStart = Math.floor(M / 2);
+        const trimEnd = Math.min(outputLength, outputPos + Math.floor(M / 2));
+        const trimmed = output.slice(trimStart, trimEnd);
+
+        if (onProgress) onProgress(numInputFrames, numInputFrames);
+        return trimmed;
+    }
+}
 
 // ─── Globals ─────────────────────────────────────────────────────────────────
 let waveletGPU = null;
@@ -223,6 +572,19 @@ let originalBuffer = null;   // decoded AudioBuffer
 let originalMono = null;     // Float32Array mono mixdown
 let stretchedAudio = null;   // Float32Array result
 let stretchedBuffer = null;  // AudioBuffer for playback
+
+const FILE_SHORT_NAMES = {
+    'stretch_test_audio/Julia_Run_8.wav': 'JuliaRun8',
+    'stretch_test_audio/FF_AS_bird_chirp_run_it_back_1.wav': 'BirdChirp',
+    'stretch_test_audio/FF_CA_60_foley_ticking_clock_slight_variation.wav': 'TickClock',
+    'stretch_test_audio/5_goesr_V_befilteredV_norm_20260119_20260119_paulstretch1_pre-arrival-boost_30kHz_Master.wav': 'GOESR_V',
+    'stretch_test_tracks/1. Lullaby for the Heart.wav': 'Lullaby',
+    'stretch_test_tracks/Fearofdark - The Coffee Zone - 01 Lovesickness.wav': 'Lovesickness',
+    'stretch_test_tracks/GOLDEN HOUR - TRIM.wav': 'GoldenHR_Trim',
+    'stretch_test_tracks/GOLDEN HOUR Sun & Stars Remix MASTER.wav': 'GoldenHR_Remix',
+    'stretch_test_tracks/Ilium_(Original Mix).wav': 'Ilium',
+    'stretch_test_tracks/Robert Alexander - Mist (Mastered).wav': 'Mist',
+};
 
 const FILES_AUDIO = [
     'stretch_test_audio/Julia_Run_8.wav',
@@ -386,6 +748,8 @@ function drawWaveform(canvas, data, color = '#E040FB') {
 
 // ─── Main Run ────────────────────────────────────────────────────────────────
 window.runStretch = async function() {
+    if (isRunning) return;
+    isRunning = true;
     const btn = document.getElementById('runBtn');
     btn.disabled = true;
     btn.textContent = 'Running...';
@@ -428,9 +792,110 @@ window.runStretch = async function() {
         const interpMode = parseInt(document.getElementById('interpMode').value);
         const interpLabel = interpMode === 0 ? 'cubic' : 'linear';
         const phaseMode = document.getElementById('phaseMode').value;
-        const transformLabel = transform === 'cqt'
+        const rtpghiM = parseInt(document.getElementById('rtpghiFFTSize').value);
+        const rtpghiHopDiv = parseInt(document.getElementById('rtpghiHopDiv').value);
+        const transformLabel = transform === 'rtpghi'
+            ? `RTPGHI (M=${rtpghiM}, hop=M/${rtpghiHopDiv})`
+            : transform === 'nsgt'
+            ? `NSGT (${binsPerOctave} bins/oct)`
+            : transform === 'cqt'
             ? `CQT (${binsPerOctave} bins/oct${minBW > 0 ? `, minBW=${minBW}Hz` : ''})`
             : `CWT (w0=${w0}, dj=${dj})`;
+
+        if (transform === 'rtpghi') {
+            const rtpghiWindowType = document.getElementById('rtpghiWindow').value;
+            const rtpghiPhaseMode = document.getElementById('rtpghiPhaseMode').value;
+            const rtpghiTol = parseFloat(document.getElementById('rtpghiTol').value);
+            const rtpghiGamma = parseFloat(document.getElementById('rtpghiGamma').value);
+            log(`Parameters: ${transformLabel}, stretch=${stretchFactor}x, window=${rtpghiWindowType}, phase=${rtpghiPhaseMode}, tol=${rtpghiTol}dB, γ=${rtpghiGamma}`, 'log-info');
+
+            // ── RTPGHI Stretch (CPU, no GPU needed) ──
+            const t1 = performance.now();
+            const stretcher = new RTPGHIStretcher({
+                M: rtpghiM, hopDiv: rtpghiHopDiv,
+                windowType: rtpghiWindowType, phaseMode: rtpghiPhaseMode,
+                tol: rtpghiTol, gamma: rtpghiGamma
+            });
+            log(`RTPGHI: M=${rtpghiM}, hop=${rtpghiM / rtpghiHopDiv}, bins=${stretcher.bins}, γ=${stretcher.gamma.toFixed(1)}`, 'log-info');
+
+            const aAna = stretcher.aSyn / stretchFactor;
+            const numFrames = Math.floor((originalMono.length - rtpghiM) / aAna) + 1;
+            log(`  Analysis hop: ${aAna.toFixed(1)} samples, ${numFrames} frames`, 'log-dim');
+
+            stretchedAudio = stretcher.stretch(originalMono, stretchFactor, (done, total) => {
+                if (done % 500 === 0 && done > 0) {
+                    log(`  Frame ${done}/${total} (${(done / total * 100).toFixed(0)}%)`, 'log-dim');
+                }
+            });
+            timings.cwt = performance.now() - t1;
+            logPerf('RTPGHI Stretch', timings.cwt);
+
+            // ── Normalize ──
+            const t4 = performance.now();
+            let peak = 0;
+            for (let i = 0; i < stretchedAudio.length; i++) {
+                const a = Math.abs(stretchedAudio[i]);
+                if (a > peak) peak = a;
+            }
+            if (peak > 0) {
+                const gain = 0.95 / peak;
+                for (let i = 0; i < stretchedAudio.length; i++) stretchedAudio[i] *= gain;
+            }
+            timings.norm = performance.now() - t4;
+            logPerf('Normalize', timings.norm);
+
+            // ── Total ──
+            timings.total = (timings.decode || 0) + timings.cwt + timings.norm;
+            log('', '');
+            logPerf('TOTAL', timings.total);
+
+            const inputDuration = originalMono.length / sampleRate;
+            const realtimeRatio = (timings.total / 1000) / inputDuration;
+            log(`  Realtime: ${realtimeRatio.toFixed(2)}x`, realtimeRatio <= 1 ? 'log-ok' : 'log-warn');
+
+            // RMS check
+            let rms = 0;
+            for (let i = 0; i < stretchedAudio.length; i++) rms += stretchedAudio[i] * stretchedAudio[i];
+            rms = Math.sqrt(rms / stretchedAudio.length);
+            log(`  Output: ${stretchedAudio.length.toLocaleString()} samples (${(stretchedAudio.length / sampleRate).toFixed(2)}s), RMS=${rms.toFixed(4)}`, rms > 0.001 ? 'log-ok' : 'log-warn');
+
+            // Stats panel
+            document.getElementById('statsPanel').style.display = '';
+            setStat('statDecode', timings.decode ? `${timings.decode.toFixed(0)}ms` : 'cached');
+            setStat('statInit', 'N/A (CPU)');
+            setStat('statCWT', timings.cwt >= 1000 ? `${(timings.cwt/1000).toFixed(2)}s` : `${timings.cwt.toFixed(0)}ms`);
+            setStat('statStretch', `${numFrames} frames`);
+            setStat('statNorm', `${timings.norm.toFixed(1)}ms`);
+            setStat('statTotal', timings.total >= 1000 ? `${(timings.total/1000).toFixed(2)}s` : `${timings.total.toFixed(0)}ms`);
+            setStat('statRealtime', `${realtimeRatio.toFixed(2)}x`);
+            setStat('statInput', `${originalBuffer.duration.toFixed(1)}s / ${(originalMono.length/1024).toFixed(0)}K`);
+            setStat('statOutput', `${(stretchedAudio.length / sampleRate).toFixed(1)}s / ${(stretchedAudio.length/1024).toFixed(0)}K`);
+            setStat('statScales', `M=${rtpghiM}`);
+            setStat('statMem', `~${(rtpghiM * 12 / 1024).toFixed(0)} KB`);
+
+            // AudioBuffer for playback
+            const wasPlaying = !!currentSource;
+            const resumeRatio = wasPlaying ? getCurrentPlaybackRatio() : 0;
+            stretchedBuffer = audioCtx.createBuffer(1, stretchedAudio.length, sampleRate);
+            stretchedBuffer.getChannelData(0).set(stretchedAudio);
+
+            // Waveform
+            document.getElementById('playerPanel').style.display = '';
+            drawWaveform(document.getElementById('waveform'), stretchedAudio);
+
+            setActiveSource('stretched');
+            // Auto-play new audio from same relative position
+            if (wasPlaying) {
+                playBuffer(stretchedBuffer, resumeRatio * stretchedBuffer.duration);
+            }
+            log('RTPGHI stretch complete. Ready for playback.', 'log-ok');
+
+            btn.disabled = false;
+            btn.textContent = 'Run GPU Wavelet Stretch';
+            isRunning = false;
+            return;
+        }
+
         log(`Parameters: ${transformLabel}, stretch=${stretchFactor}x, interp=${interpLabel}, phase=${phaseMode}, phaseRand=${Math.round(parseFloat(document.getElementById('phaseRand').value) * 100)}%`, 'log-info');
 
         // ── GPU Init ──
@@ -451,6 +916,9 @@ window.runStretch = async function() {
         // ── CWT + Stretch (chunked if needed) ──
         const t2 = performance.now();
         const phaseRand = parseFloat(document.getElementById('phaseRand').value);
+        console.log(`%c[TEST_WAVELET runStretch] stretchFactor=${stretchFactor}, dt=${dt}, sampleRate=${sampleRate}, sourceLen=${originalMono.length}, transform=${transform}`, 'color: #00CCFF; font-weight: bold');
+        console.log(`%c[TEST_WAVELET runStretch] opts=`, 'color: #00CCFF', { dt, w0, dj, transform, binsPerOctave, minBW, phaseRand, interpMode, phaseMode });
+
         stretchedAudio = await waveletGPU.waveletStretchChunked(
             originalMono, stretchFactor,
             { dt, w0, dj, transform, binsPerOctave, minBW, phaseRand, interpMode, phaseMode,
@@ -460,7 +928,9 @@ window.runStretch = async function() {
             }
         );
         timings.cwt = performance.now() - t2;
-        logPerf('CWT + Stretch', timings.cwt);
+        logPerf(`${transform.toUpperCase()} + Stretch`, timings.cwt);
+
+        console.log(`%c[TEST_WAVELET runStretch] OUTPUT: stretchedLen=${stretchedAudio.length}, expected=${Math.round(originalMono.length * stretchFactor)}, ratio=${(stretchedAudio.length / originalMono.length).toFixed(4)}`, 'color: #00CCFF; font-weight: bold');
 
         // ── Normalize ──
         const t4 = performance.now();
@@ -473,8 +943,9 @@ window.runStretch = async function() {
         log('', '');
         logPerf('TOTAL', timings.total);
 
-        const speedup = (originalMono.length / sampleRate) / (timings.total / 1000);
-        log(`  Realtime ratio: ${speedup.toFixed(0)}x (${speedup > 1 ? 'faster' : 'slower'} than realtime)`, speedup > 1 ? 'log-ok' : 'log-warn');
+        const inputDuration = originalMono.length / sampleRate;
+        const realtimeRatio = (timings.total / 1000) / inputDuration;
+        log(`  Realtime: ${realtimeRatio.toFixed(2)}x`, realtimeRatio <= 1 ? 'log-ok' : 'log-warn');
 
         // ── RMS check ──
         let rms = 0, validSamples = 0;
@@ -496,15 +967,28 @@ window.runStretch = async function() {
         setStat('statStretch', numChunks > 1 ? `${numChunks} chunks` : 'single');
         setStat('statNorm', `${timings.norm.toFixed(1)}ms`);
         setStat('statTotal', timings.total >= 1000 ? `${(timings.total/1000).toFixed(2)}s` : `${timings.total.toFixed(0)}ms`);
+        setStat('statRealtime', `${realtimeRatio.toFixed(2)}x`);
         setStat('statInput', `${originalBuffer.duration.toFixed(1)}s / ${(originalMono.length/1024).toFixed(0)}K`);
         setStat('statOutput', `${(stretchedAudio.length / sampleRate).toFixed(1)}s / ${(stretchedAudio.length/1024).toFixed(0)}K`);
         setStat('statScales', numChunks > 1 ? `${numChunks} chunks` : `${waveletGPU.cachedNumScales}`);
-        const chunkBins = transform === 'cqt'
-            ? generateCQTScales(sampleRate, binsPerOctave, 20, minBW).numBins
-            : generateScales(maxChunk, dt, w0, dj).length;
-        setStat('statMem', `${(maxChunk * chunkBins * 8 / 1024 / 1024).toFixed(0)} MB/chunk`);
+        let chunkBins, chunkMem;
+        if (transform === 'nsgt') {
+            const nsgtInfo = generateNSGTBands(sampleRate, maxChunk, binsPerOctave);
+            chunkBins = nsgtInfo.numBands;
+            chunkMem = nsgtInfo.totalCoeffs * 8; // complex f32 pairs
+        } else if (transform === 'cqt') {
+            chunkBins = generateCQTScales(sampleRate, binsPerOctave, 20, minBW).numBins;
+            chunkMem = maxChunk * chunkBins * 8;
+        } else {
+            chunkBins = generateScales(maxChunk, dt, w0, dj).length;
+            chunkMem = maxChunk * chunkBins * 8;
+        }
+        setStat('statMem', `${(chunkMem / 1024 / 1024).toFixed(0)} MB/chunk`);
 
         // ── Build AudioBuffer for playback ──
+        const wasPlaying = !!currentSource;
+        const resumeRatio = wasPlaying ? getCurrentPlaybackRatio() : 0;
+        console.log(`%c[TEST_WAVELET] AudioBuffer: sampleRate=${sampleRate}, audioCtx.sampleRate=${audioCtx.sampleRate}, length=${stretchedAudio.length}, duration=${(stretchedAudio.length/sampleRate).toFixed(4)}s`, 'color: #00CCFF; font-weight: bold');
         stretchedBuffer = audioCtx.createBuffer(1, stretchedAudio.length, sampleRate);
         stretchedBuffer.getChannelData(0).set(stretchedAudio);
 
@@ -512,12 +996,16 @@ window.runStretch = async function() {
         document.getElementById('playerPanel').style.display = '';
         drawWaveform(document.getElementById('waveform'), stretchedAudio);
 
+        setActiveSource('stretched');
+        if (wasPlaying) {
+            playBuffer(stretchedBuffer, resumeRatio * stretchedBuffer.duration);
+        }
         log('Ready for playback.', 'log-ok');
 
         // ── Summary block (easy copy-paste) ──
         logHeader('Summary (copy-paste friendly)');
         const summaryBins = chunkBins;
-        const cwtMemPerChunk = summaryBins * maxChunk * 2 * 4;
+        const cwtMemPerChunk = chunkMem;
         const summary = [
             `File:       ${document.getElementById('fileSelect').value.split('/').pop() || 'local file'}`,
             `Input:      ${originalBuffer.duration.toFixed(2)}s, ${sampleRate}Hz, ${originalBuffer.numberOfChannels}ch`,
@@ -546,6 +1034,7 @@ window.runStretch = async function() {
     } finally {
         btn.disabled = false;
         btn.textContent = 'Run GPU Wavelet Stretch';
+        isRunning = false;
     }
 };
 
@@ -581,6 +1070,14 @@ function startPlayhead(duration) {
 
 function stopPlayhead() {
     if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
+}
+
+// Get current playback position as a ratio (0-1) of total duration
+function getCurrentPlaybackRatio() {
+    if (!currentSource || !audioCtx || playbackDuration <= 0) return 0;
+    const elapsed = audioCtx.currentTime - playbackStartTime;
+    const pos = playbackOffset + elapsed;
+    return Math.max(0, Math.min(pos / playbackDuration, 1));
 }
 
 function ensureAudioCtx() {
@@ -644,11 +1141,18 @@ function playBuffer(buffer, offset = 0, label = '') {
 }
 
 // Store which buffer type is active so click-to-seek replays the right one
-let activeBufferType = null; // 'original' | 'resampled' | 'stretched'
+let activeBufferType = 'stretched'; // default after processing
+
+function setActiveSource(type) {
+    activeBufferType = type;
+    document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('active'));
+    const btnId = { original: 'btnOriginal', resampled: 'btnResampled', stretched: 'btnStretched' }[type];
+    if (btnId) document.getElementById(btnId).classList.add('active');
+}
 
 window.playOriginal = function() {
     if (!originalBuffer) return;
-    activeBufferType = 'original';
+    setActiveSource('original');
     playBuffer(originalBuffer, 0, 'Playing original...');
 };
 
@@ -681,7 +1185,7 @@ window.playResampled = function() {
     };
     currentSource = src;
     currentGain = gain;
-    activeBufferType = 'resampled';
+    setActiveSource('resampled');
     playbackOffset = 0;
     playbackStartTime = audioCtx.currentTime;
     gain.gain.setValueAtTime(0, audioCtx.currentTime);
@@ -693,7 +1197,7 @@ window.playResampled = function() {
 
 window.playStretched = function() {
     if (!stretchedBuffer) return;
-    activeBufferType = 'stretched';
+    setActiveSource('stretched');
     playBuffer(stretchedBuffer, 0, 'Playing stretched...');
 };
 
@@ -712,12 +1216,27 @@ window.stopPlayback = function() {
     stopPlayhead();
 };
 
-// Click-to-seek on waveform (crossfades old → new)
+// Click-to-seek on waveform — start playing from click position
 document.getElementById('waveform').addEventListener('click', (e) => {
-    if (!activeBufferType || !playbackDuration) return;
+    // Determine which buffer to play and its duration
+    let buf = null, dur = 0;
+    const factor = parseFloat(document.getElementById('stretchFactor').value) || 2;
+    if (activeBufferType === 'original' && originalBuffer) {
+        buf = originalBuffer; dur = originalBuffer.duration;
+    } else if (activeBufferType === 'stretched' && stretchedBuffer) {
+        buf = stretchedBuffer; dur = stretchedBuffer.duration;
+    } else if (activeBufferType === 'resampled' && originalBuffer) {
+        dur = originalBuffer.duration * factor;
+    } else if (stretchedBuffer) {
+        // fallback: play stretched if nothing explicitly selected
+        setActiveSource('stretched');
+        buf = stretchedBuffer; dur = stretchedBuffer.duration;
+    }
+    if (!dur) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
-    const seekTime = pct * playbackDuration;
+    const seekTime = pct * dur;
 
     if (activeBufferType === 'original') {
         playBuffer(originalBuffer, seekTime);
@@ -760,47 +1279,134 @@ document.getElementById('waveform').addEventListener('click', (e) => {
 
 // ─── Download WAV ────────────────────────────────────────────────────────────
 window.downloadWav = function() {
-    if (!stretchedAudio || !originalBuffer) return;
-    const sampleRate = originalBuffer.sampleRate;
-    const numSamples = stretchedAudio.length;
-    const bytesPerSample = 2; // 16-bit PCM
+    if (!originalBuffer) return;
+
+    // Determine which audio to download based on active source
+    let samples, sampleRate, label;
+    const factor = document.getElementById('stretchFactor').value;
+    const transform = document.getElementById('transform').value;
+
+    // Short source name from lookup table, or fallback to trimmed filename
+    const filePath = document.getElementById('fileSelect').value;
+    const pickerFile = document.getElementById('filePicker').files[0];
+    let srcName;
+    if (!pickerFile && FILE_SHORT_NAMES[filePath]) {
+        srcName = FILE_SHORT_NAMES[filePath];
+    } else {
+        const rawName = pickerFile ? pickerFile.name : (filePath ? filePath.split('/').pop() : 'audio');
+        srcName = rawName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20);
+    }
+
+    if (activeBufferType === 'original' && originalMono) {
+        samples = originalMono;
+        sampleRate = originalBuffer.sampleRate;
+        label = `${srcName}_original`;
+    } else if (activeBufferType === 'resampled' && originalMono) {
+        // Render resampled audio offline
+        const stretchNum = parseFloat(factor);
+        const outLen = Math.floor(originalMono.length * stretchNum);
+        samples = new Float32Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+            const srcPos = i / stretchNum;
+            const idx = Math.floor(srcPos);
+            const frac = srcPos - idx;
+            if (idx < originalMono.length - 1) {
+                samples[i] = originalMono[idx] * (1 - frac) + originalMono[idx + 1] * frac;
+            }
+        }
+        sampleRate = originalBuffer.sampleRate;
+        label = `${srcName}_resampled_${factor}x`;
+    } else if (stretchedAudio) {
+        samples = stretchedAudio;
+        sampleRate = originalBuffer.sampleRate;
+        // Build descriptive label from current settings
+        if (transform === 'rtpghi') {
+            const M = document.getElementById('rtpghiFFTSize').value;
+            const hop = document.getElementById('rtpghiHopDiv').value;
+            const win = document.getElementById('rtpghiWindow').value;
+            const phase = document.getElementById('rtpghiPhaseMode').value;
+            const tol = document.getElementById('rtpghiTol').value;
+            const gamma = document.getElementById('rtpghiGamma').value;
+            label = `${srcName}_rtpghi_${factor}x_M${M}_hop${hop}_${win}_${phase}_tol${tol}_g${gamma}`;
+        } else if (transform === 'cqt') {
+            const bins = document.getElementById('binsPerOctave').value;
+            const minBW = document.getElementById('minBW').value;
+            label = `${srcName}_cqt_${factor}x_bins${bins}_bw${minBW}`;
+        } else if (transform === 'nsgt') {
+            const bins = document.getElementById('binsPerOctave').value;
+            label = `${srcName}_nsgt_${factor}x_bins${bins}`;
+        } else {
+            const w0 = document.getElementById('w0').value;
+            const dj = document.getElementById('dj').value;
+            label = `${srcName}_cwt_${factor}x_w${w0}_dj${dj}`;
+        }
+    } else {
+        return;
+    }
+
+    const numSamples = samples.length;
+    const bytesPerSample = 2;
     const dataSize = numSamples * bytesPerSample;
     const buffer = new ArrayBuffer(44 + dataSize);
     const view = new DataView(buffer);
 
-    // WAV header
     const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
     writeStr(0, 'RIFF');
     view.setUint32(4, 36 + dataSize, true);
     writeStr(8, 'WAVE');
     writeStr(12, 'fmt ');
-    view.setUint32(16, 16, true);           // chunk size
-    view.setUint16(20, 1, true);            // PCM
-    view.setUint16(22, 1, true);            // mono
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, sampleRate * bytesPerSample, true);
     view.setUint16(32, bytesPerSample, true);
-    view.setUint16(34, 16, true);           // bits
+    view.setUint16(34, 16, true);
     writeStr(36, 'data');
     view.setUint32(40, dataSize, true);
 
-    // Samples (float → int16)
     let off = 44;
     for (let i = 0; i < numSamples; i++) {
-        const s = Math.max(-1, Math.min(1, stretchedAudio[i]));
+        const s = Math.max(-1, Math.min(1, samples[i]));
         view.setInt16(off, s * 32767, true);
         off += 2;
     }
 
+    const filename = `${label}.wav`;
     const blob = new Blob([buffer], { type: 'audio/wav' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const factor = document.getElementById('stretchFactor').value;
-    a.download = `wavelet_stretch_${factor}x.wav`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    log(`Downloaded: wavelet_stretch_${factor}x.wav (${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB)`, 'log-ok');
+    log(`Downloaded: ${filename} (${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB)`, 'log-ok');
+};
+
+window.copyParams = function() {
+    const algo = document.getElementById('transform').value;
+    const stretch = document.getElementById('stretchFactor').value;
+    let text = `algo=${algo}, stretch=${stretch}x`;
+    if (algo === 'rtpghi') {
+        text += `, M=${document.getElementById('rtpghiFFTSize').value}`;
+        text += `, hop=M/${document.getElementById('rtpghiHopDiv').value}`;
+        text += `, win=${document.getElementById('rtpghiWindow').value}`;
+        text += `, phase=${document.getElementById('rtpghiPhaseMode').value}`;
+        text += `, tol=${document.getElementById('rtpghiTol').value}dB`;
+        text += `, γ=${document.getElementById('rtpghiGamma').value}`;
+    } else {
+        text += `, w0=${document.getElementById('w0').value}`;
+        text += `, dj=${document.getElementById('dj').value}`;
+        text += `, interp=${document.getElementById('interpMode').value === '0' ? 'cubic' : 'linear'}`;
+        text += `, phase=${document.getElementById('phaseMode').value}`;
+        const rand = document.getElementById('phaseRand').value;
+        if (parseFloat(rand) > 0) text += `, rand=${Math.round(rand * 100)}%`;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy Params', 1500);
+    });
 };
 
 // ─── DIAGNOSTIC: Two-tone 400Hz + 800Hz ──────────────────────────────────────
@@ -850,12 +1456,184 @@ window.runDiagnostic = async function() {
         log(`  Expected bin for 400Hz: ${bin400} (actual freq: ${(bin400 * SR / Npad).toFixed(1)}Hz)`, 'log-dim');
         log(`  Expected bin for 800Hz: ${bin800} (actual freq: ${(bin800 * SR / Npad).toFixed(1)}Hz)`, 'log-dim');
 
+        // ── RTPGHI diagnostic (no GPU needed) ──
+        if (diagTransform === 'rtpghi') {
+            const rtM = parseInt(document.getElementById('rtpghiFFTSize').value);
+            const rtHopDiv = parseInt(document.getElementById('rtpghiHopDiv').value);
+            const rtWin = document.getElementById('rtpghiWindow').value;
+            const rtPhase = document.getElementById('rtpghiPhaseMode').value;
+            const rtTol = parseFloat(document.getElementById('rtpghiTol').value);
+            const rtGamma = parseFloat(document.getElementById('rtpghiGamma').value);
+            logHeader(`RTPGHI Diagnostic (M=${rtM}, hop=M/${rtHopDiv}, win=${rtWin}, phase=${rtPhase}, tol=${rtTol}, γ=${rtGamma})`);
+
+            const stretcher = new RTPGHIStretcher({
+                M: rtM, hopDiv: rtHopDiv,
+                windowType: rtWin, phaseMode: rtPhase,
+                tol: rtTol, gamma: rtGamma
+            });
+            log(`  bins=${stretcher.bins}, γ=${stretcher.gamma.toFixed(1)}, aSyn=${stretcher.aSyn}`, 'log-info');
+
+            // Round-trip: stretch by 1x should reconstruct original
+            log('  Running 1x round-trip (identity test)...', 'log-info');
+            const t_rt = performance.now();
+            const roundTrip = stretcher.stretch(signal, 1.0);
+            const rtMs = performance.now() - t_rt;
+            logPerf('1x round-trip', rtMs);
+
+            // Compare — use min length (trimming may differ)
+            const compareLen = Math.min(N, roundTrip.length);
+            let errSum = 0, sigSum = 0;
+            for (let t = 0; t < compareLen; t++) {
+                errSum += (roundTrip[t] - signal[t]) ** 2;
+                sigSum += signal[t] * signal[t];
+            }
+            const snr = 10 * Math.log10(sigSum / (errSum + 1e-30));
+            log(`  Round-trip SNR: ${snr.toFixed(1)} dB ${snr > 20 ? '(good)' : snr > 10 ? '(fair)' : '(poor)'}`,
+                snr > 20 ? 'log-ok' : snr > 10 ? 'log-warn' : 'log-err');
+            log(`  Output length: ${roundTrip.length} (input: ${N})`, 'log-dim');
+
+            // Stretch
+            logHeader(`RTPGHI ${stretchFactor}x Stretch`);
+            const t_str = performance.now();
+            const stretched = stretcher.stretch(signal, stretchFactor);
+            const strMs = performance.now() - t_str;
+            logPerf(`${stretchFactor}x stretch`, strMs);
+            log(`  Output: ${stretched.length} samples (${(stretched.length / SR).toFixed(3)}s, expected ~${(duration * stretchFactor).toFixed(3)}s)`, 'log-ok');
+
+            // Frequency analysis of stretched output
+            const strNpad = nextPow2(stretched.length);
+            function analyzeFreqRTPGHI(sig, npad) {
+                const powers = {};
+                for (const freq of [200, 400, 800, 1600]) {
+                    const bin = Math.round(freq * npad / SR);
+                    let re = 0, im = 0;
+                    for (let i = 0; i < sig.length; i++) {
+                        const angle = -2 * Math.PI * bin * i / npad;
+                        re += sig[i] * Math.cos(angle);
+                        im += sig[i] * Math.sin(angle);
+                    }
+                    powers[freq] = Math.sqrt(re * re + im * im) / sig.length;
+                }
+                return powers;
+            }
+            const strPowers = analyzeFreqRTPGHI(stretched, strNpad);
+            log('  Stretched frequency content:', 'log-info');
+            log(`    200Hz:  ${strPowers[200].toFixed(6)}  (should be ~0)`, strPowers[200] < 0.01 ? 'log-ok' : 'log-warn');
+            log(`    400Hz:  ${strPowers[400].toFixed(6)}  (should be dominant)`, 'log-info');
+            log(`    800Hz:  ${strPowers[800].toFixed(6)}  (should be ~half of 400)`, 'log-info');
+            log(`    1600Hz: ${strPowers[1600].toFixed(6)}  (should be ~0)`, strPowers[1600] < 0.01 ? 'log-ok' : 'log-warn');
+            if (strPowers[400] > 0.0001) {
+                log(`    Ratio 400/800: ${(strPowers[400] / strPowers[800]).toFixed(3)} (expected: ~2.000)`,
+                    Math.abs(strPowers[400] / strPowers[800] - 2) < 0.5 ? 'log-ok' : 'log-warn');
+            }
+
+            // RMS
+            let strRMS = 0, strPeak = 0;
+            for (let i = 0; i < stretched.length; i++) {
+                strRMS += stretched[i] * stretched[i];
+                const a = Math.abs(stretched[i]);
+                if (a > strPeak) strPeak = a;
+            }
+            strRMS = Math.sqrt(strRMS / stretched.length);
+            log(`  RMS: ${strRMS.toFixed(4)}, Peak: ${strPeak.toFixed(4)}`, 'log-info');
+
+            // Normalize and setup playback
+            if (!audioCtx) audioCtx = new AudioContext();
+            originalBuffer = audioCtx.createBuffer(1, N, SR);
+            originalBuffer.getChannelData(0).set(signal);
+            originalMono = signal;
+
+            // Normalize
+            if (strPeak > 0) {
+                const g = 0.95 / strPeak;
+                for (let i = 0; i < stretched.length; i++) stretched[i] *= g;
+            }
+            stretchedAudio = stretched;
+            stretchedBuffer = audioCtx.createBuffer(1, stretched.length, SR);
+            stretchedBuffer.getChannelData(0).set(stretched);
+
+            document.getElementById('playerPanel').style.display = '';
+            drawWaveform(document.getElementById('waveform'), stretched);
+            setActiveSource('stretched');
+            log('RTPGHI diagnostic complete. Ready for playback.', 'log-ok');
+
+            btn.disabled = false;
+            btn.textContent = 'Run Diagnostic (400+800Hz)';
+            return;
+        }
+
         // ── GPU Init ──
         if (!waveletGPU) {
             waveletGPU = new WaveletGPUCompute();
             await waveletGPU.initialize();
         }
         log('GPU initialized.', 'log-ok');
+
+        // ── NSGT uses simplified diagnostic (round-trip + stretch only) ──
+        if (diagTransform === 'nsgt') {
+            logHeader('NSGT Round-trip Test');
+            const nsgtInfo = generateNSGTBands(SR, nextPow2(N), diagBinsPerOctave);
+            log(`  ${nsgtInfo.numBands} bands, ${nsgtInfo.totalCoeffs.toLocaleString()} total coefficients`, 'log-info');
+            log(`  ${nsgtInfo.buckets.length} FFT size buckets: ${nsgtInfo.buckets.map(b => `${b.bucketSize}×${b.bandIndices.length}`).join(', ')}`, 'log-dim');
+
+            // Round-trip: stretch by 1x should reconstruct original
+            log('  Running 1x round-trip (should reconstruct original)...', 'log-info');
+            const roundTrip = await waveletGPU.nsgtStretch(signal, 1.0, { dt, binsPerOctave: diagBinsPerOctave });
+            let errSum = 0, sigSum = 0;
+            for (let t = 0; t < N; t++) {
+                errSum += (roundTrip[t] - signal[t]) ** 2;
+                sigSum += signal[t] * signal[t];
+            }
+            const snr = 10 * Math.log10(sigSum / (errSum + 1e-30));
+            log(`  Round-trip SNR: ${snr.toFixed(1)} dB ${snr > 30 ? '(good)' : snr > 15 ? '(fair)' : '(poor)'}`,
+                snr > 30 ? 'log-ok' : snr > 15 ? 'log-warn' : 'log-err');
+
+            // Stretch
+            logHeader('NSGT Stretch');
+            log(`  Running ${stretchFactor}x stretch...`, 'log-info');
+            const stretched = await waveletGPU.nsgtStretch(signal, stretchFactor, { dt, binsPerOctave: diagBinsPerOctave });
+            log(`  Output: ${stretched.length} samples (${(stretched.length / SR).toFixed(3)}s)`, 'log-ok');
+
+            // Analyze frequency content of stretched signal
+            const strNpad = nextPow2(stretched.length);
+            function analyzeFreq(sig, npad) {
+                const powers = {};
+                for (const freq of [200, 400, 800, 1600]) {
+                    const bin = Math.round(freq * npad / SR);
+                    let re = 0, im = 0;
+                    for (let i = 0; i < sig.length; i++) {
+                        const angle = -2 * Math.PI * bin * i / npad;
+                        re += sig[i] * Math.cos(angle);
+                        im += sig[i] * Math.sin(angle);
+                    }
+                    powers[freq] = (re * re + im * im) / (sig.length * sig.length);
+                }
+                return powers;
+            }
+            const strPowers = analyzeFreq(stretched, strNpad);
+            log('  Stretched frequency content:', 'log-info');
+            log(`    400Hz: ${strPowers[400].toFixed(6)}  (should be dominant)`, 'log-info');
+            log(`    800Hz: ${strPowers[800].toFixed(6)}  (should be half of 400)`, 'log-info');
+            if (strPowers[400] > 0.0001) {
+                log(`    Ratio 400/800: ${(strPowers[400] / strPowers[800]).toFixed(3)} (expected: 2.000)`,
+                    Math.abs(strPowers[400] / strPowers[800] - 2) < 0.5 ? 'log-ok' : 'log-warn');
+            }
+
+            // Playback
+            if (!audioCtx) audioCtx = new AudioContext();
+            originalBuffer = audioCtx.createBuffer(1, N, SR);
+            originalBuffer.getChannelData(0).set(signal);
+            originalMono = signal;
+            WaveletGPUCompute.normalize(stretched);
+            stretchedAudio = stretched;
+            stretchedBuffer = audioCtx.createBuffer(1, stretched.length, SR);
+            stretchedBuffer.getChannelData(0).set(stretched);
+            document.getElementById('playerPanel').style.display = '';
+            drawWaveform(document.getElementById('waveform'), stretched);
+            setActiveSource('stretched');
+            log('NSGT diagnostic complete. Ready for playback.', 'log-ok');
+            return;
+        }
 
         // ── Run diagnostic CWT ──
         logHeader('Stage 1: Forward FFT (GPU)');
@@ -1145,17 +1923,49 @@ document.getElementById('fileSelect').addEventListener('change', () => {
     document.getElementById('playerPanel').style.display = 'none';
 });
 
-// ─── Transform selector: show/hide CWT vs CQT controls ──────────────────────
+// ─── Transform selector: show/hide CWT vs CQT/NSGT controls ─────────────────
 document.getElementById('transform').addEventListener('change', (e) => {
-    const isCQT = e.target.value === 'cqt';
-    document.getElementById('cwtControls').style.display = isCQT ? 'none' : '';
-    document.getElementById('cqtControls').style.display = isCQT ? '' : 'none';
+    const val = e.target.value;
+    document.getElementById('cwtControls').style.display = val === 'cwt' ? '' : 'none';
+    document.getElementById('cqtControls').style.display = (val === 'cqt' || val === 'nsgt') ? '' : 'none';
+    document.getElementById('rtpghiRow1').style.display = val === 'rtpghi' ? '' : 'none';
+    document.getElementById('rtpghiRow2').style.display = val === 'rtpghi' ? '' : 'none';
+    document.getElementById('gpuParamsRow').style.display = val === 'rtpghi' ? 'none' : '';
+    // Hide minBW for NSGT (not applicable — NSGT has inherent per-band resolution)
+    document.getElementById('minBWLabel').style.display = val === 'cqt' ? '' : 'none';
+    // Set CQT-friendly defaults when switching to CQT
+    if (val === 'cqt') {
+        document.getElementById('binsPerOctave').value = '24';
+        document.getElementById('minBW').value = '100';
+    }
 });
 
 // ─── Phase rand slider label ─────────────────────────────────────────────────
 document.getElementById('phaseRand').addEventListener('input', (e) => {
     document.getElementById('phaseRandVal').textContent = `${Math.round(e.target.value * 100)}%`;
 });
+
+// ─── Auto-rerun on parameter change ──────────────────────────────────────────
+let autoRunTimer = null;
+let isRunning = false;
+
+function scheduleAutoRun() {
+    // Only auto-run if we've already processed audio once
+    if (!originalMono || isRunning) return;
+    clearTimeout(autoRunTimer);
+    autoRunTimer = setTimeout(() => {
+        window.runStretch();
+    }, 150); // debounce rapid changes
+}
+
+// All parameter dropdowns that should trigger re-render
+['transform', 'stretchFactor', 'w0', 'dj', 'binsPerOctave', 'minBW',
+ 'interpMode', 'phaseMode', 'rtpghiFFTSize', 'rtpghiHopDiv',
+ 'rtpghiWindow', 'rtpghiPhaseMode', 'rtpghiTol', 'rtpghiGamma'
+].forEach(id => {
+    document.getElementById(id).addEventListener('change', scheduleAutoRun);
+});
+document.getElementById('phaseRand').addEventListener('input', scheduleAutoRun);
 
 // ─── Enter key runs the stretch ──────────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
@@ -1166,8 +1976,11 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         if (currentSource) {
             window.stopPlayback();
-        } else if (stretchedBuffer) {
-            window.playStretched();
+        } else {
+            // Play whichever source is active
+            if (activeBufferType === 'original' && originalBuffer) window.playOriginal();
+            else if (activeBufferType === 'resampled' && originalBuffer) window.playResampled();
+            else if (stretchedBuffer) window.playStretched();
         }
     }
 });
