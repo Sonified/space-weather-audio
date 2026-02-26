@@ -502,6 +502,12 @@
                 <button type="button" id="musicalExperienceQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Musical Experience</button>
                 <button type="button" id="feedbackQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Feedback</button>
                 <button type="button" id="referralQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 How Did You Learn?</button>
+                <div id="dlAudioGroup" style="margin-left: auto; display: none; align-items: center; gap: 6px;">
+                    <label style="font-size: var(--panel-label-size); font-weight: 600; color: #888; white-space: nowrap;">Download Audio:</label>
+                    <button type="button" id="dlCurrentViewBtn" class="emic-btn" style="padding: 6px 12px; font-size: 13px;">Current View</button>
+                    <button type="button" id="dlCurrentComponentBtn" class="emic-btn" style="padding: 6px 12px; font-size: 13px;">Current Component</button>
+                    <button type="button" id="dlAllComponentsBtn" class="emic-btn" style="padding: 6px 12px; font-size: 13px;">All Components</button>
+                </div>
             </div>
         </div>
 
@@ -791,6 +797,182 @@
         });
         const qp = document.getElementById('questionnairesPanel');
         if (qp) observer.observe(qp, { attributes: true, attributeFilter: ['style'] });
+    })();
+    </script>
+
+    <!-- Download Audio buttons (Current View / Current Component / All Components) -->
+    <script type="module">
+    (function() {
+        const dlViewBtn = document.getElementById('dlCurrentViewBtn');
+        const dlCompBtn = document.getElementById('dlCurrentComponentBtn');
+        const dlAllBtn = document.getElementById('dlAllComponentsBtn');
+        const dlAudioGroup = document.getElementById('dlAudioGroup');
+        if (!dlViewBtn) return;
+
+        // Show download buttons once audio is available
+        window.addEventListener('componentsReady', () => {
+            if (dlAudioGroup) dlAudioGroup.style.display = 'flex';
+        });
+
+        function createWAVBlob(samples, sampleRate) {
+            const bytesPerSample = 2;
+            const dataSize = samples.length * bytesPerSample;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+            let o = 0;
+            const ws = (s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); o += s.length; };
+            const u32 = (v) => { view.setUint32(o, v, true); o += 4; };
+            const u16 = (v) => { view.setUint16(o, v, true); o += 2; };
+            ws('RIFF'); u32(36 + dataSize); ws('WAVE');
+            ws('fmt '); u32(16); u16(1); u16(1);
+            u32(sampleRate); u32(sampleRate * 2); u16(2); u16(16);
+            ws('data'); u32(dataSize);
+            for (let i = 0; i < samples.length; i++) {
+                const s = Math.max(-1, Math.min(1, samples[i]));
+                view.setInt16(o, Math.round(s * 32767), true);
+                o += 2;
+            }
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function buildFilename(suffix) {
+            const c = window.__EMIC_CONFIG || {};
+            const sc = c.spacecraft || 'GOES';
+            const ds = (c.dataset || 'MAG').replace(/[^a-zA-Z0-9_-]/g, '');
+            return `${sc}_${ds}_${suffix}.wav`;
+        }
+
+        // Current View — slice samples to the visible viewport
+        dlViewBtn.addEventListener('click', async () => {
+            const State = await import('./js/audio-state.js');
+            const { zoomState } = await import('./js/zoom-state.js');
+
+            if (!State.getCompleteSamplesLength()) {
+                alert('No audio data loaded. Please fetch data first.');
+                return;
+            }
+
+            const startSec = zoomState.timestampToSeconds(zoomState.currentViewStartTime);
+            const endSec = zoomState.timestampToSeconds(zoomState.currentViewEndTime);
+            const sr = 44100;
+            const startSample = Math.max(0, Math.floor(startSec * sr));
+            const endSample = Math.min(State.getCompleteSamplesLength(), Math.ceil(endSec * sr));
+
+            if (endSample <= startSample) {
+                alert('Current view range is empty.');
+                return;
+            }
+
+            dlViewBtn.textContent = 'Exporting...';
+            dlViewBtn.disabled = true;
+            try {
+                const samples = State.getCompleteSamplesSlice(startSample, endSample);
+                if (!samples) { alert('Could not read audio samples.'); return; }
+
+                // Short fade in/out to avoid clicks at edges
+                const fadeSamples = Math.min(Math.floor(sr * 0.02), Math.floor(samples.length / 4)); // 20ms or 1/4 of clip
+                for (let i = 0; i < fadeSamples; i++) {
+                    const g = i / fadeSamples;
+                    samples[i] *= g;
+                    samples[samples.length - 1 - i] *= g;
+                }
+
+                const componentSelector = document.getElementById('componentSelector');
+                const comp = componentSelector ? componentSelector.options[componentSelector.selectedIndex].text.split(' ')[0] : 'audio';
+                const t0 = zoomState.currentViewStartTime.toISOString().replace(/:/g, '-').replace(/\./g, '-');
+                const t1 = zoomState.currentViewEndTime.toISOString().replace(/:/g, '-').replace(/\./g, '-');
+                const filename = buildFilename(`${comp}_view_${t0}_${t1}`);
+
+                triggerDownload(createWAVBlob(samples, sr), filename);
+                console.log(`✅ Downloaded current view: ${filename} (${(samples.length / sr).toFixed(1)}s)`);
+            } finally {
+                dlViewBtn.textContent = 'Current View';
+                dlViewBtn.disabled = false;
+            }
+        });
+
+        // Current Component — full duration
+        dlCompBtn.addEventListener('click', async () => {
+            const State = await import('./js/audio-state.js');
+            if (!State.getCompleteSamplesLength()) {
+                alert('No audio data loaded. Please fetch data first.');
+                return;
+            }
+
+            dlCompBtn.textContent = 'Exporting...';
+            dlCompBtn.disabled = true;
+            try {
+                const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
+                if (!samples) { alert('Could not read audio samples.'); return; }
+
+                const componentSelector = document.getElementById('componentSelector');
+                const comp = componentSelector ? componentSelector.options[componentSelector.selectedIndex].text.split(' ')[0] : 'audio';
+                const c = window.__EMIC_CONFIG || {};
+                const t0 = (c.startTime || '').replace(/:/g, '-').replace(/\./g, '-');
+                const t1 = (c.endTime || '').replace(/:/g, '-').replace(/\./g, '-');
+                const filename = buildFilename(`${comp}_${t0}_${t1}`);
+
+                triggerDownload(createWAVBlob(samples, 44100), filename);
+                console.log(`✅ Downloaded component: ${filename}`);
+            } finally {
+                dlCompBtn.textContent = 'Current Component';
+                dlCompBtn.disabled = false;
+            }
+        });
+
+        // All Components — ZIP
+        dlAllBtn.addEventListener('click', async () => {
+            const { getAllComponentBlobs, getComponentLabels, getComponentCount } = await import('./js/component-selector.js');
+
+            if (getComponentCount() < 2) {
+                alert('Only one component available. Use "Current Component" instead.');
+                return;
+            }
+
+            dlAllBtn.textContent = 'Creating ZIP...';
+            dlAllBtn.disabled = true;
+            try {
+                const allBlobs = await getAllComponentBlobs();
+                if (!allBlobs || allBlobs.length === 0) {
+                    alert('Component data not loaded yet. Please wait for all components to download.');
+                    return;
+                }
+
+                const labels = getComponentLabels();
+                const c = window.__EMIC_CONFIG || {};
+                const sc = c.spacecraft || 'GOES';
+                const ds = (c.dataset || 'MAG').replace(/[^a-zA-Z0-9_-]/g, '');
+                const t0 = (c.startTime || '').replace(/:/g, '-').replace(/\./g, '-');
+                const t1 = (c.endTime || '').replace(/:/g, '-').replace(/\./g, '-');
+                const base = `${sc}_${ds}_${t0}_${t1}`;
+
+                const zip = new JSZip();
+                for (let i = 0; i < allBlobs.length; i++) {
+                    const label = labels[i]?.split(' ')[0] || `comp${i}`;
+                    zip.file(`${base}_${label}.wav`, allBlobs[i]);
+                }
+                const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+                triggerDownload(zipBlob, `${base}_all_components.zip`);
+                console.log(`✅ Downloaded all components ZIP`);
+            } catch (err) {
+                console.error('ZIP error:', err);
+                alert('Failed to create ZIP. See console.');
+            } finally {
+                dlAllBtn.textContent = 'All Components';
+                dlAllBtn.disabled = false;
+            }
+        });
     })();
     </script>
 </body>
