@@ -623,13 +623,12 @@
                     if (!statusEl) return;
                     // Check EMIC IndexedDB cache first
                     const cached = await window.__emicCache.get();
+                    const silent = document.getElementById('silentDownload')?.checked;
                     if (cached) {
-                        statusEl.textContent = '📦 Loading from cache...';
-                        statusEl.className = 'status info';
+                        if (!silent) { statusEl.textContent = '📦 Loading from cache...'; statusEl.className = 'status info'; }
                         console.log('🔬 EMIC: Found data in IndexedDB cache');
                     } else {
-                        statusEl.textContent = '📡 Fetching GOES-16 magnetometer data from CDAWeb...';
-                        statusEl.className = 'status loading';
+                        if (!silent) { statusEl.textContent = '📡 Fetching GOES-16 magnetometer data from CDAWeb...'; statusEl.className = 'status loading'; }
                         console.log('🔬 EMIC: No cache, will fetch from CDAWeb');
                     }
                 }, true); // capture phase = runs first
