@@ -137,6 +137,50 @@ fn morlet_mul(@builtin(global_invocation_id) gid: vec3<u32>) {
 `;
 
 // ─── WGSL: Phase Vocoder Stretch + ICWT ──────────────────────────────────────
+// ─── WGSL: Phase Unwrap — sequential walk along time axis per scale ──────────
+// One workgroup per scale (workgroup_size=1). Reads complex CWT coefficients,
+// computes atan2, accumulates unwrapped phase, writes to separate buffer.
+// This enables pitch-accurate stretch at non-integer factors.
+
+const PHASE_UNWRAP_WGSL_SHADER = /* wgsl */ `
+struct UnwrapParams {
+    signalLength: u32,
+    numScales:    u32,
+};
+
+@group(0) @binding(0) var<storage, read> cwtCoeffs: array<f32>;
+@group(0) @binding(1) var<storage, read_write> unwrappedPhase: array<f32>;
+@group(0) @binding(2) var<uniform> params: UnwrapParams;
+
+@compute @workgroup_size(1)
+fn unwrap_main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let si: u32 = gid.x;
+    if (si >= params.numScales) { return; }
+
+    let complexBase: u32 = si * params.signalLength * 2u;
+    let outBase: u32 = si * params.signalLength;
+
+    // First sample
+    var prevPhase: f32 = atan2(cwtCoeffs[complexBase + 1u], cwtCoeffs[complexBase]);
+    unwrappedPhase[outBase] = prevPhase;
+
+    // Sequential unwrap along time axis
+    for (var i: u32 = 1u; i < params.signalLength; i++) {
+        let re: f32 = cwtCoeffs[complexBase + i * 2u];
+        let im: f32 = cwtCoeffs[complexBase + i * 2u + 1u];
+        var phase: f32 = atan2(im, re);
+
+        // Unwrap: correct jumps > π
+        var dp: f32 = phase - prevPhase;
+        dp -= round(dp * 0.159154943) * 6.283185307;
+        prevPhase += dp;
+
+        unwrappedPhase[outBase + i] = prevPhase;
+    }
+}
+`;
+
+// ─── WGSL: Phase Vocoder Stretch ─────────────────────────────────────────────
 // Each thread produces one output sample by summing across all scales (ICWT).
 // Interpolates CWT coefficients to stretched time position.
 // Phase correction: multiply interpolated phase by stretch factor.
@@ -153,7 +197,7 @@ struct StretchParams {
     w0:              f32,
     phaseRand:       f32,    // 0.0 = phase vocoder, 1.0 = full random (paulstretch-style)
     interpMode:      u32,    // 0 = cubic (Catmull-Rom), 1 = linear
-    _pad0:           u32,
+    useUnwrapped:    u32,    // 1 = read from pre-unwrapped phase buffer, 0 = legacy atan2
     _pad1:           u32,
     _pad2:           u32,
 };
@@ -193,6 +237,7 @@ fn smoothRandomPhase(outIdx: u32, scaleIdx: u32) -> f32 {
 @group(0) @binding(1) var<storage, read_write> stretchedAudio: array<f32>;
 @group(0) @binding(2) var<uniform> params: StretchParams;
 @group(0) @binding(3) var<storage, read> scales: array<f32>;
+@group(0) @binding(4) var<storage, read> unwrappedPhase: array<f32>;
 
 @compute @workgroup_size(256)
 fn stretch_main(
@@ -236,42 +281,67 @@ fn stretch_main(
         let m2: f32 = sqrt(re_1 * re_1 + im_1 * im_1);
         let m3: f32 = sqrt(re_2 * re_2 + im_2 * im_2);
 
-        // Phases at 4 points, unwrapped relative to p0
-        let p1: f32 = atan2(im_0, re_0);
-
-        var dp0: f32 = atan2(im_m1, re_m1) - p1;
-        dp0 = dp0 - round(dp0 * 0.159154943) * 6.283185307;
-        let p0: f32 = p1 + dp0;
-
-        var dp2: f32 = atan2(im_1, re_1) - p1;
-        dp2 = dp2 - round(dp2 * 0.159154943) * 6.283185307;
-        let p2: f32 = p1 + dp2;
-
-        var dp3: f32 = atan2(im_2, re_2) - p2;
-        dp3 = dp3 - round(dp3 * 0.159154943) * 6.283185307;
-        let p3: f32 = p2 + dp3;
-
         var mag: f32;
         var phase: f32;
 
-        if (params.interpMode == 1u) {
-            // Linear interpolation
-            mag = mix(m1, m2, frac);
-            phase = p1 + frac * (p2 - p1);
+        if (params.useUnwrapped == 1u) {
+            // Read globally unwrapped phase from pre-computed buffer
+            let phaseBase: u32 = si * params.signalLength;
+            let p0: f32 = unwrappedPhase[phaseBase + i0];
+            let p1: f32 = unwrappedPhase[phaseBase + i1];
+            let p2: f32 = unwrappedPhase[phaseBase + i2];
+            let p3: f32 = unwrappedPhase[phaseBase + i3];
+
+            if (params.interpMode == 1u) {
+                mag = mix(m1, m2, frac);
+                phase = p1 + frac * (p2 - p1);
+            } else {
+                let t: f32 = frac;
+                let t2: f32 = t * t;
+                let t3: f32 = t2 * t;
+
+                mag = 0.5 * ((2.0 * m1) + (-m0 + m2) * t
+                    + (2.0 * m0 - 5.0 * m1 + 4.0 * m2 - m3) * t2
+                    + (-m0 + 3.0 * m1 - 3.0 * m2 + m3) * t3);
+                mag = max(mag, 0.0);
+
+                phase = 0.5 * ((2.0 * p1) + (-p0 + p2) * t
+                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3);
+            }
         } else {
-            // Catmull-Rom cubic spline interpolation
-            let t: f32 = frac;
-            let t2: f32 = t * t;
-            let t3: f32 = t2 * t;
+            // Legacy path: compute phase from atan2 with local 4-point unwrap
+            let p1: f32 = atan2(im_0, re_0);
 
-            mag = 0.5 * ((2.0 * m1) + (-m0 + m2) * t
-                + (2.0 * m0 - 5.0 * m1 + 4.0 * m2 - m3) * t2
-                + (-m0 + 3.0 * m1 - 3.0 * m2 + m3) * t3);
-            mag = max(mag, 0.0); // clamp negative from overshoot
+            var dp0: f32 = atan2(im_m1, re_m1) - p1;
+            dp0 = dp0 - round(dp0 * 0.159154943) * 6.283185307;
+            let p0: f32 = p1 + dp0;
 
-            phase = 0.5 * ((2.0 * p1) + (-p0 + p2) * t
-                + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-                + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3);
+            var dp2: f32 = atan2(im_1, re_1) - p1;
+            dp2 = dp2 - round(dp2 * 0.159154943) * 6.283185307;
+            let p2: f32 = p1 + dp2;
+
+            var dp3: f32 = atan2(im_2, re_2) - p2;
+            dp3 = dp3 - round(dp3 * 0.159154943) * 6.283185307;
+            let p3: f32 = p2 + dp3;
+
+            if (params.interpMode == 1u) {
+                mag = mix(m1, m2, frac);
+                phase = p1 + frac * (p2 - p1);
+            } else {
+                let t: f32 = frac;
+                let t2: f32 = t * t;
+                let t3: f32 = t2 * t;
+
+                mag = 0.5 * ((2.0 * m1) + (-m0 + m2) * t
+                    + (2.0 * m0 - 5.0 * m1 + 4.0 * m2 - m3) * t2
+                    + (-m0 + 3.0 * m1 - 3.0 * m2 + m3) * t3);
+                mag = max(mag, 0.0);
+
+                phase = 0.5 * ((2.0 * p1) + (-p0 + p2) * t
+                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3);
+            }
         }
 
         // Weight by 1/sqrt(s) — required for frequency-domain CWT normalization
@@ -442,6 +512,674 @@ export function buildCQTFilterBank(frequencies, bandwidths, N, dt) {
     return lut;
 }
 
+// ─── NSGT (Non-Stationary Gabor Transform) ───────────────────────────────────
+
+/**
+ * Generate NSGT frequency bands with per-band window lengths.
+ * Each band gets optimal time-frequency resolution: long windows for bass,
+ * short windows for treble. Includes DC and Nyquist boundary bands.
+ *
+ * @param {number} sampleRate - Audio sample rate in Hz
+ * @param {number} N - FFT size (padded signal length, must be power of 2)
+ * @param {number} binsPerOctave - Frequency resolution (12 = semitone)
+ * @param {number} fMin - Lowest frequency in Hz
+ * @returns {object} Band plan + windows + dual windows + bucket info
+ */
+export function generateNSGTBands(sampleRate, N, binsPerOctave = 12, fMin = 20) {
+    const nyquist = sampleRate / 2;
+    const freqPerBin = sampleRate / N; // Hz per FFT bin
+
+    // ── Generate center frequencies (geometric spacing, like CQT) ──
+    const centerFreqs = [];
+    centerFreqs.push(0); // DC band
+    let f = fMin;
+    while (f < nyquist * 0.95) { // stop slightly below Nyquist
+        centerFreqs.push(f);
+        f *= Math.pow(2, 1 / binsPerOctave);
+    }
+    centerFreqs.push(nyquist); // Nyquist band
+    const numBands = centerFreqs.length;
+
+    // ── Compute per-band window lengths M_m ──
+    // M_m = bandwidth in frequency bins = (f_{m+1} - f_{m-1}) * N / sampleRate
+    const bands = [];
+    for (let m = 0; m < numBands; m++) {
+        const fCenter = centerFreqs[m];
+        const kCenter = Math.round(fCenter / freqPerBin);
+
+        let M_m;
+        if (m === 0) {
+            // DC band: just 1 coefficient
+            M_m = 1;
+        } else if (m === numBands - 1) {
+            // Nyquist band: just 1 coefficient
+            M_m = 1;
+        } else {
+            // Bandwidth spans from previous to next center frequency
+            const fLow = (m > 0) ? centerFreqs[m - 1] : 0;
+            const fHigh = (m < numBands - 1) ? centerFreqs[m + 1] : nyquist;
+            const bwHz = fHigh - fLow;
+            M_m = Math.max(4, Math.round(bwHz / freqPerBin));
+        }
+
+        // Window support W_m — for painless case, W_m = M_m
+        // (Hann window in frequency domain, same width as subsampling factor)
+        const W_m = M_m;
+
+        // Frequency bin range: centered at kCenter, width W_m
+        const kStart = Math.round(kCenter - W_m / 2);
+
+        bands.push({
+            m,
+            fCenter,
+            kCenter,
+            M_m,
+            W_m,
+            kStart,
+        });
+    }
+
+    // ── Build analysis windows (Hann) and compute frame operator ──
+    const { analysisWindows, windowOffsets, dualWindows, frameOperator } =
+        buildNSGTWindows(bands, N);
+
+    // ── Bucket bands by FFT size (next power of 2 of M_m) ──
+    const bucketMap = new Map(); // bucketSize → [bandIndices]
+    for (let m = 0; m < numBands; m++) {
+        const bucketSize = nextPowerOf2(bands[m].M_m);
+        if (!bucketMap.has(bucketSize)) bucketMap.set(bucketSize, []);
+        bucketMap.get(bucketSize).push(m);
+    }
+
+    // Sort buckets by size for deterministic ordering
+    const buckets = [];
+    for (const [bucketSize, bandIndices] of [...bucketMap.entries()].sort((a, b) => a[0] - b[0])) {
+        const bucketOffset = buckets.reduce((sum, b) => sum + b.bandIndices.length * b.bucketSize * 2, 0);
+        buckets.push({ bucketSize, bandIndices, bucketOffset });
+    }
+
+    // Assign bucket info to each band
+    for (const bucket of buckets) {
+        for (let i = 0; i < bucket.bandIndices.length; i++) {
+            const m = bucket.bandIndices[i];
+            bands[m].bucketSize = bucket.bucketSize;
+            bands[m].bucketSliceIdx = i;
+            bands[m].bucketOffset = bucket.bucketOffset;
+        }
+    }
+
+    // Total coefficient count
+    const totalCoeffs = bands.reduce((sum, b) => sum + b.M_m, 0);
+
+    // Compute flat coefficient offsets
+    let coeffOffset = 0;
+    for (const band of bands) {
+        band.coeffOffset = coeffOffset;
+        coeffOffset += band.M_m;
+    }
+
+    // Total bucketed buffer size (in f32 values, complex pairs)
+    const totalBucketedSize = buckets.reduce(
+        (sum, b) => sum + b.bandIndices.length * b.bucketSize * 2, 0
+    );
+
+    return {
+        bands,
+        buckets,
+        numBands,
+        totalCoeffs,
+        totalBucketedSize,
+        analysisWindows,
+        windowOffsets,
+        dualWindows,
+        frameOperator,
+        centerFreqs,
+        N,
+        sampleRate,
+    };
+}
+
+/**
+ * Build Hann analysis windows and compute canonical dual windows for NSGT.
+ * Uses the "painless case" where W_m = M_m, making the frame operator diagonal.
+ *
+ * @param {Array} bands - Band descriptors from generateNSGTBands
+ * @param {number} N - FFT size
+ * @returns {object} { analysisWindows, windowOffsets, dualWindows, frameOperator }
+ */
+function buildNSGTWindows(bands, N) {
+    const numBands = bands.length;
+
+    // Compute total window data size and offsets
+    const windowOffsets = new Uint32Array(numBands);
+    let totalWindowSize = 0;
+    for (let m = 0; m < numBands; m++) {
+        windowOffsets[m] = totalWindowSize;
+        totalWindowSize += bands[m].W_m;
+    }
+
+    // Build analysis windows (Hann)
+    const analysisWindows = new Float32Array(totalWindowSize);
+    for (let m = 0; m < numBands; m++) {
+        const W = bands[m].W_m;
+        const offset = windowOffsets[m];
+        if (W === 1) {
+            // DC or Nyquist: rectangular window (just 1.0)
+            analysisWindows[offset] = 1.0;
+        } else {
+            // Hann window
+            for (let j = 0; j < W; j++) {
+                analysisWindows[offset + j] = 0.5 * (1 - Math.cos(2 * Math.PI * j / W));
+            }
+        }
+    }
+
+    // ── Frame operator S[k] = Σ_m M_m * |g_m[k]|² ──
+    // Only need positive frequencies [0, N/2] since signal is real
+    const frameOperator = new Float64Array(N);
+    for (let m = 0; m < numBands; m++) {
+        const { M_m, W_m, kStart } = bands[m];
+        const winOff = windowOffsets[m];
+        for (let j = 0; j < W_m; j++) {
+            const k = ((kStart + j) % N + N) % N; // wrap to [0, N)
+            const gVal = analysisWindows[winOff + j];
+            frameOperator[k] += M_m * gVal * gVal;
+        }
+    }
+
+    // Note: no separate mirror accumulation needed — low-frequency band windows
+    // naturally wrap around DC into negative frequency bins via the mod-N addressing
+    // in nsgtExtractAndFold, so those bins are already covered above.
+
+    // ── Dual windows: gd_m[j] = g_m[j] / S[k_start_m + j] ──
+    const dualWindows = new Float32Array(totalWindowSize);
+    for (let m = 0; m < numBands; m++) {
+        const { W_m, kStart } = bands[m];
+        const winOff = windowOffsets[m];
+        for (let j = 0; j < W_m; j++) {
+            const k = ((kStart + j) % N + N) % N;
+            const S = frameOperator[k];
+            if (S > 1e-10) {
+                dualWindows[winOff + j] = analysisWindows[winOff + j] / S;
+            }
+        }
+    }
+
+    return { analysisWindows, windowOffsets, dualWindows, frameOperator };
+}
+
+// ─── NSGT CPU helpers (extract/fold, scatter-add) ────────────────────────────
+
+/**
+ * Forward NSGT: extract windowed frequency bins from global FFT and fold.
+ * Writes into bucketed buffer ready for per-band IFFT.
+ *
+ * @param {Float32Array} globalFFT - Complex FFT of signal (N × 2 floats)
+ * @param {object} nsgtPlan - From generateNSGTBands
+ * @param {Float32Array} bucketedBuf - Output buffer (totalBucketedSize floats)
+ */
+function nsgtExtractAndFold(globalFFT, nsgtPlan, bucketedBuf) {
+    const { bands, buckets, analysisWindows, windowOffsets, N } = nsgtPlan;
+
+    // Zero out bucketed buffer
+    bucketedBuf.fill(0);
+
+    for (const bucket of buckets) {
+        for (let i = 0; i < bucket.bandIndices.length; i++) {
+            const m = bucket.bandIndices[i];
+            const band = bands[m];
+            const { W_m, M_m, kStart } = band;
+            const winOff = windowOffsets[m];
+            const bucketSize = bucket.bucketSize;
+
+            // Output position in bucketed buffer: bucket.bucketOffset + i * bucketSize * 2
+            const outBase = bucket.bucketOffset + i * bucketSize * 2;
+
+            // Extract, window, and fold
+            for (let j = 0; j < W_m; j++) {
+                const k = ((kStart + j) % N + N) % N;
+                const re = globalFFT[k * 2];
+                const im = globalFFT[k * 2 + 1];
+                const gVal = analysisWindows[winOff + j];
+
+                // Fold into M_m coefficients (circular aliasing)
+                const target = j % M_m;
+                bucketedBuf[outBase + target * 2] += re * gVal;
+                bucketedBuf[outBase + target * 2 + 1] += im * gVal;
+            }
+        }
+    }
+}
+
+/**
+ * Inverse NSGT scatter-add: apply dual windows and accumulate into global freq buffer.
+ * Handles both positive and mirrored (negative) frequency bands.
+ *
+ * @param {Float32Array} bucketedBuf - Per-band FFT results in bucketed layout
+ * @param {object} nsgtPlan - From generateNSGTBands
+ * @param {Float32Array} globalFreq - Output global frequency buffer (N × 2 floats)
+ */
+function nsgtScatterAdd(bucketedBuf, nsgtPlan, globalFreq) {
+    const { bands, buckets, dualWindows, windowOffsets, N } = nsgtPlan;
+
+    globalFreq.fill(0);
+
+    for (const bucket of buckets) {
+        for (let i = 0; i < bucket.bandIndices.length; i++) {
+            const m = bucket.bandIndices[i];
+            const band = bands[m];
+            const { W_m, M_m, kStart } = band;
+            const winOff = windowOffsets[m];
+            const bucketSize = bucket.bucketSize;
+
+            const inBase = bucket.bucketOffset + i * bucketSize * 2;
+
+            // Scatter with dual window and unfolding
+            // Window wraps around DC naturally (same positions as extract)
+            for (let j = 0; j < W_m; j++) {
+                const coeffIdx = j % M_m;
+                const re = bucketedBuf[inBase + coeffIdx * 2];
+                const im = bucketedBuf[inBase + coeffIdx * 2 + 1];
+                const gdVal = dualWindows[winOff + j] * M_m;
+
+                const k = ((kStart + j) % N + N) % N;
+                globalFreq[k * 2] += re * gdVal;
+                globalFreq[k * 2 + 1] += im * gdVal;
+            }
+        }
+    }
+
+    // Enforce conjugate symmetry for real signal reconstruction:
+    // Copy positive freq → negative freq as conjugate.
+    // X[N-k] = conj(X[k]) for k = 1..N/2-1
+    const halfN = N / 2;
+    for (let k = 1; k < halfN; k++) {
+        globalFreq[(N - k) * 2] = globalFreq[k * 2];
+        globalFreq[(N - k) * 2 + 1] = -globalFreq[k * 2 + 1];
+    }
+    // DC and Nyquist: imaginary should be zero for real signals
+    globalFreq[1] = 0;
+    if (halfN < N) {
+        globalFreq[halfN * 2 + 1] = 0;
+    }
+}
+
+/**
+ * NSGT phase vocoder stretch: interpolate magnitude + accumulate phase per band.
+ *
+ * @param {Float32Array} coeffs - Flat NSGT coefficients (complex pairs)
+ * @param {object} nsgtPlan - From generateNSGTBands
+ * @param {number} stretchFactor - Time stretch ratio
+ * @returns {object} { stretchedCoeffs, stretchedPlan } with new M_m values
+ */
+function nsgtPhaseVocoderStretch(coeffs, nsgtPlan, stretchFactor) {
+    const { bands } = nsgtPlan;
+
+    // Compute new band sizes and total
+    const stretchedBands = bands.map(b => ({
+        ...b,
+        M_m_out: Math.max(1, Math.round(b.M_m * stretchFactor)),
+    }));
+
+    const totalStretchedCoeffs = stretchedBands.reduce((s, b) => s + b.M_m_out, 0);
+    const stretchedCoeffs = new Float32Array(totalStretchedCoeffs * 2);
+
+    let outOffset = 0;
+    for (let m = 0; m < bands.length; m++) {
+        const band = bands[m];
+        const M_in = band.M_m;
+        const M_out = stretchedBands[m].M_m_out;
+        const inBase = band.coeffOffset * 2;
+
+        if (M_in <= 1) {
+            // DC/Nyquist: just copy (no phase evolution)
+            stretchedCoeffs[outOffset * 2] = coeffs[inBase];
+            stretchedCoeffs[outOffset * 2 + 1] = coeffs[inBase + 1];
+            outOffset += M_out;
+            continue;
+        }
+
+        // Phase accumulation stretch for this band
+        const TWO_PI = 2 * Math.PI;
+
+        // Initialize accumulated phase from first sample
+        let accPhase = Math.atan2(coeffs[inBase + 1], coeffs[inBase]);
+
+        for (let n = 0; n < M_out; n++) {
+            const inputPos = n / stretchFactor;
+            const idx = Math.min(Math.floor(inputPos), M_in - 1);
+            const frac = inputPos - idx;
+            const i0 = Math.min(idx, M_in - 1);
+            const i1 = Math.min(idx + 1, M_in - 1);
+
+            // Read adjacent coefficients
+            const re0 = coeffs[inBase + i0 * 2];
+            const im0 = coeffs[inBase + i0 * 2 + 1];
+            const re1 = coeffs[inBase + i1 * 2];
+            const im1 = coeffs[inBase + i1 * 2 + 1];
+
+            // Interpolated magnitude
+            const mag0 = Math.sqrt(re0 * re0 + im0 * im0);
+            const mag1 = Math.sqrt(re1 * re1 + im1 * im1);
+            const mag = mag0 + frac * (mag1 - mag0);
+
+            // Instantaneous frequency from phase difference
+            if (n > 0) {
+                const phase0 = Math.atan2(im0, re0);
+                const phase1 = Math.atan2(im1, re1);
+                let dPhase = phase1 - phase0;
+                dPhase -= Math.round(dPhase / TWO_PI) * TWO_PI;
+                const instPhase = phase0 + frac * dPhase;
+
+                // Phase difference from previous input position
+                const prevInputPos = (n - 1) / stretchFactor;
+                const prevIdx = Math.min(Math.floor(prevInputPos), M_in - 1);
+                const prevRe = coeffs[inBase + prevIdx * 2];
+                const prevIm = coeffs[inBase + prevIdx * 2 + 1];
+                const prevPhase = Math.atan2(prevIm, prevRe);
+
+                let dp = instPhase - prevPhase;
+                dp -= Math.round(dp / TWO_PI) * TWO_PI;
+                accPhase += dp / stretchFactor;
+            }
+
+            // Reconstruct complex coefficient
+            stretchedCoeffs[outOffset * 2 + n * 2] = mag * Math.cos(accPhase);
+            stretchedCoeffs[outOffset * 2 + n * 2 + 1] = mag * Math.sin(accPhase);
+        }
+
+        outOffset += M_out;
+    }
+
+    // Build stretched plan (new band sizes for inverse NSGT)
+    // Recompute bucket assignments for stretched sizes
+    const stretchedBucketMap = new Map();
+    let stretchedCoeffOffset = 0;
+    for (let m = 0; m < stretchedBands.length; m++) {
+        stretchedBands[m].coeffOffset = stretchedCoeffOffset;
+        stretchedCoeffOffset += stretchedBands[m].M_m_out;
+
+        const bucketSize = nextPowerOf2(stretchedBands[m].M_m_out);
+        if (!stretchedBucketMap.has(bucketSize)) stretchedBucketMap.set(bucketSize, []);
+        stretchedBucketMap.get(bucketSize).push(m);
+    }
+
+    const stretchedBuckets = [];
+    for (const [bucketSize, bandIndices] of [...stretchedBucketMap.entries()].sort((a, b) => a[0] - b[0])) {
+        const bucketOffset = stretchedBuckets.reduce((sum, b) => sum + b.bandIndices.length * b.bucketSize * 2, 0);
+        stretchedBuckets.push({ bucketSize, bandIndices, bucketOffset });
+    }
+
+    for (const bucket of stretchedBuckets) {
+        for (let i = 0; i < bucket.bandIndices.length; i++) {
+            const bm = bucket.bandIndices[i];
+            stretchedBands[bm].bucketSize = bucket.bucketSize;
+            stretchedBands[bm].bucketSliceIdx = i;
+            stretchedBands[bm].bucketOffset = bucket.bucketOffset;
+        }
+    }
+
+    const totalStretchedBucketedSize = stretchedBuckets.reduce(
+        (sum, b) => sum + b.bandIndices.length * b.bucketSize * 2, 0
+    );
+
+    return {
+        stretchedCoeffs,
+        stretchedBands,
+        stretchedBuckets,
+        totalStretchedCoeffs,
+        totalStretchedBucketedSize,
+    };
+}
+
+/**
+ * NSGT phase vocoder stretch: interpolate from analysis band sizes to synthesis band sizes.
+ * Uses phase accumulation for clean time-stretching.
+ *
+ * @param {Float32Array} coeffs - Flat analysis coefficients (complex pairs)
+ * @param {Array} analysisBands - Band descriptors with M_m and coeffOffset
+ * @param {Array} synthesisBands - Band descriptors with M_m (target sizes) and coeffOffset
+ * @returns {Float32Array} Stretched coefficients matching synthesis band layout
+ */
+function nsgtPhaseVocoderStretchToTarget(coeffs, analysisBands, synthesisBands, analysisN, analysisSampleRate, { bypass = false } = {}) {
+    const totalSynthCoeffs = synthesisBands.reduce((s, b) => s + b.M_m, 0);
+    const result = new Float32Array(totalSynthCoeffs * 2);
+    const TWO_PI = 2 * Math.PI;
+
+    // ── Diagnostic accumulators ──
+    const diagBands = []; // will collect stats for ~5 representative bands
+    const diagIndices = new Set();
+    const numBands = analysisBands.length;
+    // Pick DC, low, mid, high, Nyquist bands for diagnostics
+    if (numBands > 4) {
+        diagIndices.add(0);                               // DC
+        diagIndices.add(Math.floor(numBands * 0.15));     // low freq
+        diagIndices.add(Math.floor(numBands * 0.5));      // mid freq
+        diagIndices.add(Math.floor(numBands * 0.85));     // high freq
+        diagIndices.add(numBands - 1);                    // Nyquist
+    }
+
+    let totalEnergyIn = 0, totalEnergyOut = 0;
+    let identityMaxErr = 0; // max phase error at R=1 aligned positions
+
+    for (let m = 0; m < analysisBands.length; m++) {
+        const aband = analysisBands[m];
+        const sband = synthesisBands[m];
+        const M_in = aband.M_m;
+        const M_out = sband.M_m;
+        const inBase = aband.coeffOffset * 2;
+        const outBase = sband.coeffOffset * 2;
+
+        if (M_in <= 1 || M_out <= 1) {
+            // DC/Nyquist: just copy
+            result[outBase] = coeffs[inBase];
+            result[outBase + 1] = coeffs[inBase + 1];
+            continue;
+        }
+
+        // ── Bypass mode: simple linear interpolation, preserve original phases ──
+        if (bypass) {
+            for (let n = 0; n < M_out; n++) {
+                const inputPos = n * (M_in - 1) / (M_out - 1);
+                const i0 = Math.min(Math.floor(inputPos), M_in - 1);
+                const i1 = Math.min(i0 + 1, M_in - 1);
+                const frac = inputPos - i0;
+                // Interpolate complex values directly (preserves original phase structure)
+                result[outBase + n * 2] = coeffs[inBase + i0 * 2] * (1 - frac) + coeffs[inBase + i1 * 2] * frac;
+                result[outBase + n * 2 + 1] = coeffs[inBase + i0 * 2 + 1] * (1 - frac) + coeffs[inBase + i1 * 2 + 1] * frac;
+            }
+            continue;
+        }
+
+        const stretchRatio = M_out / M_in;
+
+        // Expected phase advance per input hop for this band's center frequency.
+        // CRITICAL: The NSGT extract+fold shifts each band to baseband. The center
+        // frequency maps to bin (kCenter - kStart) within the M_m-point DFT, NOT
+        // to absolute frequency bin kCenter. So the expected phase advance is:
+        //   ω_expected = 2π × (kCenter - kStart) % M_m / M_m
+        // For our band plan where kStart ≈ kCenter - M_m/2, this gives ≈ π.
+        const kRelative = ((aband.kCenter - aband.kStart) % M_in + M_in) % M_in;
+        const omega_expected = TWO_PI * kRelative / M_in;
+
+        // Step 1: Compute instantaneous frequency for each input hop.
+        const instFreq = new Float32Array(M_in);
+        const phases = new Float32Array(M_in); // original phases for diagnostics
+        for (let n = 0; n < M_in; n++) {
+            phases[n] = Math.atan2(coeffs[inBase + n * 2 + 1], coeffs[inBase + n * 2]);
+        }
+        for (let n = 0; n < M_in - 1; n++) {
+            let dPhi = phases[n + 1] - phases[n];
+            let deviation = dPhi - omega_expected;
+            deviation -= Math.round(deviation / TWO_PI) * TWO_PI;
+            instFreq[n] = omega_expected + deviation;
+        }
+        instFreq[M_in - 1] = M_in > 1 ? instFreq[M_in - 2] : omega_expected;
+
+        // Step 2: Synthesize output coefficients.
+        let accPhase = phases[0];
+
+        // Diagnostics for this band
+        const isDiag = diagIndices.has(m);
+        let bandEnergyIn = 0, bandEnergyOut = 0;
+        const diagPhaseTrajectory = isDiag ? [] : null;
+
+        for (let n = 0; n < M_out; n++) {
+            const inputPos = n / stretchRatio;
+            const idx = Math.min(Math.floor(inputPos), M_in - 1);
+            const frac = inputPos - idx;
+            const i0 = Math.min(idx, M_in - 1);
+            const i1 = Math.min(idx + 1, M_in - 1);
+
+            // Interpolated magnitude
+            const re0 = coeffs[inBase + i0 * 2];
+            const im0 = coeffs[inBase + i0 * 2 + 1];
+            const re1 = coeffs[inBase + i1 * 2];
+            const im1 = coeffs[inBase + i1 * 2 + 1];
+            const mag0 = Math.sqrt(re0 * re0 + im0 * im0);
+            const mag1 = Math.sqrt(re1 * re1 + im1 * im1);
+            const mag = mag0 + frac * (mag1 - mag0);
+
+            if (n > 0) {
+                const localIF = instFreq[i0] + frac * (instFreq[i1] - instFreq[i0]);
+                accPhase += localIF;
+            }
+
+            result[outBase + n * 2] = mag * Math.cos(accPhase);
+            result[outBase + n * 2 + 1] = mag * Math.sin(accPhase);
+
+            bandEnergyOut += mag * mag;
+
+            // Identity check: when inputPos lands exactly on an integer, accPhase should ≈ original phase
+            if (isDiag && frac < 0.001 && i0 < M_in) {
+                const origPhase = phases[i0];
+                let phaseErr = accPhase - origPhase;
+                phaseErr -= Math.round(phaseErr / TWO_PI) * TWO_PI;
+                identityMaxErr = Math.max(identityMaxErr, Math.abs(phaseErr));
+                if (diagPhaseTrajectory.length < 10) {
+                    diagPhaseTrajectory.push({
+                        n, inputPos: i0,
+                        accPhase: accPhase.toFixed(4),
+                        origPhase: origPhase.toFixed(4),
+                        err: phaseErr.toFixed(6)
+                    });
+                }
+            }
+        }
+
+        // Input energy
+        for (let n = 0; n < M_in; n++) {
+            const re = coeffs[inBase + n * 2];
+            const im = coeffs[inBase + n * 2 + 1];
+            bandEnergyIn += re * re + im * im;
+        }
+        totalEnergyIn += bandEnergyIn;
+        totalEnergyOut += bandEnergyOut;
+
+        // Collect diagnostic info for representative bands
+        if (isDiag) {
+            let ifMin = Infinity, ifMax = -Infinity, ifSum = 0;
+            for (let n = 0; n < M_in; n++) {
+                ifMin = Math.min(ifMin, instFreq[n]);
+                ifMax = Math.max(ifMax, instFreq[n]);
+                ifSum += instFreq[n];
+            }
+            diagBands.push({
+                m,
+                fCenter: aband.fCenter.toFixed(1),
+                M_in,
+                M_out,
+                stretchRatio: stretchRatio.toFixed(3),
+                omega_expected: omega_expected.toFixed(4),
+                omega_expected_mod2pi: (omega_expected % TWO_PI).toFixed(4),
+                IF_min: ifMin.toFixed(4),
+                IF_max: ifMax.toFixed(4),
+                IF_mean: (ifSum / M_in).toFixed(4),
+                energyIn: bandEnergyIn.toFixed(2),
+                energyOut: bandEnergyOut.toFixed(2),
+                energyRatio: bandEnergyIn > 0 ? (bandEnergyOut / bandEnergyIn).toFixed(4) : 'N/A',
+                phaseTrajectory: diagPhaseTrajectory,
+            });
+        }
+    }
+
+    // ── Log diagnostics ──
+    console.log('%c[NSGT PV Diagnostics]', 'color: #FF5722; font-weight: bold');
+    console.log(`  Total energy: in=${totalEnergyIn.toFixed(2)}, out=${totalEnergyOut.toFixed(2)}, ratio=${(totalEnergyOut / totalEnergyIn).toFixed(4)}`);
+    console.log(`  Identity max phase error (at aligned positions): ${identityMaxErr.toFixed(6)} rad (${(identityMaxErr * 180 / Math.PI).toFixed(3)}°)`);
+    console.table(diagBands.map(b => ({
+        band: b.m,
+        fCenter: b.fCenter,
+        'M_in→M_out': `${b.M_in}→${b.M_out}`,
+        R: b.stretchRatio,
+        'ω_exp': b.omega_expected,
+        'ω_exp%2π': b.omega_expected_mod2pi,
+        'IF range': `[${b.IF_min}, ${b.IF_max}]`,
+        'IF mean': b.IF_mean,
+        'E ratio': b.energyRatio,
+    })));
+    for (const b of diagBands) {
+        if (b.phaseTrajectory && b.phaseTrajectory.length > 0) {
+            console.log(`  Band ${b.m} (${b.fCenter}Hz) phase trajectory at aligned positions:`);
+            console.table(b.phaseTrajectory);
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Pack NSGT coefficients from flat layout into bucketed FFT buffer.
+ * Each band's M_m coefficients are placed at its bucket slot, zero-padded to bucketSize.
+ *
+ * @param {Float32Array} coeffs - Flat coefficient buffer (complex pairs)
+ * @param {Array} bandsInfo - Band descriptors with coeffOffset, M_m/M_m_out, bucket info
+ * @param {Array} bucketsInfo - Bucket descriptors
+ * @param {Float32Array} bucketedBuf - Output bucketed buffer
+ * @param {string} sizeKey - 'M_m' for analysis bands, 'M_m_out' for stretched bands
+ */
+function packCoeffsToBuckets(coeffs, bandsInfo, bucketsInfo, bucketedBuf, sizeKey = 'M_m') {
+    bucketedBuf.fill(0);
+    for (const bucket of bucketsInfo) {
+        for (let i = 0; i < bucket.bandIndices.length; i++) {
+            const m = bucket.bandIndices[i];
+            const band = bandsInfo[m];
+            const M = band[sizeKey];
+            const inBase = band.coeffOffset * 2;
+            const outBase = bucket.bucketOffset + i * bucket.bucketSize * 2;
+            for (let j = 0; j < M; j++) {
+                bucketedBuf[outBase + j * 2] = coeffs[inBase + j * 2];
+                bucketedBuf[outBase + j * 2 + 1] = coeffs[inBase + j * 2 + 1];
+            }
+        }
+    }
+}
+
+/**
+ * Unpack NSGT coefficients from bucketed FFT buffer to flat layout.
+ *
+ * @param {Float32Array} bucketedBuf - Bucketed FFT result buffer
+ * @param {Array} bandsInfo - Band descriptors
+ * @param {Array} bucketsInfo - Bucket descriptors
+ * @param {Float32Array} coeffs - Output flat coefficient buffer (complex pairs)
+ * @param {string} sizeKey - 'M_m' or 'M_m_out'
+ */
+function unpackCoeffsFromBuckets(bucketedBuf, bandsInfo, bucketsInfo, coeffs, sizeKey = 'M_m') {
+    for (const bucket of bucketsInfo) {
+        for (let i = 0; i < bucket.bandIndices.length; i++) {
+            const m = bucket.bandIndices[i];
+            const band = bandsInfo[m];
+            const M = band[sizeKey];
+            const outBase = band.coeffOffset * 2;
+            const inBase = bucket.bucketOffset + i * bucket.bucketSize * 2;
+            for (let j = 0; j < M; j++) {
+                coeffs[outBase + j * 2] = bucketedBuf[inBase + j * 2];
+                coeffs[outBase + j * 2 + 1] = bucketedBuf[inBase + j * 2 + 1];
+            }
+        }
+    }
+}
+
 // ─── WaveletGPUCompute Class ─────────────────────────────────────────────────
 
 export class WaveletGPUCompute {
@@ -470,6 +1208,12 @@ export class WaveletGPUCompute {
         this.fftUniformBuffer = null;
         this.morletUniformBuffer = null;
         this.stretchUniformBuffer = null;
+
+        // Phase unwrap pipeline
+        this.unwrapPipeline = null;
+        this.unwrapBindGroupLayout = null;
+        this.unwrapUniformBuffer = null;
+        this.cachedUnwrappedPhaseBuffer = null;
     }
 
     static isSupported() {
@@ -585,7 +1329,7 @@ export class WaveletGPUCompute {
             compute: { module: morletModule, entryPoint: 'morlet_mul' }
         });
 
-        // ── Stretch bind group layout ──
+        // ── Stretch bind group layout (binding 4 = unwrapped phase buffer) ──
         this.stretchBindGroupLayout = this.device.createBindGroupLayout({
             label: 'stretch-bind-group-layout',
             entries: [
@@ -593,6 +1337,7 @@ export class WaveletGPUCompute {
                 { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
                 { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
                 { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
             ]
         });
 
@@ -600,6 +1345,46 @@ export class WaveletGPUCompute {
             label: 'stretch-pipeline',
             layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.stretchBindGroupLayout] }),
             compute: { module: stretchModule, entryPoint: 'stretch_main' }
+        });
+
+        // ── Compile Phase Unwrap shader ──
+        const unwrapModule = this.device.createShaderModule({
+            code: PHASE_UNWRAP_WGSL_SHADER,
+            label: 'phase-unwrap'
+        });
+        const unwrapInfo = await unwrapModule.getCompilationInfo();
+        for (const msg of unwrapInfo.messages) {
+            if (msg.type === 'error') throw new Error(`Phase Unwrap WGSL error: ${msg.message} (line ${msg.lineNum})`);
+            if (msg.type === 'warning') console.warn(`[Wavelet GPU] Phase Unwrap WGSL warning: ${msg.message}`);
+        }
+
+        // ── Phase Unwrap bind group layout ──
+        this.unwrapBindGroupLayout = this.device.createBindGroupLayout({
+            label: 'unwrap-bind-group-layout',
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+            ]
+        });
+
+        this.unwrapPipeline = await this.device.createComputePipelineAsync({
+            label: 'unwrap-pipeline',
+            layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.unwrapBindGroupLayout] }),
+            compute: { module: unwrapModule, entryPoint: 'unwrap_main' }
+        });
+
+        this.unwrapUniformBuffer = this.device.createBuffer({
+            size: 8, // UnwrapParams: signalLength(u32) + numScales(u32)
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: 'unwrap-params'
+        });
+
+        // Dummy 4-byte buffer for stretch binding 4 when not using unwrapped phase
+        this.dummyPhaseBuffer = this.device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.STORAGE,
+            label: 'dummy-phase'
         });
 
         // ── Uniform buffers (persistent, rewritten each stage) ──
@@ -844,8 +1629,9 @@ export class WaveletGPUCompute {
 
         const tInvFFT = performance.now();
 
-        // Keep the result buffer, destroy the other
+        // Keep the result buffer, destroy the other (and invalidate unwrapped phase)
         if (this.cachedCwtBuffer) this.cachedCwtBuffer.destroy();
+        if (this.cachedUnwrappedPhaseBuffer) { this.cachedUnwrappedPhaseBuffer.destroy(); this.cachedUnwrappedPhaseBuffer = null; }
         if (resultBuf === cwtBufA) {
             this.cachedCwtBuffer = cwtBufA;
             cwtBufB.destroy();
@@ -881,6 +1667,60 @@ export class WaveletGPUCompute {
     }
 
     /**
+     * GPU Phase Unwrap pass — runs after CWT, before stretch.
+     * One thread per scale, sequential walk along time axis.
+     * Produces globally unwrapped phase for pitch-accurate stretch.
+     */
+    async unwrapPhaseGPU() {
+        if (!this.cachedCwtBuffer) throw new Error('No cached CWT — call computeCWT first');
+
+        const t0 = performance.now();
+        const signalLength = this.cachedSignalLength;
+        const numScales = this.cachedNumScales;
+        const phaseBytes = numScales * signalLength * 4;
+
+        // Destroy previous if exists
+        if (this.cachedUnwrappedPhaseBuffer) {
+            this.cachedUnwrappedPhaseBuffer.destroy();
+        }
+
+        // Create output buffer for unwrapped phase
+        this.cachedUnwrappedPhaseBuffer = this.device.createBuffer({
+            size: phaseBytes,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+            label: 'unwrapped-phase'
+        });
+
+        // Write uniforms: signalLength, numScales
+        const uniforms = new Uint32Array([signalLength, numScales]);
+        this.device.queue.writeBuffer(this.unwrapUniformBuffer, 0, uniforms);
+
+        const bindGroup = this.device.createBindGroup({
+            layout: this.unwrapBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.cachedCwtBuffer } },
+                { binding: 1, resource: { buffer: this.cachedUnwrappedPhaseBuffer } },
+                { binding: 2, resource: { buffer: this.unwrapUniformBuffer } },
+            ]
+        });
+
+        const encoder = this.device.createCommandEncoder({ label: 'phase-unwrap' });
+        const pass = encoder.beginComputePass({ label: 'phase-unwrap' });
+        pass.setPipeline(this.unwrapPipeline);
+        pass.setBindGroup(0, bindGroup);
+        pass.dispatchWorkgroups(numScales); // One thread per scale
+        pass.end();
+        this.device.queue.submit([encoder.finish()]);
+        await this.device.queue.onSubmittedWorkDone();
+
+        const ms = (performance.now() - t0).toFixed(1);
+        console.log(
+            `%c[Wavelet GPU] Phase unwrap: ${numScales} scales × ${signalLength.toLocaleString()} samples in ${ms}ms`,
+            'color: #E040FB; font-weight: bold'
+        );
+    }
+
+    /**
      * Pass 2: Phase vocoder stretch + ICWT.
      * Uses cached CWT coefficients from Pass 1.
      * Fast path: re-run when stretch factor changes (~1-5ms).
@@ -888,9 +1728,10 @@ export class WaveletGPUCompute {
      * @param {number} stretchFactor - Time stretch ratio (e.g., 2.0 for 2x slower)
      * @param {object} [options]
      * @param {number} [options.phaseRand=0] - Phase randomization (0=vocoder, 1=full random)
+     * @param {boolean} [options.useUnwrapped=false] - Use GPU-unwrapped phase for pitch accuracy
      * @returns {Float32Array} Stretched audio samples
      */
-    async stretchAudio(stretchFactor, { phaseRand = 0, interpMode = 0 } = {}) {
+    async stretchAudio(stretchFactor, { phaseRand = 0, interpMode = 0, useUnwrapped = false } = {}) {
         if (!this.cachedCwtBuffer) throw new Error('No cached CWT — call computeCWT first');
 
         const t0 = performance.now();
@@ -909,8 +1750,14 @@ export class WaveletGPUCompute {
         f32View[6] = this.cachedW0;
         f32View[7] = phaseRand;
         u32View[8] = interpMode;  // 0 = cubic, 1 = linear
-        // [9..11] = padding
+        u32View[9] = useUnwrapped ? 1 : 0;
+        // [10..11] = padding
         this.device.queue.writeBuffer(this.stretchUniformBuffer, 0, new Uint8Array(uniforms));
+
+        // Run GPU phase unwrap if requested
+        if (useUnwrapped) {
+            await this.unwrapPhaseGPU();
+        }
 
         // Upload scales array
         const scalesBuffer = this.device.createBuffer({
@@ -935,6 +1782,11 @@ export class WaveletGPUCompute {
             label: 'stretch-staging'
         });
 
+        // Use real unwrapped phase buffer or dummy placeholder
+        const phaseBuffer = useUnwrapped && this.cachedUnwrappedPhaseBuffer
+            ? this.cachedUnwrappedPhaseBuffer
+            : this.dummyPhaseBuffer;
+
         const bindGroup = this.device.createBindGroup({
             layout: this.stretchBindGroupLayout,
             entries: [
@@ -942,6 +1794,7 @@ export class WaveletGPUCompute {
                 { binding: 1, resource: { buffer: outputBuffer } },
                 { binding: 2, resource: { buffer: this.stretchUniformBuffer } },
                 { binding: 3, resource: { buffer: scalesBuffer } },
+                { binding: 4, resource: { buffer: phaseBuffer } },
             ]
         });
 
@@ -1049,7 +1902,6 @@ export class WaveletGPUCompute {
                 dPhase -= Math.round(dPhase / TWO_PI) * TWO_PI; // unwrap
 
                 // Accumulate phase at the local instantaneous rate
-                // (no multiply by stretchFactor — that's the whole point)
                 accPhase[si] += dPhase;
 
                 const scaleWeight = 1.0 / Math.sqrt(scales[si]);
@@ -1075,14 +1927,282 @@ export class WaveletGPUCompute {
      * Convenience: full pipeline (CWT + stretch) in one call.
      */
     async waveletStretch(audioData, stretchFactor, params) {
-        await this.computeCWT(audioData, params);
-        if (params.phaseMode === 'accumulate') {
-            return this.stretchAudioCPU(stretchFactor, { phaseRand: params.phaseRand || 0 });
+        if (params.transform === 'nsgt') {
+            return this.nsgtStretch(audioData, stretchFactor, params);
         }
+        await this.computeCWT(audioData, params);
+        const useUnwrapped = params.phaseMode === 'accumulate';
         return this.stretchAudio(stretchFactor, {
             phaseRand: params.phaseRand || 0,
-            interpMode: params.interpMode || 0
+            interpMode: params.interpMode || 0,
+            useUnwrapped
         });
+    }
+
+    // ── NSGT: Forward + Stretch + Inverse (full pipeline) ────────────────────
+
+    /**
+     * Full NSGT pipeline: forward NSGT → phase vocoder stretch → inverse NSGT.
+     * Uses GPU for global FFTs and bucketed per-band FFTs.
+     * CPU handles extract/fold, scatter-add, and phase vocoder (all O(N) or smaller).
+     *
+     * @param {Float32Array} audioData - Input audio (mono)
+     * @param {number} stretchFactor - Time stretch ratio
+     * @param {object} params - { dt, binsPerOctave, fMin }
+     * @returns {Float32Array} Stretched audio
+     */
+    async nsgtStretch(audioData, stretchFactor, { dt, binsPerOctave = 12, fMin = 20 } = {}) {
+        if (!this.initialized) throw new Error('WaveletGPUCompute not initialized');
+
+        const t0 = performance.now();
+        const signalLength = audioData.length;
+        const sampleRate = Math.round(1 / dt);
+        const Npad = nextPowerOf2(signalLength);
+
+        // ── Step 1: Generate NSGT band plan ──
+        const nsgtPlan = generateNSGTBands(sampleRate, Npad, binsPerOctave, fMin);
+        const tPlan = performance.now();
+
+        console.log(
+            `%c[NSGT] ${nsgtPlan.numBands} bands, ${nsgtPlan.totalCoeffs.toLocaleString()} total coeffs ` +
+            `(${nsgtPlan.buckets.length} FFT size buckets), Npad=${Npad}`,
+            'color: #00BCD4; font-weight: bold'
+        );
+
+        // ── Step 2: Global FFT on GPU ──
+        const signalComplex = new Float32Array(Npad * 2);
+        for (let i = 0; i < signalLength; i++) {
+            signalComplex[i * 2] = audioData[i];
+        }
+
+        const fftBufA = this.device.createBuffer({
+            size: Npad * 2 * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: 'nsgt-fft-a'
+        });
+        const fftBufB = this.device.createBuffer({
+            size: Npad * 2 * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: 'nsgt-fft-b'
+        });
+        this.device.queue.writeBuffer(fftBufA, 0, signalComplex);
+
+        const fftResult = await this.runFFT(fftBufA, fftBufB, Npad, -1.0, 1);
+        const tFwdFFT = performance.now();
+
+        // Readback global FFT
+        const globalFFT = await this.readbackBuffer(fftResult, Npad * 2 * 4);
+        const tReadFFT = performance.now();
+
+        // ── Step 3: CPU extract + fold → bucketed buffer ──
+        const bucketedBuf = new Float32Array(nsgtPlan.totalBucketedSize);
+        nsgtExtractAndFold(globalFFT, nsgtPlan, bucketedBuf);
+        const tExtract = performance.now();
+
+        // ── Step 4: Per-band IFFT (bucketed, GPU) ──
+        await this._runBucketedFFT(nsgtPlan.buckets, bucketedBuf, 1.0); // direction=+1 (inverse)
+        const tBandIFFT = performance.now();
+
+        // ── Step 5: Unpack coefficients from buckets to flat layout ──
+        const flatCoeffs = new Float32Array(nsgtPlan.totalCoeffs * 2);
+        unpackCoeffsFromBuckets(bucketedBuf, nsgtPlan.bands, nsgtPlan.buckets, flatCoeffs, 'M_m');
+        const tUnpack = performance.now();
+
+        // ── Step 6: Generate synthesis band plan for output length ──
+        const outputLength = Math.round(signalLength * stretchFactor);
+        const outputNpad = nextPowerOf2(outputLength);
+        const synthPlan = generateNSGTBands(sampleRate, outputNpad, binsPerOctave, fMin);
+
+        // ── Diagnostic: compare analysis vs synthesis band plans ──
+        console.log(`%c[NSGT DIAG] Analysis Npad=${Npad}, Synthesis Npad=${outputNpad}, ` +
+            `Analysis bands=${nsgtPlan.numBands}, Synthesis bands=${synthPlan.numBands}`,
+            'color: #FF9800; font-weight: bold');
+        if (nsgtPlan.numBands !== synthPlan.numBands) {
+            console.warn(`[NSGT DIAG] ⚠️ Band count MISMATCH: analysis=${nsgtPlan.numBands} vs synthesis=${synthPlan.numBands}`);
+        }
+        // Compare M_m ratios for a few bands
+        const diagCompare = [];
+        for (let m = 0; m < Math.min(nsgtPlan.bands.length, synthPlan.bands.length); m++) {
+            const a = nsgtPlan.bands[m], s = synthPlan.bands[m];
+            if (m < 3 || m === Math.floor(nsgtPlan.numBands / 2) || m >= nsgtPlan.numBands - 2) {
+                diagCompare.push({
+                    band: m, fCenter: a.fCenter.toFixed(1),
+                    'M_analysis': a.M_m, 'M_synthesis': s.M_m,
+                    ratio: (s.M_m / a.M_m).toFixed(4),
+                    'kStart_a': a.kStart, 'kStart_s': s.kStart,
+                });
+            }
+        }
+        console.table(diagCompare);
+
+        // ── Step 7: Phase vocoder stretch (CPU) ──
+        // Stretch each band from analysis M_m → synthesis M_m (which matches output length)
+        const pvBypass = (typeof window !== 'undefined' && window._nsgtBypassPV);
+        if (pvBypass) {
+            console.log('%c[NSGT DIAG] ⚠️ BYPASS MODE: Skipping phase vocoder, using direct complex interpolation',
+                'color: #F44336; font-weight: bold');
+        }
+        const stretchedCoeffs = nsgtPhaseVocoderStretchToTarget(
+            flatCoeffs, nsgtPlan.bands, synthPlan.bands, Npad, sampleRate,
+            { bypass: pvBypass }
+        );
+        const tStretch = performance.now();
+
+        // ── Step 8: Pack stretched coefficients into synthesis buckets ──
+        const stretchedBucketedBuf = new Float32Array(synthPlan.totalBucketedSize);
+        packCoeffsToBuckets(stretchedCoeffs, synthPlan.bands, synthPlan.buckets, stretchedBucketedBuf, 'M_m');
+        const tPack = performance.now();
+
+        // ── Step 9: Per-band FFT (bucketed, GPU) — forward direction ──
+        await this._runBucketedFFT(synthPlan.buckets, stretchedBucketedBuf, -1.0); // direction=-1 (forward)
+        const tBandFFT = performance.now();
+
+        // ── Step 10: CPU scatter-add with dual windows (using synthesis plan) ──
+        const globalFreq = new Float32Array(outputNpad * 2);
+        nsgtScatterAdd(stretchedBucketedBuf, synthPlan, globalFreq);
+        const tScatter = performance.now();
+
+        // ── Diagnostic: check global frequency buffer ──
+        {
+            let maxMag = 0, maxBin = 0, dcMag = 0, nyqMag = 0;
+            let totalFreqEnergy = 0;
+            const halfN = outputNpad / 2;
+            for (let k = 0; k <= halfN; k++) {
+                const re = globalFreq[k * 2], im = globalFreq[k * 2 + 1];
+                const mag = Math.sqrt(re * re + im * im);
+                totalFreqEnergy += re * re + im * im;
+                if (mag > maxMag) { maxMag = mag; maxBin = k; }
+                if (k === 0) dcMag = mag;
+                if (k === halfN) nyqMag = mag;
+            }
+            // Check conjugate symmetry
+            let conjSymErr = 0;
+            for (let k = 1; k < halfN; k++) {
+                const re_pos = globalFreq[k * 2], im_pos = globalFreq[k * 2 + 1];
+                const re_neg = globalFreq[(outputNpad - k) * 2], im_neg = globalFreq[(outputNpad - k) * 2 + 1];
+                conjSymErr += Math.abs(re_pos - re_neg) + Math.abs(im_pos + im_neg);
+            }
+            const peakFreqHz = maxBin * sampleRate / outputNpad;
+            console.log(`%c[NSGT DIAG] Global freq buffer:`, 'color: #FF9800');
+            console.log(`  Peak: bin ${maxBin} (${peakFreqHz.toFixed(1)} Hz), mag=${maxMag.toFixed(4)}`);
+            console.log(`  DC=${dcMag.toFixed(4)}, Nyquist=${nyqMag.toFixed(4)}`);
+            console.log(`  Total freq energy: ${totalFreqEnergy.toFixed(2)}`);
+            console.log(`  Conjugate symmetry error: ${conjSymErr.toFixed(6)}`);
+            // Check if energy is concentrated in a narrow band (would explain "single tone")
+            let energyInPeak = 0;
+            const peakWindow = Math.max(10, Math.floor(halfN * 0.01));
+            for (let k = Math.max(0, maxBin - peakWindow); k <= Math.min(halfN, maxBin + peakWindow); k++) {
+                energyInPeak += globalFreq[k * 2] ** 2 + globalFreq[k * 2 + 1] ** 2;
+            }
+            console.log(`  Energy in ±${peakWindow} bins around peak: ${(100 * energyInPeak / totalFreqEnergy).toFixed(1)}% of total`);
+        }
+
+        // ── Step 11: Global IFFT on GPU ──
+        const ifftBufA = this.device.createBuffer({
+            size: outputNpad * 2 * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: 'nsgt-ifft-a'
+        });
+        const ifftBufB = this.device.createBuffer({
+            size: outputNpad * 2 * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: 'nsgt-ifft-b'
+        });
+        this.device.queue.writeBuffer(ifftBufA, 0, globalFreq);
+
+        const ifftResult = await this.runFFT(ifftBufA, ifftBufB, outputNpad, 1.0, 1);
+        const tInvFFT = performance.now();
+
+        // Readback final audio
+        const outputComplex = await this.readbackBuffer(ifftResult, outputNpad * 2 * 4);
+        const result = new Float32Array(outputLength);
+        let maxReal = 0, maxImag = 0, sumRealSq = 0, sumImagSq = 0;
+        for (let i = 0; i < outputLength; i++) {
+            result[i] = outputComplex[i * 2]; // real part only
+            const re = Math.abs(outputComplex[i * 2]);
+            const im = Math.abs(outputComplex[i * 2 + 1]);
+            if (re > maxReal) maxReal = re;
+            if (im > maxImag) maxImag = im;
+            sumRealSq += outputComplex[i * 2] ** 2;
+            sumImagSq += outputComplex[i * 2 + 1] ** 2;
+        }
+        const imagRatio = sumRealSq > 0 ? Math.sqrt(sumImagSq / sumRealSq) : 0;
+        console.log(`%c[NSGT DIAG] Output: maxReal=${maxReal.toFixed(6)}, maxImag=${maxImag.toFixed(6)}, ` +
+            `imag/real ratio=${imagRatio.toFixed(6)} ${imagRatio > 0.01 ? '⚠️ HIGH IMAGINARY' : '✓'}`,
+            `color: ${imagRatio > 0.01 ? '#F44336' : '#4CAF50'}; font-weight: bold`);
+
+        // Cleanup GPU buffers
+        fftBufA.destroy();
+        fftBufB.destroy();
+        ifftBufA.destroy();
+        ifftBufB.destroy();
+
+        const totalMs = (performance.now() - t0).toFixed(1);
+        console.log(
+            `%c[NSGT] Stretch ${stretchFactor}x complete in ${totalMs}ms ` +
+            `(plan: ${(tPlan - t0).toFixed(1)}, fwdFFT: ${(tFwdFFT - tPlan).toFixed(1)}, ` +
+            `readFFT: ${(tReadFFT - tFwdFFT).toFixed(1)}, extract: ${(tExtract - tReadFFT).toFixed(1)}, ` +
+            `bandIFFT: ${(tBandIFFT - tExtract).toFixed(1)}, stretch: ${(tStretch - tUnpack).toFixed(1)}, ` +
+            `bandFFT: ${(tBandFFT - tPack).toFixed(1)}, scatter: ${(tScatter - tBandFFT).toFixed(1)}, ` +
+            `invFFT: ${(tInvFFT - tScatter).toFixed(1)}ms)`,
+            'color: #00BCD4; font-weight: bold'
+        );
+
+        // Cache for UI stats
+        this.cachedNumScales = nsgtPlan.numBands;
+        this.cachedSignalLength = signalLength;
+        this.cachedDt = dt;
+
+        return result;
+    }
+
+    /**
+     * Run bucketed FFTs on GPU — groups of same-size FFTs dispatched together.
+     * Reads from and writes back to the provided CPU buffer (round-trip per bucket).
+     *
+     * @param {Array} buckets - Bucket descriptors from NSGT plan
+     * @param {Float32Array} bucketedBuf - CPU buffer (modified in place)
+     * @param {number} direction - -1.0 forward, +1.0 inverse
+     */
+    async _runBucketedFFT(buckets, bucketedBuf, direction) {
+        for (const bucket of buckets) {
+            const { bucketSize, bandIndices, bucketOffset } = bucket;
+            const numSlices = bandIndices.length;
+            if (bucketSize < 2 || numSlices === 0) continue; // skip size-1 (DC/Nyquist)
+
+            const sliceBytes = bucketSize * 2 * 4; // complex f32 pairs per slice
+            const totalBytes = numSlices * sliceBytes;
+
+            // Extract this bucket's data from CPU buffer
+            const bucketData = bucketedBuf.subarray(
+                bucketOffset,
+                bucketOffset + numSlices * bucketSize * 2
+            );
+
+            // Upload to GPU
+            const bufA = this.device.createBuffer({
+                size: totalBytes,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+                label: `nsgt-bucket-${bucketSize}-a`
+            });
+            const bufB = this.device.createBuffer({
+                size: totalBytes,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+                label: `nsgt-bucket-${bucketSize}-b`
+            });
+            this.device.queue.writeBuffer(bufA, 0, bucketData);
+
+            // Run batched FFT
+            const resultBuf = await this.runFFT(bufA, bufB, bucketSize, direction, numSlices);
+
+            // Readback
+            const result = await this.readbackBuffer(resultBuf, totalBytes);
+            bucketedBuf.set(result, bucketOffset);
+
+            // Cleanup
+            bufA.destroy();
+            bufB.destroy();
+        }
     }
 
     /**
@@ -1090,6 +2210,24 @@ export class WaveletGPUCompute {
      * Accounts for: 2× CWT ping-pong buffers + Morlet LUT + FFT working buffers.
      */
     calculateMaxChunkSamples(dt, w0 = 6, dj = 0.1, transform = 'cwt', binsPerOctave = 12, fMin = 20, minBW = 0) {
+        if (transform === 'nsgt') {
+            // NSGT memory is dominated by the global FFT buffers (2 × Npad × 2 × 4 bytes)
+            // plus bucketed per-band buffers (much smaller).
+            // Use 1/4 of max buffer for the global FFT pair.
+            const targetBytes = Math.floor(this.maxOutputBytes / 4);
+            let bestNpad = 1024;
+            for (let logN = 10; logN <= 24; logN++) {
+                const npad = 1 << logN;
+                const fftBytes = npad * 2 * 4; // one complex buffer
+                if (fftBytes <= targetBytes) {
+                    bestNpad = npad;
+                } else {
+                    break;
+                }
+            }
+            return bestNpad;
+        }
+
         // Reserve 1/3 of max buffer for headroom (ping-pong needs 2× CWT buffer)
         const targetCwtBytes = Math.floor(this.maxOutputBytes / 3);
         let bestNpad = 1024; // minimum
@@ -1180,9 +2318,10 @@ export class WaveletGPUCompute {
 
             // CWT + stretch this chunk
             await this.computeCWT(chunk, { dt, w0, dj, transform, binsPerOctave, fMin, minBW });
-            const stretched = phaseMode === 'accumulate'
-                ? await this.stretchAudioCPU(stretchFactor, { phaseRand })
-                : await this.stretchAudio(stretchFactor, { phaseRand, interpMode });
+            const useUnwrapped = phaseMode === 'accumulate';
+            const stretched = await this.stretchAudio(stretchFactor, {
+                phaseRand, interpMode, useUnwrapped
+            });
 
             // Trim stretched output to match actual chunk duration (not padding)
             const chunkOutputLen = Math.round(chunk.length * stretchFactor);
@@ -1373,8 +2512,9 @@ export class WaveletGPUCompute {
         // DIAGNOSTIC: Read back CWT time-domain coefficients
         diag.cwtTimeDomain = await this.readbackBuffer(resultBuf);
 
-        // Cache for stretch
+        // Cache for stretch (invalidate unwrapped phase)
         if (this.cachedCwtBuffer) this.cachedCwtBuffer.destroy();
+        if (this.cachedUnwrappedPhaseBuffer) { this.cachedUnwrappedPhaseBuffer.destroy(); this.cachedUnwrappedPhaseBuffer = null; }
         if (resultBuf === cwtBufA) {
             this.cachedCwtBuffer = cwtBufA;
             cwtBufB.destroy();
@@ -1413,9 +2553,12 @@ export class WaveletGPUCompute {
 
     terminate() {
         if (this.cachedCwtBuffer) { this.cachedCwtBuffer.destroy(); this.cachedCwtBuffer = null; }
+        if (this.cachedUnwrappedPhaseBuffer) { this.cachedUnwrappedPhaseBuffer.destroy(); this.cachedUnwrappedPhaseBuffer = null; }
         if (this.fftUniformBuffer) { this.fftUniformBuffer.destroy(); this.fftUniformBuffer = null; }
         if (this.morletUniformBuffer) { this.morletUniformBuffer.destroy(); this.morletUniformBuffer = null; }
         if (this.stretchUniformBuffer) { this.stretchUniformBuffer.destroy(); this.stretchUniformBuffer = null; }
+        if (this.unwrapUniformBuffer) { this.unwrapUniformBuffer.destroy(); this.unwrapUniformBuffer = null; }
+        if (this.dummyPhaseBuffer) { this.dummyPhaseBuffer.destroy(); this.dummyPhaseBuffer = null; }
 
         if (this.device && this.ownsDevice) this.device.destroy();
         this.device = null;
