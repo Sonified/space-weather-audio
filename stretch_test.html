@@ -280,6 +280,10 @@
             min-width: 100px;
         }
 
+        .csel-pulse .csel-trigger {
+            animation: pulseHint 2.5s ease-in-out infinite;
+        }
+
         .csel-trigger {
             display: flex;
             align-items: center;
@@ -706,12 +710,14 @@
         <!-- Load Audio -->
         <div class="panel">
             <h2 id="loadAudioTitle" class="pulse-hint">Load Audio</h2>
-            <div class="track-list" id="trackList">
-                <!-- Test tracks will be listed here -->
-            </div>
-            <div class="file-drop" id="fileDrop" style="margin-top: 10px;">
-                <p style="margin: 0; font-size: 12px; color: #999;">Drop or browse for a file</p>
-                <input type="file" id="fileInput" accept=".wav,audio/*">
+            <div class="controls">
+                <select id="trackSelect">
+                    <option value="" disabled selected>Choose a track...</option>
+                </select>
+                <span style="color:#555; font-size: 0.85em;">or</span>
+                <button class="secondary" id="loadFileBtn" style="padding: 6px 12px; font-size: 0.82em; background: #252630; border: 1px solid #3A3B42; border-radius: 3px; color: #A0A0A8; cursor: pointer;">Load file...</button>
+                <input type="file" id="fileInput" accept=".wav,audio/*" style="display:none">
+                <div id="fileDrop" style="flex: 1; min-width: 80px; padding: 6px 12px; border: 1px dashed #3A3B42; border-radius: 3px; text-align: center; cursor: pointer; font-size: 0.78em; color: #555; transition: all 0.2s;">Drop file here</div>
             </div>
         </div>
 
@@ -1543,6 +1549,15 @@
             if (sel.id === 'algorithmSelect') {
                 cs.wrapper.classList.add('csel-primary');
             }
+            // Set track selector width + pulse hint
+            if (sel.id === 'trackSelect') {
+                cs.wrapper.style.width = '280px';
+                cs.trigger.style.width = '100%';
+                cs.wrapper.classList.add('csel-pulse');
+                sel.addEventListener('change', () => {
+                    cs.wrapper.classList.remove('csel-pulse');
+                }, { once: true });
+            }
         });
     }
     </script>
@@ -1591,9 +1606,9 @@
         let lastLoadedTrackFile = null;
 
         // ===== DOM ELEMENTS =====
-        const fileDrop = document.getElementById('fileDrop');
         const fileInput = document.getElementById('fileInput');
-        const trackList = document.getElementById('trackList');
+        const trackSelect = document.getElementById('trackSelect');
+        const loadFileBtn = document.getElementById('loadFileBtn');
         const playBtn = document.getElementById('playBtn');
         const loopBtn = document.getElementById('loopBtn');
         const stretchSlider = document.getElementById('stretchSlider');
@@ -2681,17 +2696,25 @@
         // ===== EVENT LISTENERS =====
 
         // File drop zone
+        loadFileBtn.addEventListener('click', () => fileInput.click());
+        const fileDrop = document.getElementById('fileDrop');
         fileDrop.addEventListener('click', () => fileInput.click());
         fileDrop.addEventListener('dragover', (e) => {
             e.preventDefault();
-            fileDrop.classList.add('dragover');
+            fileDrop.style.borderColor = '#4A9E9E';
+            fileDrop.style.color = '#4A9E9E';
         });
-        fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('dragover'));
+        fileDrop.addEventListener('dragleave', () => {
+            fileDrop.style.borderColor = '#3A3B42';
+            fileDrop.style.color = '#555';
+        });
         fileDrop.addEventListener('drop', (e) => {
             e.preventDefault();
-            fileDrop.classList.remove('dragover');
+            fileDrop.style.borderColor = '#3A3B42';
+            fileDrop.style.color = '#555';
             if (e.dataTransfer.files.length > 0) {
                 lastLoadedTrackFile = null;
+                trackSelect.value = '';
                 saveSettings();
                 loadAudioFile(e.dataTransfer.files[0]);
             }
@@ -2699,6 +2722,7 @@
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 lastLoadedTrackFile = null;
+                trackSelect.value = '';
                 saveSettings();
                 loadAudioFile(e.target.files[0]);
             }
@@ -3018,15 +3042,16 @@
         */
 
         testTracks.forEach(track => {
-            const item = document.createElement('div');
-            item.className = 'track-item';
-            item.innerHTML = `<span class="track-name">${track.name}</span>`;
-            item.addEventListener('click', () => {
-                document.querySelectorAll('.track-item').forEach(el => el.classList.remove('active'));
-                item.classList.add('active');
-                loadTestTrack(track.file, track.name);
-            });
-            trackList.appendChild(item);
+            const opt = document.createElement('option');
+            opt.value = track.file;
+            opt.textContent = track.name;
+            trackSelect.appendChild(opt);
+        });
+
+        trackSelect.addEventListener('change', () => {
+            if (trackSelect.value) {
+                loadTestTrack(trackSelect.value);
+            }
         });
 
         // Set initial UI state for restored or default algorithm
@@ -3034,14 +3059,11 @@
 
         // Auto-load last used track (load only, don't play)
         if (lastLoadedTrackFile) {
-            // Highlight the matching track item
-            const trackItems = trackList.querySelectorAll('.track-item');
-            testTracks.forEach((track, i) => {
-                if (track.file === lastLoadedTrackFile && trackItems[i]) {
-                    trackItems[i].classList.add('active');
-                }
-            });
+            trackSelect.value = lastLoadedTrackFile;
             loadTestTrack(lastLoadedTrackFile);
+            // Stop pulse — returning visitor
+            const pulseEl = trackSelect.closest('.csel') || trackSelect.parentElement.querySelector('.csel-pulse');
+            if (pulseEl) pulseEl.classList.remove('csel-pulse');
         }
 
         // Handle window resize
