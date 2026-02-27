@@ -36,3 +36,29 @@ emcc \
 
 WASM_SIZE=$(wc -c < "$OUT_DIR/kissfft.wasm" | tr -d ' ')
 echo "Done! kissfft.wasm = ${WASM_SIZE} bytes ($(echo "scale=1; $WASM_SIZE / 1024" | bc) KB)"
+
+echo ""
+echo "Building RTPGHI WASM..."
+echo "  Output: $OUT_DIR/rtpghi.wasm"
+
+emcc \
+    "$SRC_DIR/rtpghi_stretch.c" \
+    "$SRC_DIR/kiss_fft.c" \
+    "$SRC_DIR/kiss_fftr.c" \
+    -I "$SRC_DIR" \
+    -O3 \
+    -msimd128 \
+    -s WASM=1 \
+    -s STANDALONE_WASM=0 \
+    -s EXPORTED_FUNCTIONS='["_rtpghi_init","_rtpghi_free","_rtpghi_output_length","_rtpghi_stretch_block","_wasm_malloc","_wasm_free","_malloc","_free"]' \
+    -s EXPORTED_RUNTIME_METHODS='[]' \
+    -s ALLOW_MEMORY_GROWTH=1 \
+    -s INITIAL_MEMORY=33554432 \
+    -s TOTAL_STACK=1048576 \
+    -s FILESYSTEM=0 \
+    -s ENVIRONMENT='web' \
+    --no-entry \
+    -o "$OUT_DIR/rtpghi.wasm"
+
+WASM_SIZE=$(wc -c < "$OUT_DIR/rtpghi.wasm" | tr -d ' ')
+echo "Done! rtpghi.wasm = ${WASM_SIZE} bytes ($(echo "scale=1; $WASM_SIZE / 1024" | bc) KB)"
