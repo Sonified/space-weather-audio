@@ -50,7 +50,7 @@ emcc \
     -msimd128 \
     -s WASM=1 \
     -s STANDALONE_WASM=0 \
-    -s EXPORTED_FUNCTIONS='["_rtpghi_init","_rtpghi_free","_rtpghi_output_length","_rtpghi_stretch_block","_wasm_malloc","_wasm_free","_malloc","_free"]' \
+    -s EXPORTED_FUNCTIONS='["_rtpghi_init","_rtpghi_free","_rtpghi_output_length","_rtpghi_stretch_block","_rtpghi_begin_stretch","_rtpghi_process_frames","_rtpghi_finish_stretch","_wasm_malloc","_wasm_free","_malloc","_free"]' \
     -s EXPORTED_RUNTIME_METHODS='[]' \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s INITIAL_MEMORY=33554432 \

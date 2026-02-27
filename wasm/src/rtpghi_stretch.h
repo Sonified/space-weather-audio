@@ -34,6 +34,17 @@ EMSCRIPTEN_KEEPALIVE
 int rtpghi_stretch_block(RTPGHIPlan* plan, const float* input, int input_length,
                          float* output, int max_output_length, float stretch_factor);
 
+/* Streaming (chunked) stretch API — for async processing with progress */
+EMSCRIPTEN_KEEPALIVE
+int rtpghi_begin_stretch(RTPGHIPlan* plan, const float* input, int input_length,
+                         float* output, int max_output_length, float stretch_factor);
+
+EMSCRIPTEN_KEEPALIVE
+int rtpghi_process_frames(RTPGHIPlan* plan, int max_frames);
+
+EMSCRIPTEN_KEEPALIVE
+int rtpghi_finish_stretch(RTPGHIPlan* plan);
+
 /* Memory helpers for JS interop */
 EMSCRIPTEN_KEEPALIVE void* wasm_malloc(int size);
 EMSCRIPTEN_KEEPALIVE void  wasm_free(void* ptr);

@@ -45,6 +45,18 @@ struct RTPGHIPlan {
     /* Persistent state across frames */
     float* log_mag_prev;      /* length bins */
     float* phase_prev;        /* length bins */
+
+    /* Streaming stretch state (for chunked/async processing) */
+    const float* st_input;
+    int st_input_length;
+    float* st_output;
+    int st_output_length;
+    float* st_window_sum;
+    float st_a_ana;
+    float st_source_pos;
+    int st_output_pos;
+    int st_frame;
+    int st_num_frames;
 };
 
 /* ===== Memory helpers for JS interop ===== */
@@ -340,5 +352,102 @@ int rtpghi_stretch_block(RTPGHIPlan* p, const float* input, int input_length,
     /* Shift trimmed data to beginning of output buffer */
     memmove(output, output + trim_start, trimmed_length * sizeof(float));
 
+    return trimmed_length;
+}
+
+/* ===== Streaming (Chunked) Stretch API ===== */
+
+int rtpghi_begin_stretch(RTPGHIPlan* p, const float* input, int input_length,
+                         float* output, int max_output_length, float stretch_factor)
+{
+    int M = p->M;
+    int a_syn = p->a_syn;
+    float a_ana = (float)a_syn / stretch_factor;
+    int bins = p->bins;
+
+    int num_frames = (int)floorf((float)(input_length - M) / a_ana) + 1;
+    if (num_frames < 1) return 0;
+
+    int output_length = num_frames * a_syn + M;
+    if (output_length > max_output_length) output_length = max_output_length;
+
+    /* Zero output buffer */
+    memset(output, 0, output_length * sizeof(float));
+
+    /* Allocate window sum buffer */
+    float* window_sum = (float*)calloc(output_length, sizeof(float));
+    if (!window_sum) return 0;
+
+    /* Reset persistent phase state */
+    memset(p->phase_prev, 0, bins * sizeof(float));
+    memset(p->log_mag_prev, 0, bins * sizeof(float));
+
+    /* Initialize with first frame's log_mag */
+    analyze_frame(p, input, input_length, 0.0f);
+    memcpy(p->log_mag_prev, p->log_mag, bins * sizeof(float));
+
+    /* Store streaming state */
+    p->st_input = input;
+    p->st_input_length = input_length;
+    p->st_output = output;
+    p->st_output_length = output_length;
+    p->st_window_sum = window_sum;
+    p->st_a_ana = a_ana;
+    p->st_source_pos = 0.0f;
+    p->st_output_pos = 0;
+    p->st_frame = 0;
+    p->st_num_frames = num_frames;
+
+    return num_frames;
+}
+
+int rtpghi_process_frames(RTPGHIPlan* p, int max_frames)
+{
+    int M = p->M;
+    int a_syn = p->a_syn;
+    int end_frame = p->st_frame + max_frames;
+    if (end_frame > p->st_num_frames) end_frame = p->st_num_frames;
+
+    for (; p->st_frame < end_frame; p->st_frame++) {
+        analyze_frame(p, p->st_input, p->st_input_length, p->st_source_pos);
+        rtpghi_update(p);
+        synthesize_frame(p);
+
+        /* Overlap-add */
+        for (int i = 0; i < M && (p->st_output_pos + i) < p->st_output_length; i++) {
+            p->st_output[p->st_output_pos + i] += p->syn_frame[i];
+            p->st_window_sum[p->st_output_pos + i] += p->window[i] * p->window[i];
+        }
+
+        memcpy(p->log_mag_prev, p->log_mag, p->bins * sizeof(float));
+        memcpy(p->phase_prev, p->phase_curr, p->bins * sizeof(float));
+
+        p->st_source_pos += p->st_a_ana;
+        p->st_output_pos += a_syn;
+    }
+
+    return p->st_frame;
+}
+
+int rtpghi_finish_stretch(RTPGHIPlan* p)
+{
+    int M = p->M;
+
+    /* Normalize by window overlap */
+    for (int i = 0; i < p->st_output_length; i++) {
+        if (p->st_window_sum[i] > 1e-8f)
+            p->st_output[i] /= p->st_window_sum[i];
+    }
+    free(p->st_window_sum);
+    p->st_window_sum = NULL;
+
+    /* Trim edges */
+    int trim_start = M / 2;
+    int trim_end = p->st_output_pos + M / 2;
+    if (trim_end > p->st_output_length) trim_end = p->st_output_length;
+    int trimmed_length = trim_end - trim_start;
+    if (trimmed_length <= 0) return 0;
+
+    memmove(p->st_output, p->st_output + trim_start, trimmed_length * sizeof(float));
     return trimmed_length;
 }

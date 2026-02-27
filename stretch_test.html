@@ -2125,16 +2125,18 @@
                     const tol = parseFloat(document.getElementById('rtpghiTolSelect').value);
                     const gamma = parseFloat(document.getElementById('rtpghiGammaSelect').value);
 
-                    setStatus(`Processing RTPGHI stretch (${stretchFactor.toFixed(1)}x)...`, 'active');
-
                     if (rtpghiWasmReady) {
-                        // WASM path — fast, synchronous
-                        showProgress(0); // triggers badge glow
-                        stretched = rtpghiStretchWASM(sourceBuffer, stretchFactor,
-                            { M, hopDiv, windowType, phaseMode, tol, gamma });
+                        // WASM async path — chunked for progress updates
+                        setStatus(`Processing RTPGHI stretch via WASM (${stretchFactor.toFixed(1)}x)...`, 'active');
+                        showProgress(0);
+                        stretched = await rtpghiStretchWASMAsync(sourceBuffer, stretchFactor,
+                            { M, hopDiv, windowType, phaseMode, tol, gamma,
+                              onProgress: (frac) => showProgress(frac) });
                     } else {
                         // JS fallback with progress bar
+                        setStatus(`Processing RTPGHI stretch (${stretchFactor.toFixed(1)}x)...`, 'active');
                         showProgress(0);
+                        await new Promise(r => requestAnimationFrame(r));
                         const stretcher = new RTPGHIStretcher({ M, hopDiv, windowType, phaseMode, tol, gamma });
                         stretched = await stretcher.stretch(sourceBuffer, stretchFactor, (frame, total) => {
                             showProgress(frame / total);
@@ -2558,23 +2560,39 @@
                     ctx.stroke();
                 }
 
-                // Main ticks with labels
+                // Main ticks with vertical guide lines and labels
                 for (let t = 0; t <= duration; t += tickInterval) {
                     const x = (t / duration) * width;
+
+                    // Faint vertical guide line (full height)
+                    if (t > 0 && x < width - 10) {
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+                        ctx.lineWidth = 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(x, 0);
+                        ctx.lineTo(x, height);
+                        ctx.stroke();
+                    }
+
+                    // Bottom tick mark
+                    ctx.strokeStyle = 'rgba(160, 160, 170, 0.3)';
+                    ctx.lineWidth = 0.5;
                     ctx.beginPath();
                     ctx.moveTo(x, height - tickH);
                     ctx.lineTo(x, height);
                     ctx.stroke();
 
-                    // Label (skip 0s at far left, skip if too close to right edge)
+                    // Label — right of the line
                     if (t > 0 && x < width - 20) {
                         let label;
                         if (tickInterval >= 60) label = Math.round(t / 60) + 'm';
                         else if (t % 1 === 0) label = Math.round(t) + 's';
                         else label = t.toFixed(1) + 's';
-                        ctx.fillText(label, x, height - tickH - 1);
+                        ctx.textAlign = 'left';
+                        ctx.fillText(label, x + 3, height - tickH - 1);
                     }
                 }
+                ctx.textAlign = 'center'; // restore default
             }
         }
 
@@ -3295,8 +3313,10 @@
         // Upgrade all native <select> elements to custom dropdowns
         upgradeAllSelects();
 
-        // Eagerly load RTPGHI WASM (non-blocking)
-        initRTPGHIWasm().catch(() => {});
+        // Eagerly load RTPGHI WASM (non-blocking), refresh badge when ready
+        initRTPGHIWasm().then(() => {
+            updateControlVisibility(currentAlgorithm);
+        }).catch(() => {});
     </script>
 </body>
 </html>

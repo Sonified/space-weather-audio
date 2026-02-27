@@ -307,6 +307,12 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
             switch (type) {
                 case 'load-audio':
                     console.log(`📨 Paul: Loading audio: ${data.samples.length} samples`);
+                    // Hard stop any in-progress playback/fades before loading new audio
+                    this.isPlaying = false;
+                    this.pendingPause = false;
+                    this.pendingSeekPosition = null;
+                    this.fadeOutRemaining = 0;
+                    this.fadeInRemaining = 0;
                     // Accept transferred Float32Array directly, or convert from plain array
                     this.sourceBuffer = (data.samples instanceof Float32Array) ? data.samples : new Float32Array(data.samples);
                     this.sourcePosition = 0;

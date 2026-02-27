@@ -92,6 +92,11 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
             switch (type) {
                 case 'load-audio':
                     console.log(`📨 Loading audio: ${data.samples.length} samples`);
+                    // Hard stop any in-progress playback/fades before loading new audio
+                    this.isPlaying = false;
+                    this.pendingSeekPosition = null;
+                    this.fadeOutRemaining = 0;
+                    this.fadeInRemaining = 0;
                     this.sourceBuffer = new Float32Array(data.samples);
                     this.sourcePosition = 0;
                     this.resetBuffers();

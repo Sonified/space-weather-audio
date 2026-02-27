@@ -141,3 +141,84 @@ function rtpghiStretchWASM(source, stretchFactor, opts = {}) {
 
     return result;
 }
+
+/**
+ * Async stretch using chunked WASM API — allows progress updates between batches.
+ * @param {Float32Array} source - Input audio samples
+ * @param {number} stretchFactor - Time stretch factor
+ * @param {Object} opts - Same as rtpghiStretchWASM, plus:
+ * @param {function} [opts.onProgress] - Callback(fraction) called between batches
+ * @param {number} [opts.batchSize=128] - Frames per batch (higher = fewer yields, lower = smoother progress)
+ * @returns {Promise<Float32Array>} Stretched audio samples
+ */
+async function rtpghiStretchWASMAsync(source, stretchFactor, opts = {}) {
+    if (!rtpghiWasmReady) throw new Error('RTPGHI WASM not initialized');
+
+    const ex = rtpghiWasmExports;
+    const M        = opts.M || 2048;
+    const hopDiv   = opts.hopDiv || 8;
+    const gamma    = opts.gamma || 0;
+    const tol      = opts.tol || 10;
+    const phaseMode  = RTPGHI_PHASE_MAP[opts.phaseMode || 'full'] || 0;
+    const windowType = RTPGHI_WINDOW_MAP[opts.windowType || 'gauss'] || 0;
+    const batchSize  = opts.batchSize || 128;
+    const onProgress = opts.onProgress || null;
+
+    const plan = ex.rtpghi_init(M, hopDiv, gamma, tol, phaseMode, windowType);
+    if (!plan) throw new Error('RTPGHI WASM: failed to create plan');
+
+    const outLen = ex.rtpghi_output_length(source.length, M, hopDiv, stretchFactor);
+    if (outLen <= 0) {
+        ex.rtpghi_free(plan);
+        return new Float32Array(0);
+    }
+
+    const inputPtr  = ex.wasm_malloc(source.length * 4);
+    const outputPtr = ex.wasm_malloc(outLen * 4);
+    if (!inputPtr || !outputPtr) {
+        if (inputPtr) ex.wasm_free(inputPtr);
+        if (outputPtr) ex.wasm_free(outputPtr);
+        ex.rtpghi_free(plan);
+        throw new Error('RTPGHI WASM: memory allocation failed');
+    }
+
+    let heap = getRTPGHIHeapF32();
+    heap.set(source, inputPtr >> 2);
+
+    const t0 = performance.now();
+
+    // Begin streaming stretch — returns total number of frames
+    const totalFrames = ex.rtpghi_begin_stretch(
+        plan, inputPtr, source.length, outputPtr, outLen, stretchFactor
+    );
+
+    // Process in batches, yielding between each for UI updates
+    let framesProcessed = 0;
+    while (framesProcessed < totalFrames) {
+        framesProcessed = ex.rtpghi_process_frames(plan, batchSize);
+        if (onProgress) onProgress(framesProcessed / totalFrames);
+        // Yield to event loop so browser can paint
+        await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Finalize — normalize + trim
+    const actualLen = ex.rtpghi_finish_stretch(plan);
+    const elapsed = performance.now() - t0;
+
+    heap = getRTPGHIHeapF32();
+    const result = new Float32Array(actualLen);
+    result.set(heap.subarray(outputPtr >> 2, (outputPtr >> 2) + actualLen));
+
+    ex.wasm_free(inputPtr);
+    ex.wasm_free(outputPtr);
+    ex.rtpghi_free(plan);
+
+    const speedup = (source.length / 44100) / (elapsed / 1000);
+    console.log(
+        `%c[RTPGHI WASM] ${source.length.toLocaleString()} → ${actualLen.toLocaleString()} samples ` +
+        `(${stretchFactor.toFixed(2)}x) in ${elapsed.toFixed(0)}ms (${speedup.toFixed(1)}x realtime) [async]`,
+        'color: #9C27B0; font-weight: bold'
+    );
+
+    return result;
+}
