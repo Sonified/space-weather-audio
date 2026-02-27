@@ -370,6 +370,19 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
                     // Their algorithm doesn't have configurable overlap - it's fixed at 50%
                     console.log(`🔀 Paul: Overlap ignored (fixed at 50%)`);
                     break;
+
+                case 'set-position':
+                    // Lightweight position jump for scrubbing — move source position
+                    // and flush input queue, but keep output ring buffer alive.
+                    // Overlap-add naturally crossfades the transition.
+                    if (this.sourceBuffer) {
+                        this.sourcePosition = Math.max(0, Math.min(
+                            Math.floor(data.position * sampleRate),
+                            this.sourceBuffer.length - 1
+                        ));
+                        this.samplesIn.clear();
+                    }
+                    break;
             }
         };
     }

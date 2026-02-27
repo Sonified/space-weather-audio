@@ -453,6 +453,7 @@
             display: flex;
             flex-direction: column;
             gap: 14px;
+            min-height: 135px;
         }
 
         .param-zone .slider-group label {
@@ -770,6 +771,12 @@
 
             <!-- Secondary: Algorithm-specific parameters (recessed sub-zone) -->
             <div class="param-zone" id="paramZone">
+                <div id="resampleParamsRow" class="controls" style="display:none;">
+                    <div class="slider-group" style="flex: none; min-width: auto;">
+                        <label><span>Scrub Inertia: <span id="mouseSmoothValue">10</span></span></label>
+                        <input type="range" id="mouseSmoothSlider" min="1" max="100" step="1" value="10">
+                    </div>
+                </div>
                 <div class="controls" id="windowOverlapRow">
                     <div class="slider-group" id="windowGroup" style="flex: none; min-width: auto;">
                         <label><span id="windowLabel">Window Size</span></label>
@@ -1306,9 +1313,10 @@
                 div.className = 'csel-option';
                 div.setAttribute('role', 'option');
                 div.setAttribute('data-value', opt.value);
-                div.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
+                const isSelected = (opt.value === this.select.value);
+                div.setAttribute('aria-selected', isSelected ? 'true' : 'false');
                 div.textContent = opt.textContent;
-                if (opt.selected) div.classList.add('selected');
+                if (isSelected) div.classList.add('selected');
 
                 div.addEventListener('mouseenter', () => this._highlight(idx));
                 div.addEventListener('click', (e) => {
@@ -1635,6 +1643,7 @@
             return 0.1 * Math.pow(200, sliderValue / 1000);
         }
 
+
         // Slider fill gradient
         function updateSliderFill(slider) {
             const min = parseFloat(slider.min) || 0;
@@ -1662,6 +1671,8 @@
             'rtpghiPhaseSelect', 'rtpghiTolSelect', 'rtpghiGammaSelect'
         ];
 
+        let mouseSmoothing = 10; // cutoff frequency in Hz
+
         function saveSettings() {
             const settings = { loop: isLooping };
             for (const id of persistedSelectIds) {
@@ -1670,6 +1681,7 @@
             }
             settings.stretchSlider = stretchSlider.value;
             settings.overlapSlider = overlapSlider.value;
+            settings.mouseSmoothSlider = document.getElementById('mouseSmoothSlider').value;
             settings.lastTrackFile = lastLoadedTrackFile;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {}
         }
@@ -1700,6 +1712,13 @@
                 overlapValue.textContent = parseFloat(settings.overlapSlider).toFixed(1);
                 savedGranularOverlap = parseFloat(settings.overlapSlider);
                 updateSliderFill(overlapSlider);
+            }
+            if (settings.mouseSmoothSlider !== undefined) {
+                const msSlider = document.getElementById('mouseSmoothSlider');
+                msSlider.value = settings.mouseSmoothSlider;
+                mouseSmoothing = parseInt(settings.mouseSmoothSlider);
+                document.getElementById('mouseSmoothValue').textContent = mouseSmoothing;
+                updateSliderFill(msSlider);
             }
 
             // Restore window value display
@@ -1880,6 +1899,11 @@
                         }
                         pendingResume = null;
                     }
+                } else if (type === 'scrub-position') {
+                    // Processor reports its actual read-head position during scrub
+                    if (isScrubbing) {
+                        playhead.style.left = `${event.data.data.ratio * 100}%`;
+                    }
                 } else if (type === 'ended') {
                     // Reset to beginning
                     stretchNode.port.postMessage({ type: 'seek', data: { position: 0 } });
@@ -2011,8 +2035,8 @@
                     loadNewAudio();
                 }
 
-                // Draw waveform
-                drawWaveform(samples);
+                // Draw waveform (crossfade from previous)
+                drawWaveform(samples, { crossfade: true });
 
                 setStatus(`Loaded (${(samples.length / audioBuffer.sampleRate).toFixed(1)}s). Ready to play.`, 'active');
 
@@ -2208,7 +2232,7 @@
                 updateStats({ processingMs: elapsed });
 
                 setStatus(playingStatus(), 'active');
-                drawWaveform(stretched);
+                drawWaveform(stretched, { crossfade: true });
                 return buf;
             } catch (err) {
                 setStatus(`Processing error: ${err.message}`, 'error');
@@ -2491,8 +2515,20 @@
 
         // ===== VISUALIZATION =====
 
-        function drawWaveform(samples) {
+        function drawWaveform(samples, { crossfade = false } = {}) {
             const canvas = waveformCanvas;
+            const container = canvas.parentElement;
+
+            // Snapshot old waveform as background for crossfade
+            if (crossfade && canvas.width > 0 && canvas.height > 0) {
+                try {
+                    container.style.backgroundImage = `url(${canvas.toDataURL()})`;
+                    container.style.backgroundSize = '100% 100%';
+                } catch (e) { /* ignore tainted canvas */ }
+                canvas.style.transition = 'none';
+                canvas.style.opacity = '0';
+            }
+
             const ctx = canvas.getContext('2d');
             const dpr = window.devicePixelRatio || 1;
 
@@ -2608,6 +2644,19 @@
                     }
                 }
                 ctx.textAlign = 'center'; // restore default
+            }
+
+            // Crossfade: transition new waveform in over old background
+            if (crossfade) {
+                requestAnimationFrame(() => {
+                    canvas.style.transition = 'opacity 0.4s ease-in-out';
+                    canvas.style.opacity = '1';
+                    // Clean up background after transition
+                    setTimeout(() => {
+                        container.style.backgroundImage = '';
+                        container.style.backgroundSize = '';
+                    }, 450);
+                });
             }
         }
 
@@ -2814,6 +2863,16 @@
             saveSettings();
         });
 
+        document.getElementById('mouseSmoothSlider').addEventListener('input', (e) => {
+            mouseSmoothing = parseInt(e.target.value);
+            document.getElementById('mouseSmoothValue').textContent = mouseSmoothing;
+            updateSliderFill(e.target);
+            if (stretchNode && currentAlgorithm === 'resample') {
+                stretchNode.port.postMessage({ type: 'set-scrub-cutoff', data: { value: mouseSmoothing } });
+            }
+            saveSettings();
+        });
+
         // GPU parameter changes — auto re-render when settings change
         let gpuParamRestretchTimeout = null;
         let gpuParamChangePending = false;
@@ -2875,10 +2934,10 @@
 
         function updateControlVisibility(algo) {
             const isOffline = (algo === 'cwt' || algo === 'cqt' || algo === 'rtpghi');
-            const hasParams = (algo !== 'resample'); // resample has no sub-parameters
-
-            // Show/hide the entire parameter sub-zone
-            paramZone.style.display = hasParams ? '' : 'none';
+            // Always show param-zone (min-height keeps layout stable)
+            paramZone.style.display = '';
+            const resampleParamsRow = document.getElementById('resampleParamsRow');
+            resampleParamsRow.style.display = (algo === 'resample') ? '' : 'none';
 
             // Window size: paul, granular, spectral only
             if (algo === 'paul' || algo === 'granular' || algo === 'spectral') {
@@ -2982,7 +3041,7 @@
                     gpuProcessedBuffer = null;
                     gpuPlayingStretch = null;
                     // Redraw waveform with source audio (GPU mode drew the stretched output)
-                    if (sourceBuffer) drawWaveform(sourceBuffer);
+                    if (sourceBuffer) drawWaveform(sourceBuffer, { crossfade: true });
                 }
 
                 // Crossfade to new worklet
@@ -3009,7 +3068,7 @@
                     pendingResume = {
                         position: currentPosition,
                         shouldPlay: wasPlaying,
-                        crossfadeIn: true,
+                        crossfadeIn: wasOffline,  // Only crossfade-in for GPU→Worklet; Worklet→Worklet already faded above
                         fadeOutGPU: wasOffline && !!gpuSource
                     };
                 }
@@ -3077,46 +3136,27 @@
         let isScrubbing = false;
         let wasPlayingBeforeScrub = false;
 
-        function seekToRatio(ratio) {
-            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+        // --- Stretch worklet scrub (paul, granular, spectral): pin loop ---
+        let scrubTargetRatio = 0;
+        let scrubCurrentRatio = 0;
+        let scrubPinRAF = null;
+        const SCRUB_LERP = 0.6;
 
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
+        function scrubPinLoop() {
+            if (!isScrubbing) return;
+            scrubCurrentRatio += (scrubTargetRatio - scrubCurrentRatio) * SCRUB_LERP;
+            if (Math.abs(scrubTargetRatio - scrubCurrentRatio) < 0.0001) {
+                scrubCurrentRatio = scrubTargetRatio;
             }
-
-            if (isOffline) {
-                if (!gpuProcessedBuffer) return;
+            playhead.style.left = `${scrubCurrentRatio * 100}%`;
+            if (stretchNode) {
                 const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
-                const sourcePos = ratio * sourceDuration;
-                playStartPosition = sourcePos;
-                playhead.style.left = `${ratio * 100}%`;
-                playGPUBuffer(gpuProcessedBuffer, sourcePos);
-                if (!isPlaying) {
-                    isPlaying = true;
-                    playBtn.textContent = '⏸';
-                    playBtn.classList.remove('pulse');
-                    setStatus(playingStatus(), 'active');
-                }
-                startPlayheadAnimation();
-            } else {
-                if (!stretchNode) return;
-                const positionInSeconds = (sourceBuffer.length / audioContext.sampleRate) * ratio;
-
-                // Ensure playback is active so user hears scrubbed audio
-                if (!isPlaying) {
-                    stretchNode.port.postMessage({ type: 'play' });
-                    isPlaying = true;
-                    playBtn.textContent = '⏸';
-                    playBtn.classList.remove('pulse');
-                    setStatus(playingStatus(), 'active');
-                }
-
-                stretchNode.port.postMessage({ type: 'seek', data: { position: positionInSeconds } });
-                playStartPosition = positionInSeconds;
-                playStartTime = audioContext.currentTime;
-                playhead.style.left = `${ratio * 100}%`;
+                stretchNode.port.postMessage({ type: 'set-position', data: { position: sourceDuration * scrubCurrentRatio } });
             }
+            scrubPinRAF = requestAnimationFrame(scrubPinLoop);
         }
+
+        // --- Resample scrub: raw mouse position, processor does all smoothing ---
 
         waveformCanvas.addEventListener('mousedown', (e) => {
             if (!sourceBuffer) return;
@@ -3125,28 +3165,109 @@
             wasPlayingBeforeScrub = isPlaying;
             stopPlayheadAnimation();
 
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
             const rect = waveformCanvas.getBoundingClientRect();
             const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            seekToRatio(ratio);
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+
+            if (isOffline) {
+                if (!gpuProcessedBuffer) return;
+                const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
+                playStartPosition = ratio * sourceDuration;
+                playhead.style.left = `${ratio * 100}%`;
+                playGPUBuffer(gpuProcessedBuffer, ratio * sourceDuration);
+                if (!isPlaying) {
+                    isPlaying = true;
+                    playBtn.textContent = '⏸';
+                    playBtn.classList.remove('pulse');
+                    setStatus(playingStatus(), 'active');
+                }
+                startPlayheadAnimation();
+            } else if (stretchNode) {
+                if (!isPlaying) {
+                    stretchNode.port.postMessage({ type: 'play' });
+                    isPlaying = true;
+                    playBtn.textContent = '⏸';
+                    playBtn.classList.remove('pulse');
+                    setStatus(playingStatus(), 'active');
+                }
+
+                const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
+                stretchNode.port.postMessage({ type: 'set-position', data: { position: sourceDuration * ratio } });
+                playStartPosition = sourceDuration * ratio;
+                playStartTime = audioContext.currentTime;
+                playhead.style.left = `${ratio * 100}%`;
+
+                if (currentAlgorithm === 'resample') {
+                    // Scrub: just tell the processor where we clicked
+                    const sourceDuration2 = sourceBuffer.length / audioContext.sampleRate;
+                    scrubTargetRatio = ratio;
+                    stretchNode.port.postMessage({ type: 'scrub-start', data: { position: sourceDuration2 * ratio } });
+                } else {
+                    // Stretch algorithms: pin loop
+                    scrubTargetRatio = ratio;
+                    scrubCurrentRatio = ratio;
+                    scrubPinLoop();
+                }
+            }
         });
 
         document.addEventListener('mousemove', (e) => {
             if (!isScrubbing) return;
             const rect = waveformCanvas.getBoundingClientRect();
             const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            seekToRatio(ratio);
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+
+            if (isOffline) {
+                if (!gpuProcessedBuffer) return;
+                const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
+                playStartPosition = ratio * sourceDuration;
+                playhead.style.left = `${ratio * 100}%`;
+                playGPUBuffer(gpuProcessedBuffer, ratio * sourceDuration);
+            } else {
+                scrubTargetRatio = ratio;
+                if (currentAlgorithm === 'resample' && stretchNode) {
+                    // Send raw mouse position directly — processor does all smoothing
+                    scrubTargetRatio = ratio;
+                    const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
+                    stretchNode.port.postMessage({ type: 'scrub-move', data: { position: sourceDuration * ratio } });
+                    playhead.style.left = `${ratio * 100}%`;
+                }
+            }
         });
 
         document.addEventListener('mouseup', () => {
             if (!isScrubbing) return;
+            const wasResample = (currentAlgorithm === 'resample');
             isScrubbing = false;
 
-            if (isPlaying) {
-                startPlayheadAnimation();
+            if (scrubPinRAF) {
+                cancelAnimationFrame(scrubPinRAF);
+                scrubPinRAF = null;
             }
 
-            // If user wasn't playing before scrub and this was just a click (not drag), keep playing
-            // If they were playing, it's already playing — animation resumes above
+            // Exit scrub mode, sync position for resumed playback
+            if (wasResample && stretchNode) {
+                stretchNode.port.postMessage({ type: 'scrub-stop' });
+                const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
+                playStartPosition = sourceDuration * scrubTargetRatio;
+                playStartTime = audioContext.currentTime;
+            }
+
+            if (isPlaying) {
+                if (!wasResample) {
+                    const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+                    if (!isOffline) {
+                        const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
+                        playStartPosition = sourceDuration * scrubCurrentRatio;
+                        playStartTime = audioContext.currentTime;
+                    }
+                }
+                startPlayheadAnimation();
+            }
         });
 
         // Make waveform cursor indicate clickability

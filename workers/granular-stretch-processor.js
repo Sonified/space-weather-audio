@@ -135,6 +135,17 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
                 case 'set-scatter':
                     this.scatter = data.scatter;
                     break;
+
+                case 'set-position':
+                    // Lightweight position jump for scrubbing — move source position
+                    // but keep the output ring buffer alive so active grains crossfade naturally.
+                    if (this.sourceBuffer) {
+                        this.sourcePosition = Math.max(0, Math.min(
+                            Math.floor(data.position * sampleRate),
+                            this.sourceBuffer.length - 1
+                        ));
+                    }
+                    break;
             }
         };
     }

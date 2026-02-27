@@ -167,6 +167,20 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
                     console.log(`🔀 Overlap: ${this.overlap}, outputHop: ${this.outputHop}`);
                     break;
+
+                case 'set-position':
+                    // Lightweight position jump for scrubbing — move source position
+                    // and clear input buffer, but keep output ring buffer alive.
+                    // Overlap-add naturally crossfades the transition.
+                    if (this.sourceBuffer) {
+                        this.sourcePosition = Math.max(0, Math.min(
+                            Math.floor(data.position * sampleRate),
+                            this.sourceBuffer.length - 1
+                        ));
+                        this.inputBuffer.fill(0);
+                        this.inputWritePos = 0;
+                    }
+                    break;
             }
         };
     }
