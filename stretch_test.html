@@ -15,51 +15,81 @@
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #0D0D0F;
+            background: #0E0E10;
             color: #E0E0E0;
             margin: 0;
-            padding: 16px;
+            padding: 20px 16px;
             min-height: 100vh;
         }
 
         .container {
-            max-width: 800px;
+            max-width: 720px;
             margin: 0 auto;
         }
 
         h1 {
-            color: #E0E0E0;
-            font-size: 1.1em;
-            font-weight: 600;
-            margin-bottom: 4px;
-            letter-spacing: -0.01em;
+            color: #666;
+            font-size: 0.7em;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+            padding-left: 14px;
         }
 
         .subtitle {
-            color: #555;
+            color: #888;
             margin-bottom: 20px;
             font-size: 0.85em;
         }
 
         .panel {
-            background: #1A1A1E;
+            background: #212229;
             border-radius: 6px;
-            border: 1px solid #2A2A2E;
-            padding: 12px 14px;
-            margin-bottom: 8px;
+            border: 1px solid #2F3038;
+            padding: 12px 16px;
+            margin-bottom: 12px;
         }
 
         .panel h2 {
             margin: 0 0 10px 0;
-            color: #555;
+            color: #999;
             font-size: 0.7em;
-            font-weight: 500;
+            font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 1.5px;
+            padding-left: 12px;
+            position: relative;
+        }
+
+        .panel h2::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: -2px;
+            bottom: -2px;
+            width: 3px;
+            border-radius: 2px;
+            background: linear-gradient(180deg, #5BA8A0, #C4954A);
+        }
+
+        .pulse-hint {
+            animation: pulseHint 2s ease-in-out infinite;
+        }
+
+        .pulse-hint.fade-out {
+            animation: none;
+            transition: color 0.6s ease;
+            color: #999;
+        }
+
+        @keyframes pulseHint {
+            0%, 100% { color: #999; }
+            50% { color: #6CC4A0; }
         }
 
         .file-drop {
-            border: 1px dashed #333;
+            border: 1px dashed #3A3B42;
             border-radius: 4px;
             padding: 12px;
             text-align: center;
@@ -78,20 +108,20 @@
 
         .controls {
             display: flex;
-            gap: 12px;
+            gap: 14px;
             align-items: center;
             flex-wrap: wrap;
         }
 
         /* Playback transport buttons */
         .transport-btn {
-            background: none;
-            border: 1px solid #333;
+            background: #252630;
+            border: 1px solid #3A3B42;
             color: #E0E0E0;
-            width: 36px;
+            width: 42px;
             height: 36px;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 18px;
             padding: 0;
             display: inline-flex;
             align-items: center;
@@ -103,19 +133,20 @@
         .transport-btn:hover {
             border-color: #4A9E9E;
             color: #fff;
-            background: rgba(74, 158, 158, 0.08);
+            background: #2E2F38;
         }
 
         .transport-btn:disabled {
-            border-color: #222;
-            color: #444;
+            background: #1C1D22;
+            border-color: #2A2B30;
+            color: #555;
             cursor: not-allowed;
         }
 
         .transport-btn.active {
             border-color: #4A9E9E;
             color: #4A9E9E;
-            background: rgba(74, 158, 158, 0.1);
+            background: rgba(74, 158, 158, 0.12);
         }
 
         @keyframes pulse-glow {
@@ -136,9 +167,9 @@
 
         /* General buttons (download, etc) */
         button {
-            background: none;
+            background: #252630;
             color: #E0E0E0;
-            border: 1px solid #333;
+            border: 1px solid #3A3B42;
             padding: 6px 14px;
             border-radius: 4px;
             font-size: 13px;
@@ -151,11 +182,13 @@
         button:hover {
             border-color: #4A9E9E;
             color: #fff;
+            background: #2E2F38;
         }
 
         button:disabled {
-            border-color: #222;
-            color: #444;
+            background: #1C1D22;
+            border-color: #2A2B30;
+            color: #555;
             cursor: not-allowed;
         }
 
@@ -166,40 +199,68 @@
 
         .slider-group label {
             display: block;
-            margin-bottom: 5px;
-            color: #777;
+            margin-bottom: 7px;
+            color: #EBEBEB;
             font-size: 0.8em;
         }
 
         .slider-group label span {
-            color: #4A9E9E;
+            color: #C4954A;
             font-weight: 600;
+            background: rgba(196, 149, 74, 0.1);
+            padding: 1px 6px;
+            border-radius: 3px;
         }
 
         input[type="range"] {
             width: 100%;
             height: 4px;
             border-radius: 2px;
-            background: #2A2A2E;
+            background: #3A3B45;
             outline: none;
             -webkit-appearance: none;
         }
 
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
-            background: #4A9E9E;
+            background: linear-gradient(135deg, #5BA8A0, #6CC4A0);
             cursor: pointer;
-            border: 2px solid #0D0D0F;
+            border: 2px solid #0E0E10;
+            box-shadow: 0 0 6px rgba(91, 168, 160, 0.3);
         }
 
-        select {
-            background: #141416;
+        /* Larger thumb for stretch slider */
+        #stretchSlider::-webkit-slider-thumb {
+            width: 20px;
+            height: 20px;
+        }
+
+        #stretchSlider {
+            height: 6px;
+            background: #4A4B55;
+        }
+
+        /* Native selects hidden — replaced by custom dropdowns */
+        select.custom-select-native {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+
+        /* Fallback for any selects not yet upgraded */
+        select:not(.custom-select-native) {
+            background: #252630;
             color: #ccc;
             border: none;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #3A3B42;
             padding: 6px 8px;
             border-radius: 2px;
             font-size: 13px;
@@ -208,22 +269,240 @@
             outline: none;
         }
 
-        select:focus {
+        select:not(.custom-select-native):focus {
             border-bottom-color: #4A9E9E;
         }
 
-        .status {
+        /* ===== Custom Dropdown ===== */
+        .csel {
+            position: relative;
+            display: inline-block;
+            min-width: 100px;
+        }
+
+        .csel-trigger {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            background: #252630;
+            border: 1px solid #3A3B42;
+            border-radius: 4px;
+            padding: 6px 10px;
+            color: #E0E0E0;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .csel-trigger:hover {
+            border-color: #4A4B52;
+            background: #2E2F38;
+        }
+
+        .csel-trigger:focus-visible {
+            border-color: #4A9E9E;
+            box-shadow: 0 0 0 2px rgba(74, 158, 158, 0.25);
+        }
+
+        .csel.open .csel-trigger {
+            border-color: #4A9E9E;
+        }
+
+        .csel-arrow {
+            flex-shrink: 0;
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 4px solid #666;
+            transition: transform 0.15s;
+        }
+
+        .csel.open .csel-arrow {
+            transform: rotate(180deg);
+        }
+
+        .csel-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            min-width: 100%;
+            max-height: 280px;
+            overflow-y: auto;
+            background: #282930;
+            border: 1px solid #3A3B42;
+            border-radius: 5px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            padding: 4px 0;
+            /* animation: start hidden */
+            opacity: 0;
+            transform: translateY(-4px);
+            pointer-events: none;
+            transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+        }
+
+        .csel.open .csel-menu {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .csel-option {
+            display: flex;
+            align-items: center;
+            padding: 6px 10px;
+            color: #C0C0C0;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.1s, color 0.1s;
+            white-space: nowrap;
+            border-left: 2px solid transparent;
+        }
+
+        .csel-option:hover,
+        .csel-option.highlighted {
+            background: rgba(74, 158, 158, 0.12);
+            color: #E0E0E0;
+        }
+
+        .csel-option.selected {
+            color: #4A9E9E;
+            border-left-color: #4A9E9E;
+        }
+
+        .csel-option.selected.highlighted {
+            background: rgba(74, 158, 158, 0.15);
+        }
+
+        .csel-group-label {
+            padding: 6px 10px 3px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #666;
+            pointer-events: none;
+            user-select: none;
+        }
+        .csel-group-label:not(:first-child) {
+            margin-top: 4px;
+            border-top: 1px solid #2A2B30;
+            padding-top: 8px;
+        }
+
+        /* Scrollbar in dropdown */
+        .csel-menu::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .csel-menu::-webkit-scrollbar-track {
             background: transparent;
-            padding: 0 8px;
+        }
+
+        .csel-menu::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+
+        /* ===== Primary algorithm selector ===== */
+        .csel.csel-primary .csel-trigger {
+            font-size: 15px;
+            padding: 8px 12px;
+            color: #B0B0B8;
+            font-weight: 600;
+            background: #2A2B34;
+            border-color: rgba(74, 158, 158, 0.35);
+        }
+
+        .csel.csel-primary .csel-trigger:hover {
+            background: #2E2F3A;
+            border-color: rgba(74, 158, 158, 0.5);
+        }
+
+        .csel.csel-primary.open .csel-trigger {
+            border-color: #4A9E9E;
+        }
+
+        .csel.csel-primary .csel-menu {
+            font-size: 14px;
+        }
+
+        .csel.csel-primary .csel-option {
+            font-size: 14px;
+            padding: 8px 12px;
+        }
+
+        /* ===== Parameter sub-zone ===== */
+        .param-zone {
+            margin-top: 10px;
+            padding: 12px 14px;
+            background: #16171C;
+            border-radius: 4px;
+            border: 1px solid #23242A;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .param-zone .slider-group label {
+            color: #C4954A;
+            font-size: 0.75em;
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .param-zone .csel-trigger {
+            font-size: 12px;
+            padding: 5px 8px;
+            color: #909098;
+            font-weight: 500;
+            background: #1C1D22;
+            border-color: #2A2B30;
+        }
+
+        .param-zone .csel-trigger:hover {
+            color: #BBB;
+            background: #22232A;
+            border-color: #3A3B42;
+        }
+
+        .param-zone .csel-option {
+            font-size: 12px;
+            padding: 5px 8px;
+            color: #888;
+        }
+
+        .param-zone .csel-option:hover,
+        .param-zone .csel-option.highlighted {
+            color: #BBB;
+        }
+
+        .param-zone .csel-option.selected {
+            color: #5BA8A0;
+        }
+
+        .status {
+            flex: 1;
+            background: #16171C;
+            padding: 0 10px;
             font-family: 'SF Mono', 'Fira Code', monospace;
             font-size: 0.75em;
-            color: #555;
+            color: #888;
             min-height: auto;
             line-height: 36px;
+            border-radius: 3px;
+            border: 1px solid #1A1A1E;
         }
 
         .status.active {
-            color: #5A8A5A;
+            color: #5BA8A0;
         }
 
         .status.error {
@@ -232,22 +511,22 @@
 
         .stats-grid {
             display: flex;
-            gap: 8px;
+            gap: 10px;
             flex-wrap: wrap;
         }
 
         .stat-box {
-            background: #141416;
-            border: 1px solid #2A2A2E;
+            background: #15161A;
+            border: 1px solid #2A2B30;
             border-radius: 3px;
-            padding: 6px 10px;
+            padding: 8px 10px;
             flex: 1;
             min-width: 80px;
         }
 
         .stat-label {
             font-size: 0.65em;
-            color: #555;
+            color: #aaa;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -255,29 +534,31 @@
         .stat-value {
             font-size: 1em;
             font-weight: 600;
-            color: #777;
+            color: #C4954A;
             margin-top: 1px;
         }
 
         .stat-value.green {
-            color: #5A8A5A;
+            color: #5BA8A0;
         }
 
         .track-list {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            gap: 8px;
+            min-height: 32px;
         }
 
         .track-item {
-            background: transparent;
-            padding: 5px 12px;
+            background: #252630;
+            padding: 6px 12px;
             border-radius: 3px;
             cursor: pointer;
             transition: all 0.15s;
             display: inline-block;
-            border: 1px solid #333;
+            border: 1px solid #3A3B42;
             font-size: 0.82em;
+            color: #A0A0A8;
         }
 
         .track-item:hover {
@@ -286,8 +567,8 @@
         }
 
         .track-item.active {
-            background: rgba(74, 158, 158, 0.12);
-            color: #4A9E9E;
+            background: rgba(74, 158, 158, 0.18);
+            color: #fff;
             border-color: #4A9E9E;
         }
 
@@ -296,16 +577,18 @@
         }
 
         .track-size {
-            color: #555;
+            color: #888;
             font-size: 0.85em;
         }
 
         .waveform-container {
-            height: 100px;
-            background: #000;
+            height: 110px;
+            background: #0A0A0C;
             border-radius: 3px;
             overflow: hidden;
             position: relative;
+            border: 1px solid #111113;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
         }
 
         canvas {
@@ -318,16 +601,16 @@
             top: 0;
             bottom: 0;
             width: 1px;
-            background: #D4943A;
+            background: #FFFFFF;
             pointer-events: none;
-            box-shadow: 0 0 6px rgba(212, 148, 58, 0.4);
+            box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
         }
 
         #waveformTime {
             position: absolute;
             bottom: 4px;
             right: 8px;
-            color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.65);
             font-size: 10px;
             font-family: 'SF Mono', 'Fira Code', monospace;
             pointer-events: none;
@@ -339,7 +622,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 6px 0;
+            padding: 8px 0;
         }
 
         .download-row button {
@@ -353,13 +636,66 @@
         }
 
         #gpuBadge {
-            color: #5A8A5A;
-            font-size: 0.7em;
+            color: rgba(91, 168, 160, 0.55);
+            font-size: 15px;
             font-weight: 500;
-            background: rgba(90, 138, 90, 0.1);
-            padding: 2px 8px;
+            background: rgba(91, 168, 160, 0.07);
+            padding: 0 8px;
             border-radius: 3px;
-            border: 1px solid rgba(90, 138, 90, 0.25);
+            border: 1px solid rgba(91, 168, 160, 0.1);
+            align-self: stretch;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        /* Processing progress */
+        #progressBar {
+            display: none;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 2px;
+            width: 0%;
+            background: linear-gradient(90deg, #5BA8A0, #6CC4A0);
+            z-index: 5;
+            transition: width 0.3s ease-out, opacity 0.2s ease-out;
+            opacity: 1;
+        }
+
+        /* Glass oscilloscope */
+        .osc-glass {
+            position: relative;
+            border-radius: 5px;
+            padding: 4px;
+            background: linear-gradient(135deg, rgba(40, 40, 52, 0.9) 0%, rgba(28, 28, 38, 0.85) 100%);
+            box-shadow: 0 0 4px rgba(80, 80, 110, 0.15), inset 0 0 16px rgba(70, 70, 100, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.12), 0 1px 4px rgba(0, 0, 0, 0.5);
+            border: 0.5px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #oscCanvas {
+            display: block;
+            width: 120px;
+            height: 32px;
+            border-radius: 2px;
+            background: rgba(3, 3, 8, 0.98);
+            box-shadow: inset 0 0 20px rgba(70, 70, 100, 0.4), inset 0 0 10px rgba(90, 70, 110, 0.25), inset 0 1px 2px rgba(0, 0, 0, 0.6);
+            border: 0.5px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .osc-frost {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 120px;
+            height: 32px;
+            border-radius: 2px;
+            pointer-events: none;
+            opacity: 0.5;
+            background-image:
+                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.03) 2px, rgba(255,255,255,0.03) 4px),
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,255,255,0.03) 2px, rgba(255,255,255,0.03) 4px),
+                repeating-linear-gradient(45deg, transparent, transparent 1px, rgba(255,255,255,0.02) 1px, rgba(255,255,255,0.02) 2px),
+                repeating-linear-gradient(-45deg, transparent, transparent 1px, rgba(0,0,0,0.05) 1px, rgba(0,0,0,0.05) 2px);
         }
     </style>
 </head>
@@ -369,12 +705,12 @@
 
         <!-- Load Audio -->
         <div class="panel">
-            <h2>Load Audio</h2>
+            <h2 id="loadAudioTitle" class="pulse-hint">Load Audio</h2>
             <div class="track-list" id="trackList">
                 <!-- Test tracks will be listed here -->
             </div>
             <div class="file-drop" id="fileDrop" style="margin-top: 10px;">
-                <p style="margin: 0; font-size: 12px; color: #555;">Drop or browse for a file</p>
+                <p style="margin: 0; font-size: 12px; color: #999;">Drop or browse for a file</p>
                 <input type="file" id="fileInput" accept=".wav,audio/*">
             </div>
         </div>
@@ -382,46 +718,71 @@
         <!-- Stretch -->
         <div class="panel">
             <h2>Stretch Settings</h2>
-            <div class="controls" style="margin-bottom: 15px;">
-                <div class="slider-group">
-                    <label>Algorithm</label>
+            <!-- Primary: Algorithm selector -->
+            <div style="display: flex; align-items: stretch; gap: 8px;">
+                <div>
                     <select id="algorithmSelect">
-                        <option value="resample">Resample (pitch shift)</option>
-                        <!-- <option value="spectral">FFT (Spectral)</option> -->
-                        <option value="paul" selected>Paul Stretch (STFT)</option>
-                        <option value="granular">Granular</option>
-                        <option value="cwt">CWT (Original Morlet Wavelet)</option>
-                        <option value="cqt">CQT (Constant-Q)</option>
-                        <option value="rtpghi">RTPGHI (Phase Gradient)</option>
-                    </select>
-                    <span id="gpuBadge" style="display:none;">GPU</span>
-                </div>
-
-                <div class="slider-group" id="windowGroup">
-                    <label><span id="windowLabel">Window Size</span>: <span id="windowValue">4096</span></label>
-                    <select id="windowSelect">
-                        <option value="1024">1024 (crisp)</option>
-                        <option value="2048">2048</option>
-                        <option value="4096" selected>4096 (balanced)</option>
-                        <option value="8192">8192</option>
-                        <option value="16384">16384 (smooth)</option>
+                        <optgroup label="Real-Time">
+                            <option value="resample">Resample (pitch shift)</option>
+                            <option value="paul" selected>Paul Stretch (STFT)</option>
+                            <option value="granular">Granular</option>
+                        </optgroup>
+                        <optgroup label="Offline">
+                            <option value="rtpghi">RTPGHI (Phase Gradient)</option>
+                        </optgroup>
+                        <optgroup label="Wavelet (GPU Accelerated)">
+                            <option value="cwt">CWT (Original Morlet Wavelet)</option>
+                            <option value="cqt">CQT (Constant-Q)</option>
+                        </optgroup>
                     </select>
                 </div>
-
-                <div class="slider-group" id="overlapGroup" style="flex: 0 0 150px; min-width: 120px;">
-                    <label>Overlap: <span id="overlapValue">90</span>%</label>
-                    <input type="range" id="overlapSlider" min="50" max="95" step="2.5" value="90">
-                </div>
-            </div>
-            <div class="controls">
-                <div class="slider-group" style="flex: 1;">
-                    <label>Stretch: <span id="stretchValue">1.0</span>x</label>
-                    <input type="range" id="stretchSlider" min="0" max="100" step="1" value="50">
-                </div>
+                <span id="gpuBadge" style="display:none;">GPU Accelerated</span>
             </div>
 
-            <!-- GPU shared controls (phase mode + interpolation, hidden by default) -->
-            <div id="gpuPhaseControls" class="controls" style="display:none; margin-top:15px;">
+            <!-- Primary: Stretch factor — the big fader -->
+            <div style="padding: 16px 0 12px 0;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
+                    <label style="color: #999; font-size: 0.75em; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">Stretch Factor</label>
+                    <span id="stretchValue" style="color: #C4954A; font-weight: 600; font-size: 0.9em; background: rgba(196, 149, 74, 0.1); padding: 1px 8px; border-radius: 3px;">1.0x</span>
+                </div>
+                <div style="position: relative;">
+                    <input type="range" id="stretchSlider" min="0" max="1000" step="1" value="435" style="width: 100%;">
+                    <div style="font-size: 0.65em; color: #888; margin-top: 6px; position: relative; height: 12px; margin-left: 10px; margin-right: 10px;">
+                        <span style="position:absolute; left:0%; transform:translateX(-50%);">0.1x</span>
+                        <span style="position:absolute; left:calc(0% + 22px); font-size:11px;">Shorter</span>
+                        <span style="position:absolute; left:17.3%; transform:translateX(-50%);">.25x</span>
+                        <span style="position:absolute; left:30.4%; transform:translateX(-50%);">0.5x</span>
+                        <span style="position:absolute; left:43.5%; transform:translateX(-50%);">1x</span>
+                        <span style="position:absolute; left:56.6%; transform:translateX(-50%);">2x</span>
+                        <span style="position:absolute; left:73.9%; transform:translateX(-50%);">5x</span>
+                        <span style="position:absolute; left:86.9%; transform:translateX(-50%);">10x</span>
+                        <span style="position:absolute; right:calc(0% + 22px); font-size:11px;">Longer</span>
+                        <span style="position:absolute; left:100%; transform:translateX(-50%);">20x</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secondary: Algorithm-specific parameters (recessed sub-zone) -->
+            <div class="param-zone" id="paramZone">
+                <div class="controls" id="windowOverlapRow">
+                    <div class="slider-group" id="windowGroup" style="flex: none; min-width: auto;">
+                        <label><span id="windowLabel">Window Size</span></label>
+                        <select id="windowSelect">
+                            <option value="1024">1024 (crisp)</option>
+                            <option value="2048">2048</option>
+                            <option value="4096" selected>4096 (balanced)</option>
+                            <option value="8192">8192</option>
+                            <option value="16384">16384 (smooth)</option>
+                        </select>
+                    </div>
+                    <div class="slider-group" id="overlapGroup" style="flex: none; min-width: auto;">
+                        <label><span>Overlap: <span id="overlapValue">90</span>%</span></label>
+                        <input type="range" id="overlapSlider" min="50" max="95" step="2.5" value="90">
+                    </div>
+                </div>
+
+                <!-- GPU shared controls (phase mode + interpolation, hidden by default) -->
+                <div id="gpuPhaseControls" class="controls" style="display:none;">
                 <div class="slider-group">
                     <label>Phase Mode</label>
                     <select id="phaseModeSelect">
@@ -438,157 +799,167 @@
                 </div>
             </div>
 
-            <!-- CWT parameters (hidden by default) -->
-            <div id="cwtControls" class="controls" style="display:none; margin-top:15px;">
-                <div class="slider-group">
-                    <label>w0 (Center Frequency)</label>
-                    <select id="w0Select">
-                        <option value="4">4 (impulsive)</option>
-                        <option value="5">5</option>
-                        <option value="6">6 (original)</option>
-                        <option value="8">8</option>
-                        <option value="10" selected>10 (recommended)</option>
-                        <option value="12">12</option>
-                        <option value="14">14</option>
-                        <option value="16">16</option>
-                        <option value="20">20 (resonant)</option>
-                    </select>
+                <!-- CWT parameters (hidden by default) -->
+                <div id="cwtControls" class="controls" style="display:none;">
+                    <div class="slider-group">
+                        <label>w0 (Center Frequency)</label>
+                        <select id="w0Select">
+                            <option value="4">4 (impulsive)</option>
+                            <option value="5">5</option>
+                            <option value="6">6 (original)</option>
+                            <option value="8">8</option>
+                            <option value="10" selected>10 (recommended)</option>
+                            <option value="12">12</option>
+                            <option value="14">14</option>
+                            <option value="16">16</option>
+                            <option value="20">20 (resonant)</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>dj (Scale Spacing)</label>
+                        <select id="djSelect">
+                            <option value="0.1">0.1 (fine)</option>
+                            <option value="0.125" selected>0.125 (default)</option>
+                            <option value="0.25">0.25 (coarse)</option>
+                            <option value="0.5">0.5 (half-octave)</option>
+                            <option value="1.0">1.0 (octave)</option>
+                            <option value="2.0">2.0 (2-octave)</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="slider-group">
-                    <label>dj (Scale Spacing)</label>
-                    <select id="djSelect">
-                        <option value="0.1">0.1 (fine)</option>
-                        <option value="0.125" selected>0.125 (default)</option>
-                        <option value="0.25">0.25 (coarse)</option>
-                        <option value="0.5">0.5 (half-octave)</option>
-                        <option value="1.0">1.0 (octave)</option>
-                        <option value="2.0">2.0 (2-octave)</option>
-                    </select>
-                </div>
-            </div>
 
-            <!-- CQT parameters (hidden by default) -->
-            <div id="cqtControls" class="controls" style="display:none; margin-top:15px;">
-                <div class="slider-group">
-                    <label>Bins / Octave</label>
-                    <select id="binsPerOctaveSelect">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="4">4</option>
-                        <option value="6">6</option>
-                        <option value="12">12 (semitone)</option>
-                        <option value="24" selected>24 (quarter-tone)</option>
-                        <option value="36">36</option>
-                        <option value="48">48 (fine)</option>
-                    </select>
+                <!-- CQT parameters (hidden by default) -->
+                <div id="cqtControls" class="controls" style="display:none;">
+                    <div class="slider-group">
+                        <label>Bins / Octave</label>
+                        <select id="binsPerOctaveSelect">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="4">4</option>
+                            <option value="6">6</option>
+                            <option value="12">12 (semitone)</option>
+                            <option value="24" selected>24 (quarter-tone)</option>
+                            <option value="36">36</option>
+                            <option value="48">48 (fine)</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>Min Bandwidth</label>
+                        <select id="minBWSelect">
+                            <option value="0">0 (pure CQT)</option>
+                            <option value="25">25 Hz</option>
+                            <option value="50">50 Hz</option>
+                            <option value="100" selected>100 Hz</option>
+                            <option value="200">200 Hz</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="slider-group">
-                    <label>Min Bandwidth</label>
-                    <select id="minBWSelect">
-                        <option value="0">0 (pure CQT)</option>
-                        <option value="25">25 Hz</option>
-                        <option value="50">50 Hz</option>
-                        <option value="100" selected>100 Hz</option>
-                        <option value="200">200 Hz</option>
-                    </select>
-                </div>
-            </div>
 
-            <!-- RTPGHI parameters (hidden by default) -->
-            <div id="rtpghiControls" class="controls" style="display:none; margin-top:15px; flex-wrap:wrap;">
-                <div class="slider-group">
-                    <label>FFT Size (M)</label>
-                    <select id="rtpghiMSelect">
-                        <option value="512">512</option>
-                        <option value="1024">1024</option>
-                        <option value="2048" selected>2048</option>
-                        <option value="4096">4096</option>
-                        <option value="8192">8192</option>
-                    </select>
+                <!-- RTPGHI parameters (hidden by default) -->
+                <div id="rtpghiControls" class="controls" style="display:none; flex-wrap:wrap;">
+                    <div class="slider-group">
+                        <label>FFT Size (M)</label>
+                        <select id="rtpghiMSelect">
+                            <option value="512">512</option>
+                            <option value="1024">1024</option>
+                            <option value="2048" selected>2048</option>
+                            <option value="4096">4096</option>
+                            <option value="8192">8192</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>Hop Divisor (Overlap)</label>
+                        <select id="rtpghiHopSelect">
+                            <option value="4">M/4 — 75% (coarse)</option>
+                            <option value="8" selected>M/8 — 87.5%</option>
+                            <option value="16">M/16 — 93.75%</option>
+                            <option value="32">M/32 — 96.9% (fine)</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>Window</label>
+                        <select id="rtpghiWindowSelect">
+                            <option value="gauss" selected>Gaussian</option>
+                            <option value="hann">Hann</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>Phase Mode</label>
+                        <select id="rtpghiPhaseSelect">
+                            <option value="time" selected>Time only</option>
+                            <option value="full">Full (time + freq)</option>
+                            <option value="freq">Frequency only</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>Tolerance (dB)</label>
+                        <select id="rtpghiTolSelect">
+                            <option value="20">20 dB</option>
+                            <option value="40" selected>40 dB</option>
+                            <option value="60">60 dB</option>
+                            <option value="80">80 dB</option>
+                            <option value="100">100 dB</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>Gamma (γ)</label>
+                        <select id="rtpghiGammaSelect">
+                            <option value="25000">25,000</option>
+                            <option value="100000">100,000</option>
+                            <option value="500000">500,000</option>
+                            <option value="1000000" selected>1,000,000</option>
+                            <option value="2000000">2,000,000</option>
+                            <option value="4000000">4,000,000</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="slider-group">
-                    <label>Hop Divisor</label>
-                    <select id="rtpghiHopSelect">
-                        <option value="4">M/4</option>
-                        <option value="8" selected>M/8</option>
-                        <option value="16">M/16</option>
-                        <option value="32">M/32</option>
-                    </select>
-                </div>
-                <div class="slider-group">
-                    <label>Window</label>
-                    <select id="rtpghiWindowSelect">
-                        <option value="gauss" selected>Gaussian</option>
-                        <option value="hann">Hann</option>
-                    </select>
-                </div>
-                <div class="slider-group">
-                    <label>Phase Mode</label>
-                    <select id="rtpghiPhaseSelect">
-                        <option value="time" selected>Time only</option>
-                        <option value="full">Full (time + freq)</option>
-                        <option value="freq">Frequency only</option>
-                    </select>
-                </div>
-                <div class="slider-group">
-                    <label>Tolerance (dB)</label>
-                    <select id="rtpghiTolSelect">
-                        <option value="20">20 dB</option>
-                        <option value="40" selected>40 dB</option>
-                        <option value="60">60 dB</option>
-                        <option value="80">80 dB</option>
-                        <option value="100">100 dB</option>
-                    </select>
-                </div>
-                <div class="slider-group">
-                    <label>Gamma (γ)</label>
-                    <select id="rtpghiGammaSelect">
-                        <option value="25000">25,000</option>
-                        <option value="100000">100,000</option>
-                        <option value="500000">500,000</option>
-                        <option value="1000000" selected>1,000,000</option>
-                        <option value="2000000">2,000,000</option>
-                        <option value="4000000">4,000,000</option>
-                    </select>
-                </div>
-            </div>
+            </div><!-- /param-zone -->
         </div>
 
         <!-- Playback -->
         <div class="panel">
             <h2>Playback</h2>
             <div class="controls" style="margin-bottom: 10px;">
-                <button id="playBtn" class="transport-btn" disabled title="Play">▶</button>
-                <button id="stopBtn" class="transport-btn" disabled title="Stop">■</button>
-                <button id="loopBtn" class="transport-btn" title="Loop">⟳</button>
+                <button id="playBtn" class="transport-btn" style="width: 52px;" disabled title="Play">▶</button>
+                <button id="loopBtn" class="transport-btn" title="Loop" style="font-size: 24px; line-height: 1; padding-bottom: 3px;">⟳</button>
                 <div class="status" id="status">Ready</div>
             </div>
             <div class="waveform-container">
                 <canvas id="waveformCanvas"></canvas>
                 <div class="playhead" id="playhead" style="left: 0"></div>
                 <div id="waveformTime"></div>
+                <div id="progressBar"></div>
+            </div>
+        </div>
+
+        <!-- Download + Oscilloscope row -->
+        <div id="downloadPanel" style="display: none; padding: 4px 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div class="download-row">
+                    <button id="downloadBtn">⬇ WAV</button>
+                    <div class="status" id="downloadStatus">Ready to export</div>
+                </div>
+                <div id="oscilloscope-panel">
+                    <div class="osc-glass">
+                        <canvas id="oscCanvas" width="120" height="32"></canvas>
+                        <div class="osc-frost"></div>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Stats -->
-        <div class="panel" id="statsPanel" style="display: none;">
-            <div class="stats-grid">
-                <div class="stat-box"><div class="stat-label">Total</div><div class="stat-value green" id="statTotal">-</div></div>
-                <div class="stat-box"><div class="stat-label">Realtime</div><div class="stat-value green" id="statRealtime">-</div></div>
-                <div class="stat-box"><div class="stat-label">Output Length</div><div class="stat-value" id="statLength">-</div></div>
-                <div class="stat-box"><div class="stat-label">File Size</div><div class="stat-value" id="statSize">-</div></div>
-            </div>
-        </div>
-
-        <!-- Download -->
-        <div id="downloadPanel" style="display: none; padding: 4px 14px;">
-            <div class="download-row">
-                <button id="downloadBtn">⬇ WAV</button>
-                <div class="status" id="downloadStatus">Ready to export</div>
+        <div id="statsPanel" style="display: none; padding: 6px 16px; margin-top: 24px; opacity: 0.75;">
+            <div class="stats-grid" style="gap: 6px;">
+                <div class="stat-box" style="padding: 4px 8px; background: transparent; border: none;"><div class="stat-label">Processing Time</div><div class="stat-value green" id="statTotal" style="font-size: 0.85em;">-</div></div>
+                <div class="stat-box" style="padding: 4px 8px; background: transparent; border: none;"><div class="stat-label">Processing Speed</div><div class="stat-value green" id="statRealtime" style="font-size: 0.85em;">-</div></div>
+                <div class="stat-box" style="padding: 4px 8px; background: transparent; border: none;"><div class="stat-label">Output Length</div><div class="stat-value" id="statLength" style="font-size: 0.85em;">-</div></div>
+                <div class="stat-box" style="padding: 4px 8px; background: transparent; border: none;"><div class="stat-label">File Size</div><div class="stat-value" id="statSize" style="font-size: 0.85em;">-</div></div>
             </div>
         </div>
     </div>
 
+    <script src="js/rtpghi-wasm-loader.js"></script>
     <script>
     // RTPGHIStretcher — Real-Time Phase Gradient Heap Integration (Prusa et al.)
     class RTPGHIStretcher {
@@ -771,7 +1142,7 @@
             return out;
         }
 
-        stretch(source, stretchFactor, onProgress = null) {
+        async stretch(source, stretchFactor, onProgress = null) {
             const M = this.M;
             const aSyn = this.aSyn;
             const aAna = aSyn / stretchFactor;
@@ -793,6 +1164,7 @@
 
             let sourcePos = 0;
             let outputPos = 0;
+            let lastYield = performance.now();
 
             for (let frame = 0; frame < numInputFrames; frame++) {
                 this._analyzeFrame(source, sourcePos, mag, logMag);
@@ -811,7 +1183,15 @@
                 sourcePos += aAna;
                 outputPos += aSyn;
 
-                if (onProgress && frame % 100 === 0) onProgress(frame, numInputFrames);
+                if (onProgress) {
+                    // Yield to UI periodically so progress bar can repaint
+                    const now = performance.now();
+                    if (now - lastYield > 40) {
+                        onProgress(frame, numInputFrames);
+                        await new Promise(r => setTimeout(r, 0));
+                        lastYield = performance.now();
+                    }
+                }
             }
 
             for (let i = 0; i < outputLength; i++) {
@@ -825,6 +1205,345 @@
             if (onProgress) onProgress(numInputFrames, numInputFrames);
             return trimmed;
         }
+    }
+    </script>
+
+    <script>
+    /**
+     * CustomSelect — Accessible custom dropdown replacing native <select>.
+     * Preserves the native element (hidden) so .value and change events still work.
+     */
+    class CustomSelect {
+        constructor(selectEl) {
+            this.select = selectEl;
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+            this.typeBuffer = '';
+            this.typeTimer = null;
+
+            this._build();
+            this._bindEvents();
+        }
+
+        _build() {
+            const sel = this.select;
+
+            // Hide native select (keep in DOM for form/value compat)
+            sel.classList.add('custom-select-native');
+            sel.setAttribute('tabindex', '-1');
+            sel.setAttribute('aria-hidden', 'true');
+
+            // Wrapper
+            this.wrapper = document.createElement('div');
+            this.wrapper.className = 'csel';
+
+            // Trigger button
+            this.trigger = document.createElement('button');
+            this.trigger.type = 'button';
+            this.trigger.className = 'csel-trigger';
+            this.trigger.setAttribute('role', 'combobox');
+            this.trigger.setAttribute('aria-haspopup', 'listbox');
+            this.trigger.setAttribute('aria-expanded', 'false');
+            const menuId = sel.id + '-menu';
+            this.trigger.setAttribute('aria-controls', menuId);
+
+            this.label = document.createElement('span');
+            this.label.className = 'csel-label';
+
+            const arrow = document.createElement('span');
+            arrow.className = 'csel-arrow';
+            arrow.setAttribute('aria-hidden', 'true');
+
+            this.trigger.appendChild(this.label);
+            this.trigger.appendChild(arrow);
+
+            // Menu
+            this.menu = document.createElement('div');
+            this.menu.className = 'csel-menu';
+            this.menu.id = menuId;
+            this.menu.setAttribute('role', 'listbox');
+            this.menu.setAttribute('aria-label', this._getLabel());
+
+            this.options = [];
+            this._buildOptions();
+
+            this.wrapper.appendChild(this.trigger);
+            this.wrapper.appendChild(this.menu);
+
+            // Insert wrapper after select
+            sel.parentNode.insertBefore(this.wrapper, sel.nextSibling);
+            // Move native select inside wrapper (for positioning context)
+            this.wrapper.appendChild(sel);
+
+            this._syncLabel();
+        }
+
+        _getLabel() {
+            // Try to find a label associated with this select
+            const parent = this.select.closest('.slider-group');
+            if (parent) {
+                const lbl = parent.querySelector('label');
+                if (lbl) return lbl.textContent.trim();
+            }
+            return this.select.id || 'Select';
+        }
+
+        _buildOptions() {
+            this.menu.innerHTML = '';
+            this.options = [];
+
+            const children = this.select.children;
+            let optIndex = 0;
+            const addOption = (opt) => {
+                const idx = optIndex++;
+                const div = document.createElement('div');
+                div.className = 'csel-option';
+                div.setAttribute('role', 'option');
+                div.setAttribute('data-value', opt.value);
+                div.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
+                div.textContent = opt.textContent;
+                if (opt.selected) div.classList.add('selected');
+
+                div.addEventListener('mouseenter', () => this._highlight(idx));
+                div.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._selectIndex(idx);
+                    this._close();
+                    this.trigger.focus();
+                });
+
+                this.menu.appendChild(div);
+                this.options.push(div);
+            };
+
+            Array.from(children).forEach(child => {
+                if (child.tagName === 'OPTGROUP') {
+                    const header = document.createElement('div');
+                    header.className = 'csel-group-label';
+                    header.textContent = child.label;
+                    this.menu.appendChild(header);
+                    Array.from(child.children).forEach(opt => addOption(opt));
+                } else if (child.tagName === 'OPTION') {
+                    addOption(child);
+                }
+            });
+        }
+
+        _bindEvents() {
+            // Toggle on trigger click
+            this.trigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.isOpen ? this._close() : this._open();
+            });
+
+            // Keyboard on trigger
+            this.trigger.addEventListener('keydown', (e) => this._onKeyDown(e));
+
+            // Close on outside click
+            this._outsideClick = (e) => {
+                if (this.isOpen && !this.wrapper.contains(e.target)) {
+                    this._close();
+                }
+            };
+            document.addEventListener('click', this._outsideClick);
+
+            // If native select value changes programmatically, sync UI
+            const origDescriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+            const self = this;
+            Object.defineProperty(this.select, 'value', {
+                get() { return origDescriptor.get.call(this); },
+                set(v) {
+                    origDescriptor.set.call(this, v);
+                    self._syncFromNative();
+                }
+            });
+        }
+
+        _open() {
+            this.isOpen = true;
+            this.wrapper.classList.add('open');
+            this.trigger.setAttribute('aria-expanded', 'true');
+
+            // Highlight current selection
+            const selectedIdx = this.select.selectedIndex;
+            this._highlight(selectedIdx);
+
+            // Scroll selected into view
+            if (this.options[selectedIdx]) {
+                this.options[selectedIdx].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        _close() {
+            this.isOpen = false;
+            this.wrapper.classList.remove('open');
+            this.trigger.setAttribute('aria-expanded', 'false');
+            this.highlightedIndex = -1;
+        }
+
+        _highlight(index) {
+            if (index < 0 || index >= this.options.length) return;
+            this.options.forEach(o => o.classList.remove('highlighted'));
+            this.options[index].classList.add('highlighted');
+            this.highlightedIndex = index;
+            this.trigger.setAttribute('aria-activedescendant', this.menu.id + '-' + index);
+            this.options[index].id = this.menu.id + '-' + index;
+            this.options[index].scrollIntoView({ block: 'nearest' });
+        }
+
+        _selectIndex(index) {
+            if (index < 0 || index >= this.options.length) return;
+            const prevIndex = this.select.selectedIndex;
+
+            // Update native select
+            this.select.selectedIndex = index;
+
+            // Update visual
+            this.options.forEach(o => {
+                o.classList.remove('selected');
+                o.setAttribute('aria-selected', 'false');
+            });
+            this.options[index].classList.add('selected');
+            this.options[index].setAttribute('aria-selected', 'true');
+
+            this._syncLabel();
+
+            // Fire change event if value actually changed
+            if (prevIndex !== index) {
+                this.select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+
+        _syncLabel() {
+            const opt = this.select.options[this.select.selectedIndex];
+            this.label.textContent = opt ? opt.textContent : '';
+        }
+
+        _syncFromNative() {
+            // Called when native .value is set programmatically
+            const idx = this.select.selectedIndex;
+            this.options.forEach((o, i) => {
+                o.classList.toggle('selected', i === idx);
+                o.setAttribute('aria-selected', i === idx ? 'true' : 'false');
+            });
+            this._syncLabel();
+        }
+
+        _onKeyDown(e) {
+            const { key } = e;
+
+            switch (key) {
+                case 'Enter':
+                case ' ':
+                    e.preventDefault();
+                    if (this.isOpen) {
+                        if (this.highlightedIndex >= 0) {
+                            this._selectIndex(this.highlightedIndex);
+                        }
+                        this._close();
+                    } else {
+                        this._open();
+                    }
+                    break;
+
+                case 'Escape':
+                    if (this.isOpen) {
+                        e.preventDefault();
+                        this._close();
+                    }
+                    break;
+
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (!this.isOpen) {
+                        this._open();
+                    } else {
+                        const next = Math.min(this.highlightedIndex + 1, this.options.length - 1);
+                        this._highlight(next);
+                    }
+                    break;
+
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (!this.isOpen) {
+                        this._open();
+                    } else {
+                        const prev = Math.max(this.highlightedIndex - 1, 0);
+                        this._highlight(prev);
+                    }
+                    break;
+
+                case 'Home':
+                    if (this.isOpen) {
+                        e.preventDefault();
+                        this._highlight(0);
+                    }
+                    break;
+
+                case 'End':
+                    if (this.isOpen) {
+                        e.preventDefault();
+                        this._highlight(this.options.length - 1);
+                    }
+                    break;
+
+                case 'Tab':
+                    if (this.isOpen) {
+                        this._close();
+                    }
+                    break;
+
+                default:
+                    // Type-ahead: jump to first option starting with typed character(s)
+                    if (key.length === 1) {
+                        this._typeAhead(key);
+                    }
+                    break;
+            }
+        }
+
+        _typeAhead(char) {
+            clearTimeout(this.typeTimer);
+            this.typeBuffer += char.toLowerCase();
+            this.typeTimer = setTimeout(() => { this.typeBuffer = ''; }, 500);
+
+            const match = this.options.findIndex(o =>
+                o.textContent.toLowerCase().startsWith(this.typeBuffer)
+            );
+            if (match >= 0) {
+                if (this.isOpen) {
+                    this._highlight(match);
+                } else {
+                    this._selectIndex(match);
+                }
+            }
+        }
+
+        /** Rebuild options (call if <option>s change dynamically) */
+        refresh() {
+            this._buildOptions();
+            this._syncLabel();
+        }
+
+        destroy() {
+            document.removeEventListener('click', this._outsideClick);
+            this.wrapper.parentNode.insertBefore(this.select, this.wrapper);
+            this.wrapper.remove();
+            this.select.classList.remove('custom-select-native');
+            this.select.removeAttribute('aria-hidden');
+            this.select.removeAttribute('tabindex');
+        }
+    }
+
+    // Upgrade all select elements after DOM is ready
+    function upgradeAllSelects() {
+        document.querySelectorAll('select:not(.custom-select-native)').forEach(sel => {
+            const cs = new CustomSelect(sel);
+            // Mark algorithm selector as primary
+            if (sel.id === 'algorithmSelect') {
+                cs.wrapper.classList.add('csel-primary');
+            }
+        });
     }
     </script>
 
@@ -849,6 +1568,11 @@
         let gpuIsProcessing = false;
         let gpuPlayingStretch = null;   // stretch factor of currently-playing GPU buffer
 
+        // Oscilloscope
+        let oscAnalyser = null;
+        let oscBuffer = null;
+        let oscRAF = null;
+
         // Crossfade settings
         const CROSSFADE_DURATION = 0.15; // 150ms crossfade
 
@@ -863,17 +1587,19 @@
         // Saved overlap value for granular (since Paul uses fixed 50%)
         let savedGranularOverlap = 90;
 
+        // Last loaded track (for settings persistence)
+        let lastLoadedTrackFile = null;
+
         // ===== DOM ELEMENTS =====
         const fileDrop = document.getElementById('fileDrop');
         const fileInput = document.getElementById('fileInput');
         const trackList = document.getElementById('trackList');
         const playBtn = document.getElementById('playBtn');
-        const stopBtn = document.getElementById('stopBtn');
         const loopBtn = document.getElementById('loopBtn');
         const stretchSlider = document.getElementById('stretchSlider');
         const stretchValue = document.getElementById('stretchValue');
         const windowSelect = document.getElementById('windowSelect');
-        const windowValue = document.getElementById('windowValue');
+        const windowValue = document.getElementById('windowValue'); // may be null if label was simplified
         const windowLabel = document.getElementById('windowLabel');
         const overlapSlider = document.getElementById('overlapSlider');
         const overlapValue = document.getElementById('overlapValue');
@@ -887,10 +1613,132 @@
 
         // ===== UTILITY FUNCTIONS =====
 
-        // Exponential mapping for stretch slider: more resolution at low values
-        // slider 0-100 → stretch 0.1-10 exponentially (slider 50 = 1x)
+        // Log mapping for stretch slider: more resolution at low values
+        // slider 0-1000 → stretch 0.1x-20x  (slider 435 ≈ 1x)
+        // f(x) = 0.1 * 200^(x/1000)
         function sliderToStretch(sliderValue) {
-            return Math.pow(10, sliderValue / 50 - 1);
+            return 0.1 * Math.pow(200, sliderValue / 1000);
+        }
+
+        // Slider fill gradient
+        function updateSliderFill(slider) {
+            const min = parseFloat(slider.min) || 0;
+            const max = parseFloat(slider.max) || 100;
+            const val = parseFloat(slider.value) || 0;
+            const pct = ((val - min) / (max - min)) * 100;
+            const unfilled = slider.id === 'stretchSlider' ? '#3A3B42' : '#2A2B30';
+            slider.style.background = `linear-gradient(90deg, #5BA8A0 0%, #6CC4A0 ${pct}%, ${unfilled} ${pct}%, ${unfilled} 100%)`;
+        }
+
+        // Apply to all sliders on input
+        document.querySelectorAll('input[type="range"]').forEach(s => {
+            s.addEventListener('input', () => updateSliderFill(s));
+            updateSliderFill(s);
+        });
+
+        // ===== SETTINGS PERSISTENCE =====
+        const SETTINGS_KEY = 'stretchTest_settings';
+
+        const persistedSelectIds = [
+            'algorithmSelect', 'windowSelect',
+            'w0Select', 'djSelect', 'binsPerOctaveSelect', 'minBWSelect',
+            'phaseModeSelect', 'interpModeSelect',
+            'rtpghiMSelect', 'rtpghiHopSelect', 'rtpghiWindowSelect',
+            'rtpghiPhaseSelect', 'rtpghiTolSelect', 'rtpghiGammaSelect'
+        ];
+
+        function saveSettings() {
+            const settings = { loop: isLooping };
+            for (const id of persistedSelectIds) {
+                const el = document.getElementById(id);
+                if (el) settings[id] = el.value;
+            }
+            settings.stretchSlider = stretchSlider.value;
+            settings.overlapSlider = overlapSlider.value;
+            settings.lastTrackFile = lastLoadedTrackFile;
+            try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {}
+        }
+
+        function loadSettings() {
+            let settings;
+            try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY)); } catch {}
+            if (!settings) return;
+
+            // Restore selects
+            for (const id of persistedSelectIds) {
+                const el = document.getElementById(id);
+                if (el && settings[id] !== undefined) {
+                    const opts = Array.from(el.options).map(o => o.value);
+                    if (opts.includes(settings[id])) el.value = settings[id];
+                }
+            }
+
+            // Restore sliders
+            if (settings.stretchSlider !== undefined) {
+                stretchSlider.value = settings.stretchSlider;
+                const stretch = sliderToStretch(parseFloat(settings.stretchSlider));
+                stretchValue.textContent = (stretch < 10 ? stretch.toFixed(1) : Math.round(stretch)) + 'x';
+                updateSliderFill(stretchSlider);
+            }
+            if (settings.overlapSlider !== undefined) {
+                overlapSlider.value = settings.overlapSlider;
+                overlapValue.textContent = parseFloat(settings.overlapSlider).toFixed(1);
+                savedGranularOverlap = parseFloat(settings.overlapSlider);
+                updateSliderFill(overlapSlider);
+            }
+
+            // Restore window value display
+            if (windowValue && settings.windowSelect !== undefined) {
+                windowValue.textContent = settings.windowSelect;
+            }
+
+            // Restore loop
+            if (settings.loop) {
+                isLooping = true;
+                loopBtn.classList.add('active');
+            }
+
+            // Restore algorithm state
+            if (settings.algorithmSelect) {
+                currentAlgorithm = settings.algorithmSelect;
+            }
+
+            // Restore last loaded track file path
+            if (settings.lastTrackFile) {
+                lastLoadedTrackFile = settings.lastTrackFile;
+            }
+        }
+
+        loadSettings();
+
+        // ===== STATS PANEL =====
+
+        let lastProcessingMs = null; // Preserve across updateStats calls
+
+        function updateStats(opts = {}) {
+            if (!sourceBuffer) return;
+            const stretchFactor = opts.stretchFactor || sliderToStretch(parseFloat(stretchSlider.value));
+            const inputDuration = sourceBuffer.length / sourceSampleRate;
+            const outputDuration = inputDuration * stretchFactor;
+            const wavSize = 44 + Math.ceil(sourceBuffer.length * stretchFactor) * 2;
+
+            if (opts.processingMs != null) {
+                lastProcessingMs = opts.processingMs;
+            }
+
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+            if (lastProcessingMs != null && isOffline) {
+                const ms = lastProcessingMs;
+                document.getElementById('statTotal').textContent = ms < 1000 ? ms.toFixed(0) + 'ms' : (ms / 1000).toFixed(2) + 's';
+                const speedMultiple = inputDuration / (ms / 1000);
+                document.getElementById('statRealtime').textContent = speedMultiple.toFixed(1) + 'x realtime';
+            } else {
+                document.getElementById('statTotal').textContent = 'Real-time';
+                document.getElementById('statRealtime').textContent = '-';
+            }
+            document.getElementById('statLength').textContent = outputDuration.toFixed(1) + 's';
+            document.getElementById('statSize').textContent = wavSize > 1048576 ? (wavSize / 1048576).toFixed(1) + ' MB' : (wavSize / 1024).toFixed(0) + ' KB';
+            document.getElementById('statsPanel').style.display = '';
         }
 
         // ===== INITIALIZATION =====
@@ -958,7 +1806,14 @@
             stretchGain = audioContext.createGain();
             stretchGain.gain.value = startGain;
             stretchNode.connect(stretchGain);
-            stretchGain.connect(audioContext.destination);
+            if (!oscAnalyser) {
+                oscAnalyser = audioContext.createAnalyser();
+                oscAnalyser.fftSize = 2048;
+                oscBuffer = new Float32Array(oscAnalyser.fftSize);
+                oscAnalyser.connect(audioContext.destination);
+                startOscilloscope();
+            }
+            stretchGain.connect(oscAnalyser);
             setupWorkletListeners();
 
             // Re-send audio if we had some loaded
@@ -977,20 +1832,36 @@
                 if (type === 'loaded') {
                     setStatus('Audio loaded. Ready to play.', 'active');
                     playBtn.disabled = false;
-                    stopBtn.disabled = false;
+
                     playBtn.classList.add('pulse');
 
                     // Check for pending resume after algorithm switch
                     if (pendingResume) {
+                        // Restore gain if it was zeroed during file-switch fade-out
+                        if (pendingResume.restoreGain && stretchGain && audioContext) {
+                            stretchGain.gain.cancelScheduledValues(audioContext.currentTime);
+                            stretchGain.gain.setValueAtTime(1, audioContext.currentTime);
+                        }
+                        // Crossfade: fade in new worklet, fade out old source
+                        if (pendingResume.crossfadeIn && stretchGain && audioContext) {
+                            const now = audioContext.currentTime;
+                            stretchGain.gain.setValueAtTime(0, now);
+                            stretchGain.gain.linearRampToValueAtTime(1, now + CROSSFADE_DURATION);
+                            // Fade out GPU source now that worklet is ready
+                            if (pendingResume.fadeOutGPU) {
+                                fadeOutGPUSource();
+                            }
+                        }
                         stretchNode.port.postMessage({ type: 'seek', data: { position: pendingResume.position } });
                         playStartPosition = pendingResume.position;
                         if (pendingResume.shouldPlay) {
                             stretchNode.port.postMessage({ type: 'play' });
                             isPlaying = true;
+                            playStartTime = audioContext.currentTime;
                             playBtn.textContent = '⏸';
                             playBtn.classList.remove('pulse');
                             startPlayheadAnimation();
-                            setStatus('Playing...', 'active');
+                            setStatus(playingStatus(), 'active');
                         }
                         pendingResume = null;
                     }
@@ -1004,7 +1875,8 @@
                         // Restart playback
                         stretchNode.port.postMessage({ type: 'play' });
                         playStartTime = audioContext.currentTime;
-                        setStatus('Looping...', 'active');
+                        startPlayheadAnimation();
+                        setStatus(playingStatus(), 'active');
                     } else {
                         setStatus('Playback ended.', 'active');
                         isPlaying = false;
@@ -1022,6 +1894,12 @@
         async function loadAudioFile(file) {
             try {
                 setStatus('Loading...');
+                // Fade out the "Load Audio" pulse hint
+                const hint = document.getElementById('loadAudioTitle');
+                if (hint && hint.classList.contains('pulse-hint')) {
+                    hint.classList.add('fade-out');
+                    hint.classList.remove('pulse-hint');
+                }
                 await initAudio();
 
                 const arrayBuffer = await file.arrayBuffer();
@@ -1041,9 +1919,21 @@
                     }
                 }
 
+                // Remember if we were playing so we can auto-play the new file
+                const wasPlaying = isPlaying;
+
                 sourceBuffer = samples;
                 sourceSampleRate = audioBuffer.sampleRate;
                 gpuProcessedBuffer = null; // invalidate any cached GPU result
+
+                // Fade out old audio if playing, with generous buffer before loading new file
+                const FADE_OUT_MS = 50;
+                const SILENCE_GAP_MS = 30; // extra silence after fade completes
+                if (wasPlaying && stretchGain && audioContext) {
+                    const now = audioContext.currentTime;
+                    stretchGain.gain.setValueAtTime(stretchGain.gain.value, now);
+                    stretchGain.gain.linearRampToValueAtTime(0, now + FADE_OUT_MS / 1000);
+                }
 
                 // Stop any active GPU playback
                 if (gpuSource) stopGPUSource();
@@ -1064,17 +1954,46 @@
 
                 const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
 
-                if (isOffline) {
-                    // GPU mode: enable play button directly (no worklet needed)
-                    playBtn.disabled = false;
-                    stopBtn.disabled = false;
-                    playBtn.classList.add('pulse');
+                // Load new audio and optionally auto-play.
+                // Gain stays at 0 until the new file is actually ready to play.
+                const loadNewAudio = () => {
+                    if (isOffline) {
+                        playBtn.disabled = false;
+                        playBtn.classList.add('pulse');
+                    } else {
+                        stretchNode.port.postMessage({
+                            type: 'load-audio',
+                            data: { samples: Array.from(samples) }
+                        });
+                    }
+
+                    // Auto-play new file if old one was playing
+                    if (wasPlaying) {
+                        if (isOffline) {
+                            // Restore gain, then play
+                            if (stretchGain && audioContext) {
+                                stretchGain.gain.cancelScheduledValues(audioContext.currentTime);
+                                stretchGain.gain.setValueAtTime(1, audioContext.currentTime);
+                            }
+                            togglePlay();
+                        } else {
+                            // pendingResume: gain restored when worklet confirms 'loaded'
+                            pendingResume = { position: 0, shouldPlay: true, restoreGain: true };
+                        }
+                    } else {
+                        // Not auto-playing — just restore gain immediately
+                        if (stretchGain && audioContext) {
+                            stretchGain.gain.cancelScheduledValues(audioContext.currentTime);
+                            stretchGain.gain.setValueAtTime(1, audioContext.currentTime);
+                        }
+                    }
+                };
+
+                if (wasPlaying) {
+                    // Wait for fade-out + silence gap before loading new audio
+                    setTimeout(loadNewAudio, FADE_OUT_MS + SILENCE_GAP_MS);
                 } else {
-                    // Send to worklet
-                    stretchNode.port.postMessage({
-                        type: 'load-audio',
-                        data: { samples: Array.from(samples) }
-                    });
+                    loadNewAudio();
                 }
 
                 // Draw waveform
@@ -1082,10 +2001,11 @@
 
                 setStatus(`Loaded (${(samples.length / audioBuffer.sampleRate).toFixed(1)}s). Ready to play.`, 'active');
 
-                // Show download panel
+                // Show download panel and stats
                 downloadPanel.style.display = '';
                 downloadStatus.textContent = 'Ready to export.';
                 downloadStatus.className = 'status';
+                updateStats();
 
             } catch (err) {
                 setStatus(`Error loading file: ${err.message}`, 'error');
@@ -1102,6 +2022,8 @@
                 const blob = await response.blob();
                 const file = new File([blob], filename, { type: 'audio/wav' });
                 await loadAudioFile(file);
+                lastLoadedTrackFile = filename;
+                saveSettings();
 
             } catch (err) {
                 setStatus(`Error loading track: ${err.message}`, 'error');
@@ -1140,10 +2062,43 @@
                 stretchNode.port.postMessage({ type: 'play' });
                 playBtn.textContent = '⏸';
                 startPlayheadAnimation();
-                setStatus('Playing...', 'active');
+                setStatus(playingStatus(), 'active');
             }
 
             isPlaying = !isPlaying;
+        }
+
+        // ===== PROCESSING PROGRESS =====
+        const progressBar = document.getElementById('progressBar');
+        const gpuBadgeEl = document.getElementById('gpuBadge');
+
+        let badgeGlowing = false;
+
+        function showProgress(fraction) {
+            const pct = Math.round(fraction * 100);
+            // Glow the badge while processing (offline algorithms)
+            if (!badgeGlowing && (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi')) {
+                badgeGlowing = true;
+                gpuBadgeEl.style.transition = 'background 0.3s, box-shadow 0.3s';
+                gpuBadgeEl.style.background = 'rgba(91, 168, 160, 0.25)';
+                gpuBadgeEl.style.boxShadow = '0 0 8px rgba(91, 168, 160, 0.4)';
+            }
+            // Waveform bar
+            progressBar.style.display = 'block';
+            progressBar.style.width = pct + '%';
+        }
+
+        function hideProgress() {
+            badgeGlowing = false;
+            gpuBadgeEl.style.background = 'rgba(91, 168, 160, 0.1)';
+            gpuBadgeEl.style.boxShadow = 'none';
+            // Fade out the bar
+            progressBar.style.opacity = '0';
+            setTimeout(() => {
+                progressBar.style.display = 'none';
+                progressBar.style.width = '0%';
+                progressBar.style.opacity = '1';
+            }, 200);
         }
 
         // ===== GPU WAVELET PLAYBACK =====
@@ -1162,7 +2117,7 @@
                 let stretched;
 
                 if (algo === 'rtpghi') {
-                    // RTPGHI — CPU-based STFT phase gradient stretch
+                    // RTPGHI — WASM-accelerated STFT phase gradient stretch
                     const M = parseInt(document.getElementById('rtpghiMSelect').value);
                     const hopDiv = parseInt(document.getElementById('rtpghiHopSelect').value);
                     const windowType = document.getElementById('rtpghiWindowSelect').value;
@@ -1172,8 +2127,19 @@
 
                     setStatus(`Processing RTPGHI stretch (${stretchFactor.toFixed(1)}x)...`, 'active');
 
-                    const stretcher = new RTPGHIStretcher({ M, hopDiv, windowType, phaseMode, tol, gamma });
-                    stretched = stretcher.stretch(sourceBuffer, stretchFactor);
+                    if (rtpghiWasmReady) {
+                        // WASM path — fast, synchronous
+                        showProgress(0); // triggers badge glow
+                        stretched = rtpghiStretchWASM(sourceBuffer, stretchFactor,
+                            { M, hopDiv, windowType, phaseMode, tol, gamma });
+                    } else {
+                        // JS fallback with progress bar
+                        showProgress(0);
+                        const stretcher = new RTPGHIStretcher({ M, hopDiv, windowType, phaseMode, tol, gamma });
+                        stretched = await stretcher.stretch(sourceBuffer, stretchFactor, (frame, total) => {
+                            showProgress(frame / total);
+                        });
+                    }
                 } else {
                     // CWT / CQT — GPU wavelet stretch
                     const dt = 1.0 / sourceSampleRate;
@@ -1196,7 +2162,11 @@
                     }
 
                     setStatus(`Processing ${algo.toUpperCase()} stretch (${stretchFactor.toFixed(1)}x)...`, 'active');
+                    showProgress(0);
 
+                    opts.onChunkDone = (ci, total) => {
+                        showProgress((ci + 1) / total);
+                    };
                     stretched = await waveletGPU.waveletStretchChunked(
                         sourceBuffer, stretchFactor, opts
                     );
@@ -1218,19 +2188,9 @@
                 buf.getChannelData(0).set(stretched);
                 gpuProcessedBuffer = buf;
 
-                // Update stats panel
-                const inputDuration = sourceBuffer.length / sourceSampleRate;
-                const outputDuration = stretched.length / sourceSampleRate;
-                const realtimeRatio = (elapsed / 1000) / inputDuration;
-                const wavSize = 44 + stretched.length * 2; // 16-bit WAV header + PCM data
+                updateStats({ processingMs: elapsed });
 
-                document.getElementById('statTotal').textContent = elapsed < 1000 ? elapsed.toFixed(0) + 'ms' : (elapsed/1000).toFixed(2) + 's';
-                document.getElementById('statRealtime').textContent = realtimeRatio.toFixed(2) + 'x';
-                document.getElementById('statLength').textContent = outputDuration.toFixed(1) + 's';
-                document.getElementById('statSize').textContent = wavSize > 1048576 ? (wavSize / 1048576).toFixed(1) + ' MB' : (wavSize / 1024).toFixed(0) + ' KB';
-                document.getElementById('statsPanel').style.display = '';
-
-                setStatus(`${algo.toUpperCase()} stretch done in ${elapsed < 1000 ? elapsed.toFixed(0) + 'ms' : (elapsed/1000).toFixed(2) + 's'}. Playing...`, 'active');
+                setStatus(playingStatus(), 'active');
                 drawWaveform(stretched);
                 return buf;
             } catch (err) {
@@ -1239,6 +2199,15 @@
                 return null;
             } finally {
                 gpuIsProcessing = false;
+                // Snap to 100% instantly (no transition lag), then fade out
+                progressBar.style.transition = 'opacity 0.2s ease-out';
+                progressBar.style.width = '100%';
+                await new Promise(r => requestAnimationFrame(r));
+                hideProgress();
+                // Restore transition for next run
+                setTimeout(() => {
+                    progressBar.style.transition = 'width 0.3s ease-out, opacity 0.2s ease-out';
+                }, 250);
             }
         }
 
@@ -1250,7 +2219,14 @@
             stopGPUSource();
 
             gpuGain = audioContext.createGain();
-            gpuGain.connect(audioContext.destination);
+            if (!oscAnalyser) {
+                oscAnalyser = audioContext.createAnalyser();
+                oscAnalyser.fftSize = 2048;
+                oscBuffer = new Float32Array(oscAnalyser.fftSize);
+                oscAnalyser.connect(audioContext.destination);
+                startOscilloscope();
+            }
+            gpuGain.connect(oscAnalyser);
 
             gpuSource = audioContext.createBufferSource();
             gpuSource.buffer = buffer;
@@ -1308,15 +2284,33 @@
             }, CROSSFADE_DURATION * 1000 + 50);
         }
 
-        function stopGPUSource() {
+        const GPU_SEEK_FADE = 0.015; // 15ms fade to avoid click
+
+        function stopGPUSource(immediate = false) {
             if (gpuSource) {
                 gpuSource.onended = null; // prevent stale ended event from killing new playback
-                try { gpuSource.stop(); } catch {}
-                try { gpuSource.disconnect(); } catch {}
+                if (!immediate && gpuGain && audioContext) {
+                    // Quick fade-out to avoid click
+                    const oldSource = gpuSource;
+                    const oldGain = gpuGain;
+                    const now = audioContext.currentTime;
+                    oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+                    oldGain.gain.linearRampToValueAtTime(0, now + GPU_SEEK_FADE);
+                    setTimeout(() => {
+                        try { oldSource.stop(); } catch {}
+                        try { oldSource.disconnect(); } catch {}
+                        try { oldGain.disconnect(); } catch {}
+                    }, GPU_SEEK_FADE * 1000 + 5);
+                } else {
+                    try { gpuSource.stop(); } catch {}
+                    try { gpuSource.disconnect(); } catch {}
+                }
                 gpuSource = null;
             }
             if (gpuGain) {
-                try { gpuGain.disconnect(); } catch {}
+                if (immediate) {
+                    try { gpuGain.disconnect(); } catch {}
+                }
                 gpuGain = null;
             }
         }
@@ -1350,7 +2344,7 @@
             // Need to process first?
             if (!gpuProcessedBuffer) {
                 playBtn.disabled = true;
-                playBtn.textContent = 'Processing...';
+                playBtn.textContent = '▶';
                 const buf = await runOfflineStretch();
                 playBtn.disabled = false;
                 if (!buf) {
@@ -1365,7 +2359,7 @@
             isPlaying = true;
             playBtn.textContent = '⏸';
             startPlayheadAnimation(); // unified animation works for both modes
-            setStatus('Playing...', 'active');
+            setStatus(playingStatus(), 'active');
         }
 
         // Process GPU stretch in background, then crossfade from whatever is currently playing.
@@ -1408,7 +2402,7 @@
             // Start new GPU buffer with crossfade (sourcePos is in source-time)
             playGPUBuffer(buf, sourcePos, true);
             startPlayheadAnimation();
-            setStatus('Playing...', 'active');
+            setStatus(playingStatus(), 'active');
         }
 
         // GPU animation removed — unified startPlayheadAnimation() handles both modes
@@ -1494,11 +2488,11 @@
             const height = canvas.offsetHeight;
 
             // Clear
-            ctx.fillStyle = '#1a1a2e';
+            ctx.fillStyle = '#0A0A0E';
             ctx.fillRect(0, 0, width, height);
 
             // Draw waveform
-            ctx.strokeStyle = '#00d4ff';
+            ctx.strokeStyle = '#B89870';
             ctx.lineWidth = 1;
             ctx.beginPath();
 
@@ -1527,14 +2521,133 @@
             ctx.stroke();
 
             // Center line
-            ctx.strokeStyle = '#333';
+            ctx.strokeStyle = 'rgba(91, 168, 160, 0.15)';
             ctx.beginPath();
             ctx.moveTo(0, height / 2);
             ctx.lineTo(width, height / 2);
             ctx.stroke();
+
+            // Time axis ticks
+            const duration = samples.length / (sourceSampleRate || 44100);
+            if (duration > 0) {
+                // Pick nice tick interval based on duration
+                let tickInterval;
+                if (duration <= 2) tickInterval = 0.25;
+                else if (duration <= 5) tickInterval = 0.5;
+                else if (duration <= 15) tickInterval = 1;
+                else if (duration <= 60) tickInterval = 5;
+                else if (duration <= 300) tickInterval = 30;
+                else tickInterval = 60;
+
+                const tickH = 4;
+                const miniTickH = 2;
+                ctx.fillStyle = 'rgba(160, 160, 170, 0.5)';
+                ctx.strokeStyle = 'rgba(160, 160, 170, 0.3)';
+                ctx.lineWidth = 0.5;
+                ctx.font = '9px monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+
+                // Sub-ticks (half intervals)
+                const subInterval = tickInterval / 2;
+                for (let t = subInterval; t < duration; t += tickInterval) {
+                    const x = (t / duration) * width;
+                    ctx.beginPath();
+                    ctx.moveTo(x, height - miniTickH);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                }
+
+                // Main ticks with labels
+                for (let t = 0; t <= duration; t += tickInterval) {
+                    const x = (t / duration) * width;
+                    ctx.beginPath();
+                    ctx.moveTo(x, height - tickH);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+
+                    // Label (skip 0s at far left, skip if too close to right edge)
+                    if (t > 0 && x < width - 20) {
+                        let label;
+                        if (tickInterval >= 60) label = Math.round(t / 60) + 'm';
+                        else if (t % 1 === 0) label = Math.round(t) + 's';
+                        else label = t.toFixed(1) + 's';
+                        ctx.fillText(label, x, height - tickH - 1);
+                    }
+                }
+            }
+        }
+
+        // ===== GLASS OSCILLOSCOPE =====
+
+        function startOscilloscope() {
+            const canvas = document.getElementById('oscCanvas');
+            const ctx = canvas.getContext('2d', { alpha: true });
+            const w = canvas.width;
+            const h = canvas.height;
+            let scrollOffset = 0;
+            const circBuf = new Float32Array(1024);
+            let circWrite = 0;
+
+            function renderOsc() {
+                oscRAF = requestAnimationFrame(renderOsc);
+                if (!oscAnalyser) return;
+
+                // Pull fresh samples
+                oscAnalyser.getFloatTimeDomainData(oscBuffer);
+                for (let i = 0; i < 128; i++) {
+                    circBuf[circWrite] = oscBuffer[i];
+                    circWrite = (circWrite + 1) % circBuf.length;
+                }
+
+                // Measure energy for glow
+                let energy = 0;
+                for (let i = 0; i < 128; i++) energy += Math.abs(oscBuffer[i]);
+                energy = Math.min(1, energy / 20);
+
+                ctx.clearRect(0, 0, w, h);
+
+                // Center line
+                ctx.strokeStyle = 'rgba(80, 90, 140, 0.15)';
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(0, h / 2);
+                ctx.lineTo(w, h / 2);
+                ctx.stroke();
+
+                // Waveform
+                const alpha = 0.15 + energy * 0.85;
+                ctx.strokeStyle = `rgba(255, 130, 90, ${alpha})`;
+                ctx.lineWidth = 1.2;
+                ctx.shadowColor = `rgba(255, 100, 60, ${energy * 0.6})`;
+                ctx.shadowBlur = energy * 8;
+                ctx.beginPath();
+
+                scrollOffset = (scrollOffset + 2) % circBuf.length;
+                const samplesPerPx = circBuf.length / w;
+                for (let x = 0; x < w; x++) {
+                    const idx = Math.floor((scrollOffset + x * samplesPerPx) % circBuf.length);
+                    const y = h / 2 - circBuf[idx] * h * 0.8;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            renderOsc();
         }
 
         // ===== UTILITY =====
+
+        const algoNames = { resample: 'Resample', spectral: 'Spectral', paul: 'Paul Stretch', granular: 'Granular', cwt: 'CWT', cqt: 'CQT', rtpghi: 'RTPGHI' };
+
+        function playingStatus() {
+            const stretch = sliderToStretch(parseFloat(stretchSlider.value));
+            const name = algoNames[currentAlgorithm] || currentAlgorithm;
+            const val = stretch < 10 ? stretch.toFixed(1) : Math.round(stretch);
+            return `Playing ${name} at ${val}x...`;
+        }
 
         function setStatus(message, type = '') {
             status.textContent = message;
@@ -1560,21 +2673,26 @@
             e.preventDefault();
             fileDrop.classList.remove('dragover');
             if (e.dataTransfer.files.length > 0) {
+                lastLoadedTrackFile = null;
+                saveSettings();
                 loadAudioFile(e.dataTransfer.files[0]);
             }
         });
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
+                lastLoadedTrackFile = null;
+                saveSettings();
                 loadAudioFile(e.target.files[0]);
             }
         });
 
         // Playback controls
         playBtn.addEventListener('click', togglePlay);
-        stopBtn.addEventListener('click', stop);
+
         loopBtn.addEventListener('click', () => {
             isLooping = !isLooping;
             loopBtn.classList.toggle('active', isLooping);
+            saveSettings();
         });
 
         // Stretch slider
@@ -1586,7 +2704,10 @@
         stretchSlider.addEventListener('input', (e) => {
             const sliderValue = parseFloat(e.target.value);
             const stretch = sliderToStretch(sliderValue);
-            stretchValue.textContent = stretch.toFixed(1);
+            stretchValue.textContent = (stretch < 10 ? stretch.toFixed(1) : Math.round(stretch)) + 'x';
+            updateStats({ stretchFactor: stretch });
+
+            if (isPlaying) setStatus(playingStatus(), 'active');
 
             const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
             if (isOffline) {
@@ -1620,12 +2741,13 @@
             if (stretchNode) {
                 stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: stretch } });
             }
+            saveSettings();
         });
 
         // Window size / Grain size
         windowSelect.addEventListener('change', (e) => {
             const value = parseInt(e.target.value);
-            windowValue.textContent = value;
+            if (windowValue) windowValue.textContent = value;
             if (stretchNode) {
                 if (currentAlgorithm === 'spectral' || currentAlgorithm === 'paul') {
                     stretchNode.port.postMessage({ type: 'set-window-size', data: { size: value } });
@@ -1633,6 +2755,7 @@
                     stretchNode.port.postMessage({ type: 'set-grain-size', data: { size: value } });
                 }
             }
+            saveSettings();
         });
 
         // Overlap
@@ -1646,22 +2769,40 @@
             if (stretchNode) {
                 stretchNode.port.postMessage({ type: 'set-overlap', data: { overlap: value / 100 } });
             }
+            saveSettings();
         });
 
         // GPU parameter changes — auto re-render when settings change
         let gpuParamRestretchTimeout = null;
+        let gpuParamChangePending = false;
+
         function onGPUParamChange() {
+            saveSettings();
             const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
             if (!isOffline || !sourceBuffer) return;
 
             gpuProcessedBuffer = null; // invalidate
             clearTimeout(gpuParamRestretchTimeout);
-            gpuParamRestretchTimeout = setTimeout(() => {
+            gpuParamRestretchTimeout = setTimeout(async () => {
+                // If already processing, flag for re-run after current finishes
+                if (gpuIsProcessing) {
+                    gpuParamChangePending = true;
+                    return;
+                }
                 if (isPlaying) {
-                    processAndCrossfadeGPU(gpuPlayingStretch);
+                    await processAndCrossfadeGPU(gpuPlayingStretch);
                 } else {
-                    // Not playing — still re-render so it's ready when they press Play
-                    runOfflineStretch();
+                    await runOfflineStretch();
+                }
+                // If params changed again while we were processing, re-run
+                if (gpuParamChangePending) {
+                    gpuParamChangePending = false;
+                    gpuProcessedBuffer = null;
+                    if (isPlaying) {
+                        processAndCrossfadeGPU(gpuPlayingStretch);
+                    } else {
+                        runOfflineStretch();
+                    }
                 }
             }, 150);
         }
@@ -1688,15 +2829,21 @@
         const gpuPhaseControls = document.getElementById('gpuPhaseControls');
         const gpuBadge = document.getElementById('gpuBadge');
 
+        const paramZone = document.getElementById('paramZone');
+
         function updateControlVisibility(algo) {
             const isOffline = (algo === 'cwt' || algo === 'cqt' || algo === 'rtpghi');
+            const hasParams = (algo !== 'resample'); // resample has no sub-parameters
+
+            // Show/hide the entire parameter sub-zone
+            paramZone.style.display = hasParams ? '' : 'none';
 
             // Window size: paul, granular, spectral only
             if (algo === 'paul' || algo === 'granular' || algo === 'spectral') {
                 windowGroup.style.display = '';
                 windowLabel.textContent = algo === 'granular' ? 'Grain Size' : 'Window Size';
                 windowSelect.disabled = false;
-                windowValue.textContent = windowSelect.value;
+                if (windowValue) windowValue.textContent = windowSelect.value;
             } else {
                 windowGroup.style.display = 'none';
             }
@@ -1711,6 +2858,14 @@
                 overlapGroup.style.display = 'none';
             }
 
+            // Hide the whole window/overlap row if neither is visible
+            const windowOverlapRow = document.getElementById('windowOverlapRow');
+            if (algo === 'paul' || algo === 'granular' || algo === 'spectral') {
+                windowOverlapRow.style.display = '';
+            } else {
+                windowOverlapRow.style.display = 'none';
+            }
+
             // CWT params: cwt only
             cwtControls.style.display = algo === 'cwt' ? 'flex' : 'none';
 
@@ -1723,8 +2878,16 @@
             // GPU phase mode: cwt or cqt
             gpuPhaseControls.style.display = (algo === 'cwt' || algo === 'cqt') ? 'flex' : 'none';
 
-            // GPU badge
-            gpuBadge.style.display = (algo === 'cwt' || algo === 'cqt') ? 'inline' : 'none';
+            // Accelerator badge
+            if (algo === 'cwt' || algo === 'cqt') {
+                gpuBadge.textContent = 'GPU Accelerated';
+                gpuBadge.style.display = 'inline-flex';
+            } else if (algo === 'rtpghi' && rtpghiWasmReady) {
+                gpuBadge.textContent = 'WASM Accelerated';
+                gpuBadge.style.display = 'inline-flex';
+            } else {
+                gpuBadge.style.display = 'none';
+            }
         }
 
         algorithmSelect.addEventListener('change', (e) => {
@@ -1732,6 +2895,7 @@
             if (currentAlgorithm === 'granular') {
                 savedGranularOverlap = parseFloat(overlapSlider.value);
             }
+            saveSettings();
 
             const algo = e.target.value;
             const isOffline = (algo === 'cwt' || algo === 'cqt' || algo === 'rtpghi');
@@ -1769,11 +2933,8 @@
                 const currentPosition = wasPlaying ? getCurrentSourcePosition(currentStretch) : playStartPosition;
 
                 currentAlgorithm = algo;
+                lastProcessingMs = null; // Reset on algorithm switch
 
-                // Fade out GPU source if it was playing
-                if (wasOffline && gpuSource) {
-                    fadeOutGPUSource();
-                }
                 // Free GPU buffer when leaving GPU mode
                 if (wasOffline) {
                     gpuProcessedBuffer = null;
@@ -1787,9 +2948,9 @@
                 const oldGain = stretchGain;
                 createStretchNode(0, true);
 
-                const now = audioContext.currentTime;
                 if (!wasOffline && oldGain) {
-                    // Fade out old worklet
+                    // Worklet→Worklet: fade out old immediately, fade in new immediately
+                    const now = audioContext.currentTime;
                     oldGain.gain.setValueAtTime(oldGain.gain.value, now);
                     oldGain.gain.linearRampToValueAtTime(0, now + CROSSFADE_DURATION);
                     setTimeout(() => {
@@ -1797,13 +2958,18 @@
                         oldNode.disconnect();
                         oldGain.disconnect();
                     }, CROSSFADE_DURATION * 1000 + 50);
+                    stretchGain.gain.setValueAtTime(0, now);
+                    stretchGain.gain.linearRampToValueAtTime(1, now + CROSSFADE_DURATION);
                 }
-
-                stretchGain.gain.setValueAtTime(0, now);
-                stretchGain.gain.linearRampToValueAtTime(1, now + CROSSFADE_DURATION);
+                // GPU→Worklet: keep GPU playing, defer crossfade until worklet is loaded
 
                 if (sourceBuffer) {
-                    pendingResume = { position: currentPosition, shouldPlay: wasPlaying };
+                    pendingResume = {
+                        position: currentPosition,
+                        shouldPlay: wasPlaying,
+                        crossfadeIn: true,
+                        fadeOutGPU: wasOffline && !!gpuSource
+                    };
                 }
 
                 const algoNames = { resample: 'Resample', spectral: 'FFT (Spectral)', paul: 'Paul Stretch (STFT)', granular: 'Granular' };
@@ -1845,8 +3011,20 @@
             trackList.appendChild(item);
         });
 
-        // Set initial UI state for default algorithm (Paul Stretch)
-        updateControlVisibility('paul');
+        // Set initial UI state for restored or default algorithm
+        updateControlVisibility(currentAlgorithm);
+
+        // Auto-load last used track (load only, don't play)
+        if (lastLoadedTrackFile) {
+            // Highlight the matching track item
+            const trackItems = trackList.querySelectorAll('.track-item');
+            testTracks.forEach((track, i) => {
+                if (track.file === lastLoadedTrackFile && trackItems[i]) {
+                    trackItems[i].classList.add('active');
+                }
+            });
+            loadTestTrack(lastLoadedTrackFile);
+        }
 
         // Handle window resize
         window.addEventListener('resize', () => {
@@ -1855,21 +3033,18 @@
             }
         });
 
-        // Click waveform to seek (and start playing if not already)
-        waveformCanvas.addEventListener('click', (e) => {
-            if (!sourceBuffer) return;
-            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+        // Waveform seek + drag-to-scrub
+        let isScrubbing = false;
+        let wasPlayingBeforeScrub = false;
 
-            const rect = waveformCanvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const ratio = x / rect.width;
+        function seekToRatio(ratio) {
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
 
             if (audioContext && audioContext.state === 'suspended') {
                 audioContext.resume();
             }
 
             if (isOffline) {
-                // GPU seek: convert click ratio to source-time
                 if (!gpuProcessedBuffer) return;
                 const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
                 const sourcePos = ratio * sourceDuration;
@@ -1880,27 +3055,58 @@
                     isPlaying = true;
                     playBtn.textContent = '⏸';
                     playBtn.classList.remove('pulse');
-                    setStatus('Playing...', 'active');
+                    setStatus(playingStatus(), 'active');
                 }
                 startPlayheadAnimation();
             } else {
                 if (!stretchNode) return;
                 const positionInSeconds = (sourceBuffer.length / audioContext.sampleRate) * ratio;
 
-                stretchNode.port.postMessage({ type: 'seek', data: { position: positionInSeconds } });
-                playStartPosition = positionInSeconds;
-                playStartTime = audioContext.currentTime;
-                playhead.style.left = `${ratio * 100}%`;
-
+                // Ensure playback is active so user hears scrubbed audio
                 if (!isPlaying) {
                     stretchNode.port.postMessage({ type: 'play' });
                     isPlaying = true;
                     playBtn.textContent = '⏸';
                     playBtn.classList.remove('pulse');
-                    startPlayheadAnimation();
-                    setStatus('Playing...', 'active');
+                    setStatus(playingStatus(), 'active');
                 }
+
+                stretchNode.port.postMessage({ type: 'seek', data: { position: positionInSeconds } });
+                playStartPosition = positionInSeconds;
+                playStartTime = audioContext.currentTime;
+                playhead.style.left = `${ratio * 100}%`;
             }
+        }
+
+        waveformCanvas.addEventListener('mousedown', (e) => {
+            if (!sourceBuffer) return;
+            e.preventDefault();
+            isScrubbing = true;
+            wasPlayingBeforeScrub = isPlaying;
+            stopPlayheadAnimation();
+
+            const rect = waveformCanvas.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            seekToRatio(ratio);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isScrubbing) return;
+            const rect = waveformCanvas.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            seekToRatio(ratio);
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!isScrubbing) return;
+            isScrubbing = false;
+
+            if (isPlaying) {
+                startPlayheadAnimation();
+            }
+
+            // If user wasn't playing before scrub and this was just a click (not drag), keep playing
+            // If they were playing, it's already playing — animation resumes above
         });
 
         // Make waveform cursor indicate clickability
@@ -1921,7 +3127,7 @@
                     // Load Golden Hour Trimmed
                     const goldenHourItem = trackList.querySelector('.track-item:last-child');
                     if (goldenHourItem) goldenHourItem.click();
-                } else if (!isPlaying) {
+                } else {
                     togglePlay();
                 }
             }
@@ -2085,6 +3291,12 @@
         }
 
         downloadBtn.addEventListener('click', renderAndDownload);
+
+        // Upgrade all native <select> elements to custom dropdowns
+        upgradeAllSelects();
+
+        // Eagerly load RTPGHI WASM (non-blocking)
+        initRTPGHIWasm().catch(() => {});
     </script>
 </body>
 </html>
