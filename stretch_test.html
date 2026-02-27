@@ -776,6 +776,10 @@
                         <label><span>Scrub Inertia: <span id="mouseSmoothValue">10</span></span></label>
                         <input type="range" id="mouseSmoothSlider" min="1" max="100" step="1" value="10">
                     </div>
+                    <div class="slider-group" style="flex: none; min-width: auto;">
+                        <label><span>Scrub Adaptivity: <span id="scrubAdaptValue">50</span></span></label>
+                        <input type="range" id="scrubAdaptSlider" min="0" max="100" step="1" value="50">
+                    </div>
                 </div>
                 <div class="controls" id="windowOverlapRow">
                     <div class="slider-group" id="windowGroup" style="flex: none; min-width: auto;">
@@ -942,6 +946,10 @@
                 <div class="playhead" id="playhead" style="left: 0"></div>
                 <div id="waveformTime"></div>
                 <div id="progressBar"></div>
+                <div id="speedMeter" style="display:none; position:absolute; right:6px; top:4px; bottom:4px; width:6px; background:rgba(255,255,255,0.1); border-radius:3px; pointer-events:none;">
+                    <div id="speedFill" style="position:absolute; bottom:0; left:0; right:0; background:#4af; border-radius:3px; transition: height 0.05s;"></div>
+                    <div id="speedLabel" style="position:absolute; right:12px; bottom:0; color:#4af; font-size:10px; font-family:monospace; white-space:nowrap; pointer-events:none;">0</div>
+                </div>
             </div>
         </div>
 
@@ -1672,6 +1680,7 @@
         ];
 
         let mouseSmoothing = 10; // cutoff frequency in Hz
+        let scrubAdapt = 50; // adaptivity 0-100
 
         function saveSettings() {
             const settings = { loop: isLooping };
@@ -1682,6 +1691,7 @@
             settings.stretchSlider = stretchSlider.value;
             settings.overlapSlider = overlapSlider.value;
             settings.mouseSmoothSlider = document.getElementById('mouseSmoothSlider').value;
+            settings.scrubAdaptSlider = document.getElementById('scrubAdaptSlider').value;
             settings.lastTrackFile = lastLoadedTrackFile;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {}
         }
@@ -1719,6 +1729,13 @@
                 mouseSmoothing = parseInt(settings.mouseSmoothSlider);
                 document.getElementById('mouseSmoothValue').textContent = mouseSmoothing;
                 updateSliderFill(msSlider);
+            }
+            if (settings.scrubAdaptSlider !== undefined) {
+                const saSlider = document.getElementById('scrubAdaptSlider');
+                saSlider.value = settings.scrubAdaptSlider;
+                scrubAdapt = parseInt(settings.scrubAdaptSlider);
+                document.getElementById('scrubAdaptValue').textContent = scrubAdapt;
+                updateSliderFill(saSlider);
             }
 
             // Restore window value display
@@ -1850,6 +1867,12 @@
             stretchGain.connect(oscAnalyser);
             setupWorkletListeners();
 
+            // Send scrub params to resample processor
+            if (currentAlgorithm === 'resample') {
+                stretchNode.port.postMessage({ type: 'set-scrub-cutoff', data: { value: mouseSmoothing } });
+                stretchNode.port.postMessage({ type: 'set-scrub-adapt', data: { value: scrubAdapt } });
+            }
+
             // Re-send audio if we had some loaded
             if (sourceBuffer) {
                 stretchNode.port.postMessage({
@@ -1901,8 +1924,18 @@
                     }
                 } else if (type === 'scrub-position') {
                     // Processor reports its actual read-head position during scrub
+                    const d = event.data.data;
                     if (isScrubbing) {
-                        playhead.style.left = `${event.data.data.ratio * 100}%`;
+                        playhead.style.left = `${d.ratio * 100}%`;
+                        // Update speed meter
+                        const meter = document.getElementById('speedMeter');
+                        const fill = document.getElementById('speedFill');
+                        const label = document.getElementById('speedLabel');
+                        meter.style.display = '';
+                        const norm = Math.min(1, d.speedNorm);
+                        fill.style.height = `${norm * 100}%`;
+                        label.style.bottom = `${norm * 100}%`;
+                        label.textContent = d.speed.toFixed(0);
                     }
                 } else if (type === 'ended') {
                     // Reset to beginning
@@ -2873,6 +2906,16 @@
             saveSettings();
         });
 
+        document.getElementById('scrubAdaptSlider').addEventListener('input', (e) => {
+            scrubAdapt = parseInt(e.target.value);
+            document.getElementById('scrubAdaptValue').textContent = scrubAdapt;
+            updateSliderFill(e.target);
+            if (stretchNode && currentAlgorithm === 'resample') {
+                stretchNode.port.postMessage({ type: 'set-scrub-adapt', data: { value: scrubAdapt } });
+            }
+            saveSettings();
+        });
+
         // GPU parameter changes — auto re-render when settings change
         let gpuParamRestretchTimeout = null;
         let gpuParamChangePending = false;
@@ -3243,6 +3286,7 @@
             if (!isScrubbing) return;
             const wasResample = (currentAlgorithm === 'resample');
             isScrubbing = false;
+            document.getElementById('speedMeter').style.display = 'none';
 
             if (scrubPinRAF) {
                 cancelAnimationFrame(scrubPinRAF);
