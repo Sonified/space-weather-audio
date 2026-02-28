@@ -43,6 +43,9 @@ let regionsDelayedForCrossfade = false; // Flag to track if regions are waiting 
 // Each feature: { type, repetition, lowFreq, highFreq, startTime, endTime, notes, speedFactor }
 let standaloneFeatures = [];
 
+// Cached EMIC flags module (avoids dynamic import microtask on every setCurrentRegions call)
+let _emicFlagsModule = null;
+
 /**
  * Update spectrogram touch-action for mobile devices
  * When zoomed into a region, allow drawing (touch-action: none)
@@ -348,6 +351,19 @@ function setCurrentRegions(newRegions) {
     
     // ✅ Save to localStorage for persistence (includes notes!)
     saveRegionsToStorage(spacecraft, newRegions);
+
+    // Update EMIC active feature count flag (cached import to avoid microtask per call)
+    try {
+        const count = newRegions.reduce((total, r) => total + (r.features?.length || r.featureCount || 0), 0);
+        if (_emicFlagsModule) {
+            _emicFlagsModule.updateActiveFeatureCount(count);
+        } else {
+            import('./emic-study-flags.js').then(mod => {
+                _emicFlagsModule = mod;
+                mod.updateActiveFeatureCount(count);
+            }).catch(() => {}); // Silently fail if not in EMIC context
+        }
+    } catch {}
 }
 
 /**
