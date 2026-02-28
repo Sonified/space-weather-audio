@@ -4,6 +4,10 @@
 
 The spectrogram rendering does not align temporally with the time series waveform display.
 
+## Spectrogram: tile edges no longer properly aligned
+
+Edges of spectrogram tiles are not aligning correctly, causing visible seams or discontinuities.
+
 ---
 
 ## Resolved
