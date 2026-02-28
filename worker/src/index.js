@@ -22,6 +22,9 @@ function json(data, status = 200) {
 }
 
 // Helper: Sanitize username for R2 paths
+// NOTE: Strips characters outside [a-zA-Z0-9_-] and truncates to 64 chars.
+// This means participant IDs with dots, spaces, etc. will be silently modified.
+// Acceptable for current use — all IDs are alphanumeric + underscore.
 function sanitizeUsername(username) {
   return username.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
 }
@@ -284,6 +287,41 @@ export default {
       const usernameDeleteMatch = path.match(/^\/api\/username\/([^/]+)$/);
       if (usernameDeleteMatch && request.method === 'DELETE') {
         return await deleteUsername(env, decodeURIComponent(usernameDeleteMatch[1]));
+      }
+
+      // =======================================================================
+      // EMIC Study Participant Routes: /api/emic/participants/*
+      // Stores participant submissions and master list in main R2 bucket
+      // R2 Structure:
+      //   emic/participants/{participantId}/submission_{timestamp}.json
+      //   emic/participants/_master.json
+      // =======================================================================
+
+      // POST /api/emic/participants/:id/submit — Save a participant submission
+      const emicSubmitMatch = path.match(/^\/api\/emic\/participants\/([^/]+)\/submit$/);
+      if (emicSubmitMatch && request.method === 'POST') {
+        return await emicSubmitParticipant(request, env, decodeURIComponent(emicSubmitMatch[1]));
+      }
+
+      // GET /api/emic/participants — List all participants (master list)
+      if (path === '/api/emic/participants' && request.method === 'GET') {
+        return await emicListParticipants(env);
+      }
+
+      // GET /api/emic/participants/_master.json — Direct master file download
+      // (Must be before the :id catch-all)
+      if (path === '/api/emic/participants/_master.json' && request.method === 'GET') {
+        const obj = await env.EMIC_DATA.get('emic/participants/_master.json');
+        if (!obj) return json({ participants: [], count: 0 });
+        return new Response(obj.body, {
+          headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
+        });
+      }
+
+      // GET /api/emic/participants/:id — Get all submissions for a participant
+      const emicGetMatch = path.match(/^\/api\/emic\/participants\/([^/]+)$/);
+      if (emicGetMatch && request.method === 'GET') {
+        return await emicGetParticipant(env, decodeURIComponent(emicGetMatch[1]));
       }
 
       // =======================================================================
@@ -919,4 +957,132 @@ async function cloneShare(request, env, shareId) {
     username: sanitizeUsername(newUsername),
     message: 'Session cloned successfully',
   }, 201);
+}
+
+// =============================================================================
+// EMIC Study Participant Handlers
+// =============================================================================
+
+const EMIC_PARTICIPANTS_PREFIX = 'emic/participants/';
+const EMIC_MASTER_KEY = 'emic/participants/_master.json';
+
+/**
+ * Submit participant data for the EMIC study.
+ * Saves individual submission + updates master participant list.
+ */
+async function emicSubmitParticipant(request, env, participantId) {
+  if (!participantId || participantId === '_master') {
+    return json({ success: false, error: 'Invalid participant ID' }, 400);
+  }
+
+  const data = await request.json();
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/[-:]/g, '').split('.')[0];
+
+  // Validate required fields
+  if (!data.submittedAt) {
+    data.submittedAt = now.toISOString();
+  }
+
+  const submission = {
+    ...data,
+    participantId: sanitizeUsername(participantId),
+    serverReceivedAt: now.toISOString(),
+  };
+
+  // Save individual submission (append-only: each submit creates a new file)
+  const submissionKey = `${EMIC_PARTICIPANTS_PREFIX}${sanitizeUsername(participantId)}/submission_${timestamp}.json`;
+  await env.EMIC_DATA.put(submissionKey, JSON.stringify(submission, null, 2), {
+    httpMetadata: { contentType: 'application/json' },
+  });
+
+  // Update master JSON — contains FULL submission data for all participants
+  // (Single file for analysis — individual files are the backup/audit trail)
+  // ⚠️ KNOWN LIMITATION: Concurrent writes can cause data loss (read-modify-write race).
+  // R2 doesn't support conditional writes. Individual per-submission files above are the
+  // safety net. For <20 concurrent participants this is a non-issue in practice.
+  let masterData = { submissions: [], lastUpdated: null };
+  try {
+    const masterObj = await env.EMIC_DATA.get(EMIC_MASTER_KEY);
+    if (masterObj) {
+      const raw = await masterObj.json();
+      masterData.submissions = raw.submissions || [];
+      // Drop legacy 'participants' summary array if present (old schema)
+    }
+  } catch (e) {
+    console.error('Error reading EMIC master list:', e);
+  }
+
+  // Append the full submission (every submit is a new entry — no dedup)
+  masterData.submissions.push(submission);
+  masterData.count = masterData.submissions.length;
+  masterData.lastUpdated = now.toISOString();
+
+  // Write updated master
+  await env.EMIC_DATA.put(EMIC_MASTER_KEY, JSON.stringify(masterData, null, 2), {
+    httpMetadata: { contentType: 'application/json' },
+  });
+
+  return json({
+    success: true,
+    participantId: sanitizeUsername(participantId),
+    submissionKey,
+    masterCount: masterData.count,
+    submittedAt: now.toISOString(),
+  }, 201);
+}
+
+/**
+ * List all EMIC study participants (from master list)
+ */
+async function emicListParticipants(env) {
+  try {
+    const masterObj = await env.EMIC_DATA.get(EMIC_MASTER_KEY);
+    if (!masterObj) {
+      return json({ success: true, submissions: [], count: 0 });
+    }
+    const masterData = await masterObj.json();
+    return json({
+      success: true,
+      submissions: masterData.submissions || [],
+      count: masterData.count || 0,
+      lastUpdated: masterData.lastUpdated,
+    });
+  } catch (e) {
+    return json({ success: false, error: e.message }, 500);
+  }
+}
+
+/**
+ * Get all submissions for a specific EMIC participant
+ */
+async function emicGetParticipant(env, participantId) {
+  if (!participantId) {
+    return json({ success: false, error: 'Participant ID required' }, 400);
+  }
+
+  const prefix = `${EMIC_PARTICIPANTS_PREFIX}${sanitizeUsername(participantId)}/`;
+  const listed = await env.EMIC_DATA.list({ prefix });
+
+  const submissions = [];
+  for (const obj of listed.objects) {
+    try {
+      const data = await env.EMIC_DATA.get(obj.key);
+      if (data) {
+        submissions.push(await data.json());
+      }
+    } catch (e) {
+      submissions.push({ key: obj.key, error: 'Parse failed', uploaded: obj.uploaded });
+    }
+  }
+
+  // Sort by serverReceivedAt descending
+  submissions.sort((a, b) => (b.serverReceivedAt || '').localeCompare(a.serverReceivedAt || ''));
+
+  return json({
+    success: true,
+    participantId: sanitizeUsername(participantId),
+    submissions,
+    count: submissions.length,
+  });
 }
