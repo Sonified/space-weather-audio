@@ -773,12 +773,12 @@
             <div class="param-zone" id="paramZone">
                 <div id="resampleParamsRow" class="controls" style="display:none;">
                     <div class="slider-group" style="flex: none; min-width: auto;">
-                        <label><span>Scrub Inertia: <span id="mouseSmoothValue">10</span></span></label>
+                        <label><span>Drag Smoothing: <span id="mouseSmoothValue">10</span></span></label>
                         <input type="range" id="mouseSmoothSlider" min="1" max="100" step="1" value="10">
                     </div>
                     <div class="slider-group" style="flex: none; min-width: auto;">
-                        <label><span>Scrub Adaptivity: <span id="scrubAdaptValue">50</span></span></label>
-                        <input type="range" id="scrubAdaptSlider" min="0" max="100" step="1" value="50">
+                        <label><span>Inertia: <span id="platterInertiaValue">50</span></span></label>
+                        <input type="range" id="platterInertiaSlider" min="1" max="100" step="1" value="50">
                     </div>
                 </div>
                 <div class="controls" id="windowOverlapRow">
@@ -1679,7 +1679,8 @@
             'rtpghiPhaseSelect', 'rtpghiTolSelect', 'rtpghiGammaSelect'
         ];
 
-        let mouseSmoothing = 10; // cutoff frequency in Hz
+        let mouseSmoothing = 10; // mouse smoothing (kills 60fps staircase)
+        let platterInertia = 50; // platter weight (how heavy the record feels)
         let scrubAdapt = 50; // adaptivity 0-100
 
         function saveSettings() {
@@ -1691,6 +1692,7 @@
             settings.stretchSlider = stretchSlider.value;
             settings.overlapSlider = overlapSlider.value;
             settings.mouseSmoothSlider = document.getElementById('mouseSmoothSlider').value;
+            settings.platterInertiaSlider = document.getElementById('platterInertiaSlider').value;
             settings.scrubAdaptSlider = document.getElementById('scrubAdaptSlider').value;
             settings.lastTrackFile = lastLoadedTrackFile;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {}
@@ -1729,6 +1731,13 @@
                 mouseSmoothing = parseInt(settings.mouseSmoothSlider);
                 document.getElementById('mouseSmoothValue').textContent = mouseSmoothing;
                 updateSliderFill(msSlider);
+            }
+            if (settings.platterInertiaSlider !== undefined) {
+                const piSlider = document.getElementById('platterInertiaSlider');
+                piSlider.value = settings.platterInertiaSlider;
+                platterInertia = parseInt(settings.platterInertiaSlider);
+                document.getElementById('platterInertiaValue').textContent = platterInertia;
+                updateSliderFill(piSlider);
             }
             if (settings.scrubAdaptSlider !== undefined) {
                 const saSlider = document.getElementById('scrubAdaptSlider');
@@ -1870,6 +1879,7 @@
             // Send scrub params to resample processor
             if (currentAlgorithm === 'resample') {
                 stretchNode.port.postMessage({ type: 'set-scrub-cutoff', data: { value: mouseSmoothing } });
+                stretchNode.port.postMessage({ type: 'set-platter-inertia', data: { value: platterInertia } });
                 stretchNode.port.postMessage({ type: 'set-scrub-adapt', data: { value: scrubAdapt } });
             }
 
@@ -2902,6 +2912,16 @@
             updateSliderFill(e.target);
             if (stretchNode && currentAlgorithm === 'resample') {
                 stretchNode.port.postMessage({ type: 'set-scrub-cutoff', data: { value: mouseSmoothing } });
+            }
+            saveSettings();
+        });
+
+        document.getElementById('platterInertiaSlider').addEventListener('input', (e) => {
+            platterInertia = parseInt(e.target.value);
+            document.getElementById('platterInertiaValue').textContent = platterInertia;
+            updateSliderFill(e.target);
+            if (stretchNode && currentAlgorithm === 'resample') {
+                stretchNode.port.postMessage({ type: 'set-platter-inertia', data: { value: platterInertia } });
             }
             saveSettings();
         });

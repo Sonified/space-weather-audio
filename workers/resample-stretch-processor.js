@@ -34,10 +34,14 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
         this.scrubSmoothed2 = 0;    // second pole output = read head
         this.scrubReportCounter = 0;
 
-        // Tuning: base cutoff and adaptive range
-        this.baseCutoffHz = 15;     // default ~15 Hz
-        this.baseK = 2 * Math.PI * 15 / sampleRate;
-        this.adaptAmount = 0.5;     // 0 = fixed, 1 = fully adaptive
+        // Tuning: independent cutoffs for each filter stage
+        // Pole 1: mouse smoothing (kills 60fps staircase)
+        this.mouseSmooth_Hz = 30;   // higher = more responsive, less smoothing
+        this.k1 = 2 * Math.PI * 30 / sampleRate;
+        // Pole 2: platter inertia (how heavy the record feels)
+        this.platterInertia_Hz = 8; // lower = heavier platter
+        this.k2 = 2 * Math.PI * 8 / sampleRate;
+        this.adaptAmount = 0.5;     // 0 = fixed, 1 = fully adaptive (applies to k2 only)
 
         // Speed tracking: velocity of second pole (inherently smooth)
         this.prevSmoothed2 = 0;
@@ -158,13 +162,23 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
                     this.sourcePosition = this.scrubSmoothed2;
                     break;
 
-                // Control 1: Inertia (base platter weight)
-                // Slider 1..100. Higher = heavier = lower cutoff.
-                // 1 → 60Hz (light), 50 → 8Hz (medium), 100 → 1Hz (heavy)
+                // Control 1: Mouse Smoothing (kills 60fps pixel staircase)
+                // Slider 1..100. Higher = more smoothing.
+                // 1 → 200Hz (raw), 50 → 30Hz (smooth), 100 → 5Hz (very smooth)
                 case 'set-scrub-cutoff': {
                     const val = data.value;
-                    this.baseCutoffHz = 60 * Math.pow(1 / 60, (val - 1) / 99);
-                    this.baseK = 2 * Math.PI * this.baseCutoffHz / sampleRate;
+                    this.mouseSmooth_Hz = 200 * Math.pow(5 / 200, (val - 1) / 99);
+                    this.k1 = 2 * Math.PI * this.mouseSmooth_Hz / sampleRate;
+                    break;
+                }
+
+                // Control 1b: Platter Inertia (how heavy the record feels)
+                // Slider 1..100. Higher = heavier = lower cutoff.
+                // 1 → 60Hz (light), 50 → 8Hz (medium), 100 → 1Hz (heavy)
+                case 'set-platter-inertia': {
+                    const val = data.value;
+                    this.platterInertia_Hz = 60 * Math.pow(1 / 60, (val - 1) / 99);
+                    this.k2 = 2 * Math.PI * this.platterInertia_Hz / sampleRate;
                     break;
                 }
 
@@ -195,7 +209,8 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
 
         // ===== SCRUB MODE: two-pole speed-adaptive LPF =====
         if (this.scrubbing) {
-            const baseK = this.baseK;
+            const k1 = Math.min(this.k1, 0.3);   // pole 1: mouse smoothing (fixed, no adaptation)
+            const baseK2 = this.k2;               // pole 2: platter inertia (speed-adaptive)
             const adaptAmount = this.adaptAmount;
             const refSpeed = this.refSpeed;
 
@@ -214,18 +229,16 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
                 const speed = Math.abs(this.scrubSmoothed2 - this.prevSmoothed2);
                 this.prevSmoothed2 = this.scrubSmoothed2;
 
-                // Speed scaling: slow → scale < 1 → lower k → more inertia
-                //                fast → scale > 1 → higher k → less inertia
+                // Speed scaling applies only to platter inertia (k2)
                 const speedRatio = speed / refSpeed;
                 const speedScale = Math.max(0.2, Math.min(3.0, Math.sqrt(speedRatio)));
-
-                // Blend between fixed k (1.0) and speed-adaptive (speedScale)
                 const effectiveScale = 1.0 + adaptAmount * (speedScale - 1.0);
-                const k = Math.min(baseK * effectiveScale, 0.1);
+                const k2 = Math.min(baseK2 * effectiveScale, 0.1);
 
-                // Two cascaded one-pole LPFs
-                this.scrubSmoothed1 += (this.scrubTarget - this.scrubSmoothed1) * k;
-                this.scrubSmoothed2 += (this.scrubSmoothed1 - this.scrubSmoothed2) * k;
+                // Pole 1: smooth the mouse input (kill 60fps staircase)
+                this.scrubSmoothed1 += (this.scrubTarget - this.scrubSmoothed1) * k1;
+                // Pole 2: platter catches up to smoothed target (mass/inertia)
+                this.scrubSmoothed2 += (this.scrubSmoothed1 - this.scrubSmoothed2) * k2;
                 this.sourcePosition = this.scrubSmoothed2;
 
                 // Linear interpolation readout
