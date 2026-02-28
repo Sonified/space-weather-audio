@@ -12,8 +12,8 @@
 
 // ===== DEBUG FLAGS =====
 let DEBUG_AUDIO = false;    // Toggled by UI checkbox via 'set-debug-audio' message
-const DEBUG_WORKLET = true; // Enable verbose worklet logging
-const DEBUG_MESSAGES = true; // Log all incoming messages
+let DEBUG_WORKLET = false; // Toggled by UI checkbox via 'set-debug-audio' message
+let DEBUG_MESSAGES = false; // Toggled by UI checkbox via 'set-debug-audio' message
 const DEBUG_PROCESS = false; // Log process() calls every 100 frames
 const DEBUG_SAMPLES = false; // Log sample content analysis
 
@@ -264,6 +264,8 @@ class AudioProcessor extends AudioWorkletProcessor {
                 if (DEBUG_AUDIO) console.log(`🗑️ WORKLET: Buffer cleared`);
             } else if (type === 'set-debug-audio') {
                 DEBUG_AUDIO = event.data.enabled;
+                DEBUG_WORKLET = event.data.enabled;
+                DEBUG_MESSAGES = event.data.enabled;
             }
         };
     }

@@ -146,8 +146,8 @@ export async function startPlayback() {
 export function pausePlayback() {
     State.setPlaybackState(PlaybackState.PAUSED);
     
-    console.log('⏸️ Pausing playback');
-    
+    if (window.pm?.audio) console.log('⏸️ Pausing playback');
+
     // 🔥 Notify oscilloscope that playback paused (for flame effect fade)
     setPlayingState(false);
     
@@ -205,41 +205,41 @@ function getRegionStartIfOutside() {
 
 export function togglePlayPause() {
     const currentState = `playbackState=${State.playbackState}, position=${State.currentAudioPosition?.toFixed(2) || 0}s`;
-    console.log(`🎵 [togglePlayPause] ENTER - ${currentState}, AudioContext: ${State.audioContext?.state}`);
+    if (window.pm?.audio) console.log(`🎵 [togglePlayPause] ENTER - ${currentState}, AudioContext: ${State.audioContext?.state}`);
 
     if (!State.audioContext) {
-        console.log('🎵 [togglePlayPause] EXIT - No AudioContext!');
+        if (window.pm?.audio) console.log('🎵 [togglePlayPause] EXIT - No AudioContext!');
         return;
     }
 
     switch (State.playbackState) {
         case PlaybackState.STOPPED:
-            console.log('🎵 [togglePlayPause] Case: STOPPED');
+            if (window.pm?.audio) console.log('🎵 [togglePlayPause] Case: STOPPED');
             // Check if zoomed into region and playhead is outside
             const regionStart = getRegionStartIfOutside();
             if (regionStart !== null) {
-                console.log(`▶️ Playhead outside region, jumping to region start at ${regionStart.toFixed(2)}s`);
+                if (window.pm?.audio) console.log(`▶️ Playhead outside region, jumping to region start at ${regionStart.toFixed(2)}s`);
                 seekToPosition(regionStart, true);
                 break;
             }
 
             const startPosition = isAtBoundaryEnd() ? getRestartPosition() : State.currentAudioPosition;
-            console.log(`▶️ Starting playback from ${startPosition.toFixed(2)}s`);
+            if (window.pm?.audio) console.log(`▶️ Starting playback from ${startPosition.toFixed(2)}s`);
             seekToPosition(startPosition, true);
             break;
 
         case PlaybackState.PLAYING:
-            console.log('🎵 [togglePlayPause] Case: PLAYING → pause');
-            console.log(`⏸️ Pausing playback`);
+            if (window.pm?.audio) console.log('🎵 [togglePlayPause] Case: PLAYING → pause');
+            if (window.pm?.audio) console.log(`⏸️ Pausing playback`);
             pausePlayback();
             break;
 
         case PlaybackState.PAUSED:
-            console.log('🎵 [togglePlayPause] Case: PAUSED → resume');
+            if (window.pm?.audio) console.log('🎵 [togglePlayPause] Case: PAUSED → resume');
             // Check if zoomed into region and playhead is outside
             const regionStartPaused = getRegionStartIfOutside();
             if (regionStartPaused !== null) {
-                console.log(`▶️ Playhead outside region, jumping to region start at ${regionStartPaused.toFixed(2)}s`);
+                if (window.pm?.audio) console.log(`▶️ Playhead outside region, jumping to region start at ${regionStartPaused.toFixed(2)}s`);
                 seekToPosition(regionStartPaused, true);
                 break;
             }
@@ -247,12 +247,12 @@ export function togglePlayPause() {
             // Check if at end of current boundaries
             if (isAtBoundaryEnd()) {
                 const restartPos = getRestartPosition();
-                console.log(`▶️ At boundary end, restarting from ${restartPos.toFixed(2)}s`);
+                if (window.pm?.audio) console.log(`▶️ At boundary end, restarting from ${restartPos.toFixed(2)}s`);
                 seekToPosition(restartPos, true);
                 break;
             }
 
-            console.log(`▶️ Resuming playback from ${State.currentAudioPosition.toFixed(2)}s`);
+            if (window.pm?.audio) console.log(`▶️ Resuming playback from ${State.currentAudioPosition.toFixed(2)}s`);
             startPlayback();
             break;
     }

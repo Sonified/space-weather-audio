@@ -40,6 +40,7 @@ const COMPONENT_MAP = ['bx', 'by', 'bz'];
 // =============================================================================
 
 let fzstdModule = null;
+let activeAbortController = null; // cancels in-flight download when a new one starts
 
 async function ensureFzstd() {
     if (fzstdModule) return fzstdModule;
@@ -75,7 +76,7 @@ async function ensureFzstd() {
  * Fetch metadata.json for each day in range, for a given component.
  * @returns {Promise<Object[]>} Array of metadata objects (null for missing days)
  */
-async function fetchAllDayMetadata(startDate, endDate, satellite, component) {
+async function fetchAllDayMetadata(startDate, endDate, satellite, component, signal) {
     const days = [];
     const current = new Date(startDate);
     const end = new Date(endDate);
@@ -85,13 +86,13 @@ async function fetchAllDayMetadata(startDate, endDate, satellite, component) {
         current.setUTCDate(current.getUTCDate() + 1);
     }
 
-    console.log(`📋 Fetching metadata for ${days.length} days: ${days[0]} → ${days[days.length - 1]}`);
+    if (window.pm?.data) console.log(`📋 Fetching metadata for ${days.length} days: ${days[0]} → ${days[days.length - 1]}`);
 
     const results = await Promise.all(days.map(async (dateStr) => {
         const [year, month, day] = dateStr.split('-');
         const url = `${WORKER_BASE}/data/${year}/${month}/${day}/${satellite}/mag/${component}/metadata.json`;
         try {
-            const resp = await fetch(url);
+            const resp = await fetch(url, { signal });
             if (!resp.ok) {
                 console.warn(`⚠️ No metadata for ${dateStr}: ${resp.status}`);
                 return null;
@@ -104,7 +105,7 @@ async function fetchAllDayMetadata(startDate, endDate, satellite, component) {
     }));
 
     const valid = results.filter(m => m !== null);
-    console.log(`✅ Got metadata for ${valid.length}/${days.length} days`);
+    if (window.pm?.data) console.log(`✅ Got metadata for ${valid.length}/${days.length} days`);
     return results;
 }
 
@@ -234,7 +235,7 @@ function buildChunkSchedule(startTime, endTime, allDayMetadata, satellite, compo
         acc[c.type] = (acc[c.type] || 0) + 1;
         return acc;
     }, {});
-    console.log(`📋 Chunk schedule: ${chunks.length} total — ${Object.entries(typeCounts).map(([t, n]) => `${n}×${t}`).join(', ')}`);
+    if (window.pm?.data) console.log(`📋 Chunk schedule: ${chunks.length} total — ${Object.entries(typeCounts).map(([t, n]) => `${n}×${t}`).join(', ')}`);
 
     return chunks;
 }
@@ -252,24 +253,36 @@ function buildChunkSchedule(startTime, endTime, allDayMetadata, satellite, compo
  *   - Spectrogram renders after all data via startCompleteVisualization()
  */
 export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeISO, endTimeISO) {
+    // Cancel any in-flight download
+    if (activeAbortController) {
+        activeAbortController.abort();
+        if (window.pm?.data) console.log('☁️ [CLOUDFLARE] Cancelled previous download');
+    }
+    activeAbortController = new AbortController();
+    const abortSignal = activeAbortController.signal;
+
+    try {
+
     const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
     const statusEl = document.getElementById('status');
 
-    console.log(`☁️ [CLOUDFLARE] Progressive fetch: ${spacecraft} ${dataset}`);
-    console.log(`☁️ ${logTime()} Time range: ${startTimeISO} → ${endTimeISO}`);
+    if (window.pm?.data) {
+        console.log(`☁️ [CLOUDFLARE] Progressive fetch: ${spacecraft} ${dataset}`);
+        console.log(`☁️ ${logTime()} Time range: ${startTimeISO} → ${endTimeISO}`);
+    }
 
     // Determine satellite and component
     const satellite = DATASET_TO_SATELLITE[dataset] || 'GOES-16';
     const componentIdx = parseInt(document.getElementById('componentSelector')?.value || '0');
     const component = COMPONENT_MAP[componentIdx] || 'bx';
 
-    console.log(`☁️ Satellite: ${satellite}, Component: ${component}`);
+    if (window.pm?.data) console.log(`☁️ Satellite: ${satellite}, Component: ${component}`);
 
     // Step 1: Load fzstd for zstd decompression
     const silentEarly = document.getElementById('silentDownload')?.checked;
     if (statusEl && !silentEarly) statusEl.textContent = 'Loading decompression library...';
     const zstd = await ensureFzstd();
-    console.log(`✅ ${logTime()} fzstd loaded`);
+    if (window.pm?.data) console.log(`✅ ${logTime()} fzstd loaded`);
 
     // Step 2: Fetch metadata for all days
     const startDate = new Date(startTimeISO);
@@ -277,14 +290,14 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
     if (statusEl && !silentEarly) statusEl.textContent = 'Fetching chunk metadata...';
     const allDayMetadata = await fetchAllDayMetadata(
-        startTimeISO, endTimeISO, satellite, component
+        startTimeISO, endTimeISO, satellite, component, abortSignal
     );
 
     const validMetadata = allDayMetadata.filter(m => m !== null);
     if (validMetadata.length === 0) {
         throw new Error('No metadata available for any day in the requested range');
     }
-    console.log(`✅ ${logTime()} Metadata loaded: ${validMetadata.length} days`);
+    if (window.pm?.data) console.log(`✅ ${logTime()} Metadata loaded: ${validMetadata.length} days`);
 
     // Step 3: Build tiered chunk schedule
     const chunkSchedule = buildChunkSchedule(startDate, endDate, allDayMetadata, satellite, component);
@@ -304,8 +317,10 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     }
     const normRange = normMax - normMin;
 
-    console.log(`📊 ${logTime()} Expected: ${totalExpectedSamples.toLocaleString()} samples (${(totalExpectedSamples / INSTRUMENT_SAMPLE_RATE / 3600).toFixed(1)}h at ${INSTRUMENT_SAMPLE_RATE}Hz)`);
-    console.log(`📊 Normalization range: ${normMin.toFixed(2)} → ${normMax.toFixed(2)}`);
+    if (window.pm?.data) {
+        console.log(`📊 ${logTime()} Expected: ${totalExpectedSamples.toLocaleString()} samples (${(totalExpectedSamples / INSTRUMENT_SAMPLE_RATE / 3600).toFixed(1)}h at ${INSTRUMENT_SAMPLE_RATE}Hz)`);
+        console.log(`📊 Normalization range: ${normMin.toFixed(2)} → ${normMax.toFixed(2)}`);
+    }
 
     // =========================================================================
     // Step 4: Set up state/axes BEFORE downloading (we know the full time range)
@@ -350,7 +365,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     State.setTotalAudioDuration(expectedDuration);
     State.setPlaybackDurationSeconds(expectedDuration);
     updatePlaybackDuration(expectedDuration);
-    console.log(`📊 ${logTime()} Set EXPECTED totalAudioDuration: ${expectedDuration.toFixed(2)}s`);
+    if (window.pm?.data) console.log(`📊 ${logTime()} Set EXPECTED totalAudioDuration: ${expectedDuration.toFixed(2)}s`);
 
     // Update sample count UI early
     document.getElementById('sampleCount').textContent = totalExpectedSamples.toLocaleString();
@@ -397,6 +412,12 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     let totalSamplesSentToWorklet = 0;
     const BUFFER_THRESHOLD = 44100; // ~1 second at 44.1kHz — enough buffer before starting playback
     let spectrogramRenderInProgress = false;
+    // Data rendering mode: progressive | onComplete | triggered
+    const renderMode = document.getElementById('dataRendering')?.value || 'progressive';
+    let renderTriggered = false;
+    if (renderMode === 'triggered') {
+        window.triggerDataRender = () => { renderTriggered = true; };
+    }
     let totalBytesDownloaded = 0;
     const progressiveT0 = performance.now();
     let lastRenderTime = 0;
@@ -512,15 +533,17 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                 const size = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
                 const workletChunk = samples.slice(i, i + size);
 
-                // Don't auto-resume until we have enough buffer to prevent play/pause stuttering
-                // Also don't auto-resume if user has manually paused during download
-                const hasEnoughBuffer = playbackTriggered || totalSamplesSentToWorklet >= BUFFER_THRESHOLD;
-                const userPaused = playbackTriggered && State.playbackState === PlaybackState.PAUSED;
+                // autoResume: only resume if already playing (buffer underrun recovery)
+                // Never auto-START — that's controlled by the autoPlay checkbox path above
+                const userPaused = State.playbackState === PlaybackState.PAUSED;
+                const isPlaying = State.playbackState === PlaybackState.PLAYING;
 
+                if (abortSignal.aborted) return;
+                if (!State.workletNode) return;
                 State.workletNode.port.postMessage({
                     type: 'audio-data',
                     data: workletChunk,
-                    autoResume: hasEnoughBuffer && !userPaused,
+                    autoResume: isPlaying && !userPaused,
                 });
 
                 State.allReceivedData.push(workletChunk);
@@ -530,12 +553,12 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                 if (!playbackTriggered && totalSamplesSentToWorklet >= BUFFER_THRESHOLD) {
                     playbackTriggered = true;
                     const ttfa = performance.now() - progressiveT0;
-                    console.log(`⚡ BUFFER THRESHOLD reached (${totalSamplesSentToWorklet.toLocaleString()} samples) in ${ttfa.toFixed(0)}ms — starting playback!`);
+                    if (window.pm?.audio) console.log(`⚡ BUFFER THRESHOLD reached (${totalSamplesSentToWorklet.toLocaleString()} samples) in ${ttfa.toFixed(0)}ms`);
 
                     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
                     const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay')?.checked;
 
-                    if (autoPlayEnabled) {
+                    if (autoPlayEnabled && State.workletNode) {
                         State.workletNode.port.postMessage({ type: 'start-immediately' });
                         State.setPlaybackState(PlaybackState.PLAYING);
 
@@ -639,6 +662,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     const silentDownload = document.getElementById('silentDownload')?.checked;
 
     for (let i = 0; i < chunkSchedule.length; i++) {
+        if (abortSignal.aborted) return;
         const chunk = chunkSchedule[i];
         const progress = `${i + 1}/${chunkSchedule.length}`;
 
@@ -650,7 +674,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
         if (chunk.url && !chunk.isMissing) {
             try {
-                const resp = await fetch(chunk.url);
+                const resp = await fetch(chunk.url, { signal: abortSignal });
                 if (!resp.ok) {
                     console.warn(`⚠️ Chunk ${progress} failed: ${resp.status} — filling zeros`);
                     const zeroSamples = new Float32Array(chunk.samples);
@@ -676,9 +700,10 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                         }
                     }
 
-                    console.log(`✅ ${logTime()} Chunk ${progress} [${chunk.type}]: ${(compressed.byteLength / 1024).toFixed(1)} KB → ${rawSamples.length.toLocaleString()} samples`);
+                    if (window.pm?.data) console.log(`✅ ${logTime()} Chunk ${progress} [${chunk.type}]: ${(compressed.byteLength / 1024).toFixed(1)} KB → ${rawSamples.length.toLocaleString()} samples`);
                 }
             } catch (e) {
+                if (abortSignal.aborted) return;
                 console.warn(`⚠️ Chunk ${progress} error: ${e.message} — filling zeros`);
                 const zeroSamples = new Float32Array(chunk.samples);
                 samples = zeroSamples;
@@ -702,8 +727,10 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         sendToWaveformInOrder();
 
         // Throttle visual rendering so the audio worklet gets CPU/GPU breathing room
+        // Rendering mode: progressive (always), onComplete (skip mid-stream), triggered (wait for trigger then progressive)
+        const allowMidStreamRender = renderMode === 'progressive' || (renderMode === 'triggered' && renderTriggered);
         const now = performance.now();
-        const shouldRender = (now - lastRenderTime) >= RENDER_THROTTLE_MS;
+        const shouldRender = allowMidStreamRender && (now - lastRenderTime) >= RENDER_THROTTLE_MS;
 
         if (shouldRender) {
             lastRenderTime = now;
@@ -735,6 +762,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         await new Promise(r => setTimeout(r, 0));
     }
 
+    if (abortSignal.aborted) return;
+
     // =========================================================================
     // Step 6b: Fallback playback trigger for short time ranges
     // If total samples never reached the buffer threshold, start playback now
@@ -742,12 +771,12 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
     if (!playbackTriggered && totalSamplesSentToWorklet > 0) {
         playbackTriggered = true;
-        console.log(`⚡ FALLBACK: All chunks received (${totalSamplesSentToWorklet.toLocaleString()} samples < threshold ${BUFFER_THRESHOLD}) — starting playback now`);
+        if (window.pm?.data) console.log(`⚡ FALLBACK: All chunks received (${totalSamplesSentToWorklet.toLocaleString()} samples < threshold ${BUFFER_THRESHOLD}) — starting playback now`);
 
         const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
         const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay')?.checked;
 
-        if (autoPlayEnabled) {
+        if (autoPlayEnabled && State.workletNode) {
             State.workletNode.port.postMessage({ type: 'start-immediately' });
             State.setPlaybackState(PlaybackState.PLAYING);
 
@@ -805,17 +834,17 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     }
 
     const totalTime = performance.now() - progressiveT0;
-    console.log(`✅ All ${chunkSchedule.length} chunks processed in ${totalTime.toFixed(0)}ms total`);
+    if (window.pm?.data) console.log(`✅ All ${chunkSchedule.length} chunks processed in ${totalTime.toFixed(0)}ms total`);
 
     // Calculate total from worklet data (most reliable)
     const totalWorkletSamples = State.allReceivedData.reduce((sum, c) => sum + c.length, 0);
-    console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()}`);
+    if (window.pm?.data) console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()}`);
 
     // Update duration with actual sample count
     const originalSampleRate = State.currentMetadata?.original_sample_rate || playbackSamplesPerRealSecond;
     State.setTotalAudioDuration(totalWorkletSamples / originalSampleRate);
     document.getElementById('sampleCount').textContent = totalWorkletSamples.toLocaleString();
-    console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / originalSampleRate).toFixed(2)}s`);
+    if (window.pm?.data) console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / originalSampleRate).toFixed(2)}s`);
 
     // Refine zoom with actual sample count (viewport already set during progressive init)
     zoomState.initialize(totalWorkletSamples);
@@ -827,14 +856,16 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     }
 
     // Signal data complete to worklet
-    State.workletNode.port.postMessage({
-        type: 'data-complete',
-        totalSamples: totalWorkletSamples,
-        sampleRate: originalSampleRate,
-    });
+    if (State.workletNode) {
+        State.workletNode.port.postMessage({
+            type: 'data-complete',
+            totalSamples: totalWorkletSamples,
+            sampleRate: originalSampleRate,
+        });
+    }
 
     // Final waveform build with DC removal
-    console.log(`🎨 ${logTime()} Requesting final waveform (${totalWorkletSamples.toLocaleString()} samples)`);
+    if (window.pm?.render) console.log(`🎨 ${logTime()} Requesting final waveform (${totalWorkletSamples.toLocaleString()} samples)`);
     const canvas = document.getElementById('waveform');
     const removeDC = document.getElementById('removeDCOffset')?.checked || false;
     const slider = document.getElementById('waveformFilterSlider');
@@ -860,7 +891,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         ? progressiveSamplesBuffer.subarray(0, progressiveSamplesOffset)
         : new Float32Array(0);
     State.setCompleteSamplesArray(stitched);
-    console.log(`📦 ${logTime()} completeSamplesArray ready: ${stitched.length.toLocaleString()} samples`);
+    if (window.pm?.data) console.log(`📦 ${logTime()} completeSamplesArray ready: ${stitched.length.toLocaleString()} samples`);
 
     // Free allReceivedData and processedChunks (memory cleanup)
     for (let i = 0; i < State.allReceivedData.length; i++) {
@@ -879,7 +910,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     progressiveSamplesBuffer = null;
     progressiveSamplesOffset = 0;
     progressiveBufferChunkIndex = 0;
-    console.log(`🧹 ${logTime()} Memory cleaned up`);
+    if (window.pm?.data) console.log(`🧹 ${logTime()} Memory cleaned up`);
 
     // Enable download button
     const downloadContainer = document.getElementById('downloadAudioContainer');
@@ -892,8 +923,11 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         updateCompleteButtonState();
     }
 
+    // Clean up triggered render hook
+    if (renderMode === 'triggered') delete window.triggerDataRender;
+
     // Final spectrogram render with complete data
-    console.log(`🎨 ${logTime()} Final spectrogram render with complete data...`);
+    if (window.pm?.render) console.log(`🎨 ${logTime()} Final spectrogram render with complete data...`);
     await renderProgressiveSpectrogram(State.completeSamplesArray, { isComplete: true });
 
     // Update playback controls
@@ -906,5 +940,13 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
     State.setIsFetchingNewData(false);
 
-    console.log(`✅ ${logTime()} Cloudflare progressive pipeline complete!`);
+    if (window.pm?.data) console.log(`✅ ${logTime()} Cloudflare progressive pipeline complete!`);
+
+    } catch (e) {
+        if (e.name === 'AbortError') {
+            if (window.pm?.data) console.log('☁️ [CLOUDFLARE] Download aborted — new download starting');
+            return;
+        }
+        throw e;
+    }
 }

@@ -2123,10 +2123,10 @@ async function runSecondRegionTutorial() {
  * ═══════════════════════════════════════════════════════════
  */
 async function runBeginAnalysisTutorial() {
-    console.log('🎬 runBeginAnalysisTutorial() START');
+    if (window.pm?.study_flow) console.log('🎬 runBeginAnalysisTutorial() START');
 
     // Message 1: Explain Begin Analysis button
-    console.log('📝 Setting message 1...');
+    if (window.pm?.study_flow) console.log('📝 Setting message 1...');
     setStatusTextAndTrack('For your weekly sessions you will begin by selecting one volcano to work with.', 'status info');
     console.log('⏳ Starting 6s skippable wait...');
     await skippableWait(6000);
@@ -2250,7 +2250,7 @@ export function clearAllTutorialResolvers() {
  */
 export async function runStudyEndWalkthrough(startAtMessageIndex = 0) {
     try {
-        console.log('🎬 Starting Study End Walkthrough...');
+        if (window.pm?.study_flow) console.log('🎬 Starting Study End Walkthrough...');
 
         // 🔥 EXORCISE ALL GHOSTS IMMEDIATELY!
         clearAllTutorialResolvers();

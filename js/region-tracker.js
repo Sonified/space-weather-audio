@@ -1783,7 +1783,7 @@ export function startFrequencySelection(regionIndex, featureIndex) {
  * Called when user completes a box selection on spectrogram
  */
 export async function handleSpectrogramSelection(startY, endY, canvasHeight, startX, endX, canvasWidth) {
-    console.log('🟢 [DEBUG] HANDLE_SPECTROGRAM_SELECTION CALLED');
+    if (window.pm?.interaction) console.log('🟢 [DEBUG] HANDLE_SPECTROGRAM_SELECTION CALLED');
 
     let regionIndex;
     let featureIndex;
@@ -1794,7 +1794,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         // User clicked a button - use that specific feature (reselection)
         regionIndex = currentFrequencySelection.regionIndex;
         featureIndex = currentFrequencySelection.featureIndex;
-        console.log(`🎯 Using explicit selection: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
+        if (window.pm?.features) console.log(`🎯 Using explicit selection: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
 
         // Clear it so next draw creates a new feature (one-shot reselection)
         currentFrequencySelection = null;
@@ -1813,7 +1813,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             // ── Standalone feature mode (no region required) ──
             regionIndex = -1; // Sentinel: indicates standalone feature
             featureIndex = standaloneFeatures.length; // Will be filled after coordinate conversion below
-            console.log(`🎯 Standalone feature mode: will create feature #${featureIndex + 1}`);
+            if (window.pm?.features) console.log(`🎯 Standalone feature mode: will create feature #${featureIndex + 1}`);
         } else if (activeRegionIdx === null) {
             console.warn('⚠️ No active region - cannot create feature');
             return;
@@ -1842,19 +1842,21 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             }
 
             regionIndex = activeRegionIdx;
-            console.log(`🎯 Auto-selected feature: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
+            if (window.pm?.features) console.log(`🎯 Auto-selected feature: region ${regionIndex + 1}, feature ${featureIndex + 1}`);
         }
     }
     
-    console.log('🎯 ========== MOUSE UP: Feature Selection Complete ==========');
-    console.log('📍 Canvas coordinates (pixels):', {
-        startX: startX?.toFixed(1),
-        endX: endX?.toFixed(1),
-        startY: startY?.toFixed(1),
-        endY: endY?.toFixed(1),
-        canvasWidth,
-        canvasHeight
-    });
+    if (window.pm?.features) {
+        console.log('🎯 ========== MOUSE UP: Feature Selection Complete ==========');
+        console.log('📍 Canvas coordinates (pixels):', {
+            startX: startX?.toFixed(1),
+            endX: endX?.toFixed(1),
+            startY: startY?.toFixed(1),
+            endY: endY?.toFixed(1),
+            canvasWidth,
+            canvasHeight
+        });
+    }
     
     // Convert Y positions to frequencies (with playbackRate for accurate conversion!)
     const playbackRate = State.currentPlaybackRate || 1.0;
@@ -1865,7 +1867,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
     const lowFreq = getFrequencyFromY(Math.max(startY, endY), originalNyquist, canvasHeight, State.frequencyScale, playbackRate);
     const highFreq = getFrequencyFromY(Math.min(startY, endY), originalNyquist, canvasHeight, State.frequencyScale, playbackRate);
 
-    console.log('🎵 Converted to frequencies (Hz):', {
+    if (window.pm?.features) console.log('🎵 Converted to frequencies (Hz):', {
         startY_device: Math.min(startY, endY).toFixed(1),
         endY_device: Math.max(startY, endY).toFixed(1),
         canvasHeight_device: canvasHeight,
@@ -1887,7 +1889,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             const startTimestamp = zoomState.sampleToRealTimestamp(startSample);
             const endTimestamp = zoomState.sampleToRealTimestamp(endSample);
             
-            console.log('🏛️ Converted to samples (eternal coordinates):', {
+            if (window.pm?.features) console.log('🏛️ Converted to samples (eternal coordinates):', {
                 startSample: startSample.toLocaleString(),
                 endSample: endSample.toLocaleString(),
                 sampleRate: zoomState.sampleRate
@@ -1901,7 +1903,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
                 startTime = new Date(actualStartMs).toISOString();
                 endTime = new Date(actualEndMs).toISOString();
                 
-                console.log('📅 Converted to timestamps:', {
+                if (window.pm?.features) console.log('📅 Converted to timestamps:', {
                     startTime,
                     endTime
                 });
@@ -1927,8 +1929,10 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             startTime = new Date(actualStartMs).toISOString();
             endTime = new Date(actualEndMs).toISOString();
             
-            console.log('⚠️ FALLBACK: Using progress-based conversion (zoom not initialized)');
-            console.log('📅 Timestamps:', { startTime, endTime });
+            if (window.pm?.features) {
+                console.log('⚠️ FALLBACK: Using progress-based conversion (zoom not initialized)');
+                console.log('📅 Timestamps:', { startTime, endTime });
+            }
         }
     }
     
@@ -1947,8 +1951,10 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         };
         featureIndex = addStandaloneFeature(newFeature);
 
-        console.log('💾 SAVED standalone feature:', { featureIndex, lowFreq: lowFreq.toFixed(3), highFreq: highFreq.toFixed(3), startTime, endTime });
-        console.log('🎯 ========== END Feature Selection ==========\n');
+        if (window.pm?.features) {
+            console.log('💾 SAVED standalone feature:', { featureIndex, lowFreq: lowFreq.toFixed(3), highFreq: highFreq.toFixed(3), startTime, endTime });
+            console.log('🎯 ========== END Feature Selection ==========\n');
+        }
 
         // Rebuild canvas boxes (includes standalone features)
         redrawAllCanvasFeatureBoxes();
@@ -1978,15 +1984,17 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
             regions[regionIndex].features[featureIndex].endTime = endTime;
         }
 
-        console.log('💾 SAVED to feature data:', {
-            regionIndex,
-            featureIndex,
-            lowFreq: lowFreq.toFixed(3),
-            highFreq: highFreq.toFixed(3),
-            startTime,
-            endTime
-        });
-        console.log('🎯 ========== END Feature Selection ==========\n');
+        if (window.pm?.features) {
+            console.log('💾 SAVED to feature data:', {
+                regionIndex,
+                featureIndex,
+                lowFreq: lowFreq.toFixed(3),
+                highFreq: highFreq.toFixed(3),
+                startTime,
+                endTime
+            });
+            console.log('🎯 ========== END Feature Selection ==========\n');
+        }
 
         setCurrentRegions(regions);
 
@@ -4200,7 +4208,7 @@ export async function updateCompleteButtonState() {
         
         if (!isStudyMode()) {
             const sampleCount = State.completeSamplesArray ? State.completeSamplesArray.length : 0;
-            console.log(`🔵 Begin Analysis button: hasData=${hasData}, samples=${sampleCount.toLocaleString()}`);
+            if (window.pm?.interaction) console.log(`🔵 Begin Analysis button: hasData=${hasData}, samples=${sampleCount.toLocaleString()}`);
         }
     } else {
         // COMPLETE MODE: Enable when at least one feature is identified
@@ -4208,7 +4216,7 @@ export async function updateCompleteButtonState() {
         shouldDisable = !hasFeature;
         
         if (!isStudyMode()) {
-            console.log(`🔵 Complete button: hasFeature=${hasFeature}`);
+            if (window.pm?.interaction) console.log(`🔵 Complete button: hasFeature=${hasFeature}`);
         }
     }
     

@@ -1242,7 +1242,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
             if (chunk.max > normMax) normMax = chunk.max;
         }
         
-        console.log(`📊 ${logTime()} Normalization range: ${normMin} to ${normMax}`);
+        if (window.pm?.data) console.log(`📊 ${logTime()} Normalization range: ${normMin} to ${normMax}`);
         
         // Store metadata for duration calculation
         State.setCurrentMetadata({
@@ -1275,7 +1275,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         const originalSampleRate = State.currentMetadata?.original_sample_rate || 50;
         const expectedDuration = totalSamples / originalSampleRate;
         State.setTotalAudioDuration(expectedDuration);
-        console.log(`📊 ${logTime()} Set EXPECTED totalAudioDuration: ${expectedDuration.toFixed(2)}s (will update with actual at completion)`);
+        if (window.pm?.data) console.log(`📊 ${logTime()} Set EXPECTED totalAudioDuration: ${expectedDuration.toFixed(2)}s (will update with actual at completion)`);
         
         const chunksToFetch = chunksNeeded; // Use our calculated chunks!
         
@@ -1402,7 +1402,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     State.workletNode.port.postMessage({
                         type: 'audio-data',
                         data: workletChunk,
-                        autoResume: true  // 🎯 Enable graceful auto-resume if playback stopped due to buffer underrun
+                        autoResume: State.playbackState === PlaybackState.PLAYING,
                     });
                     
                     State.allReceivedData.push(workletChunk);
@@ -1416,7 +1416,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                         
                         // Check if this is a shared session - don't auto-play
                         const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-                        const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay').checked;
+                        const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay')?.checked;
 
                         if (autoPlayEnabled) {
                             // 🎯 FORCE IMMEDIATE PLAYBACK
@@ -1598,7 +1598,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 if (allChunksPresent && !completionHandled) {
                     completionHandled = true; // Mark as handled immediately to prevent race conditions
                     const totalTime = performance.now() - progressiveT0;
-                    console.log(`✅ All ${chunksToFetch.length} chunks processed in ${totalTime.toFixed(0)}ms total`);
+                    if (window.pm?.data) console.log(`✅ All ${chunksToFetch.length} chunks processed in ${totalTime.toFixed(0)}ms total`);
                     
                     // 🔍 DEBUG: Calculate actual total samples from processed chunks
                     // Note: Some chunks may have samples=null due to progressive memory cleanup
@@ -1623,14 +1623,14 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                     
                     // Calculate total from worklet data (most reliable - includes all chunks)
                     const totalWorkletSamples = State.allReceivedData.reduce((sum, chunk) => sum + chunk.length, 0);
-                    console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()} (from allReceivedData)`);
+                    if (window.pm?.data) console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()} (from allReceivedData)`);
                     
                     // 🎯 UPDATE: Use ACTUAL sample count for duration (refining expected duration)
                     // 👑 CRITICAL: Use original sample rate from metadata, NOT AudioContext rate!
                     const originalSampleRate = State.currentMetadata?.original_sample_rate || 50;
                     State.setTotalAudioDuration(totalWorkletSamples / originalSampleRate);
                     document.getElementById('sampleCount').textContent = totalWorkletSamples.toLocaleString(); // Update with actual
-                    console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / originalSampleRate).toFixed(2)}s (actual samples: ${totalWorkletSamples.toLocaleString()}, expected: ${totalSamples.toLocaleString()})`);
+                    if (window.pm?.data) console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / originalSampleRate).toFixed(2)}s (actual samples: ${totalWorkletSamples.toLocaleString()}, expected: ${totalSamples.toLocaleString()})`);
                     
                     // 🏛️ Initialize zoom state with total sample count
                     zoomState.initialize(totalWorkletSamples);
@@ -1800,7 +1800,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                 const playPauseBtn = document.getElementById('playPauseBtn');
                                 if (playPauseBtn && playPauseBtn.disabled) {
                                     playPauseBtn.disabled = false;
-                                    const autoPlayEnabled = document.getElementById('autoPlay').checked;
+                                    const autoPlayEnabled = document.getElementById('autoPlay')?.checked;
                                     if (autoPlayEnabled && State.playbackState === PlaybackState.PLAYING) {
                                         // Auto play is on and playback is active - show Pause button
                                         playPauseBtn.textContent = '⏸️ Pause';
@@ -2309,7 +2309,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
         State.workletNode.port.postMessage({
             type: 'audio-data',
             data: chunk,
-            autoResume: true  // 🎯 Enable graceful auto-resume if playback stopped due to buffer underrun
+            autoResume: State.playbackState === PlaybackState.PLAYING,
         });
         
         State.allReceivedData.push(chunk);
@@ -2322,7 +2322,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
     
     // Check if this is a shared session - don't auto-play
     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-    const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay').checked;
+    const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay')?.checked;
 
     if (autoPlayEnabled) {
         // 🎯 FORCE IMMEDIATE PLAYBACK
@@ -2489,7 +2489,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
     const playPauseBtn = document.getElementById('playPauseBtn');
     if (playPauseBtn.disabled) {
         playPauseBtn.disabled = false;
-        const autoPlayEnabled = document.getElementById('autoPlay').checked;
+        const autoPlayEnabled = document.getElementById('autoPlay')?.checked;
         if (autoPlayEnabled && State.playbackState === PlaybackState.PLAYING) {
             // Auto play is on and playback is active - show Pause button
             playPauseBtn.textContent = '⏸️ Pause';

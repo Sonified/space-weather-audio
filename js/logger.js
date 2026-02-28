@@ -23,10 +23,10 @@ const emoji = {
     regions: '🎯',
     share: '🔗',
     render: '🎨',
-    ui: '👆',
+    interaction: '🖱️',
     zoom: '🔍',
     gpu: '🔺',
-    study: '🔬',
+    study_flow: '🔬',
     features: '📦',
     memory: '🏥',
     cache: '💾',
@@ -44,10 +44,10 @@ const pm = {
     regions: true,   // Region/feature operations
     share: true,     // Share link operations
     render: false,   // Spectrogram/waveform rendering (noisy)
-    ui: false,       // User interactions
+    interaction: false, // User interactions (clicks, drags, canvas events)
     zoom: false,     // Zoom state changes
     gpu: false,      // GPU compute, pyramid, zero-copy pipeline
-    study: false,    // EMIC study flow, mode initialization
+    study_flow: false,    // EMIC study flow, mode initialization
     features: false, // Feature boxes, regions, standalone features
     memory: false,   // Memory health monitoring
     cache: false,    // IndexedDB cache operations

@@ -1703,7 +1703,7 @@ export function setupModalEventListeners() {
         
         if (activityLevelSubmitBtn) {
             activityLevelSubmitBtn.addEventListener('click', async () => {
-                console.log('🔵 Activity Level submit button clicked');
+                if (window.pm?.interaction) console.log('🔵 Activity Level submit button clicked');
                 const success = await submitActivityLevelSurvey();  // Save data
 
                 if (!success) {
@@ -1834,7 +1834,7 @@ export function setupModalEventListeners() {
                 e.preventDefault(); // Prevent any default behavior
                 
                 const value = btn.getAttribute('data-value');
-                console.log(`🔵 Quick-fill button clicked: filling all AWE-SF questions with value ${value}`);
+                if (window.pm?.interaction) console.log(`🔵 Quick-fill button clicked: filling all AWE-SF questions with value ${value}`);
                 
                 // Fill all AWE-SF radio buttons with this value
                 awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
@@ -2622,7 +2622,7 @@ export function openBeginAnalysisModal() {
         modal.setAttribute('tabindex', '-1');
         // Focus the modal so keyboard events work
         modal.focus();
-        console.log('🔵 Begin Analysis modal opened');
+        if (window.pm?.interaction) console.log('🔵 Begin Analysis modal opened');
     } else {
         console.error('❌ Begin Analysis modal not found in DOM');
     }
@@ -2644,7 +2644,7 @@ export function closeBeginAnalysisModal(keepOverlay = null) {
         fadeOutOverlay();
     }
     
-    console.log(`🔵 Begin Analysis modal closed (keepOverlay: ${keepOverlay})`);
+    if (window.pm?.interaction) console.log(`🔵 Begin Analysis modal closed (keepOverlay: ${keepOverlay})`);
 }
 
 // Welcome Back Modal Functions

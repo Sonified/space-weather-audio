@@ -152,14 +152,14 @@ export function hideComponentSelector() {
 async function getComponentBlob(componentIndex) {
     // Check if we already have blobs in memory
     if (cachedComponentBlobs[componentIndex]) {
-        console.log(`   📦 Using in-memory cached blob for component ${componentIndex}`);
+        if (window.pm?.data) console.log(`   📦 Using in-memory cached blob for component ${componentIndex}`);
         return cachedComponentBlobs[componentIndex];
     }
 
     // Try to get from IndexedDB cache
     if (currentSpacecraft && currentDataset && currentStartTime && currentEndTime) {
         const cached = await getAudioData(currentSpacecraft, currentDataset, currentStartTime, currentEndTime);
-        console.log(`   🔍 Cache lookup result:`, {
+        if (window.pm?.data) console.log(`   🔍 Cache lookup result:`, {
             hasCache: !!cached,
             hasAllComponentBlobs: !!cached?.allComponentBlobs,
             blobCount: cached?.allComponentBlobs?.length || 0,
@@ -168,7 +168,7 @@ async function getComponentBlob(componentIndex) {
         if (cached?.allComponentBlobs && cached.allComponentBlobs[componentIndex]) {
             // Store all blobs in memory for future use
             cachedComponentBlobs = cached.allComponentBlobs;
-            console.log(`   📦 Loaded ${cachedComponentBlobs.length} component blobs from IndexedDB cache`);
+            if (window.pm?.data) console.log(`   📦 Loaded ${cachedComponentBlobs.length} component blobs from IndexedDB cache`);
             return cachedComponentBlobs[componentIndex];
         }
     }
@@ -191,14 +191,16 @@ export async function switchComponent(componentIndex) {
     }
 
     const labels = getLabelsForSpacecraft();
-    console.log(`🔄 Switching to component ${componentIndex}: ${labels[componentIndex]}`);
-    console.log(`   📍 Time range and regions will be preserved (same time period, different vector component)`);
+    if (window.pm?.data) {
+        console.log(`🔄 Switching to component ${componentIndex}: ${labels[componentIndex]}`);
+        console.log(`   📍 Time range and regions will be preserved (same time period, different vector component)`);
+    }
 
     try {
         // Capture current playback state before switching
         const wasPlaying = State.playbackState === 'playing';
         const currentPosition = State.currentAudioPosition;
-        console.log(`   🎵 Current state: wasPlaying=${wasPlaying}, position=${currentPosition?.toFixed(2)}s`);
+        if (window.pm?.audio) console.log(`   🎵 Current state: wasPlaying=${wasPlaying}, position=${currentPosition?.toFixed(2)}s`);
 
         // Get blob from cache (NOT from URL - those expire!)
         const wavBlob = await getComponentBlob(componentIndex);
@@ -216,7 +218,7 @@ export async function switchComponent(componentIndex) {
         // Extract samples
         const samples = audioBuffer.getChannelData(0);
 
-        console.log(`   📊 Loaded ${samples.length.toLocaleString()} samples for ${labels[componentIndex]}`);
+        if (window.pm?.data) console.log(`   📊 Loaded ${samples.length.toLocaleString()} samples for ${labels[componentIndex]}`);
 
         // Update state with new samples (KEEP time range and regions intact!)
         State.setCompleteSamplesArray(samples);
@@ -238,7 +240,7 @@ export async function switchComponent(componentIndex) {
 
         // Send to AudioWorklet - use dual-buffer crossfade for seamless switching
         if (State.workletNode) {
-            console.log(`   🔊 Sending ${samples.length.toLocaleString()} samples to AudioWorklet for crossfade...`);
+            if (window.pm?.audio) console.log(`   🔊 Sending ${samples.length.toLocaleString()} samples to AudioWorklet for crossfade...`);
 
             // Use swap-buffer for seamless crossfade (no clicks!)
             // The worklet will:
@@ -250,7 +252,7 @@ export async function switchComponent(componentIndex) {
                 samples: samples,
                 sampleRate: State.currentMetadata?.original_sample_rate || 100
             });
-            console.log(`   🔊 Initiated crossfade swap (50ms equal-power crossfade)`);
+            if (window.pm?.audio) console.log(`   🔊 Initiated crossfade swap (50ms equal-power crossfade)`);
 
             // Also update stretch processor if it's active
             if (State.stretchActive && State.stretchNode) {
@@ -283,8 +285,10 @@ export async function switchComponent(componentIndex) {
         await renderCompleteSpectrogram();
 
         currentComponentIndex = componentIndex;
-        console.log(`✅ Component switched to ${labels[componentIndex]}`);
-        console.log(`   ✅ Regions and time range preserved`);
+        if (window.pm?.render) {
+            console.log(`✅ Component switched to ${labels[componentIndex]}`);
+            console.log(`   ✅ Regions and time range preserved`);
+        }
 
     } catch (error) {
         console.error(`❌ Failed to switch component:`, error);
@@ -322,7 +326,7 @@ export function setupComponentSelectorListener() {
         const { allBlobs } = e.detail;
         if (allBlobs && allBlobs.length > 0) {
             cachedComponentBlobs = allBlobs;
-            console.log(`📊 Component selector received ${allBlobs.length} cached blobs`);
+            if (window.pm?.data) console.log(`📊 Component selector received ${allBlobs.length} cached blobs`);
         }
     });
 
@@ -352,7 +356,7 @@ export function getCurrentComponentIndex() {
 export async function getAllComponentBlobs() {
     // Check if we have blobs in memory
     if (cachedComponentBlobs.length > 0) {
-        console.log(`📦 Using ${cachedComponentBlobs.length} in-memory cached blobs`);
+        if (window.pm?.data) console.log(`📦 Using ${cachedComponentBlobs.length} in-memory cached blobs`);
         return cachedComponentBlobs;
     }
 
@@ -361,7 +365,7 @@ export async function getAllComponentBlobs() {
         const cached = await getAudioData(currentSpacecraft, currentDataset, currentStartTime, currentEndTime);
         if (cached?.allComponentBlobs && cached.allComponentBlobs.length > 0) {
             cachedComponentBlobs = cached.allComponentBlobs;
-            console.log(`📦 Loaded ${cachedComponentBlobs.length} component blobs from IndexedDB cache`);
+            if (window.pm?.data) console.log(`📦 Loaded ${cachedComponentBlobs.length} component blobs from IndexedDB cache`);
             return cachedComponentBlobs;
         }
     }

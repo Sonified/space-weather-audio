@@ -2499,7 +2499,7 @@ export async function startCompleteVisualization() {
         return;
     }
 
-    console.log('🎬 Starting complete spectrogram visualization');
+    if (window.pm?.render) console.log('🎬 Starting complete spectrogram visualization');
 
     await renderCompleteSpectrogram();
 }

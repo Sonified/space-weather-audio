@@ -45,6 +45,7 @@ import {
 } from './master-modes.js';
 import { initShareModal, openShareModal, checkAndLoadSharedSession, applySharedSession, updateShareButtonState } from './share-modal.js';
 import { log, logGroup, logGroupEnd, pm } from './logger.js';
+import { upgradeAllSelects } from './custom-select.js';
 
 // console.groupCollapsed('📦 [MODULE] Loading');
 // console.log('✅ ALL IMPORTS COMPLETE');
@@ -346,7 +347,7 @@ function toggleAntiAliasing() {
 export async function initAudioWorklet() {
     // 🔥 FIX: Clear old worklet message handler before creating new one
     if (State.workletNode) {
-        console.log('🧹 Clearing old worklet message handler before creating new worklet...');
+        if (window.pm?.audio) console.log('🧹 Clearing old worklet message handler before creating new worklet...');
         State.workletNode.port.onmessage = null;  // Break closure chain
         State.workletNode.disconnect();
         State.setWorkletNode(null);
@@ -370,7 +371,7 @@ export async function initAudioWorklet() {
 
     // 🔥 FIX: Disconnect old analyser node to prevent memory leak
     if (State.analyserNode) {
-        console.log('🧹 Disconnecting old analyser node...');
+        if (window.pm?.audio) console.log('🧹 Disconnecting old analyser node...');
         State.analyserNode.disconnect();
         State.setAnalyserNode(null);
     }
@@ -850,7 +851,7 @@ export async function startStreaming(event, config = null) {
         }
         
         // Check if autoPlay is enabled and start playback indicator
-        const autoPlayEnabled = document.getElementById('autoPlay').checked;
+        const autoPlayEnabled = document.getElementById('autoPlay')?.checked;
         if (autoPlayEnabled && State.playbackState === PlaybackState.PLAYING) {
             const { startPlaybackIndicator } = await import('./minimap-window-renderer.js');
             // console.log(`⏱️ ${logTime()} Worklet confirmed playback`);
@@ -1011,6 +1012,48 @@ function injectSettingsDrawer() {
             </div>
         </div>
         <div class="drawer-section">
+            <div class="drawer-section-title">Data Loading</div>
+            <div class="drawer-row">
+                <label for="dataSource" class="drawer-label">Source</label>
+                <select id="dataSource" class="drawer-input" style="width: 150px; text-align: left;">
+                    <option value="cdaweb" selected>GOES CDAWeb</option>
+                    <option value="cloudflare">GOES Cloudflare</option>
+                </select>
+            </div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="drawerBypassCache" style="width: 16px; height: 16px; cursor: pointer;">
+                    Do not use cache
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="silentDownload" style="width: 16px; height: 16px; cursor: pointer;">
+                    Silent download
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="autoDownload" style="width: 16px; height: 16px; cursor: pointer;">
+                    Auto download
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="autoPlay" style="width: 16px; height: 16px; cursor: pointer;">
+                    Auto play
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label for="dataRendering" class="drawer-label">Rendering</label>
+                <select id="dataRendering" class="drawer-input" style="width: 130px; text-align: left;">
+                    <option value="progressive" selected>Progressive</option>
+                    <option value="onComplete">On Complete</option>
+                    <option value="triggered">Triggered</option>
+                </select>
+            </div>
+        </div>
+        <div class="drawer-section">
             <div class="drawer-section-title">Feature Boxes</div>
             <div class="drawer-row">
                 <label for="featureBoxesVisible" class="drawer-label">Show Boxes</label>
@@ -1039,18 +1082,30 @@ function injectSettingsDrawer() {
             <div class="drawer-section-title">Layout</div>
             <div class="drawer-row">
                 <label for="minUIWidth" class="drawer-label">Min Width (px)</label>
-                <input type="number" id="minUIWidth" class="drawer-input" min="0" max="3000" step="50">
+                <div class="drawer-spinner">
+                    <button class="spinner-btn spinner-dec" data-for="minUIWidth">−</button>
+                    <input type="text" id="minUIWidth" class="spinner-value" inputmode="numeric" data-min="0" data-max="3000" data-step="50">
+                    <button class="spinner-btn spinner-inc" data-for="minUIWidth">+</button>
+                </div>
             </div>
         </div>
         <div class="drawer-section">
             <div class="drawer-section-title">Panel Heights (px)</div>
             <div class="drawer-row">
                 <label for="heightMinimap" class="drawer-label">Minimap</label>
-                <input type="number" id="heightMinimap" class="drawer-input" min="50" max="400" step="1">
+                <div class="drawer-spinner">
+                    <button class="spinner-btn spinner-dec" data-for="heightMinimap">−</button>
+                    <input type="text" id="heightMinimap" class="spinner-value" inputmode="numeric" data-min="50" data-max="400" data-step="1">
+                    <button class="spinner-btn spinner-inc" data-for="heightMinimap">+</button>
+                </div>
             </div>
             <div class="drawer-row">
                 <label for="heightSpectrogram" class="drawer-label">Spectrogram</label>
-                <input type="number" id="heightSpectrogram" class="drawer-input" min="200" max="1200" step="1">
+                <div class="drawer-spinner">
+                    <button class="spinner-btn spinner-dec" data-for="heightSpectrogram">−</button>
+                    <input type="text" id="heightSpectrogram" class="spinner-value" inputmode="numeric" data-min="200" data-max="1200" data-step="1">
+                    <button class="spinner-btn spinner-inc" data-for="heightSpectrogram">+</button>
+                </div>
             </div>
         </div>
         <div class="drawer-section">
@@ -1215,34 +1270,6 @@ function injectSettingsDrawer() {
             </div>
         </div>
         <div class="drawer-section">
-            <div class="drawer-section-title">Data Loading</div>
-            <div class="drawer-row">
-                <label for="dataSource" class="drawer-label">Source</label>
-                <select id="dataSource" class="drawer-input" style="width: 150px; text-align: left;">
-                    <option value="cdaweb" selected>GOES CDAWeb</option>
-                    <option value="cloudflare">GOES Cloudflare</option>
-                </select>
-            </div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="drawerBypassCache" style="width: 16px; height: 16px; cursor: pointer;">
-                    Do not use cache
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="silentDownload" style="width: 16px; height: 16px; cursor: pointer;">
-                    Silent download
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="autoDownload" style="width: 16px; height: 16px; cursor: pointer;">
-                    Auto download
-                </label>
-            </div>
-        </div>
-        <div class="drawer-section">
             <div class="drawer-section-title">Page Scroll</div>
             <div class="drawer-row" style="margin-top: 6px;">
                 <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
@@ -1293,6 +1320,12 @@ function injectSettingsDrawer() {
                 <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
                     <input type="checkbox" id="printData" style="width: 16px; height: 16px; cursor: pointer;">
                     Data
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 4px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="printInteraction" style="width: 16px; height: 16px; cursor: pointer;">
+                    Interaction
                 </label>
             </div>
         </div>
@@ -1599,6 +1632,8 @@ function initializeAdvancedControls() {
         { id: 'drawerBypassCache', key: 'emic_bypass_cache', type: 'checkbox' },
         { id: 'silentDownload', key: 'emic_silent_download', type: 'checkbox' },
         { id: 'autoDownload', key: 'emic_auto_download', type: 'checkbox' },
+        { id: 'autoPlay', key: 'emic_auto_play', type: 'checkbox' },
+        { id: 'dataRendering', key: 'emic_data_rendering', type: 'select' },
         { id: 'tickFadeInTime', key: 'emic_tick_fade_in', type: 'range' },
         { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
@@ -1610,6 +1645,7 @@ function initializeAdvancedControls() {
         { id: 'printStudy', key: 'emic_print_study', type: 'checkbox' },
         { id: 'printFeatures', key: 'emic_print_features', type: 'checkbox' },
         { id: 'printData', key: 'emic_print_data', type: 'checkbox' },
+        { id: 'printInteraction', key: 'emic_print_interaction', type: 'checkbox' },
     ];
     // Page-specific localStorage: emic_study keeps 'emic_*' keys, index.html uses 'main_*'
     const settingsPrefix = isStudyMode() ? 'emic_' : 'main_';
@@ -1636,8 +1672,17 @@ function initializeAdvancedControls() {
         }
     }
 
+    // Auto play defaults: ON for index.html, OFF for EMIC (unless user saved a preference)
+    const autoPlayEl = document.getElementById('autoPlay');
+    if (autoPlayEl) {
+        const apKey = (isStudyMode() ? 'emic_' : 'main_') + 'auto_play';
+        if (localStorage.getItem(apKey) === null) {
+            autoPlayEl.checked = !isEmicStudyMode();
+        }
+    }
+
     // Sync Prints checkboxes → pm flags (restore from localStorage + live toggle)
-    const printMap = { printInit: 'init', printGPU: 'gpu', printMemory: 'memory', printAudio: 'audio', printStudy: 'study', printFeatures: 'features', printData: 'data' };
+    const printMap = { printInit: 'init', printGPU: 'gpu', printMemory: 'memory', printAudio: 'audio', printStudy: 'study_flow', printFeatures: 'features', printData: 'data', printInteraction: 'interaction' };
     for (const [id, pmKey] of Object.entries(printMap)) {
         const el = document.getElementById(id);
         if (!el) continue;
@@ -1661,12 +1706,15 @@ function initializeAdvancedControls() {
         });
     }
 
+    // Upgrade all native <select> elements to custom styled dropdowns
+    const cselInstances = upgradeAllSelects();
+
     // Auto-download: if enabled, click Fetch Data after a brief init delay
     if (document.getElementById('autoDownload')?.checked) {
         setTimeout(() => {
             const fetchBtn = document.getElementById('startBtn');
             if (fetchBtn && !fetchBtn.disabled) {
-                if (window.pm?.data) console.log('🚀 Auto-download enabled, triggering data fetch...');
+                if (window.pm?.init) console.log('🚀 Auto-download enabled, triggering data fetch...');
                 fetchBtn.click();
             }
         }, 500);
@@ -1832,6 +1880,7 @@ function initializeAdvancedControls() {
             dvOption.value = 'dataviewer';
             dvOption.textContent = 'Data Viewer';
             displayModeSelect.appendChild(dvOption);
+            if (cselInstances.has('displayMode')) cselInstances.get('displayMode').refresh();
             initDataViewer();
         }
 
@@ -1900,7 +1949,9 @@ function initializeAdvancedControls() {
 
     function applyPanelHeight(input, canvasId, axisId, buttonsId) {
         const h = parseInt(input.value);
-        if (isNaN(h) || h < parseInt(input.min) || h > parseInt(input.max)) return;
+        const min = parseInt(input.dataset.min || 0);
+        const max = parseInt(input.dataset.max || 9999);
+        if (isNaN(h) || h < min || h > max) return;
         const canvas = document.getElementById(canvasId);
         if (!canvas) return;
         canvas.style.height = h + 'px';
@@ -1938,6 +1989,36 @@ function initializeAdvancedControls() {
             localStorage.setItem('minUIWidth', v);
         });
     }
+
+    // --- Custom spinner buttons for number inputs ---
+    document.querySelectorAll('.spinner-btn').forEach(btn => {
+        const inputId = btn.dataset.for;
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const step = parseInt(input.dataset.step || 1);
+        const min = parseInt(input.dataset.min || 0);
+        const max = parseInt(input.dataset.max || 9999);
+        const isInc = btn.classList.contains('spinner-inc');
+        let holdTimer = null;
+        let holdInterval = null;
+
+        function nudge() {
+            let val = parseInt(input.value) || 0;
+            val = isInc ? Math.min(val + step, max) : Math.max(val - step, min);
+            input.value = val;
+            input.dispatchEvent(new Event('change'));
+        }
+
+        btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            nudge();
+            holdTimer = setTimeout(() => {
+                holdInterval = setInterval(nudge, 100);
+            }, 400);
+        });
+        btn.addEventListener('mouseup', () => { clearTimeout(holdTimer); clearInterval(holdInterval); });
+        btn.addEventListener('mouseleave', () => { clearTimeout(holdTimer); clearInterval(holdInterval); });
+    });
 
     // Position gear icons over their respective canvases (top-right corner)
     function positionGearIcons() {
@@ -2214,7 +2295,7 @@ async function initializeEmicStudyMode() {
         }
     }
 
-    if (window.pm?.study) console.log('🔬 EMIC Study mode initialized (skipLogin:', skipLogin, ')');
+    if (window.pm?.study_flow) console.log('🔬 EMIC Study mode initialized (skipLogin:', skipLogin, ')');
 }
 
 /**
@@ -2334,9 +2415,9 @@ async function initializeApp() {
     const { CURRENT_MODE, AppMode } = await import('./master-modes.js');
     
     if (!isStudyMode()) {
-        if (window.pm?.study) console.groupCollapsed(`🎯 [MODE] ${CURRENT_MODE} Initialization`);
+        if (window.pm?.study_flow) console.groupCollapsed(`🎯 [MODE] ${CURRENT_MODE} Initialization`);
     }
-    if (window.pm?.study) console.log(`🚀 Initializing app in ${CURRENT_MODE} mode`);
+    if (window.pm?.study_flow) console.log(`🚀 Initializing app in ${CURRENT_MODE} mode`);
     
     switch (CURRENT_MODE) {
         case AppMode.PERSONAL:
@@ -2366,7 +2447,7 @@ async function initializeApp() {
         case AppMode.TUTORIAL_END:
             // Tutorial End mode: Debug mode to test tutorial end walkthrough
             // Don't initialize any mode - just wait for user to load data then trigger debug jump
-            console.log('🎬 Tutorial End Mode: Ready. Load data, then type "testend" or it will auto-trigger.');
+            if (window.pm?.study_flow) console.log('🎬 Tutorial End Mode: Ready. Load data, then type "testend" or it will auto-trigger.');
             break;
 
         default:
@@ -2696,9 +2777,9 @@ async function initializeMainApp() {
         if (permanentOverlay) {
             permanentOverlay.style.display = 'none';
             if (isTutorialEndMode()) {
-                console.log('🎬 Tutorial End Mode: Permanent overlay hidden (no initial modals)');
+                if (window.pm?.study_flow) console.log('🎬 Tutorial End Mode: Permanent overlay hidden (no initial modals)');
             } else if (!isStudyMode()) {
-                console.log(`✅ ${CURRENT_MODE.toUpperCase()} Mode: Permanent overlay hidden`);
+                if (window.pm?.init) console.log(`✅ ${CURRENT_MODE.toUpperCase()} Mode: Permanent overlay hidden`);
             }
         }
     }
@@ -3485,7 +3566,7 @@ async function initializeMainApp() {
     if (window.pm?.init) console.log('🟢 startBtn element:', startBtn ? 'FOUND' : 'NOT FOUND');
     if (startBtn) {
         startBtn.addEventListener('click', async (e) => {
-            if (window.pm?.data) console.log('🔵 Fetch Data button clicked!');
+            if (window.pm?.interaction) console.log('🔵 Fetch Data button clicked!');
             // Cancel any typing animation immediately
             const { cancelTyping } = await import('./tutorial-effects.js');
             cancelTyping();
@@ -3587,7 +3668,7 @@ async function initializeMainApp() {
             
             e.preventDefault();
             e.stopPropagation();
-            console.log('🔵 Begin Analysis button clicked');
+            if (window.pm?.interaction) console.log('🔵 Begin Analysis button clicked');
 
             // Check if tutorial is waiting for this click
             if (State.waitingForBeginAnalysisClick && State._beginAnalysisClickResolve) {
@@ -3623,8 +3704,8 @@ async function initializeMainApp() {
         if (autoPlayCheckbox) {
             autoPlayCheckbox.checked = false;
             autoPlayCheckbox.disabled = true;
-            console.log('✅ Auto play disabled after Begin Analysis confirmation');
         }
+        console.log('✅ Auto play disabled after Begin Analysis confirmation');
         
         // Configure interaction dropdowns for analysis mode after Begin Analysis
         const mainDragSelect = document.getElementById('mainWindowDrag');
@@ -4274,9 +4355,9 @@ async function initializeMainApp() {
 // Call initialization when DOM is ready
 if (document.readyState === 'loading') {
     // DOM is still loading, wait for DOMContentLoaded
-    console.log('⏳ Waiting for DOMContentLoaded...');
+    if (window.pm?.init) console.log('⏳ Waiting for DOMContentLoaded...');
     document.addEventListener('DOMContentLoaded', () => {
-        console.log('🔵 DOMContentLoaded FIRED - calling initializeMainApp');
+        if (window.pm?.init) console.log('🔵 DOMContentLoaded FIRED - calling initializeMainApp');
         initializeMainApp();
     });
 } else {
