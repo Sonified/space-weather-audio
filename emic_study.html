@@ -234,6 +234,69 @@
             background: rgba(0, 123, 255, 0.1);
             border-color: #007bff;
         }
+
+        /* ── Thinner, darker toolbars for EMIC ── */
+        .panel-playback {
+            background: rgba(30, 30, 45, 0.85) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.3) !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+            padding: 5px 12px !important;
+            backdrop-filter: blur(8px);
+        }
+        .panel-playback::before {
+            display: none; /* Kill the heavy gradient overlay */
+        }
+        .panel-playback label {
+            font-size: 13px;
+            color: #c0c0d0;
+        }
+        .panel-playback button {
+            font-size: 13px;
+            padding: 4px 10px;
+        }
+        .panel-playback select,
+        .panel-playback input[type="range"] {
+            font-size: 13px;
+        }
+
+        /* Bottom viz-controls bar */
+        .viz-controls {
+            gap: 18px !important;
+        }
+        .viz-controls label {
+            font-size: 12px !important;
+            opacity: 0.8;
+        }
+        .viz-controls select {
+            font-size: 12px !important;
+            padding: 2px 6px !important;
+            background: rgba(255, 255, 255, 0.12) !important;
+            color: #e0e0e8;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            border-radius: 3px;
+        }
+
+        /* Thin subtle scrollbars for both bars */
+        .panel-playback > div::-webkit-scrollbar,
+        .viz-controls::-webkit-scrollbar {
+            height: 3px;
+        }
+        .panel-playback > div::-webkit-scrollbar-track,
+        .viz-controls::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .panel-playback > div::-webkit-scrollbar-thumb,
+        .viz-controls::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+        .panel-playback > div,
+        .viz-controls {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+        }
     </style>
 </head>
 <body>
@@ -412,7 +475,7 @@
 
             <!-- Main Window gear (content injected by main.js) -->
             <div class="panel-gear" id="mainWindowGear"></div>
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px; flex-wrap: nowrap; overflow-x: auto;">
                 <div id="oscilloscope-panel" style="display: block; pointer-events: none;">
                     <div style="position: relative; border-radius: 5px; padding: 4px; background: linear-gradient(135deg, rgba(40, 40, 70, 0.85) 0%, rgba(25, 25, 55, 0.8) 100%); box-shadow: 0 0 5px rgba(102, 126, 234, 0.2), inset 0 0 20px rgba(80, 90, 130, 0.5);">
                         <canvas id="oscilloscope" width="106" height="28" style="display: block; width: 106px; height: 28px; border-radius: 2px; background: rgba(3, 3, 8, 0.98);"></canvas>
@@ -431,7 +494,7 @@
                 </div>
                 <!-- Hidden checkbox kept for JS compatibility -->
                 <input type="checkbox" id="advancedMode" style="display:none;">
-                <div class="viz-controls" style="display: flex; align-items: center; gap: 30px; margin-left: auto;">
+                <div class="viz-controls" style="display: flex; align-items: center; gap: 30px; margin-left: auto; flex-wrap: nowrap; overflow-x: auto;">
                     <div style="display: none;">
                         <input type="checkbox" id="playOnClick" checked>
                     </div>
@@ -564,15 +627,14 @@
     
     <!-- CORE SYSTEM -->
     <script type="module">
-        console.groupCollapsed('🔥 [CORE] Core Systems Initialization');
+        if (window.pm?.init) console.groupCollapsed('🔥 [CORE] Core Systems Initialization');
         import { initFlameEngine } from './js/core/flame-engine.js';
         import { initErrorSystem } from './js/core/error-system.js';
         const flame = initFlameEngine();
         const errorSystem = initErrorSystem(flame);
         window.enterOverheatMode = () => flame.enterOverheatMode();
         window.exitOverheatMode = () => flame.exitOverheatMode();
-        console.log('🔥 Core systems initialized (flame engine + error system)');
-        console.groupEnd();
+        if (window.pm?.init) { console.log('🔥 Core systems initialized (flame engine + error system)'); console.groupEnd(); }
     </script>
     
     <!-- EMIC Study: IndexedDB caching layer for hardcoded GOES-16 data -->
@@ -640,10 +702,10 @@
                     const silent = document.getElementById('silentDownload')?.checked;
                     if (cached) {
                         if (!silent) { statusEl.textContent = '📦 Loading from cache...'; statusEl.className = 'status info'; }
-                        console.log('🔬 EMIC: Found data in IndexedDB cache');
+                        if (window.pm?.data) console.log('🔬 EMIC: Found data in IndexedDB cache');
                     } else {
                         if (!silent) { statusEl.textContent = '📡 Fetching GOES-16 magnetometer data from CDAWeb...'; statusEl.className = 'status loading'; }
-                        console.log('🔬 EMIC: No cache, will fetch from CDAWeb');
+                        if (window.pm?.data) console.log('🔬 EMIC: No cache, will fetch from CDAWeb');
                     }
                 }, true); // capture phase = runs first
 
