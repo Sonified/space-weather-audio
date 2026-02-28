@@ -174,9 +174,10 @@ async function initWaveformThreeScene() {
         const maxVal = float(-1.0).toVar();
 
         If(spp.greaterThan(wfUMipBinSize).and(wfUMipTotalBins.greaterThan(0.0)), () => {
-            const binStart = tslFloor(tslMax(pixelStart.div(wfUMipBinSize), float(0.0)));
-            const binEnd = tslCeil(tslMin(pixelEnd.div(wfUMipBinSize), wfUMipTotalBins));
-            const binCount = binEnd.sub(binStart);
+            const binStart = tslFloor(tslMax(pixelStart.div(wfUMipBinSize).add(0.5), float(0.0)));
+            const binEnd = tslMax(binStart.add(1.0), tslFloor(pixelEnd.div(wfUMipBinSize).add(0.5)));
+            const binEndClamped = tslMin(binEnd, wfUMipTotalBins);
+            const binCount = binEndClamped.sub(binStart);
             Loop(512, ({ i }) => {
                 If(float(i).greaterThanEqual(binCount), () => { Break(); });
                 const mm = getMipBinTSL(binStart.add(float(i)));

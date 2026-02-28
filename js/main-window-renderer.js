@@ -244,6 +244,10 @@ let wfTextureHeight = 0;
 let wfMipTextureWidth = 0;
 let wfMipTextureHeight = 0;
 const WF_MIP_BIN_SIZE = 256;
+let wfDebugSamples = null;       // retained for CPU-side diagnostic
+let wfDebugMipData = null;       // retained for CPU-side diagnostic
+let wfDebugDumped = false;       // fire once at transition
+let wfDebugWasRaw = false;       // track previous frame's branch
 // TSL uniform nodes for waveform shader
 let wfUViewportStart = null;
 let wfUViewportEnd = null;
@@ -477,9 +481,11 @@ async function initThreeScene() {
 
             If(spp.greaterThan(wfUMipBinSize).and(wfUMipTotalBins.greaterThan(0.0)), () => {
                 // Zoomed out: read pre-computed min/max bins
-                const binStart = tslFloor(tslMax(pixelStart.div(wfUMipBinSize), float(0.0)));
-                const binEnd = tslCeil(tslMin(pixelEnd.div(wfUMipBinSize), wfUMipTotalBins));
-                const binCount = binEnd.sub(binStart);
+                // round (not ceil) so bins only included when pixel overlaps by ≥ half
+                const binStart = tslFloor(tslMax(pixelStart.div(wfUMipBinSize).add(0.5), float(0.0)));
+                const binEnd = tslMax(binStart.add(1.0), tslFloor(pixelEnd.div(wfUMipBinSize).add(0.5)));
+                const binEndClamped = tslMin(binEnd, wfUMipTotalBins);
+                const binCount = binEndClamped.sub(binStart);
                 Loop(512, ({ i }) => {
                     If(float(i).greaterThanEqual(binCount), () => { Break(); });
                     const mm = getMipBinTSL(binStart.add(float(i)));
@@ -780,17 +786,65 @@ async function renderFrame() {
 
                 wfUTransparentBg.value = (mode === 'both') ? 1.0 : 0.0;
 
-                // DEBUG: log spp and which shader branch is active
-                const _vpStart = wfUViewportStart.value;
-                const _vpEnd = wfUViewportEnd.value;
-                const _totalSamples = wfUTotalSamples.value;
-                const _cw = wfUCanvasWidth.value;
-                const _spp = (_vpEnd - _vpStart) * _totalSamples / _cw;
-                const _binSize = wfUMipBinSize.value;
-                const _mipBins = wfUMipTotalBins.value;
-                const _useMip = _spp > _binSize && _mipBins > 0;
-                const _binsPerPixel = _spp / _binSize;
-                console.log(`[WF] spp=${_spp.toFixed(1)} canvasW=${_cw} binSize=${_binSize} mipBins=${_mipBins} → ${_useMip ? 'MIP (bins/px=' + _binsPerPixel.toFixed(2) + ')' : 'RAW'}`);
+                // One-shot diagnostic: compare RAW vs MIP at the exact transition moment
+                if (wfDebugSamples && wfDebugMipData) {
+                    const _vpStart = wfUViewportStart.value;
+                    const _vpEnd = wfUViewportEnd.value;
+                    const _totalSamples = wfUTotalSamples.value;
+                    const _cw = wfUCanvasWidth.value;
+                    const _spp = (_vpEnd - _vpStart) * _totalSamples / _cw;
+                    const _binSize = wfUMipBinSize.value;
+                    const _mipBins = wfUMipTotalBins.value;
+                    const _useMip = _spp > _binSize && _mipBins > 0;
+                    if (!_useMip) { wfDebugWasRaw = true; }
+                    if (_useMip && wfDebugWasRaw && !wfDebugDumped) {
+                        wfDebugDumped = true;
+                        const viewStartSample = _vpStart * _totalSamples;
+                        const viewEndSample = _vpEnd * _totalSamples;
+                        const N = 100;
+                        const rawResults = [];
+                        const mipResults = [];
+                        for (let px = 0; px < N; px++) {
+                            const pxStart = viewStartSample + (px / _cw) * (viewEndSample - viewStartSample);
+                            const pxEnd = pxStart + _spp;
+
+                            // RAW path (what shader does when spp <= 256)
+                            const rStart = Math.floor(Math.max(pxStart, 0));
+                            const rEnd = Math.ceil(Math.min(pxEnd, _totalSamples));
+                            let rMin = 1, rMax = -1;
+                            for (let j = rStart; j < rEnd && j < wfDebugSamples.length; j++) {
+                                const v = wfDebugSamples[j];
+                                if (v < rMin) rMin = v;
+                                if (v > rMax) rMax = v;
+                            }
+                            rawResults.push({ min: +rMin.toFixed(6), max: +rMax.toFixed(6) });
+
+                            // MIP path (what shader does when spp > 256)
+                            const bStart = Math.floor(Math.max(pxStart / _binSize + 0.5, 0));
+                            const bEnd = Math.min(Math.max(bStart + 1, Math.floor(pxEnd / _binSize + 0.5)), _mipBins);
+                            let mMin = 1, mMax = -1;
+                            for (let b = bStart; b < bEnd; b++) {
+                                const mn = wfDebugMipData[b * 2];
+                                const mx = wfDebugMipData[b * 2 + 1];
+                                if (mn < mMin) mMin = mn;
+                                if (mx > mMax) mMax = mx;
+                            }
+                            mipResults.push({ min: +mMin.toFixed(6), max: +mMax.toFixed(6) });
+                        }
+                        console.log('[WF DIAG] CPU-side comparison at spp=' + _spp.toFixed(1));
+                        console.log('[WF DIAG] RAW (100):', JSON.stringify(rawResults));
+                        console.log('[WF DIAG] MIP (100):', JSON.stringify(mipResults));
+                        let worstIdx = 0, worstDiff = 0;
+                        for (let k = 0; k < N; k++) {
+                            const rangeDiffMin = Math.abs(rawResults[k].min - mipResults[k].min);
+                            const rangeDiffMax = Math.abs(rawResults[k].max - mipResults[k].max);
+                            const diff = Math.max(rangeDiffMin, rangeDiffMax);
+                            if (diff > worstDiff) { worstDiff = diff; worstIdx = k; }
+                        }
+                        console.log(`[WF DIAG] Worst divergence: px ${worstIdx}, diff=${worstDiff.toFixed(6)}`);
+                        console.log(`[WF DIAG]   RAW[${worstIdx}]:`, rawResults[worstIdx], `  MIP[${worstIdx}]:`, mipResults[worstIdx]);
+                    }
+                }
             }
         }
 
@@ -874,6 +928,10 @@ function uploadMainWaveformSamples(expectedTotalSamples = 0) {
     wfUMipTexWidth.value = parseFloat(wfMipTextureWidth);
     wfUMipTexHeight.value = parseFloat(wfMipTextureHeight);
     wfUMipTotalBins.value = parseFloat(numBins);
+
+    wfDebugSamples = samples;
+    wfDebugMipData = mipData;
+    wfDebugDumped = false;
 
     if (window.pm?.gpu) console.log(`Main waveform uploaded: ${wfTotalSamples.toLocaleString()} samples, mip: ${numBins.toLocaleString()} bins (${WF_MIP_BIN_SIZE} samples/bin)`);
 }
